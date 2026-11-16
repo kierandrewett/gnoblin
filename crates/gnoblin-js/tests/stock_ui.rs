@@ -6,6 +6,7 @@
 //! expected values; where the JavaScript shell differs the test says why. A key goes to the node that holds the seat's
 //! focus, a press to the node it lands on, as the real path delivers them.
 
+use gnoblin_js::STARTER_CONFIG;
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 mod common;
@@ -13,8 +14,6 @@ use common::*;
 
 const RIGHT: u64 = 273;
 const MIDDLE: u64 = 274;
-
-const IMPORTS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
 
 /// Titlebars on every window: what a config that wants decorations writes.
 const DECORATED: &str = "startDecorations();";
@@ -25,19 +24,8 @@ const MENU: &str = "startDecorations(); startWindowMenu();";
 /// A shell over a screen of 1000 by 800, one seat, one lock and `windows` windows (ids 3 on, titled `win1`...), whose
 /// `init.ts` is `body`.
 fn world(windows: u64, body: &str) -> Rig {
-    let mut rig = rig_setup(IMPORTS, body, move |comp| {
-        comp.add_node(
-            20,
-            ROOT,
-            "screen",
-            vec![
-                ("width", MirrorValue::Double(1000.0)),
-                ("height", MirrorValue::Double(800.0)),
-                ("primary", MirrorValue::Bool(true)),
-            ],
-        );
-        comp.add_node(21, ROOT, "seat", vec![("name", text("seat0"))]);
-        comp.add_node(22, ROOT, "lock", Vec::new());
+    let mut rig = rig_setup(LIBRARY_GLOBALS, body, move |comp| {
+        comp.add_desktop(1000.0, 800.0);
         for n in 0..windows {
             comp.add_window(3 + n, &format!("win{}", n + 1), "foot");
         }
@@ -934,10 +922,7 @@ fn the_launcher_opens_on_the_screen_returns_spawns_the_command_and_escape_closes
 
 #[test]
 fn super_space_opens_the_stock_launcher_in_the_stock_default() {
-    let mut rig = world(
-        1,
-        "import { installDefaults } from \"gnoblin/starter\"; installDefaults(gnoblin);",
-    );
+    let mut rig = world(1, STARTER_CONFIG);
     assert_eq!(
         rig.eval("[...gnoblin.input.primary.bindings].some((b) => b.trigger === 'Super+space') ? 'bound' : 'free'"),
         "bound"

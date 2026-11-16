@@ -203,7 +203,7 @@ fn a_stock_key_the_config_rebinds_is_written_once() {
     assert!(ts.contains("gnoblin.spawn([\"launcher\"]);"), "{ts}");
     assert!(!ts.contains("openLauncher"), "{ts}");
     assert_eq!(ts.matches("XF86AudioMute").count(), 1, "{ts}");
-    assert!(ts.contains("input.bind(\"XF86AudioMicMute\""), "{ts}");
+    assert!(ts.contains("    XF86AudioMicMute: [\"wpctl\""), "{ts}");
 }
 
 // --- Every construct that converts -------------------------------------------------------------------------------

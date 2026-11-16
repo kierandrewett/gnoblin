@@ -102,6 +102,13 @@ seed_renderer() {
     chmod 600 "$state/last-good-config.json"
 }
 
+# starter_with LINES: the text of the stock desktop (the starter `init.ts`, which a shell with no init runs) followed by
+# LINES, for a scenario that wants the stock default plus a setting.
+starter_with() {
+    cat "$repo_root/data/js/starter/init.ts"
+    printf '\n%s\n' "$1"
+}
+
 # start_session [INIT_TS_SOURCE [RENDERER]]: boots the guardian over a fresh profile. With no source the config directory
 # is empty, which is the zero-config session.
 start_session() {
@@ -272,11 +279,7 @@ scenario_dwindle_decorated() {
 
 # shadows NAME RENDERER: the stock default with a style that gives every window a shadow, on the named renderer.
 shadows() {
-    start_session "import { gnoblin } from \"gnoblin\";
-import { installDefaults } from \"gnoblin/starter\";
-
-installDefaults(gnoblin);
-gnoblin.clients.style.shadows = [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }];" "$2"
+    start_session "$(starter_with "gnoblin.clients.style.shadows = [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }];")" "$2"
     plain_window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
     wait_windows 1
     plain_window org.example.windows "gnoblinctl window list" "#5f1e3a" "gnoblinctl window list"
@@ -403,13 +406,9 @@ scenario_transition_mid() {
 # second window overlaps the first, so the first's shadow falls on a colour and not on the black the stock shell leaves
 # behind the windows, and the corners of both show what is behind them.
 scenario_rounded() {
-    start_session "import { gnoblin } from \"gnoblin\";
-import { installDefaults } from \"gnoblin/starter\";
-
-installDefaults(gnoblin);
-gnoblin.clients.style.cornerRadius = 12;
+    start_session "$(starter_with "gnoblin.clients.style.cornerRadius = 12;
 gnoblin.clients.style.borders = [{ width: 2, color: \"#7c3aed\", inset: true }];
-gnoblin.clients.style.shadows = [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }];" gles
+gnoblin.clients.style.shadows = [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }];")" gles
     plain_window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
     wait_windows 1
     plain_window org.example.windows "gnoblinctl window list" "#5f1e3a" "gnoblinctl window list"

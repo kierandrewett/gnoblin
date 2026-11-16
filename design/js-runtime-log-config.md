@@ -71,11 +71,11 @@ for the unit tests of `swap_generation` (`crates/gnoblin-js/tests/shell.rs`).
     spins a handler for ever, reads the scene through an observer connection while it spins, and maps one more window
     afterwards.
 
-- **Zero-config, and no layering.** `JsShell::load_default_config` (the `loadDefault` hook) runs `installDefaults` of
-  `gnoblin/starter`: the same calls an `init.ts` makes.
+- **Zero-config, and no layering.** `JsShell::load_default_config` runs the embedded starter file
+  (`data/js/starter/init.ts`, the text `gnoblinctl config init` writes) as the generation's entry: the default is an
+  `init.ts` nobody wrote.
     - The role runs it when there is no entry file and when the entry fails to load at startup, so a shell is never bare.
-    - There is no merge. An `init.ts` has none of the stock keys or workspaces unless it calls `installDefaults(gnoblin)` or
-      copies the starter's statements.
+    - There is no merge. An `init.ts` has none of the stock keys or workspaces unless it copies the starter's statements.
     - It gets the stock workspace `desktop` only when it declared none (`finishLoad`).
     - A tree with no seat has no keyboard, so keys are left out.
     - The device settings its objects write reach the compositor (see "P6 config document and slots status").
@@ -390,9 +390,9 @@ fake link only (the real compositor answers within 250 ms, so a request is rarel
 
 Lane JsConfigLists, as it stands.
 
-- **The starter.** `data/js/starter/init.ts` (embedded as `STARTER_CONFIG`) holds the statements of `installDefaults`. Its
-  examples are comments that end the way a line of code ends, so a test can switch them on. `starter_parity.rs` holds the
-  file and `installDefaults` together.
+- **The starter.** `data/js/starter/init.ts` (embedded as `STARTER_CONFIG`) is the one description of the stock desktop: the shell runs it when
+  there is no `init.ts`. Its examples are comments that end the way a line of code ends, so a test can switch them on.
+  `starter_parity.rs` boots the default and a user file equal to the starter and compares the worlds.
 - **`gnoblinctl config init [DIR] [--force]`.** It writes the starter, refuses when `init.ts` or `init.js` exists (an
   `init.ts` is read first and would hide `init.js`), runs `types init`, prints three steps, and has a `--json` form
   (`crates/gnoblinctl/tests/js_check.rs`).

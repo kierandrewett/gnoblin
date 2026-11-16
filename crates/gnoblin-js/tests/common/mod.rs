@@ -1293,7 +1293,28 @@ pub fn rig_configured(
     }
 }
 
+/// A module prelude that puts the library's exports where `rig.eval` can reach them as globals (`FloatingLayout`,
+/// `startDecorations`...). The `gnoblin` global is the runtime's own and is left out.
+pub const LIBRARY_GLOBALS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
+
 impl FakeCompositor {
+    /// The tree a shell boots over: the primary screen of `width` by `height` (node 20), one seat `seat0` (21) and the
+    /// lock (22).
+    pub fn add_desktop(&self, width: f64, height: f64) {
+        self.add_node(
+            20,
+            ROOT,
+            "screen",
+            vec![
+                ("width", MirrorValue::Double(width)),
+                ("height", MirrorValue::Double(height)),
+                ("primary", MirrorValue::Bool(true)),
+            ],
+        );
+        self.add_node(21, ROOT, "seat", vec![("name", text("seat0"))]);
+        self.add_node(22, ROOT, "lock", Vec::new());
+    }
+
     /// A node of `class` under `parent`, in the tree already, as at boot.
     pub fn add_node(&self, id: u64, parent: u64, class: &str, props: Vec<(&str, MirrorValue)>) {
         let mut c = self.0.borrow_mut();

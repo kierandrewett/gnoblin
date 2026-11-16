@@ -35,12 +35,12 @@ The words the grep cannot find also count: the config-document path (`documentPa
 | `data/js/gnoblin/config.ts:771` | `defineConfig`: checks the shape (`desugarConfig`), calls `gnoblin.__register`, returns the config | deleted |
 | `data/js/gnoblin/config.ts:815` | `mergeConfig(base, user)` and `mergeKeys` (779): the layering rules (lists replace, tables merge, keys merge by canonical trigger) | deleted; layering is gone, a user `init.ts` replaces the stock default (3.4) |
 | `data/js/gnoblin/config.ts:914` | `desugarConfig`: config to `ConfigPlan` (workspaces, bindings, rules, listeners, document, autostart, ...) | deleted; each plan field is a direct object write (3.1) |
-| `data/js/gnoblin/config.ts:740` | `defaultConfig`: four floating workspaces, stock keys, `decorations`, `menus`, `alerts` | imperative library code `gnoblin/starter` (3.4) |
+| `data/js/gnoblin/config.ts:740` | `defaultConfig`: four floating workspaces, stock keys, `decorations`, `menus`, `alerts` | the starter file `data/js/starter/init.ts` (3.4) |
 | `data/js/gnoblin/config.ts:671,695,631,657` | `CONFIG_KEYS`, `SHAPES`, `DOCUMENT_SECTIONS`, `DOCUMENT_LISTS`, `RETIRED_KEYS` (663): key tables and shape checks | deleted; sections become the schema-generated tree behind `gnoblin.settings` (3.1) |
 | `data/js/gnoblin/config.ts:406-487` | `GnoblinConfig` and its helper interfaces (`StyleConfig`, `ProtocolsConfig`, `GestureConfig`, `DialogsConfig`, `OutputConfig` 168, `WorkspaceSetConfig` 301, `ConfigListeners` 316) | deleted; `OutputConfig`/`OutputTransform` move to the output module as the `OutputProfile` init type |
 | `data/js/gnoblin/config.ts:205` | `outputRequest(setting, path)`: the compositor request text for an output setting; also used by `Output.apply` | stays, moves to the output module (`OutputProfile` and `Output.apply` both need it) |
 | `data/js/gnoblin/config.ts:542-621` | key action helpers `spawn`, `show` (`numbered`, `position`, `positions`), `focusColumn`, `binding`, `KeyAction` union (111-124) | deleted as config actions; `input.bind` takes a function (3.1). `show.numbered` becomes the library helper `bindWorkspaceKeys` |
-| `data/js/gnoblin/config.ts:1103` | `planStockLauncher`, `planLauncher` (1081): `Super+space` opens the stock launcher unless a key or `launcher` takes it | a line in `gnoblin/starter`: `input.bind("Super+space", openLauncher)` |
+| `data/js/gnoblin/config.ts:1103` | `planStockLauncher`, `planLauncher` (1081): `Super+space` opens the stock launcher unless a key or `launcher` takes it | a line in the starter file: `input.bind("Super+space", openLauncher)` |
 | `data/js/gnoblin/config.ts:952,985,997` | `planWorkspaceSets`, `commandArgv`, `planAutostart` (rejects a duplicate command) | sets deleted (3.1); autostart check moves to `gnoblin.session.autostart.add` |
 | `data/js/gnoblin/config.ts:1244-1292` | `planDocument`, `checkDecorations`, `checkSwitch`, `checkSetup`, `deepFreeze` | deleted; document patch comes from the settings ledger (3.5) |
 | `data/js/gnoblin/index.ts:21` | `export * from "gnoblin/config"` | the surviving helpers are re-exported from their new modules |
@@ -52,14 +52,14 @@ The words the grep cannot find also count: the config-document path (`documentPa
 | `data/js/gnoblin/host.ts:4108` | `attachOn`: the `on` handlers as listeners | deleted; `gnoblin.clients.addListener` |
 | `data/js/gnoblin/host.ts:4098,4101,4144,4644-4645` | `documentPatch`, `autostartList`, `checkDocument` (throws `GnoblinError("invalid-config", "defineConfig", ...)`), the `document()` and `autostart()` entry exports the shell reads | the ledger replaces the two variables; `document()`/`autostart()` stay as entry exports with a new source (3.5) |
 | `data/js/gnoblin/host.ts:4198,4500` | `effectiveConfig` and `__effectiveConfig()` | the ledger dump (3.7) |
-| `data/js/gnoblin/host.ts:4670` | `loadDefault: () => gnoblin.__register(defaultConfig)` | `loadDefault` evaluates the starter module (3.4) |
+| `data/js/gnoblin/host.ts:4670` | `loadDefault: () => gnoblin.__register(defaultConfig)` | deleted; `load_default_config` evaluates the starter module (3.4) |
 | `data/js/gnoblin/host.ts:1215,1226` | `Workspace.layout` and `.gaps` setters call `resolveLayout` and `checkGaps` | stay; the layout-by-name string path of `resolveLayout` goes (instances only, as in the spec) |
 | `data/js/gnoblin/host.ts:2440-2448` | `ensureDefaultWorkspace`: a script that declares none gets one floating `desktop` | stays: the spec requires the shell to work without an `init.js` (section 18) |
 | `crates/gnoblin-js/src/config.rs:1-30,198` | the configuration document from the shell's side: `ConfigState::check`/`apply`/`candidate` with `retract`, `leaves`, `overlay`, `remove`; the header names `defineConfig` | stays; only the comments change. This is the generation-overlay mechanism for the document (3.6) |
 | `crates/gnoblin-js/src/document.rs:32-212` | `evaluate_document(entry)`: throwaway generation with a `PROBE` host whose `__register` merges and desugars; 1 s, 32 MiB; `DOCUMENT_BUDGET`; 9 unit tests that write `defineConfig` files | stays as an entry point, rewritten around the recording dry-run host (3.5); the tests are rewritten |
 | `crates/gnoblin-js/src/role.rs:97,128,246` | `JsRoleConfig::owns_document`: the role commits the document at start | stays; comment only |
 | `crates/gnoblin-js/src/runner.rs:11,276,291-334` | the runner commits at start, serves `config.reload`, and tells the guardian one `autostart` line per enabled entry then `config-accepted` (`publish`, `autostart_of`) | stays unchanged (3.5, 3.6): its input is the committed document, which is still a document |
-| `crates/gnoblin-js/src/shell.rs:216,387-420,486-560,688` | `apply_settings`, `start_autostart`, `apply_document`, `add_autostart_section`, `own_document`, `load_default_config` ("declared exactly as a user's `defineConfig({})`") | stays; `load_default_config` calls `loadDefault` (new meaning), comments change |
+| `crates/gnoblin-js/src/shell.rs:216,387-420,486-560,688` | `apply_settings`, `start_autostart`, `apply_document`, `add_autostart_section`, `own_document`, `load_default_config` ("declared exactly as a user's `defineConfig({})`") | stays; `load_default_config` evaluates the embedded starter module as the entry, comments change |
 | `crates/gnoblin-js/src/autostart.rs:1` | `JsAutostart`: starts commands once per session, only new ones on reload | stays; fed by `gnoblin.session.autostart` (3.1) |
 | `crates/gnoblin-js/src/lib.rs:24-27`, `reload.rs` | crate docs; the reload stage with the last good generation kept on failure | comments only; `reload.rs` stays (spec 18, step 5) |
 | `crates/gnoblin/src/main.rs:218` | the role locates and evaluates `init.ts`/`init.js` itself and commits the document | stays |
@@ -94,7 +94,7 @@ They never import `defineConfig`; they reach the config through the plan or thro
 | --- | --- | --- |
 | `data/js/starter/init.ts:1-50` | the starter: `export default defineConfig({ gaps, decorations, workspaces, keys, rules, autostart })` with commented examples | rewritten in the owner's style and used as the stock default (3.4) |
 | `crates/gnoblinctl/src/js.rs:601-700` (`INIT_FILE`, `write_starter`, `config_init`) | `config init [DIR] [--force]` writes the starter and the editor files | writes the new starter; same flags |
-| `crates/gnoblin-js/src/shell.rs:688`; `gnoblin.ts:4670` | the shell with no `init.ts` runs `loadDefault` | runs the starter module |
+| `crates/gnoblin-js/src/shell.rs:688`; `gnoblin.ts:4670` | the shell with no `init.ts` runs the stock default | `load_default_config` evaluates the starter module |
 
 <!-- prettier-ignore-end -->
 
@@ -577,12 +577,11 @@ two cases are already the same shape.
 - The stock default is library code: `data/js/starter/init.ts`, written in the owner's style as in 3.2 (imports, then imperative
   statements). It is embedded as the module `gnoblin/starter`. There is one source and no `defaultConfig` object.
 - With no `init.ts` or `init.js`, or when the entry fails at startup with no last-good generation, the shell evaluates
-  `gnoblin/starter` as the generation's entry. `loadDefault` (gnoblin.ts:4670) becomes `import "gnoblin/starter"`.
+  `gnoblin/starter` as the generation's entry. the `loadDefault` hook (gnoblin.ts:4670) is gone: the shell evaluates `gnoblin/starter` itself.
 - `gnoblinctl config init` writes that same file's text (plus the editor files). The starter is therefore always what runs with no
   config; there is no drift to test for. A test evaluates the embedded starter and the file `config init` writes and compares the
   resulting object state (workspace ids, bindings, listeners, settings ledger).
-- A user's `init.ts` replaces the default. A user who wants the stock keys copies the starter or calls its exported helpers:
-  `import { stockKeys } from "gnoblin/starter"; stockKeys(gnoblin.input.primary)`. This changes one behaviour: today a
+- A user's `init.ts` replaces the default. A user who wants the stock keys copies the starter (`gnoblinctl config init`). This changes one behaviour: today a
   `defineConfig` file is layered over the stock keys and workspaces; after the change a file that sets only a style has no `Super+1`.
   That is the specification's model (the reference `init.js` binds its own keys) and the migration tool writes the full set (3.8).
 - The runtime keeps what a locked or empty session needs and no user file may remove: the lock screen (`attachLock`), the
@@ -697,7 +696,7 @@ Eight steps. Each leaves the tree green; a step that adds does not remove, and t
 | 1 | **Add the missing objects of the specification** that the plan needs (all additive): `OutputProfile`, `Display`, `Viewport`, `Camera2D`/`Camera3D`, `gnoblin.displays`, `input.activeDisplay`, `ArcLayout`, device classes, `InputContext` constructor, `DragBinding`/`NativeObject` exports, `ObservableCollection.add` on style lists. Reverse the design/js-outputs.md decision. Each is its own landable change inside the step | `data/js/gnoblin/{scene,layouts,input,style}.ts`, `data/js/gnoblin/host.ts`, output module, `gnoblin-stock.d.ts`, `design/js-outputs.md` | all of `crates/gnoblin-js/tests/*`, `crates/gnoblin/tests/js_shell.rs`, `dts_match.rs`, golden | `design/js-spec-conformance.md` regenerated; the `fails` count only goes down; `init.js` of the owner loads |
 | 2 | **Add the NEW objects** the key table needs: `gnoblin.settings` (schema-generated tree), `gnoblin.session.autostart`, writable `InputContext.settings`, `PointerState.cursorTheme`/`cursorSize`, `DialogManager.style`, `OutputProfile.enabled`; library helpers `Decorations`, `WindowMenu`, `NotRespondingAlert`, `WindowRules` (the `RuleEngine` exported under its new name), `bindWorkspaceKeys`, `WorkspaceSwitchBinding` (rename) | `data/js/gnoblin/{settings,session,input,dialogs,menus,alerts,titlebar,rules}.ts`, `gnoblin.ts`, `gnoblin-config` schema export for codegen, d.ts | as step 1; new tests for each object that write a setting and check the document the shell commits | each `defineConfig` key of 3.1 has a spec-native equivalent proven by a test that sets it both ways and compares the world |
 | 3 | **Ledger, journal and dry-run host**: the generation records settings writes and host-property writes; `document()` and `autostart()` read the ledger and merge it with `plan.document` (a key set by both is an error); `evaluate_document` and `gnoblinctl check` run over the dry-run host and still answer for `defineConfig` files through a compatibility `__register` in that host | `crates/gnoblin-js/{js/gnoblin.ts,src/document.rs,src/shell.rs,src/config.rs}`, `crates/gnoblinctl/src/js.rs`, `gnoblin-services/src/keyring.rs` (callers only) | `document.rs` (9), `config.rs` (10), `keyring.rs` (17), `js_check.rs` (26), `js_runtime_role.rs`, `js_guardian.rs`, `config_slots.rs` | a spec-style `init.ts` that sets `gnoblin.settings.keyring.enabled = false` is read by the first-boot path; a reload that drops a settings line reverts it (new tests for 3.5 and 3.6) |
-| 4 | **Flip the zero-config default and the starter** to spec-style imperative code (`gnoblin/starter`); `loadDefault` and `config init` use it; a parity test asserts the starter's world equals what `defaultConfig` produced (workspaces, keys, listeners, the three services). `defaultConfig` stays for `defineConfig` files only | `data/js/starter/init.ts`, `crates/gnoblin-js/{js/gnoblin.ts,src/stock.rs}`, `crates/gnoblinctl/src/js.rs`, `docs/recipes/complete-starter-config.md` | `stock_ui.rs`, `stock_layouts*.rs`, `shell.rs`, `js_shell.rs` (the no-init cases), `js_check.rs` (`config init`) | with no `init.ts` the shell has the same workspaces, keys, titlebars, menu and alert as before |
+| 4 | **Flip the zero-config default and the starter** to spec-style imperative code (`gnoblin/starter`); the shell's default and `config init` use it; a parity test asserts the starter's world equals what `defaultConfig` produced (workspaces, keys, listeners, the three services). `defaultConfig` stays for `defineConfig` files only | `data/js/starter/init.ts`, `crates/gnoblin-js/{js/gnoblin.ts,src/stock.rs}`, `crates/gnoblinctl/src/js.rs`, `docs/recipes/complete-starter-config.md` | `stock_ui.rs`, `stock_layouts*.rs`, `shell.rs`, `js_shell.rs` (the no-init cases), `js_check.rs` (`config init`) | with no `init.ts` the shell has the same workspaces, keys, titlebars, menu and alert as before |
 | 5 | **Retarget the converter**: `config migrate` emits spec-style TypeScript; goldens and tests regenerated; output loaded through the dry-run host | `crates/gnoblin-config-migrate/src/*`, `tests/convert.rs`, `tests/fixtures/**`, `crates/gnoblinctl/src/migrate.rs`, `crates/gnoblinctl/tests/config_migrate.rs` | converter tests (27), `config_migrate.rs` (15) | the migrated starter golden equals the step 4 starter in behaviour; no converter output contains the removed names |
 | 6 | **Rewrite the tests that use `defineConfig` as a fixture**, in batches that each stay green: (a) `stock_layouts*.rs`, `stock_ui.rs`; (b) `stock_focus.rs`, `window_policy.rs`, `input.rs`, `ui.rs`, `outputs.rs`, `style.rs`, `workspaces.rs`, `shell.rs`, `tiling_bindings.rs`, `client_requests.rs`, `common/policy.rs`; (c) `crates/gnoblin/tests/js_{shell,runtime_role,guardian}.rs`, `scripts/js-shell-screenshots.sh`; (d) `config_slots.rs` and `config_keys.rs` become per-object tests; `dts_match.rs` and `gnoblin-js-types/tests/config_keys.rs` check `gnoblin.settings` against the schema | the files listed | each batch runs its own files and the batch before it | `git grep -c defineConfig -- '*.rs' '*.sh'` falls to zero outside the compatibility shim |
 | 7 | **Rewrite the documentation and the site**: `docs/typescript-config.md` becomes `docs/js-settings.md`; the 85 other pages' examples; `infra/site/src/lib/nav.ts`; `docs_examples.rs` loads the new examples; `docs/` pass `scripts/markdown-style.py` | `docs/**`, `infra/site/src/lib/nav.ts`, `crates/gnoblinctl/tests/docs_examples.rs` | `docs_examples.rs`, `xtask docs-parity`, the markdown hook | `git grep -l defineConfig -- docs infra` lists only `infra/site/vite.config.ts` |
@@ -725,17 +724,17 @@ two pushes. Lanes RmTests, RmCtl, RmDocsConfig and RmTestsShell then rewrote the
 pages, and lane RmFinal did step 8: it deleted the compatibility path, so the text below describes the code as it was when
 the boot path left it, and every step of 3.9 is done.
 
-**The stock default is code.** `data/js/gnoblin/starter.ts` (embedded as `gnoblin/starter`) exports `installDefaults(gnoblin)`:
-four floating workspaces, `startDecorations()`, `startWindowMenu()`, `startNotRespondingAlert()`, `Super+1` to `Super+9`,
-`Super+Left` and `Super+Right` over a `StripLayout`, the `Swipe3` `WorkspaceSlideBinding`, seven media keys and `Super+space`
-opening the launcher, all written as `input.bind` and `gnoblin.workspaces.add` calls. `data/js/starter/init.ts`, what
-`gnoblinctl config init` writes, is the same statements as a commented file in the owner's style. The two are held together by
-`the_starter_file_and_install_defaults_are_the_same_statements` (`crates/gnoblin-js/tests/starter_parity.rs`). The same file
-boots four ways over one fake compositor and all four digests (workspaces, claimed keys and gestures, titlebars, menu, alert,
-the focus a new window takes, and the effect of nine key presses) must equal the world `defineConfig(defaultConfig)` made:
-`every_way_to_boot_the_stock_default_builds_the_world_define_config_made`.
+**The stock default is one file.** `data/js/starter/init.ts` is the only description of it: four floating workspaces,
+`startDecorations()`, `startWindowMenu()`, `startNotRespondingAlert()`, `Super+1` to `Super+9`, `Super+Left` and `Super+Right`
+over a `StripLayout`, the `Swipe3` `WorkspaceSlideBinding`, seven media keys (one table of key to command and a loop) and
+`Super+space` opening the launcher, all written as `input.bind` and `gnoblin.workspaces.add` calls in a commented file in the
+owner's style. The crate embeds it as `STARTER_CONFIG` and as the module `gnoblin/starter`; `gnoblinctl config init` writes the
+text byte for byte and a shell with no `init.ts` runs the module as its entry, so there is no second copy to hold in sync.
+`the_default_boot_and_a_user_file_equal_to_the_starter_build_one_world` (`crates/gnoblin-js/tests/starter_parity.rs`) boots the
+default and a user `init.ts` equal to the starter over one fake compositor; the digests (workspaces, claimed keys and
+gestures, titlebars, menu, alert, the focus a new window takes, and the effect of thirteen key presses) must be equal.
 
-**The boot path.** With no `init.ts` the shell runs `installDefaults` (`loadDefault`). With an `init.ts` it runs that file and
+**The boot path.** With no `init.ts` the shell runs the starter module as its entry (`load_default_config`). With an `init.ts` it runs that file and
 nothing else: no merge, no stock keys, no stock workspaces, and a file that declares none gets the one floating `desktop` of
 `ensureDefaultWorkspace`. What a user file never has to ask for stays: the lock screen and the focus policy, now attached by the
 runtime for every config (click focus, new windows focused, the built-in edge snapping). The document the role commits is
@@ -757,7 +756,7 @@ so the helpers 3.1 called by those names are functions on the `gnoblin` module: 
 | Old key | Spec-native way | Test |
 | --- | --- | --- |
 | `style` | `gnoblin.clients.style.<property> = ...` | `style.rs`: `st1_a_global_radius_reaches_current_and_future_clients_and_spares_an_explicit_one` |
-| `workspaces` | `new Workspace({ id, name, layout })`, `gnoblin.workspaces.add` | `starter_parity.rs` (four workspaces, boot four ways) |
+| `workspaces` | `new Workspace({ id, name, layout })`, `gnoblin.workspaces.add` | `starter_parity.rs` (four workspaces, the default and the starter file) |
 | `gaps` | `Workspace.gaps` (`outer`), a layout's `gap` (`inner`) | `spec_native_settings.rs`: `gaps_are_the_workspaces_and_the_layouts_own_properties` |
 | `keys`, `launcher` key | `gnoblin.input.primary.bind(trigger, fn)`; a second binding of one trigger at one priority is refused | `spec_native_settings.rs`: `a_key_is_input_bind_and_a_key_bound_twice_is_refused`; `starter_parity.rs` (the presses) |
 | `gestureActions` | `input.bind("Swipe4Up", fn)`, `input.bind("Swipe3", new WorkspaceSlideBinding())` | `spec_native_settings.rs`: `a_touchpad_gesture_is_input_bind_on_a_gesture_trigger`; `starter_parity.rs` |
@@ -834,7 +833,7 @@ device settings (`Keyboard.repeatRate`, `repeatDelay`) are the document content 
 | `keyring` | A first boot whose `init.ts` or `init.js` says `keyring.enabled = false` decided off at once, with no accepted configuration and no last accepted file, before the runtime had committed anything. | `keyring.rs`: `first_boot_with_the_keyring_off_in_init_ts_decides_off_with_no_last_accepted_file` is deleted. `init_js_decides_too` now says that an `init.js` is evaluated and decides on. `an_accepted_configuration_beats_the_config_file` keeps its order rule with the config file's answer given by the closure. |
 | `dialogs.style` | The compositor's own validation refused `dialogs.style.radius` of 5000 and the reload was reported with that key path; a camelCase style key was the document's kebab-case one. | `js_shell.rs`: `defined_config_settings_reach_the_compositors_document_a_refused_value_is_reported_and_a_reload_takes_them_back` is rewritten over the keyboard settings (the setter refuses 20000 and the diagnostic names `repeatDelay`; `repeatRate` is the document's `repeat-interval` in milliseconds). |
 | `compositor` | `compositor.renderer` chosen from `init.ts` for the screenshot scenarios `shadows-software`, `shadows-gles` and `rounded`, which restarted the session so the first run's commit decided the renderer. | `scripts/js-shell-screenshots.sh` seeds the session's last-good document with the renderer before the one boot (`seed_renderer`), which is what the compositor reads when it starts; `restart_session` is gone. |
-| merge by trigger | A user's `defineConfig` merged its keys over the stock keys by canonical trigger and replaced the workspaces whole. | `js_shell.rs`: `a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_over_it` is now `a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_whole`: a user file has none of the stock keys, and `installDefaults(gnoblin)` brings them back. |
+| merge by trigger | A user's `defineConfig` merged its keys over the stock keys by canonical trigger and replaced the workspaces whole. | `js_shell.rs`: `a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_over_it` is now `a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_whole`: a user file has none of the stock keys, and a copy of the starter file brings them back. |
 
 <!-- prettier-ignore-end -->
 

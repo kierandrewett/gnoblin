@@ -893,11 +893,8 @@ gnoblin.input.primary.bind("Super+Return", () => {
 });
 "#;
 
-/// A user file that keeps the stock default by calling it, then adds a key of its own.
-const KEEPING_CONFIG: &str = r#"import { gnoblin } from "gnoblin";
-import { installDefaults } from "gnoblin/starter";
-
-installDefaults(gnoblin);
+/// What a user file adds after a copy of the starter to keep the stock default and bind a key of its own.
+const KEEPING_ADDITION: &str = r#"
 gnoblin.input.primary.bind("Super+Return", () => {
     gnoblin.spawn(["true"]);
 });
@@ -942,8 +939,12 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_w
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     assert_eq!(ids(&scene(&ipc)), window, "the window kept its id through the reload");
 
-    // The way to keep the stock default is to call it: its workspaces and keys are back, with the user's key beside them.
-    save(&config.path().join("init.ts"), KEEPING_CONFIG);
+    // The way to keep the stock default is to start from the starter file: its workspaces and keys are back, with the
+    // user's key beside them.
+    save(
+        &config.path().join("init.ts"),
+        &format!("{}{KEEPING_ADDITION}", gnoblin_js::STARTER_CONFIG),
+    );
     wait_for(
         "the stock default is called again",
         &session,
@@ -5593,13 +5594,12 @@ fn swipe(session: &Session, fingers: u8) {
     }
 }
 
-/// The `init.ts` of the claim test. It calls the stock default, as the starter does, and binds the user's keys after it.
+/// The start of the `init.ts` of the claim test; the starter file and the user's keys follow it.
 /// The prelude replaces every binding's action with a count, by trigger, and `probe()` reports the counts of the running
 /// generation. The actions themselves do not run: the media keys would start `wpctl` and `playerctl`, `Super+space` the
 /// launcher, and the workspace keys and the slide would move the window the test drags, so a binding that was reached is
 /// the proof, and what it would have done is the stock library's own tests'.
-const COUNTING_CONFIG: &str = r#"import { gnoblin } from "gnoblin";
-import { installDefaults } from "gnoblin/starter";
+const COUNTING_PRELUDE: &str = r#"import { gnoblin } from "gnoblin";
 
 const fired: Record<string, number> = {};
 (globalThis as { probe?: () => string }).probe = () => JSON.stringify(fired);
@@ -5646,9 +5646,6 @@ gnoblin.clients.addListener({
         client.floatingBounds = { x: 300, y: 200, width: 200, height: 150 };
     },
 });
-
-installDefaults(gnoblin);
-KEYS
 "#;
 
 /// The user's keys of round `round`: `Super+t` throughout, `Super+y` until the last round takes it away, and
@@ -5667,7 +5664,7 @@ fn counting_config(user: &[Chord]) -> String {
         .iter()
         .map(|chord| format!("gnoblin.input.primary.bind(\"{}\", () => undefined);\n", chord.trigger))
         .collect();
-    COUNTING_CONFIG.replace("KEYS", &keys)
+    format!("{COUNTING_PRELUDE}\n{}\n{keys}", gnoblin_js::STARTER_CONFIG)
 }
 
 /// How many times each binding's action ran in the running generation, by trigger.

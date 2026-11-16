@@ -112,8 +112,8 @@ a non-obvious choice or necessary `any` or type assertion exists. See
 
 ## Zero-config baseline
 
-Without any `init.ts`, the stock default runs: `installDefaults` of the embedded `gnoblin/starter` module, written as the
-same calls an `init.ts` makes.
+Without any `init.ts`, the stock default runs: the embedded starter file (`data/js/starter/init.ts`), which is
+the `init.ts` that `gnoblinctl config init` writes.
 
 - It declares the four floating workspaces `1` to `4` of the Lua stock config (`data/default-config/config/10-windows.lua`),
   titlebars, the window menu, the not-responding alert and the stock keys of the Lua shell.

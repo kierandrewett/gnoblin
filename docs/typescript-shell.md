@@ -176,7 +176,7 @@ object](js-settings.md) lists them.
 
 ## With no `init.ts`
 
-A session with no `init.ts` is not a bare shell. It runs the starter, the same statements `gnoblinctl config init`
+A session with no `init.ts` is not a bare shell. It runs the starter, the same file `gnoblinctl config init`
 writes:
 
 - four floating workspaces, `1` to `4` (named `Workspace 1` to `Workspace 4`);

@@ -53,4 +53,4 @@ Object.defineProperty(globalThis, "gnoblin", { value: gnoblin, enumerable: false
 // `gnoblin` the name is a convenience and not part of the object model, so a script may replace it.
 Object.defineProperty(globalThis, "inspect", { value: inspect, enumerable: false, writable: true, configurable: true });
 
-host.entry = makeEntry(gnoblin);
+host.entry = makeEntry();

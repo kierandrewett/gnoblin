@@ -105,7 +105,6 @@ for (const [name, tail] of [
     ["gnoblin/scene", "scene.ts"],
     ["gnoblin/scene/node", "scene/node.ts"],
     ["gnoblin/extensions/xr", "extensions/xr/index.ts"],
-    ["gnoblin/starter", "starter.ts"],
     ["gnoblin/ui", "ui.ts"],
     ["gnoblin/style", "style.ts"],
     ["gnoblin/input", "input.ts"],

@@ -12,10 +12,21 @@ use std::path::Path;
 use crate::loader::JsTypeScriptModule;
 use crate::ts::strip_types;
 
-/// The `init.ts` `gnoblinctl config init` writes (`data/js/starter/init.ts`). It is the readable, commented text of
-/// the stock default, which the shell runs as `installDefaults` of the `gnoblin/starter` module when there is no
-/// `init.ts`; a test holds the two statement for statement. The examples in it are comments to switch on.
+/// The stock desktop, and the only description of it: `data/js/starter/init.ts`. `gnoblinctl config init` writes this
+/// text byte for byte, and the shell runs the same text, as the embedded module [`STARTER_MODULE_NAME`], when there is
+/// no `init.ts` (or it could not load). The examples in it are comments to switch on.
 pub const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/init.ts");
+
+/// The import name the shell runs [`STARTER_CONFIG`] under as the entry of a generation that has no user entry.
+pub(crate) const STARTER_MODULE_NAME: &str = "gnoblin/starter";
+
+/// [`STARTER_CONFIG`] as the embedded TypeScript module [`STARTER_MODULE_NAME`], named by its path in the repository.
+pub(crate) fn starter_module() -> JsTypeScriptModule {
+    JsTypeScriptModule {
+        path: Path::new("data/js/starter/init.ts").to_path_buf(),
+        source: Cow::Borrowed(STARTER_CONFIG),
+    }
+}
 
 // `MODULES`: `(import name, file under data/js/gnoblin, source)` for every `.ts` file under that directory, written by
 // `build.rs` so a new module needs no edit here. `gnoblin` is the user-facing module and only re-exports the others;

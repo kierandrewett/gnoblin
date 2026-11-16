@@ -432,23 +432,23 @@ pub(crate) fn stock(needs: &mut Needs, own_workspaces: bool, alerts: bool, taken
 
     let media: Vec<&(&str, &[&str])> = MEDIA_KEYS.iter().filter(|(trigger, _)| free(trigger)).collect();
     if !media.is_empty() {
-        let mut block = comment(&["Volume, microphone and player keys.".to_owned()]);
+        let mut block = comment(&["Volume, microphone and media player keys: each key runs one command.".to_owned()]);
+        block.push("const mediaKeys: Record<string, string[]> = {".to_owned());
+        for (trigger, program) in media {
+            let program: Vec<String> = program.iter().map(|part| (*part).to_owned()).collect();
+            block.push(format!("    {trigger}: {},", argv(&program)));
+        }
         block.extend(
             [
-                "const run = (command: string[]) => {",
-                "    gnoblin.spawn(command);",
                 "};",
+                "for (const [key, command] of Object.entries(mediaKeys)) {",
+                "    input.bind(key, () => {",
+                "        gnoblin.spawn(command);",
+                "    });",
+                "}",
             ]
             .map(str::to_owned),
         );
-        for (trigger, program) in media {
-            let program: Vec<String> = program.iter().map(|part| (*part).to_owned()).collect();
-            block.push(format!(
-                "input.bind({}, () => run({}));",
-                names::string(trigger),
-                argv(&program)
-            ));
-        }
         blocks.push(block);
     }
 

@@ -103,7 +103,7 @@ export function removeWorkspace(workspace: Workspace): void {
 
 /**
  * A script that declared no workspace gets one floating `desktop`, so there is always somewhere for a window to go. The
- * stock default's four workspaces are `installDefaults`; a user's `init.ts` that declares none gets this one.
+ * stock default's four workspaces are declared by `data/js/starter/init.ts`; a user's `init.ts` that declares none gets this one.
  */
 export function ensureDefaultWorkspace(): void {
     if (ctx.workspaceRoot.list.length > 0) {

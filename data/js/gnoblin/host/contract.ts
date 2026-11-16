@@ -80,8 +80,6 @@ export interface Entry {
     render(value: unknown, maxBytes?: number): string;
     /** Gives a config that declared no workspace the stock one. */
     finishLoad(): void;
-    /** Runs the stock default (`installDefaults` of `gnoblin/starter`) for a shell that has no user entry to run. */
-    loadDefault(): void;
     /** Captures workspaces, output assignments and retained window geometry. */
     snapshot(): WorkspaceSnapshot;
     /** Restores runtime state from a previous generation snapshot. */

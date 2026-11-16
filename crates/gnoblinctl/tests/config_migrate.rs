@@ -69,9 +69,6 @@ fn write(dir: &Path, name: &str, text: &str) -> PathBuf {
     path
 }
 
-/// A file that builds the stock default by calling the library, as `starter_parity.rs` of `gnoblin-js` does.
-const INSTALL_DEFAULTS: &str = "import { installDefaults } from \"gnoblin/starter\";\ninstallDefaults(gnoblin);\n";
-
 /// The Lua starter as the converter's own tests keep it.
 fn starter_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../gnoblin-config-migrate/tests/fixtures/starter")
@@ -350,7 +347,6 @@ fn the_converted_starter_builds_the_world_the_stock_starter_builds() {
     let converted = fs::read_to_string(dir.path().join("init.ts")).expect("init.ts");
 
     let starter = world(STARTER_CONFIG, "");
-    let called = world(INSTALL_DEFAULTS, "");
     let migrated = world(&converted, "");
 
     // The stock world is real: four floating workspaces, the window menu and the alert, and twenty keys that each
@@ -364,8 +360,7 @@ fn the_converted_starter_builds_the_world_the_stock_starter_builds() {
         json!([["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]])
     );
 
-    // The same worlds: the starter file, a file that calls `installDefaults`, and the converted Lua starter.
-    assert_eq!(called, starter, "installDefaults is the starter");
+    // The same worlds: the starter file and the converted Lua starter.
     assert_eq!(migrated, starter, "the converted Lua starter is the starter");
 }
 

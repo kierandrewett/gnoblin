@@ -1,6 +1,7 @@
 // The shell reloads `~/.config/gnoblin/init.ts` when you save it.
 // It runs top to bottom against live objects such as `gnoblin.workspaces`, `gnoblin.input` and `gnoblin.clients`.
 // Nothing is layered under it, so these statements define the desktop; uncomment examples to enable them.
+// A shell with no `init.ts` runs this same file, so a copy you leave unchanged behaves like the default.
 // Check changes with `gnoblinctl check --types init.ts`; see the shell API pages for each object's details.
 
 import {
@@ -57,17 +58,21 @@ input.bind("Super+Right", () => moveColumn("focusRight"));
 // Three-finger sideways swipes switch workspaces.
 input.bind("Swipe3", new WorkspaceSlideBinding());
 
-// Volume, microphone and media player keys.
-const run = (command: string[]) => {
-    gnoblin.spawn(command);
+// Volume, microphone and media player keys: each key runs one command.
+const mediaKeys: Record<string, string[]> = {
+    XF86AudioRaiseVolume: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"],
+    XF86AudioLowerVolume: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"],
+    XF86AudioMute: ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"],
+    XF86AudioMicMute: ["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"],
+    XF86AudioPlay: ["playerctl", "play-pause"],
+    XF86AudioNext: ["playerctl", "next"],
+    XF86AudioPrev: ["playerctl", "previous"],
 };
-input.bind("XF86AudioRaiseVolume", () => run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"]));
-input.bind("XF86AudioLowerVolume", () => run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]));
-input.bind("XF86AudioMute", () => run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]));
-input.bind("XF86AudioMicMute", () => run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]));
-input.bind("XF86AudioPlay", () => run(["playerctl", "play-pause"]));
-input.bind("XF86AudioNext", () => run(["playerctl", "next"]));
-input.bind("XF86AudioPrev", () => run(["playerctl", "previous"]));
+for (const [key, command] of Object.entries(mediaKeys)) {
+    input.bind(key, () => {
+        gnoblin.spawn(command);
+    });
+}
 
 // Super+space opens the launcher, with a command entry in the middle of the screen.
 input.bind("Super+space", () => {

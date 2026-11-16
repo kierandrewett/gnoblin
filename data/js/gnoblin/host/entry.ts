@@ -5,7 +5,6 @@ import { ctx } from "gnoblin/host/context";
 import type { Entry } from "gnoblin/host/contract";
 import { next, pending, takeErrors } from "gnoblin/host/dispatch";
 import { plan, pointer, ready } from "gnoblin/host/frame";
-import type { Gnoblin } from "gnoblin/host/gnoblin";
 import { layout } from "gnoblin/host/layout_driver";
 import { declareDecorations } from "gnoblin/host/services";
 import { reconcileWorkspaces, snapshotWorkspaces } from "gnoblin/host/snapshot";
@@ -13,12 +12,11 @@ import { ensureDefaultWorkspace } from "gnoblin/host/workspaces";
 import { inspect } from "gnoblin/inspect";
 import { lockRelease, runLockFrame } from "gnoblin/lock";
 import { sceneReleaseAll } from "gnoblin/scene/registry";
-import { installDefaults } from "gnoblin/starter";
 import { uiReleaseAll } from "gnoblin/ui/frame";
 import { NEVER, NOW, nextWake, onWake } from "gnoblin/wake";
 
 /** What the shell calls each frame, over the object model of `gnoblin`. */
-export function makeEntry(gnoblin: Gnoblin): Entry {
+export function makeEntry(): Entry {
     // Wake on the next frame when listeners are waiting in the queue.
     onWake("listener queue", () => (ctx.queue.length > 0 ? NOW : NEVER));
     return {
@@ -67,7 +65,6 @@ export function makeEntry(gnoblin: Gnoblin): Entry {
         idleFailed: (holder) => ctx.idleMonitor.failed(holder),
         layout,
         finishLoad: ensureDefaultWorkspace,
-        loadDefault: () => installDefaults(gnoblin),
         snapshot: snapshotWorkspaces,
         reconcile: reconcileWorkspaces,
         pointer,

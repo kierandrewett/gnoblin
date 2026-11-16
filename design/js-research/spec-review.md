@@ -142,7 +142,7 @@ desugared to `gap`, `clients.where(query).style`, `input.primary.bind` and the r
 bound or a gap set needs no `new Workspace(...)`. It was built, and the owner never asked for it: the public API is exactly
 the owner's specification and an `init.ts` is a program run against live objects (design/js-runtime.md, J4 (revised);
 design/js-spec-native.md). Two of its requirements outlived it: `LayoutContext.gap` supplied by `Workspace.gaps`, so one
-setting reaches every stock layout, and the zero-config baseline spelled out in code (`gnoblin/starter`: four floating
+setting reaches every stock layout, and the zero-config baseline spelled out in code (`data/js/starter/init.ts`: four floating
 workspaces and the stock bindings of the Lua shell).
 
 ## 5. Proposed acceptance tests (headless)

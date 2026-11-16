@@ -16,6 +16,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use gnoblin_js::STARTER_CONFIG;
+
 mod common;
 use common::policy::*;
 use common::*;
@@ -118,7 +120,6 @@ const MODULES: &[&str] = &[
 /// The stock library as a user's `init.ts` starts it, with the widgets that are loaded on demand and the two modules the
 /// test reads.
 const STOCK: &str = "import * as lib from \"gnoblin\";\n\
-    import { installDefaults } from \"gnoblin/starter\";\n\
     import { ctx } from \"gnoblin/host/context\";\n\
     import { wakeOwners } from \"gnoblin/wake\";\n\
     import \"gnoblin/widgets\";\n\
@@ -127,7 +128,7 @@ const STOCK: &str = "import * as lib from \"gnoblin\";\n\
 
 /// The stock shell over three decorated windows.
 fn stock() -> Rig {
-    let mut rig = rig_setup(STOCK, "installDefaults(gnoblin);\n", |comp| populate(comp, 3, false));
+    let mut rig = rig_setup(STOCK, STARTER_CONFIG, |comp| populate(comp, 3, false));
     let diagnostics = rig.settle();
     assert!(diagnostics.is_empty(), "{diagnostics:?} {:?}", rig.load_diagnostics);
     rig

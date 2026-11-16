@@ -1,37 +1,21 @@
-//! The stock default is one world however it is reached.
+//! The stock default is the starter file, run twice.
 //!
-//! Three ways to boot over the same fake compositor: no `init.ts` at all (`load_default_config`, which runs
-//! `installDefaults`), the `init.ts` `gnoblinctl config init` writes, and a file that calls `installDefaults`. Each is
-//! digested into the workspaces, the claimed keys and gestures, the titlebars, the window menu, the not-responding alert
-//! and what each stock key does when it is pressed, and the three digests must be equal. A last test holds the
-//! statements of `installDefaults` and of the starter file together, so the readable file cannot drift from what runs.
+//! A shell with no `init.ts` runs the embedded `data/js/starter/init.ts` as its entry (`load_default_config`), and
+//! `gnoblinctl config init` writes the same text. Two boots over the same fake compositor, the default and a user's
+//! `init.ts` equal to the starter, are digested into the workspaces, the claimed keys and gestures, the titlebars, the
+//! window menu, the not-responding alert and what each stock key does when it is pressed. The digests must be equal.
 
 use std::fs;
 use std::path::Path;
 
 use gnoblin_js::{JsShell, STARTER_CONFIG};
-use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 mod common;
 use common::*;
 
-/// Puts the library's names where `rig.eval` can reach them, as `stock_ui.rs` does.
-const GLOBALS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
-
 /// A screen of 1000 by 800, one seat, one lock and two windows (ids 3 and 4).
 fn populate(comp: &FakeCompositor) {
-    comp.add_node(
-        20,
-        ROOT,
-        "screen",
-        vec![
-            ("width", MirrorValue::Double(1000.0)),
-            ("height", MirrorValue::Double(800.0)),
-            ("primary", MirrorValue::Bool(true)),
-        ],
-    );
-    comp.add_node(21, ROOT, "seat", vec![("name", text("seat0"))]);
-    comp.add_node(22, ROOT, "lock", Vec::new());
+    comp.add_desktop(1000.0, 800.0);
     comp.add_window(3, "one", "foot");
     comp.add_window(4, "two", "foot");
 }
@@ -43,7 +27,7 @@ fn boot(init: Option<&str>) -> Rig {
     populate(&comp);
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("globals.ts"), GLOBALS).expect("globals.ts is written");
+    fs::write(root.join("globals.ts"), LIBRARY_GLOBALS).expect("globals.ts is written");
     let (config, clock) = timed_config(&root);
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let load_diagnostics = match init {
@@ -64,15 +48,19 @@ fn boot(init: Option<&str>) -> Rig {
 }
 
 /// The chords whose press the digest records, as the compositor writes them.
-const PRESSES: [&str; 9] = [
+const PRESSES: [&str; 13] = [
     "<Super>1",
     "<Super>2",
     "<Super>9",
     "<Super>Left",
     "<Super>Right",
+    "XF86AudioRaiseVolume",
+    "XF86AudioLowerVolume",
     "XF86AudioMute",
-    "XF86AudioPrev",
     "XF86AudioMicMute",
+    "XF86AudioPlay",
+    "XF86AudioNext",
+    "XF86AudioPrev",
     "<Super>space",
 ];
 
@@ -135,12 +123,9 @@ fn digest(rig: &mut Rig) -> serde_json::Value {
 }
 
 #[test]
-fn every_way_to_boot_the_stock_default_builds_one_world() {
+fn the_default_boot_and_a_user_file_equal_to_the_starter_build_one_world() {
     let none = digest(&mut boot(None));
     let starter = digest(&mut boot(Some(STARTER_CONFIG)));
-    let call = digest(&mut boot(Some(
-        "import { installDefaults } from \"gnoblin/starter\";\ninstallDefaults(gnoblin);\n",
-    )));
 
     // The world is real: four floating workspaces, the stock keys, the swipe, titlebars, menu and alert.
     assert_eq!(
@@ -160,22 +145,27 @@ fn every_way_to_boot_the_stock_default_builds_one_world() {
     let seen = |at: usize| &none["presses"][at]["seen"];
     assert_eq!(seen(1)["shown"], "2", "{none:#}");
     assert_eq!(seen(4)["moved"], serde_json::json!(["focusRight"]), "{none:#}");
-    assert_eq!(
-        seen(5)["spawned"],
-        serde_json::json!(["wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"]),
-        "{none:#}"
-    );
+    for (at, command) in [
+        (5, "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"),
+        (6, "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),
+        (7, "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
+        (8, "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),
+        (9, "playerctl play-pause"),
+        (10, "playerctl next"),
+        (11, "playerctl previous"),
+    ] {
+        assert_eq!(seen(at)["spawned"], serde_json::json!([command]), "{none:#}");
+    }
     assert!(
-        none["presses"][8]["canvases"].as_u64().unwrap_or(0) > 0,
+        none["presses"][12]["canvases"].as_u64().unwrap_or(0) > 0,
         "the launcher key draws an entry: {none:#}"
     );
 
     assert_eq!(starter, none, "the starter file is the stock default");
-    assert_eq!(call, none, "installDefaults is the stock default");
 }
 
 #[test]
-fn a_config_that_does_not_call_the_defaults_has_none_of_them() {
+fn a_config_that_leaves_the_starter_out_has_none_of_it() {
     let mut rig = boot(Some("export {};\n"));
     rig.settle();
     assert_eq!(rig.eval("gnoblin.workspaces.map((w) => w.id).join()"), "desktop");
@@ -236,39 +226,15 @@ fn the_starter_is_a_short_readable_ascii_file() {
     assert!(STARTER_CONFIG.lines().all(|line| line.len() <= 120));
 }
 
-/// The code lines of `lines`: no blanks and no comments, with the indentation of the first one removed.
-fn statements(lines: &[&str]) -> Vec<String> {
-    let code: Vec<&str> = lines
-        .iter()
-        .copied()
-        .filter(|line| !line.trim().is_empty() && !line.trim_start().starts_with("//"))
-        .collect();
-    let indent = code.first().map_or(0, |line| line.len() - line.trim_start().len());
-    code.iter()
-        .map(|line| line[indent.min(line.len())..].to_owned())
-        .collect()
-}
-
+/// The recipe page shows the starter in full, and a block pasted by hand cannot drift from the file unseen.
 #[test]
-fn the_starter_file_and_install_defaults_are_the_same_statements() {
-    let library = include_str!("../../../data/js/gnoblin/starter.ts");
-    let open = library
-        .find("export function installDefaults(")
-        .expect("the library function");
-    let body: Vec<&str> = library[open..]
-        .lines()
-        .skip(1)
-        .take_while(|line| *line != "}")
-        .collect();
-    let file: Vec<&str> = STARTER_CONFIG.lines().collect();
-    let after_imports = file
-        .iter()
-        .position(|line| *line == "} from \"gnoblin\";")
-        .expect("the starter's import block")
-        + 1;
+fn the_recipe_page_shows_the_starter_file_as_it_is() {
+    let page = include_str!("../../../docs/recipes/complete-starter-config.md");
+    let fence = "```ts\n";
+    let body = &page[page.find(fence).expect("the recipe has a ts block") + fence.len()..];
+    let shown = &body[..body.find("\n```\n").expect("the block closes") + 1];
     assert_eq!(
-        statements(&file[after_imports..]),
-        statements(&body),
-        "edit data/js/starter/init.ts and the body of installDefaults in data/js/gnoblin/starter.ts together"
+        shown, STARTER_CONFIG,
+        "paste data/js/starter/init.ts into the first ts block of docs/recipes/complete-starter-config.md"
     );
 }

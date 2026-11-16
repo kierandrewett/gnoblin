@@ -50,7 +50,7 @@ use crate::dialogs::JsDialogs;
 use crate::error::JsError;
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_idle::JsIdle;
-use crate::stock::{HOST_MODULE_NAME, host_export, stock_sources_in};
+use crate::stock::{HOST_MODULE_NAME, STARTER_MODULE_NAME, host_export, starter_module, stock_sources_in};
 use crate::supervisor::{JsClock, JsSystemClock};
 use crate::workspaces::JsWorkspaceSnapshot;
 use crate::{bindings, input};
@@ -245,6 +245,10 @@ impl JsShell {
         for (name, module) in stock {
             typescript.entry(name).or_insert(module);
         }
+        // The stock desktop is the starter file itself, which a shell with no user entry runs as its entry.
+        typescript
+            .entry(STARTER_MODULE_NAME.to_owned())
+            .or_insert_with(starter_module);
         // Generation 0 is the bare one (the host objects and no user code); the reloader numbers the ones it
         // stages from 1.
         let generation = JsGeneration::new(&js, 0)?;
@@ -433,33 +437,34 @@ impl JsShell {
     /// and counts a strike when it is a budget trip.
     pub fn load_entry(&mut self, entry: &Path) -> Result<Vec<String>, JsShellError> {
         self.note_script_ran();
-        if let Err(error) = self.generation.eval_module(entry) {
-            self.count_strike(&error);
-            return Err(error.into());
-        }
-        // The windows that were there at boot join a workspace on the first frame.
-        self.finish_load()?;
-        let mut diagnostics = Vec::new();
-        self.apply_document(&mut diagnostics, true)?;
-        self.collect_reports(&mut diagnostics)?;
-        Ok(diagnostics)
+        let loaded = self.generation.eval_module(entry);
+        self.finish_entry(loaded)
     }
 
-    /// Runs the stock default config as the generation's whole config, for a shell with no user entry (or whose
-    /// entry could not load): `installDefaults` of `gnoblin/starter`, which declares four floating workspaces, the
-    /// titlebar, menu and alert helpers and the stock keys with the same calls a user's `init.ts` makes. Returns the
-    /// failures of calls that ran while it loaded.
+    /// Runs the stock desktop as the generation's whole config, for a shell with no user entry (or whose entry could
+    /// not load): the embedded starter file (`data/js/starter/init.ts`, the text `gnoblinctl config init` writes) is
+    /// the entry, so the default is a user's `init.ts` that nobody wrote. Returns the failures of calls that ran
+    /// while it loaded.
     ///
     /// # Errors
     ///
-    /// The stock config threw (a bug in the library) or the link failed.
+    /// The starter threw (a bug in the library) or the link failed.
     pub fn load_default_config(&mut self) -> Result<Vec<String>, JsShellError> {
-        self.note_script_ran();
         // A load, like `load_entry`, so it has the stage budget: it evaluates the whole starter, which took as long as
         // any config under load, and a listener call's budget would interrupt it.
-        self.call_entry(self.js.stage_budget, |entry| {
-            entry.get::<_, Function<'_>>("loadDefault")?.call::<_, ()>(())
-        })?;
+        self.note_script_ran();
+        let loaded = self.generation.eval_specifier(STARTER_MODULE_NAME.to_owned());
+        self.finish_entry(loaded)
+    }
+
+    /// What follows the evaluation of an entry module, whichever module it was: a failed load counts a strike when it
+    /// is a budget trip; a good one lets the windows that were there at boot join a workspace on the first frame, then
+    /// applies the document and collects the failures of the listener calls that ran.
+    fn finish_entry(&mut self, loaded: Result<(), JsError>) -> Result<Vec<String>, JsShellError> {
+        if let Err(error) = loaded {
+            self.count_strike(&error);
+            return Err(error.into());
+        }
         self.finish_load()?;
         let mut diagnostics = Vec::new();
         self.apply_document(&mut diagnostics, true)?;
