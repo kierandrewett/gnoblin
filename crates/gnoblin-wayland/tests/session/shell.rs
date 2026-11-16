@@ -34,11 +34,13 @@ impl ClassInfo for WindowTable {
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
         let kind = match (class, key) {
-            ("window", "maximised" | "fullscreen" | "minimised")
+            ("window", "maximised" | "fullscreen" | "minimised" | "report_presented")
             | ("node" | "window" | "view", "visible" | "input")
-            | ("seat", "decorations_available") => ValueType::Bool,
-            ("node" | "window" | "view", "x" | "y" | "width" | "height") => ValueType::Double,
-            ("node" | "window" | "view", "input_mode") => ValueType::Text,
+            | ("seat", "decorations_available" | "builtin_motion") => ValueType::Bool,
+            ("node" | "window" | "view", "x" | "y" | "width" | "height") | ("window", "frame_rate") => {
+                ValueType::Double
+            }
+            ("node" | "window" | "view", "input_mode") | ("window", "frame_policy") => ValueType::Text,
             ("node" | "window" | "view", "rotation" | "scale") => ValueType::ListDouble,
             ("view", "source") => ValueType::Node("node".to_owned()),
             _ => return None,
@@ -149,6 +151,12 @@ impl Shell {
             })
     }
 
+    /// Waits for the main seat's node.
+    #[track_caller]
+    pub fn wait_seat_node(&self) -> NodeId {
+        wait("the main seat's node", || self.seat_node())
+    }
+
     /// Declares, as the stock shell does, whether it draws window decorations: writes the seat's
     /// `decorations_available`.
     #[track_caller]
@@ -180,6 +188,24 @@ impl Shell {
                 _ => None,
             })
             .next_back()
+    }
+
+    /// Every value the compositor published for `key` on `node`, in the order it did.
+    pub fn published_all(&self, node: NodeId, key: &str) -> Vec<TreeValue> {
+        self.batches
+            .lock()
+            .expect("the batch lock is not poisoned")
+            .iter()
+            .flat_map(|batch| &batch.changes)
+            .filter_map(|change| match change {
+                TreeChange::Set {
+                    node: set,
+                    key: name,
+                    value,
+                } if *set == node && name == key => Some(value.clone()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Waits until the last value published for `key` on `node` is `value`.

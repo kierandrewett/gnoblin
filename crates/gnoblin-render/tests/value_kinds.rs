@@ -29,10 +29,10 @@ impl ClassInfo for Kinds {
             return None;
         }
         let (kind, readonly) = match key {
-            "label" => (ValueType::Text, false),
+            "label" | "frame_policy" => (ValueType::Text, false),
             "layer" => (ValueType::Int, false),
             "count" => (ValueType::Uint, false),
-            "ratio" => (ValueType::Double, false),
+            "ratio" | "frame_rate" => (ValueType::Double, false),
             "visible" => (ValueType::Bool, false),
             "parent_ref" => (ValueType::Node("Window".into()), false),
             "source" | "camera" => (ValueType::Node("Window".into()), false),
@@ -435,4 +435,53 @@ fn a_readonly_property_refuses_its_own_kind_as_read_only() {
     let mut scene = scene();
     let win = node(&mut scene, 0x100, "Window");
     assert_refused(apply(&mut scene, set(win, "id", TreeValue::Uint(1))), Code::ReadOnly);
+}
+
+/// A window's `frame_policy` is one of three names; any other text is `bad-value` and the window keeps the policy it had.
+#[test]
+fn frame_policy_takes_auto_hold_and_throttle_and_refuses_any_other_text() {
+    let mut scene = scene();
+    let win = node(&mut scene, 0x100, "Window");
+    for policy in ["hold", "throttle", "auto"] {
+        assert!(
+            apply(&mut scene, set(win, "frame_policy", TreeValue::Text(policy.into()))).is_none(),
+            "{policy}"
+        );
+        assert_eq!(scene.value(win, "frame_policy"), Some(&TreeValue::Text(policy.into())));
+    }
+    for policy in ["", "Hold", "pause", "throttle:30"] {
+        assert_refused(
+            apply(&mut scene, set(win, "frame_policy", TreeValue::Text(policy.into()))),
+            Code::BadValue,
+        );
+    }
+    assert_eq!(
+        scene.value(win, "frame_policy"),
+        Some(&TreeValue::Text("auto".into())),
+        "a refused write leaves the policy as it was"
+    );
+}
+
+/// A window's `frame_rate` is above 0 and at most 1000 hertz; anything else is `out-of-range`.
+#[test]
+fn frame_rate_takes_a_rate_above_zero_up_to_a_thousand_and_refuses_the_rest() {
+    let mut scene = scene();
+    let win = node(&mut scene, 0x100, "Window");
+    for rate in [0.5, 30.0, 144.0, 1000.0] {
+        assert!(
+            apply(&mut scene, set(win, "frame_rate", TreeValue::Double(rate))).is_none(),
+            "{rate}"
+        );
+    }
+    for rate in [0.0, -1.0, 1000.5, 1e9] {
+        assert_refused(
+            apply(&mut scene, set(win, "frame_rate", TreeValue::Double(rate))),
+            Code::OutOfRange,
+        );
+    }
+    assert_refused(
+        apply(&mut scene, set(win, "frame_rate", TreeValue::Double(f64::NAN))),
+        Code::NotFinite,
+    );
+    assert_eq!(scene.value(win, "frame_rate"), Some(&TreeValue::Double(1000.0)));
 }

@@ -87,6 +87,10 @@ pub const MAX_LIST: usize = 4096;
 /// `too-large`.
 pub const MAX_EFFECTS: usize = 16;
 
+/// The highest `frame_rate`, in hertz, a window's `frame_policy` may throttle its client to. A rate that is not above
+/// 0 and at most this is refused `out-of-range`.
+const MAX_FRAME_RATE: f64 = 1000.0;
+
 /// A refusal code, spelled as in design/node-core.md table 4.4 by [`Code::as_str`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Code {
@@ -1121,6 +1125,16 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
         && !matches!(mode.as_str(), "forward" | "capture")
     {
         return Err(Code::BadValue);
+    }
+    if let ("frame_policy", TreeValue::Text(policy)) = (key, value)
+        && !matches!(policy.as_str(), "auto" | "hold" | "throttle")
+    {
+        return Err(Code::BadValue);
+    }
+    if let ("frame_rate", TreeValue::Double(rate)) = (key, value)
+        && !(*rate > 0.0 && *rate <= MAX_FRAME_RATE)
+    {
+        return Err(Code::OutOfRange);
     }
     if let ("placement", TreeValue::Text(placement)) = (key, value)
         && !matches!(placement.as_str(), "frame" | "over" | "under")

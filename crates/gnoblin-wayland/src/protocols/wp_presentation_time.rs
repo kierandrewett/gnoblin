@@ -78,13 +78,20 @@ pub(crate) fn global(display: &DisplayHandle) -> PresentationState {
 }
 
 impl State {
-    /// Answers every feedback a client asked for on a surface this frame drew.
+    /// Answers every feedback a client asked for on a surface this frame drew, and returns the present time it
+    /// answered with, or `None` when no surface was drawn.
     ///
-    /// `timestamp` is the present time, read after the frame reached the output; `output`
-    /// is the one it reached, whose refresh rate the feedback carries.
-    pub(crate) fn present_feedback(&mut self, output: &Output, surfaces: &[WlSurface], refresh: Refresh) {
+    /// The time is read after the frame reached the output; `output` is the one it reached, whose refresh rate the
+    /// feedback carries. The same reading is what a window's `presented` publishes to the shell
+    /// ([`State::present_frame`]), so the client and the shell are told the same instant.
+    pub(crate) fn present_feedback(
+        &mut self,
+        output: &Output,
+        surfaces: &[WlSurface],
+        refresh: Refresh,
+    ) -> Option<Duration> {
         if surfaces.is_empty() {
-            return;
+            return None;
         }
         let time: Duration = Clock::<Monotonic>::new().now().into();
         let sequence = self.presentation_tables.next_sequence();
@@ -102,11 +109,13 @@ impl State {
                 callback.presented(output, time, refresh, sequence, wp_presentation_feedback::Kind::Vsync);
             }
         }
+        Some(time)
     }
 }
 
 impl State {
-    /// Answers the feedback of every surface this frame put on an output.
+    /// Answers the feedback of every surface this frame put on an output, and stamps `presented` on the nodes of the
+    /// windows whose shell asked for it (`report_presented`).
     ///
     /// The surfaces are the mapped windows whose geometry covers part of the output: a
     /// window that is hidden, minimised or on another output was not drawn, so a feedback
@@ -115,9 +124,16 @@ impl State {
         let Some((smithay_output, rect)) = self.frame_target(output) else {
             return;
         };
-        let surfaces = self.drawn_surfaces(rect);
+        let drawn = self.drawn_windows(rect);
+        let surfaces: Vec<WlSurface> = drawn.iter().map(|(_, surface)| surface.clone()).collect();
         let refresh = refresh_of(&smithay_output);
-        self.present_feedback(&smithay_output, &surfaces, refresh);
+        let Some(time) = self.present_feedback(&smithay_output, &surfaces, refresh) else {
+            return;
+        };
+        let millis = u64::try_from(time.as_millis()).unwrap_or(u64::MAX);
+        for (window, _) in &drawn {
+            self.composer.stamp_presented(*window, millis);
+        }
     }
 }
 

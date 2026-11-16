@@ -4054,3 +4054,335 @@ fn the_main_seat_publishes_the_effect_kinds_the_renderer_draws() {
         "an unchanged list is not republished"
     );
 }
+
+// ---- the shell turns the compositor's own window animations off (the seat's `builtin_motion`) ------------------------
+
+/// Makes the main seat, lets a shell hold the tree and has it write the seat's `builtin_motion`: what a shell does to
+/// stop the compositor animating windows, or to leave it doing so (`on`).
+fn shell_writes_builtin_motion(composer: &mut Composer, on: bool) -> NodeId {
+    let seat = composer.add_main_seat("seat0").expect("a seat node");
+    composer.with_scene(|scene| {
+        scene.set_shell_places(true);
+        scene
+            .set_value(seat, "builtin_motion", TreeValue::Bool(on))
+            .expect("the seat holds the value");
+    });
+    composer.follow_placement();
+    seat
+}
+
+/// A mapped window with a picture its buffer keeps, so a close or a hide has something to fade.
+fn window_with_picture(composer: &mut Composer) -> WindowId {
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    composer.set_window_source(window, Some(SurfaceSource::Snapshot(picture())));
+    window
+}
+
+#[test]
+fn a_window_maps_opaque_at_once_while_the_shell_has_turned_the_builtin_motion_off() {
+    let (mut composer, _output) = screen();
+    shell_writes_builtin_motion(&mut composer, false);
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    assert_eq!(
+        drawn_pose(&composer, window).1,
+        1.0,
+        "no fade in: the shell plays its own animation or none"
+    );
+    assert!(composer.tracks.is_empty(), "the compositor started no track");
+}
+
+#[test]
+fn a_shell_that_leaves_the_builtin_motion_on_still_gets_the_fade_in() {
+    let (mut composer, _output) = screen();
+    shell_writes_builtin_motion(&mut composer, true);
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    assert_eq!(
+        drawn_pose(&composer, window).1,
+        0.0,
+        "a window starts transparent and fades in"
+    );
+    assert!(!composer.tracks.is_empty());
+}
+
+#[test]
+fn the_builtin_motion_switch_is_ignored_while_no_shell_holds_the_tree() {
+    let (mut composer, _output) = screen();
+    let seat = shell_writes_builtin_motion(&mut composer, false);
+    // The shell is gone, but a value it wrote is still on the seat: the compositor's own desktop animates as ever.
+    composer.with_scene(|scene| scene.set_shell_places(false));
+    assert!(!composer.builtin_motion_off());
+    composer.with_scene(|scene| {
+        scene
+            .set_value(seat, "builtin_motion", TreeValue::Bool(false))
+            .expect("the seat holds the value");
+    });
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    assert_eq!(
+        drawn_pose(&composer, window).1,
+        0.0,
+        "the fallback desktop fades a window in"
+    );
+}
+
+#[test]
+fn a_closed_window_goes_at_once_with_the_builtin_motion_off_and_fades_out_with_it_on() {
+    let (mut off, _output) = screen();
+    shell_writes_builtin_motion(&mut off, false);
+    let window = window_with_picture(&mut off);
+    off.close_window(window);
+    assert!(!off.windows.contains_key(&window), "the window is gone with no fade");
+
+    let (mut on, _output) = screen();
+    let window = window_with_picture(&mut on);
+    on.close_window(window);
+    assert!(
+        on.windows[&window].closing.is_some(),
+        "the fallback fades the window out"
+    );
+}
+
+#[test]
+fn an_unmapped_or_hidden_window_loses_its_node_at_once_with_the_builtin_motion_off() {
+    let (mut off, _output) = screen();
+    shell_writes_builtin_motion(&mut off, false);
+    let window = window_with_picture(&mut off);
+    off.set_window_visible(window, false);
+    assert!(off.windows[&window].closing.is_none(), "no fade runs");
+    assert!(off.window_matrix(window).is_none(), "the node went at once");
+    assert!(
+        off.windows[&window].content.is_some(),
+        "the content is kept to show again"
+    );
+
+    let (mut unmapped, _output) = screen();
+    shell_writes_builtin_motion(&mut unmapped, false);
+    let window = window_with_picture(&mut unmapped);
+    unmapped.unmap_window(window);
+    assert!(unmapped.windows[&window].closing.is_none());
+    assert!(unmapped.window_matrix(window).is_none());
+
+    let (mut on, _output) = screen();
+    let window = window_with_picture(&mut on);
+    on.set_window_visible(window, false);
+    assert!(
+        on.windows[&window].closing.is_some(),
+        "the fallback fades a hidden window out"
+    );
+}
+
+#[test]
+fn a_placement_change_lands_at_once_with_the_builtin_motion_off_and_tweens_with_it_on() {
+    let scaled = |composer: &mut Composer| {
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(100, 100, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        let mut base = gnoblin_types::Transform::IDENTITY;
+        base.scale = Vec3::new(2.0, 2.0, 1.0);
+        composer.place_window_animated(window, Rect::new(100, 100, 40, 50), base);
+        drawn_pose(composer, window).0.width
+    };
+    let (mut off, _output) = screen();
+    shell_writes_builtin_motion(&mut off, false);
+    assert_eq!(scaled(&mut off), 80, "the scale is already at its target");
+
+    let (mut on, _output) = screen();
+    shell_writes_builtin_motion(&mut on, true);
+    assert_eq!(scaled(&mut on), 40, "the tween has not moved yet");
+}
+
+#[test]
+fn the_shells_own_timed_writes_still_play_with_the_builtin_motion_off() {
+    let (mut composer, _output) = screen();
+    shell_writes_builtin_motion(&mut composer, false);
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    let node = node_of(&composer, window);
+    composer.apply_shell_motion(vec![Motion::Play(Animation {
+        node,
+        key: "opacity".to_owned(),
+        value: TreeValue::Double(0.2),
+        seconds: 0.2,
+        delay: 0.0,
+        group: None,
+        samples: vec![0.0, 0.5, 1.0],
+    })]);
+    assert_eq!(composer.shell_tracks_running(), 1, "the shell's animation is a track");
+    composer.advance_motion(100);
+    let (_, halfway) = drawn_pose(&composer, window);
+    assert!(
+        halfway < 1.0 && halfway > 0.2,
+        "the shell's animation is part way: {halfway}"
+    );
+    composer.advance_motion(100);
+    assert_eq!(drawn_pose(&composer, window).1, 0.2, "and lands on its target");
+}
+
+#[test]
+fn a_shell_that_lets_go_of_the_tree_leaves_the_compositor_animating_and_every_window_unpaced() {
+    let (mut composer, _output) = screen();
+    let seat = shell_writes_builtin_motion(&mut composer, false);
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    let node = node_of(&composer, window);
+    composer.with_scene(|scene| {
+        for (key, value) in [
+            ("frame_policy", TreeValue::Text("hold".to_owned())),
+            ("frame_rate", TreeValue::Double(60.0)),
+            ("report_presented", TreeValue::Bool(true)),
+        ] {
+            scene.set_value(node, key, value).expect("the node holds the value");
+        }
+    });
+    composer.take_tree_changes();
+    composer.with_scene(|scene| scene.set_shell_places(false));
+    composer.follow_placement();
+    let changes = composer.take_tree_changes();
+    let set = |node: NodeId, key: &str, value: TreeValue| TreeChange::Set {
+        node,
+        key: key.to_owned(),
+        value,
+    };
+    for expected in [
+        set(seat, "builtin_motion", TreeValue::Bool(true)),
+        set(node, "frame_policy", TreeValue::Text("auto".to_owned())),
+        set(node, "frame_rate", TreeValue::Double(30.0)),
+        set(node, "report_presented", TreeValue::Bool(false)),
+    ] {
+        assert!(changes.contains(&expected), "{expected:?} was published: {changes:?}");
+    }
+    composer.with_scene(|scene| {
+        assert_eq!(scene.value(seat, "builtin_motion"), Some(&TreeValue::Bool(true)));
+        assert_eq!(
+            scene.value(node, "frame_policy"),
+            Some(&TreeValue::Text("auto".to_owned()))
+        );
+    });
+}
+
+// ---- the shell paces a window's frame callbacks (`frame_policy`) and reads its presentation ----------------------------
+
+/// A window with a node, the shell holding the tree, and `values` written on the node.
+fn shell_paced_window(composer: &mut Composer, values: &[(&str, TreeValue)]) -> (WindowId, NodeId) {
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    let node = node_of(composer, window);
+    composer.with_scene(|scene| {
+        scene.set_shell_places(true);
+        for (key, value) in values {
+            scene
+                .set_value(node, key, value.clone())
+                .expect("the node holds the value");
+        }
+    });
+    (window, node)
+}
+
+#[test]
+fn a_window_is_paced_as_the_shell_wrote_it_and_auto_when_it_wrote_nothing() {
+    let (mut composer, _output) = screen();
+    let (window, node) = shell_paced_window(&mut composer, &[]);
+    assert_eq!(composer.window_frame_policy(window), FramePolicy::Auto, "the default");
+    let text = |policy: &str| TreeValue::Text(policy.to_owned());
+    composer.with_scene(|scene| scene.set_value(node, "frame_policy", text("hold")).expect("held"));
+    assert_eq!(composer.window_frame_policy(window), FramePolicy::Hold);
+    composer.with_scene(|scene| {
+        scene
+            .set_value(node, "frame_policy", text("throttle"))
+            .expect("throttled")
+    });
+    assert_eq!(
+        composer.window_frame_policy(window),
+        FramePolicy::Throttle { interval_ms: 33 },
+        "a throttled window the shell gave no rate runs at the default 30 Hz"
+    );
+    composer.with_scene(|scene| {
+        scene
+            .set_value(node, "frame_rate", TreeValue::Double(20.0))
+            .expect("a rate")
+    });
+    assert_eq!(
+        composer.window_frame_policy(window),
+        FramePolicy::Throttle { interval_ms: 50 }
+    );
+    composer.with_scene(|scene| {
+        scene
+            .set_value(node, "frame_rate", TreeValue::Double(5000.0))
+            .expect("a rate")
+    });
+    assert_eq!(
+        composer.window_frame_policy(window),
+        FramePolicy::Throttle { interval_ms: 1 },
+        "the interval is never below a millisecond"
+    );
+    composer.with_scene(|scene| scene.set_value(node, "frame_policy", text("auto")).expect("auto"));
+    assert_eq!(composer.window_frame_policy(window), FramePolicy::Auto);
+}
+
+#[test]
+fn a_policy_the_shell_wrote_means_nothing_while_no_shell_holds_the_tree() {
+    let (mut composer, _output) = screen();
+    let (window, _node) = shell_paced_window(&mut composer, &[("frame_policy", TreeValue::Text("hold".to_owned()))]);
+    assert_eq!(composer.window_frame_policy(window), FramePolicy::Hold);
+    composer.with_scene(|scene| scene.set_shell_places(false));
+    assert_eq!(
+        composer.window_frame_policy(window),
+        FramePolicy::Auto,
+        "with no shell every window is answered as it always was"
+    );
+    assert_eq!(
+        composer.window_frame_policy(WindowId::new(99)),
+        FramePolicy::Auto,
+        "a window the composer does not hold"
+    );
+}
+
+#[test]
+fn presentation_is_stamped_only_on_a_window_the_shell_asked_about_and_only_when_it_changes() {
+    let (mut composer, _output) = screen();
+    let (window, node) = shell_paced_window(&mut composer, &[]);
+    composer.take_tree_changes();
+    composer.stamp_presented(window, 1_234);
+    assert!(
+        composer.take_tree_changes().is_empty(),
+        "a window the shell did not ask about is never stamped"
+    );
+
+    composer.with_scene(|scene| {
+        scene
+            .set_value(node, "report_presented", TreeValue::Bool(true))
+            .expect("the node holds the value");
+    });
+    composer.stamp_presented(window, 1_234);
+    assert_eq!(
+        composer.take_tree_changes(),
+        vec![TreeChange::Set {
+            node,
+            key: "presented".to_owned(),
+            value: TreeValue::Uint(1_234),
+        }]
+    );
+    composer.stamp_presented(window, 1_234);
+    assert!(
+        composer.take_tree_changes().is_empty(),
+        "the same millisecond is not published twice"
+    );
+    composer.stamp_presented(window, 1_250);
+    assert_eq!(composer.take_tree_changes().len(), 1, "the next frame is");
+    composer.stamp_presented(WindowId::new(99), 1_300);
+    assert!(
+        composer.take_tree_changes().is_empty(),
+        "a window the composer does not hold"
+    );
+}

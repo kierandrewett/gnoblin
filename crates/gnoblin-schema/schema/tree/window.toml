@@ -139,3 +139,47 @@ type = "string"
 since = "0.2.0"
 default = "unset"
 readonly = true
+
+# How the compositor paces the window's client: `auto` (the default), `hold` or `throttle`. A window's client draws its
+# next frame when the compositor answers the `wl_surface.frame` callback it asked for, so the callback is the pace.
+# `auto` answers it after every frame the compositor draws that shows the window. `hold` answers it never: the client is
+# left waiting and draws nothing new, which is what a shell wants for a window it does not show (another workspace, a
+# minimised window). `throttle` answers it at most `frame_rate` times a second. A held or throttled window keeps its last
+# picture and is drawn as before. Changing the policy back to `auto` answers the callbacks the client is waiting on at
+# the next frame. Any other text is refused `bad-value`. It takes effect only while a shell holds the tree: with no
+# shell every window is `auto`, and the compositor sets the policy of every window back to `auto` when the shell that
+# wrote it lets go of the tree, so a window can never stay held with nobody to release it.
+[[object.property]]
+name = "frame_policy"
+type = "string"
+since = "0.2.0"
+default = "auto"
+
+# The most frame callbacks a second a `throttle` window's client is answered, in hertz. Read only while `frame_policy` is
+# `throttle`. A value that is not above 0 and at most 1000 is refused `out-of-range`. The compositor sets it back to 30
+# when it releases the window's policy.
+[[object.property]]
+name = "frame_rate"
+type = "double"
+since = "0.2.0"
+default = 30.0
+
+# Whether the compositor tells the shell when the window's pixels reach the screen: while it is true each frame that
+# draws the window writes `presented`. It is false by default, because a window written every frame is a change in every
+# batch. The compositor sets it back to false when it releases the window's policy.
+[[object.property]]
+name = "report_presented"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The time the last frame that showed the window reached the screen, in milliseconds on the compositor's monotonic clock
+# (`CLOCK_MONOTONIC`, the clock `wp_presentation` names, so a shell compares it with its own `clock_gettime`). 0 until a
+# frame was presented with `report_presented` true. It is the same instant the window's client was told in its
+# `wp_presentation` feedback. The compositor writes it and the shell reads it.
+[[object.property]]
+name = "presented"
+type = "uint"
+since = "0.2.0"
+default = 0
+readonly = true

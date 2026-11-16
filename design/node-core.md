@@ -152,6 +152,50 @@ Signals: `destroyed()`. Input signals (`press`, `release`, `motion`, `scroll`, `
 
 Methods: `focus()`, `close()`. `present` (`window.toml:84-88` today) moves to the shell in step 6.
 
+**Frame control (implemented, lane CoreFrameAnim; default selected, owner may revisit).** A shell that holds the tree
+paces a window's client and reads when its pixels reached the screen with four more `Window` properties. All four are
+additive, and a shell that writes none of them sees the compositor as before.
+
+| Property           | Type     | Default  | Flags    | Notes                                                               |
+| ------------------ | -------- | -------- | -------- | ------------------------------------------------------------------- |
+| `frame_policy`     | `string` | `"auto"` |          | `auto`, `hold` or `throttle`; any other text is refused `bad-value` |
+| `frame_rate`       | `double` | `30.0`   |          | hertz for `throttle`; above 0 and at most 1000, else `out-of-range` |
+| `report_presented` | `bool`   | `false`  |          | write `presented` on every frame that draws the window              |
+| `presented`        | `uint`   | `0`      | readonly | `CLOCK_MONOTONIC` milliseconds of the last presented frame          |
+
+A client draws its next frame when the compositor answers the `wl_surface.frame` callback it asked for, so the callback
+is its pace. It is sent in `send_frame_callbacks` (`gnoblin-wayland/src/state.rs`), which asks the pacer in
+`gnoblin-wayland/src/frame_policy.rs`.
+
+- `auto` is today's behaviour: every frame that shows the window answers it.
+- `hold` answers never. The client waits, which is how a shell suspends a window on another workspace or a minimised
+  one. The compositor keeps the window's last picture and draws it as before.
+- `throttle` answers at most `frame_rate` times a second. A window waiting out its interval arms a one-shot timer,
+  because a frame is drawn only when something changed.
+- Writing `auto` again answers the callbacks the client is waiting on at the next frame.
+- The compositor reads the policy only while a shell holds the tree. It sets `frame_policy`, `frame_rate` and
+  `report_presented` back to their defaults when the shell lets go, so a crashed shell leaves no window frozen and the
+  next shell starts from the default.
+
+`presented` is the reading the compositor took after the frame reached the output. It is the same instant the client's
+`wp_presentation` feedback carries (`gnoblin-wayland/src/protocols/wp_presentation_time.rs`).
+
+- It is opt-in (`report_presented`), because a property written on every frame is a change in every batch.
+- There is no signal for it. A new signal is a new wire message, and the property rides the change batch that exists.
+
+**The compositor's own window animations (implemented, lane CoreFrameAnim; default selected, owner may revisit).** The
+compositor fades a window in when it maps, fades it out when it is closed, unmapped or hidden, and tweens a change of
+its placement over 200 ms (`compose/motion.rs`, `compose.rs`). The seat's `builtin_motion` (`bool`, default `true`,
+written by the shell) turns all three off while a shell holds the tree.
+
+- A window then appears, moves and leaves at once, and only the shell's own timed writes play.
+- It is one switch for the session and not a property of each window. The fade in starts as the window's node is made,
+  before the shell has had a frame to write a property on that node.
+- It affects the changes that start after the write. A tween already running finishes, as with `reduced_motion`, which
+  still turns every animation off.
+- With no shell the value is ignored and the compositor's own desktop animates as it always has. The compositor sets
+  it back to `true` when the shell lets go.
+
 **Canvas** (base `Node`). A visual that paints a paint list built by the shell (text, rectangle, image). The paint list
 is rasterised when it changes, not every frame (unverified: plan risk table, section 10).
 

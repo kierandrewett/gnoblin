@@ -80,7 +80,10 @@
 //! - **`zwp_keyboard_shortcuts_inhibit_manager_v1`** — an inhibitor is granted to the
 //!   focused client and refused while the session is locked.
 //! - **`wp_presentation`** — a client that asks for feedback is answered after the frame it
-//!   described reached the output, with a timestamp read from the frame.
+//!   described reached the output, with a timestamp read from the frame. A shell that holds the
+//!   tree can ask for the same instant on a window's node (`report_presented`, `presented`), and
+//!   can pace a window's frame callbacks (`frame_policy`: `auto`, `hold`, `throttle`; see
+//!   `frame_policy`).
 //! - **`wp_content_type_v1`** — the hint a client sets is kept per surface and read back
 //!   through [`State::content_type`], so a policy has one function to call. The frame path
 //!   of this slice reads no content type: it composes and presents every surface alike.
@@ -206,6 +209,7 @@ mod devices;
 mod dispatch;
 mod fallback;
 mod frame;
+mod frame_policy;
 mod gpu_memory;
 mod interactive;
 mod keyboard;

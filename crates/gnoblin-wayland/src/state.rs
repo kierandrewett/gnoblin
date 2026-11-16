@@ -19,6 +19,7 @@ use smithay::input::pointer::{AxisFrame, ButtonEvent, CursorImageStatus, MotionE
 use smithay::input::touch::{DownEvent, MotionEvent as TouchMotionEvent, TouchHandle, UpEvent};
 use smithay::input::{Seat, SeatState, pointer::PointerHandle};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::{GlobalId, ObjectId};
@@ -75,6 +76,7 @@ use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Size, Tick, WindowId,
 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::fallback::{Fallback, FallbackEffect, FallbackRefusal, Open, Standing, WindowKind, WindowState};
+use crate::frame_policy::{CallbackPacer, Pacing};
 use crate::keyboard::KeyboardTables;
 use crate::modal::{Modal, ModalEvent};
 use crate::observation::{
@@ -270,6 +272,8 @@ pub struct State {
     /// Whether a popup committed since the last frame, so its frame callbacks are answered at the end of this
     /// iteration even when no frame was drawn.
     pub(crate) callbacks_due: bool,
+    /// How the shell paces each window's frame callbacks, and what the pacing remembers between frames.
+    pub(crate) frame_pacer: CallbackPacer,
     /// Kept alive so the `wl_output` machinery stays registered. The `zxdg_output_manager_v1` global is not
     /// Smithay's: see [`crate::protocols::zxdg_output_v1`].
     #[allow(dead_code)]
@@ -801,6 +805,7 @@ impl State {
             popup_grabs: Vec::new(),
             surface_trees: crate::surface_tree::SurfaceTrees::default(),
             callbacks_due: false,
+            frame_pacer: CallbackPacer::default(),
             output_manager_state,
             xdg_outputs: crate::protocols::zxdg_output_v1::XdgOutputs::default(),
             fractional_surfaces: Vec::new(),
@@ -1247,13 +1252,13 @@ impl State {
             .map(|entry| (entry.output.clone(), entry.rect))
     }
 
-    /// The surfaces a frame for `rect` drew, topmost last.
+    /// The windows a frame for `rect` drew, each with its surface, topmost last.
     ///
     /// It is what a presentation feedback may be answered for: a window that is not visible,
     /// has no buffer or does not intersect the output was not drawn.
     #[must_use]
-    pub(crate) fn drawn_surfaces(&self, rect: Rect) -> Vec<WlSurface> {
-        let mut surfaces = Vec::new();
+    pub(crate) fn drawn_windows(&self, rect: Rect) -> Vec<(WindowId, WlSurface)> {
+        let mut drawn = Vec::new();
         for window in self.composer.window_stack() {
             let Some(entry) = self.windows.get(&window) else {
                 continue;
@@ -1269,10 +1274,10 @@ impl State {
                 && i64::from(geometry.y) < rect.bottom()
                 && i64::from(rect.y) < geometry.bottom();
             if intersects && let Some(surface) = entry.surface.wl_surface() {
-                surfaces.push(surface);
+                drawn.push((window, surface));
             }
         }
-        surfaces
+        drawn
     }
 
     /// Applies what a raised cover changes outside the lock's own bookkeeping.
@@ -2688,7 +2693,13 @@ impl State {
     /// and it is above all a nested session, whose whole output *is* one of these
     /// surfaces: without this call a session on the nested backend would show its first
     /// frame and then stall.
-    pub(crate) fn send_frame_callbacks(&self, time: u32) {
+    ///
+    /// A window the shell paces ([`crate::frame_policy`]) is answered as its `frame_policy` says: a `hold` window is
+    /// not, and a `throttle` window is answered once its interval has passed. A throttled window that is waiting
+    /// arms a timer for the time it has left, because a frame is drawn only when something changed.
+    pub(crate) fn send_frame_callbacks(&mut self, time: u32) {
+        self.frame_pacer.begin_pass(|window| self.windows.contains_key(&window));
+        let mut soonest: Option<u32> = None;
         // A covered session shows no window, so no window gets a callback: a client that
         // cannot see its frame must not render one. The owner's lock surfaces are the
         // only thing on screen while covered, so they always get theirs.
@@ -2716,11 +2727,87 @@ impl State {
                 let Some(surface) = entry.surface.wl_surface() else {
                     continue;
                 };
-                Self::done_frame_callbacks(&surface, time);
+                let policy = self.composer.window_frame_policy(*window);
+                match self.frame_pacer.pace(*window, policy, time) {
+                    Pacing::Now => Self::done_frame_callbacks(&surface, time),
+                    Pacing::Held => {}
+                    Pacing::After { ms } => {
+                        if Self::frame_callbacks_pending(&surface) {
+                            soonest = Some(soonest.map_or(ms, |soonest| soonest.min(ms)));
+                        }
+                    }
+                }
             }
         }
         for surface in self.owner_mapped_lock_surfaces() {
             Self::done_frame_callbacks(&surface, time);
+        }
+        if let Some(ms) = soonest {
+            self.wait_for_frame_interval(ms);
+        }
+    }
+
+    /// Notes that a throttled window has callbacks waiting for `ms` more milliseconds, and arms a one-shot timer to
+    /// wake the loop then, unless one is armed already. Without the wake a window on a still screen would wait for
+    /// the loop's idle timeout, or for ever when the loop has none.
+    fn wait_for_frame_interval(&mut self, ms: u32) {
+        if !self.frame_pacer.wait_for() {
+            return;
+        }
+        let Some(handle) = self.loop_handle.clone() else {
+            // A session driven by hand has no loop to wake: the caller's next pass answers the window.
+            self.frame_pacer.timer_fired();
+            return;
+        };
+        let timer = Timer::from_duration(std::time::Duration::from_millis(u64::from(ms.max(1))));
+        let inserted = handle.insert_source(timer, |_, (), state: &mut State| {
+            state.frame_pacer.timer_fired();
+            TimeoutAction::Drop
+        });
+        if let Err(error) = inserted {
+            log::warn!(area = "frame", ?error, "the throttle timer could not be armed");
+            self.frame_pacer.timer_fired();
+        }
+    }
+
+    /// Whether the surface, its subsurfaces or its popups have a frame callback waiting for an answer.
+    fn frame_callbacks_pending(surface: &WlSurface) -> bool {
+        let mut pending = false;
+        with_surface_tree_downward(
+            surface,
+            (),
+            |_, _, ()| TraversalAction::DoChildren(()),
+            |_, states, ()| {
+                pending |= !states
+                    .cached_state
+                    .get::<SurfaceAttributes>()
+                    .current()
+                    .frame_callbacks
+                    .is_empty();
+            },
+            |_, _, ()| true,
+        );
+        pending
+            || PopupManager::popups_for_surface(surface)
+                .any(|(popup, _)| Self::frame_callbacks_pending(popup.wl_surface()))
+    }
+
+    /// Whether the last pass of [`State::send_frame_callbacks`] left a throttled window waiting for its time, so the
+    /// frame hook runs the pass again even when nothing was drawn.
+    pub(crate) fn frame_callbacks_waiting(&self) -> bool {
+        self.frame_pacer.waiting()
+    }
+
+    /// Follows the shell's `frame_policy` of each window: a change asks for a frame-callback pass at the end of this
+    /// iteration, even when nothing was drawn, because a window that was held or throttled may be owed an answer now.
+    pub(crate) fn follow_frame_policies(&mut self) {
+        let composer = &self.composer;
+        let policies = self
+            .windows
+            .keys()
+            .map(|window| (*window, composer.window_frame_policy(*window)));
+        if self.frame_pacer.changed(policies) {
+            self.callbacks_due = true;
         }
     }
 
@@ -3870,6 +3957,7 @@ impl Host for State {
         let window_writes = self.tree.take_window_writes();
         self.answer_window_writes(window_writes);
         self.follow_decorations_available();
+        self.follow_frame_policies();
         self.reconcile_seats();
         let claims = self.tree.take_claims();
         let authentications = self.tree.take_authentications();

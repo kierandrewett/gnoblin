@@ -142,6 +142,26 @@ pub enum ShellVisualError {
     OutOfRange,
 }
 
+/// How the compositor paces a window's client, as the window node's `frame_policy` and `frame_rate` say.
+///
+/// The shell writes both while it holds the tree; with no shell every window is [`FramePolicy::Auto`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FramePolicy {
+    /// The client is answered after every frame that shows its window.
+    #[default]
+    Auto,
+    /// The client is never answered: it draws nothing new until the policy changes.
+    Hold,
+    /// The client is answered at most once in `interval_ms` milliseconds.
+    Throttle {
+        /// The shortest time between two answers, in milliseconds. At least 1.
+        interval_ms: u32,
+    },
+}
+
+/// The rate a `throttle` window runs at while the shell wrote none: the schema's default `frame_rate`.
+const DEFAULT_FRAME_RATE: f64 = 30.0;
+
 /// What a window's client asked of `xdg-decoration`, as the window node's `decoration_wanted` publishes it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DecorationWanted {
@@ -1420,6 +1440,9 @@ impl Composer {
             return;
         }
         self.placing = holds;
+        if !holds {
+            self.release_shell_controls();
+        }
         let order = self.order.clone();
         for window in order {
             self.sync_animated(window);
@@ -1473,10 +1496,10 @@ impl Composer {
     }
 
     /// Reads the picture a window keeps when it leaves: its buffer's pixels as it was drawn.
-    /// `None` when there is no picture to read, or when motion is reduced, so the window is
-    /// hidden or removed at once.
+    /// `None` when there is no picture to read, or when motion is reduced or the shell turned the compositor's own
+    /// animations off, so the window is hidden or removed at once.
     fn snapshot(&self, window: WindowId, on_end: CloseEnd) -> Option<Closing> {
-        if self.reduced_motion {
+        if !self.builtin_motion_plays() {
             return None;
         }
         let entry = self.windows.get(&window)?;
@@ -2177,6 +2200,106 @@ impl Composer {
                 key: "decorations_available".to_owned(),
                 value: TreeValue::Bool(false),
             });
+        }
+    }
+
+    /// Whether the shell that holds the tree turned the compositor's own window animations off: the main seat's
+    /// `builtin_motion` is false and a shell holds the tree. With no shell the seat's value is ignored, so the
+    /// compositor's own desktop animates as it always has.
+    #[must_use]
+    pub fn builtin_motion_off(&self) -> bool {
+        self.scene.shell_places()
+            && self
+                .main_seat
+                .is_some_and(|seat| matches!(self.scene.value(seat, "builtin_motion"), Some(TreeValue::Bool(false))))
+    }
+
+    /// Whether a window's fade in, fade out and placement tween play: motion is not reduced and the shell did not
+    /// turn the compositor's own animations off. The shell's own timed writes do not ask this; they play unless
+    /// motion is reduced.
+    fn builtin_motion_plays(&self) -> bool {
+        !self.reduced_motion && !self.builtin_motion_off()
+    }
+
+    /// How the shell asked a window's client to be paced: its node's `frame_policy` and `frame_rate`. A window with no
+    /// node, a policy nobody wrote, or any policy while no shell holds the tree is [`FramePolicy::Auto`]. A refused
+    /// value never reaches the node, so the text is one of the three the schema names.
+    #[must_use]
+    pub fn window_frame_policy(&self, window: WindowId) -> FramePolicy {
+        if !self.scene.shell_places() {
+            return FramePolicy::Auto;
+        }
+        let Some(node) = self.windows.get(&window).and_then(|entry| entry.node) else {
+            return FramePolicy::Auto;
+        };
+        match self.scene.value(node, "frame_policy") {
+            Some(TreeValue::Text(policy)) if policy == "hold" => FramePolicy::Hold,
+            Some(TreeValue::Text(policy)) if policy == "throttle" => {
+                let rate = match self.scene.value(node, "frame_rate") {
+                    Some(TreeValue::Double(rate)) if *rate > 0.0 => *rate,
+                    _ => DEFAULT_FRAME_RATE,
+                };
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let interval_ms = (1000.0 / rate).round().max(1.0) as u32;
+                FramePolicy::Throttle { interval_ms }
+            }
+            _ => FramePolicy::Auto,
+        }
+    }
+
+    /// Writes `presented` on a window's node, the time (milliseconds on `CLOCK_MONOTONIC`) the frame that showed the
+    /// window reached the screen, when the shell set the node's `report_presented`. A window that is not reported, or
+    /// whose last stamp is the same millisecond, changes nothing.
+    pub fn stamp_presented(&mut self, window: WindowId, millis: u64) {
+        let Some(node) = self.windows.get(&window).and_then(|entry| entry.node) else {
+            return;
+        };
+        if !matches!(self.scene.value(node, "report_presented"), Some(TreeValue::Bool(true))) {
+            return;
+        }
+        let value = TreeValue::Uint(millis);
+        if self.scene.value(node, "presented") == Some(&value) {
+            return;
+        }
+        if self.scene.set_value(node, "presented", value.clone()).is_ok() {
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: "presented".to_owned(),
+                value,
+            });
+        }
+    }
+
+    /// Sets what a shell wrote to control the compositor back to its default, once the shell no longer holds the tree:
+    /// the seat's `builtin_motion` is true again and every window's `frame_policy` is `auto`, its `frame_rate` 30 and
+    /// its `report_presented` false. A window cannot stay held with nobody to release it, and the next shell starts
+    /// from the built-in behaviour. Each change is published like any other.
+    fn release_shell_controls(&mut self) {
+        let mut writes: Vec<(NodeId, &'static str, TreeValue)> = Vec::new();
+        if let Some(seat) = self.main_seat
+            && self.scene.value(seat, "builtin_motion") == Some(&TreeValue::Bool(false))
+        {
+            writes.push((seat, "builtin_motion", TreeValue::Bool(true)));
+        }
+        for node in self.windows.values().filter_map(|entry| entry.node) {
+            for (key, value) in [
+                ("frame_policy", TreeValue::Text("auto".to_owned())),
+                ("frame_rate", TreeValue::Double(DEFAULT_FRAME_RATE)),
+                ("report_presented", TreeValue::Bool(false)),
+            ] {
+                if self.scene.value(node, key).is_some_and(|held| *held != value) {
+                    writes.push((node, key, value));
+                }
+            }
+        }
+        for (node, key, value) in writes {
+            if self.scene.set_value(node, key, value.clone()).is_ok() {
+                self.tree_changes.push(TreeChange::Set {
+                    node,
+                    key: key.to_owned(),
+                    value,
+                });
+            }
         }
     }
 
@@ -3125,7 +3248,7 @@ impl Composer {
                     log::warn!(area = "render", %window, "no compositor node id is left; the window is not drawn");
                     return;
                 };
-                let fades_in = !self.reduced_motion;
+                let fades_in = self.builtin_motion_plays();
                 let mut spec_transform = transform;
                 if fades_in {
                     spec_transform.opacity = 0.0;

@@ -182,6 +182,21 @@ type = "bool"
 since = "0.2.0"
 default = false
 
+# Whether the compositor plays its own animations on window nodes: the fade in when a window maps, the fade out when it is
+# closed, unmapped or hidden, and the tween of a window's placement towards the node's value. It is true by default, and
+# the shell writes it. A shell that holds the tree writes false once, at startup, to place windows at once and play only
+# its own timed writes: a window then appears, moves and leaves with no compositor motion. It affects only the changes
+# that start after the write, so a tween already running finishes. It is read only while a shell holds the tree: with no
+# shell the compositor's own desktop animates as it always has, and the compositor sets it back to true when the shell
+# that wrote it lets go of the tree, so the next shell starts from the built-in behaviour. It is one switch for the whole
+# session and not a property of each window, because the compositor starts a window's fade in as the window's node is
+# made, before the shell has had a frame to write anything on it. `reduced_motion` still turns every animation off.
+[[object.property]]
+name = "builtin_motion"
+type = "bool"
+since = "0.2.0"
+default = true
+
 # Move the pointer.
 [[object.method]]
 name = "warp"

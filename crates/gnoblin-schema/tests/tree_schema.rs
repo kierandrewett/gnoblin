@@ -280,3 +280,46 @@ fn the_owner_socket_only_tree_is_excluded_by_load_dir_except() {
         "the excluded catalog holds no tree namespace"
     );
 }
+
+/// The compositor's own window animations and a window's frame callbacks are the shell's to control (lane
+/// CoreFrameAnim): the seat's `builtin_motion` switch and a window's pacing and presentation members, each with the
+/// default that keeps today's behaviour, so a shell that writes none of them sees no change.
+#[test]
+fn the_motion_switch_and_the_frame_controls_default_to_the_compositors_own_behaviour() {
+    let catalog = stock();
+    let property_of = |object: &ObjectType, name: &str| {
+        object
+            .properties
+            .iter()
+            .find(|property| property.name == name)
+            .map(|property| {
+                (
+                    property.ty.clone(),
+                    property.default.clone(),
+                    property.readonly,
+                    property.animated,
+                )
+            })
+            .unwrap_or_else(|| panic!("`{}` has no `{name}`", object.name))
+    };
+    let seat = object(&catalog, "seat");
+    let window = object(&catalog, "window");
+    let builtin = property_of(seat, "builtin_motion");
+    assert_eq!(builtin.0, Type::parse("bool").unwrap());
+    assert_eq!(builtin.1, Some(DefaultValue::Bool(true)));
+    assert!(!builtin.2, "the shell writes it");
+
+    let measured = [
+        ("frame_policy", "string", DefaultValue::Text("auto".to_owned()), false),
+        ("frame_rate", "double", DefaultValue::Double(30.0), false),
+        ("report_presented", "bool", DefaultValue::Bool(false), false),
+        ("presented", "uint", DefaultValue::Uint(0), true),
+    ];
+    for (name, ty, default, readonly) in measured {
+        let property = property_of(window, name);
+        assert_eq!(property.0, Type::parse(ty).unwrap(), "the type of `{name}`");
+        assert_eq!(property.1.as_ref(), Some(&default), "the default of `{name}`");
+        assert_eq!(property.2, readonly, "who writes `{name}`");
+        assert!(!property.3, "`{name}` is not animated");
+    }
+}

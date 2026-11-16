@@ -219,6 +219,47 @@ What it follows:
 - A plain script field, such as `layout.radius`, is not tracked: nothing tells the shell when it changes.
 - A binding that reads its own property sees the value it wrote last and is not run again by its own write.
 
+## Compositor motion and frame callbacks
+
+A shell that holds the tree controls two things the compositor does for each window. They are tree properties, written
+over the owner socket by a shell of any language; the TypeScript library does not wrap them yet. A shell that writes
+none of them sees the compositor as before.
+
+**The compositor's own animations.** The compositor fades a window in when it maps, fades it out when it is closed,
+unmapped or hidden, and tweens a change of its placement over 200 ms. The seat's `builtin_motion` (boolean, `true` by
+default) turns all three off: a window then appears, moves and leaves at once, and only the shell's own timed writes
+play.
+
+- It is one switch for the session, not a property of each window. The fade in starts as the window's node is made,
+  before a shell has had a frame to write anything on that node.
+- It affects the changes that start after the write; a tween already running finishes.
+- It takes effect only while a shell holds the tree. With no shell the compositor's own desktop animates as it always
+  has, and the compositor sets `builtin_motion` back to `true` when the shell lets go.
+- Reduced motion (`reduced_motion` on the seat) still turns every animation off.
+
+**Frame callbacks.** A client draws its next frame when the compositor answers the frame callback it asked for. A
+window's `frame_policy` sets when that happens:
+
+| `frame_policy`     | The client's callback is answered                             |
+| ------------------ | ------------------------------------------------------------- |
+| `"auto"` (default) | After every frame the compositor draws that shows the window. |
+| `"hold"`           | Never. The client waits and draws nothing new.                |
+| `"throttle"`       | At most `frame_rate` times a second.                          |
+
+- `frame_rate` is in hertz, above 0 and at most 1000, and 30 by default. It is read only while the policy is
+  `"throttle"`.
+- A held or throttled window keeps its last picture, and the compositor draws it as before.
+- A shell sets a window it does not show (another workspace, a minimised window) to `"hold"`, and back to `"auto"`
+  to wake it: the client is answered at the next frame.
+- Any other policy text is refused `bad-value`, and a `frame_rate` outside the range is refused `out-of-range`.
+- The policy is read only while a shell holds the tree. When the shell lets go the compositor sets `frame_policy`,
+  `frame_rate` and `report_presented` back to their defaults, so a window is never left frozen with nobody to release it.
+
+**Presentation.** Set a window's `report_presented` to `true` and each frame that draws it writes `presented`: the time
+the frame reached the screen, in milliseconds on `CLOCK_MONOTONIC`, the clock `wp_presentation` names. It is the same
+reading the window's client is sent in its presentation feedback. It is off by default because a property written on
+every frame is a change in every batch.
+
 ## Not built
 
 - A perspective camera that projects a flat workspace's windows is not built, so `ArcLayout` is not seen as a ring.

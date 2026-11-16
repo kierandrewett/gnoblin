@@ -645,6 +645,8 @@ declare module "gnoblin/schema/tree" {
         readonly effectKinds: string[];
         /** Schema name `decorations_available`. Default `false`. */
         decorationsAvailable: boolean;
+        /** Schema name `builtin_motion`. Default `true`. */
+        builtinMotion: boolean;
         warp(): Reply;
         claim(id: number, chord: string, grab: boolean, device: string): Reply;
         unclaim(id: number): Reply;
@@ -714,6 +716,14 @@ declare module "gnoblin/schema/tree" {
         readonly decoration: string;
         /** Schema name `decoration_wanted`. Default `"unset"`. */
         readonly decorationWanted: string;
+        /** Schema name `frame_policy`. Default `"auto"`. */
+        framePolicy: string;
+        /** Schema name `frame_rate`. Default `30`. */
+        frameRate: number;
+        /** Schema name `report_presented`. Default `false`. */
+        reportPresented: boolean;
+        /** Default `0`. */
+        readonly presented: number;
         focus(): Reply;
         close(): Reply;
         kill(): Reply;

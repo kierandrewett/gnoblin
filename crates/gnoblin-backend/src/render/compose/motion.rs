@@ -357,9 +357,9 @@ impl Composer {
         FLASH_PEAK * (remaining as f32 / FLASH_MS as f32)
     }
 
-    /// Starts an animation towards each property's target that differs from the node's value,
-    /// when `animate` is set and motion is not reduced. A property starts from its current
-    /// value, so a superseded animation continues from where it is. Otherwise the target is
+    /// Starts an animation towards each property's target that differs from the node's value, when `animate` is set
+    /// and the compositor's own motion plays (motion is not reduced and the shell did not turn it off). A property
+    /// starts from its current value, so a superseded animation continues from where it is. Otherwise the target is
     /// written at once.
     pub(super) fn retarget(&mut self, window: WindowId, animate: bool) {
         let Some(entry) = self.windows.get(&window) else {
@@ -369,7 +369,7 @@ impl Composer {
             return;
         };
 
-        let immediate = !animate || self.reduced_motion;
+        let immediate = !animate || !self.builtin_motion_plays();
         let mut landing = Vec::new();
         let target = self.placed_target(entry);
         for property in VisualProperty::ALL {
