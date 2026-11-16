@@ -101,10 +101,11 @@ pub use generated::{
     CompatCapture, Compositor, Cursor, CursorProvider, DeviceAccelProfile, DialogButtonLayout, Dialogs, DialogsFont,
     DialogsStyle, ENUM_SPECS, FocusMode, FocusNewWindows, Gesture, GestureDirection, GestureKind, GesturePoint,
     Handedness, Input, InputSource, InputSourceType, InputSources, Keyboard, KeyringConfig, LayerShell, Location,
-    LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys, PadButton, PadButtonAction, PointingStick,
-    Protocol, Protocols, RendererChoice, ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys,
-    Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, ToggleKeys, Touchpad,
-    Trackball, VisualAccessibility, VisualBellType, WindowManagement, Workspace, Xwayland, XwaylandExtension,
+    LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys, NestedDecorations, PadButton, PadButtonAction,
+    PointingStick, Protocol, Protocols, RendererChoice, ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys,
+    StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction,
+    ToggleKeys, Touchpad, Trackball, VisualAccessibility, VisualBellType, WindowManagement, Workspace, Xwayland,
+    XwaylandExtension,
 };
 /// The built-in keyring rule: from the environment, from a document, or from the last accepted file.
 pub use keyring::{

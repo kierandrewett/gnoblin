@@ -173,6 +173,12 @@ pub const RULES: &[ApplyRule] = &[
         StartProcess::Compositor,
         "the starting size is read when the host windows are opened",
     ),
+    restart(
+        "compositor",
+        "nested-decorations",
+        StartProcess::Compositor,
+        "whether a frame is drawn is read when the host windows are opened",
+    ),
     live("window-management", "focus-mode"),
     live("window-management", "focus-new-windows"),
     live("window-management", "raise-on-click"),

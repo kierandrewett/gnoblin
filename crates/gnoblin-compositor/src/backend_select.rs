@@ -42,7 +42,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use gnoblin_backend::nested::{NestedConfig, OutputSpec};
-use gnoblin_config::{BackendChoice, Compositor, SearchPaths, Store};
+use gnoblin_config::{BackendChoice, Compositor, NestedDecorations, SearchPaths, Store};
 use gnoblin_types::Size;
 
 use crate::{Backend, SessionConfig};
@@ -94,6 +94,8 @@ pub struct BackendSettings {
     pub nested_outputs: u32,
     /// `compositor.nested-width` and `compositor.nested-height`.
     pub nested_size: Size,
+    /// `compositor.nested-decorations`.
+    pub nested_decorations: NestedDecorations,
 }
 
 impl Default for BackendSettings {
@@ -103,6 +105,7 @@ impl Default for BackendSettings {
             nested_display: None,
             nested_outputs: 1,
             nested_size: gnoblin_backend::nested::UNCONSTRAINED_SIZE,
+            nested_decorations: NestedDecorations::Auto,
         }
     }
 }
@@ -123,6 +126,7 @@ impl BackendSettings {
                 edge(section.nested_width, defaults.nested_size.width),
                 edge(section.nested_height, defaults.nested_size.height),
             ),
+            nested_decorations: section.nested_decorations.unwrap_or(defaults.nested_decorations),
         }
     }
 }
@@ -207,13 +211,14 @@ fn host_socket(settings: &BackendSettings, host: &HostView) -> Result<PathBuf, S
         })
 }
 
-/// The nested backend that connects to `socket`, with the settings' outputs and starting size.
+/// The nested backend that connects to `socket`, with the settings' outputs, starting size and window frame.
 fn nested(settings: &BackendSettings, socket: PathBuf) -> Backend {
     let mut config = NestedConfig::new(socket);
     config.outputs = (1..=settings.nested_outputs.max(1))
         .map(|index| OutputSpec::new(format!("NESTED-{index}")))
         .collect();
     config.initial_size = settings.nested_size;
+    config.decorations = settings.nested_decorations;
     Backend::Nested(config)
 }
 
@@ -504,6 +509,7 @@ mod tests {
             nested_display: Some("/tmp/host.sock".to_owned()),
             nested_outputs: 2,
             nested_size: Size::new(1280, 720),
+            nested_decorations: NestedDecorations::Off,
         };
         let selection = select(&settings, None, &host(Some("wayland-0"), false, false), always).expect("nested");
         let Backend::Nested(config) = selection.backend else {
@@ -519,6 +525,29 @@ mod tests {
             ["NESTED-1", "NESTED-2"]
         );
         assert_eq!(config.initial_size, Size::new(1280, 720));
+        assert_eq!(
+            config.decorations,
+            NestedDecorations::Off,
+            "the setting reaches the nested backend"
+        );
+    }
+
+    #[test]
+    fn a_nested_session_draws_its_own_frame_unless_the_setting_says_off() {
+        assert_eq!(BackendSettings::default().nested_decorations, NestedDecorations::Auto);
+        let settings = BackendSettings {
+            choice: BackendChoice::Nested,
+            ..BackendSettings::default()
+        };
+        let selection = select(&settings, None, &host(Some("wayland-0"), false, false), always).expect("nested");
+        let Backend::Nested(config) = selection.backend else {
+            panic!("nested was chosen");
+        };
+        assert_eq!(
+            config.decorations,
+            NestedDecorations::Auto,
+            "the shipped default is auto"
+        );
     }
 
     #[test]
@@ -574,6 +603,7 @@ mod tests {
             nested_width: Some(1920),
             nested_height: Some(1080),
             nested_display: Some("wayland-1".to_owned()),
+            nested_decorations: Some(NestedDecorations::Off),
             ..Compositor::default()
         };
         let settings = BackendSettings::from_section(&section);
@@ -581,6 +611,7 @@ mod tests {
         assert_eq!(settings.nested_outputs, 3);
         assert_eq!(settings.nested_size, Size::new(1920, 1080));
         assert_eq!(settings.nested_display.as_deref(), Some("wayland-1"));
+        assert_eq!(settings.nested_decorations, NestedDecorations::Off);
     }
 
     #[test]

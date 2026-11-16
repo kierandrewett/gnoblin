@@ -55,12 +55,13 @@ gnoblinctl session get ID backend
 
 ### Settings for a nested session
 
-| Setting                     | Default           | What it does                                                                                           |
-| --------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
-| `compositor.nested-display` | `WAYLAND_DISPLAY` | The socket of the compositor that hosts the session: a name in `XDG_RUNTIME_DIR`, or an absolute path. |
-| `compositor.nested-outputs` | `1`               | How many windows (outputs) to open, from 1 to 8. They are named `NESTED-1`, `NESTED-2` and so on.      |
-| `compositor.nested-width`   | `1024`            | The width an output starts at when the host leaves the size to the session.                            |
-| `compositor.nested-height`  | `768`             | The height, likewise. A size the host states always wins, and resizing the window resizes the output.  |
+| Setting                         | Default           | What it does                                                                                                                               |
+| ------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `compositor.nested-display`     | `WAYLAND_DISPLAY` | The socket of the compositor that hosts the session: a name in `XDG_RUNTIME_DIR`, or an absolute path.                                     |
+| `compositor.nested-outputs`     | `1`               | How many windows (outputs) to open, from 1 to 8. They are named `NESTED-1`, `NESTED-2` and so on.                                          |
+| `compositor.nested-width`       | `1024`            | The width an output starts at when the host leaves the size to the session.                                                                |
+| `compositor.nested-height`      | `768`             | The height, likewise. A size the host states always wins, and resizing the window resizes the output.                                      |
+| `compositor.nested-decorations` | `auto`            | Whether the session draws a window frame of its own when the host does not: `auto` or `off`. See [The window's frame](#the-windows-frame). |
 
 ## Run on a desktop
 
@@ -71,13 +72,75 @@ GNOBLIN_BACKEND=nested gnoblin
 ```
 
 The host decides the window. You can move, resize and fullscreen it. Closing the last window logs the session out;
-closing one of several only removes that output.
+closing one of several only removes that output. A host that draws no window frame of its own gets a small one from the
+session ([The window's frame](#the-windows-frame)).
 
 If the host is not reachable, the start stops and names the socket:
 
 ```text
 the host display /run/user/1000/wayland-9 does not exist: no Wayland compositor is serving it
 ```
+
+## The window's frame
+
+A nested session asks its host to draw each window's frame (the title bar, the border and the buttons) and follows the
+answer, so the window looks like any other window of the host and no frame is drawn twice:
+
+| The host                                                | The window gets                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------------------ |
+| Answers server-side                                     | The host's frame, and none of the session's.                       |
+| Answers client-side, or does not offer `xdg-decoration` | A small frame the session draws under `auto`; nothing under `off`. |
+| Holds the window full screen                            | No frame at all.                                                   |
+
+`compositor.nested-decorations` is read when the compositor starts, and takes one of two values:
+
+| Value            | What the session does when the host leaves the frame to it                              |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| `auto` (default) | Draws the frame below. A host that draws its own, and a full-screen window, get none.   |
+| `off`            | Draws none: the window is bare where the host draws none, as it was before the setting. |
+
+Both ask the host for a server-side frame first, so a host that draws one always does. Any other value stops the
+configuration from loading and names the two.
+
+The frame the session draws has:
+
+- a title bar with the window's title and the minimise, maximise and close buttons;
+- a thin border to resize from.
+
+You can:
+
+- drag the title bar to move the window;
+- double click it to maximise or restore the window;
+- right click it for the host's window menu;
+- drag a border or a corner to resize.
+
+The frame lies around the session, not over it: the session's output is the window less the frame, and the pointer
+positions the session sees are unchanged. A maximised window keeps its title bar and loses its border, and a
+full-screen one has none.
+
+The cursor over the frame is the host's own arrow and resize cursors, asked for with `wp_cursor_shape_v1`. Without
+that protocol the session sets no cursor over the frame, so the host chooses it.
+
+### What each host does
+
+| Host       | Answer to the server-side request                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| Gnoblin    | Server-side while its shell draws decorations (`startDecorations()` in the stock desktop), client-side otherwise |
+| Sway 1.7   | Server-side: Sway draws its own title bar and the session draws none                                             |
+| KDE (KWin) | Server-side, from its protocol support; not run here                                                             |
+
+A Gnoblin host whose shell draws decorations frames the window itself (a title bar, or none under the shell's own
+policy), and the session draws nothing.
+
+A Gnoblin host whose shell draws no decorations leaves the frame to the window, so under `auto` the session draws its
+own. To get no frame at all, run the session full screen or set `compositor.nested-decorations = "off"`.
+
+::: details GNOME session
+
+GNOME's window manager offers no `xdg-decoration`, so under `auto` the session draws its frame there. That comes from
+its source: a GNOME session cannot be run headlessly, so the frame has not been looked at on a GNOME screen.
+
+:::
 
 ## Run on hardware
 

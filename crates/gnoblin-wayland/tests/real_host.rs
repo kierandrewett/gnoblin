@@ -22,8 +22,9 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use gnoblin_backend::nested::{Nested, NestedConfig, NestedError};
+use gnoblin_backend::nested::{DecorationAnswer, Nested, NestedConfig, NestedError};
 use gnoblin_backend::{Backend, BackendEvent, Present, SelectionTarget};
+use gnoblin_config::NestedDecorations;
 use gnoblin_types::Scale;
 use nested_host::{Probe, RED, TIMEOUT};
 
@@ -174,6 +175,64 @@ fn sway_shows_the_window_with_its_title_and_app_id() {
         "sway lists the session's app id: {tree}"
     );
     assert!(tree.contains("Gnoblin session (NESTED-1)"), "and its title");
+}
+
+#[test]
+#[ignore = "needs a real host: scripts/real-host-conformance.sh"]
+fn sway_answers_server_side_so_the_session_draws_no_frame() {
+    if !is_sway() {
+        println!("skipped: the host is not Sway");
+        return;
+    }
+    let config = NestedConfig {
+        decorations: NestedDecorations::Auto,
+        ..NestedConfig::new(host_socket())
+    };
+    let mut nested = Nested::connect(&config).expect("the session connected to sway");
+    let mut probe = Probe::drawing(RED);
+    draw_rendered(&mut nested, &mut probe);
+    // Sway sizes a tiled window after the first configure, which leaves the size to the window: let that one arrive.
+    for _ in 0..30 {
+        nested.roundtrip().expect("the host answers a round trip");
+        let _ = nested.dispatch(&mut probe);
+        thread::sleep(Duration::from_millis(20));
+    }
+    draw_rendered(&mut nested, &mut probe);
+    let output = <Nested as Backend<Probe>>::outputs(&nested)[0].clone();
+    println!(
+        "real host: sway answered {:?} to the request for a server-side frame",
+        nested.decoration_answer(output.id)
+    );
+    assert_eq!(
+        nested.decoration_answer(output.id),
+        Some(DecorationAnswer::Server),
+        "wlroots draws the frame when a window asks it to"
+    );
+    assert!(
+        !nested.frame_drawn(output.id),
+        "so the session draws none, and the window is its output exactly"
+    );
+    // The tree holds one `window_rect` per window; the session's is the one that is its output's size. Sway draws its own
+    // title bar above that rectangle, which is why the rectangle and not the container is compared.
+    let tree = swaymsg(&["-t", "get_tree"]);
+    let number = |after: &str, key: &str| -> Option<u32> {
+        let rest = after.split(&format!("\"{key}\":")).nth(1)?;
+        rest.trim_start()
+            .split(|c: char| !c.is_ascii_digit())
+            .next()?
+            .parse()
+            .ok()
+    };
+    let rectangles: Vec<(Option<u32>, Option<u32>)> = tree
+        .split("\"window_rect\"")
+        .skip(1)
+        .map(|rest| (number(rest, "width"), number(rest, "height")))
+        .collect();
+    assert!(
+        rectangles.contains(&(Some(output.logical_size().width), Some(output.logical_size().height))),
+        "sway's window rectangle is the session's output: {rectangles:?} against {:?}",
+        output.logical_size()
+    );
 }
 
 #[test]

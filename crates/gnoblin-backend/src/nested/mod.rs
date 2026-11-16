@@ -34,6 +34,20 @@
 //! the same `draw` then `present` to [`Backend`], and a buffer the host refuses, a device that cannot be allocated on or a
 //! frame composed larger than the display goes through the readback path, so no frame is lost.
 //!
+//! # The window's frame
+//!
+//! Each toplevel asks the host to draw its frame (`xdg-decoration`, server-side), and the host's answer decides who does:
+//!
+//! | The host                                       | The window                                                        |
+//! | ---------------------------------------------- | ----------------------------------------------------------------- |
+//! | answers server-side (Sway, KDE, a Gnoblin)     | has no frame of the session's: the host, or its shell, draws it    |
+//! | answers client-side (GNOME), or has no protocol | has a minimal frame the session draws, under [`NestedDecorations::Auto`] |
+//! | holds the window full screen                   | has none                                                          |
+//!
+//! The frame is four subsurfaces around the session's own surface, so the session's output is the host's configure less the
+//! frame, the session's pointer coordinates are the surface's own, and the frame takes no pixel of the session's. The
+//! `frame` module has the layout, and `docs/backends.md` says what each host answers.
+//!
 //! //! # Failure modes first
 //!
 //! 1. **A frame is drawn into a buffer the parent is still reading.** `surface`'s slot
@@ -78,6 +92,8 @@
 //!    by name (`surface::NestedTarget::check_supersample`). A configure from the parent keeps the factor.
 //!    From the host's side: `gnoblin-wayland`'s `tests/nested.rs::a_nested_output_can_be_supersampled`.
 
+/// The window frame the session draws for itself when its host does not: where it lies, what is under a point of it.
+mod frame;
 /// The parent-facing protocol handler: state and event dispatch.
 mod handler;
 /// What the parent's dmabuf import accepts.
@@ -102,8 +118,9 @@ use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction};
 use wayland_client::backend::WaylandError;
 use wayland_client::globals::registry_queue_init;
-use wayland_client::protocol::{wl_compositor, wl_data_device_manager, wl_output, wl_seat, wl_shm};
+use wayland_client::protocol::{wl_compositor, wl_data_device_manager, wl_output, wl_seat, wl_shm, wl_subcompositor};
 use wayland_client::{Connection, EventQueue, Proxy};
+use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_manager_v1;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1;
 use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::zwp_keyboard_shortcuts_inhibit_manager_v1;
 use wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_dmabuf_v1;
@@ -113,12 +130,17 @@ use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection
 use wayland_protocols::wp::relative_pointer::zv1::client::zwp_relative_pointer_manager_v1;
 use wayland_protocols::wp::tablet::zv2::client::zwp_tablet_manager_v2;
 use wayland_protocols::wp::viewporter::client::wp_viewporter;
+use wayland_protocols::xdg::decoration::zv1::client::zxdg_decoration_manager_v1;
 use wayland_protocols::xdg::shell::client::xdg_wm_base;
 use wayland_protocols::xdg::toplevel_icon::v1::client::xdg_toplevel_icon_manager_v1;
 
+use gnoblin_config::NestedDecorations;
 use gnoblin_output::DisplayMode;
 use gnoblin_types::{OutputId, Scale, Size};
 
+pub use frame::{
+    BORDER as FRAME_BORDER, BUTTON_WIDTH as FRAME_BUTTON_WIDTH, DecorationAnswer, TITLE_HEIGHT as FRAME_TITLE_HEIGHT,
+};
 pub use input::AXIS_STEP;
 pub use present_dmabuf::{DmabufPresenter, GbmPresenter, PresentRefusal};
 pub use surface::NestedTarget;
@@ -235,6 +257,12 @@ pub struct NestedConfig {
     /// Whether frames are presented as GPU buffers through the parent's `zwp_linux_dmabuf_v1` where it offers one and the
     /// session draws with GLES. Off, or without both, every frame is read back into shared memory.
     pub dmabuf: bool,
+    /// Whether the session draws a window frame of its own when the host does not. The session always asks the host to draw
+    /// the frame (`xdg-decoration`, server-side); [`NestedDecorations::Auto`] draws a minimal one when the host answers
+    /// client-side or has no `xdg-decoration`, and [`NestedDecorations::Off`] never does. [`NestedConfig::new`] starts
+    /// with `Off`, so a library caller's window is the session's output exactly; the compositor's
+    /// `compositor.nested-decorations` setting defaults to `auto`.
+    pub decorations: NestedDecorations,
 }
 
 impl NestedConfig {
@@ -251,6 +279,7 @@ impl NestedConfig {
             renderer: RendererKind::default(),
             initial_size: UNCONSTRAINED_SIZE,
             dmabuf: true,
+            decorations: NestedDecorations::Off,
         }
     }
 }
@@ -448,6 +477,17 @@ impl Nested {
         let icon_manager = globals
             .bind::<xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1, Handler, ()>(&qh, 1..=1, ())
             .ok();
+        // The frame: the host's own when it answers server-side, and otherwise strips the session draws as subsurfaces.
+        // A host without either protocol gets a bare window, as it did before.
+        let decoration_manager = globals
+            .bind::<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, Handler, ()>(&qh, 1..=1, ())
+            .ok();
+        let subcompositor = globals
+            .bind::<wl_subcompositor::WlSubcompositor, Handler, ()>(&qh, 1..=1, ())
+            .ok();
+        let cursor_shape_manager = globals
+            .bind::<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1, Handler, ()>(&qh, 1..=1, ())
+            .ok();
         // Every output of the parent is bound, for the scale and the refresh rate of the one a surface is on.
         let parent_outputs: Vec<(u32, u32)> = globals.contents().with_list(|list| {
             list.iter()
@@ -482,10 +522,14 @@ impl Nested {
                 tablet_manager,
                 dmabuf: dmabuf_global,
                 outputs,
+                subcompositor,
+                decoration_manager,
+                cursor_shape_manager,
             },
             config.app_id.clone(),
             config.icon.clone(),
             config.initial_size,
+            config.decorations,
         );
         handler.ask_dmabuf_feedback(&qh);
         let count = config.outputs.len().max(1);
@@ -599,6 +643,20 @@ impl Nested {
             .table()
             .dropped()
             .saturating_add(self.handler.tablets_ignored())
+    }
+
+    /// What the parent answered when `output`'s window asked it to draw the frame (`xdg-decoration`): [`None`] when it
+    /// has not answered, and for a parent that does not offer the protocol.
+    #[must_use]
+    pub fn decoration_answer(&self, output: OutputId) -> Option<DecorationAnswer> {
+        let index = self.index(output)?;
+        self.handler.decoration_answer(index)
+    }
+
+    /// Whether the session draws a frame of its own around `output`'s window.
+    #[must_use]
+    pub fn frame_drawn(&self, output: OutputId) -> bool {
+        self.index(output).is_some_and(|index| self.handler.frame_drawn(index))
     }
 
     /// Whether the parent granted the request to keep its own shortcuts from `output`'s window, which it does while
@@ -742,8 +800,31 @@ impl Nested {
         }
         if changes.disconnected {
             self.report_disconnect();
+        } else {
+            self.settle_frames();
         }
         self.rebuild_outputs();
+    }
+
+    /// Puts each window frame in line with what the parent configured and what the pointer is over, and commits what that
+    /// staged on the windows that have nothing else coming.
+    ///
+    /// What is staged on the frame's strips and on the window geometry lands with the next commit of the output's surface.
+    /// An output with damage waiting (a new one, or one whose size changed) commits with its next frame, so the frame and
+    /// the pixels it surrounds change together. An output with none commits now: a frame that only changed its look (a
+    /// button under the pointer) has no frame of the session's own coming.
+    fn settle_frames(&mut self) {
+        let qh = self.queue.handle();
+        let staged = self.handler.sync_frames(&qh);
+        for index in &staged {
+            let idle = matches!(self.targets.get(*index), Some(Some(target)) if target.damage().is_empty());
+            if idle && let Some(objects) = self.handler.objects(*index) {
+                objects.surface.commit();
+            }
+        }
+        if !staged.is_empty() {
+            self.flush();
+        }
     }
 
     /// Gives each target what the parent said about its dmabuf import: the list when it changed, and the answers about

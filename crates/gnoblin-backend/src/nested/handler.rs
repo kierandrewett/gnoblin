@@ -41,12 +41,16 @@
 //! - **The clipboard and the primary selection.** [`host_selection`]: the parent's selection is offered to the session
 //!   while the window has the keyboard, and the session's is offered back, with the limits in [`crate::selection`].
 //! - **Tablets.** [`host_tablet`]: the parent's tools and pads become [`TabletEvent`](crate::TabletEvent)s.
+//! - **The window frame.** `host_frame`: each toplevel asks the parent to draw its frame (`xdg-decoration`), and a parent
+//!   that does not gets a minimal one the session draws as subsurfaces. The pointer over that frame is the frame's own
+//!   and never reaches the session.
 //!
 //! Text input is not bridged: it needs a hook in the [`Backend`](crate::Backend) contract the session's own
 //! protocols can call, and `design/backend-parity.md` lists it as missing on this backend. A parent that offers it
 //! sees it unbound.
 
 pub(super) mod dmabuf;
+mod host_frame;
 pub(super) mod host_selection;
 mod host_tablet;
 
@@ -56,9 +60,10 @@ use wayland_client::backend::ObjectId;
 use wayland_client::globals::GlobalListContents;
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_data_device_manager, wl_keyboard, wl_output, wl_pointer, wl_registry,
-    wl_seat, wl_shm, wl_shm_pool, wl_surface, wl_touch,
+    wl_seat, wl_shm, wl_shm_pool, wl_subcompositor, wl_surface, wl_touch,
 };
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, WEnum};
+use wayland_protocols::wp::cursor_shape::v1::client::{wp_cursor_shape_device_v1, wp_cursor_shape_manager_v1};
 use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_manager_v1, wp_fractional_scale_v1};
 use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::{
     zwp_keyboard_shortcuts_inhibit_manager_v1, zwp_keyboard_shortcuts_inhibitor_v1,
@@ -74,9 +79,12 @@ use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection
 use wayland_protocols::wp::relative_pointer::zv1::client::{zwp_relative_pointer_manager_v1, zwp_relative_pointer_v1};
 use wayland_protocols::wp::tablet::zv2::client::{zwp_tablet_manager_v2, zwp_tablet_seat_v2};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
+use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::toplevel_icon::v1::client::{xdg_toplevel_icon_manager_v1, xdg_toplevel_icon_v1};
 
+use gnoblin_config::NestedDecorations;
+use gnoblin_paint::SharedPainter;
 use gnoblin_types::{OutputId, Size};
 
 use crate::{PointerConstraint, RawTouchpadKind};
@@ -84,6 +92,7 @@ use crate::{PointerConstraint, RawTouchpadKind};
 use super::input::position;
 use super::records::Table;
 use super::scale_from_parent;
+use host_frame::{HostFrame, PointerFocus};
 
 /// The index of one nested output, as an object's user data.
 ///
@@ -117,12 +126,16 @@ pub(crate) struct Objects {
     xdg_surface: xdg_surface::XdgSurface,
     /// The toplevel the parent shows for the output, which carries its title and app id.
     toplevel: xdg_toplevel::XdgToplevel,
+    /// The request to the parent to draw the toplevel's frame, when the parent offers `xdg-decoration`.
+    decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
     /// The fractional scale object, present only when the parent offers the protocol.
     fractional: Option<wp_fractional_scale_v1::WpFractionalScaleV1>,
     /// The parent outputs the surface is on, by their object ids, from `wl_surface.enter` and `leave`.
     entered: Vec<ObjectId>,
     /// The request to keep the parent's shortcuts from this surface, when the parent offers the protocol.
     inhibitor: Option<Inhibitor>,
+    /// The window frame the session draws for this toplevel, when the parent does not draw one.
+    frame: HostFrame,
 }
 
 /// One output's shortcut inhibitor and whether the parent granted it.
@@ -188,6 +201,12 @@ pub(crate) struct Bound {
     pub tablet_manager: Option<zwp_tablet_manager_v2::ZwpTabletManagerV2>,
     /// The parent's dmabuf global, if it offers one.
     pub dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1>,
+    /// The parent's subcompositor, if it offers one: the strips of a window frame are subsurfaces.
+    pub subcompositor: Option<wl_subcompositor::WlSubcompositor>,
+    /// The parent's `xdg-decoration`, if it offers one.
+    pub decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+    /// The parent's cursor shape manager, if it offers one.
+    pub cursor_shape_manager: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     /// Every output the parent has.
     pub outputs: Vec<HostOutput>,
 }
@@ -275,11 +294,33 @@ pub(crate) struct Handler {
     tablets: super::tablet::Tablets,
     /// The parent's dmabuf global, what it imports, and the buffers it created for this session.
     dmabuf: dmabuf::DmabufHost,
+    /// The parent's subcompositor, if it offers one: the strips of a window frame are subsurfaces.
+    subcompositor: Option<wl_subcompositor::WlSubcompositor>,
+    /// The parent's `xdg-decoration`, if it offers one: every toplevel asks it to draw the frame.
+    decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+    /// Whether the session draws a frame of its own when the parent does not.
+    decorations: NestedDecorations,
+    /// What the strips of a window frame are painted with.
+    painter: SharedPainter,
+    /// The parent's cursor shape manager, if it offers one: the cursor over a window frame is the parent's own.
+    cursor_shape_manager: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
+    /// The cursor shape device of the seat's pointer, while the seat has a pointer and the parent a manager.
+    shape_device: Option<wp_cursor_shape_device_v1::WpCursorShapeDeviceV1>,
+    /// The serial of the pointer's last enter, which a cursor shape is asked for with.
+    pointer_serial: u32,
+    /// Whether the pointer is over a strip of a window frame, and where.
+    pointer_on: PointerFocus,
 }
 
 impl Handler {
     /// A handler for a connection whose globals have been bound.
-    pub fn new(bound: Bound, app_id: String, icon_name: Option<String>, initial_size: Size) -> Self {
+    pub fn new(
+        bound: Bound,
+        app_id: String,
+        icon_name: Option<String>,
+        initial_size: Size,
+        decorations: NestedDecorations,
+    ) -> Self {
         Self {
             table: Table::new(),
             objects: Vec::new(),
@@ -313,6 +354,14 @@ impl Handler {
             tablet_seat: None,
             tablets: super::tablet::Tablets::new(),
             dmabuf: dmabuf::DmabufHost::new(bound.dmabuf),
+            subcompositor: bound.subcompositor,
+            decoration_manager: bound.decoration_manager,
+            decorations,
+            painter: SharedPainter::system(),
+            cursor_shape_manager: bound.cursor_shape_manager,
+            shape_device: None,
+            pointer_serial: 0,
+            pointer_on: PointerFocus::Elsewhere,
         }
     }
 
@@ -331,6 +380,14 @@ impl Handler {
         let toplevel = xdg_surface.get_toplevel(qh, OutputKey(index));
         toplevel.set_app_id(self.app_id.clone());
         toplevel.set_title(title.to_owned());
+        // Every toplevel asks the parent to draw its frame. What it answers decides whether the session draws one: a
+        // server-side answer is the parent's (or the shell the parent runs) to draw, and anything else is read when the
+        // configure arrives.
+        let decoration = self.decoration_manager.as_ref().map(|manager| {
+            let decoration = manager.get_toplevel_decoration(&toplevel, qh, OutputKey(index));
+            decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+            decoration
+        });
         // The icon is advisory: a parent without the manager shows its own default, and a name its theme does not
         // have shows the same.
         if let (Some(manager), Some(name)) = (&self.icon_manager, &self.icon_name) {
@@ -368,6 +425,8 @@ impl Handler {
             fractional,
             entered: Vec::new(),
             inhibitor,
+            decoration,
+            frame: HostFrame::new(title, self.initial_size),
         }));
         self.table.add(output, connector)
     }
@@ -437,7 +496,11 @@ impl Handler {
     /// Destroys one output's objects, after the parent asked for it to close.
     pub fn destroy_output(&mut self, index: usize) {
         self.forget_dmabuf_buffers_of(index);
-        if let Some(objects) = self.objects.get_mut(index).and_then(Option::take) {
+        if let Some(mut objects) = self.objects.get_mut(index).and_then(Option::take) {
+            if matches!(self.pointer_on, PointerFocus::Frame { index: on, .. } if on == index) {
+                self.pointer_on = PointerFocus::Elsewhere;
+            }
+            objects.frame.destroy();
             if self.held.as_ref().is_some_and(|(_, on)| *on == objects.surface.id()) {
                 self.release_constraint();
             }
@@ -449,6 +512,10 @@ impl Handler {
             }
             if let Some(viewport) = objects.viewport {
                 viewport.destroy();
+            }
+            // The decoration object goes before the toplevel it belongs to: the other order is a protocol error.
+            if let Some(decoration) = objects.decoration {
+                decoration.destroy();
             }
             objects.toplevel.destroy();
             objects.xdg_surface.destroy();
@@ -654,6 +721,9 @@ impl Handler {
                 if let Some(manager) = &self.relative_manager {
                     self.relative = Some(manager.get_relative_pointer(&proxy, qh, ()));
                 }
+                if let Some(manager) = &self.cursor_shape_manager {
+                    self.shape_device = Some(manager.get_pointer(&proxy, qh, ()));
+                }
                 self.pointer = Some(proxy);
             }
         } else if let Some(pointer) = self.pointer.take() {
@@ -666,6 +736,9 @@ impl Handler {
             }
             if let Some(pinch) = self.pinch.take() {
                 pinch.destroy();
+            }
+            if let Some(device) = self.shape_device.take() {
+                device.destroy();
             }
             pointer.release();
         }
@@ -1018,6 +1091,13 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Handler {
                 surface_x,
                 surface_y,
             } => {
+                if let Some((index, part)) = state.frame_part(&surface) {
+                    // A strip of the session's own window frame: the cursor over it is the parent's, and the pointer is
+                    // not over anything the session draws.
+                    state.frame_enter(index, part, serial, surface_x, surface_y);
+                    return;
+                }
+                state.pointer_on = PointerFocus::Elsewhere;
                 // The session draws its own cursor into the frame, so the parent shows none over it.
                 pointer.set_cursor(serial, None, 0, 0);
                 if let Some(output) = state.output_of(&surface) {
@@ -1026,25 +1106,45 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Handler {
                     state.apply_constraint(qh);
                 }
             }
-            wl_pointer::Event::Leave { .. } => state.table.seat().leave(),
+            wl_pointer::Event::Leave { .. } => {
+                if matches!(state.pointer_on, PointerFocus::Frame { .. }) {
+                    state.frame_leave();
+                } else {
+                    state.table.seat().leave();
+                }
+            }
             wl_pointer::Event::Motion {
                 surface_x, surface_y, ..
             } => {
-                state.table.seat().motion(position(surface_x, surface_y));
+                if matches!(state.pointer_on, PointerFocus::Frame { .. }) {
+                    state.frame_motion(surface_x, surface_y);
+                } else {
+                    state.table.seat().motion(position(surface_x, surface_y));
+                }
             }
             wl_pointer::Event::Button {
                 button,
                 state: button_state,
                 serial,
-                ..
+                time,
             } => {
                 state.selection.note_serial(serial);
-                match button_state {
-                    WEnum::Value(wl_pointer::ButtonState::Pressed) => state.table.seat().button(button, true),
-                    WEnum::Value(wl_pointer::ButtonState::Released) => state.table.seat().button(button, false),
-                    _ => {}
+                let pressed = match button_state {
+                    WEnum::Value(wl_pointer::ButtonState::Pressed) => true,
+                    WEnum::Value(wl_pointer::ButtonState::Released) => false,
+                    _ => return,
+                };
+                if matches!(state.pointer_on, PointerFocus::Frame { .. }) {
+                    state.frame_button(time, serial, button, pressed);
+                } else {
+                    state.table.seat().button(button, pressed);
                 }
             }
+            // The scroll wheel over the window frame scrolls nothing of the session's.
+            wl_pointer::Event::Axis { .. }
+            | wl_pointer::Event::AxisDiscrete { .. }
+            | wl_pointer::Event::AxisValue120 { .. }
+                if matches!(state.pointer_on, PointerFocus::Frame { .. }) => {}
             wl_pointer::Event::Axis { axis, value, .. } => {
                 state.table.seat().axis(is_horizontal(&axis), value);
             }
@@ -1078,7 +1178,19 @@ impl Dispatch<wl_touch::WlTouch, ()> for Handler {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_touch::Event::Down { surface, id, x, y, .. } => {
+            wl_touch::Event::Down {
+                serial,
+                surface,
+                id,
+                x,
+                y,
+                ..
+            } => {
+                if let Some((index, part)) = state.frame_part(&surface) {
+                    // A touch on the window frame is the frame's: a drag on the title bar moves the window.
+                    state.frame_touch(index, part, serial, x, y);
+                    return;
+                }
                 let output = state.output_of(&surface);
                 state.table.seat().touch_down(id.unsigned_abs(), output, position(x, y));
             }
@@ -1141,19 +1253,20 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for Handler {
 
 impl Dispatch<xdg_surface::XdgSurface, OutputKey> for Handler {
     fn event(
-        _: &mut Self,
+        state: &mut Self,
         xdg_surface: &xdg_surface::XdgSurface,
         event: <xdg_surface::XdgSurface as Proxy>::Event,
-        _: &OutputKey,
+        key: &OutputKey,
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        // The size the configure belongs to arrives in `xdg_toplevel.configure` in
-        // the same batch, and the target applies it before its next commit, so the
-        // acknowledgement is immediate and the buffer always matches what it
-        // acknowledges.
+        // The size the configure belongs to arrives in `xdg_toplevel.configure` in the same batch, and the host's answer to
+        // the frame in `zxdg_toplevel_decoration_v1.configure`: this event ends the batch, so they are read together
+        // here. The target applies the size before its next commit, so the acknowledgement is immediate and the buffer
+        // always matches what it acknowledges.
         if let xdg_surface::Event::Configure { serial } = event {
             xdg_surface.ack_configure(serial);
+            state.close_configure(key.0);
         }
     }
 }
@@ -1168,10 +1281,8 @@ impl Dispatch<xdg_toplevel::XdgToplevel, OutputKey> for Handler {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            xdg_toplevel::Event::Configure { width, height, .. } => {
-                state
-                    .table
-                    .configure(key.0, configured_size(width, height, state.initial_size));
+            xdg_toplevel::Event::Configure { width, height, states } => {
+                state.note_window_configure(key.0, width, height, &states);
             }
             xdg_toplevel::Event::Close => state.table.close(key.0),
             _ => {}
@@ -1194,43 +1305,39 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, OutputKey> for Handle
     }
 }
 
-/// The size a `xdg_toplevel.configure` asks for.
-///
-/// xdg-shell states zero on both axes for "choose for yourself". A nested output
-/// that chooses gets `fallback` (`UNCONSTRAINED_SIZE` unless the session configured
-/// another): it has to draw at *some* size, and a size of no pixels is an output that
-/// can never show a window.
-fn configured_size(width: i32, height: i32, fallback: Size) -> Size {
-    if width > 0 && height > 0 {
-        Size::new(width.unsigned_abs(), height.unsigned_abs())
-    } else {
-        fallback
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::UNCONSTRAINED_SIZE;
+    use super::super::frame::{Inset, content_size};
     use super::*;
 
     #[test]
     fn a_configure_size_is_the_size_the_parent_asked_for() {
-        assert_eq!(configured_size(1024, 768, UNCONSTRAINED_SIZE), Size::new(1024, 768));
+        assert_eq!(
+            content_size(1024, 768, Inset::NONE, UNCONSTRAINED_SIZE),
+            Size::new(1024, 768)
+        );
     }
 
     #[test]
     fn a_configure_that_leaves_the_size_to_us_is_not_an_empty_output() {
-        assert_eq!(configured_size(0, 0, UNCONSTRAINED_SIZE), UNCONSTRAINED_SIZE);
+        assert_eq!(content_size(0, 0, Inset::NONE, UNCONSTRAINED_SIZE), UNCONSTRAINED_SIZE);
         // One axis stated and one left out is not a size either.
-        assert_eq!(configured_size(1024, 0, UNCONSTRAINED_SIZE), UNCONSTRAINED_SIZE);
-        assert_eq!(configured_size(-1, 768, UNCONSTRAINED_SIZE), UNCONSTRAINED_SIZE);
+        assert_eq!(
+            content_size(1024, 0, Inset::NONE, UNCONSTRAINED_SIZE),
+            UNCONSTRAINED_SIZE
+        );
+        assert_eq!(
+            content_size(-1, 768, Inset::NONE, UNCONSTRAINED_SIZE),
+            UNCONSTRAINED_SIZE
+        );
     }
 
     #[test]
     fn a_session_that_configured_a_starting_size_gets_it_where_the_parent_leaves_the_size_open() {
         let chosen = Size::new(1600, 900);
-        assert_eq!(configured_size(0, 0, chosen), chosen);
-        assert_eq!(configured_size(800, 600, chosen), Size::new(800, 600));
+        assert_eq!(content_size(0, 0, Inset::NONE, chosen), chosen);
+        assert_eq!(content_size(800, 600, Inset::NONE, chosen), Size::new(800, 600));
     }
 
     #[test]

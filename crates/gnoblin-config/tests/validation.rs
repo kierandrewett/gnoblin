@@ -136,6 +136,7 @@ fn the_backend_leaves_take_their_values() {
             ("nested-outputs", int(2)),
             ("nested-width", int(1280)),
             ("nested-height", int(720)),
+            ("nested-decorations", text("off")),
         ]),
     )]);
     let config = Config::from_value(document).expect("valid");
@@ -147,6 +148,10 @@ fn the_backend_leaves_take_their_values() {
         (compositor.nested_width, compositor.nested_height),
         (Some(1280), Some(720))
     );
+    assert_eq!(
+        compositor.nested_decorations,
+        Some(gnoblin_config::NestedDecorations::Off)
+    );
 }
 
 #[test]
@@ -157,6 +162,20 @@ fn a_nested_output_count_outside_its_range_is_refused() {
         assert_eq!(problems.len(), 1, "{count} is out of range, got {problems:?}");
         assert_eq!(problems[0].0, "compositor.nested-outputs");
     }
+}
+
+#[test]
+fn a_window_frame_mode_the_nested_backend_does_not_have_is_refused_naming_the_accepted_values() {
+    let document = table([("compositor", table([("nested-decorations", text("always"))]))]);
+    let problems = problems(document);
+    assert_eq!(problems.len(), 1, "one leaf is wrong, got {problems:?}");
+    assert_eq!(problems[0].0, "compositor.nested-decorations");
+    assert_eq!(
+        problems[0].1,
+        Fault::UnsupportedValue {
+            expected: "one of auto, off".to_owned()
+        }
+    );
 }
 
 #[test]

@@ -66,7 +66,7 @@ use smithay::xwayland::xwm::X11Surface;
 
 use gnoblin_backend::render::compose::{Composer, Content, DecorationWanted, MainSeatPolicy, ScreenInfo};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
-use gnoblin_config::{Protocols, TitlebarAction};
+use gnoblin_config::{Protocol, Protocols, TitlebarAction};
 use gnoblin_input::Activity;
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_render::Mat4;
@@ -669,7 +669,11 @@ impl State {
         let output_manager_state = OutputManagerState::new();
         crate::protocols::zxdg_output_v1::global(&display_handle);
         crate::protocols::wp_viewporter::create_global(&display_handle);
-        let decoration_state = XdgDecorationState::new::<Self>(&display_handle);
+        // `protocols.xdg-decoration = false` keeps the global out of the registry, so a client sees a compositor that has
+        // no `xdg-decoration` and draws its own frame.
+        let decoration_offered = protocols.toggles.get(&Protocol::XdgDecoration).copied().unwrap_or(true);
+        let decoration_state =
+            XdgDecorationState::new_with_filter::<Self, _>(&display_handle, move |_| decoration_offered);
         // The lock global is advertised to every client: the standard protocol makes
         // the socket the admission boundary, and `docs/session-lock.md` states that
         // the first request owns the lock.

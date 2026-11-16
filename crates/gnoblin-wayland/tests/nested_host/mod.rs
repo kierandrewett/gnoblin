@@ -13,9 +13,10 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::nested::{Nested, NestedConfig};
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent, Output, Present};
+use gnoblin_config::{Protocol, Protocols};
 use gnoblin_render_frame::frame::{Layer, OutputFrame, Solid};
 use gnoblin_types::{Color, OutputId, Point, Rect, Size};
-use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot};
+use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot, TreeHooks};
 
 /// How long a test waits for a state before failing.
 pub const TIMEOUT: Duration = Duration::from_secs(20);
@@ -37,6 +38,9 @@ pub const HEADLESS_SCREEN: Size = Size::new(
 
 /// `BTN_LEFT` from `linux/input-event-codes.h`.
 pub const BTN_LEFT: u32 = 0x110;
+
+/// `BTN_RIGHT` from `linux/input-event-codes.h`.
+pub const BTN_RIGHT: u32 = 0x111;
 
 /// What the session's own compositor would do: describe a frame and keep the input.
 #[derive(Default)]
@@ -204,6 +208,22 @@ impl Session {
             fractional_scale: false,
             ..config
         })
+    }
+
+    /// Creates a host that has no `xdg-decoration`: a window sees a compositor that never offers to draw its frame.
+    pub fn start_without_decoration() -> Self {
+        Self::start_with(|config| {
+            let mut protocols = Protocols::default();
+            protocols.toggles.insert(Protocol::XdgDecoration, false);
+            Config { protocols, ..config }
+        })
+    }
+
+    /// Creates a host that a shell holds the tree of, as `tests/session`'s stand-in does: window requests become events
+    /// of the shell's, and a shell that declares decorations is what makes the host answer a window's `xdg-decoration`
+    /// server-side.
+    pub fn start_shelled(tree: TreeHooks) -> Self {
+        Self::start_with(|config| Config { tree, ..config })
     }
 
     /// Creates a host that imports GPU buffers through `provider`, the stand-in of `tests/mock_gpu`: a machine with no GPU

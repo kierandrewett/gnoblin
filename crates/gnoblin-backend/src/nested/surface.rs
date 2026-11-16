@@ -1115,7 +1115,7 @@ fn physical_extent_signed(value: i64, scale: Scale) -> i32 {
 ///
 /// The readback is RGBA8 in memory order; a `wl_shm` format is a native-endian 32-bit
 /// value, so the bytes a buffer holds depend on the machine.
-fn packed(pixel: &[u8], format: wl_shm::Format) -> [u8; 4] {
+pub(super) fn packed(pixel: &[u8], format: wl_shm::Format) -> [u8; 4] {
     let alpha = if matches!(format, wl_shm::Format::Argb8888) {
         pixel.get(3).copied().unwrap_or(0xFF)
     } else {
@@ -1155,7 +1155,7 @@ fn align_up(bytes: usize) -> usize {
 /// is the only way to reach it afterwards, and the kernel reclaims it when the session
 /// exits. `memfd_create` would skip the path entirely, but it is a raw syscall and this
 /// crate forbids unsafe code.
-fn anonymous_file(length: usize) -> io::Result<File> {
+pub(super) fn anonymous_file(length: usize) -> io::Result<File> {
     let path = runtime_directory().join(format!(
         "gnoblin-nested-{}-{}.shm",
         std::process::id(),

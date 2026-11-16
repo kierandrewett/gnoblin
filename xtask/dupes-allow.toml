@@ -1367,3 +1367,9 @@ left = "gnoblin-backend::SelectionTarget"
 right = "gnoblin-wayland::WlDataDeviceManagerSelectionKind"
 kind = "same-shape"
 reason = "the backend contract names the two selections without Smithay's type, as the compositor's own record of them does; a conversion each way sits beside the compositor's handler"
+
+[[allow]]
+left = "gnoblin-backend::Part"
+right = "gnoblin-types::Edge"
+kind = "same-shape"
+reason = "a strip of the nested session's window frame (the title bar is above, the others beside and below); it is positioned by the frame's layout and is not a side of a rectangle"

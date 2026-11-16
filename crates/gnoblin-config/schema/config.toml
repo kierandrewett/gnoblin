@@ -60,6 +60,15 @@ variants = [
 ]
 
 [[enum]]
+name = "NestedDecorations"
+setting = "nested-decorations"
+doc = "Whether a nested session draws a window frame of its own when its host does not draw one."
+variants = [
+    { spelling = "auto", doc = "Ask the host to draw the frame (xdg-decoration, server-side). A host that answers client-side, or that has no xdg-decoration, gets a minimal frame drawn by the session: a title bar with the title and the minimise, maximise and close buttons, and resize edges. A host that draws the frame, and a full-screen window, get none." },
+    { spelling = "off", doc = "Ask the host to draw the frame and never draw one: a host that does not draw it shows a bare window." },
+]
+
+[[enum]]
 name = "ColourFilter"
 setting = "colour-filter"
 doc = "A colour transform applied to every output. The vision-deficiency filters simulate how a viewer with that deficiency sees the screen; they do not correct it."
@@ -1625,6 +1634,15 @@ max = 16384
 accepted = "an integer from 64 to 16384 pixels"
 default = { int = 768 }
 doc = "The height a nested output starts at when its host leaves the size to the session."
+since = "0.2.0"
+
+[[section.field]]
+key = "nested-decorations"
+kind = "enum"
+enum = "NestedDecorations"
+accepted = "one of auto, off"
+default = { enum = "auto" }
+doc = "Whether a nested session draws its own window frame when the host does not. The session always asks the host to draw it; `auto` draws a minimal frame only when the host answers client-side or has no xdg-decoration, and `off` never draws one."
 since = "0.2.0"
 
 [[section]]
