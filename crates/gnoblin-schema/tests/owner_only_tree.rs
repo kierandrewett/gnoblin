@@ -24,6 +24,14 @@ const OWNER_PATHS: &[(&str, &str)] = &[
         "the compositor serves the owner socket, so it embeds the whole catalog",
     ),
     (
+        "crates/gnoblin-core-impl/build.rs",
+        "the core library is the owner side of the shell ABI (design/modular-framework.md, D3). The catalog is names and types \
+         only, no authority: the in-process shell host is the owner by construction (it holds the tree), and what a loaded \
+         module may do is decided by the owner socket's peer check and the observer rules, not by what the catalog lists. \
+         No other crate links the library, and every client-side crate, portal and service still loads the catalog \
+         without `tree`, which this test keeps true",
+    ),
+    (
         "crates/gnoblin-proto/build.rs",
         "the owner socket's tree wire types are generated from the whole catalog",
     ),
