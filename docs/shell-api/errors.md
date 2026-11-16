@@ -120,6 +120,25 @@ A call that runs past its time budget is interrupted, and the shell stages your 
 interruptions in a short time it stops doing that until a cool-down has passed or you reload on purpose. The compositor
 keeps running throughout.
 
+### Time budgets
+
+The budget counts the CPU time your code uses, not the time it takes on the clock, so a busy machine does not make a
+well-behaved handler fail. The limits are:
+
+- 1000 ms for a listener, handler or timer call.
+- 5000 ms for each of the shell's own calls in a frame.
+- 30000 ms for loading a config.
+
+A call that is held up without computing is stopped when it has waited eight times its limit on the wall clock.
+
+The message says which clock stopped the call, the limit, how much of each clock the call used and where in your code it
+was:
+
+```text
+the script used 1003 ms of CPU time (1010 ms of wall time) against its 1000 ms CPU budget and was interrupted;
+it was in at spin (init.ts:12:5), called from at onFocus (init.ts:20:3)
+```
+
 ## See also
 
 - [Events](/events/) for `gnoblin.on`.

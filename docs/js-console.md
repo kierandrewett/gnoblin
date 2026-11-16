@@ -89,7 +89,7 @@ generation, so the variables are gone, and nothing is written to disk.
 Expressions run on the shell's own runtime between frames, never beside one, so what an expression reads is the state
 the next frame sees.
 
-Each has the shell's call budget (1 second). One that runs past it, such as `while (true) {}`, is interrupted and
+Each has the shell's call budget (1 second of CPU time). One that runs past it, such as `while (true) {}`, is interrupted and
 answered with a `budget` error; the console and the shell go on. An interrupted expression is not a strike against the
 generation, so the shell does not restart over it.
 

@@ -42,3 +42,29 @@ build, the stock desktop with 40 windows and 300 frames of title changes and new
 - **Not changed.** `HOST_INSTALL_BUDGET` (the 5 s floor on installing the bundled library, which only matters when a
   test shortens `stage_budget`), `DOCUMENT_BUDGET` (the 1 s of the `gnoblinctl check` dry run, which is a command and not
   the session; under load a check can run out of it) and the honest-test budgets above.
+
+## CPU time, and a wall-clock backstop
+
+Lane Hardening. The numbers above were wall time, and the measurements show what that costs: two busy threads per CPU
+stretched a frame from 71 ms to 1.25 s, and a limit on wall time trips on a script that did nothing wrong. A limit
+that was meant to catch a hang should not count the time the scheduler took away.
+
+`JsBudget` (`crates/gnoblin-js/src/generation/mod.rs`) therefore arms two deadlines for each call, and the engine's
+interrupt handler stops the call at whichever comes first:
+
+- the thread's own CPU time (`clock_gettime(CLOCK_THREAD_CPUTIME_ID)`, through `rustix`) reaching the call's budget;
+- the wall clock reaching `WALL_BACKSTOP_FACTOR` (8) times the budget, so a call that is held up and never computes
+  still ends. A spinning script reaches the CPU limit first.
+
+A generation lives on one thread, so the handler reads the clock of the thread that armed the deadline.
+
+The stop is deterministic where the old one was not. `time_the_script_spends_waiting_for_the_scheduler_is_not_charged_to_its_budget`
+runs a script that stalls for 1.2 s of wall time with a few milliseconds of work against a 500 ms budget and expects it
+to finish (it tripped before the change); `a_script_stalled_for_longer_than_the_wall_clock_backstop_is_still_stopped`
+shows the backstop; `a_trip_reports_the_limit_the_time_used_and_where_the_script_was` pins what a trip says: the limit,
+the CPU and wall time the call used, and the innermost script frames. No test asserts how fast the machine is.
+
+The values of `STAGE_BUDGET`, `ENTRY_BUDGET` and `FRAME_BUDGET` are unchanged: they were set from wall measurements, and
+CPU time is never more than wall time. They stay settable per generation (`JsConfig::stage_budget`,
+`JsShellConfig::entry_budget` and `frame_budget`). The "frame budget is used up" diagnostic of the queued listener
+calls still compares wall time, because it is about how long the frame took, not about a hang.

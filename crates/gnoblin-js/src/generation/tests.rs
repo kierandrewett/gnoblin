@@ -275,6 +275,69 @@ fn script_cannot_catch_the_interrupt() {
     assert_eq!(error.kind, JsErrorKind::Budget, "{error}");
 }
 
+/// A host function that blocks without computing, as a thread that the scheduler does not run does: wall time passes
+/// and the script's own CPU time does not.
+fn install_pause(ctx: &rquickjs::Ctx<'_>) {
+    let pause = rquickjs::Function::new(ctx.clone(), |ms: u64| std::thread::sleep(Duration::from_millis(ms)))
+        .expect("the pause function");
+    ctx.globals().set("pause", pause).expect("the pause global");
+}
+
+#[test]
+fn time_the_script_spends_waiting_for_the_scheduler_is_not_charged_to_its_budget() {
+    // The budget bounds a script that hangs, and a machine that does not run the thread for a while is not a script
+    // that hangs. Twenty pauses of 60 ms are 1.2 s of wall time against a 500 ms budget, with a few milliseconds of
+    // the script's own work: the call must finish. (How long the work takes is not asserted, so nothing here depends
+    // on the machine's speed beyond it being far under 500 ms of CPU.)
+    let root = root_with(&[]);
+    let generation = generation(&root);
+    let finished = generation
+        .call_budgeted(Duration::from_millis(500), |ctx| {
+            install_pause(ctx);
+            ctx.eval::<i32, _>(
+                "let n = 0; for (let i = 0; i < 20; i++) { pause(60); for (let j = 0; j < 20000; j++) { n++; } } n",
+            )
+        })
+        .expect("a stalled thread is not a runaway script");
+    assert_eq!(finished, 400_000);
+}
+
+#[test]
+fn a_script_stalled_for_longer_than_the_wall_clock_backstop_is_still_stopped() {
+    // The CPU budget alone would let a call that never computes run on for ever: the wall clock stops it at
+    // `WALL_BACKSTOP_FACTOR` times the budget. A 20 ms budget makes that 160 ms, and the pauses add up to 600 ms.
+    let root = root_with(&[]);
+    let generation = generation(&root);
+    let error = generation
+        .call_budgeted(Duration::from_millis(20), |ctx| {
+            install_pause(ctx);
+            ctx.eval::<(), _>("for (let i = 0; i < 20; i++) { pause(30); for (let j = 0; j < 20000; j++) {} }")
+        })
+        .expect_err("the backstop stops a call that is never scheduled");
+    assert_eq!(error.kind, JsErrorKind::Budget, "{error}");
+    assert!(
+        error.message.contains("wall") && error.message.contains("20 ms"),
+        "the report names the limit and the clock that stopped it: {error}"
+    );
+}
+
+#[test]
+fn a_trip_reports_the_limit_the_time_used_and_where_the_script_was() {
+    let root = root_with(&[]);
+    let generation = generation(&root);
+    let error = generation
+        .call_budgeted(Duration::from_millis(100), |ctx| {
+            ctx.eval::<(), _>("function spin() { for (;;) {} }\nfunction listener() { spin(); }\nlistener();")
+        })
+        .expect_err("the loop is interrupted");
+    assert_eq!(error.kind, JsErrorKind::Budget, "{error}");
+    let text = error.to_string();
+    assert!(text.contains("100 ms"), "the limit: {text}");
+    assert!(text.contains("CPU"), "the clock the limit is on: {text}");
+    assert!(text.contains("spin"), "the call it was in: {text}");
+    assert!(text.contains("listener"), "and who called it: {text}");
+}
+
 #[test]
 fn infinite_loop_in_a_module_is_a_budget_error_and_the_generation_stays_usable() {
     let root = root_with(&[("init.ts", "export const n: number = 1;\nwhile (true) {}\n")]);

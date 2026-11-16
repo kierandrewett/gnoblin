@@ -4,8 +4,8 @@
 //! drops the old, because QuickJS cannot evict a module. It owns exactly one [`Runtime`] and one
 //! [`Context`], so two generations share no script state.
 //!
-//! Every entry into JavaScript goes through [`JsGeneration::call_budgeted`], which arms a wall-clock
-//! deadline that the engine's interrupt handler polls. The handler's error cannot be caught by the
+//! Every entry into JavaScript goes through [`JsGeneration::call_budgeted`], which arms CPU-time and wall-clock
+//! deadlines that the engine's interrupt handler polls. The handler's error cannot be caught by the
 //! script, so `try { for (;;) {} } catch {}` still stops. A memory limit bounds the heap. An error that
 //! escapes carries the file, line and column of the author's source: stack frames in stripped `.ts`
 //! modules are remapped through the source map the loader kept.
@@ -23,7 +23,7 @@ use rquickjs::context::intrinsic;
 use rquickjs::convert::Coerced;
 use rquickjs::{Context, Ctx, Error, Exception, FromJs, Module, Runtime, Value};
 
-use crate::budget::STAGE_BUDGET;
+use crate::budget::{STAGE_BUDGET, WALL_BACKSTOP_FACTOR};
 use crate::bytecode::JsBytecodeCache;
 use crate::error::{JsError, JsErrorKind, JsLoadError, JsLocation};
 use crate::loader::{JsLoadState, JsLoader, JsResolver, JsTypeScriptModule};
@@ -41,7 +41,7 @@ pub struct JsConfig {
     pub typescript: Arc<HashMap<String, JsTypeScriptModule>>,
     /// Where compiled modules are kept between starts. Disabled by default; the runtime role turns it on.
     pub cache: JsBytecodeCache,
-    /// The wall-clock budget [`JsGeneration::eval_module`] gets for the import and its jobs.
+    /// The CPU-time budget [`JsGeneration::eval_module`] gets for the import and its jobs.
     pub stage_budget: Duration,
     /// The heap limit in bytes; 0 means unlimited.
     pub memory_limit: usize,
@@ -93,24 +93,61 @@ impl JsConfig {
 /// No deadline armed.
 const NO_DEADLINE: u64 = u64::MAX;
 
-/// The deadline the engine's interrupt handler polls.
+/// A duration for a message: whole milliseconds, or one decimal under 10 ms so a budget of a few microseconds is not
+/// reported as zero.
+fn millis(duration: Duration) -> String {
+    let ms = duration.as_secs_f64() * 1000.0;
+    if ms >= 10.0 {
+        format!("{ms:.0} ms")
+    } else {
+        format!("{ms:.1} ms")
+    }
+}
+
+/// The calling thread's CPU time in nanoseconds: what the script's own work has cost, and not the time the scheduler
+/// kept the thread off the processor. A generation lives on one thread, so the reading the handler takes is on the
+/// clock of the thread that armed the budget.
+fn thread_cpu_ns() -> u64 {
+    let at = rustix::time::clock_gettime(rustix::time::ClockId::ThreadCPUTime);
+    u64::try_from(at.tv_sec)
+        .unwrap_or(0)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(u64::try_from(at.tv_nsec).unwrap_or(0))
+        .min(NO_DEADLINE - 1)
+}
+
+/// The deadlines the engine's interrupt handler polls: a call is stopped when its own CPU time reaches the budget, or
+/// when the wall clock reaches [`WALL_BACKSTOP_FACTOR`] times the budget (`crate::budget` says why both).
 ///
 /// It is atomics rather than cells so a watchdog thread could arm or trip it later without a change here.
 #[derive(Debug)]
 struct JsBudget {
     epoch: Instant,
-    /// Nanoseconds since `epoch` at which the running call must stop.
-    deadline: AtomicU64,
+    /// Nanoseconds since `epoch` at which the running call must stop, whatever it has computed.
+    wall_deadline: AtomicU64,
+    /// The thread's CPU time, in nanoseconds on its own clock, at which the running call must stop.
+    cpu_deadline: AtomicU64,
+    /// What the running call started with: wall nanoseconds since `epoch`, and the thread's CPU nanoseconds.
+    wall_start: AtomicU64,
+    cpu_start: AtomicU64,
     /// Set when the handler stopped a script, so the error can be classified after the unwind.
     tripped: AtomicBool,
+    /// What the stopped call had used when the handler stopped it, in nanoseconds of wall time and of CPU time.
+    wall_used: AtomicU64,
+    cpu_used: AtomicU64,
 }
 
 impl JsBudget {
     fn new() -> Self {
         Self {
             epoch: Instant::now(),
-            deadline: AtomicU64::new(NO_DEADLINE),
+            wall_deadline: AtomicU64::new(NO_DEADLINE),
+            cpu_deadline: AtomicU64::new(NO_DEADLINE),
+            wall_start: AtomicU64::new(0),
+            cpu_start: AtomicU64::new(0),
             tripped: AtomicBool::new(false),
+            wall_used: AtomicU64::new(0),
+            cpu_used: AtomicU64::new(0),
         }
     }
 
@@ -118,27 +155,55 @@ impl JsBudget {
         u64::try_from(self.epoch.elapsed().as_nanos()).unwrap_or(NO_DEADLINE - 1)
     }
 
-    /// Starts a call that may run for `budget`. The guard disarms the deadline when dropped, also on panic.
+    /// Starts a call that may use `budget` of CPU time, or [`WALL_BACKSTOP_FACTOR`] times that of wall time. The
+    /// guard disarms the deadline when dropped, also on panic.
     fn arm(&self, budget: Duration) -> ArmGuard<'_> {
         self.tripped.store(false, Ordering::Relaxed);
-        let ns = u64::try_from(budget.as_nanos()).unwrap_or(u64::MAX);
-        self.deadline
-            .store(self.now_ns().saturating_add(ns).min(NO_DEADLINE - 1), Ordering::Relaxed);
+        let cpu_ns = u64::try_from(budget.as_nanos()).unwrap_or(u64::MAX);
+        let wall_ns = u64::try_from(budget.saturating_mul(WALL_BACKSTOP_FACTOR).as_nanos()).unwrap_or(u64::MAX);
+        let (wall, cpu) = (self.now_ns(), thread_cpu_ns());
+        self.wall_start.store(wall, Ordering::Relaxed);
+        self.cpu_start.store(cpu, Ordering::Relaxed);
+        self.wall_deadline
+            .store(wall.saturating_add(wall_ns).min(NO_DEADLINE - 1), Ordering::Relaxed);
+        self.cpu_deadline
+            .store(cpu.saturating_add(cpu_ns).min(NO_DEADLINE - 1), Ordering::Relaxed);
         ArmGuard(self)
     }
 
-    /// Whether the running call is out of time. Marks the call tripped when it is.
+    /// Whether the running call is out of time. Marks the call tripped, and keeps what it had used, when it is.
     fn expired(&self) -> bool {
-        let deadline = self.deadline.load(Ordering::Relaxed);
-        if deadline != NO_DEADLINE && self.now_ns() >= deadline {
-            self.tripped.store(true, Ordering::Relaxed);
-            return true;
+        let wall_deadline = self.wall_deadline.load(Ordering::Relaxed);
+        if wall_deadline == NO_DEADLINE {
+            return false;
         }
-        false
+        let (wall, cpu) = (self.now_ns(), thread_cpu_ns());
+        if wall < wall_deadline && cpu < self.cpu_deadline.load(Ordering::Relaxed) {
+            return false;
+        }
+        if !self.tripped.swap(true, Ordering::Relaxed) {
+            self.wall_used.store(
+                wall.saturating_sub(self.wall_start.load(Ordering::Relaxed)),
+                Ordering::Relaxed,
+            );
+            self.cpu_used.store(
+                cpu.saturating_sub(self.cpu_start.load(Ordering::Relaxed)),
+                Ordering::Relaxed,
+            );
+        }
+        true
     }
 
     fn tripped(&self) -> bool {
         self.tripped.load(Ordering::Relaxed)
+    }
+
+    /// What the call that was stopped had used: CPU time, then wall time.
+    fn used(&self) -> (Duration, Duration) {
+        (
+            Duration::from_nanos(self.cpu_used.load(Ordering::Relaxed)),
+            Duration::from_nanos(self.wall_used.load(Ordering::Relaxed)),
+        )
     }
 }
 
@@ -147,7 +212,8 @@ struct ArmGuard<'a>(&'a JsBudget);
 
 impl Drop for ArmGuard<'_> {
     fn drop(&mut self) {
-        self.0.deadline.store(NO_DEADLINE, Ordering::Relaxed);
+        self.0.wall_deadline.store(NO_DEADLINE, Ordering::Relaxed);
+        self.0.cpu_deadline.store(NO_DEADLINE, Ordering::Relaxed);
     }
 }
 
@@ -318,7 +384,8 @@ impl JsGeneration {
         })
     }
 
-    /// Runs `f` with the generation's context, giving it at most `budget` of wall-clock time.
+    /// Runs `f` with the generation's context, giving it at most `budget` of the thread's CPU time, and
+    /// [`WALL_BACKSTOP_FACTOR`] times that of wall-clock time.
     ///
     /// When the time runs out the script is interrupted and the result is a [`JsErrorKind::Budget`]
     /// error, even if `f` swallowed the failure: the interrupt is not catchable, so a script that
@@ -342,14 +409,40 @@ impl JsGeneration {
         })
     }
 
+    /// The error for a call the handler stopped. The message names the limit, how much of each clock the call had
+    /// used and the script's own innermost frames, so a trip in the log says which call, for how long and against
+    /// what, whichever clock stopped it.
     fn budget_error(&self, budget: Duration, thrown: Option<JsError>) -> JsError {
-        let mut error = JsError::new(
-            JsErrorKind::Budget,
+        let (cpu, wall) = self.budget.used();
+        let mut message = if cpu >= budget {
             format!(
-                "the script ran past its {} ms budget and was interrupted",
-                budget.as_millis()
-            ),
-        );
+                "the script used {} of CPU time ({} of wall time) against its {} CPU budget and was interrupted",
+                millis(cpu),
+                millis(wall),
+                millis(budget)
+            )
+        } else {
+            format!(
+                "the script was interrupted after {} of wall time, the {} wall-clock backstop to its {} CPU budget \
+                 (it used {} of CPU time)",
+                millis(wall),
+                millis(budget.saturating_mul(WALL_BACKSTOP_FACTOR)),
+                millis(budget),
+                millis(cpu)
+            )
+        };
+        if let Some(stack) = thrown.as_ref().and_then(|thrown| thrown.stack.as_deref()) {
+            let frames: Vec<&str> = stack
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .take(3)
+                .collect();
+            if !frames.is_empty() {
+                message.push_str(&format!("; it was in {}", frames.join(", called from ")));
+            }
+        }
+        let mut error = JsError::new(JsErrorKind::Budget, message);
         if let Some(thrown) = thrown {
             error.location = thrown.location;
             error.stack = thrown.stack;
