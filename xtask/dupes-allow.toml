@@ -519,6 +519,12 @@ kind = "same-name"
 reason = "a capture stop ends one stream; a session stop ends the session's guardian"
 
 [[allow]]
+left = "gnoblin-config::Origin"
+right = "gnoblin-input-eis::Origin"
+kind = "same-name"
+reason = "a configuration origin says where a file was found; an input origin says how an event entered the session"
+
+[[allow]]
 left = "gnoblin-capture::Target"
 right = "gnoblin-input::Target"
 kind = "same-name"
@@ -537,10 +543,82 @@ kind = "same-name"
 reason = "the authority's grant is a private record of a consent decision and its expiry; the input grant is that decision plus the capabilities an EI client's seat is built from"
 
 [[allow]]
-left = "gnoblin-config::Origin"
-right = "gnoblin-input-eis::Origin"
+left = "gnoblin-capture::Target"
+right = "gnoblin-shell-discovery::Target"
 kind = "same-name"
-reason = "a configuration origin says where a file was found; an input origin says how an event entered the session"
+reason = "a capture target is what a screenshot is taken of; a discovery target is the file a shell runs"
+
+[[allow]]
+left = "gnoblin-compositor::Request"
+right = "gnoblin-shell-discovery::Request"
+kind = "same-name"
+reason = "a portal request is a client's ask; a discovery request is what the command line asked for"
+
+[[allow]]
+left = "gnoblin-compositor::Selection"
+right = "gnoblin-shell-discovery::Selection"
+kind = "same-name"
+reason = "a backend selection is the display backend that was chosen; a discovery selection is the shell that was chosen"
+
+[[allow]]
+left = "gnoblin-config::Language"
+right = "gnoblin-shell-discovery::Language"
+kind = "same-name"
+reason = "the configuration language is TypeScript or JavaScript, which the runtime reads; the discovery language is how any shell is loaded, native and Python included"
+
+[[allow]]
+left = "gnoblin-input-eis::Context"
+right = "gnoblin-shell-discovery::Context"
+kind = "same-name"
+reason = "an EIS context is one client's connection state; a discovery context is one lookup's environment and config.toml"
+
+[[allow]]
+left = "gnoblin-input-eis::Request"
+right = "gnoblin-shell-discovery::Request"
+kind = "same-name"
+reason = "an EIS request is a message from an input client; a discovery request is what the command line asked for"
+
+[[allow]]
+left = "gnoblin-input::Target"
+right = "gnoblin-shell-discovery::Target"
+kind = "same-name"
+reason = "an input target is where an event is delivered; a discovery target is the file a shell runs"
+
+[[allow]]
+left = "gnoblin-js::ConfigState"
+right = "gnoblin-shell-discovery::ConfigState"
+kind = "same-name"
+reason = "the script runtime's config state is a document revision; the discovery one is what config.toml came to"
+
+[[allow]]
+left = "gnoblin-output::Source"
+right = "gnoblin-shell-discovery::Source"
+kind = "same-name"
+reason = "an output source is where a layout came from; a discovery source is who asked for a shell"
+
+[[allow]]
+left = "gnoblin-parity::Place"
+right = "gnoblin-shell-discovery::Place"
+kind = "same-name"
+reason = "a parity place is a spot in a recorded session; a discovery place is a directory shells are listed from"
+
+[[allow]]
+left = "gnoblin-render-vulkan::Candidate"
+right = "gnoblin-shell-discovery::Candidate"
+kind = "same-name"
+reason = "a Vulkan candidate is a physical device under consideration; a discovery candidate is a shell under consideration"
+
+[[allow]]
+left = "gnoblin-session::Environment"
+right = "gnoblin-shell-discovery::Environment"
+kind = "same-name"
+reason = "the session environment is what a child process is given; the discovery environment is the XDG variables a lookup reads"
+
+[[allow]]
+left = "gnoblin-shell-discovery::Row"
+right = "gnoblin-testkit::Row"
+kind = "same-name"
+reason = "a discovery row is a line of --list-shells; a testkit row is a line of a backend status table"
 
 [[allow]]
 left = "gnoblin-compat-wayland-gtk-shell1::Call"

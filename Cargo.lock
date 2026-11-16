@@ -1991,6 +1991,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-shell-discovery"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "gnoblin-testkit"
 version = "0.2.0-alpha.0"
 dependencies = [
