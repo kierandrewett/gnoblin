@@ -337,6 +337,13 @@ pub struct Forged {
     pub sent: Vec<Vec<TxOp>>,
     /// Every reply the compositor sent, in order.
     pub replies: Vec<TxReply>,
+    /// When each transaction in `sent` went out, taken just before the write: the compositor cannot have seen it earlier,
+    /// so an age measured from here is never smaller than the real one.
+    pub sent_at: Vec<Instant>,
+    /// When each `heartbeat` call on the lock node went out, in order: the shell renewing its lease.
+    pub beats: Vec<Instant>,
+    /// When each write of the seat's `focus` went out, with the node it named.
+    pub focus_writes: Vec<(Instant, u64)>,
 }
 
 /// The shell's own socket link, with the compositor's answers recorded and one transaction made stale on demand.
@@ -353,7 +360,20 @@ impl TreeLink for ForgingLink {
     fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
         let forge = {
             let mut forged = self.forged.borrow_mut();
+            let now = Instant::now();
             forged.sent.push(tx.ops.clone());
+            forged.sent_at.push(now);
+            for op in &tx.ops {
+                match op {
+                    TxOp::Call { method, .. } if method == "heartbeat" => forged.beats.push(now),
+                    TxOp::Set {
+                        key,
+                        value: gnoblin_tree_client::tree_mirror::MirrorValue::Node(node),
+                        ..
+                    } if key == "focus" => forged.focus_writes.push((now, *node)),
+                    _ => {}
+                }
+            }
             let carries = |method: &str| {
                 tx.ops
                     .iter()

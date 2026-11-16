@@ -19,6 +19,10 @@
 //!   reload's generation swap), so a shell that is merely slow, or reloading, does not flash the card. A shell that
 //!   detaches releases `engaged` here, so the next shell starts from a lock nobody holds and the card is back the
 //!   moment the old one is gone.
+//!   The screen counts as held only while the seat's keyboard focus is on a node under the `lock` node that takes input
+//!   (its entry). A shell that renews its lease on time but has lost the keyboard (a window that arrived under the lock
+//!   took the seat's focus, or a script moved it) holds a screen no key reaches, and nobody could type a password into
+//!   it, so the card takes the keys [`LOCK_UI_GRACE_MS`] after the keyboard left the screen.
 //! - **Not scriptable.** The card is a [`Modal`] only the composition root can set, through [`ControlHandle`] and not
 //!   through the tree. It is drawn after everything else in the frame, so no canvas is drawn over it, and while it is
 //!   up every key and button goes to it and to nothing else: no shell node, no client and no binding hears the password.

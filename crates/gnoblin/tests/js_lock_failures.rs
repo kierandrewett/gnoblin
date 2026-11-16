@@ -578,6 +578,74 @@ fn a_client_that_never_draws_does_not_take_the_keys_from_the_lock_screen() {
 }
 
 #[test]
+fn a_client_that_never_commits_does_not_take_the_keys_from_the_lock_screen() {
+    let (session, _config, mut shell) = locked_session_with_a_shell();
+    let mut mapper = Mapper::connect(&session.wayland());
+    // A toplevel the client created and then stopped on: it has no committed state at all, not even the empty first
+    // commit of a client that has not drawn yet.
+    mapper.open_window_without_commit("org.example.silent", "Silent");
+    std::thread::sleep(Duration::from_millis(400));
+    the_lock_screen_takes_the_keys(&session, "a client that never commits opened a window under the lock");
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
+#[test]
+fn a_shell_that_crashes_with_a_window_open_under_the_lock_leaves_the_card_to_take_the_password_at_once() {
+    let session = Session::start();
+    lock(&session);
+    wait_until("the session locked", &session, |seen| seen.state == "locked");
+    let config = config_with("");
+    let mut shell = Driven::start(&session, config.path());
+    shell.until("the shell's lock screen is up and engaged", |_| {
+        let seen = view(&session.ipc());
+        seen.engaged && seen.texts.iter().any(|text| text == "Enter your password.")
+    });
+    let mut mapper = Mapper::connect(&session.wayland());
+    let keys = mapper.keyboard();
+    mapper.map_window("org.example.open", "Open");
+    // The stock focus policy offers the window the focus, and the screen takes the keyboard back: the shell is healthy
+    // with a window open under its lock when it fails.
+    shell.run_for(Duration::from_millis(900));
+    assert_eq!(view(&session.ipc()).state, "locked");
+    shell.eval("__gnoblinHost.entry.ui = () => { throw new Error('the shell fails'); }; 0");
+    shell.try_tick().expect_err("the frame fails and the role ends");
+    drop(shell);
+    let crashed = Instant::now();
+    let took = the_password_is_still_needed(&session, crashed, Duration::ZERO, std::thread::sleep);
+    assert!(
+        took <= SLACK,
+        "the card took the password {took:?} after the shell crashed with a window open"
+    );
+    mapper.roundtrip();
+    assert!(
+        keys.pressed().is_empty(),
+        "the window under the lock heard the password typed at the card: {:?}",
+        keys.pressed()
+    );
+}
+
+#[test]
+fn the_stock_focus_policy_racing_wrong_passwords_never_unlocks_and_leaves_somebody_to_type_to() {
+    let (session, _config, mut shell) = locked_session_with_a_shell();
+    let mut mapper = Mapper::connect(&session.wayland());
+    // Each window maps while a wrong password is being typed: the policy writes the focus in the turn the keys arrive.
+    for number in 0..2 {
+        mapper.map_window("org.example.race", &format!("Race {number}"));
+        type_a_wrong_password(&session);
+        std::thread::sleep(Duration::from_millis(40));
+        let seen = view(&session.ipc());
+        assert_eq!(
+            seen.state, "locked",
+            "a wrong password raced a window and unlocked: {seen:?}"
+        );
+    }
+    the_lock_screen_takes_the_keys(&session, "windows raced wrong passwords under the lock");
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
+#[test]
 fn a_window_that_maps_while_the_lock_is_being_taken_does_not_leave_the_session_with_nobody_to_type_a_password_to() {
     let session = Session::start();
     // The shell runs on an unlocked session, as it does when a user locks one.

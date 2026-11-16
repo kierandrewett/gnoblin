@@ -134,6 +134,116 @@ fn a_window_that_had_the_keyboard_hears_nothing_while_the_compositors_card_takes
     );
 }
 
+/// A second client, with a keyboard, that maps a window under the lock. Returns it with what it hears.
+fn arrives_under_the_lock(session: &Session) -> (Mapper, support::KeyLog) {
+    let mut arrival = Mapper::connect(&session.wayland());
+    let heard_by_arrival = arrival.keyboard();
+    arrival.map_window("org.example.arrival", "Arrival");
+    // Long enough for the stock focus policy (when a shell runs) to have offered it the focus, and for the shell's
+    // screen to have taken the keyboard back.
+    std::thread::sleep(Duration::from_millis(700));
+    arrival.roundtrip();
+    (arrival, heard_by_arrival)
+}
+
+#[test]
+fn a_window_that_arrived_under_the_lock_leaves_the_keyboard_with_the_one_that_had_it_after_an_unlock_through_the_shells_screen()
+ {
+    let session = Session::start();
+    let (mut mapper, keys) = client_with_the_keyboard(&session);
+    let config = tempfile::tempdir().expect("a config directory");
+    fs::write(config.path().join("init.ts"), "export {};\n").expect("init.ts");
+    let mut shell = Shell::start(&session, config.path());
+    std::thread::sleep(Duration::from_millis(1500));
+    lock(&session);
+    wait_until("the session locked", &session, |seen| seen.state == "locked");
+    wait_until("the shell's lock screen is up and engaged", &session, |seen| {
+        seen.engaged && seen.texts.iter().any(|text| text == "Enter your password.")
+    });
+    let (mut arrival, heard_by_arrival) = arrives_under_the_lock(&session);
+    unlock(&session, &mut mapper);
+    arrival.roundtrip();
+    assert_eq!(keys.pressed(), [KEY_A], "the first window heard the password");
+    assert!(
+        heard_by_arrival.pressed().is_empty(),
+        "the window that arrived under the lock heard the password: {:?}",
+        heard_by_arrival.pressed()
+    );
+    // Nothing under the lock moved the keyboard: the window that had it before the lock has it again.
+    key(&session, KEY_B);
+    assert!(
+        heard(&mut mapper, &keys, KEY_B),
+        "the window that had the keyboard before the lock never heard a key after the unlock"
+    );
+    arrival.roundtrip();
+    assert!(
+        heard_by_arrival.pressed().is_empty(),
+        "the window that arrived under the lock took the keyboard: {:?}",
+        heard_by_arrival.pressed()
+    );
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
+#[test]
+fn a_window_that_arrived_under_the_lock_leaves_the_keyboard_with_the_one_that_had_it_after_an_unlock_through_the_card()
+{
+    let session = Session::start();
+    let (mut mapper, keys) = client_with_the_keyboard(&session);
+    lock(&session);
+    wait_until("the session locked", &session, |seen| seen.state == "locked");
+    let (mut arrival, heard_by_arrival) = arrives_under_the_lock(&session);
+    unlock(&session, &mut mapper);
+    arrival.roundtrip();
+    assert_eq!(keys.pressed(), [KEY_A], "the first window heard the password");
+    assert!(
+        heard_by_arrival.pressed().is_empty(),
+        "the window that arrived under the lock heard the password: {:?}",
+        heard_by_arrival.pressed()
+    );
+    key(&session, KEY_B);
+    assert!(
+        heard(&mut mapper, &keys, KEY_B),
+        "the window that had the keyboard before the lock never heard a key after the unlock"
+    );
+    arrival.roundtrip();
+    assert!(
+        heard_by_arrival.pressed().is_empty(),
+        "the window that arrived under the lock took the keyboard: {:?}",
+        heard_by_arrival.pressed()
+    );
+}
+
+#[test]
+fn a_window_that_arrived_under_the_lock_has_the_keyboard_after_the_unlock_when_no_window_had_it_before() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    fs::write(config.path().join("init.ts"), "export {};\n").expect("init.ts");
+    let mut shell = Shell::start(&session, config.path());
+    std::thread::sleep(Duration::from_millis(1500));
+    lock(&session);
+    wait_until("the session locked", &session, |seen| seen.state == "locked");
+    wait_until("the shell's lock screen is up and engaged", &session, |seen| {
+        seen.engaged && seen.texts.iter().any(|text| text == "Enter your password.")
+    });
+    let (mut arrival, heard_by_arrival) = arrives_under_the_lock(&session);
+    unlock(&session, &mut arrival);
+    assert!(
+        heard_by_arrival.pressed().is_empty(),
+        "the window that arrived under the lock heard the password: {:?}",
+        heard_by_arrival.pressed()
+    );
+    // The session has a window and nobody to give the keyboard to but it: it must hear a key, or the user comes back
+    // to a desktop that takes none.
+    key(&session, KEY_B);
+    assert!(
+        heard(&mut arrival, &heard_by_arrival, KEY_B),
+        "no window heard a key after the unlock: the window that arrived under the lock never got the keyboard"
+    );
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
 /// Whether any property of any node in the compositor's tree holds `needle`, as text, in a list of texts or in bytes.
 fn tree_holds(ipc: &std::path::Path, needle: &str) -> bool {
     support::snapshot(ipc).iter().any(|node| {

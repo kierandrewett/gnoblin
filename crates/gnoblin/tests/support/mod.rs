@@ -593,6 +593,19 @@ impl Mapper {
         self.decorations.push(None);
     }
 
+    /// Creates a toplevel and never commits it, as a client does that stops between `get_toplevel` and its first commit:
+    /// the compositor holds a toplevel with no committed state at all.
+    pub fn open_window_without_commit(&mut self, app_id: &str, title: &str) {
+        let surface = self.compositor.create_surface(&self.qh, ());
+        let xdg = self.wm_base.get_xdg_surface(&surface, &self.qh, ());
+        let toplevel = xdg.get_toplevel(&self.qh, ());
+        toplevel.set_app_id(app_id.to_owned());
+        toplevel.set_title(title.to_owned());
+        self.roundtrip();
+        self.windows.push((surface, xdg, toplevel));
+        self.decorations.push(None);
+    }
+
     /// Closes window number `window`, as an application does: its protocol objects are destroyed. The windows mapped
     /// after it move down by one number.
     pub fn close_window(&mut self, window: usize) {

@@ -292,12 +292,27 @@ the focus from the focus policy, and its keys go nowhere the screen can read. Th
 card would stay away and nobody could unlock the session.
 
 So the lock screen counts as held only while the keyboard is on its entry, and the card takes the keys one second after
-it is not. The bounds:
+it is not. The bounds, from the instant of the event to the instant the password is accepted:
 
-- The card takes the password at most 3 seconds after the last healthy beat.
-- The card takes it at most 1 second after the keyboard left the screen.
-- Each bound gains at most 100 ms for the session loop and 50 ms for the card's pump.
-- The tests allow 5 seconds more for a machine that other tests keep busy.
+- The card takes the password at most 3 seconds, plus half a second, after the last healthy beat.
+- The card takes it at most 1 second, plus half a second, after the keyboard left the screen.
+
+The half second is what lies between the grace running out and the password accepted:
+
+- The session's clock moves on a loop turn of at most 100 ms, and the lapse and the grace are each noticed on a turn.
+- The card's pump runs every 50 ms. It draws the card, takes the keys and sends the check.
+- The answer to the check is applied on the next turn.
+
+`crates/gnoblin/tests/js_lock_bound.rs` measures both from outside the compositor and asserts them. In a release build
+on a 4-CPU box, 20 runs each:
+
+| From                                   | Min     | Median  | Max     |
+| -------------------------------------- | ------- | ------- | ------- |
+| the last healthy beat, to the password | 3.313 s | 3.357 s | 3.404 s |
+| the keyboard leaving, to the password  | 1.189 s | 1.255 s | 1.306 s |
+
+A debug build is slower: one run took 3.51 s from the beat, so the test allows a second there. The other lock tests allow
+5 seconds more, for a machine that other tests keep busy.
 
 The compositor does not wait for the shell. Its tree answers a second connection within milliseconds while the shell is
 inside a call, and while a frozen shell's socket is not read.
@@ -351,13 +366,21 @@ inside a call, and while a frozen shell's socket is not read.
 
     - a window arrives under the lock, or five do;
     - one arrives and is closed;
-    - a client opens a window and never draws;
-    - a window maps as the lock is taken, or was open before it.
+    - a client opens a window and never draws, and one never commits at all;
+    - a window maps as the lock is taken, or was open before it;
+    - windows map while wrong passwords are typed, with the stock focus policy writing the focus in the same turns.
 
-    A healthy shell that keeps the keyboard from its own screen on every frame gets the card within the grace.
+    A healthy shell that keeps the keyboard from its own screen on every frame gets the card within the grace. A shell
+    that crashes with a window open under the lock leaves the card to take the password at once, and the window hears
+    none of it.
 
-- `crates/gnoblin/tests/js_lock_boundary.rs` pins what the lock keeps back: a window that had the keyboard hears nothing
-  typed at the shell's screen or at the card, and the password is in no node of the tree, typed or checked.
+- `crates/gnoblin/tests/js_lock_boundary.rs` pins what the lock keeps back:
+    - a window that had the keyboard hears nothing typed at the shell's screen or at the card;
+    - the password is in no node of the tree, typed or checked;
+    - after an unlock, when a window arrived under the lock, the window that had the keyboard before the lock has it
+      again, through the shell's screen and through the card;
+    - a window that arrived under the lock when none had the keyboard before gets it.
+- `crates/gnoblin/tests/js_lock_bound.rs` measures the takeover bounds above and asserts them.
 - `crates/gnoblin/tests/js_guardian.rs` kills the real runtime process while the session is locked (the session stays
   locked and the restarted shell holds the screen again) and freezes it with `SIGSTOP` while a window floods the tree with
   1.4 MB of title changes (the compositor's tree answers within 150 ms and the session stays locked).
@@ -376,6 +399,9 @@ Not proven:
 - The password check is a scripted double, not PAM. `GNOBLIN_PAM_TEST=1` runs the real one by hand.
 - The real runtime process is killed and frozen, but no test types at it, because the real session has no key
   injection. The card taking a password after a kill is proved in-process.
+- The bounds are measured on one kind of machine (4 CPUs, nothing else running) with the shell driven by the test, which
+  stops ticking to hang. A busy machine, a real runtime process hung by a signal and a real keyboard were not measured.
+  The card's first frame is not timed, because no test reads pixels: the interval ends at the password accepted.
 
 ## Portal and remote access while locked
 
