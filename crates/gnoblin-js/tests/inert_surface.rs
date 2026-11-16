@@ -97,6 +97,11 @@ const UNREAD: &[(&str, &str)] = &[
         "the compositor creates no workspace node (workspaces are the script's, `gnoblin.workspaces`), so the whole class \
          is unused: its `active`, `output` and `activate` go with it, and so does `window.workspace`, which is always nil",
     ),
+    (
+        "node.parent",
+        "no native code reads or writes a value named `parent`: a node's parent is the tree's structure (`insert` ops and \
+         `parented` changes), and the property only repeats it",
+    ),
 ];
 
 /// The non-test source of the native crates, each file cut at its first `#[cfg(test)]`.
