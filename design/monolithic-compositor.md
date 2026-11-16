@@ -45,6 +45,11 @@ and text size before drawing it.
 
 ## Acceptance
 
+> **Superseded in part.** A fresh session install now contains one compositor executable `gnoblin` plus the shared library
+> `libgnoblin-core.so.1` (required), and optionally `libgnoblin-std.so.1` and the language runtime modules. It is still one compositor
+> executable and there is still no `gnoblin-mutter`. This file is legacy Mutter text and is not rewritten; see
+> `design/modular-framework.md` section 2.1.
+
 - A fresh session install contains one compositor executable named `gnoblin`.
 - The login entry starts that executable without a `gnoblin-mutter` path.
 - Session supervision, Lua configuration recovery, native control, and

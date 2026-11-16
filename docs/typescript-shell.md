@@ -149,6 +149,10 @@ This build runs TypeScript and JavaScript shells, and [Where the config lives](#
 one. `GNOBLIN_SHELL_VM` is not read. To work on the stock library, point `GNOBLIN_JS_STOCK_DIR` at a directory to
 read it from instead of the copy built into the binary.
 
+> **Planned change.** This section describes the shell as it runs today. Shells are moving to loadable modules: a native `.so`,
+> Python, JavaScript or TypeScript, with the stock library installed as data instead of built into the binary. TypeScript will then
+> be one of four shell languages, not the only one. The plan is in `design/modular-framework.md`.
+
 ### If you still have an `init.lua`
 
 Gnoblin does not read Lua. When the config directory has an `init.lua` and nothing selects a shell, the session

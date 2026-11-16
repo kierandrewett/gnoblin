@@ -106,6 +106,11 @@ Why (a1) fails:
   D22 rejects in-process native code for third parties (`design/rust-compositor.md:2830`).
 - The OpenXR frame loop blocks in `xrWaitFrame`. The compositor loop must not block on anything outside it.
 
+> **Retracted in part.** The first bullet's reason, "D22 rejects in-process native code for third parties", no longer holds: native
+> `.so` shells run in the compositor process, with a panic catch at every boundary and `isolate = true` as the out-of-process
+> option (`design/modular-framework.md` section 2.1). The XR program stays out of process for the other reason on this list: the
+> OpenXR frame loop blocks in `xrWaitFrame` (D21 there).
+
 Why (b) fails:
 
 - A window capture holds the client buffer only. Popups are excluded (`design/capture-api.md:17`).

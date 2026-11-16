@@ -343,6 +343,9 @@ there is no `.so`). The harness table moves by five rows: fences 065, 067 and 06
 decision above), and 118 fails only on the
 compositor (below). Built, with the readings the specification leaves open:
 
+> **Retracted in part.** Only the XR program stays out of process (`design/modular-framework.md` D21). The words "there is no `.so`"
+> no longer hold for shells in general: a `.so` is now a first-class shell module (section 2.1 there).
+
 - **`xr.ControllerDragBinding`** is `XRControllerDragBinding`, the base the shell's own bindings already used; the extension now
   carries it, with `ViewRotateBinding` and `ViewScaleBinding` beside `ViewMoveBinding` and `ViewResizeBinding` (060). A script's
   class extends it with `super({ id, trigger })` as in fences 067 and 069 to 071.

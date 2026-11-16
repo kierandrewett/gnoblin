@@ -77,6 +77,9 @@ boundary:
 Tier 5 is sandboxed WebAssembly, not native libraries (D6). Tiers 1 to 4 already
 exist today in some form; the rewrite makes them consistent.
 
+> **Retracted.** Tier 5 is no longer WebAssembly. A shell is a native `.so` module or an interpreted script on a stable C ABI, and
+> WebAssembly is a non-goal (D6 below, and `design/modular-framework.md` section 2.1).
+
 ## Core abstractions
 
 These ideas shape the plan, the code and the tests. When a choice is unclear, go
@@ -186,6 +189,10 @@ This keeps today's proven guardian and supervisor model
 agents out of the compositor process. `gnoblin-idle` folds into the services
 role. The roles stay in one executable, as `design/monolithic-compositor.md`
 requires; `gnoblinctl` and the portal stay separate binaries.
+
+> **Superseded.** The compositor process now runs the shell host, so it may run scripts and native shell code ("runs no scripts"
+> above no longer holds). `--role runtime` becomes `--role shell`, the isolated host. The roles still live in one executable, which
+> now links the shared `libgnoblin-core.so.1`. See `design/modular-framework.md` sections 1 and 2.1.
 
 ### Trust: the session owner's connection
 
@@ -1782,7 +1789,7 @@ Each section below records the choice, its consequences, and the options conside
 | D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                                                                                                                                                                                                                                                   |
 | D4  | How bsm hosts sessions       | **Decided** (amended by D21): bsm becomes a Gnoblin; greeter control is an out-of-tree extension                                                                                                                                                                                                                                        |
 | D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                                                                                                                                                                                                                                             |
-| D6  | Native plugins               | **Decided:** WASM modules                                                                                                                                                                                                                                                                                                               |
+| D6  | Native plugins               | **Retracted:** shells are native `.so` modules or scripts on a C ABI, not WASM (`design/modular-framework.md` 2.1)                                                                                                                                                                                                                      |
 | D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                                                                                                                                                                                                                                        |
 | D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                                                                                                                                                                                                                                                    |
 | D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                                                                                                                                                                                                                                                        |
@@ -1900,6 +1907,9 @@ for portal requests when no handler is configured (D19); it never supplies porta
   Loses the in-session console.
 
 ### D6: native plugins
+
+> **Retracted.** Third-party native code is a `.so` shell module or an interpreted script on a stable C ABI, not WebAssembly, and
+> `gnoblin-wasm` is already deleted. WebAssembly stays a non-goal. See `design/modular-framework.md` section 2.1.
 
 **Decided 2026-11-04: WASM modules.** Consequences:
 
@@ -2898,6 +2908,10 @@ Each item is marked **Decided**, **Proposed** or **Rejected**. A Proposed power 
 | C. In-process native plugins                  | Load `dylib`s into the compositor.                                           | Fastest and most powerful. A fault ends the session, and Rust has no stable ABI (D6). **Rejected** for third parties.                             |
 | D. Lua for everything                         | One language, one sandbox.                                                   | Cheap to host. No OS isolation, and a wedged Lua call in the compositor VM costs a worker (D17). Lua is the default user power, not the only one. |
 
+> **Retracted.** Option C is accepted in the form the modular framework gives it: a native shell module in the compositor process,
+> with a stable C ABI and a panic catch at every boundary, and `isolate = true` for an out-of-process host. D22 as a whole was
+> already retracted. See `design/modular-framework.md` section 2.1.
+
 Open within B: the default tier for compiled-module powers, WASM or process. See "Open decisions".
 
 #### Package and manifest
@@ -3103,7 +3117,7 @@ New feature. Mutter has no equivalent, so there is no divergence ledger entry. R
 1. Security review of dynamic Wayland globals (the generic decoder, fd passing and per-client caps) before the prototype may ship.
 2. The capability list. Confirm the names and the granularity, and whether `model.<object>.<member>` is one capability per member or per object.
 3. Default tier for compiled-module powers: WASM or process. Recommendation: process for providers, WASM for modules, Lua for user config and hooks.
-4. In-process native plugins: never, or later behind a stable C ABI. Recommendation: never for third parties.
+4. In-process native plugins: ~~never, or later behind a stable C ABI. Recommendation: never for third parties.~~ **Retracted:** shells are native `.so` modules on a stable C ABI, in the compositor process by default (`design/modular-framework.md` D1, section 2.1).
 5. Trust root: hashes only, or signatures, and who signs.
 6. On provider death, disconnect Wayland clients by default, or leave inert objects that error on each request.
 7. Run-time enable and disable: session-only, or persisted to the host configuration.

@@ -57,9 +57,16 @@ Inputs (all in `design/js-research/`):
     Why: Layouts and bindings run in the JS process, so Rust does not have to see every write. No Proxy is visible to
     users.
 
+    Retracted in part: a script shell runs on the shell thread inside the compositor process by default, and `isolate = true`
+    runs the same host in a child over the owner socket. The snapshot diff is unchanged. See `design/modular-framework.md`
+    section 2.1.
+
 - **J7.** XR stays an out-of-process program on the owner socket (D34/D35). It is not a `.so` loaded into any process.
 
     Why: `extensions/gnoblin-xr` already works that way. Spec section 17 is replaced by the owner-socket model.
+
+    Retracted in part: only the XR sentence stands (`design/modular-framework.md` D21). A `.so` shell is a first-class shell now,
+    loaded by the compositor's shell host; see section 2.1 there.
 
 - **J8.** Rust draws the security-critical built-in dialogs: portal consent, secret and passphrase entry, polkit, lock
   password entry. JS themes them (`dialogs.style`), can intercept them (`DialogListener`), and can replace them only
@@ -85,6 +92,11 @@ Inputs (all in `design/js-research/`):
     a script that spins in a frame handler or a reload), `js_lock_boundary.rs` (no window hears the password; it is in no
     node of the tree), `js_guardian.rs` (a killed and a frozen runtime process under a lock) and
     `crates/gnoblin-js/tests/write_refusals.rs` (a lost check is answered; a lock frame that throws renews no lease).
+
+    Changed by `design/modular-framework.md` (section 2.1). A script shell runs inside the compositor process by default, so the
+    sentence "the shell is the user's own process" no longer holds unless `isolate = true`. The lock card (D7 there) and the lease
+    logic still protect a locked session from a hung shell. A shell that crashes in the compositor process ends the session
+    instead of being restarted.
 
 - **J9.** The Lua shell stays as the reference until the JS shell passes the same golden geometry corpus. Then delete
   `gnoblin-lua`, `gnoblin-lua-sandbox`, `data/lua/**` and the Lua docs.
