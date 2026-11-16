@@ -70,7 +70,7 @@ use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use super::NestedError;
 use super::handler::{Handler, OutputKey, SlotKey};
 use super::host_dmabuf::HostDmabuf;
-use super::present_dmabuf::{DmabufPresenter, Slots, presentable};
+use super::present_dmabuf::{DmabufPresenter, GpuSlots, presentable};
 use crate::Present;
 use crate::gpu::{GpuTarget, TargetParts};
 use crate::render::renderer::{AnyRenderer, RendererKind};
@@ -399,7 +399,7 @@ const GPU_GENERATION: u32 = 1 << 31;
 /// The buffers of one size a target presents through the parent's dmabuf import.
 struct GpuRing {
     /// Which of them the parent has.
-    slots: Slots,
+    slots: GpuSlots,
     /// Each buffer's memory, kept alive for as long as the parent may read it, and its `wl_buffer` once the parent has
     /// created it.
     buffers: Vec<(Dmabuf, Option<wl_buffer::WlBuffer>)>,
@@ -417,7 +417,7 @@ impl GpuRing {
 }
 
 /// Whether and how a target presents through the parent's dmabuf import.
-enum Gpu {
+enum DmabufPath {
     /// No buffers made yet: the first frame that can use the path makes them.
     Unbuilt,
     /// The buffers exist, or are being created by the parent.
@@ -429,7 +429,7 @@ enum Gpu {
 
 /// The pieces of the GPU path a target holds.
 struct GpuPath {
-    state: Gpu,
+    state: DmabufPath,
     /// The parent's dmabuf global and what it said it imports, when the parent offers one and the session asked for the
     /// path.
     host: Option<(zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, HostDmabuf)>,
@@ -509,14 +509,14 @@ impl NestedTarget {
             scratch: Vec::new(),
             gpu: match gpu {
                 Some((global, host, presenter)) => GpuPath {
-                    state: Gpu::Unbuilt,
+                    state: DmabufPath::Unbuilt,
                     host: Some((global, host)),
                     presenter: Some(presenter),
                     next_generation: 1,
                     presents: 0,
                 },
                 None => GpuPath {
-                    state: Gpu::Retired,
+                    state: DmabufPath::Retired,
                     host: None,
                     presenter: None,
                     next_generation: 1,
@@ -617,7 +617,7 @@ impl NestedTarget {
         self.output = output;
         self.ring = Ring::new(SLOTS);
         // The GPU buffers are the old size; the next frame makes new ones. A path that was retired stays retired.
-        if let Gpu::Ring(ring) = std::mem::replace(&mut self.gpu.state, Gpu::Unbuilt) {
+        if let DmabufPath::Ring(ring) = std::mem::replace(&mut self.gpu.state, DmabufPath::Unbuilt) {
             ring.destroy();
         }
         // The buffer scale is a property of the surface rather than of a buffer, and it
@@ -684,7 +684,7 @@ impl NestedTarget {
     pub(crate) fn release(&mut self, generation: u32, slot: u8) {
         if generation == self.pool.generation {
             self.ring.release(slot);
-        } else if let Gpu::Ring(ring) = &mut self.gpu.state {
+        } else if let DmabufPath::Ring(ring) = &mut self.gpu.state {
             ring.slots.release(generation, slot);
         }
     }
@@ -700,8 +700,8 @@ impl NestedTarget {
     pub(crate) fn set_presenter(&mut self, presenter: SharedPresenter) {
         self.gpu.presenter = Some(presenter);
         // A presenter that was refused before is given a second chance: it is a different one.
-        if matches!(self.gpu.state, Gpu::Retired) && self.gpu.host.is_some() {
-            self.gpu.state = Gpu::Unbuilt;
+        if matches!(self.gpu.state, DmabufPath::Retired) && self.gpu.host.is_some() {
+            self.gpu.state = DmabufPath::Unbuilt;
         }
     }
 
@@ -714,12 +714,12 @@ impl NestedTarget {
     /// Whether the GPU path was given up for this output.
     #[must_use]
     pub fn gpu_retired(&self) -> bool {
-        matches!(self.gpu.state, Gpu::Retired)
+        matches!(self.gpu.state, DmabufPath::Retired)
     }
 
     /// The parent created a GPU buffer.
     pub(crate) fn gpu_buffer_created(&mut self, generation: u32, slot: u8, buffer: wl_buffer::WlBuffer) {
-        if let Gpu::Ring(ring) = &mut self.gpu.state
+        if let DmabufPath::Ring(ring) = &mut self.gpu.state
             && ring.slots.generation == generation
             && let Some(entry) = ring.buffers.get_mut(usize::from(slot))
         {
@@ -733,9 +733,9 @@ impl NestedTarget {
 
     /// The parent refused a GPU buffer: the path is over for this output.
     pub(crate) fn gpu_buffer_failed(&mut self, generation: u32) {
-        let current = matches!(&self.gpu.state, Gpu::Ring(ring) if ring.slots.generation == generation);
+        let current = matches!(&self.gpu.state, DmabufPath::Ring(ring) if ring.slots.generation == generation);
         if current {
-            if let Gpu::Ring(ring) = &mut self.gpu.state {
+            if let DmabufPath::Ring(ring) = &mut self.gpu.state {
                 ring.slots.failed();
             }
             log::warn!(
@@ -748,7 +748,7 @@ impl NestedTarget {
 
     /// Gives the GPU path up for this output, destroying what it made.
     fn retire_gpu(&mut self) {
-        if let Gpu::Ring(ring) = std::mem::replace(&mut self.gpu.state, Gpu::Retired) {
+        if let DmabufPath::Ring(ring) = std::mem::replace(&mut self.gpu.state, DmabufPath::Retired) {
             ring.destroy();
         }
     }
@@ -756,7 +756,7 @@ impl NestedTarget {
     /// Whether this frame may go through the GPU path: the parent offers it, a presenter is installed, the renderer can
     /// take part, and the frame is the size of the buffer (a supersampled frame is averaged down on the CPU).
     fn gpu_usable(&mut self) -> bool {
-        if matches!(self.gpu.state, Gpu::Retired) || !self.output.supersample.is_identity() {
+        if matches!(self.gpu.state, DmabufPath::Retired) || !self.output.supersample.is_identity() {
             return false;
         }
         let (Some((_, host)), Some(presenter)) = (self.gpu.host.as_ref(), self.gpu.presenter.as_ref()) else {
@@ -793,7 +793,7 @@ impl NestedTarget {
                 area = "nested",
                 "the parent and the renderer share no format, so frames go through shared memory"
             );
-            self.gpu.state = Gpu::Retired;
+            self.gpu.state = DmabufPath::Retired;
             return;
         }
         let generation = GPU_GENERATION | self.gpu.next_generation;
@@ -801,7 +801,7 @@ impl NestedTarget {
         let mut buffers = Vec::with_capacity(SLOTS);
         {
             let Ok(mut presenter) = presenter.lock() else {
-                self.gpu.state = Gpu::Retired;
+                self.gpu.state = DmabufPath::Retired;
                 return;
             };
             for _ in 0..SLOTS {
@@ -809,7 +809,7 @@ impl NestedTarget {
                     Ok(buffer) => buffers.push((buffer, None)),
                     Err(error) => {
                         log::debug!(area = "nested", %error, "no GPU buffer, so frames go through shared memory");
-                        self.gpu.state = Gpu::Retired;
+                        self.gpu.state = DmabufPath::Retired;
                         return;
                     }
                 }
@@ -845,8 +845,8 @@ impl NestedTarget {
                 zwp_linux_buffer_params_v1::Flags::empty(),
             );
         }
-        self.gpu.state = Gpu::Ring(GpuRing {
-            slots: Slots::new(generation, SLOTS),
+        self.gpu.state = DmabufPath::Ring(GpuRing {
+            slots: GpuSlots::new(generation, SLOTS),
             buffers,
         });
     }
@@ -864,10 +864,10 @@ impl NestedTarget {
         if !self.gpu_usable() {
             return None;
         }
-        if matches!(self.gpu.state, Gpu::Unbuilt) {
+        if matches!(self.gpu.state, DmabufPath::Unbuilt) {
             self.build_gpu_ring();
         }
-        let Gpu::Ring(ring) = &mut self.gpu.state else {
+        let DmabufPath::Ring(ring) = &mut self.gpu.state else {
             return None;
         };
         let slot = ring.slots.take()?;

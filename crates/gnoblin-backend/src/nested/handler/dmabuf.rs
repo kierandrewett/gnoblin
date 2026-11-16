@@ -48,7 +48,7 @@ pub(crate) enum DmabufNote {
 
 /// The parent's dmabuf global, what it said, and the buffers it created.
 #[derive(Default)]
-pub(crate) struct Host {
+pub(crate) struct DmabufHost {
     /// The global, when the parent offers one.
     pub(super) global: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1>,
     /// What the parent imports.
@@ -59,7 +59,7 @@ pub(crate) struct Host {
     notes: Vec<DmabufNote>,
 }
 
-impl Host {
+impl DmabufHost {
     /// The parent's dmabuf global, which has said nothing yet.
     pub(crate) fn new(global: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1>) -> Self {
         Self {

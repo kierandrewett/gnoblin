@@ -1379,3 +1379,9 @@ right = "gnoblin-session::Plan"
 kind = "same-name"
 reason = "the clipped source and destination rectangles of a GPU copy and a session's startup plan are different things"
 
+
+[[allow]]
+left = "gnoblin-backend::SelectionTarget"
+right = "gnoblin-wayland::WlDataDeviceManagerSelectionKind"
+kind = "same-shape"
+reason = "the backend contract names the two selections without Smithay's type, as the compositor's own record of them does; a conversion each way sits beside the compositor's handler"

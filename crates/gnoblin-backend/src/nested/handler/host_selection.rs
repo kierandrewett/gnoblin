@@ -32,7 +32,7 @@ use super::Handler;
 
 /// What the connection learnt that the session's [`Host`](crate::Host) has to hear, in the order it arrived.
 #[derive(Debug)]
-pub(crate) enum Note {
+pub(crate) enum SelectionNote {
     /// The host's selection changed: the types it offers now, or `None` when it holds none.
     HostChanged {
         target: SelectionTarget,
@@ -47,12 +47,12 @@ pub(crate) enum Note {
 }
 
 /// The host's offer of one selection, kept so a client of the session can paste from it.
-enum HostOffer {
+enum HostSelectionOffer {
     Data(wl_data_offer::WlDataOffer),
     Primary(zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1),
 }
 
-impl HostOffer {
+impl HostSelectionOffer {
     fn receive(&self, mime: &str, fd: &impl AsFd) {
         match self {
             Self::Data(offer) => offer.receive(mime.to_owned(), fd.as_fd()),
@@ -92,16 +92,16 @@ impl SessionSource {
 
 /// One selection's state on this connection.
 #[derive(Default)]
-struct Channel {
+struct SelectionChannel {
     /// What the host offers the window now, with the types it named.
-    host: Option<(HostOffer, Vec<String>)>,
+    host: Option<(HostSelectionOffer, Vec<String>)>,
     /// What the session offered the host, with the types it named.
     session: Option<(SessionSource, Vec<String>)>,
     /// Whether the host's next selection event is the echo of the session's own set.
     echo: bool,
 }
 
-impl Channel {
+impl SelectionChannel {
     fn drop_host(&mut self) -> bool {
         match self.host.take() {
             Some((offer, _)) => {
@@ -124,14 +124,14 @@ pub(crate) struct Bridge {
     offers: HashMap<ObjectId, Vec<String>>,
     /// The offer a drag entered with, destroyed when it leaves.
     drag: Option<wl_data_offer::WlDataOffer>,
-    clipboard: Channel,
-    primary: Channel,
+    clipboard: SelectionChannel,
+    primary: SelectionChannel,
     /// Whether the session's window has the parent's keyboard.
     focused: bool,
     /// The newest serial of an input event the parent sent, which `set_selection` must name.
     serial: u32,
     /// What the host has to be told, in order.
-    notes: Vec<Note>,
+    notes: Vec<SelectionNote>,
 }
 
 impl Bridge {
@@ -186,7 +186,7 @@ impl Bridge {
         ] {
             channel.echo = false;
             if channel.drop_host() {
-                self.notes.push(Note::HostChanged {
+                self.notes.push(SelectionNote::HostChanged {
                     target,
                     mime_types: None,
                 });
@@ -195,11 +195,11 @@ impl Bridge {
     }
 
     /// Takes what the host has to be told.
-    pub(crate) fn take_notes(&mut self) -> Vec<Note> {
+    pub(crate) fn take_notes(&mut self) -> Vec<SelectionNote> {
         std::mem::take(&mut self.notes)
     }
 
-    fn channel(&mut self, target: SelectionTarget) -> &mut Channel {
+    fn channel(&mut self, target: SelectionTarget) -> &mut SelectionChannel {
         match target {
             SelectionTarget::Clipboard => &mut self.clipboard,
             SelectionTarget::Primary => &mut self.primary,
@@ -207,7 +207,7 @@ impl Bridge {
     }
 
     /// The parent says `offer` (or nothing) is now its selection.
-    fn host_selected(&mut self, target: SelectionTarget, offer: Option<HostOffer>, id: Option<ObjectId>) {
+    fn host_selected(&mut self, target: SelectionTarget, offer: Option<HostSelectionOffer>, id: Option<ObjectId>) {
         // The host sends its selection to the client that has its keyboard focus and to no other, so receiving one is
         // proof of the focus even from a host with no `wl_keyboard` to say so (a headless Sway has none). Losing the
         // focus is still `focus_out`, which a host with a keyboard sends.
@@ -231,7 +231,7 @@ impl Bridge {
         let had = channel.drop_host();
         let Some(offer) = offer else {
             if had {
-                self.notes.push(Note::HostChanged {
+                self.notes.push(SelectionNote::HostChanged {
                     target,
                     mime_types: None,
                 });
@@ -244,7 +244,7 @@ impl Bridge {
             // Nothing that crosses (or a secret): the offer is not kept and the session sees an empty selection.
             offer.destroy();
             if had {
-                self.notes.push(Note::HostChanged {
+                self.notes.push(SelectionNote::HostChanged {
                     target,
                     mime_types: None,
                 });
@@ -252,7 +252,7 @@ impl Bridge {
             return;
         }
         channel.host = Some((offer, mime_types));
-        self.notes.push(Note::HostChanged {
+        self.notes.push(SelectionNote::HostChanged {
             target,
             mime_types: Some(bridged),
         });
@@ -349,7 +349,7 @@ impl Bridge {
 
     /// The host asks for the session's selection: the note the host is told when the connection is dispatched.
     fn host_wants(&mut self, target: SelectionTarget, mime_type: String, fd: OwnedFd) {
-        self.notes.push(Note::HostWants { target, mime_type, fd });
+        self.notes.push(SelectionNote::HostWants { target, mime_type, fd });
     }
 
     /// The host replaced a source this session offered.
@@ -384,7 +384,7 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for Handler {
             }
             wl_data_device::Event::Selection { id } => {
                 let key = id.as_ref().map(Proxy::id);
-                bridge.host_selected(SelectionTarget::Clipboard, id.map(HostOffer::Data), key);
+                bridge.host_selected(SelectionTarget::Clipboard, id.map(HostSelectionOffer::Data), key);
             }
             // A drag is not bridged. Its offer is released when it leaves.
             wl_data_device::Event::Enter { id: Some(offer), .. } => {
@@ -460,7 +460,7 @@ impl Dispatch<zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, ()> 
             }
             zwp_primary_selection_device_v1::Event::Selection { id } => {
                 let key = id.as_ref().map(Proxy::id);
-                bridge.host_selected(SelectionTarget::Primary, id.map(HostOffer::Primary), key);
+                bridge.host_selected(SelectionTarget::Primary, id.map(HostSelectionOffer::Primary), key);
             }
             _ => {}
         }

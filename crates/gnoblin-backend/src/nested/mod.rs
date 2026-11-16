@@ -974,7 +974,7 @@ impl Nested {
     /// parent asks for is a pipe the host's client writes into and [`crate::selection::transfer`] empties into the
     /// parent's descriptor, within the limits of that module.
     fn deliver_selections<S: Host + 'static>(&mut self, host: &mut S) {
-        use handler::host_selection::Note;
+        use handler::host_selection::SelectionNote as Note;
         for note in self.handler.take_selection_notes() {
             match note {
                 Note::HostChanged { target, mime_types } => host.host_selection(target, mime_types),

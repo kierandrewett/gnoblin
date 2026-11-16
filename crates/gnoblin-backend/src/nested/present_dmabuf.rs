@@ -13,7 +13,7 @@
 //!   ([`AnyRenderer::copy_frame_into_dmabuf`], the code a screen capture into a client's GPU buffer runs). A test
 //!   installs another one ([`crate::nested::Nested::with_dmabuf_presenter`]) because a machine with no GPU cannot
 //!   allocate.
-//! - [`Slots`] is the target's half: the buffers of one size, which of them the host holds, and the creation of the
+//! - [`GpuSlots`] is the target's half: the buffers of one size, which of them the host holds, and the creation of the
 //!   `wl_buffer`s. A buffer is created with `zwp_linux_buffer_params_v1.create`, not `create_immed`: a host that refuses
 //!   an import answers `failed`, where the immediate form is a protocol error that ends the connection and so the
 //!   session.
@@ -216,7 +216,7 @@ pub(crate) enum SlotState {
 
 /// The states of one generation of buffers.
 #[derive(Debug)]
-pub(crate) struct Slots {
+pub(crate) struct GpuSlots {
     /// The generation the buffers belong to, so a release of an older one is recognisable.
     pub generation: u32,
     states: Vec<SlotState>,
@@ -224,7 +224,7 @@ pub(crate) struct Slots {
     refused: bool,
 }
 
-impl Slots {
+impl GpuSlots {
     /// `count` buffers, all pending.
     pub fn new(generation: u32, count: usize) -> Self {
         Self {
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn frames_use_shared_memory_until_every_buffer_exists() {
-        let mut slots = Slots::new(1, 2);
+        let mut slots = GpuSlots::new(1, 2);
         assert_eq!(
             slots.take(),
             None,
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn a_slot_in_flight_is_not_taken_twice() {
-        let mut slots = Slots::new(1, 2);
+        let mut slots = GpuSlots::new(1, 2);
         slots.created(0);
         slots.created(1);
         assert_eq!(slots.take(), Some(0));
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn a_release_of_a_replaced_generation_frees_nothing() {
-        let mut slots = Slots::new(2, 1);
+        let mut slots = GpuSlots::new(2, 1);
         slots.created(0);
         assert_eq!(slots.take(), Some(0));
         slots.release(1, 0);
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn a_refused_buffer_retires_the_gpu_path() {
-        let mut slots = Slots::new(1, 2);
+        let mut slots = GpuSlots::new(1, 2);
         slots.created(0);
         slots.failed();
         slots.created(1);
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn a_frame_not_presented_gives_its_buffer_back() {
-        let mut slots = Slots::new(1, 1);
+        let mut slots = GpuSlots::new(1, 1);
         slots.created(0);
         let taken = slots.take().expect("a buffer");
         slots.give_back(taken);

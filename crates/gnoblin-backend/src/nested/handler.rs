@@ -274,7 +274,7 @@ pub(crate) struct Handler {
     /// The parent's tablets, tools and pads.
     tablets: super::tablet::Tablets,
     /// The parent's dmabuf global, what it imports, and the buffers it created for this session.
-    dmabuf: dmabuf::Host,
+    dmabuf: dmabuf::DmabufHost,
 }
 
 impl Handler {
@@ -312,7 +312,7 @@ impl Handler {
             tablet_manager: bound.tablet_manager,
             tablet_seat: None,
             tablets: super::tablet::Tablets::new(),
-            dmabuf: dmabuf::Host::new(bound.dmabuf),
+            dmabuf: dmabuf::DmabufHost::new(bound.dmabuf),
         }
     }
 
@@ -554,7 +554,7 @@ impl Handler {
     }
 
     /// What the connection learnt that the session's host has to hear.
-    pub fn take_selection_notes(&mut self) -> Vec<host_selection::Note> {
+    pub fn take_selection_notes(&mut self) -> Vec<host_selection::SelectionNote> {
         self.selection.take_notes()
     }
 

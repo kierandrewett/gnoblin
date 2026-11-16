@@ -29,7 +29,7 @@
 //!    end something go on (`State::tablets_locked`). **No test drives it:** the lock needs an
 //!    `ext-session-lock-v1` client and `tests/session_lock.rs` has the only one, with no tablet objects; the rule is
 //!    the same `lock.state()` read every other input path makes.
-//! 4. **A pad press goes to a client that is not typing.** Pad events follow the keyboard focus, so a background
+//! 4. **A pad press goes to a client that is not typing.** PadRecord events follow the keyboard focus, so a background
 //!    client cannot read the pad: `a_pad_reaches_the_client_with_the_keyboard` in `tests/tablet.rs`.
 //! 5. **A pad announced to a client that is gone.** The pad table holds weak references and drops a client's
 //!    objects when they die: `a_pad_of_a_client_that_left_is_forgotten` in `tests/tablet.rs`.
@@ -70,7 +70,7 @@ use crate::State;
 use crate::log;
 
 /// What a tool the compositor has seen is doing.
-struct Tool {
+struct TrackedTool {
     handle: TabletToolHandle<State>,
     /// The tablet it is over while in proximity.
     device: Option<DeviceId>,
@@ -93,7 +93,7 @@ struct PadInstance {
 }
 
 /// A pad the seat has and the clients it was announced to.
-struct Pad {
+struct PadRecord {
     device: DeviceId,
     name: String,
     layout: PadLayout,
@@ -110,8 +110,8 @@ pub(crate) struct TabletTables {
     /// Kept alive so the global stays registered.
     _manager: TabletManagerState,
     tablets: HashMap<DeviceId, (TabletDescriptor, Tablet)>,
-    tools: HashMap<TabletTool, Tool>,
-    pads: Vec<Pad>,
+    tools: HashMap<TabletTool, TrackedTool>,
+    pads: Vec<PadRecord>,
     seats: Vec<SeatRef>,
     /// Tablet seat objects a client asked for whose number is known but whose object is not looked up yet.
     new_seats: Vec<(Client, u32)>,
@@ -434,7 +434,7 @@ impl State {
             }
         }
         log::debug!(area = "tablet", device = %info.id, name = %info.name, "a pad joined the seat");
-        self.tablets.pads.push(Pad {
+        self.tablets.pads.push(PadRecord {
             device: info.id,
             name: info.name.clone(),
             layout: info.pad,
@@ -494,7 +494,7 @@ impl State {
             .add_wp_tool(self, &display, &descriptor_of(&tool));
         self.tablets.tools.insert(
             tool,
-            Tool {
+            TrackedTool {
                 handle: handle.clone(),
                 device: None,
                 location: SmithayPoint::from((0.0, 0.0)),

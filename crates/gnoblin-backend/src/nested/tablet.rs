@@ -48,7 +48,7 @@ struct Tablet {
 
 /// What a tool sent since its last frame.
 #[derive(Debug, Default)]
-struct Pending {
+struct ToolFrame {
     /// The tool came into proximity: the tablet it is over and the output its surface is.
     entered: Option<(u32, Option<OutputId>)>,
     left: bool,
@@ -60,7 +60,7 @@ struct Pending {
 
 /// A tool the parent described.
 #[derive(Debug)]
-struct Tool {
+struct HostTool {
     kind: ToolKind,
     serial: u64,
     hardware_id: u64,
@@ -74,10 +74,10 @@ struct Tool {
     ignored: bool,
     tip_down: bool,
     position: PointF,
-    pending: Pending,
+    pending: ToolFrame,
 }
 
-impl Tool {
+impl HostTool {
     fn identity(&self) -> TabletTool {
         TabletTool {
             kind: self.kind,
@@ -90,7 +90,7 @@ impl Tool {
 
 /// A pad's ring or strip: the pad it belongs to, its number and what it last said.
 #[derive(Debug)]
-struct Touch {
+struct PadTouch {
     pad: u32,
     index: u32,
     /// What the next frame reports: a position, or `None` for a lift.
@@ -99,7 +99,7 @@ struct Touch {
 
 /// A pad the parent described.
 #[derive(Debug, Default)]
-struct Pad {
+struct HostPad {
     buttons: u32,
     rings: u32,
     strips: u32,
@@ -110,12 +110,12 @@ struct Pad {
 #[derive(Debug, Default)]
 pub struct Tablets {
     tablets: HashMap<u32, Tablet>,
-    tools: HashMap<u32, Tool>,
-    pads: HashMap<u32, Pad>,
+    tools: HashMap<u32, HostTool>,
+    pads: HashMap<u32, HostPad>,
     /// Which pad each group object belongs to.
     groups: HashMap<u32, u32>,
-    rings: HashMap<u32, Touch>,
-    strips: HashMap<u32, Touch>,
+    rings: HashMap<u32, PadTouch>,
+    strips: HashMap<u32, PadTouch>,
     next_device: u64,
     out: Vec<InputEvent>,
     ignored: u64,
@@ -208,7 +208,7 @@ impl Tablets {
     pub fn tool_added(&mut self, id: u32) {
         self.tools.insert(
             id,
-            Tool {
+            HostTool {
                 kind: ToolKind::Pen,
                 serial: 0,
                 hardware_id: 0,
@@ -219,7 +219,7 @@ impl Tablets {
                 ignored: false,
                 tip_down: false,
                 position: PointF::ZERO,
-                pending: Pending::default(),
+                pending: ToolFrame::default(),
             },
         );
     }
@@ -351,7 +351,7 @@ impl Tablets {
     }
 
     /// Turns one frame's changes into events, in the order a device produces them.
-    fn apply(&mut self, tool: &mut Tool, pending: Pending) {
+    fn apply(&mut self, tool: &mut HostTool, pending: ToolFrame) {
         if let Some((tablet, output)) = pending.entered {
             tool.tablet = Some(tablet);
             tool.output = output;
@@ -438,7 +438,7 @@ impl Tablets {
     }
 
     /// Ends a tool's stay: the tip lifts, and the tool leaves.
-    fn out_of_proximity(&mut self, tool: &mut Tool, device: DeviceId) {
+    fn out_of_proximity(&mut self, tool: &mut HostTool, device: DeviceId) {
         if tool.tip_down {
             tool.tip_down = false;
             self.out.push(
@@ -483,7 +483,7 @@ impl Tablets {
 
     /// The parent announced a pad.
     pub fn pad_added(&mut self, id: u32) {
-        self.pads.insert(id, Pad::default());
+        self.pads.insert(id, HostPad::default());
     }
 
     /// How many buttons the pad has.
@@ -506,7 +506,7 @@ impl Tablets {
         if let Some(record) = self.pads.get_mut(&pad) {
             self.rings.insert(
                 ring,
-                Touch {
+                PadTouch {
                     pad,
                     index: record.rings,
                     pending: None,
@@ -524,7 +524,7 @@ impl Tablets {
         if let Some(record) = self.pads.get_mut(&pad) {
             self.strips.insert(
                 strip,
-                Touch {
+                PadTouch {
                     pad,
                     index: record.strips,
                     pending: None,
