@@ -120,7 +120,9 @@ the `init.ts` that `gnoblinctl config init` writes.
   workspaces.
 - An `init.ts` replaces the default. A file that binds no keys has none, and one that declares no workspace gets one
   floating `desktop`.
-- The stock library is itself TypeScript, shipped in `/usr/share/gnoblin/js/` and embedded as the `gnoblin` module.
+- The stock library is itself TypeScript, shipped in `/usr/share/gnoblin/js/` and embedded as two packages, `gnoblin-core` and `gnoblin-std` (J29).
+
+- **J29.** The stock library is two packages. `gnoblin-core` (`data/js/gnoblin-core`) is the host bridge and the object types a shell stands on; `gnoblin-std` (`data/js/gnoblin-std`) is the optional desktop policy. The direction is std to core only, and a stock test fails on a core module that imports a std module. Imports name a package (`gnoblin-core`, `gnoblin-std`, `gnoblin-std/layouts/dwindle`); the bare `gnoblin` specifier is removed. A package entry is its pure index plus, when the shell embeds it, `export * from "<package>/host"`. The embedded library keeps source maps, so a throw in it reports a stock `.ts` line. Not finished: core still imports std in the places the test's `CORE_TO_STD` lists, because the host object model (`Client`, `Output`, adoption, the frame entry) still reaches workspaces, styles and transitions directly; moving that behind hooks that `gnoblin-std` fills is the remaining step, and it is what lets a shell run on `gnoblin-core` alone.
 
 ## Slice 1 (first vertical slice, smallest proof)
 

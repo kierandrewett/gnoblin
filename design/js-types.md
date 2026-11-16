@@ -2,7 +2,7 @@
 
 ## Why
 
-The types of `import ... from "gnoblin"` used to be a second copy of the library.
+The types of `import ... from "gnoblin-core"` and `"gnoblin-std"` used to be a second copy of the library.
 
 - A hand-written file of about 4,200 lines (`crates/gnoblin-js-types/static/gnoblin-stock.d.ts`) declared `module "gnoblin"`
   and `module "gnoblin-std/extensions/xr"` next to the TypeScript in `data/js/gnoblin-core` and `data/js/gnoblin-std`.

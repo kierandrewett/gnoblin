@@ -9,6 +9,18 @@ Your `init.ts` replaces the default: it is the whole configuration, and what it 
 
 New to the file? Start with the [TypeScript shell](typescript-shell.md), which writes a first `init.ts`.
 
+## The two packages
+
+The library is two packages:
+
+- `gnoblin-core` is the host bridge and the core objects: `gnoblin`, `Client`, `Output`, collections, listeners, input
+  contexts and bindings, `process`, `session`, and the dialog, idle and authentication services.
+- `gnoblin-std` is the desktop policy built on it: workspaces, layouts, the move and resize bindings, focus, snapping,
+  the window frame and menus, styles, transitions, scenes, the toolkit and XR.
+
+`gnoblin-std` imports `gnoblin-core`, never the reverse. Import from the package a name lives in, or from a submodule
+such as `gnoblin-std/layouts/dwindle`. There is no bare `gnoblin` import.
+
 ## Run your own code
 
 The file is a program, and it runs when the shell loads it. The `gnoblin` object is a global, and every statement reads or

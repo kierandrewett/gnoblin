@@ -107,8 +107,8 @@ config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, 
 This fades each Text Editor window in when it opens:
 
 ```ts
-import { CollectionListener } from "gnoblin";
-import type { Client } from "gnoblin";
+import { CollectionListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 gnoblin.clients.addListener(
     new (class extends CollectionListener {
