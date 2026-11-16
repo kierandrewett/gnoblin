@@ -14,6 +14,8 @@
 pub mod backend_status;
 /// A clock that moves only when a test moves it.
 pub mod clock;
+/// An in-memory compositor behind the tree link, which every shell runtime's tests share.
+pub mod compositor;
 /// Records observations as JSON with secrets removed before they are stored.
 pub mod recorder;
 /// Private runtime directories for a test, removed when the test ends.

@@ -32,13 +32,15 @@
 //! the configuration document.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gnoblin_tree_client::tree_mirror::{NodeId, SnapshotNode, TreeIncoming, TreeLink, TreeMirror, TxOp};
+use gnoblin_tree_client::gate::TxGate;
+use gnoblin_tree_client::session::{ATTACH_VERSION, BOOT_WAIT, SessionError, boot_mirror};
+use gnoblin_tree_client::tree_mirror::{NodeId, TreeIncoming, TreeLink, TreeMirror};
 use rquickjs::convert::Coerced;
 use rquickjs::{FromJs, Function, Module, Object, Value};
 use thiserror::Error;
@@ -46,7 +48,6 @@ use thiserror::Error;
 use gnoblin_shell_host::stage::{RollbackSlot, StepError, SwapHost, swap};
 use gnoblin_shell_host::supervisor::{Clock, SystemClock};
 
-use self::txgate::Sent;
 use crate::bindings::{HostState, SharedState, StageMark};
 use crate::budget::{ENTRY_BUDGET, FRAME_BUDGET};
 use crate::dialogs::JsDialogs;
@@ -70,19 +71,7 @@ gnoblin_log::logger!(log = "js");
 /// The most promise jobs one frame's pump runs, so that a chain of jobs that schedules itself cannot hold the frame.
 const MAX_JOBS_PER_PUMP: usize = 1000;
 
-/// How many times a write the compositor refused `stale-base` is sent again before it is dropped: the
-/// number `the retired retired host`'s shell keeps. A node the compositor changes before every landing would refuse the
-/// write for ever, and the writes beside it, so after this many refusals in a row the refused write is
-/// dropped and the transaction's other writes go on.
-pub const STALE_RETRIES: u32 = 3;
-
-/// The protocol version the shell attaches with.
-const ATTACH_VERSION: u64 = 1;
-
-/// How long the boot waits for the compositor's attach reply and its complete snapshot.
-const BOOT_WAIT: Duration = Duration::from_secs(5);
-/// The pause between boot polls while the reply is still on its way.
-const BOOT_POLL: Duration = Duration::from_millis(5);
+pub use gnoblin_tree_client::gate::STALE_RETRIES;
 
 /// The least time the embedded library's install may use, whatever the config's `stage_budget`: the bundled modules
 /// are compiled in that call, and a budget chosen to bound a user's entry must not starve them.
@@ -194,16 +183,9 @@ pub struct JsShell {
     incoming: Vec<TreeIncoming>,
     /// The snapshot's nodes, parents first, to announce `ready` for on the first frame.
     boot_ready: Option<Vec<NodeId>>,
-    /// The serial and ops of each sent transaction, oldest first, until its reply arrives. The compositor
-    /// answers in order, but a refusal carries the serial the tree had then and not the one the shell
-    /// stamped, so a reply is matched to its transaction by position.
-    sent: VecDeque<Sent>,
-    /// Serial of the one transaction in flight. Nothing else is sent until its reply has come and the mirror reaches it.
-    in_flight: Option<u64>,
-    /// Ops refused `stale-base` that are sent again, ahead of the next frame's writes.
-    retry: Vec<TxOp>,
-    /// How many transactions in a row were refused `stale-base` and sent again; an applied one resets it.
-    stale_refusals: u32,
+    /// The transaction gate: one transaction in flight, its reply matched to it by position, a refused transaction's writes
+    /// sent again (the tree client's, shared with every shell runtime).
+    tx: TxGate,
     /// How many times each failure site was seen. The first is reported, the rest only counted.
     reported: HashMap<String, u64>,
     /// How many times a call ran past its wall-clock or memory budget in this generation.
@@ -227,7 +209,7 @@ impl JsShell {
     /// does not deliver a complete snapshot within five seconds.
     pub fn new(mut link: Box<dyn TreeLink>, config: JsShellConfig) -> Result<Self, JsShellError> {
         link.attach(ATTACH_VERSION).map_err(|e| JsShellError::Link(e.0))?;
-        let (mirror, incoming) = boot_mirror(link.as_mut())?;
+        let (mirror, incoming) = boot(link.as_mut())?;
         let boot_ready = bindings::parents_first(&mirror);
         let state: SharedState = Rc::new(RefCell::new(HostState::with_clock(mirror, Arc::clone(&config.clock))));
         state.borrow_mut().xr = crate::xr::JsXrState::declared(config.xr_declared);
@@ -268,10 +250,7 @@ impl JsShell {
             frame_budget: config.frame_budget,
             incoming,
             boot_ready: Some(boot_ready),
-            sent: VecDeque::new(),
-            in_flight: None,
-            retry: Vec::new(),
-            stale_refusals: 0,
+            tx: TxGate::new(),
             reported: HashMap::new(),
             strikes: 0,
             dispatches: 0,
@@ -609,42 +588,13 @@ fn install_host(generation: &JsGeneration, state: &SharedState, budget: Duration
     })
 }
 
-/// Drains the link until the complete snapshot has arrived, building the mirror from it. Anything else
-/// that arrives meanwhile is kept for the first frame.
-fn boot_mirror(link: &mut dyn TreeLink) -> Result<(TreeMirror, Vec<TreeIncoming>), JsShellError> {
-    let mut attached = None;
-    let mut nodes: Vec<SnapshotNode> = Vec::new();
-    let mut snapshot_serial = 0;
-    let mut rest = Vec::new();
-    let mut complete = false;
-    let deadline = Instant::now() + BOOT_WAIT;
-    loop {
-        for message in link.poll().map_err(|e| JsShellError::Link(e.0))? {
-            match message {
-                TreeIncoming::Attached(a) => attached = Some(a),
-                TreeIncoming::Snapshot {
-                    serial,
-                    last,
-                    nodes: chunk,
-                    ..
-                } => {
-                    snapshot_serial = serial;
-                    nodes.extend(chunk);
-                    complete |= last;
-                }
-                other => rest.push(other),
-            }
-        }
-        if (attached.is_some() && complete) || Instant::now() >= deadline {
-            break;
-        }
-        std::thread::sleep(BOOT_POLL);
-    }
-    let attached = attached.ok_or(JsShellError::NoAttach)?;
-    if !complete {
-        return Err(JsShellError::IncompleteSnapshot);
-    }
-    let mirror = TreeMirror::from_snapshot(attached.epoch, attached.root, snapshot_serial, &nodes)
-        .map_err(|e| JsShellError::Mirror(format!("{e:?}")))?;
-    Ok((mirror, rest))
+/// Drains the link until the complete snapshot has arrived, building the mirror from it (the tree client's boot, shared
+/// with every shell runtime). Anything else that arrives meanwhile is kept for the first frame.
+fn boot(link: &mut dyn TreeLink) -> Result<(TreeMirror, Vec<TreeIncoming>), JsShellError> {
+    boot_mirror(link, BOOT_WAIT).map_err(|error| match error {
+        SessionError::Link(why) => JsShellError::Link(why),
+        SessionError::Mirror(why) => JsShellError::Mirror(why),
+        SessionError::NoAttach => JsShellError::NoAttach,
+        SessionError::IncompleteSnapshot => JsShellError::IncompleteSnapshot,
+    })
 }

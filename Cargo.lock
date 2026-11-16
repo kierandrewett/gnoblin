@@ -1562,6 +1562,7 @@ dependencies = [
  "gnoblin-proto",
  "gnoblin-secret",
  "gnoblin-shell-host",
+ "gnoblin-testkit",
  "gnoblin-tree-client",
  "oxc_allocator",
  "oxc_codegen",
@@ -2021,6 +2022,8 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-model",
  "gnoblin-schema",
+ "gnoblin-secret",
+ "gnoblin-tree-client",
  "serde_json",
 ]
 
@@ -2029,6 +2032,7 @@ name = "gnoblin-tree-client"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-client",
+ "gnoblin-log",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-secret",

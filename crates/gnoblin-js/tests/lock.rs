@@ -20,7 +20,7 @@ use std::time::Duration;
 use gnoblin_tree_client::tree_mirror::{MirrorChange, MirrorChangeKind, MirrorValue, TxOp};
 
 mod common;
-use common::{FakeCompositor, ROOT, SentCall, change, frame_runs, go_quiet, rig_setup, set_change, text};
+use common::{CanvasText, FakeCompositor, ROOT, SentCall, change, frame_runs, go_quiet, rig_setup, set_change, text};
 
 const LOCK: u64 = 2;
 const SEAT: u64 = 3;

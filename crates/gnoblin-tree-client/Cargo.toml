@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 # Text that must not leak (a seat chord, a password): redacted `Debug`, wiped on drop.
 gnoblin-secret.workspace = true
+# The gate logs what it does with a refusal.
+gnoblin-log = { path = "../gnoblin-log" }
 # The wire: the envelopes, the tree messages and the framing. The link speaks them directly.
 gnoblin-proto = { path = "../gnoblin-proto" }
 # The owner socket's client and its vocabulary: the slot link speaks them.

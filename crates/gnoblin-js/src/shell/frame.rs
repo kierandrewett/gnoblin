@@ -239,7 +239,7 @@ impl JsShell {
     /// Lets the builder's copies show what the compositor wrote natively, and drops from the frame's lists the nodes that
     /// are gone or were made in it.
     fn stage_settle(&mut self, work: &mut FrameWork) -> Result<(), JsShellError> {
-        let settled = self.sent.is_empty() && self.retry.is_empty();
+        let settled = self.tx.is_settled();
         let state = &mut *self.state.borrow_mut();
         if settled {
             state.tick.settle();

@@ -2,6 +2,8 @@
 //! `second`), a seat, a lock, and windows of 300 by 200 at (10 n, 20 n), on workspaces `1` to `3`. Cases name the
 //! retired test they port.
 
+use gnoblin_tree_client::tree_mirror::{MirrorChange, MirrorChangeKind};
+
 use super::*;
 
 /// The library prelude of the shared tests, and `g` as the global object for `exec`.

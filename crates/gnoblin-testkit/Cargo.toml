@@ -16,6 +16,12 @@ serde_json.workspace = true
 # the model's vocabulary, so the helper names the same types the graph validates.
 gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-schema = { path = "../gnoblin-schema" }
+# The fake compositor behind the tree link (`compositor`), which every shell runtime's tests share.
+gnoblin-tree-client = { path = "../gnoblin-tree-client" }
+
+[dev-dependencies]
+# The session tests make calls whose text is a secret.
+gnoblin-secret.workspace = true
 
 [lints]
 workspace = true

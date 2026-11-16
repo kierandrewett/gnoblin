@@ -69,3 +69,5 @@ toml.workspace = true
 gnoblin-paint.workspace = true
 # The console tests read what a script logged through `console`, with the level each line was logged at.
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
+# The fake compositor behind the tree link, shared with the native shell core's tests.
+gnoblin-testkit = { path = "../gnoblin-testkit" }

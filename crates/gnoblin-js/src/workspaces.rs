@@ -1,14 +1,11 @@
-//! The Rust side of workspaces: what a reload carries from one shell to the next, and how a frame's
-//! property writes are coalesced.
+//! The Rust side of workspaces: what a reload carries from one shell to the next.
 //!
 //! A workspace is a script object (`Workspace` in `data/js/gnoblin-core/host.ts`), so the compositor does not know which
 //! workspace a window is on. A new generation starts without that knowledge. [`JsWorkspaceSnapshot`] is
 //! what the old shell hands over ([`JsShell::workspace_snapshot`](crate::JsShell::workspace_snapshot)) and
 //! the new shell reconciles by workspace id ([`JsShell::reconcile`](crate::JsShell::reconcile)).
 
-use std::collections::HashMap;
-
-use gnoblin_tree_client::tree_mirror::{NodeId, TxOp};
+use gnoblin_tree_client::tree_mirror::NodeId;
 use rquickjs::{Array, Ctx, Object};
 
 /// One workspace of a snapshot: its id and the windows it held, in order.
@@ -160,94 +157,5 @@ impl JsWorkspaceSnapshot {
         object.set("outputs", shown)?;
         object.set("kept", kept)?;
         Ok(object)
-    }
-}
-
-/// Keeps one instant write of each property per transaction, the last one. A script may write `x` twice in a
-/// frame (a handler, then the layout), and only the final value is its intent. The kept write stays where it
-/// was, so a write to a node the transaction makes still comes after the `New`. A write that animates
-/// (`seconds` or `samples`) is not merged: its curve is its own.
-pub(crate) fn coalesce_sets(ops: Vec<TxOp>) -> Vec<TxOp> {
-    let keep: Vec<bool> = {
-        let mut last: HashMap<(NodeId, &str), usize> = HashMap::new();
-        for (index, op) in ops.iter().enumerate() {
-            if let TxOp::Set {
-                node,
-                key,
-                seconds: None,
-                samples: None,
-                ..
-            } = op
-            {
-                last.insert((*node, key.as_str()), index);
-            }
-        }
-        ops.iter()
-            .enumerate()
-            .map(|(index, op)| match op {
-                TxOp::Set {
-                    node,
-                    key,
-                    seconds: None,
-                    samples: None,
-                    ..
-                } => last.get(&(*node, key.as_str())) == Some(&index),
-                _ => true,
-            })
-            .collect()
-    };
-    ops.into_iter()
-        .zip(keep)
-        .filter_map(|(op, kept)| kept.then_some(op))
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use gnoblin_tree_client::tree_mirror::MirrorValue;
-
-    use super::*;
-
-    fn set(node: NodeId, key: &str, value: f64) -> TxOp {
-        TxOp::Set {
-            node,
-            key: key.to_owned(),
-            value: MirrorValue::Double(value),
-            seconds: None,
-            delay: None,
-            tween: None,
-            samples: None,
-        }
-    }
-
-    #[test]
-    fn the_last_instant_write_of_a_property_is_the_one_kept() {
-        let ops = vec![
-            set(3, "x", 1.0),
-            set(3, "y", 5.0),
-            set(4, "x", 7.0),
-            set(3, "x", 2.0),
-            set(3, "x", 3.0),
-        ];
-        assert_eq!(
-            coalesce_sets(ops),
-            vec![set(3, "y", 5.0), set(4, "x", 7.0), set(3, "x", 3.0)]
-        );
-    }
-
-    #[test]
-    fn an_animated_write_is_not_merged_and_other_ops_stay() {
-        let animated = TxOp::Set {
-            node: 3,
-            key: "x".to_owned(),
-            value: MirrorValue::Double(9.0),
-            seconds: Some(0.2),
-            delay: None,
-            tween: None,
-            samples: None,
-        };
-        let destroy = TxOp::Destroy { node: 5 };
-        let ops = vec![set(3, "x", 1.0), animated.clone(), destroy.clone(), set(3, "x", 2.0)];
-        assert_eq!(coalesce_sets(ops), vec![animated, destroy, set(3, "x", 2.0)]);
     }
 }
