@@ -1,6 +1,8 @@
 //! Tests of this module.
 
-use super::claims::{JsClaimOutcome, claim, claim_args, claim_device, claim_gesture, unclaim};
+use super::claims::{
+    JsClaimOutcome, claim, claim_args, claim_device, claim_gesture, claim_pointer, grab, release_all, unclaim,
+};
 use super::seats::{JsSeatSettings, clear_focus, devices, focus, pointer, seat_name, seats, set_builtin_motion};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror, TxOp};
 
@@ -228,5 +230,86 @@ fn unclaim_calls_once_and_ignores_an_id_it_does_not_hold() {
         })
         .collect();
     assert_eq!(methods, ["claim", "unclaim"]);
+    assert_eq!(state.input.claimed(), 0);
+}
+
+/// The calls a state has queued, as `(method, arguments, text)`.
+fn calls_of(state: &HostState) -> Vec<(String, Vec<u8>, String)> {
+    state
+        .tick
+        .ops()
+        .iter()
+        .filter_map(|op| match op {
+            TxOp::Call { method, args, text, .. } => Some((method.clone(), args.clone(), text.expose().to_owned())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_pointer_claim_is_a_call_with_the_id_and_the_bare_device_name_as_its_text() {
+    let mut state = state();
+    assert_eq!(claim_pointer(&mut state, 4, "Side Pad"), JsClaimOutcome::Claimed(1));
+    assert_eq!(
+        calls_of(&state),
+        [(
+            "claim_pointer".to_owned(),
+            1_i64.to_le_bytes().to_vec(),
+            "Side Pad".to_owned()
+        )]
+    );
+    // Every button of every pointer is not a claim a shell can make: the name is required, and one line.
+    for bad in ["", "two\nlines"] {
+        assert_eq!(
+            claim_pointer(&mut state, 4, bad),
+            JsClaimOutcome::Refused("invalid-value"),
+            "{bad:?}"
+        );
+    }
+    assert_eq!(
+        claim_pointer(&mut state, 3, "Side Pad"),
+        JsClaimOutcome::Refused("unknown-node")
+    );
+    assert_eq!(state.input.claimed(), 1, "a refused claim holds nothing");
+}
+
+#[test]
+fn a_grab_is_a_claim_whose_second_argument_is_its_node_and_whose_text_is_its_scope() {
+    let mut state = state();
+    assert_eq!(grab(&mut state, 4, 1, "keyboard"), JsClaimOutcome::Claimed(1));
+    assert_eq!(
+        calls_of(&state),
+        [("grab".to_owned(), claim_args(1, 1), "keyboard".to_owned())]
+    );
+    for bad in ["", "Pointer", "mouse", "keyboard\n"] {
+        assert_eq!(
+            grab(&mut state, 4, 1, bad),
+            JsClaimOutcome::Refused("invalid-value"),
+            "{bad:?}: a scope is pointer, keyboard or both"
+        );
+    }
+    assert_eq!(grab(&mut state, 3, 1, "both"), JsClaimOutcome::Refused("unknown-node"));
+    assert_eq!(state.input.claimed(), 1, "a refused grab holds nothing");
+    unclaim(&mut state, 1);
+    assert_eq!(
+        calls_of(&state).last().map(|call| call.0.as_str()),
+        Some("unclaim"),
+        "a grab is given up as a claim is"
+    );
+}
+
+#[test]
+fn a_generation_that_ends_gives_its_grab_and_its_pointer_claim_up() {
+    let mut state = state();
+    assert_eq!(claim(&mut state, 4, "<Super>1", false, ""), JsClaimOutcome::Claimed(1));
+    assert_eq!(grab(&mut state, 4, 1, "pointer"), JsClaimOutcome::Claimed(2));
+    assert_eq!(claim_pointer(&mut state, 4, "Side Pad"), JsClaimOutcome::Claimed(3));
+    release_all(&mut state);
+    let methods: Vec<String> = calls_of(&state).into_iter().map(|call| call.0).collect();
+    assert_eq!(
+        methods,
+        ["claim", "grab", "claim_pointer", "unclaim", "unclaim", "unclaim"],
+        "every claim is given up, the grab with them, so the next generation grabs afresh"
+    );
     assert_eq!(state.input.claimed(), 0);
 }

@@ -11,7 +11,7 @@ use std::io::Cursor;
 
 use png::{BitDepth, ColorType, Decoder};
 
-use crate::image::{CursorFrame, ImageError, MAX_IMAGE_EDGE, MAX_PHYSICAL_SIZE, premultiplied};
+use crate::image::{CursorFrame, CursorImages, ImageError, MAX_IMAGE_EDGE, MAX_PHYSICAL_SIZE, premultiplied};
 
 /// Why a PNG frame is refused.
 #[derive(Debug)]
@@ -43,13 +43,29 @@ impl fmt::Display for PngError {
     }
 }
 
-/// Decodes one PNG cursor frame onto a square `physical` pixel canvas.
-///
-/// The frame's delay is zero; the caller sets timing from the theme's metadata.
-pub fn rasterise(bytes: &[u8], physical: u32) -> Result<CursorFrame, PngError> {
-    if physical == 0 || physical > MAX_PHYSICAL_SIZE {
-        return Err(PngError::Canvas);
+/// A PNG decoded at its own size: 8-bit samples, `channels` of them to a pixel.
+struct Decoded {
+    width: u32,
+    channels: usize,
+    buffer: Vec<u8>,
+}
+
+impl Decoded {
+    /// The straight-alpha colour of the pixel at `x`, `y`.
+    fn pixel(&self, x: u32, y: u32) -> (u8, u8, u8, u8) {
+        let at = (y as usize * self.width as usize + x as usize) * self.channels;
+        let px = &self.buffer[at..at + self.channels];
+        match self.channels {
+            1 => (px[0], px[0], px[0], 255),
+            2 => (px[0], px[0], px[0], px[1]),
+            3 => (px[0], px[1], px[2], 255),
+            _ => (px[0], px[1], px[2], px[3]),
+        }
     }
+}
+
+/// Reads a square 8-bit PNG of at most [`MAX_IMAGE_EDGE`] pixels an edge.
+fn decode(bytes: &[u8]) -> Result<Decoded, PngError> {
     let mut reader = Decoder::new(Cursor::new(bytes))
         .read_info()
         .map_err(|error| PngError::Decode(error.to_string()))?;
@@ -80,27 +96,51 @@ pub fn rasterise(bytes: &[u8], physical: u32) -> Result<CursorFrame, PngError> {
     reader
         .next_frame(&mut buffer)
         .map_err(|error| PngError::Decode(error.to_string()))?;
+    Ok(Decoded {
+        width,
+        channels,
+        buffer,
+    })
+}
 
-    let source = |x: u32, y: u32| {
-        let at = (y as usize * width as usize + x as usize) * channels;
-        let px = &buffer[at..at + channels];
-        match channels {
-            1 => (px[0], px[0], px[0], 255),
-            2 => (px[0], px[0], px[0], px[1]),
-            3 => (px[0], px[1], px[2], 255),
-            _ => (px[0], px[1], px[2], px[3]),
-        }
-    };
+/// Decodes one PNG cursor frame onto a square `physical` pixel canvas.
+///
+/// The frame's delay is zero; the caller sets timing from the theme's metadata.
+pub fn rasterise(bytes: &[u8], physical: u32) -> Result<CursorFrame, PngError> {
+    if physical == 0 || physical > MAX_PHYSICAL_SIZE {
+        return Err(PngError::Canvas);
+    }
+    let image = decode(bytes)?;
+    let width = image.width;
     let mut pixels = Vec::with_capacity(physical as usize * physical as usize);
     for y in 0..physical {
         let sy = u64::from(y) * u64::from(width) / u64::from(physical);
         for x in 0..physical {
             let sx = u64::from(x) * u64::from(width) / u64::from(physical);
-            let (r, g, b, a) = source(sx as u32, sy as u32);
+            let (r, g, b, a) = image.pixel(sx as u32, sy as u32);
             pixels.push(premultiplied(r, g, b, a));
         }
     }
     CursorFrame::new(physical, physical, pixels, 0).map_err(PngError::Frame)
+}
+
+/// Decodes a PNG a program supplies as a whole cursor at the image's own size, with `hotspot` (in image pixels, moved
+/// inside the image when it lies outside) as the point that sits on the pointer.
+///
+/// The same PNGs [`rasterise`] takes: square, 8 bits a channel, at most [`MAX_IMAGE_EDGE`] an edge. The image is not
+/// resampled, so one image pixel is one device pixel when it is drawn.
+pub fn decode_image(bytes: &[u8], hotspot: (i64, i64)) -> Result<CursorImages, PngError> {
+    let image = decode(bytes)?;
+    let width = image.width;
+    let mut pixels = Vec::with_capacity(width as usize * width as usize);
+    for y in 0..width {
+        for x in 0..width {
+            let (r, g, b, a) = image.pixel(x, y);
+            pixels.push(premultiplied(r, g, b, a));
+        }
+    }
+    let frame = CursorFrame::new(width, width, pixels, 0).map_err(PngError::Frame)?;
+    CursorImages::new(hotspot, vec![frame]).map_err(PngError::Frame)
 }
 
 #[cfg(test)]
@@ -176,5 +216,30 @@ pub(crate) mod tests {
             rasterise(&bytes[..bytes.len() / 2], 2),
             Err(PngError::Decode(_))
         ));
+    }
+
+    #[test]
+    fn a_supplied_image_keeps_its_own_size_and_hotspot() {
+        let data = [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 128];
+        let bytes = encode(2, png::ColorType::Rgba, png::BitDepth::Eight, &data);
+        let images = decode_image(&bytes, (1, 0)).expect("decodes");
+        assert_eq!((images.width(), images.height()), (2, 2), "not resampled");
+        assert_eq!(images.hotspot(), (1, 0));
+        assert_eq!(images.frames()[0].pixels()[0], premultiplied(255, 0, 0, 255));
+        assert_eq!(images.frames()[0].pixels()[3], premultiplied(255, 255, 255, 128));
+    }
+
+    #[test]
+    fn a_supplied_images_hotspot_outside_it_is_moved_to_its_nearest_edge_pixel() {
+        let bytes = encode(2, png::ColorType::Rgba, png::BitDepth::Eight, &[255; 16]);
+        let images = decode_image(&bytes, (-5, 40)).expect("decodes");
+        assert_eq!(images.hotspot(), (0, 1));
+        assert!(images.hotspot_was_clamped());
+    }
+
+    #[test]
+    fn a_supplied_image_that_is_not_a_png_is_refused() {
+        assert!(matches!(decode_image(b"not a png", (0, 0)), Err(PngError::Decode(_))));
+        assert!(matches!(decode_image(&[], (0, 0)), Err(PngError::Decode(_))));
     }
 }

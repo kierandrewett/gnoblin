@@ -693,6 +693,12 @@ object seat since 0.2.0 secret false
   property effect_kinds type list<string> since 0.2.0 secret false
   property decorations_available type bool since 0.2.0 secret false
   property builtin_motion type bool since 0.2.0 secret false
+  property grabbed type string since 0.2.0 secret false
+  property cursor_shape type string since 0.2.0 secret false
+  property cursor_image type bytes since 0.2.0 secret false
+  property cursor_hotspot_x type int since 0.2.0 secret false
+  property cursor_hotspot_y type int since 0.2.0 secret false
+  property cursor_hidden type bool since 0.2.0 secret false
   method warp since 0.2.0 secret false function false
   method claim since 0.2.0 secret false function false
     param id type int since 0.2.0 secret false
@@ -707,6 +713,15 @@ object seat since 0.2.0 secret false
     param fingers type int since 0.2.0 secret false
     param device type string since 0.2.0 secret false
   method claim_device since 0.2.0 secret false function false
+    param id type int since 0.2.0 secret false
+    param device type string since 0.2.0 secret false
+  method grab since 0.2.0 secret false function false
+    param id type int since 0.2.0 secret false
+    param node type int since 0.2.0 secret false
+    param scope type string since 0.2.0 secret false
+  method ungrab since 0.2.0 secret false function false
+    param id type int since 0.2.0 secret false
+  method claim_pointer since 0.2.0 secret false function false
     param id type int since 0.2.0 secret false
     param device type string since 0.2.0 secret false
   signal destroyed since 0.2.0 secret false
@@ -732,6 +747,13 @@ object seat since 0.2.0 secret false
     field dy type double since 0.2.0 secret false
     field button type int since 0.2.0 secret false
     field modifiers type string since 0.2.0 secret false
+    field time type int since 0.2.0 secret false
+  signal pointer_button since 0.2.0 secret false
+    field claim type int since 0.2.0 secret false
+    field button type int since 0.2.0 secret false
+    field state type string since 0.2.0 secret false
+    field x type double since 0.2.0 secret false
+    field y type double since 0.2.0 secret false
     field time type int since 0.2.0 secret false
 object surface since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
@@ -2524,6 +2546,18 @@ message Seat {
     bool decorations_available = 40;
     // since 0.2.0
     bool builtin_motion = 41;
+    // since 0.2.0
+    string grabbed = 42;
+    // since 0.2.0
+    string cursor_shape = 43;
+    // since 0.2.0
+    bytes cursor_image = 44;
+    // since 0.2.0
+    int64 cursor_hotspot_x = 45;
+    // since 0.2.0
+    int64 cursor_hotspot_y = 46;
+    // since 0.2.0
+    bool cursor_hidden = 47;
   }
 
   // Method `warp`, since 0.2.0.
@@ -2561,6 +2595,30 @@ message Seat {
 
   // Method `claim_device`, since 0.2.0.
   message ClaimDeviceArgs {
+    // since 0.2.0
+    int64 id = 1;
+    // since 0.2.0
+    string device = 2;
+  }
+
+  // Method `grab`, since 0.2.0.
+  message GrabArgs {
+    // since 0.2.0
+    int64 id = 1;
+    // since 0.2.0
+    int64 node = 2;
+    // since 0.2.0
+    string scope = 3;
+  }
+
+  // Method `ungrab`, since 0.2.0.
+  message UngrabArgs {
+    // since 0.2.0
+    int64 id = 1;
+  }
+
+  // Method `claim_pointer`, since 0.2.0.
+  message ClaimPointerArgs {
     // since 0.2.0
     int64 id = 1;
     // since 0.2.0
@@ -2620,6 +2678,22 @@ message Seat {
     string modifiers = 8;
     // since 0.2.0
     int64 time = 9;
+  }
+
+  // Signal `pointer_button`, since 0.2.0.
+  message PointerButtonPayload {
+    // since 0.2.0
+    int64 claim = 1;
+    // since 0.2.0
+    int64 button = 2;
+    // since 0.2.0
+    string state = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    int64 time = 6;
   }
 }
 

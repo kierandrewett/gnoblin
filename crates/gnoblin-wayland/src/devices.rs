@@ -39,6 +39,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use smithay::backend::input::InputTime;
 use smithay::input::keyboard::xkb;
 
 use gnoblin_backend::DeviceInfo;
@@ -284,6 +285,7 @@ impl State {
         }
         // A pointer that left while its button was held never sends the release, so its drag is over.
         self.cancel_captures_of(id);
+        self.release_seat_buttons_of(id, InputTime::now());
         self.tablet_device_removed(id);
         self.publish_devices();
     }

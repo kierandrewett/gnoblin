@@ -197,6 +197,61 @@ type = "bool"
 since = "0.2.0"
 default = true
 
+# The scope of the input grab the shell holds on this seat (the `grab` call): empty for none, else `pointer`, `keyboard` or
+# `both`. Read-only: the compositor publishes it, and it returns to empty when the grab ends, whether the shell asked,
+# the session locked, the grab's node went, or the shell detached. A shell that wants to know whether its grab took
+# effect reads it: a refused `grab` leaves it as it was.
+[[object.property]]
+name = "grabbed"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# The named theme cursor the shell shows over the whole desktop, a cursor-spec or `cursor-shape-v1` name such as `default`,
+# `pointer`, `text`, `grabbing` or `move`; empty for none. The compositor draws it from the user's cursor theme at the
+# configured size, and a name the theme lacks draws the built-in arrow, so the pointer is never invisible. Only a shell
+# that holds the tree has any say: the cursor goes back to the one the client under the pointer asked for when the shell
+# writes an empty name (with `cursor_image` empty and `cursor_hidden` false), detaches or reloads, and while the session
+# is locked, when the compositor draws no pointer at all, whatever the shell wrote.
+[[object.property]]
+name = "cursor_shape"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# The image the shell draws as the cursor: a PNG, 8 bits a channel, grey, grey with alpha, RGB or RGBA, square and at
+# most 1024 pixels an edge, at most 1 MiB. It is drawn one image pixel to one device pixel, with `cursor_hotspot_x` and
+# `cursor_hotspot_y` as the point that sits on the pointer. It wins over `cursor_shape`. An image the compositor cannot
+# decode is not drawn, the shape or the client's cursor shows instead, and the compositor logs it. Empty for none.
+[[object.property]]
+name = "cursor_image"
+type = "bytes"
+since = "0.2.0"
+
+# The `cursor_image`'s hotspot, in image pixels from its top-left corner. A hotspot outside the image is moved to the
+# nearest edge pixel.
+[[object.property]]
+name = "cursor_hotspot_x"
+type = "int"
+since = "0.2.0"
+default = 0
+
+[[object.property]]
+name = "cursor_hotspot_y"
+type = "int"
+since = "0.2.0"
+default = 0
+
+# Whether the shell hides the cursor. It wins over `cursor_image` and `cursor_shape`. Hiding applies only while the
+# session is unlocked and the shell holds the tree: a locked session draws no pointer and shows nothing of the shell's,
+# and the cursor is back when the shell detaches or reloads.
+[[object.property]]
+name = "cursor_hidden"
+type = "bool"
+since = "0.2.0"
+default = false
+
 # Move the pointer.
 [[object.method]]
 name = "warp"
@@ -296,6 +351,78 @@ since = "0.2.0"
 # it. The name is a single line.
 [[object.method]]
 name = "claim_device"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "device"
+type = "string"
+since = "0.2.0"
+
+# Take the seat's input for the shell node `node` (a node of the shell's own, not a window): `scope` is `pointer`,
+# `keyboard` or `both`, and `id` is allocated by the shell, per connection, never reused, in the number space of `claim`:
+# `unclaim` ends a grab as it removes a claim. While the grab is held, no client, claim, binding or shell node but `node`
+# hears the input it takes. The keyboard grab sends every key press and release to `node` as its `key` event (the
+# layout-resolved keysym; the shell repeats a key itself, the compositor sends no repeats). The pointer grab sends `node`
+# every button press and release of every pointer, its motion wherever the pointer is, and the wheel, each in the node's
+# local space, as it does for a press that holds a node; the client that had the pointer is told it left, and has it
+# again when the grab ends. Touch, tablets and the touchpad's gestures are not part of the grab. The grab does not
+# take what a key or button already held when it began: its release still goes where its press went.
+#
+# One grab at a time: a grab while another is held, or one whose `node` is not a live node of the shell, is refused
+# (the call has no answer; `Seat.grabbed` stays as it was). Only the shell that holds the tree may grab, on the main seat,
+# and an observer may not. A grab is refused while the session is locked, unless the compositor's own lock covers it and
+# the shell has engaged its lock screen (`Lock.engaged`) and `node` is part of that screen; a grab that is held when
+# the session locks ends at once unless it is that one, and ends again when the shell's lock screen goes. The
+# compositor's own dialogs (a consent or passphrase dialog, the lock card) take the keys and buttons before a grab does.
+# A grab ends when the shell asks, when `node` is destroyed, when the shell that made it detaches and when the
+# script generation that made it ends. A grab with the `id` of the grab held replaces it. On the call the text is
+# `scope` and the arguments are `id` and the node's id.
+[[object.method]]
+name = "grab"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "node"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "scope"
+type = "string"
+since = "0.2.0"
+
+# End the grab `id`. The same as `unclaim` for a grab; an id that is not the grab held is ignored.
+[[object.method]]
+name = "ungrab"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "id"
+type = "int"
+since = "0.2.0"
+
+# Claim every pointer button of the pointers that report the name `device` (a name from `Seat.device`, never empty):
+# a press of any button on those pointers (any evdev code, so a pad of side buttons is as claimable as the left button)
+# is withheld from clients, the claims, the bindings and the shell's nodes, and the owner hears it as `pointer_button`
+# instead. The pointers' motion and wheel are not part of the claim: they move the pointer and reach whoever is under it. `id`
+# is allocated by the shell, per connection, never reused, and shares its number space with `claim`, `claim_gesture`,
+# `claim_device` and `grab`: `unclaim` removes it, and a claim of an id already held replaces that claim. A press that
+# came before the claim, or while the session was locked, is not the claim's, and neither is its release; a release of
+# a press the claim took is the claim's whatever happens after, and is reported as long as the claim stands and
+# withheld from the client after it goes. A grab takes a button before a claim does. Only the owner may claim. The
+# claim goes with the shell that made it. On the call the text is the device name, a single line.
+[[object.method]]
+name = "claim_pointer"
 since = "0.2.0"
 
 [[object.method.param]]
@@ -433,6 +560,45 @@ since = "0.2.0"
 [[object.signal.field]]
 name = "modifiers"
 type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "time"
+type = "int"
+since = "0.2.0"
+
+# A button of a pointer a `claim_pointer` claimed went down or up: `claim` is the id the shell allocated, `button` the
+# evdev button code (`0x110` is the left button) and `state` is `press` or `release`. `x` and `y` are the pointer's place in
+# global logical coordinates and `time` the input event's time in milliseconds (wraps at 2^32). Every edge is sent, none
+# merged or dropped. The release of a press the claim took is sent even when the session locked in between, and is
+# not sent, but still withheld from the client, once the claim is gone.
+[[object.signal]]
+name = "pointer_button"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "claim"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "button"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "state"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "y"
+type = "double"
 since = "0.2.0"
 
 [[object.signal.field]]

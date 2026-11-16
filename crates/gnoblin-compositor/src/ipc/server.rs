@@ -101,7 +101,7 @@ use super::secret::{SecretAction, SecretService};
 use super::tree::{AttachMode, TreeAttached, TreeReply, TreeSnapshot};
 use super::tree_host::{
     self, TreeHostHandle, attached_payload, changes_payload, chord_payload, event_payload, gesture_payload,
-    pointer_chord_payload, reply_payload, snapshot_payloads,
+    pointer_button_payload, pointer_chord_payload, reply_payload, snapshot_payloads,
 };
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 use gnoblin_render::transaction::TreeRefusal;
@@ -1677,6 +1677,11 @@ impl Dispatcher {
                     tree_host::NAMESPACE,
                     tree_host::member::POINTER_CHORD,
                     &pointer_chord_payload(event),
+                )),
+                TreeFrameInput::PointerButton(event) => connection.send(&Envelope::event_message(
+                    tree_host::NAMESPACE,
+                    tree_host::member::POINTER_BUTTON,
+                    &pointer_button_payload(event),
                 )),
                 _ => connection.send(&Envelope::event_message(
                     tree_host::NAMESPACE,

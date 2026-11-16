@@ -677,6 +677,96 @@ claim table. While the session is unlocked, a claimed chord never reaches a clie
 reported to the claiming shell as a `chord` event carrying the claim id. A press the lock held back goes to the client,
 and so does its release. The claim is removed on `unclaim`, or when its seat node is destroyed.
 
+### 5.1a Input grabs, pointer button claims and the cursor
+
+Three seat members let a shell take what the compositor otherwise decides: the input itself, the buttons of one pointer,
+and the cursor. Each is mechanism and no policy. They are additive (a shell that never calls them sees no change), and
+the schema is `seat.toml`.
+
+**`Seat.grab(id, node, scope)` and `Seat.ungrab(id)`.** The shell node `node` takes the seat's `pointer`, `keyboard` or
+`both`. `id` is allocated by the shell in the number space of its claims, so `unclaim(id)` also ends a grab, and a
+script generation that ends gives its grab up with its claims (`release_all` in `gnoblin-js`). The compositor publishes
+the scope it holds as the read-only `Seat.grabbed`, empty for none, and that value is the only answer: a refused grab leaves
+it as it was and logs the reason.
+
+- The keyboard grab is a grab in the router (`gnoblin-input`, `begin_grab`): it is decided before every binding and
+  claim and before the client. Each key press and release goes to the node as its `key` event. The compositor sends no
+  repeat; the shell repeats a key itself.
+- The pointer grab is the compositor's, because the router sees only keys and the five buttons a chord can name. While it
+  holds, every button edge (any `evdev` code), the pointer's motion and the wheel go to the node as `press`, `release`,
+  `motion` and `scroll`, in the node's own space and wherever the pointer is. The client that had the pointer is told it
+  left. When the grab ends the pointer is given back to the surface under it. Touch, tablets and touchpad gestures are
+  not part of the grab.
+- One grab at a time. A second is refused; a grab with the held grab's id replaces it.
+- A key or button already down when the grab begins keeps its release where its press went, so a client is never left
+  with a key down. A press the grab took is released to nobody when the grab ended first: the client never saw it.
+
+**`Seat.claim_pointer(id, device)`.** Every button of the pointers that report `device` (never empty, one line) is
+withheld from clients, claims, bindings and the shell's nodes, and the owner hears it as the `pointer_button` signal
+`(claim, button, state, x, y, time)`. It is the claim for a device whose buttons are not chords: a chord claim cannot
+take a bare left, middle or right button, and `Button1` to `Button9` cover five codes. The pointers' motion and wheel
+are not part of it. A grab takes a button before a claim does. A pointer that is removed with a button held sends the
+owner the release it can no longer make.
+
+**`Seat.cursor_shape`, `cursor_image`, `cursor_hotspot_x`, `cursor_hotspot_y`, `cursor_hidden`.** Values the shell writes
+on the main seat. The compositor draws by this order: hidden, the image, the named shape, and the cursor the client under
+the pointer asked for. A shape is a cursor-spec or `cursor-shape-v1` name resolved through the user's theme (a name the
+theme lacks draws the built-in arrow). The image is a square 8-bit PNG of at most 1024 pixels, drawn one image pixel to a
+device pixel with the hotspot on the pointer; one that does not decode is logged and skipped, so a bad image never means
+no pointer. Writing the values back to their defaults gives the client's cursor back. While a pointer grab holds and the
+shell chose nothing, the default arrow is drawn: the client that had the pointer has left.
+
+#### Who can grab
+
+- Only the shell that holds the tree. The tree's owner socket is checked by the kernel's peer credentials (D35), and an
+  observer is refused by `observer_ops` for each of these calls and for each `cursor_*` write
+  (`an_observer_may_not_grab_the_seats_input_or_choose_its_cursor`).
+- Only on the main seat, and only for a node the shell made and still has that is not a window. A seat an observer made,
+  a compositor node and a missing node are refused.
+- Nothing else starts a grab. No Wayland client, no protocol and no D-Bus service reaches `Seat.grab`.
+
+#### The lock and the compositor's own dialogs
+
+- A grab is refused while the session is locked, and one that is held when the session locks ends at once. The single
+  exception is the compositor's own lock with the shell's lock screen up (`Lock.engaged`) and the grab's node part of
+  that screen: the password must reach the screen that checks it, and no other node of the shell may listen to it. The
+  grab ends again when that screen goes. An `ext-session-lock-v1` client's lock owns the input outright, so no grab
+  stands under it.
+- The lock card, a consent dialog and every other modal of the compositor take the keys and buttons before a grab does,
+  so a shell cannot sit between the user and one of them.
+- The cursor the shell chose is not drawn while the session is locked: a locked output draws no pointer at all, whatever
+  the shell wrote, so the shell can neither show a cursor over the cover nor leave one hidden that the lock would have
+  shown. The values are kept and apply again when the session unlocks.
+- A button claim takes no press while the session is locked: the press goes to the lock surface as any press does, and its
+  release follows it. A release of a press the claim took before the lock is still the claim's.
+
+#### When the shell goes
+
+A grab, a button claim and the cursor values outlive no connection. The detach that reaps the shell's nodes releases the
+grab and the claim (`release_shell_claims`), the compositor clears the `cursor_*` values the frame it notices the shell no
+longer holds the tree, and the next shell starts from a seat nobody grabbed or chose a cursor on. A grab whose node is
+destroyed ends at the next input or frame.
+
+| Failure mode                                   | Test                                                                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A keyboard grab leaks a key to the client      | `a_keyboard_grab_sends_every_key_to_its_node_and_none_to_the_client_until_it_ends`                                                                      |
+| A pointer grab leaks a button, motion or wheel | `a_pointer_grab_sends_buttons_motion_and_the_wheel_to_its_node_in_its_own_space`                                                                        |
+| Two grabs                                      | `a_second_grab_is_refused_and_the_first_stands`                                                                                                         |
+| A grab for a node or seat that is not allowed  | `a_grab_for_a_node_that_is_not_the_shells_or_with_no_such_scope_is_refused`, `a_grab_on_a_seat_that_is_not_the_main_seat_is_refused`                    |
+| A key held before the grab sticks down         | `a_grab_does_not_take_the_release_of_a_key_that_was_already_down`                                                                                       |
+| A button held across the end of a grab         | `a_button_the_grab_took_is_released_to_nobody_when_the_grab_has_ended`                                                                                  |
+| The grab's node is destroyed                   | `a_grab_ends_with_its_node`                                                                                                                             |
+| The shell goes holding a grab                  | `a_shell_that_detaches_gives_the_grab_back`                                                                                                             |
+| The session locks under a grab                 | `a_grab_is_refused_while_locked_and_ends_when_the_session_locks`, `a_session_that_unlocks_leaves_no_grab_behind`                                        |
+| A claimed pointer leaks a button               | `a_claimed_pointers_every_button_reaches_the_shell_and_no_client`                                                                                       |
+| A claim goes with a button held                | `a_released_pointer_claim_gives_the_buttons_back_and_withholds_a_release_it_took_the_press_of`                                                          |
+| A press while locked                           | `a_press_while_the_session_is_locked_is_not_a_pointer_claims`                                                                                           |
+| A pointer leaves with a button held            | `a_pointer_that_leaves_while_its_button_is_held_tells_the_owner_it_was_released`                                                                        |
+| The shell's cursor choice                      | `a_shells_cursor_shape_replaces_the_clients_until_the_shell_clears_it`, `a_shells_image_is_drawn_with_its_hotspot_on_the_pointer_and_wins_over_a_shape` |
+| A shell hides the cursor and goes              | `a_shell_that_hides_the_cursor_shows_none_and_a_shell_that_detaches_gives_it_back`                                                                      |
+| A bad image                                    | `an_image_that_is_not_a_png_draws_the_next_cursor`                                                                                                      |
+| A shell that holds nothing chooses a cursor    | `a_shell_that_does_not_hold_the_tree_has_no_say_in_the_cursor`                                                                                          |
+
 ### 5.2 Protocol requests
 
 A client request that needs policy (fullscreen, maximise, move, resize, activation) becomes a `tree.event` with

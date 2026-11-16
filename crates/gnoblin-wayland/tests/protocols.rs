@@ -293,6 +293,7 @@ struct App {
     preferred_scale: Option<u32>,
     // Pointer.
     pointer_enters: u32,
+    pointer_leaves: u32,
     pointer_motions: u32,
     pointer_x: f64,
     pointer_y: f64,
@@ -635,6 +636,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 state.pointer_x = surface_x;
                 state.pointer_y = surface_y;
             }
+            wl_pointer::Event::Leave { .. } => state.pointer_leaves += 1,
             wl_pointer::Event::Motion {
                 surface_x, surface_y, ..
             } => {
@@ -2614,20 +2616,36 @@ const CLAIM_SEAT: NodeId = NodeId::new(0x500);
 const KEY_LEFTMETA: u32 = 125;
 const KEY_ENTER: u32 = 28;
 
-/// A schema with a `seat` class whose `claim` and `unclaim` methods the shell may call.
+/// A schema with a `seat` class whose claim, grab and `unclaim` methods the shell may call, and a plain `node` class
+/// for the nodes a grab is held by.
 struct ClaimClasses;
 
 impl gnoblin_render::transaction::ClassInfo for ClaimClasses {
     fn has_class(&self, class: &str) -> bool {
-        class == "seat"
+        matches!(class, "seat" | "node")
     }
 
-    fn property(&self, _class: &str, _key: &str) -> Option<gnoblin_render::transaction::PropertyInfo> {
-        None
+    fn property(&self, class: &str, key: &str) -> Option<gnoblin_render::transaction::PropertyInfo> {
+        use gnoblin_render::transaction::{PropertyInfo, ValueType};
+
+        let kind = match (class, key) {
+            ("node", "x" | "y" | "width" | "height") => ValueType::Double,
+            ("node", "input") => ValueType::Bool,
+            _ => return None,
+        };
+        Some(PropertyInfo {
+            kind,
+            readonly: false,
+            animated: false,
+        })
     }
 
     fn has_method(&self, class: &str, method: &str) -> bool {
-        class == "seat" && matches!(method, "claim" | "claim_gesture" | "claim_device" | "unclaim")
+        class == "seat"
+            && matches!(
+                method,
+                "claim" | "claim_gesture" | "claim_device" | "claim_pointer" | "grab" | "ungrab" | "unclaim"
+            )
     }
 }
 
@@ -4626,5 +4644,791 @@ fn a_pointer_that_leaves_mid_drag_cancels_the_capture() {
             "the release will never come, so the drag is over"
         );
         session.key(KEY_LEFTMETA, false);
+    });
+}
+
+// ---- Seat input grabs and pointer button claims ---------------------------------------------------------------
+
+/// The shell's own node a grab is held by, and where it sits: a pointer grab is told the pointer in this node's space.
+const GRAB_NODE: NodeId = NodeId::new(0x7101);
+const GRAB_AT: (f64, f64) = (10.0, 20.0);
+
+/// Applies `ops` as one transaction of the shell's, built again on the newest batch when the compositor published
+/// meanwhile. Any other refusal fails the test.
+fn shell_ops(
+    queue: &gnoblin_wayland::TreeQueue,
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    ops: Vec<gnoblin_render::transaction::TreeOp>,
+) {
+    use gnoblin_render::transaction::{Code, TreeTransaction};
+
+    for _ in 0..100 {
+        let base = batches
+            .lock()
+            .expect("the batch lock")
+            .last()
+            .map_or(0, |batch| batch.serial);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        queue.submit(
+            base,
+            TreeTransaction::new(ops.clone()),
+            || true,
+            move |_, result| {
+                let _ = sender.send(result.map_err(|refusal| refusal.code));
+            },
+        );
+        match receiver
+            .recv_timeout(TIMEOUT)
+            .expect("the shell's transaction is answered")
+        {
+            Ok(_) => return,
+            Err(Code::StaleBase) => thread::sleep(Duration::from_millis(10)),
+            Err(code) => panic!("the shell's transaction was refused: {code:?}"),
+        }
+    }
+    panic!("the shell's transaction stayed stale");
+}
+
+/// The scope of the grab the compositor last published on `seat`: empty for none.
+fn grab_scope(batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>, seat: NodeId) -> String {
+    use gnoblin_render::transaction::{TreeChange, TreeValue};
+
+    batches
+        .lock()
+        .expect("the batch lock")
+        .iter()
+        .flat_map(|batch| batch.changes.iter())
+        .filter_map(|change| match change {
+            TreeChange::Set {
+                node,
+                key,
+                value: TreeValue::Text(scope),
+            } if *node == seat && key == "grabbed" => Some(scope.clone()),
+            _ => None,
+        })
+        .next_back()
+        .unwrap_or_default()
+}
+
+/// Waits until the compositor has published `scope` as the seat's grab.
+fn wait_grab(batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>, seat: NodeId, scope: &str) {
+    let deadline = Instant::now() + TIMEOUT;
+    while grab_scope(batches, seat) != scope {
+        assert!(
+            Instant::now() < deadline,
+            "the seat's grab never became {scope:?}; it is {:?}",
+            grab_scope(batches, seat)
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// One edge a shell node was sent, as text: coordinates to two places, so that the arithmetic of a node's space does not
+/// make a test depend on the last bit.
+fn describe(input: &gnoblin_wayland::TreeInput) -> String {
+    use gnoblin_wayland::TreeInput;
+
+    match *input {
+        TreeInput::Press { x, y, button } => format!("press {x:.2} {y:.2} {button:#x}"),
+        TreeInput::Release { x, y, button } => format!("release {x:.2} {y:.2} {button:#x}"),
+        TreeInput::Motion { x, y } => format!("motion {x:.2} {y:.2}"),
+        TreeInput::Scroll { x, y, dx, dy } => format!("scroll {x:.2} {y:.2} {dx:.2} {dy:.2}"),
+        TreeInput::Enter { x, y } => format!("enter {x:.2} {y:.2}"),
+        TreeInput::Leave => "leave".to_owned(),
+        TreeInput::Key { pressed, keysym } => {
+            format!("key {} {:#x}", if pressed { "down" } else { "up" }, keysym.get())
+        }
+    }
+}
+
+/// The pointer and key edges the shell's `node` was sent, in order, as [`describe`] writes them.
+fn node_inputs(batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>, node: NodeId) -> Vec<String> {
+    batches
+        .lock()
+        .expect("the batch lock")
+        .iter()
+        .flat_map(|batch| batch.events.iter())
+        .filter(|event| event.node == node)
+        .filter_map(|event| match &event.event {
+            gnoblin_wayland::TreeFrameInput::Input(input) => Some(describe(input)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Waits until `node` has been sent `count` edges, and answers them.
+fn wait_for_node_inputs(batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>, node: NodeId, count: usize) -> Vec<String> {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let heard = node_inputs(batches, node);
+        if heard.len() >= count {
+            return heard;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the node never heard {count} edges; it heard {heard:?}"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// One key edge of the shell node's `key` event as [`describe`] writes it: whether it went down, and the keysym.
+fn key_input(pressed: bool, symbol: u32) -> String {
+    describe(&gnoblin_wayland::TreeInput::Key {
+        pressed,
+        keysym: gnoblin_types::Keysym::new(symbol),
+    })
+}
+
+/// A press or release of `button` at `(x, y)` as [`describe`] writes it.
+fn button_input(pressed: bool, (x, y): (f64, f64), button: u32) -> String {
+    describe(&if pressed {
+        gnoblin_wayland::TreeInput::Press { x, y, button }
+    } else {
+        gnoblin_wayland::TreeInput::Release { x, y, button }
+    })
+}
+
+/// `a` and `b` as the default layout types them.
+const KEYSYM_A: u32 = 0x61;
+const KEYSYM_B: u32 = 0x62;
+
+/// A session whose shell holds the tree, with a mapped, focused window, the pointer resting inside it and a node of the
+/// shell's own to hold grabs.
+struct GrabRig {
+    client: Client,
+    _window: Window,
+    /// A point inside the window, where the pointer rests.
+    at: Point,
+    seat: NodeId,
+}
+
+impl GrabRig {
+    fn start(
+        session: &Handle,
+        queue: &gnoblin_wayland::TreeQueue,
+        batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    ) -> Self {
+        use gnoblin_render::transaction::{TreeOp, TreeValue};
+
+        let mut client = Client::app(session.socket());
+        let window = client.map_window("org.gnoblin.Claims");
+        let geometry = session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let at = Point::new(geometry.x + 100, geometry.y + 75);
+        session.move_pointer(at);
+        client.wait_for(|state| state.pointer_enters == 1);
+        // The shell takes the tree after the window is placed, so the window stays where the fallback put it.
+        queue.read(|scene, _| scene.set_shell_places(true));
+        let seat = compositor_seat(batches);
+        let set = |key: &str, value: f64| TreeOp::Set {
+            node: GRAB_NODE,
+            key: key.to_owned(),
+            value: TreeValue::Double(value),
+            timing: None,
+        };
+        shell_ops(
+            queue,
+            batches,
+            vec![
+                TreeOp::New {
+                    class: "node".to_owned(),
+                    id: GRAB_NODE,
+                },
+                set("x", GRAB_AT.0),
+                set("y", GRAB_AT.1),
+                set("width", 50.0),
+                set("height", 50.0),
+            ],
+        );
+        Self {
+            client,
+            _window: window,
+            at,
+            seat,
+        }
+    }
+
+    /// The shell takes `scope` as grab `id` for its node.
+    fn grab(
+        &self,
+        queue: &gnoblin_wayland::TreeQueue,
+        batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+        id: i64,
+        scope: &str,
+    ) {
+        call_on_shell(
+            queue,
+            batches,
+            self.seat,
+            "grab",
+            vec![id, GRAB_NODE.get() as i64],
+            scope,
+        );
+    }
+
+    /// The pointer's place in the grab node's space.
+    fn local(&self) -> (f64, f64) {
+        (f64::from(self.at.x) - GRAB_AT.0, f64::from(self.at.y) - GRAB_AT.1)
+    }
+}
+
+/// A session that locks: `ext-session-lock-v1` from a client of its own, held until the returned values drop.
+fn lock_session(
+    session: &Handle,
+) -> (
+    Client,
+    ext_session_lock_manager_v1::ExtSessionLockManagerV1,
+    ext_session_lock_v1::ExtSessionLockV1,
+) {
+    let mut locker = Client::connect(session.socket());
+    let manager: ext_session_lock_manager_v1::ExtSessionLockManagerV1 = locker
+        .globals
+        .bind(&locker.qh, 1..=1, ())
+        .expect("the session advertises ext_session_lock_manager_v1");
+    let lock = manager.lock(&locker.qh, ());
+    locker.wait_for(|state| state.lock_locked == 1);
+    session.wait_for(|observation| observation.lock_state() == LockState::Locked);
+    (locker, manager, lock)
+}
+
+#[test]
+fn a_keyboard_grab_sends_every_key_to_its_node_and_none_to_the_client_until_it_ends() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        rig.grab(&queue, &batches, 1, "keyboard");
+        wait_grab(&batches, rig.seat, "keyboard");
+
+        session.key(KEY_A, true);
+        session.key(KEY_A, false);
+        assert_eq!(
+            wait_for_node_inputs(&batches, GRAB_NODE, 2),
+            [key_input(true, KEYSYM_A), key_input(false, KEYSYM_A)],
+            "the node hears the key's press and release, as the keysym the layout makes of it"
+        );
+
+        call_on_shell(&queue, &batches, rig.seat, "ungrab", vec![1], "");
+        wait_grab(&batches, rig.seat, "");
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = rig.client.wait_for(|state| state.key_edges.len() >= 2);
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_B, true), (KEY_B, false)],
+            "the client heard nothing of the grabbed key and gets the next one"
+        );
+        assert_eq!(
+            node_inputs(&batches, GRAB_NODE).len(),
+            2,
+            "the node hears no key after the grab"
+        );
+    });
+}
+
+#[test]
+fn a_pointer_grab_sends_buttons_motion_and_the_wheel_to_its_node_in_its_own_space() {
+    use gnoblin_wayland::TreeInput;
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        rig.grab(&queue, &batches, 1, "pointer");
+        wait_grab(&batches, rig.seat, "pointer");
+        rig.client.wait_for(|state| state.pointer_leaves == 1);
+        let motions = rig.client.state.pointer_motions;
+
+        let (x, y) = rig.local();
+        button_edge(session, BTN_LEFT, true);
+        button_edge(session, BTN_LEFT, false);
+        assert_eq!(
+            wait_for_node_inputs(&batches, GRAB_NODE, 2),
+            [
+                button_input(true, (x, y), BTN_LEFT),
+                button_input(false, (x, y), BTN_LEFT)
+            ],
+            "the node hears the click in its own space, though the pointer is nowhere near it"
+        );
+
+        session.move_pointer_by(5, 3);
+        session.scroll(0, 120);
+        let heard = wait_for_node_inputs(&batches, GRAB_NODE, 4);
+        assert_eq!(
+            heard[2..],
+            [
+                describe(&TreeInput::Motion { x: x + 5.0, y: y + 3.0 }),
+                describe(&TreeInput::Scroll {
+                    x: x + 5.0,
+                    y: y + 3.0,
+                    dx: 0.0,
+                    dy: 15.0
+                })
+            ],
+            "the pointer's motion and the wheel go to the node wherever the pointer is"
+        );
+
+        call_on_shell(&queue, &batches, rig.seat, "ungrab", vec![1], "");
+        wait_grab(&batches, rig.seat, "");
+        let state = rig.client.wait_for(|state| state.pointer_enters == 2);
+        assert!(
+            state.pointer_button_edges.is_empty() && state.scrolls.is_empty(),
+            "the client heard no button and no wheel while the shell held the pointer: {state:?}"
+        );
+        assert_eq!(state.pointer_motions, motions, "nor any motion");
+        session.click(rig.at);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(
+            state.pointer_button_edges,
+            vec![(BTN_LEFT, true), (BTN_LEFT, false)],
+            "the pointer is the client's again"
+        );
+    });
+}
+
+#[test]
+fn a_grab_of_both_takes_the_keys_and_the_buttons() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        rig.grab(&queue, &batches, 1, "both");
+        wait_grab(&batches, rig.seat, "both");
+        session.key(KEY_A, true);
+        button_edge(session, BTN_RIGHT, true);
+        let heard = wait_for_node_inputs(&batches, GRAB_NODE, 2);
+        assert_eq!(
+            heard,
+            [key_input(true, KEYSYM_A), button_input(true, rig.local(), BTN_RIGHT)]
+        );
+        // Both releases are the grab's: the client never saw either press.
+        session.key(KEY_A, false);
+        button_edge(session, BTN_RIGHT, false);
+        wait_for_node_inputs(&batches, GRAB_NODE, 4);
+        call_on_shell(&queue, &batches, rig.seat, "ungrab", vec![1], "");
+        wait_grab(&batches, rig.seat, "");
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = rig.client.wait_for(|state| state.key_edges.len() >= 2);
+        assert_eq!(state.key_edges, vec![(KEY_B, true), (KEY_B, false)]);
+        assert!(state.pointer_button_edges.is_empty(), "{state:?}");
+    });
+}
+
+#[test]
+fn a_second_grab_is_refused_and_the_first_stands() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        rig.grab(&queue, &batches, 1, "keyboard");
+        wait_grab(&batches, rig.seat, "keyboard");
+
+        rig.grab(&queue, &batches, 2, "pointer");
+        // The click is the client's: the pointer was not taken, and the keyboard still is.
+        session.click(rig.at);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(state.pointer_button_edges, vec![(BTN_LEFT, true), (BTN_LEFT, false)]);
+        assert_eq!(grab_scope(&batches, rig.seat), "keyboard");
+        session.key(KEY_A, true);
+        assert_eq!(
+            wait_for_node_inputs(&batches, GRAB_NODE, 1),
+            [key_input(true, KEYSYM_A)],
+            "the first grab still holds the keys"
+        );
+    });
+}
+
+#[test]
+fn a_grab_for_a_node_that_is_not_the_shells_or_with_no_such_scope_is_refused() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        // A node that is not there, the compositor's own seat node, and a scope that is nothing.
+        call_on_shell(&queue, &batches, rig.seat, "grab", vec![1, 0xdead], "keyboard");
+        call_on_shell(
+            &queue,
+            &batches,
+            rig.seat,
+            "grab",
+            vec![2, rig.seat.get() as i64],
+            "keyboard",
+        );
+        rig.grab(&queue, &batches, 3, "everything");
+
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = rig.client.wait_for(|state| state.key_edges.len() >= 2);
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_B, true), (KEY_B, false)],
+            "no grab took the keys"
+        );
+        assert_eq!(grab_scope(&batches, rig.seat), "");
+        assert!(node_inputs(&batches, GRAB_NODE).is_empty());
+    });
+}
+
+#[test]
+fn a_grab_on_a_seat_that_is_not_the_main_seat_is_refused() {
+    use gnoblin_render::transaction::TreeOp;
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        shell_ops(
+            &queue,
+            &batches,
+            vec![TreeOp::New {
+                class: "seat".to_owned(),
+                id: CLAIM_SEAT,
+            }],
+        );
+        call_on_shell(
+            &queue,
+            &batches,
+            CLAIM_SEAT,
+            "grab",
+            vec![1, GRAB_NODE.get() as i64],
+            "keyboard",
+        );
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = rig.client.wait_for(|state| state.key_edges.len() >= 2);
+        assert_eq!(state.key_edges, vec![(KEY_B, true), (KEY_B, false)]);
+        assert!(node_inputs(&batches, GRAB_NODE).is_empty(), "the node heard nothing");
+    });
+}
+
+#[test]
+fn a_grab_does_not_take_the_release_of_a_key_that_was_already_down() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        session.key(KEY_A, true);
+        rig.client.wait_for(|state| !state.key_edges.is_empty());
+        rig.grab(&queue, &batches, 1, "keyboard");
+        wait_grab(&batches, rig.seat, "keyboard");
+
+        session.key(KEY_A, false);
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        assert_eq!(
+            wait_for_node_inputs(&batches, GRAB_NODE, 2),
+            [key_input(true, KEYSYM_B), key_input(false, KEYSYM_B)],
+            "the node hears the key pressed under the grab and not the release of the one pressed before it"
+        );
+        let state = rig.client.wait_for(|state| state.key_edges.len() >= 2);
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_A, true), (KEY_A, false)],
+            "the client's key is released: it is never left down"
+        );
+    });
+}
+
+#[test]
+fn a_button_the_grab_took_is_released_to_nobody_when_the_grab_has_ended() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        rig.grab(&queue, &batches, 1, "pointer");
+        wait_grab(&batches, rig.seat, "pointer");
+        button_edge(session, BTN_LEFT, true);
+        wait_for_node_inputs(&batches, GRAB_NODE, 1);
+
+        call_on_shell(&queue, &batches, rig.seat, "ungrab", vec![1], "");
+        wait_grab(&batches, rig.seat, "");
+        button_edge(session, BTN_LEFT, false);
+
+        // A click the client does hear follows, so its state shows every edge before it was routed.
+        session.click(rig.at);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(
+            state.pointer_button_edges,
+            vec![(BTN_LEFT, true), (BTN_LEFT, false)],
+            "the client saw no release of a press it never saw"
+        );
+        assert_eq!(
+            node_inputs(&batches, GRAB_NODE).len(),
+            1,
+            "the ended grab's node is told no more"
+        );
+    });
+}
+
+#[test]
+fn a_grab_ends_with_its_node() {
+    use gnoblin_render::transaction::TreeOp;
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        rig.grab(&queue, &batches, 1, "both");
+        wait_grab(&batches, rig.seat, "both");
+        shell_ops(&queue, &batches, vec![TreeOp::Destroy { node: GRAB_NODE }]);
+
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = rig.client.wait_for(|state| state.key_edges.len() >= 2);
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_B, true), (KEY_B, false)],
+            "a seat whose input went into a node that is gone would be dead"
+        );
+        wait_grab(&batches, rig.seat, "");
+        session.click(rig.at);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(state.pointer_button_edges, vec![(BTN_LEFT, true), (BTN_LEFT, false)]);
+    });
+}
+
+#[test]
+fn a_shell_that_detaches_gives_the_grab_back() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        rig.grab(&queue, &batches, 1, "both");
+        wait_grab(&batches, rig.seat, "both");
+
+        // The shell goes. The call after it makes the frame that applies the reap finish before the checks.
+        queue.reap_shell_nodes(std::collections::BTreeSet::new);
+        call_on_shell(&queue, &batches, rig.seat, "unclaim", vec![99], "");
+        wait_grab(&batches, rig.seat, "");
+
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = rig.client.wait_for(|state| state.key_edges.len() >= 2);
+        assert_eq!(state.key_edges, vec![(KEY_B, true), (KEY_B, false)]);
+    });
+}
+
+#[test]
+fn a_grab_is_refused_while_locked_and_ends_when_the_session_locks() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let rig = GrabRig::start(session, &queue, &batches);
+        rig.grab(&queue, &batches, 1, "both");
+        wait_grab(&batches, rig.seat, "both");
+
+        let _locker = lock_session(session);
+        wait_grab(&batches, rig.seat, "");
+
+        // A grab asked for while the session is locked is not given, and its node hears nothing of the keys.
+        let heard = node_inputs(&batches, GRAB_NODE).len();
+        rig.grab(&queue, &batches, 2, "both");
+        session.key(KEY_A, true);
+        session.key(KEY_A, false);
+        thread::sleep(Duration::from_millis(200));
+        assert_eq!(grab_scope(&batches, rig.seat), "");
+        assert_eq!(
+            node_inputs(&batches, GRAB_NODE).len(),
+            heard,
+            "a locked session's input is the lock's"
+        );
+    });
+}
+
+#[test]
+fn a_session_that_unlocks_leaves_no_grab_behind() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = GrabRig::start(session, &queue, &batches);
+        rig.grab(&queue, &batches, 1, "keyboard");
+        wait_grab(&batches, rig.seat, "keyboard");
+        let (mut locker, _manager, lock) = lock_session(session);
+        wait_grab(&batches, rig.seat, "");
+        lock.unlock_and_destroy();
+        locker.roundtrip();
+        session.wait_for(|observation| observation.lock_state() == LockState::Unlocked);
+
+        session.key(KEY_B, true);
+        session.key(KEY_B, false);
+        let state = rig.client.wait_for(|state| state.key_edges.len() >= 2);
+        assert_eq!(
+            state.key_edges,
+            vec![(KEY_B, true), (KEY_B, false)],
+            "the grab did not come back"
+        );
+    });
+}
+
+/// The pointer button events the shell's mirror received, in order, with the seat they were for.
+fn pointer_button_events(
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+) -> Vec<(NodeId, gnoblin_wayland::PointerButtonEvent)> {
+    batches
+        .lock()
+        .expect("the batch lock")
+        .iter()
+        .flat_map(|batch| batch.events.iter())
+        .filter_map(|event| match &event.event {
+            gnoblin_wayland::TreeFrameInput::PointerButton(button) => Some((event.node, button.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Waits until the shell has heard `count` button events, and answers them.
+fn wait_for_pointer_buttons(
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    count: usize,
+) -> Vec<(NodeId, gnoblin_wayland::PointerButtonEvent)> {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let heard = pointer_button_events(batches);
+        if heard.len() >= count {
+            return heard;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the shell never heard {count} pointer buttons; it heard {heard:?}"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Two mice the seat knows: a pad of side buttons and the desk mouse.
+fn announce_mice(session: &Handle) -> (DeviceId, DeviceId) {
+    use gnoblin_backend::{DeviceInfo, DeviceKind};
+
+    let (pad, desk) = (DeviceId::new(4), DeviceId::new(5));
+    for (id, name) in [(pad, "Side Pad"), (desk, "Desk Mouse")] {
+        session.control.inject_input(InputEvent::DeviceAdded {
+            device: DeviceInfo::new(id, name, DeviceKind::Mouse),
+        });
+    }
+    (pad, desk)
+}
+
+#[test]
+fn a_claimed_pointers_every_button_reaches_the_shell_and_no_client() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = PointerRig::start(session, &batches);
+        let (pad, desk) = announce_mice(session);
+        call_on_shell(&queue, &batches, rig.seat, "claim_pointer", vec![1], "Side Pad");
+
+        // The side button, and the ordinary left button that no chord could claim without a modifier.
+        button_from(session, pad, BTN_SIDE, true);
+        button_from(session, pad, BTN_SIDE, false);
+        button_from(session, pad, BTN_LEFT, true);
+        button_from(session, pad, BTN_LEFT, false);
+        let heard = wait_for_pointer_buttons(&batches, 4);
+        let edges: Vec<(i64, u32, bool)> = heard
+            .iter()
+            .map(|(node, event)| {
+                assert_eq!(*node, rig.seat, "the claim's owner hears it on its seat");
+                (event.claim, event.button, event.pressed)
+            })
+            .collect();
+        assert_eq!(
+            edges,
+            [
+                (1, BTN_SIDE, true),
+                (1, BTN_SIDE, false),
+                (1, BTN_LEFT, true),
+                (1, BTN_LEFT, false)
+            ]
+        );
+
+        // The desk mouse is not the pad: its click is the client's, and is the only one the client hears.
+        button_from(session, desk, BTN_LEFT, true);
+        button_from(session, desk, BTN_LEFT, false);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(
+            state.pointer_button_edges,
+            vec![(BTN_LEFT, true), (BTN_LEFT, false)],
+            "only the desk mouse's click reached the client"
+        );
+        assert_eq!(
+            pointer_button_events(&batches).len(),
+            4,
+            "and the shell heard nothing of it"
+        );
+    });
+}
+
+#[test]
+fn a_released_pointer_claim_gives_the_buttons_back_and_withholds_a_release_it_took_the_press_of() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = PointerRig::start(session, &batches);
+        let (pad, _desk) = announce_mice(session);
+        call_on_shell(&queue, &batches, rig.seat, "claim_pointer", vec![1], "Side Pad");
+        button_from(session, pad, BTN_LEFT, true);
+        wait_for_pointer_buttons(&batches, 1);
+
+        call_on_shell(&queue, &batches, rig.seat, "unclaim", vec![1], "");
+        button_from(session, pad, BTN_LEFT, false);
+        // The press was the claim's, so its release is withheld from the client, which never saw the press, and the
+        // owner, whose claim is gone, is not told of it. A click that is the client's now follows.
+        button_from(session, pad, BTN_LEFT, true);
+        button_from(session, pad, BTN_LEFT, false);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(
+            state.pointer_button_edges,
+            vec![(BTN_LEFT, true), (BTN_LEFT, false)],
+            "the client saw the click that came after the claim, and no release before it"
+        );
+        assert_eq!(
+            pointer_button_events(&batches).len(),
+            1,
+            "the owner heard the press and nothing after the claim"
+        );
+    });
+}
+
+#[test]
+fn a_press_while_the_session_is_locked_is_not_a_pointer_claims() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let rig = PointerRig::start(session, &batches);
+        let (pad, _desk) = announce_mice(session);
+        call_on_shell(&queue, &batches, rig.seat, "claim_pointer", vec![1], "Side Pad");
+        let _locker = lock_session(session);
+
+        button_from(session, pad, BTN_LEFT, true);
+        button_from(session, pad, BTN_LEFT, false);
+        thread::sleep(Duration::from_millis(200));
+        assert!(
+            pointer_button_events(&batches).is_empty(),
+            "a locked session's buttons are the lock's, not a claim's"
+        );
+    });
+}
+
+#[test]
+fn a_pointer_that_leaves_while_its_button_is_held_tells_the_owner_it_was_released() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let rig = PointerRig::start(session, &batches);
+        let (pad, _desk) = announce_mice(session);
+        call_on_shell(&queue, &batches, rig.seat, "claim_pointer", vec![1], "Side Pad");
+        button_from(session, pad, BTN_SIDE, true);
+        wait_for_pointer_buttons(&batches, 1);
+        session.control.inject_input(InputEvent::DeviceRemoved { id: pad });
+        let heard = wait_for_pointer_buttons(&batches, 2);
+        assert_eq!(
+            heard
+                .iter()
+                .map(|(_, event)| (event.button, event.pressed))
+                .collect::<Vec<_>>(),
+            [(BTN_SIDE, true), (BTN_SIDE, false)],
+            "the release will never come, so the owner is not left holding the button"
+        );
     });
 }

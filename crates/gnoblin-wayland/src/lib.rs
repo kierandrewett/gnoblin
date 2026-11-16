@@ -228,8 +228,10 @@ mod process;
 mod protocols;
 mod request_guard;
 mod request_tap;
+mod seat_grab;
 mod selection_bridge;
 mod server;
+mod shell_cursor;
 mod state;
 mod subsurface_position;
 mod surface_tree;
@@ -285,8 +287,9 @@ pub use smithay::wayland::{Dispatch2, GlobalDispatch2};
 /// The tree's frame boundary: the queue the shell's transactions wait in, and the batch a
 /// frame publishes for the shell's mirror.
 pub use tree_frame::{
-    ChordEvent, ChordState, FrameTreeEvent, PointerChordEvent, PointerChordPhase, TREE_FRAME_BUDGET, TreeAnswer,
-    TreeBatch, TreeFrame, TreeFrameInput, TreeHooks, TreeInput, TreeQueue, TreeRequest, keysym_name, keysym_text,
+    ChordEvent, ChordState, FrameTreeEvent, PointerButtonEvent, PointerChordEvent, PointerChordPhase,
+    TREE_FRAME_BUDGET, TreeAnswer, TreeBatch, TreeFrame, TreeFrameInput, TreeHooks, TreeInput, TreeQueue, TreeRequest,
+    keysym_name, keysym_text,
 };
 
 /// The identity and the window process a client's surface belongs to.

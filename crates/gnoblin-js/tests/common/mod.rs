@@ -51,15 +51,17 @@ pub struct Measure {
     pub text: String,
 }
 
-/// A claim the shell holds on a seat: a chord, a gesture or a device, by the id it allocated.
+/// A claim the shell holds on a seat: a chord, a gesture, a device, the buttons of a pointer or an input grab, by the id it
+/// allocated.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Claim {
     pub id: i64,
-    /// `claim`, `claim_gesture` or `claim_device`.
+    /// `claim`, `claim_gesture`, `claim_device`, `claim_pointer` or `grab`.
     pub method: String,
-    /// The call's text: the chord, the gesture's kind or the device name, behind `device` and a line feed when scoped.
+    /// The call's text: the chord, the gesture's kind, the device name or a grab's scope, behind `device` and a line feed
+    /// when scoped.
     pub text: String,
-    /// The claim's second integer: a chord's grab flag or a gesture's finger count; 0 for a device.
+    /// The claim's second integer: a chord's grab flag, a gesture's finger count or a grab's node; 0 for a device.
     pub second: i64,
     /// The seat node the call was made on.
     pub seat: u64,
@@ -322,8 +324,10 @@ impl Compositor {
                 text,
             } => {
                 let id_bits = args.get(0..8).and_then(|bits| <[u8; 8]>::try_from(bits).ok());
-                if matches!(method.as_str(), "claim" | "claim_gesture" | "claim_device")
-                    && let Some(bits) = id_bits
+                if matches!(
+                    method.as_str(),
+                    "claim" | "claim_gesture" | "claim_device" | "claim_pointer" | "grab"
+                ) && let Some(bits) = id_bits
                 {
                     let id = i64::from_le_bytes(bits);
                     let text = text.expose().to_owned();
@@ -1405,6 +1409,20 @@ impl FakeCompositor {
                 dy: at.1 - from.1,
                 button: button.parse().expect("a button number"),
                 modifiers: modifiers.to_owned(),
+                time: 0,
+            },
+        ));
+    }
+
+    /// A button of a claimed pointer changing `state` (`press` or `release`).
+    pub fn pointer_button(&self, claim: i64, button: i64, state: &str) {
+        self.0.borrow_mut().queue.push(TreeIncoming::PointerButton(
+            gnoblin_tree_client::tree_mirror::TreePointerButton {
+                claim,
+                button,
+                state: state.to_owned(),
+                x: 0.0,
+                y: 0.0,
                 time: 0,
             },
         ));

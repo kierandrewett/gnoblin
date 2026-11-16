@@ -571,6 +571,10 @@ pub struct State {
     /// set the node is sent the pointer's motion and the release wherever the pointer goes, and no client hears the
     /// pointer.
     shell_grab: Option<(NodeId, u32)>,
+    /// The seat input the shell holds: its grab, its button claims and the presses each took.
+    pub(crate) input_tables: crate::seat_grab::SeatInputTables,
+    /// The cursor the shell chose over the client's, and the image it decoded to.
+    pub(crate) shell_cursor: crate::shell_cursor::ShellCursorState,
     /// The touch points the seat holds, by device slot: the window each went down on and
     /// where it is now.
     touch_points: HashMap<u32, TouchPoint>,
@@ -910,6 +914,8 @@ impl State {
             pointer_placed: false,
             shell_hover: None,
             shell_grab: None,
+            input_tables: crate::seat_grab::SeatInputTables::default(),
+            shell_cursor: crate::shell_cursor::ShellCursorState::default(),
             touch_points: HashMap::new(),
             dragged: None,
             composer: Composer::with_painter(tree.painter.clone()),
@@ -1945,6 +1951,14 @@ impl State {
         // client hears it. The pointer is given the surface under it when the drag ends.
         if self.pointer_captured() {
             self.note_capture_motion(time);
+            return;
+        }
+        // A shell's grab of the pointer holds it the same way: its node hears the motion wherever the pointer goes. A
+        // node that has gone this instant leaves the motion unheard until the grab ends with the next input or frame.
+        if self.pointer_grabbed() {
+            if let Some((node, local)) = self.pointer_grab_target() {
+                self.tree.input(node, TreeInput::Motion { x: local.x, y: local.y });
+            }
             return;
         }
         // A shell node that a press holds hears the motion wherever the pointer goes, and no client hears it.
@@ -3237,7 +3251,7 @@ impl State {
 
     /// Sends the shell the pointer edges over its nodes. A ray that enters a node, moves over it
     /// or leaves it sends the matching edge; a pick of `None` leaves the node it was over.
-    fn shell_pointer(&mut self, pick: Option<(NodeId, PointF)>) {
+    pub(crate) fn shell_pointer(&mut self, pick: Option<(NodeId, PointF)>) {
         let previous = self.shell_hover;
         let current = pick.map(|(node, _)| node);
         if let Some(old) = previous.filter(|old| Some(*old) != current) {
@@ -3875,6 +3889,7 @@ impl Host for State {
         // A shell's pointer-chord drags are told of the pointer's latest place once per frame, ahead of the
         // frame's tree work so the batch that frame publishes carries it.
         self.flush_pointer_captures();
+        self.refresh_seat_grab();
         // The pointer may have moved since the last frame; its old and new places are
         // damaged before the damage is taken.
         let redraw = std::mem::take(&mut self.cursor_shape_changed);
@@ -3962,6 +3977,8 @@ impl Host for State {
         self.answer_window_writes(window_writes);
         self.follow_decorations_available();
         self.follow_frame_policies();
+        // The cursor the shell wrote in this frame's transactions is the one the frame draws.
+        self.follow_shell_cursor();
         self.reconcile_seats();
         let claims = self.tree.take_claims();
         let authentications = self.tree.take_authentications();
@@ -4059,6 +4076,9 @@ impl Host for State {
         // notifications are derived from. It is recorded before the event is routed, so a
         // key a binding consumes still counts as the user being present.
         self.record_activity();
+        // A shell's grab stands only while the shell holds the tree, its node is there and the lock allows it, so it is
+        // checked before the event is routed: a locked session never sends a key or button into a grab.
+        self.refresh_seat_grab();
         // The lock card takes every key while it is up, ahead of the shell and every client.
         if self.lock_card_active().is_some() && self.route_to_lock_card(&event) {
             return;
@@ -4227,8 +4247,17 @@ impl Host for State {
             InputEvent::PointerAxis {
                 horizontal, vertical, ..
             } if horizontal != 0 || vertical != 0 => {
-                // A wheel over a shell node is the shell's: the tree gets the pixel distance, and no client does.
-                if let Some((node, local)) = self.shell_pick(self.pointer_position) {
+                // A wheel over a shell node is the shell's: the tree gets the pixel distance, and no client does. The
+                // shell's grab of the pointer takes the wheel wherever the pointer is.
+                let picked = if self.pointer_grabbed() {
+                    self.pointer_grab_target()
+                } else {
+                    self.shell_pick(self.pointer_position)
+                };
+                if self.pointer_grabbed() && picked.is_none() {
+                    return;
+                }
+                if let Some((node, local)) = picked {
                     let dx = f64::from(horizontal) / 120.0 * AXIS_PIXELS_PER_STEP;
                     let dy = f64::from(vertical) / 120.0 * AXIS_PIXELS_PER_STEP;
                     self.tree.input(

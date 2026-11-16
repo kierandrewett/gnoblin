@@ -284,6 +284,19 @@ pub struct TreePointerChord {
     pub time: i64,
 }
 
+/// A button of a pointer a `claim_pointer` claimed went down or up: `claim` is the id the shell allocated, `button` the
+/// `evdev` code, `state` `press` or `release`, `x` and `y` the pointer's global place and `time` the input event's time in
+/// milliseconds.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TreePointerButton {
+    pub claim: i64,
+    pub button: i64,
+    pub state: String,
+    pub x: f64,
+    pub y: f64,
+    pub time: i64,
+}
+
 /// The reply to attach: the epoch this shell holds, the root and the snapshot serial.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Attached {
@@ -324,6 +337,7 @@ pub enum TreeIncoming {
     Chord(TreeChord),
     Gesture(TreeGesture),
     PointerChord(TreePointerChord),
+    PointerButton(TreePointerButton),
 }
 
 /// A failure of the link itself: the socket closed or a frame did not decode.

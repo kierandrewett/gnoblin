@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gnoblin_tree_client::tree_mirror::{
-    NodeId, TreeChord, TreeEvent, TreeGesture, TreeMirror, TreePointerChord, class_name,
+    NodeId, TreeChord, TreeEvent, TreeGesture, TreeMirror, TreePointerButton, TreePointerChord, class_name,
 };
 use rquickjs::{Array, Ctx, Object};
 
@@ -59,12 +59,13 @@ pub(crate) use self::claims::abandon_staging;
 
 pub(crate) use self::claims::begin_staging;
 
-/// A claimed chord, gesture or pointer drag the compositor reported, parked until the frame hands it to the module.
+/// A claimed chord, gesture, pointer drag or pointer button the compositor reported, parked until the frame hands it to the module.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum JsInputMessage {
     Chord(TreeChord),
     Gesture(TreeGesture),
     Pointer(TreePointerChord),
+    Button(TreePointerButton),
 }
 
 /// A pointer edge on a window, in the window's own coordinates: the compositor tells the shell where the pointer
@@ -215,6 +216,15 @@ pub(crate) fn messages_to_js<'js>(ctx: &Ctx<'js>, messages: &[JsInputMessage]) -
                 item.set("dy", pointer.dy)?;
                 item.set("button", pointer.button as f64)?;
                 item.set("modifiers", pointer.modifiers.as_str())?;
+            }
+            JsInputMessage::Button(button) => {
+                item.set("kind", "button")?;
+                item.set("claim", button.claim as f64)?;
+                item.set("button", button.button as f64)?;
+                item.set("state", button.state.as_str())?;
+                item.set("x", button.x)?;
+                item.set("y", button.y)?;
+                item.set("time", button.time as f64)?;
             }
         }
         list.set(index, item)?;

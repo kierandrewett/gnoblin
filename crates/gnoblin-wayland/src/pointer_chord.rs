@@ -149,6 +149,11 @@ impl State {
     /// keeps each press's release with it however the claims change while the button is held.
     pub(crate) fn route_pointer_button(&mut self, device: DeviceId, code: u32, pressed: bool, time: InputTime) -> bool {
         self.cancel_captures_when_locked(time.millis());
+        // The shell's grab and its claims on a pointer's buttons come before any chord: every button, whether or not a
+        // chord can name it.
+        if let Some(consumed) = self.route_seat_button(device, code, pressed, time) {
+            return consumed;
+        }
         let Some(button) = button_number(code) else {
             return false;
         };

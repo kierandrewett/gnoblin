@@ -29,6 +29,7 @@ use smithay::wayland::cursor_shape::CursorShapeManagerState;
 
 use crate::State;
 use crate::server::CursorSettings;
+use crate::shell_cursor::CursorChoice;
 
 use crate::log;
 
@@ -100,16 +101,24 @@ impl State {
 pub(crate) const CURSOR_CACHE_BYTES: usize = 8 * 1024 * 1024;
 
 impl State {
-    /// The cursor to draw on `output` this frame. A named shape is drawn when the pointer
-    /// is on that output; a client's own surface cursor is not drawn here.
+    /// The cursor to draw on `output` this frame: the shell's choice while one stands (see `shell_cursor`), else the
+    /// client's. A named shape is drawn when the pointer is on that output; a client's own surface cursor is not drawn
+    /// here.
     pub(crate) fn pointer_cursor(
         &self,
         output: gnoblin_types::OutputId,
     ) -> Option<gnoblin_render_frame::frame::Overlay> {
-        let smithay::input::pointer::CursorImageStatus::Named(icon) = &self.cursor_image else {
-            return None;
+        let choice = match self.cursor_choice() {
+            CursorChoice::Hidden => return None,
+            CursorChoice::Client => match &self.cursor_image {
+                smithay::input::pointer::CursorImageStatus::Named(icon) => CursorChoice::Named(icon.name()),
+                _ => return None,
+            },
+            choice => choice,
         };
-        let pointer = self.seat.get_pointer()?.current_location();
+        // The pointer's own place, not the seat's last delivered one: a pointer a shell's grab or drag holds does not
+        // move the seat's.
+        let pointer = self.pointer_position;
         let rect = self.output_rect(output)?;
         let scale = self.output_scale(output)?;
         let inside = pointer.x >= f64::from(rect.x)
@@ -119,10 +128,16 @@ impl State {
         if !inside {
             return None;
         }
-        let output_scale = gnoblin_types::Scale::new((scale * 1000.0).round() as u32, 1000);
-        let images = self.cursor_chain.lookup(icon.name(), self.cursor_size, output_scale);
         let at = (pointer.x - f64::from(rect.x), pointer.y - f64::from(rect.y));
-        cursor_overlay(&images, at, scale)
+        match choice {
+            CursorChoice::Image(images) => cursor_overlay(images, at, scale),
+            CursorChoice::Named(name) => {
+                let output_scale = gnoblin_types::Scale::new((scale * 1000.0).round() as u32, 1000);
+                let images = self.cursor_chain.lookup(name, self.cursor_size, output_scale);
+                cursor_overlay(&images, at, scale)
+            }
+            CursorChoice::Hidden | CursorChoice::Client => None,
+        }
     }
 }
 

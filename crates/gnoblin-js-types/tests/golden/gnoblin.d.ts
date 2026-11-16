@@ -647,6 +647,18 @@ declare module "gnoblin-core/schema/tree" {
         decorationsAvailable: boolean;
         /** Schema name `builtin_motion`. Default `true`. */
         builtinMotion: boolean;
+        /** Default `""`. */
+        readonly grabbed: string;
+        /** Schema name `cursor_shape`. Default `""`. */
+        cursorShape: string;
+        /** Schema name `cursor_image`. */
+        cursorImage: Uint8Array;
+        /** Schema name `cursor_hotspot_x`. Default `0`. */
+        cursorHotspotX: number;
+        /** Schema name `cursor_hotspot_y`. Default `0`. */
+        cursorHotspotY: number;
+        /** Schema name `cursor_hidden`. Default `false`. */
+        cursorHidden: boolean;
         warp(): Reply;
         claim(id: number, chord: string, grab: boolean, device: string): Reply;
         unclaim(id: number): Reply;
@@ -654,12 +666,18 @@ declare module "gnoblin-core/schema/tree" {
         claimGesture(id: number, kind: string, fingers: number, device: string): Reply;
         /** Schema name `claim_device`. */
         claimDevice(id: number, device: string): Reply;
+        grab(id: number, node: number, scope: string): Reply;
+        ungrab(id: number): Reply;
+        /** Schema name `claim_pointer`. */
+        claimPointer(id: number, device: string): Reply;
         /** Signal `chord`. */
         onChord(handler: (target: this, id: number, chord: string, state: string) => void): Unsubscribe;
         /** Signal `gesture`. */
         onGesture(handler: (target: this, id: number, kind: string, fingers: number, phase: string, dx: number, dy: number, scale: number, rotation: number) => void): Unsubscribe;
         /** Signal `pointer_chord`. */
         onPointerChord(handler: (target: this, phase: string, claim: number, x: number, y: number, dx: number, dy: number, button: number, modifiers: string, time: number) => void): Unsubscribe;
+        /** Signal `pointer_button`. */
+        onPointerButton(handler: (target: this, claim: number, button: number, state: string, x: number, y: number, time: number) => void): Unsubscribe;
     }
 
     /** Schema object `tree.surface` (since 0.2.0). */
@@ -771,6 +789,7 @@ declare module "gnoblin-core/schema/signals" {
         "tree.seat.chord": { readonly name: "tree.seat.chord"; readonly object: number; readonly id: number; readonly chord: string; readonly state: string; };
         "tree.seat.gesture": { readonly name: "tree.seat.gesture"; readonly object: number; readonly id: number; readonly kind: string; readonly fingers: number; readonly phase: string; readonly dx: number; readonly dy: number; readonly scale: number; readonly rotation: number; };
         "tree.seat.pointer_chord": { readonly name: "tree.seat.pointer_chord"; readonly object: number; readonly phase: string; readonly claim: number; readonly x: number; readonly y: number; readonly dx: number; readonly dy: number; readonly button: number; readonly modifiers: string; readonly time: number; };
+        "tree.seat.pointer_button": { readonly name: "tree.seat.pointer_button"; readonly object: number; readonly claim: number; readonly button: number; readonly state: string; readonly x: number; readonly y: number; readonly time: number; };
         "tree.surface.destroyed": { readonly name: "tree.surface.destroyed"; readonly object: number; };
         "tree.tween.destroyed": { readonly name: "tree.tween.destroyed"; readonly object: number; };
         "tree.view.destroyed": { readonly name: "tree.view.destroyed"; readonly object: number; };

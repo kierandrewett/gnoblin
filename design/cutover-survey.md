@@ -608,7 +608,8 @@ Status of the four steps at the base, in one table. Row 8 is brought up to date 
   compositor" (`design/rust-compositor.md:1929-1932`).
 - **`Seat:grab` does not exist.** `schema/tree/seat.toml` has `warp`, `claim`, `unclaim` and the `chord` signal
   (`seat.toml:149-205`); `grab` is only a flag on `claim` (`seat.toml:173`). The plan row says `InputPolicy` folds into `input`
-  plus `seat:grab` (`node-api-refactor.md:202`).
+  plus `seat:grab` (`node-api-refactor.md:202`). [`Seat.grab` exists now: design/node-core.md, 5.1a. It takes the seat's pointer or keyboard for a shell node and is
+  refused while the session is locked.]
 
 #### (a) Exact deletions
 

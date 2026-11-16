@@ -285,6 +285,8 @@ pub enum TreeFrameInput {
     Gesture(GestureDelivery),
     /// A claimed pointer chord's drag advanced. The claim is the shell's, named by its `claim`.
     PointerChord(PointerChordEvent),
+    /// A button of a pointer a `claim_pointer` claimed went down or up. The claim is the shell's, named by its `claim`.
+    PointerButton(PointerButtonEvent),
 }
 
 #[cfg(test)]
@@ -443,6 +445,22 @@ pub struct PointerChordEvent {
     pub button: u8,
     /// The chord's modifiers as the chord spells them, empty for a chord of a bare button.
     pub modifiers: String,
+    /// The input event's time in milliseconds.
+    pub time: u32,
+}
+
+/// A button of a claimed pointer changed state, for the shell that claimed the pointer.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PointerButtonEvent {
+    /// The claim's id, as the shell allocated it.
+    pub claim: i64,
+    /// The button's `evdev` code.
+    pub button: u32,
+    /// Whether the button went down.
+    pub pressed: bool,
+    /// The pointer's place in global logical coordinates.
+    pub x: f64,
+    pub y: f64,
     /// The input event's time in milliseconds.
     pub time: u32,
 }
@@ -786,6 +804,11 @@ impl TreeFrame {
         self.push_event(node, TreeFrameInput::PointerChord(event));
     }
 
+    /// Records a button of a claimed pointer changing state on the seat `node`, delivered to the shell in the next batch.
+    pub fn pointer_button(&mut self, node: NodeId, event: PointerButtonEvent) {
+        self.push_event(node, TreeFrameInput::PointerButton(event));
+    }
+
     /// Records a claimed gesture advancing on the seat `node`, delivered to the shell in the next batch.
     pub fn gesture(&mut self, node: NodeId, delivery: GestureDelivery) {
         self.push_event(node, TreeFrameInput::Gesture(delivery));
@@ -1004,7 +1027,13 @@ impl TreeFrame {
                             scene.class(call.node) == Some("seat")
                                 && matches!(
                                     call.method.as_str(),
-                                    "claim" | "claim_gesture" | "claim_device" | "unclaim"
+                                    "claim"
+                                        | "claim_gesture"
+                                        | "claim_device"
+                                        | "claim_pointer"
+                                        | "grab"
+                                        | "ungrab"
+                                        | "unclaim"
                                 )
                         });
                     let (auths, calls): (Vec<TreeCall>, Vec<TreeCall>) = rest

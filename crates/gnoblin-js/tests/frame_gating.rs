@@ -95,11 +95,12 @@ fn kind(message: &TreeIncoming) -> usize {
         TreeIncoming::Chord(_) => 7,
         TreeIncoming::Gesture(_) => 8,
         TreeIncoming::PointerChord(_) => 9,
+        TreeIncoming::PointerButton(_) => 10,
     }
 }
 
 /// How many kinds `kind` numbers.
-const KINDS: usize = 10;
+const KINDS: usize = 11;
 
 /// The kinds that belong to the boot. After it they are a protocol error, which the frame reports and does not skip
 /// (`a_boot_message_after_the_boot_is_an_error_and_not_a_quiet_turn`).
@@ -146,6 +147,7 @@ const MESSAGES: &[Message] = &[
         rig.comp
             .pointer_chord(99, "<Super>Button1", "start", (0.0, 0.0), (0.0, 0.0))
     }),
+    ("pointer button", |rig| rig.comp.pointer_button(99, 0x110, "press")),
 ];
 
 #[test]

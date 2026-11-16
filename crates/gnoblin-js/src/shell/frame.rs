@@ -225,6 +225,9 @@ impl JsShell {
                 TreeIncoming::PointerChord(drag) => {
                     self.state.borrow_mut().input.inbox.push(JsInputMessage::Pointer(drag));
                 }
+                TreeIncoming::PointerButton(button) => {
+                    self.state.borrow_mut().input.inbox.push(JsInputMessage::Button(button));
+                }
                 TreeIncoming::Attached(_) | TreeIncoming::Snapshot { .. } => {
                     return Err(JsShellError::Link("attach or snapshot after boot".to_owned()));
                 }

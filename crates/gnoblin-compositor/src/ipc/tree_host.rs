@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use gnoblin_input::GestureDelivery;
 use gnoblin_paint::SharedPainter;
-use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload, PointerChordPayload};
+use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload, PointerButtonPayload, PointerChordPayload};
 use gnoblin_proto::tree::tree::{
     AnswerPayload, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TrackEndedPayload,
     TransactArgs,
@@ -26,8 +26,8 @@ use gnoblin_render::transaction::{
 use gnoblin_secret::SecretText;
 use gnoblin_types::{ClientId, NodeId};
 use gnoblin_wayland::{
-    ChordEvent, ChordState, FrameTreeEvent, PointerChordEvent, TreeAnswer, TreeBatch, TreeFrameInput, TreeHooks,
-    TreeInput, TreeQueue, keysym_name, keysym_text,
+    ChordEvent, ChordState, FrameTreeEvent, PointerButtonEvent, PointerChordEvent, TreeAnswer, TreeBatch,
+    TreeFrameInput, TreeHooks, TreeInput, TreeQueue, keysym_name, keysym_text,
 };
 
 use super::server::IpcEvent;
@@ -52,6 +52,7 @@ pub mod member {
     pub const CHORD: &str = "chord";
     pub const GESTURE: &str = "gesture";
     pub const POINTER_CHORD: &str = "pointer_chord";
+    pub const POINTER_BUTTON: &str = "pointer_button";
     pub const ANSWER: &str = "answer";
     pub const TRACK_ENDED: &str = "track_ended";
 }
@@ -410,6 +411,11 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
             kind: "pointer_chord".to_owned(),
             ..base
         },
+        // A button of a claimed pointer is sent as the `pointer_button` signal, see `pointer_button_payload`.
+        TreeFrameInput::PointerButton(_) => EventPayload {
+            kind: "pointer_button".to_owned(),
+            ..base
+        },
         TreeFrameInput::Input(input) => {
             let kind = input.name().to_owned();
             match input {
@@ -468,6 +474,19 @@ pub fn pointer_chord_payload(event: &PointerChordEvent) -> PointerChordPayload {
         dy: event.dy,
         button: i64::from(event.button),
         modifiers: event.modifiers.clone(),
+        time: i64::from(event.time),
+    }
+}
+
+/// The `pointer_button` signal for a button of a claimed pointer that changed state.
+#[must_use]
+pub fn pointer_button_payload(event: &PointerButtonEvent) -> PointerButtonPayload {
+    PointerButtonPayload {
+        claim: event.claim,
+        button: i64::from(event.button),
+        state: if event.pressed { "press" } else { "release" }.to_owned(),
+        x: event.x,
+        y: event.y,
         time: i64::from(event.time),
     }
 }

@@ -112,6 +112,9 @@ use canvases::CanvasPicture;
 
 mod lock_ui;
 
+mod seat_input;
+pub use seat_input::ShellCursor;
+
 mod views;
 use views::{Landing, VIEW_DEPTH, ViewPicture};
 

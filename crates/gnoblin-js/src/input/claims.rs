@@ -1,4 +1,4 @@
-//! Seat claims: the chords, gestures and devices a script asks the compositor to hand it, queued as calls
+//! Seat claims: the chords, gestures, devices, pointer buttons and input grabs a script asks the compositor to hand it, queued as calls
 //! on the seat and kept apart while a generation is only being staged.
 
 use gnoblin_secret::SecretText;
@@ -163,6 +163,27 @@ pub(crate) fn claim_device(state: &mut HostState, seat: NodeId, device: &str) ->
         return JsClaimOutcome::Refused("invalid-value");
     }
     queue_claim(state, seat, "claim_device", None, device.to_owned(), device)
+}
+
+/// Claims every pointer button of the pointers that report `device` (a name from `Seat.device`, never empty): a press
+/// reaches the script as a `button` message instead of a client or a node, until the claim is given up. The call's text
+/// is the bare name.
+pub(crate) fn claim_pointer(state: &mut HostState, seat: NodeId, device: &str) -> JsClaimOutcome {
+    if device.is_empty() {
+        return JsClaimOutcome::Refused("invalid-value");
+    }
+    queue_claim(state, seat, "claim_pointer", None, device.to_owned(), device)
+}
+
+/// Takes the seat's `scope` (`pointer`, `keyboard` or `both`) for the node `node`, which then hears the input as it
+/// would a node of its own: the keys as `key` events, the buttons, motion and wheel as pointer events. The grab is a
+/// claim like the others, so the generation that made it gives it up when it ends and a staged generation's waits for
+/// the takeover. The compositor holds one grab at a time and answers a refusal by leaving `Seat.grabbed` as it was.
+pub(crate) fn grab(state: &mut HostState, seat: NodeId, node: NodeId, scope: &str) -> JsClaimOutcome {
+    if !matches!(scope, "pointer" | "keyboard" | "both") {
+        return JsClaimOutcome::Refused("invalid-value");
+    }
+    queue_claim(state, seat, "grab", Some(node as i64), scope.to_owned(), "")
 }
 
 /// Gives a claim up. An id this shell does not hold is ignored, so a double release cannot touch another claim. A claim

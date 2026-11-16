@@ -627,7 +627,8 @@ impl State {
         self.rebuild_keymap();
     }
 
-    /// Applies the seat `claim`, `claim_gesture`, `claim_device` and `unclaim` calls the shell's transactions made.
+    /// Applies the seat `claim`, `claim_gesture`, `claim_device`, `claim_pointer`, `grab`, `ungrab` and `unclaim` calls the
+    /// shell's transactions made.
     /// A claim binds its chord in the router, so the router delivers it before any client; a gesture claim takes its
     /// gesture from the touchpad bindings; a device claim makes a keyboard binding-only; an unclaim removes any.
     pub(crate) fn apply_claims(&mut self, calls: Vec<TreeCall>) {
@@ -644,8 +645,21 @@ impl State {
                 self.claim_device(&call, id);
                 continue;
             }
+            if call.method == "claim_pointer" {
+                self.claim_pointer(&call, id);
+                continue;
+            }
+            if call.method == "grab" {
+                self.begin_seat_grab(&call, id);
+                continue;
+            }
+            if call.method == "ungrab" {
+                self.end_seat_grab_of(call.node, id);
+                continue;
+            }
             if call.method == "unclaim" {
                 self.touchpad_gestures.claims_mut().unclaim(call.node.get(), id);
+                self.end_seat_grab_of(call.node, id);
             }
             let name = claim_name(call.node, id);
             let Ok(bound) = Name::new(&name) else {
@@ -656,6 +670,7 @@ impl State {
             self.keyboard_tables.router.bindings_mut().remove_name(&bound);
             self.keyboard_tables.claims.remove(&name);
             self.keyboard_tables.device_claims.remove(&name);
+            self.release_button_claim(&name);
             self.keyboard_tables.captures.retain(|_, capture| !capture.is_of(&name));
             if call.method == "unclaim" {
                 continue;
@@ -744,6 +759,7 @@ impl State {
         self.keyboard_tables
             .device_claims
             .retain(|_, claim| !released(claim.node));
+        self.release_seat_input_where(&released);
     }
 
     /// Applies one seat `claim_device` call: the devices that report the call's text make no key reach a client
@@ -1091,6 +1107,11 @@ impl State {
         let mut consumed = routed.target != Target::Client;
         if consumed {
             log::debug!(area = "key", keycode, target = %routed.target, fired = ?routed.fired, "consumed");
+        }
+        // A key the shell's grab took is the grab's node's, as the seat's own key: a second keyboard's edge of a key
+        // the seat already holds, and a keyboard the shell made binding-only, are not the seat's and say nothing.
+        if origin == KeyOrigin::Seat {
+            self.route_grab_key(routed.target, state == KeyState::Pressed, symbol);
         }
         // A shared edge of a binding for every keyboard is not the seat's. A release is still reported when the
         // press it ends was, so the shell is never left holding a chord.

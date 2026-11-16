@@ -59,6 +59,8 @@ pub use chain::{CursorChain, physical_size};
 pub use files::{CursorFiles, FileError, FsFiles, MAX_FILE_BYTES, MemoryFiles, SearchPath, is_contained};
 /// Decoded cursor frames, the image providers and pixel packing helpers.
 pub use image::{CursorFrame, CursorImages, ImageError, MAX_IMAGE_EDGE, MAX_PHYSICAL_SIZE, pack_argb, premultiplied};
+/// A cursor a program supplies as a PNG, decoded at its own size, and why one is refused.
+pub use png::{PngError, decode_image};
 /// Shape name candidates for a requested cursor shape.
 pub use shapes::candidates;
 /// Error raised while decoding an SVG cursor.

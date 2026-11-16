@@ -6,6 +6,9 @@
 //! this workspace forbids `unsafe`, so the environment cannot be set in-process. Each
 //! test therefore re-runs this test binary as a child with its own `XCURSOR_PATH` and
 //! runs the session there. The child is selected by [`CHILD_MARKER`].
+//!
+//! The last tests put a shell on the session's tree and have it choose the cursor (`Seat.cursor_*`): what is drawn is
+//! read back the same way, through the screencopy overlay.
 
 use std::fs::File;
 use std::io::Write;
@@ -21,8 +24,13 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::InputEvent;
 use gnoblin_config::Protocols;
 use gnoblin_cursor::ProviderKind;
-use gnoblin_types::{DeviceId, Point, Rect};
-use gnoblin_wayland::{Config, ControlHandle, CursorSettings, LoopError, Server, SessionSnapshot};
+use gnoblin_render::transaction::{
+    ClassInfo, Code, PropertyInfo, TreeChange, TreeOp, TreeTransaction, TreeValue, ValueType,
+};
+use gnoblin_types::{DeviceId, NodeId, Point, Rect};
+use gnoblin_wayland::{
+    Config, ControlHandle, CursorSettings, LoopError, Server, SessionSnapshot, TreeBatch, TreeHooks, TreeQueue,
+};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
@@ -111,9 +119,28 @@ impl Drop for StopOnDrop {
 /// directory and re-runs the current test as a child whose `XCURSOR_PATH` is that
 /// directory. In the child it starts the session with `theme` and runs `body`.
 fn with_theme(test: &str, theme: &str, cursors: &[(&str, u32)], body: impl FnOnce(&Handle) + Send + 'static) {
+    in_theme_child(test, cursors, || run_session(theme, body));
+}
+
+/// [`with_theme`] for a test that has a shell on the session's tree: `body` is given the shell's side of it.
+fn with_shell_theme(
+    test: &str,
+    theme: &str,
+    cursors: &[(&str, u32)],
+    body: impl FnOnce(&Handle, &Shell) + Send + 'static,
+) {
+    in_theme_child(test, cursors, || {
+        let (shell, hooks) = Shell::new();
+        run_session_with(theme, hooks, move |session| body(session, &shell));
+    });
+}
+
+/// The parent/child split of [`with_theme`]: the parent installs the theme and re-runs `test` as a child; the child
+/// runs `run`.
+fn in_theme_child(test: &str, cursors: &[(&str, u32)], run: impl FnOnce()) {
     let themes = tempfile::tempdir().expect("a theme directory");
     if std::env::var(CHILD_MARKER).as_deref() == Ok(test) {
-        run_session(theme, body);
+        run();
         return;
     }
     for (name, colour) in cursors {
@@ -130,6 +157,11 @@ fn with_theme(test: &str, theme: &str, cursors: &[(&str, u32)], body: impl FnOnc
 
 /// Starts a session with cursor theme `theme`, runs `body` on a worker, and joins both.
 fn run_session(theme: &str, body: impl FnOnce(&Handle) + Send + 'static) {
+    run_session_with(theme, TreeHooks::default(), body);
+}
+
+/// [`run_session`] with a tree for a shell to hold.
+fn run_session_with(theme: &str, tree: TreeHooks, body: impl FnOnce(&Handle) + Send + 'static) {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let socket = directory.path().join("wayland-0.sock");
     let privileged_socket = directory.path().join("wayland-0-privileged.sock");
@@ -142,6 +174,7 @@ fn run_session(theme: &str, body: impl FnOnce(&Handle) + Send + 'static) {
             size: CURSOR_SIZE,
             providers: vec![ProviderKind::Xcursor],
         },
+        tree,
         ..Config::default()
     };
     let server = Server::new(Box::new(gnoblin_backend::headless::Headless::new()), config).expect("the session starts");
@@ -655,6 +688,407 @@ fn a_committed_cursor_theme_replaces_the_one_in_force() {
                 size: CURSOR_SIZE,
                 providers: vec![ProviderKind::Xcursor],
             });
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == BLUE);
+        },
+    );
+}
+
+// ---- The cursor a shell chooses ----------------------------------------------------------------------------------
+
+/// The solid colour of the image a shell draws as the cursor: opaque magenta.
+const MAGENTA: u32 = 0xFFFF_00FF;
+
+/// The schema the shell is served: the main seat, the values of it that make up the cursor, its grab, and a plain node
+/// to hold one.
+struct SeatClasses;
+
+impl ClassInfo for SeatClasses {
+    fn has_class(&self, class: &str) -> bool {
+        matches!(class, "seat" | "node")
+    }
+
+    fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
+        let kind = match (class, key) {
+            ("node", "x" | "y" | "width" | "height") => ValueType::Double,
+            ("seat", "cursor_shape") => ValueType::Text,
+            ("seat", "cursor_image") => ValueType::Bytes,
+            ("seat", "cursor_hotspot_x" | "cursor_hotspot_y") => ValueType::Int,
+            ("seat", "cursor_hidden") => ValueType::Bool,
+            _ => return None,
+        };
+        Some(PropertyInfo {
+            kind,
+            readonly: false,
+            animated: false,
+        })
+    }
+
+    fn has_method(&self, class: &str, method: &str) -> bool {
+        class == "seat" && matches!(method, "grab" | "ungrab")
+    }
+}
+
+/// The shell's side of the session: the tree it holds and everything the compositor published to it.
+#[derive(Clone)]
+struct Shell {
+    queue: TreeQueue,
+    batches: Arc<Mutex<Vec<TreeBatch>>>,
+}
+
+impl Shell {
+    fn new() -> (Self, TreeHooks) {
+        let queue = TreeQueue::default();
+        let batches: Arc<Mutex<Vec<TreeBatch>>> = Arc::default();
+        let hooks = TreeHooks {
+            queue: queue.clone(),
+            classes: Arc::new(SeatClasses),
+            publish: {
+                let batches = Arc::clone(&batches);
+                Arc::new(move |batch| batches.lock().expect("the batch lock").push(batch))
+            },
+            ..TreeHooks::default()
+        };
+        (Self { queue, batches }, hooks)
+    }
+
+    /// Takes the tree, as a connected shell does.
+    fn attach(&self) {
+        self.queue.read(|scene, _| scene.set_shell_places(true));
+    }
+
+    /// Lets go of the tree, as a shell whose connection dropped does.
+    fn detach(&self) {
+        self.queue.read(|scene, _| scene.set_shell_places(false));
+    }
+
+    /// The main seat's node, once the compositor announced it.
+    fn seat(&self) -> NodeId {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let found = self.batches.lock().expect("the batch lock").iter().find_map(|batch| {
+                batch.changes.iter().find_map(|change| match change {
+                    TreeChange::Created { node, class, .. } if class == "seat" => Some(*node),
+                    _ => None,
+                })
+            });
+            if let Some(found) = found {
+                return found;
+            }
+            assert!(Instant::now() < deadline, "the compositor never announced its seat");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// The last value the compositor published for the seat's `key`.
+    fn published(&self, key: &str) -> Option<TreeValue> {
+        let seat = self.seat();
+        self.batches
+            .lock()
+            .expect("the batch lock")
+            .iter()
+            .flat_map(|batch| batch.changes.iter())
+            .filter_map(|change| match change {
+                TreeChange::Set { node, key: name, value } if *node == seat && name == key => Some(value.clone()),
+                _ => None,
+            })
+            .next_back()
+    }
+
+    /// Writes `values` on the seat in one transaction, built again on the newest batch when the compositor published
+    /// meanwhile.
+    fn write(&self, values: &[(&str, TreeValue)]) {
+        let seat = self.seat();
+        self.run(
+            values
+                .iter()
+                .map(|(key, value)| TreeOp::Set {
+                    node: seat,
+                    key: (*key).to_owned(),
+                    value: value.clone(),
+                    timing: None,
+                })
+                .collect(),
+        );
+    }
+
+    /// Calls `method` on the seat with `args` and `text`.
+    fn call(&self, method: &str, args: Vec<i64>, text: &str) {
+        self.run(vec![TreeOp::TreeCall {
+            node: self.seat(),
+            method: method.to_owned(),
+            args,
+            token: 1,
+            text: gnoblin_secret::SecretText::new(text),
+        }]);
+    }
+
+    /// Applies `ops` as one transaction, built again on the newest batch when the compositor published meanwhile.
+    fn run(&self, ops: Vec<TreeOp>) {
+        for _ in 0..100 {
+            let base = self
+                .batches
+                .lock()
+                .expect("the batch lock")
+                .last()
+                .map_or(0, |batch| batch.serial);
+            let (sender, receiver) = std::sync::mpsc::channel();
+            self.queue.submit(
+                base,
+                TreeTransaction::new(ops.clone()),
+                || true,
+                move |_, result| {
+                    let _ = sender.send(result.map_err(|refusal| refusal.code));
+                },
+            );
+            match receiver.recv_timeout(TIMEOUT).expect("the shell's write is answered") {
+                Ok(_) => return,
+                Err(Code::StaleBase) => thread::sleep(Duration::from_millis(10)),
+                Err(code) => panic!("the shell's write was refused: {code:?}"),
+            }
+        }
+        panic!("the shell's write stayed stale");
+    }
+}
+
+/// The CRC-32 a PNG chunk ends in.
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &byte in bytes {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+/// The Adler-32 a zlib stream ends in.
+fn adler32(bytes: &[u8]) -> u32 {
+    let (mut a, mut b) = (1u32, 0u32);
+    for &byte in bytes {
+        a = (a + u32::from(byte)) % 65521;
+        b = (b + a) % 65521;
+    }
+    (b << 16) | a
+}
+
+/// A square PNG of `edge` pixels, all `rgba`, written with a stored deflate block so no encoder is needed.
+fn solid_png(edge: u32, rgba: [u8; 4]) -> Vec<u8> {
+    fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+        out.extend((data.len() as u32).to_be_bytes());
+        let mut body = kind.to_vec();
+        body.extend(data);
+        out.extend(&body);
+        out.extend(crc32(&body).to_be_bytes());
+    }
+    let mut raw = Vec::new();
+    for _ in 0..edge {
+        // Each scanline starts with its filter type, none.
+        raw.extend([0]);
+        for _ in 0..edge {
+            raw.extend(rgba);
+        }
+    }
+    let length = u16::try_from(raw.len()).expect("a small image");
+    let mut zlib = vec![0x78, 0x01, 0x01];
+    zlib.extend(length.to_le_bytes());
+    zlib.extend((!length).to_le_bytes());
+    zlib.extend(&raw);
+    zlib.extend(adler32(&raw).to_be_bytes());
+    let mut header = Vec::new();
+    header.extend(edge.to_be_bytes());
+    header.extend(edge.to_be_bytes());
+    header.extend([8, 6, 0, 0, 0]);
+    let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+    chunk(&mut out, b"IHDR", &header);
+    chunk(&mut out, b"IDAT", &zlib);
+    chunk(&mut out, b"IEND", &[]);
+    out
+}
+
+#[test]
+fn a_shells_cursor_shape_replaces_the_clients_until_the_shell_clears_it() {
+    with_shell_theme(
+        "a_shells_cursor_shape_replaces_the_clients_until_the_shell_clears_it",
+        THEME,
+        &[("default", GREEN), ("text", BLUE)],
+        |session, shell| {
+            let mut app = Client::app(&session.socket);
+            let at = pointer_over_window(&mut app, session, wp_cursor_shape_device_v1::Shape::Default);
+            let (x, y) = tip_sample(at);
+            let mut capture = Client::capturer(&session.privileged_socket);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == GREEN);
+
+            shell.attach();
+            shell.write(&[("cursor_shape", TreeValue::Text("text".to_owned()))]);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == BLUE);
+
+            shell.write(&[("cursor_shape", TreeValue::Text(String::new()))]);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == GREEN);
+        },
+    );
+}
+
+#[test]
+fn a_shell_that_hides_the_cursor_shows_none_and_a_shell_that_detaches_gives_it_back() {
+    with_shell_theme(
+        "a_shell_that_hides_the_cursor_shows_none_and_a_shell_that_detaches_gives_it_back",
+        THEME,
+        &[("default", GREEN)],
+        |session, shell| {
+            let mut app = Client::app(&session.socket);
+            let at = pointer_over_window(&mut app, session, wp_cursor_shape_device_v1::Shape::Default);
+            let (x, y) = tip_sample(at);
+            let mut capture = Client::capturer(&session.privileged_socket);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == GREEN);
+
+            shell.attach();
+            shell.write(&[("cursor_hidden", TreeValue::Bool(true))]);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == RED);
+
+            // The shell goes with the cursor hidden: nobody is left to show it, so the compositor does.
+            shell.detach();
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == GREEN);
+            let deadline = Instant::now() + TIMEOUT;
+            while shell.published("cursor_hidden") != Some(TreeValue::Bool(false)) {
+                assert!(
+                    Instant::now() < deadline,
+                    "the compositor never cleared the shell's hide"
+                );
+                thread::sleep(Duration::from_millis(5));
+            }
+        },
+    );
+}
+
+#[test]
+fn a_shells_image_is_drawn_with_its_hotspot_on_the_pointer_and_wins_over_a_shape() {
+    with_shell_theme(
+        "a_shells_image_is_drawn_with_its_hotspot_on_the_pointer_and_wins_over_a_shape",
+        THEME,
+        &[("default", GREEN), ("text", BLUE)],
+        |session, shell| {
+            let mut app = Client::app(&session.socket);
+            let at = pointer_over_window(&mut app, session, wp_cursor_shape_device_v1::Shape::Default);
+            let mut capture = Client::capturer(&session.privileged_socket);
+            let (x, y) = (at.x as u32, at.y as u32);
+            capture_until(&mut capture, |frame| frame.pixel(x + 2, y + 2) == GREEN);
+
+            shell.attach();
+            shell.write(&[
+                ("cursor_shape", TreeValue::Text("text".to_owned())),
+                ("cursor_image", TreeValue::Bytes(solid_png(4, [255, 0, 255, 255]))),
+            ]);
+            // The hotspot is the image's corner, so the image lies right and below the pointer.
+            let frame = capture_until(&mut capture, |frame| frame.pixel(x + 1, y + 1) == MAGENTA);
+            assert_ne!(
+                frame.pixel(x - 1, y - 1),
+                MAGENTA,
+                "nothing is drawn up and left of the hotspot"
+            );
+            assert_eq!(frame.pixel(x + 3, y + 3), MAGENTA, "the image is four pixels square");
+            assert_ne!(frame.pixel(x + 4, y + 4), MAGENTA);
+
+            // The hotspot is the image's far corner, so the image lies up and left of the pointer.
+            shell.write(&[
+                ("cursor_hotspot_x", TreeValue::Int(3)),
+                ("cursor_hotspot_y", TreeValue::Int(3)),
+            ]);
+            let frame = capture_until(&mut capture, |frame| frame.pixel(x - 1, y - 1) == MAGENTA);
+            assert_ne!(frame.pixel(x + 1, y + 1), MAGENTA);
+
+            // Without the image the shape the shell named is drawn.
+            shell.write(&[("cursor_image", TreeValue::Bytes(Vec::new()))]);
+            capture_until(&mut capture, |frame| frame.pixel(x + 2, y + 2) == BLUE);
+        },
+    );
+}
+
+#[test]
+fn an_image_that_is_not_a_png_draws_the_next_cursor() {
+    with_shell_theme(
+        "an_image_that_is_not_a_png_draws_the_next_cursor",
+        THEME,
+        &[("default", GREEN), ("text", BLUE)],
+        |session, shell| {
+            let mut app = Client::app(&session.socket);
+            let at = pointer_over_window(&mut app, session, wp_cursor_shape_device_v1::Shape::Default);
+            let (x, y) = tip_sample(at);
+            let mut capture = Client::capturer(&session.privileged_socket);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == GREEN);
+
+            shell.attach();
+            shell.write(&[
+                ("cursor_image", TreeValue::Bytes(b"not a png".to_vec())),
+                ("cursor_shape", TreeValue::Text("text".to_owned())),
+            ]);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == BLUE);
+
+            // With no shape either, the client's cursor shows: a bad image never leaves no pointer.
+            shell.write(&[("cursor_shape", TreeValue::Text(String::new()))]);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == GREEN);
+        },
+    );
+}
+
+#[test]
+fn a_shell_that_does_not_hold_the_tree_has_no_say_in_the_cursor() {
+    with_shell_theme(
+        "a_shell_that_does_not_hold_the_tree_has_no_say_in_the_cursor",
+        THEME,
+        &[("default", GREEN), ("text", BLUE)],
+        |session, shell| {
+            let mut app = Client::app(&session.socket);
+            let at = pointer_over_window(&mut app, session, wp_cursor_shape_device_v1::Shape::Default);
+            let (x, y) = tip_sample(at);
+            let mut capture = Client::capturer(&session.privileged_socket);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == GREEN);
+
+            // The write lands in the tree, but the shell holds nothing: the compositor clears it the next frame.
+            shell.write(&[("cursor_shape", TreeValue::Text("text".to_owned()))]);
+            thread::sleep(Duration::from_millis(200));
+            let frame = capture.capture(1);
+            assert_eq!(
+                frame.pixel(x, y),
+                GREEN,
+                "a shell that does not hold the tree chooses nothing"
+            );
+            assert_eq!(shell.published("cursor_shape"), Some(TreeValue::Text(String::new())));
+        },
+    );
+}
+
+#[test]
+fn a_pointer_grab_takes_the_clients_cursor_away_and_the_client_has_to_set_it_again() {
+    with_shell_theme(
+        "a_pointer_grab_takes_the_clients_cursor_away_and_the_client_has_to_set_it_again",
+        THEME,
+        &[("default", GREEN), ("text", BLUE)],
+        |session, shell| {
+            let mut app = Client::app(&session.socket);
+            let at = pointer_over_window(&mut app, session, wp_cursor_shape_device_v1::Shape::Text);
+            let (x, y) = tip_sample(at);
+            let mut capture = Client::capturer(&session.privileged_socket);
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == BLUE);
+
+            shell.attach();
+            let node = NodeId::new(0x7301);
+            shell.run(vec![TreeOp::New {
+                class: "node".to_owned(),
+                id: node,
+            }]);
+            // The client that had the pointer has left, so its cursor is not the pointer's: the arrow is.
+            shell.call("grab", vec![1, node.get() as i64], "pointer");
+            capture_until(&mut capture, |frame| frame.pixel(x, y) == GREEN);
+
+            // The pointer enters the client again when the grab ends, and the client sets its cursor as it enters.
+            app.state.enter_serial = None;
+            shell.call("ungrab", vec![1], "");
+            app.set_pointer_shape(wp_cursor_shape_device_v1::Shape::Text);
             capture_until(&mut capture, |frame| frame.pixel(x, y) == BLUE);
         },
     );

@@ -255,6 +255,8 @@ Who can see what you type at a locked session:
 - Someone at the keyboard sees a mask. A wrong password and an empty one never unlock the session, through the shell's
   screen or the card: the check and its rate limit are the compositor's.
 - A window of your session hears nothing. No key reaches a window while the session is locked.
+- No other node of the shell hears a key. A node that holds a keyboard or pointer grab loses it when the session locks, and
+  a grab is refused while the session is locked unless the node is part of the lock screen the shell has up.
 - A program that reads the tree, such as `gnoblinctl`, sees nothing. The password is the `authenticate` call's secret
   text and no property holds it.
 - The logs hold nothing. A failed check logs one warning without the password.

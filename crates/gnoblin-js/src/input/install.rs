@@ -2,7 +2,7 @@
 
 use rquickjs::{Ctx, Function, Object};
 
-use super::claims::{JsClaimOutcome, claim, claim_device, claim_gesture, unclaim};
+use super::claims::{JsClaimOutcome, claim, claim_device, claim_gesture, claim_pointer, grab, unclaim};
 use super::seats::{
     JsSeatSettings, clear_focus, declare_decorations, devices, drag_constraint, focus, pointer, seat_name, seats,
     set_builtin_motion,
@@ -161,6 +161,33 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
                 None => JsClaimOutcome::Refused("unknown-node"),
             }
         })?,
+    )?;
+
+    let shared = state.clone();
+    input.set(
+        "claimPointer",
+        Function::new(ctx.clone(), move |seat: f64, device: String| -> JsClaimOutcome {
+            let mut state = shared.borrow_mut();
+            match state.handles.resolve(seat) {
+                Some(seat) => claim_pointer(&mut state, seat, &device),
+                None => JsClaimOutcome::Refused("unknown-node"),
+            }
+        })?,
+    )?;
+
+    let shared = state.clone();
+    input.set(
+        "grab",
+        Function::new(
+            ctx.clone(),
+            move |seat: f64, node: f64, scope: String| -> JsClaimOutcome {
+                let mut state = shared.borrow_mut();
+                match (state.handles.resolve(seat), state.handles.resolve(node)) {
+                    (Some(seat), Some(node)) => grab(&mut state, seat, node, &scope),
+                    _ => JsClaimOutcome::Refused("unknown-node"),
+                }
+            },
+        )?,
     )?;
 
     let shared = state.clone();

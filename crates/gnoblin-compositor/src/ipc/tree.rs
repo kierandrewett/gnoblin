@@ -857,6 +857,30 @@ mod tests {
         assert_eq!(observer_ops(&[call("close")], &owned), Err(0));
     }
 
+    /// The input a seat hands out is the shell's alone: an observer may not grab it, claim a pointer's buttons or
+    /// choose the cursor, however the call or the write is spelled (`Seat.grab`, `Seat.claim_pointer`, `cursor_*`).
+    #[test]
+    fn an_observer_may_not_grab_the_seats_input_or_choose_its_cursor() {
+        let owned = BTreeSet::from([NodeId::new(2)]);
+        for method in ["grab", "ungrab", "claim_pointer", "claim", "claim_device", "unclaim"] {
+            assert_eq!(observer_ops(&[call(method)], &owned), Err(0), "{method}");
+        }
+        for (key, value) in [
+            ("cursor_shape", TreeValue::Text("none".to_owned())),
+            ("cursor_hidden", TreeValue::Bool(true)),
+            ("cursor_image", TreeValue::Bytes(vec![1, 2, 3])),
+            ("cursor_hotspot_x", TreeValue::Int(1)),
+        ] {
+            let set = TreeOp::Set {
+                node: NodeId::new(2),
+                key: key.to_owned(),
+                value,
+                timing: None,
+            };
+            assert_eq!(observer_ops(&[set], &owned), Err(0), "{key}");
+        }
+    }
+
     #[test]
     fn an_observer_set_may_not_animate() {
         let animated = TreeOp::Set {
