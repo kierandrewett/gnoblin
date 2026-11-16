@@ -1,26 +1,28 @@
 # Lifecycle events
 
-These signals report the session, the configuration, operations that finish later and the requests behind the
-compositor's dialogs. Subscribe with `gnoblin.on` as [Events](/events/) describes. Each event also carries `name` and
-`object`.
+These events report the session, the configuration, operations that finish later and the requests behind the
+compositor's dialogs. Hear the first two with a `SessionListener` and a `RuntimeListener`, as [Events](/events/)
+describes. Each method receives `gnoblin.session` or `gnoblin.runtime` first, then the values in the table.
 
 ## Session
 
-| Event                                | Fields              | When                                                                |
-| ------------------------------------ | ------------------- | ------------------------------------------------------------------- |
-| `gnoblin.session.ready`              | none                | The session can accept requests. Raised once.                       |
-| `gnoblin.session.bell`               | `count`             | An application rang the bell. `count` is the bells since login.     |
-| `gnoblin.session.reload_requested`   | `generation`        | `gnoblinctl config reload` asked for a reload.                      |
-| `gnoblin.session.lock_state_changed` | `state`, `revision` | The lock state changed. `revision` is the value `status()` reports. |
+Attach a `SessionListener` with `gnoblin.session.addListener(listener)`. Every method is optional.
 
-`count` lets a handler notice a bell it missed. Whether a bell flashes the screen or beeps is the compositor's
+| Method                                         | Compositor signal                    | When                                                                |
+| ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------- |
+| `onReady(session)`                             | `gnoblin.session.ready`              | The session can accept requests. Raised once.                       |
+| `onBell(session, count)`                       | `gnoblin.session.bell`               | An application rang the bell. `count` is the bells since login.     |
+| `onReloadRequested(session, generation)`       | `gnoblin.session.reload_requested`   | `gnoblinctl config reload` asked for a reload.                      |
+| `onLockStateChanged(session, state, revision)` | `gnoblin.session.lock_state_changed` | The lock state changed. `revision` is the value `status()` reports. |
+
+`count` lets a listener notice a bell it missed. Whether a bell flashes the screen or beeps is the compositor's
 `visual_bell` and `audible_bell` setting, not the script's.
 
-`gnoblin.session.reload_requested` is for information. The shell reloads on its own when it is asked, so a handler does not
-reload anything. A script that wants to start a reload calls `gnoblin.runtime.reloadConfig()`, which
+`onReloadRequested` is for information. The shell reloads on its own when it is asked, so a listener does not reload
+anything. A script that wants to start a reload calls `gnoblin.runtime.reloadConfig()`, which
 [Session and runtime](/shell-api/session-runtime#reload) describes.
 
-`state` of `gnoblin.session.lock_state_changed` is one of these:
+`state` of `onLockStateChanged` is one of these:
 
 | State      | Meaning                                                                       |
 | ---------- | ----------------------------------------------------------------------------- |
@@ -30,21 +32,30 @@ reload anything. A script that wants to start a reload calls `gnoblin.runtime.re
 | `failsafe` | The cover is up and no lock screen can proceed.                               |
 
 ```ts
-import { toast } from "gnoblin";
+import { SessionListener, toast } from "gnoblin";
 
-gnoblin.on("gnoblin.session.lock_state_changed", (event) => {
-    if (event.state === "locked") {
-        toast("Locked");
+class LockToast extends SessionListener {
+    onLockStateChanged(session, state) {
+        if (state === "locked") {
+            toast("Locked");
+        }
     }
-});
+}
+
+gnoblin.session.addListener(new LockToast());
 ```
 
 ## Configuration
 
-| Event                          | Fields                                                           | When                                                      |
-| ------------------------------ | ---------------------------------------------------------------- | --------------------------------------------------------- |
-| `gnoblin.config.reloaded`      | `path`, `revision`, `warnings`, `notApplied`, `sequence`, `time` | A reload was accepted. The new configuration is in force. |
-| `gnoblin.config.reload_failed` | `path`, `error`, `sequence`, `time`                              | A reload was refused. The old configuration stays.        |
+Attach a `RuntimeListener` with `gnoblin.runtime.addListener(listener)`. Each method takes the runtime, then one record.
+
+| Method                                   | Compositor signal              | When                                                      |
+| ---------------------------------------- | ------------------------------ | --------------------------------------------------------- |
+| `onConfigReloaded(runtime, reload)`      | `gnoblin.config.reloaded`      | A reload was accepted. The new configuration is in force. |
+| `onConfigReloadFailed(runtime, failure)` | `gnoblin.config.reload_failed` | A reload was refused. The old configuration stays.        |
+
+`reload` has `path`, `revision`, `warnings`, `notApplied`, `sequence` and `time`. `failure` has `path`, `error`, `sequence`
+and `time`.
 
 - `path` is the configuration file the reload read.
 - `revision` is the number the compositor gave the committed document.
@@ -53,8 +64,8 @@ gnoblin.on("gnoblin.session.lock_state_changed", (event) => {
 - `notApplied` lists the settings accepted without effect, each a sentence naming the setting and the reason:
   `restart required` for a setting a process reads only when it starts, and `no effect` for one nothing reads.
 - `error` is why a reload was refused: the first validation or evaluation failure.
-- `sequence` counts accepted reloads in `reloaded` and refused reloads in `reload_failed`. `time` is the shell's
-  monotonic clock reading. Neither is a wall clock.
+- `sequence` counts accepted reloads in `onConfigReloaded` and refused reloads in `onConfigReloadFailed`. `time` is the
+  shell's monotonic clock reading. Neither is a wall clock.
 
 ## Operations
 
@@ -62,8 +73,8 @@ gnoblin.on("gnoblin.session.lock_state_changed", (event) => {
 | ----------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
 | `gnoblin.operation.completed` | `operationId`, `method`, `ok`, `error`, `sequence`, `time` | An operation finished: the compositor or the shell answered it. |
 
-`ok` is `true` for a success. `error` is the failure code, empty on success. A script usually waits for one operation
-through its own `Operation` instead: see [Operations, errors and timers](/shell-api/errors).
+`ok` is `true` for a success. `error` is the failure code, empty on success. A script waits for one operation through
+its own `Operation`: see [Operations, errors and timers](/shell-api/errors).
 
 ## Requests behind dialogs
 
@@ -75,5 +86,5 @@ through its own `Operation` instead: see [Operations, errors and timers](/shell-
 `request` is the request's identity, the same in both events. `slot` names the kind of request. `subject` is text the
 asking program chose and is not an identity to trust. The event never carries an answer.
 
-To watch these requests with typed objects, and to refuse one, attach a listener instead:
+To watch these requests with typed objects, and to refuse one, attach a listener:
 [Requests and dialogs](/shell-api/requests) and [Authentication prompts](/shell-api/authentication).

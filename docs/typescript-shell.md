@@ -365,7 +365,7 @@ The shell has more than windows:
 
 - `gnoblin.session` logs out, suspends, powers off and locks.
 - `gnoblin.process` starts programs and reports how they end.
-- `gnoblin.timers` runs a function later, and `gnoblin.on` listens for the compositor's signals.
+- `gnoblin.timers` runs a function later, and a `SessionListener` or `RuntimeListener` hears the session and the configuration.
 - `gnoblin.find`, `gnoblin.focus.history` and `gnoblin.version()` read what the shell holds.
 
 See [Session and runtime](/shell-api/session-runtime), [Processes](/shell-api/processes) and [Events](/events/).

@@ -38,8 +38,6 @@ export function installStaging(): void {
         return refused;
     };
 
-    host.animate = (node, key, value, duration, samples) => staging.animate(node, key, value, duration, samples);
-
     host.call = (node, method) => {
         staging.forbid(`${nodeName(node)}.${method}()`);
         return nativeCall(node, method);

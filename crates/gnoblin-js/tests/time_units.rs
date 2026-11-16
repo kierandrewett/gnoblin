@@ -168,6 +168,9 @@ fn the_old_easing_names_and_the_old_timer_are_gone_from_everything_a_script_read
         "ClientEasing",
         "TransitionEasing",
         "gnoblin.after(",
+        "Client.animate",
+        "client.animate",
+        "client?.animate",
     ];
     let mut paths = typescript_sources();
     paths.extend(time_pages());
@@ -195,7 +198,7 @@ fn the_declared_easing_names_are_the_ones_the_runtime_accepts() {
         .collect();
     let mut rig = world(1, false, "new Layout()", "");
     let accepted = rig.eval(
-        "(() => { try { gnoblin.clients.get('3').animate({ x: 1 }, { duration: 1, easing: 'bouncy' }); return 'no'; } \
+        "(() => { try { gnoblin.clients.get('3').set({ x: 1 }, { duration: 1, easing: 'bouncy' }); return 'no'; } \
          catch (e) { return e.message; } })()",
     );
     let listed = accepted
@@ -220,7 +223,7 @@ fn the_declared_easing_names_are_the_ones_the_runtime_accepts() {
         exec(
             &mut rig,
             &format!(
-                "g.c.animate({{ opacity: {} }}, {{ duration: 100, easing: '{easing}' }})",
+                "g.c.set({{ opacity: {} }}, {{ duration: 100, easing: '{easing}' }})",
                 0.9 - 0.1 * index as f64
             ),
         );
@@ -283,7 +286,6 @@ fn a_duration_of_250_is_a_quarter_of_a_second_on_the_wire_for_every_api_that_tak
     exec(&mut rig, "g.c = gnoblin.clients.get('3');");
     settle(&mut rig);
     for (what, call) in [
-        ("Client.animate", "g.c.animate({ opacity: 0.5 }, { duration: 250 })"),
         ("Client.set", "g.c.set({ opacity: 0.25 }, { duration: 250 })"),
         (
             "gnoblin.requestTransition",
@@ -297,6 +299,79 @@ fn a_duration_of_250_is_a_quarter_of_a_second_on_the_wire_for_every_api_that_tak
             timed_seconds(&rig, mark),
             [("opacity".to_owned(), 0.25)],
             "{what}: a duration of 250 is 250 ms"
+        );
+    }
+}
+
+#[test]
+fn client_animate_is_gone_and_set_is_the_one_timed_write_of_a_client() {
+    let mut rig = world(1, false, "new Layout()", "");
+    assert_eq!(
+        rig.eval("typeof gnoblin.clients.get('3').animate"),
+        "undefined",
+        "the specification has no `animate`: a second engine's entry point"
+    );
+    assert_eq!(rig.eval("typeof gnoblin.clients.get('3').set"), "function");
+    // The transition engine owns every timed write, so a newer write takes the property from an older one and the
+    // older transition ends cancelled.
+    exec(
+        &mut rig,
+        "g.c = gnoblin.clients.get('3'); g.first = g.c.set({ opacity: 0.5 }, { duration: 250 });\n\
+         g.first.finished.then((r) => { g.cancelled = r.cancelled; });",
+    );
+    settle(&mut rig);
+    exec(&mut rig, "g.c.set({ opacity: 0.25 }, { duration: 250 });");
+    settle(&mut rig);
+    assert_eq!(
+        rig.eval("String(g.cancelled)"),
+        "true",
+        "the newest transition supersedes the older one"
+    );
+}
+
+#[test]
+fn a_duration_that_looks_like_seconds_is_not_read_as_seconds() {
+    let mut rig = world(1, false, "new Layout()", "");
+    exec(&mut rig, "g.c = gnoblin.clients.get('3');");
+    settle(&mut rig);
+    for (what, call) in [
+        ("Client.set", "g.c.set({ opacity: 0.25 }, { duration: 0.25 })"),
+        (
+            "gnoblin.requestTransition",
+            "gnoblin.requestTransition(() => { g.c.opacity = 0.75; }, { duration: 0.25 })",
+        ),
+    ] {
+        let mark = rig.comp.sent_count();
+        exec(&mut rig, call);
+        settle(&mut rig);
+        let timed = timed_seconds(&rig, mark);
+        assert_eq!(timed.len(), 1, "{what}: one timed write: {timed:?}");
+        assert!(
+            (timed[0].1 - 0.000_25).abs() < 1e-9,
+            "{what}: 0.25 is a quarter of a millisecond, not a quarter of a second: {timed:?}"
+        );
+    }
+}
+
+#[test]
+fn a_workspace_slide_lasts_the_milliseconds_it_is_given() {
+    for (given, seconds) in [(250.0, 0.25), (0.25, 0.000_25)] {
+        let mut rig = world(1, false, "new Layout()", "");
+        let mark = rig.comp.sent_count();
+        exec(
+            &mut rig,
+            &format!("gnoblin.workspaces.show('2', {{ duration: {given} }});"),
+        );
+        settle(&mut rig);
+        let slides: Vec<f64> = timed_seconds(&rig, mark)
+            .into_iter()
+            .filter(|(key, _)| key == "x")
+            .map(|(_, seconds)| seconds)
+            .collect();
+        assert!(!slides.is_empty(), "a slide writes the windows' x over time");
+        assert!(
+            slides.iter().all(|got| (got - seconds).abs() < 1e-9),
+            "show({given}): {slides:?} is not {seconds} seconds"
         );
     }
 }

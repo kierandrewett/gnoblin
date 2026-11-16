@@ -22,7 +22,6 @@ export function installHostApi(): void {
             begin: (verb) => host.api.begin(verb),
             status: () => host.api.status(),
             version: () => host.api.version(),
-            signals: () => host.api.signals(),
             operationId: () => ++ctx.flags.operationIds,
             error: (code, target, message) => new GnoblinError(code, target, message),
             // The entry module runs before the first `ready`: a reload asked for from there would ask again after it.

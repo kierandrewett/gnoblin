@@ -334,30 +334,26 @@ fn a_gesture_binding_hears_the_raw_dx_dy_scale_and_rotation_next_to_progress() {
 // ---- reduced motion ------------------------------------------------------------------------------------------------
 
 #[test]
-fn motion_is_the_given_seconds_and_zero_while_the_seat_asks_for_reduced_motion() {
+fn motion_is_the_given_milliseconds_and_zero_while_the_seat_asks_for_reduced_motion() {
     // Before: `motion(seconds)` of init.retired shell, "with reduced motion on, ...".
     let mut rig = world(0, false, "new Layout()", "");
-    assert_eq!(rig.eval("String(gnoblin.motion(0.25))"), "0.25");
+    assert_eq!(rig.eval("String(gnoblin.motion(250))"), "250");
     rig.comp.external_set(SEAT, "reduced_motion", MirrorValue::Bool(true));
     settle(&mut rig);
-    assert_eq!(
-        rig.eval("String(gnoblin.motion(0.25))"),
-        "0",
-        "reduced motion zeroes it"
-    );
+    assert_eq!(rig.eval("String(gnoblin.motion(250))"), "0", "reduced motion zeroes it");
     assert_eq!(rig.eval("String(gnoblin.input.primary.settings.reducedMotion)"), "true");
     rig.comp.external_set(SEAT, "reduced_motion", MirrorValue::Bool(false));
     settle(&mut rig);
     assert_eq!(
-        rig.eval("String(gnoblin.motion(0.25))"),
-        "0.25",
+        rig.eval("String(gnoblin.motion(250))"),
+        "250",
         "and it follows the seat back"
     );
 }
 
-/// Shows workspace 2 from 1 over a quarter of a second and returns whether the windows of 1 are still drawn a frame later.
+/// Shows workspace 2 from 1 over 250 milliseconds and returns whether the windows of 1 are still drawn a frame later.
 fn leaving_windows_stay_drawn(rig: &mut Rig) -> bool {
-    exec(rig, "gnoblin.workspaces.show('2', { duration: 0.25 })");
+    exec(rig, "gnoblin.workspaces.show('2', { duration: 250 })");
     rig.frame();
     rig.frame();
     rig.eval("String(gnoblin.clients.at(0).visible)") == "true"
@@ -443,12 +439,12 @@ fn a_short_swipe_with_reduced_motion_goes_back_at_once() {
 }
 
 #[test]
-fn client_animate_lands_at_once_under_reduced_motion_and_takes_its_time_otherwise() {
-    // New: `Client.animate` is where a script's own animation goes; the the retired shell `node:to` took `motion(seconds)`; the duration is in milliseconds here.
+fn client_set_lands_at_once_under_reduced_motion_and_takes_its_time_otherwise() {
+    // New: `Client.set` is where a script's own animation goes; the retired shell `node:to` took `motion(seconds)`; the duration is in milliseconds here.
     let mut rig = world(1, false, "new Layout()", "");
     exec(
         &mut rig,
-        "gnoblin.clients.get('3').animate({ opacity: 0.5 }, { duration: 1000 })",
+        "gnoblin.clients.get('3').set({ opacity: 0.5 }, { duration: 1000 })",
     );
     settle(&mut rig);
     assert_eq!(rig.comp.timed_sets(), 1, "a timed write when motion is on");
@@ -456,7 +452,7 @@ fn client_animate_lands_at_once_under_reduced_motion_and_takes_its_time_otherwis
     settle(&mut rig);
     exec(
         &mut rig,
-        "gnoblin.clients.get('3').animate({ opacity: 0.25 }, { duration: 1000 })",
+        "gnoblin.clients.get('3').set({ opacity: 0.25 }, { duration: 1000 })",
     );
     settle(&mut rig);
     assert_eq!(rig.comp.timed_sets(), 1, "no second timed write");

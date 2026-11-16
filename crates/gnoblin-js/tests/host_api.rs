@@ -1,5 +1,5 @@
 //! The host API that is not about windows: `gnoblin.session`, `gnoblin.runtime`, `gnoblin.process`, `gnoblin.timers`,
-//! `gnoblin.on`, `gnoblin.find`, `gnoblin.focus` and `gnoblin.version` (`data/js/gnoblin/{operation,process,session}.ts`
+//! the session and runtime listeners, `gnoblin.find`, `gnoblin.focus` and `gnoblin.version` (`data/js/gnoblin/{operation,process,session}.ts`
 //! over `crates/gnoblin-js/src/host_{api,process,session}.rs`).
 //!
 //! The cases are the retired host's: `the retired retired corpus` (operations, timers, events, find,
@@ -82,8 +82,7 @@ impl FakeSession {
     }
 }
 
-const PRELUDE: &str =
-    "import { ProcessListener } from \"gnoblin\";\nconst g = globalThis as any;\ng.g = g;\ng.log = [] as string[];\n";
+const PRELUDE: &str = "import { ProcessListener, SessionListener } from \"gnoblin\";\nconst g = globalThis as any;\ng.g = g;\ng.log = [] as string[];\n";
 
 /// `Rig::eval` runs plain JavaScript; the cases are written in TypeScript like a user's config.
 trait TsEval {
@@ -541,10 +540,10 @@ fn a_timer_that_throws_is_reported_and_the_next_timer_still_runs() {
 }
 
 #[test]
-fn retiring_the_generation_cancels_its_timers_pending_operations_and_handlers() {
+fn retiring_the_generation_cancels_its_timers_pending_operations_and_listeners() {
     // Before: `a_reload_cancels_the_timers_of_the_previous_run`, `reloading_clears_global_signal_handlers`.
     let (mut rig, session) = rig("g.timer = gnoblin.timers.after(50, () => g.log.push('timer'));
-         gnoblin.on('gnoblin.session.bell', () => g.log.push('bell'));
+         gnoblin.session.addListener({ onBell() { g.log.push('bell'); } });
          g.op = gnoblin.session.lock();");
     rig.shell.retire().expect("the generation retires");
     session.signal("gnoblin.session.bell", 1, serde_json::json!({ "count": 1 }));
@@ -558,92 +557,113 @@ fn retiring_the_generation_cancels_its_timers_pending_operations_and_handlers() 
     );
 }
 
-// ---- gnoblin.on ---------------------------------------------------------------------------------------------------
+// ---- session and runtime listeners --------------------------------------------------------------------------------
 
 #[test]
-fn handlers_run_in_order_one_that_throws_does_not_stop_the_rest_and_once_runs_once() {
-    // Before: `global_signal_handlers_are_ordered_isolated_and_one_shot`; the event's fields are camelCase.
-    let (mut rig, session) = rig("gnoblin.on('gnoblin.session.bell', (e) => g.log.push('a:' + e.count));
-         gnoblin.on('gnoblin.session.bell', () => { throw new Error('handler broke'); });
-         gnoblin.on('gnoblin.session.bell', (e) => g.log.push('c:' + e.name + ':' + e.object));
-         gnoblin.once('gnoblin.session.bell', (e) => g.log.push('once:' + e.count));");
+fn listeners_run_in_order_and_one_that_throws_does_not_stop_the_rest() {
+    // Before: `global_signal_handlers_are_ordered_isolated_and_one_shot`; the origin comes first, then the fields.
+    let (mut rig, session) = rig("class A extends SessionListener { onBell(s: any, count: number) { g.log.push('a:' + count + ':' + (s === gnoblin.session)); } }
+         class B extends SessionListener { onBell() { throw new Error('listener broke'); } }
+         class C extends SessionListener { onBell(_s: any, count: number) { g.log.push('c:' + count); } }
+         for (const L of [A, B, C]) gnoblin.session.addListener(new L());");
     session.signal("gnoblin.session.bell", 9, serde_json::json!({ "count": 1 }));
     session.signal("gnoblin.session.bell", 9, serde_json::json!({ "count": 2 }));
     let diagnostics = rig.settle();
-    assert_eq!(
-        rig.ts("g.log.join('|')"),
-        "a:1|c:gnoblin.session.bell:9|once:1|a:2|c:gnoblin.session.bell:9"
-    );
+    assert_eq!(rig.ts("g.log.join('|')"), "a:1:true|c:1|a:2:true|c:2");
     assert!(
-        diagnostics.iter().any(|line| line.contains("handler broke")),
+        diagnostics.iter().any(|line| line.contains("listener broke")),
         "{diagnostics:?}"
     );
 }
 
 #[test]
-fn off_detaches_by_subscription_and_by_name_and_handler() {
-    let (mut rig, session) = rig("const keep = () => g.log.push('keep');
-         const drop = () => g.log.push('drop');
-         const sub = gnoblin.on('gnoblin.session.bell', drop);
-         gnoblin.on('gnoblin.session.bell', keep);
-         gnoblin.on('gnoblin.session.bell', drop);
-         gnoblin.off(sub);
-         gnoblin.off('gnoblin.session.bell', drop);");
-    session.signal("gnoblin.session.bell", 1, serde_json::json!({ "count": 1 }));
-    rig.settle();
-    assert_eq!(rig.ts("g.log.join()"), "keep");
-    assert!(thrown(&mut rig, "gnoblin.off(5 as any)").starts_with("TypeError: gnoblin.off: expects a subscription"));
-}
-
-#[test]
-fn hyphen_spellings_name_the_underscored_signal() {
-    // Before: `hyphenated_event_spellings_subscribe_to_the_underscored_signal`.
-    let (mut rig, session) =
-        rig("gnoblin.on('gnoblin.session.reload-requested', (e) => g.log.push(e.name + ':' + e.generation));");
+fn each_signal_reaches_its_method_with_its_fields_in_order() {
+    let (mut rig, session) = rig("gnoblin.session.addListener({
+            onReady(s: any) { g.log.push('ready:' + (s === gnoblin.session)); },
+            onReloadRequested(_s: any, generation: number) { g.log.push('reload:' + generation); },
+            onLockStateChanged(_s: any, state: string, revision: number) { g.log.push('lock:' + state + ':' + revision); },
+         });
+         gnoblin.runtime.addListener({
+            onConfigReloaded(r: any, reload: any) {
+                g.log.push('reloaded:' + (r === gnoblin.runtime) + ':' + reload.path + ':' + reload.revision + ':' + reload.notApplied.join('+') + ':' + reload.sequence);
+            },
+            onConfigReloadFailed(_r: any, failure: any) { g.log.push('failed:' + failure.error + ':' + failure.sequence); },
+         });");
+    session.signal("gnoblin.session.ready", 1, serde_json::json!({}));
     session.signal(
         "gnoblin.session.reload_requested",
         1,
         serde_json::json!({ "generation": 3 }),
     );
+    session.signal(
+        "gnoblin.session.lock_state_changed",
+        1,
+        serde_json::json!({ "state": "locked", "revision": 4 }),
+    );
+    session.signal(
+        "gnoblin.config.reloaded",
+        1,
+        serde_json::json!({ "path": "/c/init.ts", "revision": 7, "warnings": [], "not_applied": ["a", "b"], "sequence": 2, "time": 5.0 }),
+    );
+    session.signal(
+        "gnoblin.config.reload_failed",
+        1,
+        serde_json::json!({ "path": "/c/init.ts", "error": "bad", "sequence": 1, "time": 6.0 }),
+    );
     rig.settle();
-    assert_eq!(rig.ts("g.log.join()"), "gnoblin.session.reload_requested:3");
+    assert_eq!(
+        rig.ts("g.log.join('|')"),
+        "ready:true|reload:3|lock:locked:4|reloaded:true:/c/init.ts:7:a+b:2|failed:bad:1"
+    );
 }
 
 #[test]
-fn an_unknown_event_name_is_an_error_that_lists_the_near_matches() {
-    // Before: `global_event_registration_rejects_unknown_names_and_excess_handlers`,
-    // `an_unknown_hyphenated_event_is_refused_with_the_underscored_name`.
+fn removing_a_listener_stops_it_and_adding_one_twice_calls_it_once() {
+    let (mut rig, session) = rig("const keep = { onBell() { g.log.push('keep'); } };
+         const drop = { onBell() { g.log.push('drop'); } };
+         gnoblin.session.addListener(drop);
+         gnoblin.session.addListener(keep);
+         gnoblin.session.addListener(keep);
+         gnoblin.session.removeListener(drop);");
+    session.signal("gnoblin.session.bell", 1, serde_json::json!({ "count": 1 }));
+    rig.settle();
+    assert_eq!(rig.ts("g.log.join()"), "keep");
+}
+
+#[test]
+fn a_listener_removed_after_its_signal_arrived_hears_nothing() {
+    let (mut rig, session) = rig("g.l = { onBell() { g.log.push('late'); } };
+         gnoblin.session.addListener(g.l);");
+    session.signal("gnoblin.session.bell", 1, serde_json::json!({ "count": 1 }));
+    rig.ts("(gnoblin.session.removeListener(g.l), 'removed')");
+    rig.settle();
+    assert_eq!(rig.ts("g.log.length"), "0");
+}
+
+#[test]
+fn the_string_named_bus_is_gone_and_a_bad_listener_is_refused() {
     let (mut rig, _session) = rig("export {};");
+    for member in ["on", "once", "off"] {
+        assert_eq!(
+            rig.ts(&format!("typeof (gnoblin as any).{member}")),
+            "undefined",
+            "{member}"
+        );
+    }
     assert_eq!(
-        thrown(&mut rig, "gnoblin.on('gnoblin.session.bel', () => {})"),
-        "TypeError: gnoblin.on: no schema signal named `gnoblin.session.bel`; expected `namespace.object.signal`; \
-         near matches: gnoblin.session.bell"
+        thrown(&mut rig, "gnoblin.session.addListener(5 as any)"),
+        "TypeError: gnoblin.session.addListener: the listener must be an object"
     );
-    let hyphenated = thrown(&mut rig, "gnoblin.once('gnoblin.session.lock-reqested', () => {})");
-    assert!(
-        hyphenated.contains("`gnoblin.session.lock_reqested`"),
-        "the message names the underscored spelling: {hyphenated}"
-    );
-    assert!(
-        thrown(&mut rig, "gnoblin.on('nonsense', () => {})")
-            .starts_with("TypeError: gnoblin.on: no schema signal named `nonsense`")
-    );
-    assert!(
-        thrown(&mut rig, "gnoblin.on(5 as any, () => {})")
-            .starts_with("TypeError: gnoblin.on: the event name must be a string")
-    );
-    assert!(
-        thrown(&mut rig, "gnoblin.on('gnoblin.session.bell', 5 as any)")
-            .starts_with("TypeError: gnoblin.on: needs a function")
-    );
-}
-
-#[test]
-fn the_handler_count_is_capped_at_1024() {
-    let (mut rig, _session) = rig("for (let i = 0; i < 1024; i++) gnoblin.on('gnoblin.session.bell', () => {});");
     assert_eq!(
-        thrown(&mut rig, "gnoblin.on('gnoblin.session.bell', () => {})"),
-        "RangeError: gnoblin.on: 1024 event handlers are already attached"
+        thrown(&mut rig, "gnoblin.session.addListener({ onBell: 5 } as any)"),
+        "TypeError: gnoblin.session.addListener: onBell must be a function"
+    );
+    assert_eq!(
+        thrown(
+            &mut rig,
+            "gnoblin.runtime.addListener({ onConfigReloaded: 'x' } as any)"
+        ),
+        "TypeError: gnoblin.runtime.addListener: onConfigReloaded must be a function"
     );
 }
 
@@ -980,7 +1000,8 @@ fn a_session_call_that_finishes_wakes_the_next_frame_and_its_callback_runs_in_it
 
 #[test]
 fn a_session_signal_wakes_the_next_frame_and_its_handler_runs_in_it() {
-    let (mut rig, session) = rig("gnoblin.on('gnoblin.session.bell', (e) => g.log.push('bell ' + e.count));");
+    let (mut rig, session) =
+        rig("gnoblin.session.addListener({ onBell(_s: any, count: number) { g.log.push('bell ' + count); } });");
     rig.quiet();
     session.signal("gnoblin.session.bell", 1, serde_json::json!({ "count": 3 }));
     assert!(rig.next_frame_runs(), "the signal did not wake a frame");

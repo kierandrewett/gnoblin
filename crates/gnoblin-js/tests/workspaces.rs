@@ -1058,7 +1058,7 @@ fn a_slide_animates_both_workspaces_along_ease_out_and_hides_the_old_one_when_it
 }
 
 #[test]
-fn animate_checks_its_arguments_and_writes_nothing_when_one_is_wrong() {
+fn set_checks_its_timing_and_values_and_writes_nothing_when_one_is_wrong() {
     let comp = compositor(true);
     let mut rig = rig(&comp, &init("export {};"));
     rig.settle();
@@ -1070,39 +1070,32 @@ fn animate_checks_its_arguments_and_writes_nothing_when_one_is_wrong() {
     let before = sent(&comp).len();
     let c = "gnoblin.clients.get('3')";
     assert_eq!(
-        thrown(&mut rig, &format!("{c}.animate({{ x: 1 }}, {{ duration: -1 }})")),
-        "TypeError: Client#3.animate(): duration must be a finite number of milliseconds of at least 0"
+        thrown(&mut rig, &format!("{c}.set({{ x: 1 }}, {{ duration: -1 }})")),
+        "TypeError: gnoblin.requestTransition: duration must be a finite number of milliseconds of at least 0"
     );
     assert_eq!(
         thrown(
             &mut rig,
-            &format!("{c}.animate({{ x: 1 }}, {{ duration: 1, easing: 'bouncy' }})")
+            &format!("{c}.set({{ x: 1 }}, {{ duration: 1, easing: 'bouncy' }})")
         ),
-        "TypeError: Client#3.animate(): easing must be one of linear, ease, ease-in, ease-out, ease-in-out"
+        "TypeError: gnoblin.requestTransition: easing must be one of linear, ease, ease-in, ease-out, ease-in-out"
     );
     assert_eq!(
         thrown(
             &mut rig,
-            &format!("{c}.animate({{ visible: false }}, {{ duration: 1 }})")
+            &format!("{c}.set({{ x: 1, rotation: [1, 2] }}, {{ duration: 1 }})")
         ),
-        "TypeError: Client#3.animate(): visible cannot be animated"
+        "TypeError: Client#3.rotation: must be three finite numbers"
     );
     assert_eq!(
-        thrown(
-            &mut rig,
-            &format!("{c}.animate({{ x: 1, rotation: [1, 2] }}, {{ duration: 1 }})")
-        ),
-        "TypeError: Client#3.animate(): rotation must be three finite numbers"
-    );
-    assert_eq!(
-        thrown(&mut rig, &format!("{c}.animate({{ x: NaN }}, {{ duration: 1 }})")),
-        "TypeError: Client#3.animate(): x must be a finite number"
+        thrown(&mut rig, &format!("{c}.set({{ x: NaN }}, {{ duration: 1 }})")),
+        "TypeError: Client#3.x: must be a finite number"
     );
     rig.settle();
-    assert_eq!(sent(&comp).len(), before, "a refused animation queued nothing");
+    assert_eq!(sent(&comp).len(), before, "a refused set queued nothing");
     // A zero duration is an instant write, and rotation and scale take three numbers.
     rig.eval(&format!(
-        "{c}.animate({{ x: 42, rotation: [0, 1, 0], scale: [2, 2, 1] }}, {{ duration: 0 }})"
+        "{c}.set({{ x: 42, rotation: [0, 1, 0], scale: [2, 2, 1] }}, {{ duration: 0 }})"
     ));
     rig.settle();
     assert_eq!(prop(&comp, 3, "x"), 42.0);

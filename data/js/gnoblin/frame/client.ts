@@ -39,10 +39,10 @@ export interface FrameClient {
     /**
      * Moves `opacity` and `scale` over time: the fade of a closing window. Without it the window just closes.
      */
-    animate?(
+    set?(
         values: { opacity?: number; scale?: [number, number, number] },
         options: { duration: number; easing?: "ease-in" | "ease-out" },
-    ): void;
+    ): unknown;
 }
 
 /** What the seat's click actions do that a frame cannot do alone. The host supplies them. */

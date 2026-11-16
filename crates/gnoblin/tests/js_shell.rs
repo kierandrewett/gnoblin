@@ -4791,7 +4791,7 @@ fn a_mirror_display_over_two_real_outputs_mirrors_in_the_compositor_and_stops_wi
 
 /// A config that records what the host API did, for the probe: a timer that ran, a program that ended, the session's
 /// status as the compositor published it, and a reload it asked for.
-const HOST_API_INIT: &str = r#"import { ProcessListener, gnoblin } from "gnoblin";
+const HOST_API_INIT: &str = r#"import { ProcessListener, SessionListener, gnoblin } from "gnoblin";
 
 const state: Record<string, unknown> = {
     timers: 0,
@@ -4819,9 +4819,12 @@ gnoblin.process.spawn(["sh", "-c", "printf hello"], { stdout: "capture" }).wait(
 
 // The compositor raises `reload_requested` on its session object when a privileged caller asks for a reload, and
 // the script's own request is one: the signal comes back to the script that asked.
-gnoblin.on("gnoblin.session.reload-requested", (event) => {
-    (state.signals as unknown[]).push(event.generation);
-});
+class Reloads extends SessionListener {
+    onReloadRequested(_session: unknown, generation: number): void {
+        (state.signals as unknown[]).push(generation);
+    }
+}
+gnoblin.session.addListener(new Reloads());
 gnoblin.timers.after(50, () => {
     gnoblin.runtime.reloadConfig().onComplete((value, error) => {
         state.reload = error === undefined ? ["ok", value] : [error.code, error.message];

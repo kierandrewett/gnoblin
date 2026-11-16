@@ -11,12 +11,9 @@ import type { ClientListener } from "gnoblin/host/listeners";
 import { moveClientTo } from "gnoblin/host/membership";
 import { callMethod, isOutput, publishedValues, read, refuse, stateOf, writeProperty } from "gnoblin/host/node_state";
 import type { Output } from "gnoblin/host/output";
-import { motion } from "gnoblin/host/seat";
 import { clientStyle, computedStyleOf, styleWarningsOf } from "gnoblin/host/style_scopes";
 import type { Workspace } from "gnoblin/host/workspace";
 import { wsOf } from "gnoblin/host/workspace_state";
-import { ANIMATED_KEYS } from "gnoblin/host/client_animation";
-import type { AnimateOptions, ClientAnimation } from "gnoblin/host/client_animation";
 import { NativeObject } from "gnoblin/native_object";
 import { noteHostRead, propertiesOf } from "gnoblin/properties";
 import type { PropertyBinding, PropertyBindings } from "gnoblin/properties";
@@ -28,7 +25,6 @@ import { transformFrom, vectorFrom, withAxes } from "gnoblin/spatial";
 import type { AxisTriple, ScaleInit, TransformInit, Triple, Vec3Like } from "gnoblin/spatial";
 import type { ComputedStyle } from "gnoblin/style/resolve";
 import type { ClientStyle } from "gnoblin/style/style";
-import { curveSamples, DEFAULT_EASING, EASING_NAMES, easingCurve } from "gnoblin/transition/easing";
 import { setProperties } from "gnoblin/transition/engine";
 import type { Transition } from "gnoblin/transition/transition";
 import type { TransitionOptions } from "gnoblin/transition/types";
@@ -483,57 +479,6 @@ export class Client extends NativeObject {
     /** Starts resizing the window with the arrow keys: Right and Down grow it, Left and Up shrink it. */
     resizeWithKeys(): boolean {
         return repositioning.begin(this as unknown as RepositionClient, "resize");
-    }
-
-    /**
-     * Moves properties to `values` over `options.duration` milliseconds along the easing curve. Reading a property back
-     * at once gives the end value; the compositor draws the way there. A duration of 0 writes at once.
-     */
-    animate(values: ClientAnimation, options: AnimateOptions): void {
-        const state = stateOf(this);
-        const target = `Client#${host.label(state.node)}.animate()`;
-        if (!state.alive) {
-            throw new GnoblinError("not_found", target, "the client is gone");
-        }
-        const duration = options?.duration;
-        if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
-            throw new TypeError(`${target}: duration must be a finite number of milliseconds of at least 0`);
-        }
-        const curve = easingCurve(options.easing ?? DEFAULT_EASING);
-        if (curve === undefined) {
-            throw new TypeError(`${target}: easing must be one of ${EASING_NAMES}`);
-        }
-        const entries = Object.entries(values).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-        for (const [key, value] of entries) {
-            const kind = ANIMATED_KEYS[key];
-            if (kind === undefined) {
-                throw new TypeError(`${target}: ${key} cannot be animated`);
-            }
-            if (kind === "number") {
-                if (typeof value !== "number" || !Number.isFinite(value)) {
-                    throw new TypeError(`${target}: ${key} must be a finite number`);
-                }
-            } else if (
-                !Array.isArray(value) ||
-                value.length !== 3 ||
-                value.some((n) => typeof n !== "number" || !Number.isFinite(n))
-            ) {
-                throw new TypeError(`${target}: ${key} must be three finite numbers`);
-            }
-        }
-        const samples = curveSamples(curve);
-        // Reduced motion lands the value at once, as the compositor's own safety net would.
-        const effective = motion(duration);
-        for (const [key, value] of entries) {
-            const sent = Array.isArray(value) ? [value[0], value[1], value[2]] : (value as number);
-            const code =
-                effective === 0
-                    ? host.set(state.node, key, sent)
-                    : host.animate(state.node, key, sent, effective, samples);
-            if (code != null) {
-                refuse(code, target, "client");
-            }
-        }
     }
 
     /**

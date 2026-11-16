@@ -32,7 +32,7 @@ Structure of the object model (was one `gnoblin.ts` of 5,186 lines with 279 top-
   (erased) still form a loop among the object classes, which is inherent to `Client`, `Workspace` and `Output`
   naming each other. A lower module asks `isClient`, `isOutput` or `isWorkspace` instead of `instanceof`.
 - **Module table.** `crates/gnoblin-js/build.rs` embeds every `.ts` under `data/js/gnoblin`; a new file needs no edit.
-- **Sizes.** The largest host module, `client.ts`, is 577 lines (its `animate` types are in `client_animation.ts`). In Rust, the `shell`, `input`, `ui`,
+- **Sizes.** The largest host module, `client.ts`, is 577 lines (`client_animation.ts` holds the names of the properties a timed write moves). In Rust, the `shell`, `input`, `ui`,
   `generation`, `reload`, `console`, `host_process` and `bindings/host` modules are directories, none over 600 lines
   (`shell.rs` 1433 became `shell/mod.rs` 571 plus `frame`, `txgate`, `links` and `document`; `input.rs` 984 became
   `input/mod.rs` 226 plus `claims`, `seats` and `install`; the inline tests of each are in `tests.rs`).

@@ -163,6 +163,33 @@ export class TransitionEngine {
     }
 
     /**
+     * Starts timed writes the shell makes of its own accord, with no callback to run: the workspace slides, which begin
+     * inside a layout pass, where `request` cannot. The writes are one transition, so a newer write of a property takes
+     * it from them, and a window that is not drawn yet is still tweened to its place. Inside a `requestTransition`
+     * callback (its layout pass starts the slide) they join the transition being staged, each with its own duration.
+     */
+    play(writes: { node: number; key: string; value: Value }[], options: TransitionOptions): void {
+        const site = "gnoblin.workspaces.show";
+        const host = this.#host;
+        const timing = checkOptions(options, site);
+        const duration = host.motion(timing.duration);
+        if (host.staging.active) {
+            for (const { node, key, value } of writes) {
+                const code = host.staging.animate(node, key, value, duration, timing.samples);
+                if (code != null) {
+                    throw host.error("denied", site, `the host refused ${host.label(node)}.${key} (${code})`);
+                }
+            }
+            return;
+        }
+        const curve = { duration, samples: timing.samples };
+        this.#commit(
+            writes.map((write) => ({ ...write, curve })),
+            timing,
+        );
+    }
+
+    /**
      * The compositor's word that a timed write ended. A track that is not one a transition still owns is ignored: a
      * newer write took the property, or the transition was cancelled, and the transition has already settled for it.
      */
@@ -202,7 +229,7 @@ export class TransitionEngine {
                 curve !== null &&
                 curve.duration > 0 &&
                 host.animated(entry.key) &&
-                !(appearing && PLACE_KEYS.includes(entry.key));
+                !(appearing && entry.curve === null && PLACE_KEYS.includes(entry.key));
             return { entry, curve: timed ? curve : null };
         });
         const tracks = plan.filter((item) => item.curve !== null).length;

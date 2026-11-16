@@ -11,7 +11,7 @@ import { isClient } from "gnoblin/host/node_state";
 
 /**
  * The duration in milliseconds the shell gives an animation: `duration`, or 0 while the seat asks for reduced motion
- * (`appearance.reduced-motion`, the seat's `reduced_motion`). A 0 makes a slide, a fade or `Client.animate` an
+ * (`appearance.reduced-motion`, the seat's `reduced_motion`). A 0 makes a slide, a fade or a transition an
  * instant write. The compositor lands a timed write at once under reduced motion too, so a shell that forgets this
  * still obeys.
  */

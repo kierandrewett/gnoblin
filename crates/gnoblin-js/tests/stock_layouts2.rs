@@ -573,10 +573,6 @@ function world(extra = {}) {
         x,
         visible: i === 0,
         alive: true,
-        animate(values, options) {
-            log.push(`${this.name} animate x=${values.x} ${options.duration} ${options.easing}`);
-            this.x = values.x;
-        },
     }));
     const spaces = windows.map((w, i) => ({ name: `${i + 1}`, index: i, active: i === 0, clients: [w] }));
     const shell = {
@@ -594,6 +590,10 @@ function world(extra = {}) {
                 log.push(`after ${ms}`);
                 timers.push(run);
             },
+        },
+        requestTransition(change, options) {
+            log.push(`transition ${options.duration} ${options.easing}`);
+            change();
         },
         ...extra,
     };
@@ -655,7 +655,7 @@ fn a_swipe_short_of_the_commit_slides_back_and_the_incoming_workspace_is_hidden_
         got,
         lines(&[
             "-25+ 975+ 100-",
-            "w1 animate x=100 200 ease-out; w2 animate x=1100 200 ease-out; after 200",
+            "transition 200 ease-out; after 200",
             "100+ 100- 100-",
             "true,false,false",
         ])
@@ -681,8 +681,8 @@ fn a_cancel_slides_back_and_an_end_that_is_more_vertical_than_horizontal_does_to
     assert_eq!(
         got,
         lines(&[
-            "w1 animate x=100 200 ease-out; w2 animate x=1100 200 ease-out; after 200",
-            "w1 animate x=100 200 ease-out; w2 animate x=1100 200 ease-out; after 200",
+            "transition 200 ease-out; after 200",
+            "transition 200 ease-out; after 200",
         ])
     );
 }

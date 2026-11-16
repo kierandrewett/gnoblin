@@ -23,7 +23,7 @@ impl JsShell {
     }
 
     /// Gives the shell its connection for the session: `gnoblin.session`, `gnoblin.runtime.reloadConfig` and the
-    /// schema's signals of `gnoblin.on` run over it. Without one the session verbs are refused `unavailable`.
+    /// schema's signals of the session and runtime listeners run over it. Without one the session verbs are refused `unavailable`.
     pub fn set_session_link(&mut self, link: Box<dyn JsSessionLink>) {
         self.note_script_ran();
         self.state.borrow_mut().api.session = Some(link);

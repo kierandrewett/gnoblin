@@ -4,6 +4,7 @@
 import type { ErrorCode } from "gnoblin/errors";
 import { Operation } from "gnoblin/operation";
 import type { OperationHost } from "gnoblin/operation";
+import type { RuntimeListener, SessionEvents, SessionListener } from "gnoblin/session/events";
 import type {
     Accepted,
     Failure,
@@ -82,10 +83,22 @@ export class Calls {
 export class Session {
     #host: Host;
     #calls: Calls;
+    #events: SessionEvents;
 
-    constructor(host: Host, calls: Calls) {
+    constructor(host: Host, calls: Calls, events: SessionEvents) {
         this.#host = host;
         this.#calls = calls;
+        this.#events = events;
+    }
+
+    /** Attaches a `SessionListener`; adding the same listener twice has no effect. */
+    addListener(listener: SessionListener): void {
+        this.#events.session.add(listener);
+    }
+
+    /** Detaches a listener. */
+    removeListener(listener: SessionListener): void {
+        this.#events.session.remove(listener);
     }
 
     /** The session as the compositor last published it. Read on each call. */
@@ -137,16 +150,28 @@ export class Session {
 export class Runtime {
     #host: Host;
     #calls: Calls;
+    #events: SessionEvents;
 
-    constructor(host: Host, calls: Calls) {
+    constructor(host: Host, calls: Calls, events: SessionEvents) {
         this.#host = host;
         this.#calls = calls;
+        this.#events = events;
+    }
+
+    /** Attaches a `RuntimeListener`; adding the same listener twice has no effect. */
+    addListener(listener: RuntimeListener): void {
+        this.#events.runtime.add(listener);
+    }
+
+    /** Detaches a listener. */
+    removeListener(listener: RuntimeListener): void {
+        this.#events.runtime.remove(listener);
     }
 
     /**
      * Reloads the configuration. The operation succeeds when the compositor accepts it, or fails with
      * `config_rejected` and the reason. A failed reload keeps the current configuration; a successful reload replaces
-     * this generation, so its callbacks end. Read `gnoblin.session` or the `config.reloaded` signal in the new one.
+     * this generation, so its callbacks end. Hear the outcome with a `RuntimeListener`.
      *
      * Throws while the configuration is loading.
      */

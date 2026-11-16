@@ -22,8 +22,6 @@ export interface SlideClient {
     visible: boolean;
     /** Whether the window still exists. */
     readonly alive: boolean;
-    /** Animates the window's horizontal position, in logical pixels. */
-    animate(values: { x: number }, options: { duration: number; easing: "ease-out" }): void;
 }
 
 /** What it needs of a workspace. */
@@ -53,6 +51,8 @@ export interface SlideHost {
     };
     /** The milliseconds an animation takes: 0 while the seat asks for reduced motion. Absent, the time it was given. */
     motion?(duration: number): number;
+    /** Runs `change` once and plays what it writes over `options.duration` milliseconds along the easing. */
+    requestTransition(change: () => void, options: { duration: number; easing: "ease-out" }): unknown;
 }
 
 /**
@@ -261,12 +261,14 @@ export class WorkspaceSlideBinding extends GestureBinding {
         const duration = this.#shell().motion?.(SETTLE_BACK_DURATION) ?? SETTLE_BACK_DURATION;
         const options = { duration, easing: "ease-out" } as const;
         const incoming = [...to.clients];
-        for (const client of slide.from.clients) {
-            client.animate({ x: slide.rest.get(client) ?? client.x }, options);
-        }
-        for (const client of incoming) {
-            client.animate({ x: (slide.rest.get(client) ?? client.x) - slide.sign * width }, options);
-        }
+        this.#shell().requestTransition(() => {
+            for (const client of slide.from.clients) {
+                client.x = slide.rest.get(client) ?? client.x;
+            }
+            for (const client of incoming) {
+                client.x = (slide.rest.get(client) ?? client.x) - slide.sign * width;
+            }
+        }, options);
         this.#shell().timers.after(duration, () => {
             if (this.#active() === to) {
                 return; // the workspace came in for good meanwhile

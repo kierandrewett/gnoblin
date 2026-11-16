@@ -112,7 +112,7 @@ picture of a window differ in what they hold:
 | `moveToOutput(output)`       | Moves the window to the workspace an output shows. Returns `false` if it cannot.            |
 | `moveWithKeys()`             | Starts moving the window with the arrow keys. Returns `false` if it cannot.                 |
 | `resizeWithKeys()`           | Starts resizing the window with the arrow keys. Returns `false` if it cannot.               |
-| `animate(values, options)`   | Moves properties to new values over time. See [Tweens and easing](tweens).                  |
+| `set(values, options)`       | Writes properties, over time when given a duration. See [Tweens and easing](tweens).        |
 | `addListener(listener)`      | Attaches a `ClientListener` to this window.                                                 |
 | `removeListener(listener)`   | Detaches it.                                                                                |
 

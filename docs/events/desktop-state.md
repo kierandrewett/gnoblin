@@ -1,8 +1,7 @@
 # Window, workspace and output events
 
 Windows, workspaces and outputs are objects in `gnoblin.clients`, `gnoblin.workspaces` and `gnoblin.outputs`. A listener
-attached to one of them is told what happens to it and receives the object itself. Use a listener for these;
-`gnoblin.on` also raises the matching signals, with object identities in place of objects.
+attached to one of them is told what happens to it and receives the object itself.
 
 ## Listen to windows
 
@@ -87,7 +86,10 @@ An `OutputListener` attached to `gnoblin.outputs`, or to one output, has these m
 A listener on the collection does not hear `onConnected` for an output that was there when the shell started. See
 [Outputs](/shell-api/outputs#listen-for-plugging-and-unplugging).
 
-## Signals of `gnoblin.on`
+## Signals the compositor raises
+
+These are the compositor's own signals behind the listeners above. A script hears them through the listener methods, which
+receive the object itself; the signals carry object identities.
 
 | Event                           | Fields                                        | When                                              |
 | ------------------------------- | --------------------------------------------- | ------------------------------------------------- |

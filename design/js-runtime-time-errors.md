@@ -23,6 +23,13 @@ the one the host already spoke and `docs/shell-api/errors.md` documented.
     `host.animate` carries milliseconds too, and `bindings/host.rs` converts to the seconds the tree's wire counts. The
     exception is a drag event's `deltaTime`, which the specification gives in seconds.
 
+    `Client.animate` is gone too, as `gnoblin.after` is: the specification has neither. A client's timed write is
+    `Client.set(values, { duration, easing })`, which is one `requestTransition`, so the transition engine owns every
+    timed property and the newest write supersedes the older (`Client.animate` wrote to the tree on its own and ran
+    beside the engine). The shell's own timed writes go through the same engine: the workspace slide
+    (`TransitionEngine.play`, which begins inside a layout pass, where `requestTransition` cannot) and the swipe's slide
+    back (`requestTransition`).
+
 - **Easings.** Two vocabularies (`out`, `out-cubic`, `in-cubic`, `in-out`, and the CSS aliases `ease-out`, `ease-in-out`,
   `ease-in`) became one: `Easing` is `linear`, `ease`, `ease-in`, `ease-out` and `ease-in-out`, each the CSS timing
   function of that name (a cubic Bezier, `data/js/gnoblin/transition/easing.ts`).

@@ -22,7 +22,7 @@ Coordinates are logical pixels in the compositor's space. An output further righ
 | -------------- | --------------------------------------------------------------------------------------------------- |
 | `Color`        | A string: `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.                                                |
 | `Trigger`      | A binding's trigger, such as `Super+Return`. See [Keyboard shortcuts](keyboard-shortcuts#triggers). |
-| `Subscription` | What `gnoblin.on` and `Operation.onComplete` return. `unsubscribe()` stops the callback.            |
+| `Subscription` | What `Operation.onComplete` returns. `unsubscribe()` stops the callback.                            |
 | `Operation<T>` | The result of a call that finishes later. See [Operations, errors and timers](errors).              |
 | `Timer`        | A pending call of a function at a time. See [Operations, errors and timers](errors#timers).         |
 

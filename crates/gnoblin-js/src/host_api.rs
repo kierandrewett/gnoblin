@@ -1,4 +1,4 @@
-//! The host functions of `gnoblin.session`, `gnoblin.process`, `gnoblin.on`, `gnoblin.version` and
+//! The host functions of `gnoblin.session`, `gnoblin.process`, `gnoblin.version` and
 //! `gnoblin.runtime`, as `globalThis.__gnoblinHost.api`.
 //!
 //! Every function takes and returns plain strings (JSON) and numbers, so the logic here is testable without an
@@ -10,7 +10,6 @@
 //! which runs the listeners as queued calls under the usual budgets.
 
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
 
 use rquickjs::{Ctx, Function, Object};
 use serde_json::{Map, Value as Json, json};
@@ -142,32 +141,6 @@ fn exit_event(id: u64, exit: &JsExit) -> Json {
         "stdoutTruncated": exit.stdout_truncated,
         "stderrTruncated": exit.stderr_truncated,
     })
-}
-
-/// Every schema signal, as `{"name": "namespace.object.signal", "fields": ["field", ..]}`, in catalog order.
-///
-/// The catalog is the checked-in schema the compositor and the retired host are built from, so the names a script may
-/// subscribe to are the ones the compositor can raise. It is parsed once per process.
-fn signal_table() -> &'static str {
-    static TABLE: LazyLock<String> = LazyLock::new(|| {
-        let Ok(catalog) = gnoblin_js_types::stock_catalog() else {
-            return "[]".to_owned();
-        };
-        let mut signals = Vec::new();
-        for namespace in catalog.namespaces() {
-            for object in catalog.objects(&namespace) {
-                for signal in &object.signals {
-                    let fields: Vec<&str> = signal.fields.iter().map(|field| field.name.as_str()).collect();
-                    signals.push(json!({
-                        "name": format!("{namespace}.{}.{}", object.name, signal.name),
-                        "fields": fields,
-                    }));
-                }
-            }
-        }
-        Json::Array(signals).to_string()
-    });
-    &TABLE
 }
 
 // ---- gnoblin.version ---------------------------------------------------------------------------------------------
@@ -319,7 +292,6 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
     )?;
 
     api.set("version", Function::new(ctx.clone(), read_version)?)?;
-    api.set("signals", Function::new(ctx.clone(), || signal_table().to_owned())?)?;
 
     host.set("api", api)
 }
@@ -328,7 +300,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
 mod tests {
     use std::path::Path;
 
-    use super::{public_remote, sidecar_paths, signal_table, version_record};
+    use super::{public_remote, sidecar_paths, version_record};
 
     #[test]
     fn a_remote_loses_its_credentials_query_and_fragment() {
@@ -374,15 +346,5 @@ mod tests {
                 "/b/gnoblin/version.ini"
             ]
         );
-    }
-
-    #[test]
-    fn the_signal_table_names_the_schemas_signals_with_their_fields() {
-        let table: serde_json::Value = serde_json::from_str(signal_table()).expect("the table is JSON");
-        let bell = table
-            .as_array()
-            .and_then(|all| all.iter().find(|entry| entry["name"] == "gnoblin.session.bell"))
-            .expect("the session bell is declared");
-        assert_eq!(bell["fields"], serde_json::json!(["count"]));
     }
 }

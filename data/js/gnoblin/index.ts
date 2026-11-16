@@ -121,23 +121,17 @@ export * from "gnoblin/reposition";
 export { Transition } from "gnoblin/transition/transition";
 export type { Easing } from "gnoblin/transition/easing";
 export type { TransitionOptions, TransitionResult, TransitionSubscription } from "gnoblin/transition/types";
-// The host API of `gnoblin.session`, `gnoblin.process`, `gnoblin.timers` and `gnoblin.on`: the classes a script holds
-// and the shapes it reads. The module that builds them (`HostApi`) stays with the host.
+// The host API of `gnoblin.session`, `gnoblin.runtime`, `gnoblin.process` and `gnoblin.timers`: the classes a script
+// holds and the shapes it reads. The module that builds them (`HostApi`) stays with the host.
 export { Operation, Timer } from "gnoblin/operation";
 export type { OperationError, OperationStatus, Subscription } from "gnoblin/operation";
 export type { ErrorCode } from "gnoblin/errors";
 export { Process, ProcessListener } from "gnoblin/process";
 export type { ProcessExit, ProcessSignal, SpawnOptions, StreamMode } from "gnoblin/process";
 export type { FocusHistoryFilter } from "gnoblin/session/focus_history";
-export type {
-    Accepted,
-    LockRequest,
-    LockState,
-    ReloadResult,
-    SessionStatus,
-    SignalEvent,
-    Version,
-} from "gnoblin/session/types";
+export { RuntimeListener, SessionListener } from "gnoblin/session/events";
+export type { ConfigReloaded, ConfigReloadFailed } from "gnoblin/session/events";
+export type { Accepted, LockRequest, LockState, ReloadResult, SessionStatus, Version } from "gnoblin/session/types";
 // The style classes and their list elements (`gnoblin/style`).
 export * from "gnoblin/style";
 // Logical displays, cameras and viewports. The manager (`gnoblin/display_manager`) stays with the host.

@@ -1,5 +1,5 @@
 //! The shell's connection for the session: `gnoblin.session`, `gnoblin.runtime.reloadConfig` and the schema's
-//! signals for `gnoblin.on`.
+//! signals for the session and runtime listeners.
 //!
 //! The owner socket's `gnoblin` namespace is where the `session` object lives, and it does not travel on the tree
 //! socket, so the shell holds one more owner connection for it, as it does for slots and for the configuration

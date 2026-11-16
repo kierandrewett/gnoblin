@@ -292,13 +292,14 @@ Tests: `crates/gnoblin-js/tests/transition.rs` over the fake link, `a_layout_cha
     Every duration, delay and timeout of the script API is in milliseconds, as the spec says (the one exception is a drag
     event's `deltaTime`, which the spec gives in seconds). That includes:
 
-    - `Client.animate`, `gnoblin.show`, `gnoblin.motion` and `Operation.timeout`;
+    - `Client.set`, `gnoblin.show`, `gnoblin.motion` and `Operation.timeout`;
     - the `timeout` of a spawned process;
     - the options of the stock modules.
 
-    Easing names are the CSS names `linear`, `ease`, `ease-in`, `ease-out` and `ease-in-out` for `Client.animate` and
+    Easing names are the CSS names `linear`, `ease`, `ease-in`, `ease-out` and `ease-in-out` for `Client.set` and
     `requestTransition` alike; `crates/gnoblin-js/tests/time_units.rs` fails when an exported time is documented in
-    another unit. `gnoblin.after` is gone: `gnoblin.timers.after(ms, fn)` is the one timer.
+    another unit. `gnoblin.after` and `Client.animate` are gone: `gnoblin.timers.after(ms, fn)` is the one timer and
+    `Client.set(values, { duration })` the one timed write of a client.
 
     The nested call, an async callback and a side effect (`call`, `raise`, `lower`, spawn, kill, a session verb) are
     errors. `set(props)` without options is atomic and immediate.

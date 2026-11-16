@@ -80,13 +80,13 @@ export class WindowActions {
             return;
         }
         const { client } = this;
-        if (client.animate === undefined) {
+        if (client.set === undefined) {
             client.close();
             return;
         }
         closingActions.add(this);
         const fade = this.hooks.motion?.(CLOSE_FADE_MS) ?? CLOSE_FADE_MS;
-        client.animate({ opacity: 0, scale: [0.92, 0.92, 1] }, { duration: fade, easing: "ease-in" });
+        client.set({ opacity: 0, scale: [0.92, 0.92, 1] }, { duration: fade, easing: "ease-in" });
         if (fade === 0) {
             // Reduced motion: nothing to wait for, so the window is asked to close now. It comes back if it stays.
             this.#closing = { closeAt: null, restoreAt: this.now() + CLOSE_RESTORE_MS };
@@ -116,7 +116,7 @@ export class WindowActions {
             client.close();
         } else if (closing.restoreAt !== null && now >= closing.restoreAt) {
             this.#closing = null;
-            client.animate?.({ opacity: 1, scale: [1, 1, 1] }, { duration: RESTORE_DURATION_MS, easing: "ease-out" });
+            client.set?.({ opacity: 1, scale: [1, 1, 1] }, { duration: RESTORE_DURATION_MS, easing: "ease-out" });
         }
     }
 

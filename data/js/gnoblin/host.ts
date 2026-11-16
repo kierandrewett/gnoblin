@@ -7,7 +7,6 @@ export { GnoblinError } from "gnoblin/errors";
 export { ClientListener, CollectionListener, OutputListener } from "gnoblin/host/listeners";
 export type { ClientPointerEvent } from "gnoblin/host/listeners";
 export { Client } from "gnoblin/host/client";
-export type { AnimateOptions, ClientAnimation } from "gnoblin/host/client_animation";
 export { Collection, MutableCollection } from "gnoblin/host/collections";
 export { Output } from "gnoblin/host/output";
 export type { OutputApplication } from "gnoblin/host/output_apply";

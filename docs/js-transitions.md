@@ -44,12 +44,12 @@ The callback has three limits, and each is an error that changes nothing:
 
 ## Options
 
-| Option     | Meaning                                                                                                                                                                       |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `duration` | Milliseconds, 0 or more. Default 250. 0 commits the change at once, still as one transaction.                                                                                 |
-| `easing`   | `linear`, `ease`, `ease-in`, `ease-out` and `ease-in-out`: the CSS names, each the CSS timing function of that name, and the ones `Client.animate` takes. Default `ease-out`. |
-| `delay`    | Milliseconds, 0 or more. The compositor holds the start state this long before the animation begins. Default 0; none under reduced motion.                                    |
-| `autoplay` | Default true. False holds the tracks at the start until `play()` or `reverse()`; `progress` scrubs them.                                                                      |
+| Option     | Meaning                                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `duration` | Milliseconds, 0 or more. Default 250. 0 commits the change at once, still as one transaction.                                              |
+| `easing`   | `linear`, `ease`, `ease-in`, `ease-out` and `ease-in-out`: the CSS names, each the CSS timing function of that name. Default `ease-out`.   |
+| `delay`    | Milliseconds, 0 or more. The compositor holds the start state this long before the animation begins. Default 0; none under reduced motion. |
+| `autoplay` | Default true. False holds the tracks at the start until `play()` or `reverse()`; `progress` scrubs them.                                   |
 
 Any other easing name or option is a `TypeError` that names the known ones.
 

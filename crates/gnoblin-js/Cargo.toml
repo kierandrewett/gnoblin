@@ -51,10 +51,9 @@ serde_json.workspace = true
 rustix = { workspace = true, features = ["net", "process", "time"] }
 # The log facade every crate logs through.
 gnoblin-log = { path = "../gnoblin-log" }
-# The host API (`gnoblin.session`, `gnoblin.on`) reads the object graph's values and the schema's signal names, and
-# its options cross the module boundary as JSON; the idle connection reads the `idle` object and calls its methods.
+# The host API (`gnoblin.session`) reads the object graph's values, and its options cross the module boundary as JSON;
+# the idle connection reads the `idle` object and calls its methods.
 gnoblin-model = { path = "../gnoblin-model" }
-gnoblin-js-types = { path = "../gnoblin-js-types" }
 serde.workspace = true
 # The bytecode cache names each file by the SHA-256 of what its bytecode is made from and checks a file against the
 # SHA-256 it was written with (the `bytecode` module).

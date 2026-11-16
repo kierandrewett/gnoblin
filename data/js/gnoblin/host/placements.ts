@@ -4,7 +4,7 @@ import type { Client } from "gnoblin/host/client";
 import { growRect } from "gnoblin/frame/inset";
 import { ctx } from "gnoblin/host/context";
 import { isShown } from "gnoblin/host/desks";
-import { writeProperty } from "gnoblin/host/node_state";
+import { stateOf, writeProperty } from "gnoblin/host/node_state";
 import { framed, workAreaOfWorkspace } from "gnoblin/host/work_area";
 import type { Workspace } from "gnoblin/host/workspace";
 import { wsState } from "gnoblin/host/workspace_state";
@@ -128,10 +128,11 @@ export function startSlides(): void {
             continue;
         }
         const travel = direction * area.width;
+        const moves: { node: number; key: string; value: number }[] = [];
         for (const client of wsState(to).clientsState.list as Client[]) {
             const rest = client.x;
             client.x = rest + travel * (1 - progress);
-            client.animate({ x: rest }, { duration, easing: "ease-out" });
+            moves.push({ node: stateOf(client).node, key: "x", value: rest });
         }
         const resting = new Map<Client, number>();
         for (const client of wsState(from).clientsState.list as Client[]) {
@@ -140,8 +141,9 @@ export function startSlides(): void {
             if (progress > 0) {
                 client.x = rest - travel * progress;
             }
-            client.animate({ x: rest - travel }, { duration, easing: "ease-out" });
+            moves.push({ node: stateOf(client).node, key: "x", value: rest - travel });
         }
+        ctx.transitions.play(moves, { duration, easing: "ease-out" });
         ctx.holding.set(from, (ctx.holding.get(from) ?? 0) + 1);
         ctx.hostApi.timers.after(duration, () => {
             const left = (ctx.holding.get(from) ?? 1) - 1;

@@ -10,7 +10,7 @@ export const DEFAULT_DURATION_MS = 250;
 export interface TransitionOptions {
     /** Milliseconds, 0 or more. Default 250. Zero commits the change at once (still as one transaction). */
     duration?: number;
-    /** One of the CSS names of `Easing`. Default `"ease-out"`, as `Client.animate`'s. */
+    /** One of the CSS names of `Easing`. Default `"ease-out"`. */
     easing?: Easing;
     /** Milliseconds, 0 or more, the compositor holds the start state before the animation begins. Default 0. */
     delay?: number;

@@ -7,8 +7,9 @@ import type { ErrorCode } from "gnoblin/errors";
 export type Value = unknown;
 
 /**
- * The timed write a staged value is sent as, when it has a curve of its own (`Client.animate` inside a callback). A
- * transition adds the `delay` in milliseconds before it starts and the `tween` node whose play state drives it.
+ * The timed write a staged value is sent as, when it has a curve of its own (a workspace slide that a callback's layout
+ * pass starts). A transition adds the `delay` in milliseconds before it starts and the `tween` node whose play state
+ * drives it.
  */
 interface Curve {
     duration: number;
@@ -120,12 +121,8 @@ export class Staging {
         return code;
     }
 
-    /** Animates a property immediately or stages the timed write. */
+    /** Stages a timed write, inside a callback (`TransitionEngine.play` calls it only then). */
     animate(node: number, key: string, value: Value, duration: number, samples: number[]): string | undefined {
-        if (this.#entries === null) {
-            this.onWrite?.(node, key);
-            return this.#backend.animate(node, key, value, duration, samples);
-        }
         const code = this.#backend.check(node, key, value, true);
         if (code === undefined || code === null) {
             this.#keep({ node, key, value: copy(value), curve: { duration, samples } });

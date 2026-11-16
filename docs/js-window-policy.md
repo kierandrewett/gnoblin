@@ -47,9 +47,9 @@ gesture went; a cancelled gesture runs nothing.
 
 ## Reduced motion
 
-While the seat's `reduced_motion` is true, `gnoblin.motion(seconds)` is 0.
+While the seat's `reduced_motion` is true, `gnoblin.motion(duration)` is 0.
 
-- Workspace slides and `Client.animate` take no time.
+- Workspace slides and `Client.set` with a duration take no time.
 - The titlebar's close fade is skipped.
 - The slide back of a short swipe is instant.
 

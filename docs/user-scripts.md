@@ -34,8 +34,8 @@ leaves the running config in place and reports the error.
 
 - A listener, attached to `gnoblin.clients`, `gnoblin.workspaces` or `gnoblin.outputs`, receives the objects themselves.
   Use it for windows, workspaces and outputs: [Window, workspace and output events](/events/desktop-state).
-- `gnoblin.on(name, handler)` hears the compositor's other signals, such as a reload or the bell:
-  [Events](/events/).
+- A `SessionListener` or `RuntimeListener`, attached to `gnoblin.session` or `gnoblin.runtime`, hears the session and the
+  configuration, such as the bell or a reload: [Events](/events/).
 - A function bound with `gnoblin.input.primary.bind` runs when a trigger is pressed: [Keyboard shortcuts](/shell-api/keyboard-shortcuts).
 - `gnoblin.timers.after(ms, fn)` runs a function later: [Operations, errors and timers](/shell-api/errors#timers).
 

@@ -1509,7 +1509,6 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-client",
  "gnoblin-config",
- "gnoblin-js-types",
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-paint",

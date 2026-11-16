@@ -141,5 +141,5 @@ it was in at spin (init.ts:12:5), called from at onFocus (init.ts:20:3)
 
 ## See also
 
-- [Events](/events/) for `gnoblin.on`.
+- [Events](/events/) for the listeners.
 - [Compositor bridge](/bridge/connection) for the socket's own error codes.

@@ -26,7 +26,7 @@ const DOC_DIRS: &[&str] = &["docs/shell-api", "docs/events"];
 const DOC_FILES: &[&str] = &["docs/user-shell.md", "docs/user-scripts.md"];
 /// The interface every dotted `gnoblin.` name starts from.
 const ROOT_TYPE: &str = "Gnoblin";
-/// The interface whose quoted keys are the signal names `gnoblin.on` accepts.
+/// The interface whose quoted keys are the schema's signal names.
 const SIGNALS_TYPE: &str = "GnoblinSignals";
 /// Methods of the JavaScript built-ins. A documented `list.map(` is language code, not a gnoblin name.
 const BUILTIN_METHODS: &[&str] = &[
@@ -136,7 +136,7 @@ impl Implemented {
         if name.starts_with('.') {
             return self.methods.contains(name);
         }
-        // A hyphen spelling names the underscored signal, as `gnoblin.on` accepts it.
+        // A hyphen spelling names the underscored signal.
         let name = name.replace('-', "_");
         let prefix = format!("{name}.");
         self.events.contains(&name) || self.events.iter().any(|event| event.starts_with(&prefix)) || self.reaches(&name)
@@ -834,14 +834,15 @@ declare module "gnoblin/schema/signals" {
             "gnoblin.clients",
             "gnoblin.process.spawn",
             "gnoblin.session.lock",
-            "gnoblin.on",
+            "gnoblin.session.addListener",
             "gnoblin.window.created",
             "gnoblin.config.reload_failed",
-            ".animate",
+            ".set",
             ".moveToOutput",
         ] {
             assert!(surface.provides(name), "{name}");
         }
         assert!(!surface.provides("gnoblin.no_such_member"));
+        assert!(!surface.provides("gnoblin.on"), "the string-named bus is gone");
     }
 }

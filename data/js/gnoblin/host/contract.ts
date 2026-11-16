@@ -149,7 +149,6 @@ export interface Host {
         begin(verb: string): string;
         status(): string | undefined;
         version(): string;
-        signals(): string;
     };
     /** Input services provided by the shell. */
     input: InputHost;

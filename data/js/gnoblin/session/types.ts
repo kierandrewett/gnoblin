@@ -69,15 +69,6 @@ export interface Version {
     readonly buildId: string;
 }
 
-/** A compositor signal delivered to a handler, with its fields in camelCase. */
-export interface SignalEvent {
-    /** `namespace.object.signal`, with underscores. */
-    readonly name: string;
-    /** The identity of the object that raised it. */
-    readonly object: number;
-    readonly [field: string]: unknown;
-}
-
 /** Functions, queue and clock supplied by the shell to the host API. */
 export interface ApiHost extends ClockHost {
     /** The native spawn: argv and options as JSON; answers `{id, pid}` or `{error}` as JSON. */
@@ -96,8 +87,6 @@ export interface ApiHost extends ClockHost {
     status(): string | undefined;
     /** The build identity as JSON. */
     version(): string;
-    /** The schema's signals as JSON: `[{name, fields}]`. */
-    signals(): string;
     /** True while the user's entry module is being evaluated. */
     loading(): boolean;
 }

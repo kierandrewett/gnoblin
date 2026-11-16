@@ -105,9 +105,9 @@ The remaining stock layouts, workspace sets, the slide gesture and the launcher 
     `Client` gains `tiled`, `visible`, `opacity`, `z`, `rotation` and `scale` (the host table in `bindings/props.rs`, which
     now has defaults per property and a list kind).
 
-    It also gains `animate(values, { duration, easing })`, a write that carries a duration and 33 samples of an easing, as
-    the Lua `node:to` sent its curves (`host.animate`, in milliseconds; the tree's wire counts seconds, and the binding
-    converts).
+    It also gained `animate(values, { duration, easing })`, a write that carries a duration and 33 samples of an easing,
+    as the Lua `node:to` sent its curves (`host.animate`, in milliseconds; the tree's wire counts seconds, and the
+    binding converts). `Client.set` replaced it (see "Time units and error codes status"); the wire write stays.
 
     The easing is the CSS easing `linear`, `ease`, `ease-in`, `ease-out` or `ease-in-out`.
 

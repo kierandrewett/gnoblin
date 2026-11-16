@@ -4,8 +4,8 @@
 # host, not sent by the compositor: `reloaded` when a reload is accepted, and
 # `reload_failed` when one is refused, in which case the last accepted configuration
 # is restored and every handler it registered is told why. They are declared here so
-# they are schema members, the way `request.finished` is, and a script's `gnoblin.on`
-# can name them with the same checks as any other signal.
+# they are schema members, the way `request.finished` is, and a script's `RuntimeListener`
+# hears them with the same checks as any other signal.
 namespace = "gnoblin"
 version = "0.2.0"
 

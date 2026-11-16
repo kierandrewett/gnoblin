@@ -3,8 +3,8 @@
 import { Timers } from "gnoblin/operation";
 import type { OperationHost } from "gnoblin/operation";
 import { ProcessTable } from "gnoblin/process";
-import { EventBus } from "gnoblin/session/bus";
 import { Calls, Runtime, Session } from "gnoblin/session/calls";
+import { SessionEvents } from "gnoblin/session/events";
 import { find } from "gnoblin/session/find";
 import type { FindSource, Scalar } from "gnoblin/session/find";
 import { FocusHistory } from "gnoblin/session/focus_history";
@@ -31,8 +31,8 @@ export class HostApi {
     readonly session: Session;
     /** Provides runtime information and operations. */
     readonly runtime: Runtime;
-    /** Sends and receives script events. */
-    readonly bus: EventBus;
+    /** Delivers the session's and the configuration's signals to the listeners. */
+    readonly events: SessionEvents;
     /** Returns windows in most-recently-focused order. */
     readonly focus: FocusHistory;
     #host: Host;
@@ -59,9 +59,13 @@ export class HostApi {
             error: (code, target, message) => host.error(code, target, message),
         });
         this.#calls = new Calls(host, operations);
-        this.session = new Session(host, this.#calls);
-        this.runtime = new Runtime(host, this.#calls);
-        this.bus = new EventBus(host);
+        this.events = new SessionEvents(
+            host,
+            () => this.session,
+            () => this.runtime,
+        );
+        this.session = new Session(host, this.#calls, this.events);
+        this.runtime = new Runtime(host, this.#calls, this.events);
         this.focus = new FocusHistory(
             () => sources.windows() as HistoryClient[],
             () => sources.focusedWindow(),
@@ -86,7 +90,7 @@ export class HostApi {
                     this.#calls.finish(event);
                     break;
                 case "signal":
-                    this.bus.deliver(event);
+                    this.events.deliver(event);
                     break;
                 case "lost":
                     this.#calls.failAll(event.message);
@@ -106,7 +110,7 @@ export class HostApi {
     /** Ends this generation's pending timers, handlers and calls. */
     retire(): void {
         this.timers.cancelAll();
-        this.bus.clear();
+        this.events.clear();
         this.#calls.clear();
     }
 }

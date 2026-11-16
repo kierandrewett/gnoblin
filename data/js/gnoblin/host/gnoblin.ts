@@ -9,11 +9,10 @@ import { showWorkspace } from "gnoblin/host/show";
 import type { ShowOptions } from "gnoblin/host/show";
 import type { Output } from "gnoblin/host/output";
 import type { Workspace } from "gnoblin/host/workspace";
-import type { Subscription } from "gnoblin/operation";
 import type { Process, SpawnOptions } from "gnoblin/process";
 import { sceneOf } from "gnoblin/scene/scene";
 import type { FocusHistory } from "gnoblin/session/focus_history";
-import type { SignalEvent, Version } from "gnoblin/session/types";
+import type { Version } from "gnoblin/session/types";
 import type { Transition } from "gnoblin/transition/transition";
 import type { TransitionOptions } from "gnoblin/transition/types";
 import { Extensions } from "gnoblin/extensions/xr/availability";
@@ -106,23 +105,5 @@ export class Gnoblin {
     find(kind: string, filter?: FindFilter<never>): object[];
     find(kind: string, filter?: FindFilter<never>): object[] {
         return ctx.hostApi.find(kind, filter);
-    }
-
-    /**
-     * Calls `fn` for every `name` the compositor raises, `namespace.object.signal` (hyphens are accepted for
-     * underscores). An unknown name throws and lists the near ones.
-     */
-    on(name: string, fn: (event: SignalEvent) => void): Subscription {
-        return ctx.hostApi.bus.on(name, fn);
-    }
-
-    /** Like `on`, for the first signal only. */
-    once(name: string, fn: (event: SignalEvent) => void): Subscription {
-        return ctx.hostApi.bus.once(name, fn);
-    }
-
-    /** Detaches a subscription, or every handler `fn` of the event `name`. */
-    off(target: Subscription | string, fn?: (event: SignalEvent) => void): void {
-        ctx.hostApi.bus.off(target, fn);
     }
 }
