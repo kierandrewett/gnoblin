@@ -87,7 +87,7 @@ impl JsError {
 pub enum JsLoadError {
     /// The specifier is neither relative, absolute for the host's entry, nor an embedded module name.
     #[error(
-        "cannot resolve `{name}`: only `./` and `../` paths and embedded modules such as `gnoblin` can be imported"
+        "cannot resolve `{name}`: only `./` and `../` paths and embedded modules such as `gnoblin-core` and `gnoblin-std` can be imported"
     )]
     Unresolvable {
         /// The specifier as written.

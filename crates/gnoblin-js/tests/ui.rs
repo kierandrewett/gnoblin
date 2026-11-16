@@ -1,4 +1,4 @@
-//! The shell UI toolkit (`data/js/gnoblin/ui.ts`, `titlebar.ts`) over a fake compositor.
+//! The shell UI toolkit (`data/js/gnoblin-std/ui.ts`, `titlebar.ts`) over a fake compositor.
 //!
 //! `FakeCompositor` is an in-memory `TreeLink` that behaves as far as the toolkit needs: it applies `New`,
 //! `Insert`, `Set` and `Destroy` the way the compositor does and echoes each as a change, answers a transaction with
@@ -21,7 +21,7 @@ use common::*;
 
 /// What every init file imports.
 const IMPORTS: &str = "import { Box, Canvas, Grid, Icon, Text, Titlebar, Workspace, defaultTitlebarStyle, startDecorations, \
-                       uiCanvasCount } from \"gnoblin\";\n\
+                       uiCanvasCount } from \"gnoblin-std\";\n\
                        (globalThis as any).uiCanvasCount = uiCanvasCount;\n";
 
 fn rig(init_body: &str) -> Rig {

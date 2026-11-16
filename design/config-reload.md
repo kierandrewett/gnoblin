@@ -150,7 +150,7 @@ Each row below was looked at for a cheap, safe live path and does not have one.
   again, and clients that already hold the registry never see a global added after their
   `get_registry` unless they listen for it. Switching only off would make a reload half-live.
 - `workspaces.*`: the compositor could republish the list, but the stock shell builds each
-  Desk's workspaces once (the stock `workspace.ts` in `data/js/gnoblin`), and workspace
+  Desk's workspaces once (the stock `workspace.ts` in `data/js/gnoblin-std`), and workspace
   sets, the Super+N bindings and the slide gestures all address workspaces by name or
   position. A reload that renames, adds or removes one needs a diff that moves the windows of a
   removed workspace and re-validates the sets; that is a shell feature, not a reload.

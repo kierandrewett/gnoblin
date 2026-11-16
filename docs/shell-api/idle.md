@@ -4,7 +4,7 @@
 panel, lock the screen or suspend the machine after a pause. It returns an `IdleWatch`.
 
 ```ts
-import { toast } from "gnoblin";
+import { toast } from "gnoblin-std";
 
 gnoblin.idle.watch(300_000, {
     onIdle: () => gnoblin.session.lock(),

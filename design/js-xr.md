@@ -15,7 +15,7 @@ D35, so this document says what each spec class becomes in that model. See `desi
   node named `room`, submits layers, writes the pose of the camera named `head`, and makes the seat named `xr`.
 - **The tree** is the only interface. Nothing is loaded into the shell, and the shell never calls the program.
 - **The JS shell** decides policy: it builds the room, places the Views and moves them. The classes of
-  `gnoblin/extensions/xr` are JS objects over tree nodes, like `Client`.
+  `gnoblin-std/extensions/xr` are JS objects over tree nodes, like `Client`.
 - **Presence** is the `xr` seat: it exists while the program has a session and the program destroys it when the session
   ends (`docs/xr.md`, "When the headset runtime goes").
 
@@ -31,7 +31,7 @@ D35, so this document says what each spec class becomes in that model. See `desi
 
 ## Spec class by class
 
-"Provided" means the program or the compositor already publishes it. "JS" is policy in `data/js/gnoblin/extensions/xr/` and
+"Provided" means the program or the compositor already publishes it. "JS" is policy in `data/js/gnoblin-std/extensions/xr/` and
 `scene/`. "New" names the schema addition.
 
 | Spec class or feature                   | Status                             | What it is here                                                                                                                                                                                                                                                |
@@ -41,7 +41,7 @@ D35, so this document says what each spec class becomes in that model. See `desi
 | `XRViewport`                            | JS                                 | The node named `room` and the camera named `head`. Assigning it to `session.viewport` names them and mounts the room. `composition: "projection"` sets each View's `camera`.                                                                                   |
 | Session                                 | Provided + JS                      | The `xr` seat. `alive` and `connected` follow it; `layerBudget` reads `head.layer_budget`; `session.input` is the seat's `InputContext`; `head.pose` reads the head camera.                                                                                    |
 | `XRExtension`                           | JS                                 | `gnoblin.extensions.xr`: null with no session. `extensions.addListener` hears sessions begin and end; `extensions.configure("xr", ...)` shapes the stock room.                                                                                                 |
-| `gnoblin/extensions/xr`                 | JS + loader                        | A module that throws at load unless XR is declared (`GNOBLIN_XR=1`) or the seat exists. The classes live in the files beside it (`extensions/xr/`), which are always embedded.                                                                                 |
+| `gnoblin-std/extensions/xr`             | JS + loader                        | A module that throws at load unless XR is declared (`GNOBLIN_XR=1`) or the seat exists. The classes live in the files beside it (`extensions/xr/`), which are always embedded.                                                                                 |
 | Room and ring                           | JS                                 | `XRRoom` and `SpatialLayout`: the port of `xr.lua` (`arrangeRing`), radius and spacing in metres, one View per client, none for dialogs or secure clients.                                                                                                     |
 | Head-locked panel                       | Provided + JS                      | A `View` under `head`. `room.pinToHead(client, { x, y, z })` in metres. The program draws it in view space.                                                                                                                                                    |
 | Controllers                             | **New: `controller` class, built** | See "Native work". The program writes one node for each hand.                                                                                                                                                                                                  |

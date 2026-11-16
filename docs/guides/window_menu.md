@@ -11,8 +11,9 @@ A menu request is one kind of request a client makes of its window. A `ClientLis
 anchor the menu opens at in `request.x` and `request.y`, in global logical coordinates:
 
 ```ts
-import { ClientListener, gnoblin } from "gnoblin";
-import type { Client, ClientRequest } from "gnoblin";
+import { ClientListener, gnoblin } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
+import type { ClientRequest } from "gnoblin-std";
 
 class OwnMenu extends ClientListener {
     onRequest(client: Client, request: ClientRequest<Client>) {

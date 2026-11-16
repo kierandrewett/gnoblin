@@ -4,7 +4,7 @@ A window's look is a style: plain objects you set from `init.ts` or from any lis
 Import the classes from `gnoblin`:
 
 ```ts
-import { ClientStyle, Shadow } from "gnoblin";
+import { ClientStyle, Shadow } from "gnoblin-std";
 
 gnoblin.clients.style.opacity = 0.95;
 gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
@@ -122,7 +122,7 @@ returns the element; `remove` takes an element out and says whether it was there
 write to an element does:
 
 ```ts
-import { ClientStyle, Border, Shadow, BlurFilter } from "gnoblin";
+import { ClientStyle, Border, Shadow, BlurFilter } from "gnoblin-std";
 
 const style = new ClientStyle({ cornerRadius: 12 });
 style.borders.add(new Border({ width: 2, color: "#7c3aed" }));

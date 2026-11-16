@@ -155,7 +155,7 @@ fn the_card_takes_the_password_within_the_documented_bound_after_the_last_health
 fn the_card_takes_the_password_within_the_documented_bound_after_the_keyboard_leaves_the_screen() {
     // A healthy shell: it ticks throughout and renews its lease on time. A script of the user's gives the keyboard to a
     // canvas outside the lock screen on every frame once told to, after the screen has taken it back.
-    const INIT: &str = "import * as lib from \"gnoblin\";\n\
+    const INIT: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\n\
                         const { gnoblin: _runtime, ...exported } = lib;\n\
                         Object.assign(globalThis, exported);\n\
                         const thief = new Box({ width: 10, height: 10 });\n\

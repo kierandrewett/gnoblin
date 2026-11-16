@@ -29,15 +29,15 @@ Any editor that runs the TypeScript language service, such as VS Code, Neovim, H
   .gnoblin/             generated: do not edit it, do not commit it
     tsconfig.json
     gnoblin.d.ts
-    lib/gnoblin/        the library
+    lib/                the library: gnoblin-core/ and gnoblin-std/
 ```
 
-- `import { Camera3D, Node } from "gnoblin/scene"` resolves to `.gnoblin/lib/gnoblin/scene.ts`, which re-exports the
+- `import { Camera3D, Node } from "gnoblin-std/scene"` resolves to `.gnoblin/lib/gnoblin-std/scene.ts`, which re-exports the
   classes from `scene/camera.ts` and `scene/node.ts`. Every module name maps to the file of that name under
-  `.gnoblin/lib/gnoblin`, and `"gnoblin"` is `index.ts`.
+  `.gnoblin/lib`, and `"gnoblin-core"` and `"gnoblin-std"` are the `index.ts` of their directories.
 - A class extends the class it really extends: `Camera3D` is assignable to `Node`, and a `Client` to a `NativeObject`.
 - `.gnoblin/gnoblin.d.ts` holds what is not source: the interfaces generated from the object schema (the modules
-  `gnoblin/schema/...`) and the two globals, `gnoblin` and `console`.
+  `gnoblin-core/schema/...`) and the two globals, `gnoblin` and `console`.
 - `tsconfig.json` is yours. It extends the generated one, so a release can change the compiler options and the paths
   without touching your file. Add your own `include`, `exclude` or options next to the `extends`. A `files` list of
   your own replaces the generated one, which names `gnoblin.d.ts`: keep `./.gnoblin/gnoblin.d.ts` in it.

@@ -281,7 +281,7 @@ fn rig(init: &str) -> Rig {
     rig_with(init, None, |_| {})
 }
 
-const PRELUDE: &str = "import { Keyboard, Mouse, Workspace, DialogListener, ClientListener, CollectionListener } from \"gnoblin\";\n\
+const PRELUDE: &str = "import { Keyboard, Mouse, DialogListener, ClientListener, CollectionListener } from \"gnoblin-core\"; import { Workspace } from \"gnoblin-std\";\n\
                        const g = globalThis as any;\n\
                        g.g = g;\n\
                        g.log = [];\n\

@@ -11,7 +11,7 @@
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as lib from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = lib;\nObject.assign(globalThis, exported);\n";
+const IMPORTS: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nconst { gnoblin: _runtime, ...exported } = lib;\nObject.assign(globalThis, exported);\n";
 
 /// Wraps every function of the bridge's entry so that each call is appended to `__calls` and then made.
 const RECORD: &str = "(() => {\n\

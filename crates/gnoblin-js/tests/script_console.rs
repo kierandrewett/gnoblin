@@ -287,7 +287,7 @@ fn a_shell_logs_what_init_ts_prints_and_the_notice_arrives_without_another_call(
     let mut rig = None;
     let lines = script_lines(|| {
         rig = Some(rig_with(
-            "import { gnoblin } from 'gnoblin';\n",
+            "import { gnoblin } from 'gnoblin-core';\n",
             "console.log('booting', gnoblin.clients.length);\n\
              for (let i = 0; i < 300; i += 1) console.log('spam', i);\n\
              (globalThis as any).fromListener = () => console.log('late');\n",

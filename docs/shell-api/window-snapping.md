@@ -4,7 +4,7 @@ Snapping tiles a window to an edge of the work area. Dropping a dragged window o
 binding does that. A script can snap a window by itself with the helpers `gnoblin` exports.
 
 ```ts
-import { snapClient, unsnapClient } from "gnoblin";
+import { snapClient, unsnapClient } from "gnoblin-std";
 
 const input = gnoblin.input.primary;
 input.bind("Super+Shift+Left", () => {

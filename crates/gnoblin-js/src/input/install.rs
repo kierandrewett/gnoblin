@@ -8,7 +8,7 @@ use super::seats::{
 };
 use crate::bindings::SharedState;
 
-/// Installs `__gnoblinHost.input`, the seat functions `gnoblin/input` runs on.
+/// Installs `__gnoblinHost.input`, the seat functions `gnoblin-core/input` runs on.
 pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedState) -> rquickjs::Result<()> {
     let input = Object::new(ctx.clone())?;
 

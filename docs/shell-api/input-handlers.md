@@ -5,8 +5,8 @@ objects with hooks that run as the input starts, moves and ends. The stock shell
 workspaces and acts on gestures with these.
 
 ```ts
-import { PointerDragBinding } from "gnoblin";
-import type { Client, DragEvent } from "gnoblin";
+import { PointerDragBinding } from "gnoblin-core";
+import type { Client, DragEvent } from "gnoblin-core";
 
 interface Grab {
     client: Client;
@@ -86,7 +86,7 @@ Each layout takes a `triggers` option, as `FloatingLayout` does. A string replac
 out.
 
 ```ts
-import { MasterStackLayout, Workspace } from "gnoblin";
+import { MasterStackLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(
     new Workspace({
@@ -119,8 +119,8 @@ you drag. A release keeps the ratio, and a cancel puts it back. What a divider i
 To drag a divider of your own layout, return a `LayoutSplit` from `findSplit`:
 
 ```ts
-import { Layout } from "gnoblin";
-import type { LayoutContext, LayoutSplit, Placement } from "gnoblin";
+import { Layout } from "gnoblin-std";
+import type { LayoutContext, LayoutSplit, Placement } from "gnoblin-std";
 
 class Divider implements LayoutSplit {
     readonly axis = "x";
@@ -182,7 +182,7 @@ down shrinks the ratio. Two more members are optional:
 To trade two windows from a script, call `workspace.clients.swap(a, b)`. Both must be in the workspace.
 
 ```ts
-import { gnoblin } from "gnoblin";
+import { gnoblin } from "gnoblin-core";
 
 const dev = gnoblin.workspaces.get("dev");
 const [first, second] = dev?.clients.map((client) => client) ?? [];

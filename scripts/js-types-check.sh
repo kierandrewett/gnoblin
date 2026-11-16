@@ -4,7 +4,7 @@
 # It writes a configuration directory with the built `gnoblinctl`, puts the starter `init.ts` and the programs of
 # tests/js-types in it (the ones that must compile, and the wrong ones that must fail with a named error), runs the
 # native compiler over the directory's own tsconfig.json, and then asks the compiler API what an editor asks:
-# where `gnoblin/scene` resolves, what go-to-definition opens, which class a class extends, what hover shows
+# where `gnoblin-std/scene` resolves, what go-to-definition opens, which class a class extends, what hover shows
 # (scripts/js-types-check.mjs).
 #
 # GNOBLINCTL names a built binary; without it the script runs `cargo run -p gnoblinctl`. The compiler is the one

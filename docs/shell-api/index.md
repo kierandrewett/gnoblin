@@ -1,6 +1,6 @@
 # Shell runtime API
 
-The runtime API is what a TypeScript shell sees: the `gnoblin` global and the classes you import from `"gnoblin"`. Use it
+The runtime API is what a TypeScript shell sees: the `gnoblin` global and the classes you import from `"gnoblin-core"` and `"gnoblin-std"`. Use it
 to read compositor state, place and style windows, handle input and events, and ask the session for things.
 
 ```ts

@@ -162,7 +162,7 @@ fn a_spec_style_init_loads_in_the_dry_run_host() {
     let dir = Dir::new();
     let init = dir.write(
         "init.ts",
-        "import { FloatingLayout, MasterStackLayout, Workspace } from 'gnoblin';\n\nconst input = gnoblin.input.primary;\ngnoblin.workspaces.add(new Workspace({ id: 'web', name: 'Web', layout: new MasterStackLayout() }));\ngnoblin.workspaces.add(new Workspace({ id: 'main', layout: new FloatingLayout() }));\ngnoblin.clients.style.cornerRadius = 12;\ninput.bind('Super+Return', () => {\n    gnoblin.spawn(['foot']);\n});\n",
+        "import { FloatingLayout, MasterStackLayout, Workspace } from 'gnoblin-std';\n\nconst input = gnoblin.input.primary;\ngnoblin.workspaces.add(new Workspace({ id: 'web', name: 'Web', layout: new MasterStackLayout() }));\ngnoblin.workspaces.add(new Workspace({ id: 'main', layout: new FloatingLayout() }));\ngnoblin.clients.style.cornerRadius = 12;\ninput.bind('Super+Return', () => {\n    gnoblin.spawn(['foot']);\n});\n",
     );
     let (code, out, err) = check(&init, &[]);
     assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
@@ -197,7 +197,7 @@ fn a_name_the_gnoblin_module_does_not_export_is_refused_with_the_name() {
     let dir = Dir::new();
     let init = dir.write(
         "init.ts",
-        "import { Workspace, NoSuchLayout } from 'gnoblin';\nexport const w = [Workspace, NoSuchLayout];\n",
+        "import { NoSuchLayout } from 'gnoblin-core'; import { Workspace } from 'gnoblin-std';\nexport const w = [Workspace, NoSuchLayout];\n",
     );
     let (code, _, err) = check(&init, &[]);
     assert_eq!(code, 1, "{err}");
@@ -328,7 +328,7 @@ fn types_init_writes_the_real_sources_and_a_second_run_keeps_an_edited_tsconfig(
     assert!(out.contains("tsconfig.json created"), "{out}");
     let declarations = fs::read_to_string(target.join(".gnoblin/gnoblin.d.ts")).expect("the declarations are written");
     assert!(
-        declarations.contains("declare module \"gnoblin/schema/tree\""),
+        declarations.contains("declare module \"gnoblin-core/schema/tree\""),
         "{declarations}"
     );
     assert!(
@@ -338,16 +338,17 @@ fn types_init_writes_the_real_sources_and_a_second_run_keeps_an_edited_tsconfig(
     let tsconfig = fs::read_to_string(target.join("tsconfig.json")).expect("the tsconfig is written");
     assert!(tsconfig.contains("./.gnoblin/tsconfig.json"), "{tsconfig}");
 
-    // The editor reads the library's own files: byte for byte what the repository holds, except the user-facing
-    // module, which is the repository's index plus the host's exports.
-    let library = target.join(".gnoblin/lib/gnoblin");
-    let sources = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js/gnoblin");
+    // The editor reads the library's own files: byte for byte what the repository holds, except the package entries,
+    // which are the repository's index plus the host's exports.
+    let library = target.join(".gnoblin/lib");
+    let sources = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js");
     for file in [
-        "scene/node.ts",
-        "scene/camera.ts",
-        "scene.ts",
-        "host/workspace.ts",
-        "extensions/xr/index.ts",
+        "gnoblin-std/scene/node.ts",
+        "gnoblin-std/scene/camera.ts",
+        "gnoblin-std/scene.ts",
+        "gnoblin-std/host/workspace.ts",
+        "gnoblin-std/extensions/xr/index.ts",
+        "gnoblin-core/host/client.ts",
     ] {
         assert_eq!(
             fs::read_to_string(library.join(file)).expect("the source is written"),
@@ -355,9 +356,12 @@ fn types_init_writes_the_real_sources_and_a_second_run_keeps_an_edited_tsconfig(
             "{file}"
         );
     }
-    let index = fs::read_to_string(library.join("index.ts")).expect("the index is written");
-    let original = fs::read_to_string(sources.join("index.ts")).expect("the index is in the repository");
-    assert_eq!(index, format!("{original}\nexport * from \"gnoblin/host\";\n"));
+    for package in ["gnoblin-core", "gnoblin-std"] {
+        let index = fs::read_to_string(library.join(package).join("index.ts")).expect("the index is written");
+        let original =
+            fs::read_to_string(sources.join(package).join("index.ts")).expect("the index is in the repository");
+        assert_eq!(index, format!("{original}\nexport * from \"{package}/host\";\n"));
+    }
 
     fs::write(target.join("tsconfig.json"), "{\"mine\": true}\n").expect("the user edits the tsconfig");
     let (code, out, err) = run(&args);
@@ -605,7 +609,7 @@ fn a_wrong_property_or_a_wrong_value_is_a_type_error_when_a_compiler_is_installe
     let wrong_key = dir.write("key/init.ts", "gnoblin.clients.style.cornerRadus = 12;\n");
     let wrong_value = dir.write(
         "value/init.ts",
-        "import { Workspace } from \"gnoblin\";\ngnoblin.workspaces.add(new Workspace({ id: \"a\", layout: \"spiral\" }));\n",
+        "import { Workspace } from \"gnoblin-std\";\ngnoblin.workspaces.add(new Workspace({ id: \"a\", layout: \"spiral\" }));\n",
     );
     for (file, named) in [(&wrong_key, "cornerRadus"), (&wrong_value, "spiral")] {
         let (code, out, err) = check(file, &["--types"]);

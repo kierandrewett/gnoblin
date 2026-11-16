@@ -1,6 +1,6 @@
 //! The JavaScript shell: what `ShellVm` is for the retired shell, over the same tree link.
 //!
-//! [`JsShell`] attaches to the compositor's tree, loads the embedded `gnoblin/host` module, evaluates the
+//! [`JsShell`] attaches to the compositor's tree, loads the embedded `gnoblin-core/host` module, evaluates the
 //! user's entry module, and then runs one [`JsShell::frame`] per turn of the runtime loop: it applies the
 //! compositor's batch to the mirror, tells the script's listeners what changed, and sends everything the
 //! script wrote as one transaction.
@@ -50,7 +50,7 @@ use crate::dialogs::JsDialogs;
 use crate::error::JsError;
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_idle::JsIdle;
-use crate::stock::{HOST_MODULE_NAME, STARTER_MODULE_NAME, host_export, starter_module, stock_sources_in};
+use crate::stock::{HOST_MODULE_NAME, PACKAGES, STARTER_MODULE_NAME, host_export, starter_module, stock_sources_in};
 use crate::supervisor::{JsClock, JsSystemClock};
 use crate::workspaces::JsWorkspaceSnapshot;
 use crate::{bindings, input};
@@ -96,9 +96,9 @@ pub struct JsShellConfig {
     /// What one frame's dispatch may use, all listener calls together. Default [`FRAME_BUDGET`].
     pub frame_budget: Duration,
     /// A directory to read the stock `gnoblin` modules from instead of the copies compiled in (the layout of
-    /// `data/js/gnoblin`). A module missing from it is the compiled-in one. `None` runs the compiled-in library.
+    /// `data/js`). A module missing from it is the compiled-in one. `None` runs the compiled-in library.
     pub stock_dir: Option<PathBuf>,
-    /// Whether the session declared XR (`GNOBLIN_XR=1`). A config may then import `gnoblin/extensions/xr` before the
+    /// Whether the session declared XR (`GNOBLIN_XR=1`). A config may then import `gnoblin-std/extensions/xr` before the
     /// headset's session has started; without it that import works only once the program's `xr` seat is in the tree.
     pub xr_declared: bool,
     /// The monotonic clock the scripts read (`gnoblin.timers.now`, and so every timer, fade, delay and arming window).
@@ -162,12 +162,12 @@ pub struct JsStaging {
 }
 
 impl JsStaging {
-    /// The config to stage generations from: the shell's, with the stock library and `gnoblin/host` embedded.
+    /// The config to stage generations from: the shell's, with the stock library and `gnoblin-core/host` embedded.
     pub fn config(&self) -> &JsConfig {
         &self.js
     }
 
-    /// Installs the host objects in `generation` and loads `gnoblin/host`, so `gnoblin.clients` is there when
+    /// Installs the host objects in `generation` and loads `gnoblin-core/host`, so `gnoblin.clients` is there when
     /// the entry module runs. Run it on a fresh generation, before the entry. A restage inside the same stage
     /// starts its spawns over: what an interrupted generation spawned does not count for the one that replaces it.
     pub fn prepare(&self, generation: &JsGeneration) -> Result<(), JsError> {
@@ -220,7 +220,7 @@ pub struct JsShell {
 }
 
 impl JsShell {
-    /// Attaches to the tree and loads the `gnoblin/host` module, so `gnoblin.clients` is there for the entry
+    /// Attaches to the tree and loads the `gnoblin-core/host` module, so `gnoblin.clients` is there for the entry
     /// module. The stock library is embedded beside it, and `gnoblin` re-exports both. Fails when the link
     /// does not deliver a complete snapshot within five seconds.
     pub fn new(mut link: Box<dyn TreeLink>, config: JsShellConfig) -> Result<Self, JsShellError> {
@@ -234,13 +234,15 @@ impl JsShell {
         // The console's rate limit counts on the clock the scripts read, so a test that moves it moves that too.
         js.clock = Arc::clone(&config.clock);
         let typescript = Arc::make_mut(&mut js.typescript);
-        // The user-facing `gnoblin` module is the stock index plus the host's exports (`stock::host_export`, which
-        // `editor_library` appends to the index an editor reads too). A module the caller embedded under a name
-        // stays: the caller knows what it wants. The library is embedded as TypeScript and stripped only when a
-        // module is imported and the bytecode cache lacks it.
+        // Each package entry (`gnoblin-core`, `gnoblin-std`) is the stock index plus its host module's exports
+        // (`stock::host_export`, which `editor_library` appends to the index an editor reads too). A module the
+        // caller embedded under a name stays: the caller knows what it wants. The library is embedded as TypeScript
+        // and stripped only when a module is imported and the bytecode cache lacks it.
         let mut stock = stock_sources_in(config.stock_dir.as_deref());
-        if let Some(index) = stock.get_mut("gnoblin") {
-            index.source.to_mut().push_str(&host_export());
+        for package in PACKAGES {
+            if let Some(index) = stock.get_mut(package) {
+                index.source.to_mut().push_str(&host_export(package));
+            }
         }
         for (name, module) in stock {
             typescript.entry(name).or_insert(module);
@@ -553,7 +555,7 @@ impl JsShell {
     }
 }
 
-/// Installs the host functions in `generation` and loads `gnoblin/host`, under `budget` or
+/// Installs the host functions in `generation` and loads `gnoblin-core/host`, under `budget` or
 /// [`HOST_INSTALL_BUDGET`], whichever is longer.
 fn install_host(generation: &JsGeneration, state: &SharedState, budget: Duration) -> Result<(), JsError> {
     generation.call_budgeted(budget.max(HOST_INSTALL_BUDGET), |ctx| {

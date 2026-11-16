@@ -5,7 +5,7 @@ to every mouse through libinput when the session starts, when you plug a mouse i
 session leaves its host's devices alone ([input device settings](/backends#input-device-settings)).
 
 ```ts
-import { Mouse } from "gnoblin";
+import { Mouse } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Mouse) {

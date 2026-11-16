@@ -4,7 +4,7 @@ A workspace is a `Workspace` object that holds windows and lays them out. `gnobl
 Add workspaces with `gnoblin.workspaces.add`, then read them, show one and change their windows from a script.
 
 ```ts
-import { GridLayout, MasterStackLayout, Workspace } from "gnoblin";
+import { GridLayout, MasterStackLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "web", layout: new MasterStackLayout() }));
 gnoblin.workspaces.add(new Workspace({ id: "chat", layout: new GridLayout() }));
@@ -88,8 +88,8 @@ To place windows your own way, extend `Layout` and return one placement for each
 workspace changes, not on every frame, and a throw leaves the last placement in place.
 
 ```ts
-import { Layout, Workspace } from "gnoblin";
-import type { LayoutContext, Placement } from "gnoblin";
+import { Layout, Workspace } from "gnoblin-std";
+import type { LayoutContext, Placement } from "gnoblin-std";
 
 class Columns extends Layout {
     compute(context: LayoutContext): Placement[] {

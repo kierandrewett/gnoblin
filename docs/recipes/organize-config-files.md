@@ -7,8 +7,8 @@ In `windows.ts`:
 
 ```ts
 // windows.ts
-import { CollectionListener } from "gnoblin";
-import type { Client } from "gnoblin";
+import { CollectionListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 export function placeWindows(): void {
     gnoblin.clients.addListener(

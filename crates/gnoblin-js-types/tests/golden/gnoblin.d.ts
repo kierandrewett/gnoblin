@@ -6,7 +6,7 @@
 //
 // Schema: gnoblin 0.2.0, tree 0.2.0.
 //
-// Part 1, the generated modules `gnoblin/schema/<namespace>`: one per schema namespace.
+// Part 1, the generated modules `gnoblin-core/schema/<namespace>`: one per schema namespace.
 //   - One interface per schema object, named in PascalCase. A subclass extends its base
 //     and declares only the members its base does not.
 //   - Members are camelCase: schema `app_id` is `appId`. A doc comment names the schema
@@ -25,19 +25,19 @@
 //     the method returns an `Unsubscribe` function. There are no event-name strings.
 //
 // Then the globals a script has without importing them: `gnoblin` and `console`. The
-// library, `import ... from "gnoblin"` and `"gnoblin/<module>"`, is not declared here: it
-// is the real TypeScript source under `.gnoblin/lib/gnoblin/`, which the tsconfig maps
+// library, `import ... from "gnoblin-core"` and `"gnoblin-std"` (and their submodules), is not declared here: it
+// is the real TypeScript source under `.gnoblin/lib/`, which the tsconfig maps
 // those names to.
 
-declare module "gnoblin/schema" {
+declare module "gnoblin-core/schema" {
     /** Stops a subscription made by an `on<Signal>` method. Calling it twice is harmless. */
     export type Unsubscribe = () => void;
     /** The settlement of a method call. The schema declares no results, so there is no type. */
     export type Reply = Promise<unknown>;
 }
 
-declare module "gnoblin/schema/gnoblin" {
-    import type { Reply, Unsubscribe } from "gnoblin/schema";
+declare module "gnoblin-core/schema/gnoblin" {
+    import type { Reply, Unsubscribe } from "gnoblin-core/schema";
 
     /** The error codes this namespace declares. */
     export type ErrorCode =
@@ -288,8 +288,8 @@ declare module "gnoblin/schema/gnoblin" {
     }
 }
 
-declare module "gnoblin/schema/tree" {
-    import type { Reply, Unsubscribe } from "gnoblin/schema";
+declare module "gnoblin-core/schema/tree" {
+    import type { Reply, Unsubscribe } from "gnoblin-core/schema";
 
     /** Schema object `tree.camera` (since 0.2.0). */
     export interface Camera extends Node {
@@ -730,7 +730,7 @@ declare module "gnoblin/schema/tree" {
     }
 }
 
-declare module "gnoblin/schema/signals" {
+declare module "gnoblin-core/schema/signals" {
     /** Every schema signal, by the name `gnoblin.on` takes, and the event its handler receives. */
     export interface GnoblinSignals {
         "gnoblin.config.reload_failed": { readonly name: "gnoblin.config.reload_failed"; readonly object: number; readonly path: string; readonly error: string; readonly sequence: number; readonly time: number; };
@@ -779,10 +779,10 @@ declare module "gnoblin/schema/signals" {
 }
 
 /**
- * The runtime object, also reachable as `import { gnoblin } from "gnoblin"`. Its type is the real class of the library
- * (`gnoblin/host/gnoblin`), so a member is declared where it is implemented.
+ * The runtime object, also reachable as `import { gnoblin } from "gnoblin-core"`. Its type is the real class of the
+ * library (`gnoblin-core/host/gnoblin`), so a member is declared where it is implemented.
  */
-declare const gnoblin: import("gnoblin/host/gnoblin").Gnoblin;
+declare const gnoblin: import("gnoblin-core/host/gnoblin").Gnoblin;
 
 /**
  * The shell's log, as in Node. A call writes one line to the log (component `js`, area `script`; `log` and `info` at

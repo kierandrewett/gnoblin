@@ -4,7 +4,7 @@ A monitor's mode, scale, transform, position and power are an `OutputProfile`. A
 with `match`, and the shell applies it whenever that output is connected, so it survives unplugging and hotplug.
 
 ```ts
-import { OutputProfile } from "gnoblin";
+import { OutputProfile } from "gnoblin-std";
 
 const main = new OutputProfile({
     match: { connector: "DP-1" },

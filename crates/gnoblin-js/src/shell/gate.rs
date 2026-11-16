@@ -16,7 +16,7 @@
 //! 3. **Script code ran outside a frame**: an `eval`, the console, loading or reloading a config, a generation swap, a
 //!    link handed to the shell. Such code may have queued a listener, written a property or changed what a layout reads,
 //!    and it cannot say which, so the next frame runs ([`JsShell::note_script_ran`]).
-//! 4. **The script asked to be woken** (`wake` of the entry, `data/js/gnoblin/wake.ts`): a timer or a deadline that is
+//! 4. **The script asked to be woken** (`wake` of the entry, `data/js/gnoblin-core/wake.ts`): a timer or a deadline that is
 //!    due, a listener call still queued, a lock screen or an XR session that draws every frame, a clock widget whose
 //!    minute is ending. Each part of the library that has such a need registers it, by name, where it keeps its state,
 //!    so the list lives with what it is about and not here. A source that throws is reported and asks for nothing: one

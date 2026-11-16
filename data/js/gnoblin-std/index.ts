@@ -1,0 +1,93 @@
+// The `gnoblin-std` package entry: the optional desktop policy built on `gnoblin-core`. It exports workspaces and
+// layouts, the binding classes that move and resize windows, focus and snapping, the window frame and menus, styles,
+// transitions, scenes and the UI toolkit. Importing it needs `gnoblin-core`, never the other way round.
+// The runtime objects (`Workspace`, `startDecorations`, ...) come from `gnoblin-std/host`, which the shell appends to
+// this module when it embeds it. A module that only needs the shapes imports them from here without a host.
+
+export { clampAxis, constrainRect, DRAG_STRIP, dragConstraintMode } from "gnoblin-std/bindings/drag";
+export { ClientMoveBinding } from "gnoblin-std/bindings/move";
+export { ClientResizeBinding, resizedRect } from "gnoblin-std/bindings/resize";
+export { ClientSwapBinding, SplitResizeBinding } from "gnoblin-std/bindings/tiling";
+export type { DragConstraint } from "gnoblin-std/bindings/drag";
+export type { ClientMoveOptions, MoveState } from "gnoblin-std/bindings/move";
+export type { ClientResizeOptions, ResizeCorner, ResizeEdge, ResizeState } from "gnoblin-std/bindings/resize";
+export type { LayoutSplit, OrderedWorkspace, SplitState, SwapState, TiledClient } from "gnoblin-std/bindings/tiling";
+export * from "gnoblin-std/focus";
+export * from "gnoblin-std/layout";
+export * from "gnoblin-std/layouts/floating";
+export * from "gnoblin-std/layouts/grid";
+export * from "gnoblin-std/layouts/master-stack";
+export * from "gnoblin-std/layouts/monocle";
+export * from "gnoblin-std/layouts/dwindle";
+export * from "gnoblin-std/layouts/kiosk";
+export * from "gnoblin-std/layouts/arc";
+export * from "gnoblin-std/layouts/strip";
+export * from "gnoblin-std/gestures";
+export * from "gnoblin-std/gesture_actions";
+export * from "gnoblin-std/snap";
+export * from "gnoblin-std/titlebar";
+// The window frame: the surface round a window, its outlets and the parts a script puts in them.
+export { CLOSE_FADE_MS, CLOSE_RESTORE_MS, WindowActions } from "gnoblin-std/frame/actions";
+export type { SeatGesture } from "gnoblin-std/frame/actions";
+export type { FrameClient, FrameContext, FrameHooks } from "gnoblin-std/frame/client";
+export { CornerOutlet } from "gnoblin-std/frame/corner_outlet";
+export type { Corner } from "gnoblin-std/frame/corner_outlet";
+export { Decorations } from "gnoblin-std/frame/decorations";
+export type { DecoratedClient, DecorationsOptions, FrameFill, FrameRule } from "gnoblin-std/frame/decorations";
+export { WindowDrag } from "gnoblin-std/frame/drag";
+export { EdgeOutlet } from "gnoblin-std/frame/edge_outlet";
+export type { EdgeZones, Side } from "gnoblin-std/frame/edge_outlet";
+export { WindowFrame } from "gnoblin-std/frame/frame";
+export type { ContentOutlet, FrameKind } from "gnoblin-std/frame/frame";
+export { LayerOutlet } from "gnoblin-std/frame/layer_outlet";
+export type { LayerKind } from "gnoblin-std/frame/layer_outlet";
+export { Outlet } from "gnoblin-std/frame/outlet";
+export type { FrameGeometry, OutletOwner } from "gnoblin-std/frame/outlet";
+export { AppIcon, appTile } from "gnoblin-std/frame/parts/app_icon";
+export type { AppIconOptions } from "gnoblin-std/frame/parts/app_icon";
+export { DragArea } from "gnoblin-std/frame/parts/drag_area";
+export { FrameBackdrop } from "gnoblin-std/frame/parts/frame_backdrop";
+export { FrameBorder } from "gnoblin-std/frame/parts/frame_border";
+export type { FrameBorderOptions, FrameColour } from "gnoblin-std/frame/parts/frame_border";
+export { FrameGlow } from "gnoblin-std/frame/parts/frame_glow";
+export type { FrameGlowOptions } from "gnoblin-std/frame/parts/frame_glow";
+export { ResizeHandle } from "gnoblin-std/frame/parts/resize_handle";
+export type { ResizeSide } from "gnoblin-std/frame/parts/resize_handle";
+export { ResizeHandles } from "gnoblin-std/frame/parts/resize_handles";
+export type { ResizeHandlesOptions } from "gnoblin-std/frame/parts/resize_handles";
+export { TitleText } from "gnoblin-std/frame/parts/title_text";
+export { defaultButtonIcons, WindowButton } from "gnoblin-std/frame/parts/window_button";
+export type { WindowButtonName, WindowButtonOptions } from "gnoblin-std/frame/parts/window_button";
+export { WindowButtons } from "gnoblin-std/frame/parts/window_buttons";
+export type { WindowButtonsOptions } from "gnoblin-std/frame/parts/window_buttons";
+export * from "gnoblin-std/ui";
+export * from "gnoblin-std/widgets";
+export { MenuItem, MenuPanel, WindowMenu } from "gnoblin-std/menus/card";
+export { MENU_COLOURS, menuHeight, placeCard } from "gnoblin-std/menus/metrics";
+export { menuKeyAction, MenuNavigator } from "gnoblin-std/menus/navigator";
+export { defaultMenuItems, windowMenu, WindowMenus } from "gnoblin-std/menus/windows";
+export type { MenuKeyAction, NavRow } from "gnoblin-std/menus/navigator";
+export type { MenuClient, MenuEntry, MenuWorkspace, MenuWorld } from "gnoblin-std/menus/types";
+export * from "gnoblin-std/alerts";
+export * from "gnoblin-std/launcher";
+export * from "gnoblin-std/overview";
+export * from "gnoblin-std/panel";
+export * from "gnoblin-std/window_state";
+export * from "gnoblin-std/reposition";
+// `gnoblin.requestTransition` and what it returns. The engine and the staging stay with the host.
+export { Transition } from "gnoblin-std/transition/transition";
+export type { Easing } from "gnoblin-std/transition/easing";
+export type { TransitionOptions, TransitionResult, TransitionSubscription } from "gnoblin-std/transition/types";
+// The style classes and their list elements (`gnoblin-std/style`).
+export * from "gnoblin-std/style";
+// Logical displays, cameras and viewports. The manager (`gnoblin-std/display_manager`) stays with the host.
+export { Camera2D, Display, OutputProfile, Viewport } from "gnoblin-std/display";
+export { Camera3D } from "gnoblin-std/scene/camera";
+export { Node } from "gnoblin-std/scene/node";
+export { Scene } from "gnoblin-std/scene/scene";
+export { View } from "gnoblin-std/scene/view";
+export type { InputMode, NodeOptions, NodePointerEvent } from "gnoblin-std/scene/node";
+export type { Size2D, ViewOptions } from "gnoblin-std/scene/view";
+export type { ContentFit } from "gnoblin-std/scene_mirror";
+export { LockScreen, PasswordEntry, defaultLockStyle, formatClock, lockScreen } from "gnoblin-std/lock";
+export type { LockStyle } from "gnoblin-std/lock";

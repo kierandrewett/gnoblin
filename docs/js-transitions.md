@@ -4,7 +4,8 @@
 stages the changes; the compositor's tween player moves what is drawn from where it is to where the callback put it.
 
 ```ts
-import { gnoblin, MasterStackLayout } from "gnoblin";
+import { gnoblin } from "gnoblin-core";
+import { MasterStackLayout } from "gnoblin-std";
 
 const workspace = gnoblin.workspaces.get("dev")!;
 const client = gnoblin.clients.get("42")!;

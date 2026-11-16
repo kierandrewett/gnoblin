@@ -1,4 +1,4 @@
-//! The host functions of the UI toolkit (`data/js/gnoblin/ui.ts`): `__gnoblinHost.ui`.
+//! The host functions of the UI toolkit (`data/js/gnoblin-std/ui.ts`): `__gnoblinHost.ui`.
 //!
 //! The toolkit's canvases are nodes of the compositor's tree that the shell makes itself. This module makes them in
 //! the frame's transaction (`create`, `insert`, `destroy`), writes their geometry and their encoded paint list

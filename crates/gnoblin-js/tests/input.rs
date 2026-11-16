@@ -33,7 +33,7 @@ fn grammar(body: &str) -> String {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     let source = format!(
         "import {{ emit }} from \"harness\";\n\
-         import {{ parseTrigger, claimOf, Binding, BindingCollection, KeyBinding, FloatingLayout, resolveTriggers, ClientMoveBinding, ClientResizeBinding, dragConstraintMode, constrainRect }} from \"gnoblin\";\n\
+         import {{ parseTrigger, claimOf, Binding, BindingCollection, KeyBinding, resolveTriggers }} from \"gnoblin-core\"; import {{ FloatingLayout, ClientMoveBinding, ClientResizeBinding, dragConstraintMode, constrainRect }} from \"gnoblin-std\";\n\
          const thrown = (fn: () => void) => {{ try {{ fn(); }} catch (e: any) {{ return `${{e.name}}: ${{e.message}} [${{e.token}}]`; }} return \"did not throw\"; }};\n\
          {body}\n"
     );
@@ -448,7 +448,7 @@ fn rig(comp: &Comp, init: &str) -> Rig {
 
 /// Imports and a `log` for entries that record what their bindings did. The one workspace has a layout with no
 /// bindings, so the stock one a config without workspaces gets (floating, with move and resize) claims nothing here.
-const PRELUDE: &str = "import { gnoblin, FloatingLayout, KeyBinding, PointerDragBinding, GestureBinding, Workspace } from \"gnoblin\";\n\
+const PRELUDE: &str = "import { gnoblin, KeyBinding, PointerDragBinding, GestureBinding } from \"gnoblin-core\"; import { FloatingLayout, Workspace } from \"gnoblin-std\";\n\
                        const log: string[] = [];\n\
                        (globalThis as any).log = log;\n\
                        gnoblin.workspaces.add(new Workspace({ id: \"main\", layout: \"monocle\" }));\n\
@@ -1749,7 +1749,7 @@ fn a_user_init_replaces_the_stock_default_and_claims_only_its_own_keys() {
     let comp = world(false);
     let mut rig = rig(
         &comp,
-        "import { gnoblin, Workspace, MonocleLayout } from \"gnoblin\";\n\
+        "import { gnoblin } from \"gnoblin-core\"; import { Workspace, MonocleLayout } from \"gnoblin-std\";\n\
          gnoblin.workspaces.add(new Workspace({ id: \"a\", layout: new MonocleLayout() }));\n\
          gnoblin.workspaces.add(new Workspace({ id: \"b\", layout: new MonocleLayout() }));\n\
          gnoblin.input.primary.bind(\"Super+Return\", () => gnoblin.spawn([\"true\"]));\n\
@@ -1786,7 +1786,7 @@ fn slide_rig(comp: &Comp) -> Rig {
     add_screen(comp, 1000.0, 800.0);
     let mut rig = rig(
         comp,
-        "import { gnoblin, Workspace, WorkspaceSlideBinding } from \"gnoblin\";\n\
+        "import { gnoblin } from \"gnoblin-core\"; import { Workspace, WorkspaceSlideBinding } from \"gnoblin-std\";\n\
          for (const id of [\"a\", \"b\", \"c\"]) gnoblin.workspaces.add(new Workspace({ id }));\n\
          gnoblin.input.primary.bind(\"Swipe3\", new WorkspaceSlideBinding());\n",
     );
@@ -1908,7 +1908,7 @@ fn role_over(comp: &Comp, init: &str) -> (JsRole, std::path::PathBuf, TempDir) {
 /// An entry with one monocle workspace (a layout with no bindings of its own), then `rest`.
 fn hand_off_entry(rest: &str) -> String {
     format!(
-        "import {{ gnoblin, FloatingLayout, Workspace }} from \"gnoblin\";\n\
+        "import {{ gnoblin }} from \"gnoblin-core\"; import {{ FloatingLayout, Workspace }} from \"gnoblin-std\";\n\
          gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout: \"monocle\" }}));\n\
          const input = gnoblin.input.primary;\n{rest}"
     )

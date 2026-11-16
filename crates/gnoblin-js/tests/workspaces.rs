@@ -731,8 +731,8 @@ fn pure(body: &str) -> String {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     let source = format!(
         "import {{ checkPlacements, checkWorkspaceOptions, fieldsChanged, initialWorkspace, layoutFields }} \
-         from \"gnoblin/workspace\";\n\
-         import {{ Layout, MasterStackLayout }} from \"gnoblin\";\n\
+         from \"gnoblin-std/workspace\";\n\
+         import {{ Layout, MasterStackLayout }} from \"gnoblin-std\";\n\
          const emit = (value: unknown) => {{ (globalThis as any).out = String(value); }};\n{body}\n"
     );
     fs::write(root.join("init.ts"), source).expect("init.ts is written");

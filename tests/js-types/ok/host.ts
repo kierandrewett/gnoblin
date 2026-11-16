@@ -1,6 +1,7 @@
 // A script that works with the objects of the shell: each is a `NativeObject`, and a client takes the property
 // writes the library declares.
-import { Client, FloatingLayout, NativeObject, Output, Workspace, gnoblin } from "gnoblin";
+import { Client, NativeObject, Output, gnoblin } from "gnoblin-core";
+import { FloatingLayout, Workspace } from "gnoblin-std";
 
 export const objects: NativeObject[] = [];
 

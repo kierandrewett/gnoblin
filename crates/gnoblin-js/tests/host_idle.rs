@@ -1,4 +1,4 @@
-//! `gnoblin.idle` (`data/js/gnoblin/idle.ts`, `src/host_idle.rs`) over a fake compositor and a fake idle connection.
+//! `gnoblin.idle` (`data/js/gnoblin-core/idle.ts`, `src/host_idle.rs`) over a fake compositor and a fake idle connection.
 //!
 //! The cases are those of `docs/shell-api/idle.md` that the compositor's reading can back: the validation of a watch,
 //! its states (not idle when it starts, idle once, active again, idle again), a watch of its own time each, the

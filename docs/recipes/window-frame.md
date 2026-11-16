@@ -19,7 +19,7 @@ page.
 The window buttons in the traffic-light order, the title in the middle, and a bar you can drag.
 
 ```ts
-import { DragArea, TitleText, WindowButtons, startDecorations } from "gnoblin";
+import { DragArea, TitleText, WindowButtons, startDecorations } from "gnoblin-std";
 
 startDecorations({
     frame(_client, frame) {
@@ -47,7 +47,7 @@ A 2 pixel ring that follows the focus, and a soft halo behind the window. No edg
 frame and nothing is taken from it.
 
 ```ts
-import { FrameBorder, FrameGlow, startDecorations } from "gnoblin";
+import { FrameBorder, FrameGlow, startDecorations } from "gnoblin-std";
 
 startDecorations({
     frame(_client, frame) {
@@ -77,8 +77,8 @@ The stock titlebar on top, a strip under the window that shows its application a
 resizes it.
 
 ```ts
-import { ResizeHandle, Text, defaultTitlebarStyle, startDecorations, titlebarFill } from "gnoblin";
-import type { WindowFrame } from "gnoblin";
+import { ResizeHandle, Text, defaultTitlebarStyle, startDecorations, titlebarFill } from "gnoblin-std";
+import type { WindowFrame } from "gnoblin-std";
 
 // The stock fill is a function of the same shape, so it composes: call it, then add your own outlets.
 const stockTitlebar = titlebarFill(defaultTitlebarStyle);

@@ -208,7 +208,7 @@ fn every_tree_property_is_read_by_native_code_or_is_listed_unread_with_its_reaso
 
 /// A file of the library that says a value was not applied.
 struct Notice {
-    /// Under `data/js/gnoblin`.
+    /// Under `data/js`, so it starts with its package directory.
     file: &'static str,
     why: &'static str,
     /// The page that documents the feature, which has to say "Not applied yet". `None` for a file that is not a feature.
@@ -222,57 +222,57 @@ const STYLE: &str = "docs/js-style.md";
 
 const NOTICES: &[Notice] = &[
     Notice {
-        file: "display/output_profile.ts",
+        file: "gnoblin-std/display/output_profile.ts",
         why: "OutputProfile.vrr is accepted and kept: the output request has no variable refresh rate key",
         doc: Some(OUTPUTS),
         optional: false,
     },
     Notice {
-        file: "display/types.ts",
+        file: "gnoblin-std/display/types.ts",
         why: "the declaration of the same vrr setting",
         doc: Some(OUTPUTS),
         optional: false,
     },
     Notice {
-        file: "display_manager/manager.ts",
+        file: "gnoblin-std/display_manager/manager.ts",
         why: "Camera2D transforms, Camera3D and viewport.clearColor are kept and read back, and the shell draws flat \
               workspaces with no background colour behind them",
         doc: Some(OUTPUTS),
         optional: false,
     },
     Notice {
-        file: "host/style_scopes.ts",
+        file: "gnoblin-std/host/style_scopes.ts",
         why: "style properties no effect kind draws (background, filter, inset shadows) stay in computedStyle",
         doc: Some(STYLE),
         optional: false,
     },
     Notice {
-        file: "host/styles.ts",
+        file: "gnoblin-std/host/styles.ts",
         why: "the same notice, raised where a style is applied to a window",
         doc: Some(STYLE),
         optional: false,
     },
     Notice {
-        file: "style/map.ts",
+        file: "gnoblin-std/style/map.ts",
         why: "the mapping from a style to effects, which lists what it could not map",
         doc: Some(STYLE),
         optional: false,
     },
     Notice {
-        file: "layouts/strip.ts",
+        file: "gnoblin-std/layouts/strip.ts",
         why: "the strip layout writes depth for a renderer that draws it, and its fade of the ring is not applied: a node's \
               opacity is the window's own",
         doc: None,
         optional: false,
     },
     Notice {
-        file: "session/types.ts",
+        file: "gnoblin-core/session/types.ts",
         why: "describes the reload report of settings no process applies; not a feature",
         doc: None,
         optional: false,
     },
     Notice {
-        file: "devices.ts",
+        file: "gnoblin-core/devices.ts",
         why: "the mouse and touchpad groups are accepted and validated and no device reads them until the libinput applier \
               lands (gnoblin-v09s, the InputSettings lane)",
         doc: None,
@@ -282,9 +282,11 @@ const NOTICES: &[Notice] = &[
 
 #[test]
 fn every_place_the_library_says_not_applied_is_reviewed_and_its_page_says_not_applied_yet() {
-    let library = repo().join("data/js/gnoblin");
+    let library = repo().join("data/js");
     let mut files = Vec::new();
-    walk(&library, "ts", &mut files);
+    for package in ["gnoblin-core", "gnoblin-std"] {
+        walk(&library.join(package), "ts", &mut files);
+    }
     let found: BTreeSet<String> = files
         .iter()
         .filter(|path| {

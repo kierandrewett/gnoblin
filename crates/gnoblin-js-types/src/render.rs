@@ -14,7 +14,7 @@ use gnoblin_schema::{Catalog, DefaultValue, Field, Method, Namespace, ObjectType
 const GLOBALS_DTS: &str = include_str!("../static/globals.d.ts");
 
 /// The module every generated module imports its shared types from.
-const SHARED_MODULE: &str = "gnoblin/schema";
+const SHARED_MODULE: &str = "gnoblin-core/schema";
 
 /// Words a parameter or a signal field cannot be named in TypeScript.
 const RESERVED: &[&str] = &[
@@ -90,7 +90,7 @@ pub fn render_dts(catalog: &Catalog) -> String {
     out
 }
 
-/// `gnoblin/schema/signals`: every schema signal by its `namespace.object.signal` name, with the event
+/// `gnoblin-core/schema/signals`: every schema signal by its `namespace.object.signal` name, with the event
 /// `gnoblin.on` hands a handler. The runtime builds that event from the compositor's signal: its name, the identity
 /// of the object that raised it, and each field under its camelCase name.
 fn write_signal_events(out: &mut String, catalog: &Catalog, namespaces: &[Namespace]) {
@@ -148,7 +148,7 @@ fn write_header(out: &mut String, catalog: &Catalog, namespaces: &[Namespace]) {
         .collect();
     let _ = writeln!(out, "// Schema: {}.", versions.join(", "));
     out.push_str("//\n");
-    out.push_str("// Part 1, the generated modules `gnoblin/schema/<namespace>`: one per schema namespace.\n");
+    out.push_str("// Part 1, the generated modules `gnoblin-core/schema/<namespace>`: one per schema namespace.\n");
     out.push_str("//   - One interface per schema object, named in PascalCase. A subclass extends its base\n");
     out.push_str("//     and declares only the members its base does not.\n");
     out.push_str("//   - Members are camelCase: schema `app_id` is `appId`. A doc comment names the schema\n");
@@ -167,8 +167,8 @@ fn write_header(out: &mut String, catalog: &Catalog, namespaces: &[Namespace]) {
     out.push_str("//     the method returns an `Unsubscribe` function. There are no event-name strings.\n");
     out.push_str("//\n");
     out.push_str("// Then the globals a script has without importing them: `gnoblin` and `console`. The\n");
-    out.push_str("// library, `import ... from \"gnoblin\"` and `\"gnoblin/<module>\"`, is not declared here: it\n");
-    out.push_str("// is the real TypeScript source under `.gnoblin/lib/gnoblin/`, which the tsconfig maps\n");
+    out.push_str("// library, `import ... from \"gnoblin-core\"` and `\"gnoblin-std\"` (and their submodules), is not declared here: it\n");
+    out.push_str("// is the real TypeScript source under `.gnoblin/lib/`, which the tsconfig maps\n");
     out.push_str("// those names to.\n\n");
 }
 

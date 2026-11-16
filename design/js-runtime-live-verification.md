@@ -87,7 +87,7 @@ four that are clean product states and are in `docs/typescript-shell.md`, "What 
     404.8 at 619.2 ended at 619 + 404 = 1023. Every tiled layout had it (grid with 3 columns on 1000 px ended at 999; the
     Lua shell had the same).
 
-    State: Fixed in `data/js/gnoblin/layout.ts` (`tile` floors edges). Tests: `stock_layouts.rs`, real:
+    State: Fixed in `data/js/gnoblin-std/layout.ts` (`tile` floors edges). Tests: `stock_layouts.rs`, real:
     `a_master_stack_workspace_with_a_ratio_and_a_gap_fills_the_screen_to_both_edges`. The Lua goldens that pinned the
     sliver are changed.
 

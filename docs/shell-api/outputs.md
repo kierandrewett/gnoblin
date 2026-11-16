@@ -5,7 +5,7 @@ a window that loses its output moves to another or waits hidden for the next. `g
 `Output` objects.
 
 ```ts
-import { FloatingLayout, Workspace, toast } from "gnoblin";
+import { FloatingLayout, Workspace, toast } from "gnoblin-std";
 
 for (const id of ["1", "2", "3"]) {
     gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));
@@ -91,7 +91,7 @@ success. An `OutputListener` hears the same answer in `onApplied(output, error)`
 **Mode and scale.** Drive an output at another mode, composed at a fractional scale:
 
 ```ts
-import { gnoblin } from "gnoblin";
+import { gnoblin } from "gnoblin-core";
 
 const app = gnoblin.outputs.where({ name: "output-1" }).at(0)!.apply({ mode: "2560x1440@60", scale: 1.25 });
 ```
@@ -235,7 +235,8 @@ connected; when one is, the profile applies as one request, and it applies again
 unplug.
 
 ```ts
-import { OutputProfile, gnoblin } from "gnoblin";
+import { gnoblin } from "gnoblin-core";
+import { OutputProfile } from "gnoblin-std";
 
 const main = new OutputProfile({
     match: { connector: "DP-1" },
@@ -286,7 +287,8 @@ whose `content` is the workspace shown. `gnoblin.displays` is the live collectio
 - `gnoblin.input.primary.activeDisplay` is the display under the pointer.
 
 ```ts
-import { Camera2D, Display, Viewport, Workspace, gnoblin } from "gnoblin";
+import { gnoblin } from "gnoblin-core";
+import { Camera2D, Display, Viewport, Workspace } from "gnoblin-std";
 
 const desktop = new Workspace({ id: "desktop" });
 const web = new Workspace({ id: "web" });
@@ -338,7 +340,8 @@ A viewport looks at its content through a camera, `Camera2D` or `Camera3D`. Both
 `gnoblin.requestTransition` can animate their properties.
 
 ```ts
-import { Camera2D, Camera3D, gnoblin } from "gnoblin";
+import { gnoblin } from "gnoblin-core";
+import { Camera2D, Camera3D } from "gnoblin-std";
 
 const flat = new Camera2D();
 const deep = new Camera3D({ projection: "perspective", fov: 65, position: { x: 0, y: 0, z: 1600 } });
@@ -373,8 +376,8 @@ A layout can place windows in depth with `z`, `rotation` and `scale`; the camera
 ## Listen for plugging and unplugging
 
 ```ts
-import { OutputListener, gnoblin } from "gnoblin";
-import type { Output } from "gnoblin";
+import { OutputListener, gnoblin } from "gnoblin-core";
+import type { Output } from "gnoblin-core";
 
 class Hotplug extends OutputListener {
     onConnected(output: Output) {
@@ -423,7 +426,7 @@ output at `x = 1920` lays windows out at `x >= 1920`. `gnoblin.workspaces.area` 
 A `Bar` sits on the primary output unless you give it one:
 
 ```ts
-import { Bar } from "gnoblin";
+import { Bar } from "gnoblin-std";
 
 new Bar({ edge: "bottom", height: 24, output: gnoblin.outputs.at(1) });
 ```

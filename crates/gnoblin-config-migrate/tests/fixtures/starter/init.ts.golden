@@ -14,7 +14,7 @@ import {
     startDecorations,
     startNotRespondingAlert,
     startWindowMenu,
-} from "gnoblin";
+} from "gnoblin-std";
 
 const input = gnoblin.input.primary;
 

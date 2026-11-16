@@ -4,8 +4,9 @@ Give workspaces stable IDs in `init.ts`, then place each matching new window on 
 the example app IDs with the values reported by `gnoblinctl window list --json`.
 
 ```ts
-import { CollectionListener, FloatingLayout, Workspace } from "gnoblin";
-import type { Client } from "gnoblin";
+import { CollectionListener } from "gnoblin-core";
+import { FloatingLayout, Workspace } from "gnoblin-std";
+import type { Client } from "gnoblin-core";
 
 for (const id of ["code", "web", "chat"]) {
     gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));

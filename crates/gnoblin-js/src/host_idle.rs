@@ -7,7 +7,7 @@
 //! neither, so a shell that never watches idleness costs the compositor nothing: every change of `idle_ms` is sent to
 //! each subscriber.
 //!
-//! The script's side is `data/js/gnoblin/idle.ts`. A watch there is a threshold over the reading this module hands it;
+//! The script's side is `data/js/gnoblin-core/idle.ts`. A watch there is a threshold over the reading this module hands it;
 //! the compositor sends no per-watch notification. A hold is a name recorded with `inhibit`; this module gives every
 //! hold back when the generation is retired (a reload or a shutdown). The compositor records a hold by name and not by
 //! connection, so a shell that is killed without retiring leaves its holds standing until the same name is released:

@@ -15,8 +15,8 @@ The file is a program, and it runs when the shell loads it. The `gnoblin` object
 changes a live object.
 
 ```ts
-import { ClientListener } from "gnoblin";
-import type { Client } from "gnoblin";
+import { ClientListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 class FocusLog extends ClientListener {
     onFocusChanged(client: Client, focused: boolean) {
@@ -40,8 +40,8 @@ A config grows past one file. Put code in other files under the config directory
 
 ```ts
 // ~/.config/gnoblin/focus-log.ts
-import { ClientListener } from "gnoblin";
-import type { Client } from "gnoblin";
+import { ClientListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 export class FocusLog extends ClientListener {
     onFocusChanged(client: Client, focused: boolean) {
@@ -59,13 +59,13 @@ import { FocusLog } from "./focus-log.ts";
 gnoblin.clients.addListener(new FocusLog());
 ```
 
-- An import is a relative path (`./x.ts`, `../x.ts`, or `./x` with no extension) or `"gnoblin"`. There are no packages to
-  install and no glob imports.
+- An import is a relative path (`./x.ts`, `../x.ts`, or `./x` with no extension), `"gnoblin-core"` or `"gnoblin-std"`, or a path
+  under one of them. There are no packages to install and no glob imports.
 - A file is `.ts`, `.mts`, `.js` or `.mjs`. The shell strips the types as it loads a TypeScript file, so there is no build
   step. Write `./x.js` and it falls back to `./x.ts` when only that exists.
 - Imports stay inside the config directory. A path that climbs out of it, or a symlink that points out, is refused.
 - A module that must run, with nothing to export, is `import "./rules.ts";`.
-- `import { ... } from "gnoblin"` gives you the classes. The `gnoblin` object is also a global, so a module needs no import to
+- `import { ... } from "gnoblin-core"` gives you the classes. The `gnoblin` object is also a global, so a module needs no import to
   use it.
 
 ## Save and see it

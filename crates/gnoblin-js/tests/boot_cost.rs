@@ -44,14 +44,14 @@ fn boot_cost() {
     let base = fs::canonicalize(dir.path()).expect("the temp dir exists");
     let root = base.join("config");
     fs::create_dir_all(&root).expect("the config root");
-    fs::write(root.join("init.ts"), "import * as lib from \"gnoblin\";\nvoid lib;\n").expect("init.ts");
+    fs::write(root.join("init.ts"), "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nvoid lib;\n").expect("init.ts");
 
     println!("boot ms ({BOOTS} boots each)");
     report("rig (no cache)", {
         (0..BOOTS)
             .map(|_| {
                 let started = Instant::now();
-                let rig = rig_with("import * as lib from \"gnoblin\";\nvoid lib;\n", "");
+                let rig = rig_with("import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nvoid lib;\n", "");
                 let took = started.elapsed().as_secs_f64() * 1e3;
                 drop(rig);
                 took

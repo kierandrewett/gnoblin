@@ -8,7 +8,8 @@
 //
 // 1. The diagnostics are exactly the ones `// expect: TSxxxx` names in bad/, one line below the marker: the programs
 //    that must compile do, and the wrong ones fail with the right error and no other.
-// 2. `gnoblin`, `gnoblin/scene`, `gnoblin/extensions/xr`, ... resolve to the real source files under .gnoblin/lib.
+// 2. `gnoblin-core`, `gnoblin-std/scene`, `gnoblin-std/extensions/xr`, ... resolve to the real source files under
+//    .gnoblin/lib.
 // 3. Go-to-definition on an imported name opens the file that defines it.
 // 4. A class extends the real class it names: `Camera3D` the one `Node`, `XRCamera3D` that `Camera3D`.
 // 5. Hover shows the doc comment of the real source.
@@ -24,7 +25,7 @@ if (!configArgument || !tscOutput || !typescriptPath) {
 }
 const configDir = fs.realpathSync(configArgument);
 const ts = createRequire(import.meta.url)(typescriptPath);
-const library = path.join(configDir, ".gnoblin", "lib", "gnoblin");
+const library = path.join(configDir, ".gnoblin", "lib");
 
 const failures = [];
 const check = (condition, message) => {
@@ -101,19 +102,20 @@ const inLibrary = (file, tail) => real(file) === real(path.join(library, tail));
 
 const importer = path.join(configDir, "scene.ts");
 for (const [name, tail] of [
-    ["gnoblin", "index.ts"],
-    ["gnoblin/scene", "scene.ts"],
-    ["gnoblin/scene/node", "scene/node.ts"],
-    ["gnoblin/extensions/xr", "extensions/xr/index.ts"],
-    ["gnoblin/ui", "ui.ts"],
-    ["gnoblin/style", "style.ts"],
-    ["gnoblin/input", "input.ts"],
-    ["gnoblin/host/workspace", "host/workspace.ts"],
+    ["gnoblin-core", "gnoblin-core/index.ts"],
+    ["gnoblin-std", "gnoblin-std/index.ts"],
+    ["gnoblin-std/scene", "gnoblin-std/scene.ts"],
+    ["gnoblin-std/scene/node", "gnoblin-std/scene/node.ts"],
+    ["gnoblin-std/extensions/xr", "gnoblin-std/extensions/xr/index.ts"],
+    ["gnoblin-std/ui", "gnoblin-std/ui.ts"],
+    ["gnoblin-std/style", "gnoblin-std/style.ts"],
+    ["gnoblin-core/input", "gnoblin-core/input.ts"],
+    ["gnoblin-std/host/workspace", "gnoblin-std/host/workspace.ts"],
 ]) {
     const resolved = ts.resolveModuleName(name, importer, parsed.options, ts.sys).resolvedModule;
     check(
         resolved !== undefined && inLibrary(resolved.resolvedFileName, tail),
-        `"${name}" resolves to .gnoblin/lib/gnoblin/${tail} (${resolved?.resolvedFileName ?? "unresolved"})`,
+        `"${name}" resolves to .gnoblin/lib/${tail} (${resolved?.resolvedFileName ?? "unresolved"})`,
     );
 }
 
@@ -128,12 +130,12 @@ function definitionOf(fixture, word, after = "") {
     return found.map((definition) => ({ file: definition.fileName, name: definition.name }));
 }
 for (const [fixture, word, after, tail] of [
-    ["scene.ts", "Camera3D", "new Camera3D(", "scene/camera.ts"],
-    ["scene.ts", "Node", ": Node = camera", "scene/node.ts"],
-    ["scene.ts", "XRCamera3D", "new XRCamera3D(", "extensions/xr/camera.ts"],
-    ["host.ts", "Workspace", "new Workspace(", "host/workspace.ts"],
-    ["host.ts", "Client", "(client: Client)", "host/client.ts"],
-    ["modules.ts", "Style", "{ Box,", "style/style.ts"],
+    ["scene.ts", "Camera3D", "new Camera3D(", "gnoblin-std/scene/camera.ts"],
+    ["scene.ts", "Node", ": Node = camera", "gnoblin-std/scene/node.ts"],
+    ["scene.ts", "XRCamera3D", "new XRCamera3D(", "gnoblin-std/extensions/xr/camera.ts"],
+    ["host.ts", "Workspace", "new Workspace(", "gnoblin-std/host/workspace.ts"],
+    ["host.ts", "Client", "(client: Client)", "gnoblin-core/host/client.ts"],
+    ["modules.ts", "Style", "{ Box,", "gnoblin-std/style/style.ts"],
 ]) {
     const [first] = definitionOf(fixture, word, after);
     check(
@@ -166,25 +168,26 @@ function heritageOf(symbol) {
 }
 const camera = heritageOf(importedClass("scene.ts", "Camera3D"));
 check(
-    camera.base?.name === "Node" && inLibrary(camera.base.declarations[0].getSourceFile().fileName, "scene/node.ts"),
-    "Camera3D extends the Node declared in scene/node.ts",
+    camera.base?.name === "Node" &&
+        inLibrary(camera.base.declarations[0].getSourceFile().fileName, "gnoblin-std/scene/node.ts"),
+    "Camera3D extends the Node declared in gnoblin-std/scene/node.ts",
 );
 const xrCamera = heritageOf(importedClass("scene.ts", "XRCamera3D"));
 check(
     xrCamera.base?.name === "Camera3D" &&
-        inLibrary(xrCamera.base.declarations[0].getSourceFile().fileName, "scene/camera.ts"),
-    "XRCamera3D (gnoblin/extensions/xr) extends the Camera3D declared in scene/camera.ts",
+        inLibrary(xrCamera.base.declarations[0].getSourceFile().fileName, "gnoblin-std/scene/camera.ts"),
+    "XRCamera3D (gnoblin-std/extensions/xr) extends the Camera3D declared in gnoblin-std/scene/camera.ts",
 );
 const client = heritageOf(importedClass("host.ts", "Client"));
 check(
     client.base?.name === "NativeObject" &&
-        inLibrary(client.base.declarations[0].getSourceFile().fileName, "native_object.ts"),
-    "Client extends the NativeObject declared in native_object.ts",
+        inLibrary(client.base.declarations[0].getSourceFile().fileName, "gnoblin-core/native_object.ts"),
+    "Client extends the NativeObject declared in gnoblin-core/native_object.ts",
 );
 
 // -- 5. hover -------------------------------------------------------------------------------------------------------
 
-const cameraSource = fs.readFileSync(path.join(library, "scene", "camera.ts"), "utf8");
+const cameraSource = fs.readFileSync(path.join(library, "gnoblin-std", "scene", "camera.ts"), "utf8");
 const comment = /\/\*\* (.+?) \*\/\nexport class Camera3D/.exec(cameraSource)?.[1];
 check(comment !== undefined, "the real source documents Camera3D with a one-line comment");
 const sceneFile = path.join(configDir, "scene.ts");

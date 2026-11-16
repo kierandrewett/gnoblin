@@ -1,5 +1,5 @@
 //! The stock window menu, not-responding alert, entry, bar, clock, toast, overview and launcher
-//! (`data/js/gnoblin/{menus,alerts,widgets,panel,overview,launcher}.ts`) and the titlebar's gestures and reserved room, over the
+//! (`data/js/gnoblin-std/{menus,alerts,widgets,panel,overview,launcher}.ts`) and the titlebar's gestures and reserved room, over the
 //! fake compositor of `tests/common`.
 //!
 //! The cases are the retired shell's (`the retired retired corpus`), with the same inputs and the same

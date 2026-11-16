@@ -18,7 +18,7 @@ use crate::pattern::PatternTranslation;
 /// The widest an `import` is written on one line.
 const IMPORT_WIDTH: usize = 120;
 
-/// What the file needs from the `gnoblin` module, and whether it binds on the seat.
+/// What the file needs from the `gnoblin-core` and `gnoblin-std` modules, and whether it binds on the seat.
 #[derive(Default)]
 pub(crate) struct Needs {
     names: BTreeSet<&'static str>,
@@ -525,22 +525,29 @@ pub(crate) fn document(head: &Head<'_>, needs: &Needs, stock: Vec<String>, body:
     out
 }
 
-/// The imports from `gnoblin`: one line when it fits, one name a line when it does not.
+/// The names the converter imports that `gnoblin-core` exports; every other name it imports is `gnoblin-std`'s.
+const CORE_NAMES: &[&str] = &["CollectionListener"];
+
+/// The imports from `gnoblin-core` and `gnoblin-std`: for each package one line when it fits, one name a line when it
+/// does not.
 fn import_lines(needs: &Needs) -> Vec<String> {
     let mut lines = Vec::new();
-    if !needs.names.is_empty() {
-        let names: Vec<&str> = needs.names.iter().copied().collect();
-        let one = format!("import {{ {} }} from \"gnoblin\";", names.join(", "));
+    let (core, std): (Vec<&str>, Vec<&str>) = needs.names.iter().partition(|name| CORE_NAMES.contains(*name));
+    for (package, names) in [("gnoblin-core", core), ("gnoblin-std", std)] {
+        if names.is_empty() {
+            continue;
+        }
+        let one = format!("import {{ {} }} from \"{package}\";", names.join(", "));
         if one.len() <= IMPORT_WIDTH {
             lines.push(one);
         } else {
             lines.push("import {".to_owned());
             lines.extend(names.iter().map(|name| format!("    {name},")));
-            lines.push("} from \"gnoblin\";".to_owned());
+            lines.push(format!("}} from \"{package}\";"));
         }
     }
     if needs.client_type {
-        lines.push("import type { Client } from \"gnoblin\";".to_owned());
+        lines.push("import type { Client } from \"gnoblin-core\";".to_owned());
     }
     lines
 }
@@ -593,7 +600,7 @@ mod tests {
         needs.import("FloatingLayout");
         assert_eq!(
             import_lines(&needs),
-            ["import { FloatingLayout, Workspace } from \"gnoblin\";"]
+            ["import { FloatingLayout, Workspace } from \"gnoblin-std\";"]
         );
         for name in [
             "StripLayout",
@@ -607,9 +614,14 @@ mod tests {
             needs.import(name);
         }
         let lines = import_lines(&needs);
-        assert_eq!(lines.first().map(String::as_str), Some("import {"));
-        assert_eq!(lines[1], "    CollectionListener,");
-        assert_eq!(lines.last().map(String::as_str), Some("} from \"gnoblin\";"));
+        assert_eq!(
+            lines.first().map(String::as_str),
+            Some("import { CollectionListener } from \"gnoblin-core\";"),
+            "a name of the core package is imported from it"
+        );
+        assert_eq!(lines[1], "import {");
+        assert_eq!(lines[2], "    FloatingLayout,");
+        assert_eq!(lines.last().map(String::as_str), Some("} from \"gnoblin-std\";"));
     }
 
     #[test]

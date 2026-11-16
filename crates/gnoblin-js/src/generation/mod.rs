@@ -35,7 +35,7 @@ use crate::supervisor::{JsClock, JsSystemClock};
 pub struct JsConfig {
     /// The config root. Every file module must resolve under it.
     pub root: PathBuf,
-    /// Modules the host embeds, by import name (`gnoblin`, `gnoblin/layouts`), with their JavaScript.
+    /// Modules the host embeds, by import name (`gnoblin-core`, `gnoblin-std/layouts`), with their JavaScript.
     pub embedded: Arc<HashMap<String, String>>,
     /// Modules the host embeds as TypeScript (the stock library), stripped when imported. A name in `embedded` wins.
     pub typescript: Arc<HashMap<String, JsTypeScriptModule>>,

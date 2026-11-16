@@ -1,13 +1,13 @@
 //! The editor files of the JavaScript and TypeScript shell: the real library as types, the schema declarations, and the
 //! `tsconfig.json` that ties them together.
 //!
-//! The types of `import ... from "gnoblin"` and `"gnoblin/<module>"` are the library's own TypeScript sources,
-//! written out as files that the generated `tsconfig.json` maps those names to, so go-to-definition opens the file the
-//! shell runs and a class extends the class it really extends. This crate does not embed those sources (the shell
-//! does, in `gnoblin-js`); the caller hands them to [`ensure_user_files`]. What the crate generates is the schema
-//! half: [`render_dts`] writes one interface per schema object, with the schema's value kinds as TypeScript types,
-//! followed by the two globals a script has without an import. The declarations come from the same schema catalog as
-//! the runtime, so an editor and the runtime cannot disagree about a member.
+//! The types of `import ... from "gnoblin-core"`, `"gnoblin-std"` and their submodules are the library's own
+//! TypeScript sources, written out as files that the generated `tsconfig.json` maps those names to, so go-to-definition
+//! opens the file the shell runs and a class extends the class it really extends. This crate does not embed those
+//! sources (the shell does, in `gnoblin-js`); the caller hands them to [`ensure_user_files`]. What the crate generates
+//! is the schema half: [`render_dts`] writes one interface per schema object, with the schema's value kinds as
+//! TypeScript types, followed by the two globals a script has without an import. The declarations come from the same
+//! schema catalog as the runtime, so an editor and the runtime cannot disagree about a member.
 //!
 //! ```no_run
 //! let library = vec![("index.ts".to_owned(), "export {};\n".to_owned())];

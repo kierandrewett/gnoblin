@@ -1,4 +1,4 @@
-//! The window frame (`data/js/gnoblin/frame/`, design/window-frame.md): a surface round each window with outlets a script
+//! The window frame (`data/js/gnoblin-std/frame/`, design/window-frame.md): a surface round each window with outlets a script
 //! fills, over the fake compositor of `tests/common`.
 //!
 //! Nodes are read from the fake compositor the way the compositor would hold them: an outlet is a canvas that is a
@@ -14,7 +14,7 @@ use common::*;
 
 const LEFT: u64 = 272;
 
-const IMPORTS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
+const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
 
 /// A frame with a different room on every side, so no side can be mistaken for another: 30 above, 20 right, 40 below and
 /// 10 left of the content.

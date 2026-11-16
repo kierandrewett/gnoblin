@@ -4,7 +4,8 @@ A script hears the compositor through listeners. A listener is a class with opti
 object the event is about. Its methods receive that object first and the event's own values after it.
 
 ```ts
-import { SessionListener, toast } from "gnoblin";
+import { SessionListener } from "gnoblin-core";
+import { toast } from "gnoblin-std";
 
 class Bell extends SessionListener {
     onBell(session, count) {

@@ -18,7 +18,7 @@ A trigger is `Swipe` or `Pinch`, a finger count, and a direction: `Swipe3Left`, 
 The stock setup binds a three-finger swipe to `WorkspaceSlideBinding`, which follows the fingers while they move:
 
 ```ts
-import { WorkspaceSlideBinding } from "gnoblin";
+import { WorkspaceSlideBinding } from "gnoblin-std";
 
 gnoblin.input.primary.bind("Swipe3", new WorkspaceSlideBinding());
 ```

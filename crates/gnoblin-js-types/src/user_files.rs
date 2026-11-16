@@ -10,8 +10,10 @@
 //!   VERSION                  the version that wrote the directory
 //!   tsconfig.json            strict ES2023, bundler resolution, and the two `paths` that map the library
 //!   gnoblin.d.ts             the schema declarations and the globals (`gnoblin`, `console`), generated
-//!   lib/gnoblin/**.ts        the library sources: `gnoblin` is lib/gnoblin/index.ts, `gnoblin/scene` is
-//!                            lib/gnoblin/scene.ts, `gnoblin/scene/node` is lib/gnoblin/scene/node.ts, ...
+//!   lib/gnoblin-core/**.ts   the sources of `gnoblin-core`: `gnoblin-core` is lib/gnoblin-core/index.ts,
+//!                            `gnoblin-core/host/client` is lib/gnoblin-core/host/client.ts, ...
+//!   lib/gnoblin-std/**.ts    the sources of `gnoblin-std`: `gnoblin-std/scene/node` is
+//!                            lib/gnoblin-std/scene/node.ts, ...
 //! ```
 //!
 //! A refresh reaches the editor without a step: the sources, the declarations and the generated `tsconfig.json` are
@@ -38,7 +40,7 @@ pub const TSCONFIG_FILE: &str = "tsconfig.json";
 /// The generated editor configuration, in [`GENERATED_DIR`]: the one the user's extends.
 pub const GENERATED_TSCONFIG_FILE: &str = "tsconfig.json";
 /// Where the library sources go, relative to [`GENERATED_DIR`].
-pub const LIBRARY_DIR: &str = "lib/gnoblin";
+pub const LIBRARY_DIR: &str = "lib";
 /// The file in [`GENERATED_DIR`] that names the version that wrote it.
 pub const VERSION_FILE: &str = "VERSION";
 
@@ -64,7 +66,7 @@ pub struct JsWritten {
     pub generated: PathBuf,
     /// The declaration file, which is always current after the call.
     pub types: PathBuf,
-    /// The directory the library sources were written to: `import ... from "gnoblin/x"` is `<library>/x.ts`.
+    /// The directory the library sources were written to: `import ... from "gnoblin-std/x"` is `<library>/gnoblin-std/x.ts`.
     pub library: PathBuf,
     /// How many library sources the directory holds.
     pub library_files: usize,
@@ -80,8 +82,9 @@ const LEGACY_TYPES_HEADER: &str = "// gnoblin.d.ts: the types of the Gnoblin Jav
 ///
 /// The options follow design/js-runtime.md: strict, ES modules resolved the way a bundler does, `.ts` extensions
 /// importable (the runtime resolves them), and no emit, because nothing here compiles: the runtime strips types itself.
-/// `gnoblin` and `gnoblin/*` are mapped to the real sources (`lib/gnoblin/index.ts` and `lib/gnoblin/*`), which
-/// is what makes go-to-definition open them and `Camera3D` extend the one `Node`. The declaration file is listed in
+/// Each package, `gnoblin-core` and `gnoblin-std`, is mapped with its submodules to the real sources
+/// (`lib/gnoblin-core/index.ts` and `lib/gnoblin-core/*`, the same for `gnoblin-std`), which is what makes
+/// go-to-definition open them and `Camera3D` extend the one `Node`. The declaration file is listed in
 /// `files` so the editor loads it whatever the user's `include` matches. Every path is relative to this file.
 #[must_use]
 pub fn render_generated_tsconfig() -> String {
@@ -98,8 +101,10 @@ pub fn render_generated_tsconfig() -> String {
             // No `@types` discovery: the globals are declared by the file named below.
             "types": [],
             "paths": {
-                "gnoblin": [format!("./{LIBRARY_DIR}/index.ts")],
-                "gnoblin/*": [format!("./{LIBRARY_DIR}/*")],
+                "gnoblin-core": [format!("./{LIBRARY_DIR}/gnoblin-core/index.ts")],
+                "gnoblin-core/*": [format!("./{LIBRARY_DIR}/gnoblin-core/*")],
+                "gnoblin-std": [format!("./{LIBRARY_DIR}/gnoblin-std/index.ts")],
+                "gnoblin-std/*": [format!("./{LIBRARY_DIR}/gnoblin-std/*")],
             },
         },
         "files": [format!("./{TYPES_FILE}")],
@@ -147,10 +152,10 @@ fn legacy_user_tsconfig() -> Value {
 
 /// Write the editor files into `config_dir`, creating the directory when it is missing.
 ///
-/// `library` is the real library: `(path under gnoblin/, TypeScript)` for every module, such as
-/// `("scene/node.ts", "...")` (`gnoblin_js::editor_library` is the stock one). It is written as given, so the files are the
-/// sources and not a copy that could be edited into a second truth. See the module documentation for the layout and
-/// what is rewritten.
+/// `library` is the real library: `(path under lib/, TypeScript)` for every module, such as
+/// `("gnoblin-std/scene/node.ts", "...")` (`gnoblin_js::editor_library` is the stock one). It is written as given, so
+/// the files are the sources and not a copy that could be edited into a second truth. See the module documentation for
+/// the layout and what is rewritten.
 ///
 /// # Errors
 ///
@@ -289,12 +294,18 @@ mod tests {
     /// A two-module library with a nested file, enough to show the layout.
     fn library() -> Vec<(String, String)> {
         vec![
-            ("index.ts".to_owned(), "export * from \"gnoblin/scene\";\n".to_owned()),
             (
-                "scene.ts".to_owned(),
-                "export { Node } from \"gnoblin/scene/node\";\n".to_owned(),
+                "gnoblin-std/index.ts".to_owned(),
+                "export * from \"gnoblin-std/scene\";\n".to_owned(),
             ),
-            ("scene/node.ts".to_owned(), "export class Node {}\n".to_owned()),
+            (
+                "gnoblin-std/scene.ts".to_owned(),
+                "export { Node } from \"gnoblin-std/scene/node\";\n".to_owned(),
+            ),
+            (
+                "gnoblin-std/scene/node.ts".to_owned(),
+                "export class Node {}\n".to_owned(),
+            ),
         ]
     }
 
@@ -329,8 +340,10 @@ mod tests {
         assert_eq!(options["moduleResolution"], "bundler");
         assert_eq!(options["noEmit"], true);
         assert_eq!(options["allowImportingTsExtensions"], true);
-        assert_eq!(options["paths"]["gnoblin"][0], "./lib/gnoblin/index.ts");
-        assert_eq!(options["paths"]["gnoblin/*"][0], "./lib/gnoblin/*");
+        assert_eq!(options["paths"]["gnoblin-core"][0], "./lib/gnoblin-core/index.ts");
+        assert_eq!(options["paths"]["gnoblin-core/*"][0], "./lib/gnoblin-core/*");
+        assert_eq!(options["paths"]["gnoblin-std"][0], "./lib/gnoblin-std/index.ts");
+        assert_eq!(options["paths"]["gnoblin-std/*"][0], "./lib/gnoblin-std/*");
         assert_eq!(config["files"][0], "./gnoblin.d.ts");
     }
 
@@ -357,7 +370,7 @@ mod tests {
         let written = ensure_user_files(dir.path(), &library()).expect("the files are written");
         assert_eq!(written.generated, dir.path().join(".gnoblin"));
         assert_eq!(written.types, dir.path().join(".gnoblin/gnoblin.d.ts"));
-        assert_eq!(written.library, dir.path().join(".gnoblin/lib/gnoblin"));
+        assert_eq!(written.library, dir.path().join(".gnoblin/lib"));
         assert_eq!(written.library_files, 3);
         assert_eq!(
             written.tsconfig,
@@ -369,20 +382,20 @@ mod tests {
                 ".gnoblin/.gitignore",
                 ".gnoblin/VERSION",
                 ".gnoblin/gnoblin.d.ts",
-                ".gnoblin/lib/gnoblin/index.ts",
-                ".gnoblin/lib/gnoblin/scene.ts",
-                ".gnoblin/lib/gnoblin/scene/node.ts",
+                ".gnoblin/lib/gnoblin-std/index.ts",
+                ".gnoblin/lib/gnoblin-std/scene.ts",
+                ".gnoblin/lib/gnoblin-std/scene/node.ts",
                 ".gnoblin/tsconfig.json",
                 "tsconfig.json",
             ]
         );
         assert_eq!(
-            fs::read_to_string(written.library.join("scene/node.ts")).expect("a source"),
+            fs::read_to_string(written.library.join("gnoblin-std/scene/node.ts")).expect("a source"),
             "export class Node {}\n",
             "the sources are written as given"
         );
         let types = fs::read_to_string(&written.types).expect("the types are readable");
-        assert!(types.contains("declare module \"gnoblin/schema/gnoblin\""));
+        assert!(types.contains("declare module \"gnoblin-core/schema/gnoblin\""));
         assert!(types.contains("declare const gnoblin:"));
         assert!(
             !types.contains("declare module \"gnoblin\""),
@@ -410,7 +423,7 @@ mod tests {
         let written = ensure_user_files(dir.path(), &library()).expect("the first call");
         fs::write(&written.types, "stale").expect("stale types");
         fs::write(written.generated.join(GENERATED_TSCONFIG_FILE), "{}").expect("stale tsconfig");
-        fs::write(written.library.join("scene/node.ts"), "edited").expect("an edited source");
+        fs::write(written.library.join("gnoblin-std/scene/node.ts"), "edited").expect("an edited source");
         fs::write(
             dir.path().join(TSCONFIG_FILE),
             "{ \"extends\": \"./.gnoblin/tsconfig.json\", \"mine\": true }",
@@ -438,7 +451,7 @@ mod tests {
             render_generated_tsconfig()
         );
         assert_eq!(
-            fs::read_to_string(again.library.join("scene/node.ts")).expect("source"),
+            fs::read_to_string(again.library.join("gnoblin-std/scene/node.ts")).expect("source"),
             "export class Node {}\n",
             "an edited source is the library again"
         );
@@ -448,18 +461,21 @@ mod tests {
     fn a_source_the_library_dropped_stops_resolving() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         ensure_user_files(dir.path(), &library()).expect("the first call");
-        let kept = vec![("index.ts".to_owned(), "export {};\n".to_owned())];
+        let kept = vec![("gnoblin-std/index.ts".to_owned(), "export {};\n".to_owned())];
         let written = ensure_user_files(dir.path(), &kept).expect("the second call");
-        assert!(written.library.join("index.ts").is_file());
-        assert!(!written.library.join("scene.ts").exists());
-        assert!(!written.library.join("scene").exists(), "an emptied directory goes too");
+        assert!(written.library.join("gnoblin-std/index.ts").is_file());
+        assert!(!written.library.join("gnoblin-std/scene.ts").exists());
+        assert!(
+            !written.library.join("gnoblin-std/scene").exists(),
+            "an emptied directory goes too"
+        );
     }
 
     #[test]
     fn current_files_are_not_rewritten() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let written = ensure_user_files(dir.path(), &library()).expect("the first call");
-        let touched = [written.types.clone(), written.library.join("scene/node.ts")];
+        let touched = [written.types.clone(), written.library.join("gnoblin-std/scene/node.ts")];
         let mtime = |path: &Path| fs::metadata(path).and_then(|meta| meta.modified()).expect("mtime");
         let before: Vec<_> = touched.iter().map(|path| mtime(path)).collect();
         std::thread::sleep(std::time::Duration::from_millis(20));

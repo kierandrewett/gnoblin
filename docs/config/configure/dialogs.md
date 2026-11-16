@@ -13,7 +13,7 @@ A script can look at each request before its dialog opens and refuse it. This is
 request, answer for the user, or see a passphrase.
 
 ```ts
-import { DialogListener } from "gnoblin";
+import { DialogListener } from "gnoblin-core";
 
 class NoScreenshots extends DialogListener {
     onConsentRequest(request) {

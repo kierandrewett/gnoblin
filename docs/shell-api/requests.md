@@ -5,8 +5,8 @@ authentication. The compositor draws the dialog itself, so it works with no shel
 `gnoblin.dialogs` lets your config watch these requests and refuse one before its dialog opens.
 
 ```ts
-import { DialogListener } from "gnoblin";
-import type { ConsentRequest } from "gnoblin";
+import { DialogListener } from "gnoblin-core";
+import type { ConsentRequest } from "gnoblin-core";
 
 class NoScreenCasts extends DialogListener {
     onConsentRequest(request: ConsentRequest) {

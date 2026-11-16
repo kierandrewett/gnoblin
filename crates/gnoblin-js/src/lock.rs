@@ -1,4 +1,4 @@
-//! The host functions of the stock lock screen (`data/js/gnoblin/lock.ts`): `__gnoblinHost.lock`.
+//! The host functions of the stock lock screen (`data/js/gnoblin-std/lock.ts`): `__gnoblinHost.lock`.
 //!
 //! The compositor's tree has one `lock` node. Its `state` is `not-locked`, `pending` or `locked`; the shell records
 //! that its lock screen is up in `engaged`, and asks the compositor to check a password with the node's
@@ -231,7 +231,7 @@ pub(crate) fn heartbeat(state: &mut HostState) {
     }
 }
 
-/// Installs `__gnoblinHost.lock`, the functions `gnoblin/lock` runs on.
+/// Installs `__gnoblinHost.lock`, the functions `gnoblin-std/lock` runs on.
 pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedState) -> rquickjs::Result<()> {
     let lock = Object::new(ctx.clone())?;
 

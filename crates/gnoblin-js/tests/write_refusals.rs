@@ -14,7 +14,7 @@ use gnoblin_tree_client::tree_mirror::{MirrorChange, MirrorChangeKind, MirrorVal
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as lib from \"gnoblin\";\nimport { PasswordEntry } from \"gnoblin/lock\";\nconst { gnoblin: _runtime, ...exported } = lib;\nObject.assign(globalThis, exported);\n(globalThis as any).g = globalThis;\n(globalThis as any).PasswordEntry = PasswordEntry;\n";
+const IMPORTS: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nimport { PasswordEntry } from \"gnoblin-std/lock\";\nconst { gnoblin: _runtime, ...exported } = lib;\nObject.assign(globalThis, exported);\n(globalThis as any).g = globalThis;\n(globalThis as any).PasswordEntry = PasswordEntry;\n";
 
 const SEAT: u64 = 21;
 const A: u64 = 20;

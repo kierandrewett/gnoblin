@@ -10,7 +10,7 @@ The object model is TypeScript, embedded as `gnoblin/host`: `data/js/gnoblin/hos
 `data/js/gnoblin/host/*.ts` is the code.
 
 `JsShell` embeds the stock library, which holds it, and appends `export * from "gnoblin/host"` to the stock `gnoblin`
-index. One `import { Workspace, ClientListener } from "gnoblin"` reaches both.
+index. One `import { ClientListener } from "gnoblin-core"; import { Workspace } from "gnoblin-std"` reaches both.
 
 The Rust side (`src/bindings/`) is plain host functions behind `globalThis.__gnoblinHost`. It runs against a fake
 compositor in `crates/gnoblin-js/tests/shell.rs`, and against the real one by ["P6 role

@@ -4,8 +4,9 @@ Give a writing workspace a stable ID, send new editor windows there, and bind ke
 focused window to one. Add this to `~/.config/gnoblin/init.ts`:
 
 ```ts
-import { CollectionListener, FloatingLayout, MasterStackLayout, MonocleLayout, Workspace } from "gnoblin";
-import type { Client } from "gnoblin";
+import { CollectionListener } from "gnoblin-core";
+import { FloatingLayout, MasterStackLayout, MonocleLayout, Workspace } from "gnoblin-std";
+import type { Client } from "gnoblin-core";
 
 const layouts = {
     write: new MonocleLayout(),

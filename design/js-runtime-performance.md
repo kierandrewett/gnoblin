@@ -55,7 +55,7 @@ something can have changed what it does:
 - **A link beside the tree has something** (a process ended, a session call or signal, a dialog, the idle state). A quiet
   turn reads these links and keeps what they said for the frame it then runs.
 - **Script ran outside a frame** (`eval`, the console, a load, a reload, a link handed over).
-- **The script asked** through `entry.wake()` (`data/js/gnoblin/wake.ts`): the part of the library that has a clock to
+- **The script asked** through `entry.wake()` (`data/js/gnoblin-core/wake.ts`): the part of the library that has a clock to
   keep registers it, by name, where it holds its state. Timers, focus rests, launch deadlines, a window drag's limit, a
   window's close fade, a clock widget's minute, the display manager's dirty flag, queued listener calls, a look the
   not-responding alert skipped, and the sources that draw every frame while they hold (a lock screen that is up, an XR

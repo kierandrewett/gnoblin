@@ -8,7 +8,7 @@ The scene is the tree of nodes a script makes.
 - A property of a node or a window can follow the properties it was computed from.
 
 ```ts
-import { ArcLayout, Node, View, Workspace } from "gnoblin";
+import { ArcLayout, Node, View, Workspace } from "gnoblin-std";
 
 const desktop = new Workspace({ id: "desktop", layout: new ArcLayout({ radius: 1200, spacing: 0.35 }) });
 gnoblin.workspaces.add(desktop);

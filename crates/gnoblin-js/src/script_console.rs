@@ -34,7 +34,7 @@ gnoblin_log::logger!(log = "js");
 const PRELUDE: &str = include_str!("../js/console.js");
 
 /// The name `console.js` has in a stack trace; its frames are never the call site.
-const PRELUDE_FILE: &str = "gnoblin/console";
+const PRELUDE_FILE: &str = "gnoblin-core/console";
 
 /// The most text one console call logs, in bytes.
 pub const MAX_LINE_BYTES: usize = 4096;

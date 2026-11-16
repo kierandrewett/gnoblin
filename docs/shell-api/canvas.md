@@ -6,8 +6,8 @@ compositor draws the stock titlebar, panel and lock screen from the paint lists 
 This page describes the paint list and how it is drawn. The widgets built on it are in the [UI toolkit](/js-ui).
 
 ```ts
-import { Canvas } from "gnoblin";
-import type { PaintOp } from "gnoblin";
+import { Canvas } from "gnoblin-std";
+import type { PaintOp } from "gnoblin-std";
 
 class Label extends Canvas {
     draw(): PaintOp[] {

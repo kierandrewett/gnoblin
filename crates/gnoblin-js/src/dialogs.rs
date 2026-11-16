@@ -6,7 +6,7 @@
 //! dialog. The slot offers no way to allow a request and never carries a passphrase, so a script cannot do either:
 //! this module sends the two fixed byte strings `deny` and `pass` and nothing a script wrote.
 //!
-//! The script's side is `data/js/gnoblin/dialogs.ts`: listeners run as queued calls under the usual per-call
+//! The script's side is `data/js/gnoblin-core/dialogs.ts`: listeners run as queued calls under the usual per-call
 //! budget, and the frame hands what it decided back here as verdicts. The slot is claimed while the running
 //! generation has a listener and released when it has none, when it is retired (a reload or a shutdown), and by the
 //! compositor when the connection closes, so a crashed shell leaves no observer behind.

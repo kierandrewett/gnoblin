@@ -1,4 +1,4 @@
-//! Change gating (`tests/frame_gating.rs`, `data/js/gnoblin/wake.ts`) for the window frame: a frame with nothing to do
+//! Change gating (`tests/frame_gating.rs`, `data/js/gnoblin-core/wake.ts`) for the window frame: a frame with nothing to do
 //! runs no frame, and each thing the window frame changes still gets the very next one.
 //!
 //! The risk is a change that does not wake the loop and so is never drawn. Every case here goes quiet first (a frame that

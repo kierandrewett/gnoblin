@@ -7,7 +7,8 @@
 //!   `..` that climbs out nor a symlink that points out can reach a file the author did not put there.
 //!   A `./x.js` that does not exist falls back to `./x.ts`, because TypeScript authors write the output
 //!   extension in imports.
-//! - `gnoblin` and `gnoblin/<module>`: modules the host registered with their JavaScript source.
+//! - `gnoblin-core`, `gnoblin-std` and their `<package>/<module>` submodules: modules the host registered with their
+//!   JavaScript source.
 //! - An absolute path, only for the entry the host passes (an import with no importing module).
 //!
 //! `.ts` and `.mts` files go through [`strip_types`](crate::ts::strip_types); `.js` and `.mjs` pass through.
@@ -28,6 +29,7 @@ use rquickjs::{Ctx, Error, Module, Result};
 
 use crate::bytecode::{Digest, JsBytecodeCache};
 use crate::error::{JsError, JsLoadError, JsLocation};
+use crate::stock::PACKAGES;
 use crate::ts::{JsStripped, position, strip_shared, strip_types};
 
 mod files;
@@ -208,7 +210,9 @@ impl JsResolver {
         if !relative && !Path::new(name).is_absolute() {
             return if self.embedded.contains_key(name) || self.typescript.contains_key(name) {
                 Ok(name.to_owned())
-            } else if name == "gnoblin" || name.starts_with("gnoblin/") {
+            } else if PACKAGES.iter().any(|package| {
+                name == *package || name.strip_prefix(*package).is_some_and(|rest| rest.starts_with('/'))
+            }) {
                 Err(JsLoadError::NoEmbedded { name: name.to_owned() })
             } else {
                 Err(JsLoadError::Unresolvable { name: name.to_owned() })

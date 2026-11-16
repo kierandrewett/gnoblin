@@ -1295,7 +1295,7 @@ pub fn rig_configured(
 
 /// A module prelude that puts the library's exports where `rig.eval` can reach them as globals (`FloatingLayout`,
 /// `startDecorations`...). The `gnoblin` global is the runtime's own and is left out.
-pub const LIBRARY_GLOBALS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
+pub const LIBRARY_GLOBALS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
 
 impl FakeCompositor {
     /// The tree a shell boots over: the primary screen of `width` by `height` (node 20), one seat `seat0` (21) and the

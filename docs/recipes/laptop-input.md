@@ -4,7 +4,7 @@ This setup makes a held key repeat faster and turns on tap to click and natural 
 is an object in `gnoblin.input.devices`, and a setting is a property you write on it.
 
 ```ts
-import { Keyboard, Touchpad } from "gnoblin";
+import { Keyboard, Touchpad } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Keyboard) {

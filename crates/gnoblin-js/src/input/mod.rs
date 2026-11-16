@@ -1,7 +1,7 @@
 //! The host side of input: seat claims, the seat's published state, and the chords and gestures the
 //! compositor reports.
 //!
-//! `data/js/gnoblin/input/` decides what an input means; this module is what it stands on. It does what the
+//! `data/js/gnoblin-core/input/` decides what an input means; this module is what it stands on. It does what the
 //! retired shell's `node.retired shell` does for `Seat:claim`, `Seat:claim_gesture` and `Seat:unclaim`:
 //!
 //! - **Claims.** Each claim id is allocated here, per shell, from 1, never reused, one number space for chords

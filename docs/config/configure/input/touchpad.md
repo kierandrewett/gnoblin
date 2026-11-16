@@ -5,7 +5,7 @@ starts, when you plug one in and after every reload; a nested session leaves its
 ([input device settings](/backends#input-device-settings)). This example enables tap-to-click and natural scrolling:
 
 ```ts
-import { Touchpad } from "gnoblin";
+import { Touchpad } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Touchpad) {

@@ -6,7 +6,7 @@ Input settings are properties of the device objects in `gnoblin.input.devices`. 
 Use `instanceof` to tell them apart, and set a property to `undefined` to take it back to the system's value.
 
 ```ts
-import { Keyboard, Mouse } from "gnoblin";
+import { Keyboard, Mouse } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Keyboard) {

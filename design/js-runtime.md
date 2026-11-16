@@ -69,7 +69,7 @@ Inputs (all in `design/js-research/`):
     `popups-portals.md`.
 
     Recorded exception . The lock password entry is the one place J8 is not followed: the
-    stock lock screen (`data/js/gnoblin/lock.ts`) draws the entry and collects the password in the script engine, and
+    stock lock screen (`data/js/gnoblin-core/lock.ts`) draws the entry and collects the password in the script engine, and
     Rust checks it (`authenticate`, PAM) and is the only thing that unlocks. The compositor's own card
     (`gnoblin-wayland/src/lock_card.rs`) is the Rust-owned entry, and it is the entry whenever the shell's screen is
     absent, not alive or not answering: the screen holds a lease (`heartbeat`, 2 s) and the card takes the password 1 s
@@ -155,7 +155,7 @@ Done criteria (headless, on Agent37):
 | P6 dialogs               | `gnoblin.dialogs`, `DialogListener`, `SecureEntry`, lease and `request.release`, Rust built-ins for secret entry and polkit         | P3            |
 | P7 console               | JSON-over-socket REPL and inspector, `gnoblinctl console`                                                                           | P3            |
 | P8 later, separate sizes | styles and effect stack, Display mirror and span, transition planner                                                                | P4            |
-| P9 XR                    | `gnoblin.extensions.xr` and `gnoblin/extensions/xr` over the out-of-process XR program (J7): room, ring, View, bindings             | P4            |
+| P9 XR                    | `gnoblin.extensions.xr` and `gnoblin-std/extensions/xr` over the out-of-process XR program (J7): room, ring, View, bindings             | P4            |
 
 ## Questions for the owner (the agent has a default for each)
 

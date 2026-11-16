@@ -8,7 +8,7 @@ use super::{
 };
 use crate::bindings::SharedState;
 
-/// Installs `__gnoblinHost.ui`, the functions `gnoblin/ui` runs on.
+/// Installs `__gnoblinHost.ui`, the functions `gnoblin-std/ui` runs on.
 pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedState) -> rquickjs::Result<()> {
     let ui = Object::new(ctx.clone())?;
 

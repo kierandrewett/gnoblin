@@ -1,6 +1,6 @@
 // A script that builds a scene: `Camera3D` is a `Node` of the one scene module, and the XR camera is a `Camera3D`.
-import { XRCamera3D } from "gnoblin/extensions/xr";
-import { Camera3D, Node, View } from "gnoblin/scene";
+import { XRCamera3D } from "gnoblin-std/extensions/xr";
+import { Camera3D, Node, View } from "gnoblin-std/scene";
 
 export const camera = new Camera3D({ fov: 70, near: 0.1, far: 100 });
 export const cameraAsNode: Node = camera;

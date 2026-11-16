@@ -163,7 +163,7 @@ The answers are tested through the compositor's lock path with a scripted authen
 When the compositor holds the lock itself, something has to take the password. The lock is the compositor's own when it
 was taken through the `lock` node: `gnoblinctl`, the screensaver service or logind.
 
-The stock JavaScript shell takes the password with a lock screen of its own. `data/js/gnoblin/lock.ts` draws a clock and a
+The stock JavaScript shell takes the password with a lock screen of its own. `data/js/gnoblin-std/lock.ts` draws a clock and a
 masked password entry over the cover, under the `lock` node:
 
 - It comes up when `state` leaves `not-locked`. A shell that starts while the session is locked finds the state already

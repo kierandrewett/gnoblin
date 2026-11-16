@@ -77,7 +77,7 @@ gnoblinctl --json console --eval 'gnoblin.clients.at(0)'
   of the running generation and stays for the next expression, from any console connection. To redefine a `let` or a
   `const`, use `var` or assign to it.
 - **Use the helpers.** `inspect` is a global in the console; see below. In `init.ts` import it:
-  `import { inspect } from "gnoblin"`.
+  `import { inspect } from "gnoblin-core"`.
 - **Return objects.** A value whose first character is `{` is read as an object literal: `{a: 1}` is the object.
   A promise that has already settled shows its result.
 

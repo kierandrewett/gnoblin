@@ -1,5 +1,5 @@
-//! Focus, window rules and edge snapping of the stock library: `data/js/gnoblin/{focus,rules,snap}.ts` and the
-//! pieces of `gnoblin/host` and `gnoblin/bindings` they stand on.
+//! Focus, window rules and edge snapping of the stock library: `data/js/gnoblin-std/{focus,snap}.ts` and the
+//! pieces of `gnoblin-core/host` and `gnoblin/bindings` they stand on.
 //!
 //! The cases are the retired shell's: `the retired retired corpus`. A retired case keeps its
 //! inputs and its expected values; where the JavaScript API changed a word (`hover` is `sloppy`, a retired pattern is a
@@ -37,7 +37,7 @@ import {
     focusSettings, seatFocusSettings, opensFocused, hoverFocus, REST_DELAY, restFocus,
     leaveClears, focusDecision, edgeTilingEnabled, edgeZone, tileRect,
     ClientResizeBinding, ClientMoveBinding,
-} from "gnoblin";
+} from "gnoblin-std";
 "#;
 
 /// Evaluates `body` (TypeScript) with the stock library imported and returns what it passed to `emit`.
@@ -524,10 +524,8 @@ impl Rig {
     }
 }
 
-const PRELUDE: &str = r#"import {
-    gnoblin, Workspace, Layout, FloatingLayout, ClientMoveBinding, ClientResizeBinding,
-    snapClient, unsnapClient, snappedZone,
-} from "gnoblin";
+const PRELUDE: &str = r#"import { gnoblin } from "gnoblin-core";
+import { Workspace, Layout, FloatingLayout, ClientMoveBinding, ClientResizeBinding, snapClient, unsnapClient, snappedZone } from "gnoblin-std";
 (globalThis as any).lib = { snapClient, unsnapClient, snappedZone };
 "#;
 

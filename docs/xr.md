@@ -82,7 +82,7 @@ Logs are under the `xr` name: `[guardian] started xr (generation N, pid P)` and 
 
 ## What the stock shell does
 
-The stock shell's XR side is `data/js/gnoblin/extensions/xr/`. It reacts to the seat named `xr`.
+The stock shell's XR side is `data/js/gnoblin-std/extensions/xr/`. It reacts to the seat named `xr`.
 
 When the seat arrives the shell builds a node named `room` under `root`. The room holds:
 
@@ -276,13 +276,13 @@ comes from the right hand only.
 
 ## Scripting XR in TypeScript
 
-The classes of `gnoblin/extensions/xr` are in the TypeScript shell. They are objects over the tree's nodes, like a
+The classes of `gnoblin-std/extensions/xr` are in the TypeScript shell. They are objects over the tree's nodes, like a
 `Client`: the XR program is a separate process, and nothing here loads into the shell.
 
-The library is the directory `data/js/gnoblin/extensions/xr/`, with one file for each part: the camera, controllers,
+The library is the directory `data/js/gnoblin-std/extensions/xr/`, with one file for each part: the camera, controllers,
 layout, ring, room, runtime, session, viewport and bindings.
 
-- `gnoblin/extensions/xr` is the entry a script imports. It is the only module that checks that XR is available.
+- `gnoblin-std/extensions/xr` is the entry a script imports. It is the only module that checks that XR is available.
 - The shell's own XR code imports the files beside it, so it loads when no XR is present.
 
 ### Is XR there?
@@ -310,7 +310,7 @@ gnoblin.extensions.addListener({
 Importing the module fails at load, with a message that says what to do, when there is no XR extension:
 
 ```ts
-import { XRCamera3D, ViewMoveBinding } from "gnoblin/extensions/xr";
+import { XRCamera3D, ViewMoveBinding } from "gnoblin-std/extensions/xr";
 ```
 
 The import works when the session declared XR (`GNOBLIN_XR=1`) or when the program already has a session. A config that

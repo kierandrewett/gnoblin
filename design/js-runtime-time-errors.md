@@ -32,7 +32,7 @@ the one the host already spoke and `docs/shell-api/errors.md` documented.
 
 - **Easings.** Two vocabularies (`out`, `out-cubic`, `in-cubic`, `in-out`, and the CSS aliases `ease-out`, `ease-in-out`,
   `ease-in`) became one: `Easing` is `linear`, `ease`, `ease-in`, `ease-out` and `ease-in-out`, each the CSS timing
-  function of that name (a cubic Bezier, `data/js/gnoblin/transition/easing.ts`).
+  function of that name (a cubic Bezier, `data/js/gnoblin-std/transition/easing.ts`).
 - **Error codes.** Three schemes existed. (1) `GnoblinError.code` held untyped kebab-case strings: `destroyed`,
   `read-only`, `refused`, `detached`, `busy`, `no-output`, `unknown-workspace`, `not-a-member`, `unsupported`,
   `no-seat`, `duplicate`, `spawn-failed`, `forbidden`, `nested`, `output-conflict`. (2) `OperationErrorCode` held
@@ -42,7 +42,7 @@ the one the host already spoke and `docs/shell-api/errors.md` documented.
     (3) Bespoke classes carried none: `TriggerError`, `BindingConflictError`, `SceneError` (whose `code` was the host's
     own word).
 
-    One `ErrorCode` (`data/js/gnoblin/errors.ts`) replaces them: the snake_case set, extended with `already_exists`,
+    One `ErrorCode` (`data/js/gnoblin-core/errors.ts`) replaces them: the snake_case set, extended with `already_exists`,
     `invalid_state` and `read_only` for what the kebab codes said that it could not.
 
 - **The migration.** `destroyed`, `unknown-workspace` -> `not_found`; `read-only` -> `read_only`; `detached`,

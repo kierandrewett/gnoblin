@@ -1,4 +1,4 @@
-//! The stock TypeScript library (`data/js/gnoblin/`) run in a real generation with no host.
+//! The stock TypeScript library (`data/js/gnoblin-std/`) run in a real generation with no host.
 //!
 //! The geometry cases are the retired shell's: `the retired retired corpus` for the tiled layouts
 //! and `tests/shell/placement_cases.toml` for floating placement. A case taken from the retired corpus says so; a
@@ -52,10 +52,8 @@ export function emit(value) {
 
 const IMPORTS: &str = r#"
 import { area, nodes, fmt, lay, thrown, rect, emit } from "harness";
-import {
-    Binding, BindingCollection, DragBinding, PointerDragBinding, resolveTriggers, Layout, insetRect,
-    FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout,
-} from "gnoblin";
+import { Binding, BindingCollection, DragBinding, PointerDragBinding, resolveTriggers } from "gnoblin-core";
+import { Layout, insetRect, FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout } from "gnoblin-std";
 "#;
 
 /// Evaluates `body` (TypeScript) with the stock library imported and returns what it passed to `emit`.
@@ -595,7 +593,7 @@ fn the_layout_base_class_places_nothing_and_hooks_stay_on_the_prototype() {
 #[test]
 fn a_workspaces_options_are_checked_and_its_layout_is_a_stock_name_or_an_instance() {
     let got = run(r#"
-        import { checkWorkspaceOptions } from "gnoblin/workspace";
+        import { checkWorkspaceOptions } from "gnoblin-std/workspace";
         const dev = new MasterStackLayout({ ratio: 0.65 });
         const bad = (options: any) => thrown(() => checkWorkspaceOptions(options));
         const checked = checkWorkspaceOptions({ id: "dev", layout: dev, gaps: { inner: 12 } });

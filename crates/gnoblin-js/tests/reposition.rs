@@ -1,4 +1,4 @@
-//! Keyboard move and resize (`data/js/gnoblin/reposition.ts`, `Client.moveWithKeys` and `resizeWithKeys`), over the fake
+//! Keyboard move and resize (`data/js/gnoblin-std/reposition.ts`, `Client.moveWithKeys` and `resizeWithKeys`), over the fake
 //! compositor of `tests/common`.
 //!
 //! The cases are the retired shell's `the retired retired corpus`, with the same inputs and the same

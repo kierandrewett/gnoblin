@@ -34,7 +34,7 @@ fn line_of(source: &str, needle: &str) -> u32 {
 #[test]
 fn a_throw_in_a_stock_layout_reports_the_stock_ts_line() {
     let (_dir, generation) = generation(
-        "import { FloatingLayout } from \"gnoblin\";\n\
+        "import { FloatingLayout } from \"gnoblin-std\";\n\
          const layout = new FloatingLayout();\n\
          (layout as unknown as { cascadeStep: number }).cascadeStep = 0;\n\
          layout.place(10, 10, { x: 0, y: 0, width: 100, height: 100 }, []);\n",
@@ -46,7 +46,7 @@ fn a_throw_in_a_stock_layout_reports_the_stock_ts_line() {
     assert!(error.message.contains("cascadeStep"), "{error}");
 
     let source =
-        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js/gnoblin/layouts/floating.ts"))
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js/gnoblin-std/layouts/floating.ts"))
             .expect("the stock layout source");
     let want = line_of(&source, "throw new RangeError(\"FloatingLayout cascadeStep");
 

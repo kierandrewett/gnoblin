@@ -512,7 +512,7 @@ fn placing_listener(places: &[(&str, i32, i32, i32, i32)]) -> String {
 }
 
 /// The `init.ts` of the tests: a typed listener over the places `slots.ts` holds.
-const PLACING_INIT: &str = r#"import { Layout, Workspace, gnoblin } from "gnoblin";
+const PLACING_INIT: &str = r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 import { places } from "./slots.ts";
 
 // A workspace whose layout places nothing, so the listener below is the only thing that moves a window: the
@@ -614,7 +614,7 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
     // old generation still places a window that maps afterwards.
     save(
         &config.path().join("init.ts"),
-        "import { gnoblin } from \"gnoblin\";\n\nconst broken: number = = 5;\n",
+        "import { gnoblin } from \"gnoblin-core\";\n\nconst broken: number = = 5;\n",
     );
     wait_for("the syntax error is reported", &session, &mut mapper, &shell, || {
         shell.diagnostics().iter().any(|text| text.contains("init.ts:3:"))
@@ -679,7 +679,7 @@ const RUNAWAY_STAGE: Duration = Duration::from_secs(5);
 /// spun would spin again in the restarted generation. This one marks the window first (a write to `y` that the
 /// shell has sent by the time the generation is restaged, and that the restaged generation reads back), so only
 /// the first generation to see the window hangs.
-const SPIN_ONCE: &str = r#"import { Layout, Workspace, gnoblin } from "gnoblin";
+const SPIN_ONCE: &str = r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 gnoblin.clients.addListener({
@@ -769,7 +769,7 @@ fn a_handler_that_always_hangs_exhausts_the_restarts_and_the_last_generation_kee
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
         config.path().join("init.ts"),
-        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 gnoblin.clients.addListener({
@@ -827,7 +827,7 @@ gnoblin.clients.addListener({
 }
 
 /// An `init.ts` that prints at load and from a listener, with every call on a line and a column the test knows.
-const CONSOLE_INIT: &str = r#"import { gnoblin } from "gnoblin";
+const CONSOLE_INIT: &str = r#"import { gnoblin } from "gnoblin-core";
 console.log("init says hi", gnoblin.clients.length);
 let heard = 0;
 (globalThis as any).probe = () => String(heard);
@@ -884,7 +884,7 @@ fn bound_keys(view: &str) -> Vec<&str> {
 }
 
 /// A user file that declares its own workspaces and one key, and nothing else: it has no stock key and no stock workspace.
-const REPLACING_CONFIG: &str = r#"import { GridLayout, MasterStackLayout, Workspace, gnoblin } from "gnoblin";
+const REPLACING_CONFIG: &str = r#"import { gnoblin } from "gnoblin-core"; import { GridLayout, MasterStackLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "a", layout: new MasterStackLayout() }));
 gnoblin.workspaces.add(new Workspace({ id: "b", layout: new GridLayout() }));
@@ -981,7 +981,7 @@ fn write_guarded_config(dir: &Path, places: &str) {
     .expect("slots.ts");
     fs::write(
         dir.join("init.ts"),
-        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 import { places } from "./slots.ts";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
@@ -1118,7 +1118,7 @@ fn a_script_draws_a_box_and_a_titlebar_and_the_compositor_holds_what_it_painted(
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
         config.path().join("init.ts"),
-        r##"import { Box, gnoblin, startDecorations } from "gnoblin";
+        r##"import { gnoblin } from "gnoblin-core"; import { Box, startDecorations } from "gnoblin-std";
 
 startDecorations();
 
@@ -1398,7 +1398,7 @@ fn end_drag(session: &Session, mapper: &mut Mapper, app: &str, code: u32, expect
 fn write_drag_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
-        r#"import { FloatingLayout, Workspace, gnoblin } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core"; import { FloatingLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new FloatingLayout() }));
 
@@ -1519,7 +1519,7 @@ fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() 
 fn write_handles_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
-        r#"import { FloatingLayout, Workspace, defaultTitlebarStyle, gnoblin, startDecorations, titlebarFill } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core"; import { FloatingLayout, Workspace, defaultTitlebarStyle, startDecorations, titlebarFill } from "gnoblin-std";
 
 const stock = titlebarFill(defaultTitlebarStyle);
 let entered = 0;
@@ -1634,7 +1634,7 @@ fn a_resize_handle_outside_the_geometry_of_a_real_window_takes_the_pointer_and_a
 fn write_tiling_drag_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
-        r#"import { MasterStackLayout, Workspace, gnoblin } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core"; import { MasterStackLayout, Workspace } from "gnoblin-std";
 
 const layout = new MasterStackLayout();
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout }));
@@ -1782,7 +1782,7 @@ fn write_layout_config(dir: &Path, layout: &str) {
     fs::write(
         dir.join("init.ts"),
         format!(
-            "import {{ DwindleLayout, MasterStackLayout, StripLayout, Workspace, gnoblin }} from \"gnoblin\";\n\
+            "import {{ gnoblin }} from \"gnoblin-core\"; import {{ DwindleLayout, MasterStackLayout, StripLayout, Workspace }} from \"gnoblin-std\";\n\
              gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: {layout} }}));\n"
         ),
     )
@@ -2262,7 +2262,7 @@ fn a_fullscreen_window_with_a_shadow_margin_fills_the_screen_with_its_geometry()
 /// rows inside a `requestTransition` of 500 ms. `probe()` says what the script knows: the shell's clock, whether the
 /// transition runs, and the log of its start and finish.
 const TRANSITION_INIT: &str = r#"
-import { DwindleLayout, Layout, Workspace, gnoblin } from "gnoblin";
+import { gnoblin } from "gnoblin-core"; import { DwindleLayout, Layout, Workspace } from "gnoblin-std";
 class Rows extends Layout {
     compute(context) {
         const height = context.area.height / 2;
@@ -2375,7 +2375,7 @@ fn a_layout_change_in_a_transition_commits_to_the_scene_and_the_transition_ends_
 }
 
 const SCRUB_INIT: &str = r#"
-import { DwindleLayout, Layout, Workspace, gnoblin } from "gnoblin";
+import { gnoblin } from "gnoblin-core"; import { DwindleLayout, Layout, Workspace } from "gnoblin-std";
 class Rows extends Layout {
     compute(context) {
         const height = context.area.height / 2;
@@ -2507,7 +2507,7 @@ fn write_placing_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
         format!(
-            "import {{ Layout, Workspace, gnoblin }} from \"gnoblin\";\n\
+            "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
              \n\
              gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
              \n\
@@ -2568,7 +2568,7 @@ fn write_click_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
         format!(
-            "import {{ Layout, Workspace, gnoblin }} from \"gnoblin\";\n\
+            "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
              \n\
              gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
              \n\
@@ -2680,7 +2680,7 @@ fn write_requests_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
         format!(
-            "import {{ Layout, Workspace, gnoblin }} from \"gnoblin\";\n\
+            "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
              \n\
              gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
              \n\
@@ -2872,7 +2872,7 @@ fn repeat_delay(ipc: &Path) -> Option<i64> {
 /// An `init.ts` that runs `settings` once for each keyboard of the seat, with the keyboard as `device`.
 fn keyboard_init(settings: &str) -> String {
     format!(
-        "import {{ Keyboard, gnoblin }} from \"gnoblin\";\n\
+        "import {{ Keyboard, gnoblin }} from \"gnoblin-core\";\n\
          \n\
          for (const device of gnoblin.input.devices) {{\n\
          \x20   if (device instanceof Keyboard) {{\n\
@@ -3039,7 +3039,7 @@ fn refused_once_observing(session: &Session, mapper: &mut Mapper, shell: &Shell,
     });
 }
 
-const POLICY: &str = r#"import { DialogListener, gnoblin } from "gnoblin";
+const POLICY: &str = r#"import { DialogListener, gnoblin } from "gnoblin-core";
 
 class Policy extends DialogListener {
     onConsentRequest(request: { subject: string; appId: string; decline(reason?: string): void }): void {
@@ -3076,7 +3076,7 @@ fn a_dialog_listener_that_runs_out_its_budget_is_skipped_and_the_built_in_dialog
     let dir = tempfile::tempdir().expect("a config directory");
     fs::write(
         dir.path().join("init.ts"),
-        r#"import { DialogListener, gnoblin } from "gnoblin";
+        r#"import { DialogListener, gnoblin } from "gnoblin-core";
 
 class Policy extends DialogListener {
     onConsentRequest(request: { appId: string; decline(reason?: string): void }): void {
@@ -3162,14 +3162,14 @@ fn decorations_declared(ipc: &Path) -> bool {
 
 /// An `init.ts` that frames every window and answers the compositor's window menu, with the one floating workspace
 /// the shell gives a script that declares none.
-const UI_INIT: &str = r#"import { startDecorations, startWindowMenu } from "gnoblin";
+const UI_INIT: &str = r#"import { startDecorations, startWindowMenu } from "gnoblin-std";
 
 startDecorations();
 startWindowMenu();
 "#;
 
 /// An `init.ts` that starts none of the stock UI: nothing frames a window.
-const BARE_INIT: &str = r#"import { FloatingLayout, Workspace, gnoblin } from "gnoblin";
+const BARE_INIT: &str = r#"import { gnoblin } from "gnoblin-core"; import { FloatingLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new FloatingLayout() }));
 "#;
@@ -3404,7 +3404,7 @@ fn a_window_mapped_before_the_shell_declared_decorations_ends_with_its_bar_on_sc
     // The compositor gives a window no size until the shell does, and a titlebar is as wide as its window.
     fs::write(
         config.path().join("init.ts"),
-        r#"import { gnoblin, startDecorations } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core"; import { startDecorations } from "gnoblin-std";
 
 startDecorations();
 gnoblin.clients.addListener({
@@ -3446,7 +3446,7 @@ gnoblin.clients.addListener({
 fn write_alert_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
-        r#"import { gnoblin, notRespondingAlerts, startDecorations, startNotRespondingAlert } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core"; import { notRespondingAlerts, startDecorations, startNotRespondingAlert } from "gnoblin-std";
 
 startDecorations();
 startNotRespondingAlert();
@@ -3920,7 +3920,7 @@ fn a_global_style_becomes_the_effect_list_and_opacity_of_a_mapped_windows_node_a
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
         config.path().join("init.ts"),
-        r##"import { Layout, Workspace, gnoblin } from "gnoblin";
+        r##"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 
@@ -3955,7 +3955,7 @@ gnoblin.clients.where({ appId: "org.example.glow" }).style.shadows = [{ blur: 30
     let generation = shell.generation();
     save(
         &config.path().join("init.ts"),
-        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 "#,
@@ -4011,7 +4011,7 @@ gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];"##;
     let init = |decorations: bool, style: &str| {
         let start = if decorations { "startDecorations();" } else { "" };
         format!(
-            "import {{ Layout, Workspace, gnoblin, startDecorations }} from \"gnoblin\";\n\
+            "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace, startDecorations }} from \"gnoblin-std\";\n\
              \n\
              gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
              {start}\n\
@@ -4464,7 +4464,7 @@ fn the_stock_grab_claims_the_grip_on_the_real_controller_and_the_claim_goes_with
 fn write_outputs_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
-        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 
 class Fill extends Layout {
     compute(context: any) {
@@ -4633,7 +4633,7 @@ fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged
 /// displays as `[id, mode, outputs, workspace]`.
 fn displays_init(mode: &str) -> String {
     format!(
-        r#"import {{ CollectionListener, Display, Layout, OutputProfile, Viewport, Workspace, gnoblin }} from "gnoblin";
+        r#"import {{ CollectionListener, gnoblin }} from "gnoblin-core"; import {{ Display, Layout, OutputProfile, Viewport, Workspace }} from "gnoblin-std";
 
 class Fill extends Layout {{
     compute(context: any) {{
@@ -4791,7 +4791,7 @@ fn a_mirror_display_over_two_real_outputs_mirrors_in_the_compositor_and_stops_wi
 
 /// A config that records what the host API did, for the probe: a timer that ran, a program that ended, the session's
 /// status as the compositor published it, and a reload it asked for.
-const HOST_API_INIT: &str = r#"import { ProcessListener, SessionListener, gnoblin } from "gnoblin";
+const HOST_API_INIT: &str = r#"import { ProcessListener, SessionListener, gnoblin } from "gnoblin-core";
 
 const state: Record<string, unknown> = {
     timers: 0,
@@ -4941,7 +4941,7 @@ fn write_idle_config(dir: &Path, extra: &str) {
     save(
         &dir.join("init.ts"),
         &format!(
-            r#"import {{ gnoblin }} from "gnoblin";
+            r#"import {{ gnoblin }} from "gnoblin-core";
 
 const seen: string[] = [];
 {extra}
@@ -5078,7 +5078,7 @@ fn a_launch_is_started_by_its_applications_window_and_timed_out_by_its_deadline(
     let config = tempfile::tempdir().expect("a config directory");
     save(
         &config.path().join("init.ts"),
-        r#"import { gnoblin } from "gnoblin";
+        r#"import { gnoblin } from "gnoblin-core";
 
 const launches = [
     gnoblin.launches.begin("opens", "org.example.Opens.desktop", { timeoutMs: 10000 }),
@@ -5148,7 +5148,7 @@ impl Services {
     }
 }
 
-const AUTHENTICATION: &str = r#"import { AuthenticationListener, gnoblin } from "gnoblin";
+const AUTHENTICATION: &str = r#"import { AuthenticationListener, gnoblin } from "gnoblin-core";
 
 const seen: string[] = [];
 class Policy extends AuthenticationListener {
@@ -5351,7 +5351,7 @@ fn write_reposition_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
         format!(
-            "import {{ Layout, Workspace, gnoblin }} from \"gnoblin\";\n\
+            "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
              \n\
              gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
              \n\
@@ -5602,7 +5602,7 @@ fn swipe(session: &Session, fingers: u8) {
 /// generation. The actions themselves do not run: the media keys would start `wpctl` and `playerctl`, `Super+space` the
 /// launcher, and the workspace keys and the slide would move the window the test drags, so a binding that was reached is
 /// the proof, and what it would have done is the stock library's own tests'.
-const COUNTING_PRELUDE: &str = r#"import { gnoblin } from "gnoblin";
+const COUNTING_PRELUDE: &str = r#"import { gnoblin } from "gnoblin-core";
 
 const fired: Record<string, number> = {};
 (globalThis as { probe?: () => string }).probe = () => JSON.stringify(fired);
@@ -5892,8 +5892,8 @@ fn view_modes(ipc: &Path) -> Vec<String> {
 /// A second View with no content, at (50, 500), is the test's last word. The script is sent what the compositor
 /// decides in the order the compositor decides it, so a script that has heard the pointer reach this View has heard
 /// every edge the click before it was going to cost it, and a test can say that the script heard no more.
-const CAPTURE_VIEW_INIT: &str = r#"import { Layout, View, Workspace, gnoblin } from "gnoblin";
-import type { Client, NodePointerEvent } from "gnoblin";
+const CAPTURE_VIEW_INIT: &str = r#"import { gnoblin } from "gnoblin-core"; import { Layout, View, Workspace } from "gnoblin-std";
+import type { Client } from "gnoblin-core"; import type { NodePointerEvent } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 
@@ -6280,7 +6280,7 @@ fn idle_turn_cost_over_the_real_links() {
             // A watch is what opens the idle connection, and an open one is read on every turn.
             save(
                 &config.path().join("init.ts"),
-                "import \"gnoblin\";\ngnoblin.idle.watch(3_600_000, { onIdle() {} });\n",
+                "import \"gnoblin-core\";\ngnoblin.idle.watch(3_600_000, { onIdle() {} });\n",
             );
         }
         let mut role = role_over(&session, config.path());

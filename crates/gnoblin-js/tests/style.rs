@@ -1,4 +1,4 @@
-//! The style model and its cascade (`data/js/gnoblin/style/` and the host half in `data/js/gnoblin/host.ts`), over the fake
+//! The style model and its cascade (`data/js/gnoblin-std/style/` and the host half in `data/js/gnoblin-core/host.ts`), over the fake
 //! compositor of `tests/common`: the cases ST1 to ST7 of design/js-research/spec-review.md section 5, what a resolved
 //! style becomes on a window node, `gnoblin.clients.style` as the global default and a selection's `style`.
 //!
@@ -12,7 +12,7 @@ use serde_json::json;
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
+const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
 
 /// A shell over a screen of 1000 by 800 and two windows (ids 3 and 4, titled `win1` and `win2`, app id `foot`),
 /// whose `init.ts` is `body`, settled. The only diagnostics it may have said are the `not applied` notices.

@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use gnoblin_js::{JsConfigCommit, JsConfigLink, JsLinkError, JsShell};
@@ -60,7 +61,11 @@ const ERROR_WIDTH: usize = 200;
 /// `xr`: 001-002, 061-062, 064-071, 088-091, 093, 114-118, 128.
 /// `spatial`: 059, 065-068, 079-081, 115-117.
 /// The style fixture is injected by `__STYLE__` for fences 010-017. Base module exports are global, not fixtures.
-const PRELUDE: &str = r##"import * as G from "gnoblin";
+const PRELUDE: &str = r##"import * as GCore from "gnoblin-core";
+import * as GStd from "gnoblin-std";
+
+// The specification's one `gnoblin` module is the two packages together.
+const G = { ...GCore, ...GStd };
 
 const { gnoblin: _runtime, ...exported } = G;
 Object.assign(globalThis, exported);
@@ -200,7 +205,7 @@ lazy("spatial", () =>
 "##;
 
 /// A module a snippet imports from the user's own tree (specification section 3).
-const DEVELOPMENT_WORKSPACE: &str = r#"import { Workspace, MasterStackLayout } from "gnoblin";
+const DEVELOPMENT_WORKSPACE: &str = r#"import { Workspace, MasterStackLayout } from "gnoblin-std";
 
 export class DevelopmentWorkspace extends Workspace {
     constructor() {
@@ -458,22 +463,74 @@ fn boot(files: &[(&str, String)], probe: Option<&str>, session_first: bool) -> R
     outcome.map_err(|text| text.replace(&root_text, "<root>"))
 }
 
-/// The names `import { .. } from "gnoblin"` can bring in, and those of `gnoblin/extensions/xr/exports` (the XR names without the availability check).
+/// The names each package of the library exports: `gnoblin-core`, `gnoblin-std`, and those of
+/// `gnoblin-std/extensions/xr/exports` (the XR names without the availability check).
+struct PackageNames {
+    core: BTreeSet<String>,
+    std: BTreeSet<String>,
+    xr: BTreeSet<String>,
+}
+
+fn package_names() -> &'static PackageNames {
+    static NAMES: LazyLock<PackageNames> = LazyLock::new(|| {
+        let entry = "import * as core from \"gnoblin-core\";\nimport * as std from \"gnoblin-std\";\n\
+                     import * as xr from \"gnoblin-std/extensions/xr/exports\";\n\
+                     globalThis.__names = Object.keys(core).join(\",\") + \"\\n\" + Object.keys(std).join(\",\") + \"\\n\" \
+                     + Object.keys(xr).join(\",\");\n";
+        let text = boot(&[("init.js", entry.to_owned())], Some("globalThis.__names"), false)
+            .expect("the library modules load")
+            .expect("the probe has a value");
+        let mut lines = text.lines();
+        let mut set = || {
+            lines
+                .next()
+                .unwrap_or_default()
+                .split(',')
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .collect::<BTreeSet<_>>()
+        };
+        PackageNames {
+            core: set(),
+            std: set(),
+            xr: set(),
+        }
+    });
+    &NAMES
+}
+
+/// The names the specification's one `gnoblin` module brings in (both packages), and the XR names.
 fn exports() -> (BTreeSet<String>, BTreeSet<String>) {
-    let entry = "import * as core from \"gnoblin\";\nimport * as xr from \"gnoblin/extensions/xr/exports\";\n\
-                 globalThis.__names = Object.keys(core).join(\",\") + \"\\n\" + Object.keys(xr).join(\",\");\n";
-    let text = boot(&[("init.js", entry.to_owned())], Some("globalThis.__names"), false)
-        .expect("the library modules load")
-        .expect("the probe has a value");
-    let mut lines = text.lines();
-    let set = |line: Option<&str>| {
-        line.unwrap_or_default()
-            .split(',')
-            .filter(|name| !name.is_empty())
-            .map(str::to_owned)
-            .collect::<BTreeSet<_>>()
-    };
-    (set(lines.next()), set(lines.next()))
+    let names = package_names();
+    (names.core.union(&names.std).cloned().collect(), names.xr.clone())
+}
+
+/// `source` with each `import {{ .. }} from "gnoblin"` split into the imports of the packages the names live in. The
+/// specification's fences are the owner's verbatim text and name one `gnoblin` module; the library has two packages, so
+/// the harness, not the fence, says which is which. A name neither package exports stays on the `gnoblin-core` import,
+/// where it fails as the specification's import fails. One line stands for the statement's lines, so a later error keeps
+/// the fence's own line number. The XR entry's specifiers are the std package's.
+fn spec_imports(source: &str) -> String {
+    let names = package_names();
+    let mut out = String::new();
+    let mut at = 0;
+    for (imported, range) in gnoblin_imports(source) {
+        out.push_str(&source[at..range.start]);
+        let (std, core): (Vec<_>, Vec<_>) = imported
+            .iter()
+            .map(String::as_str)
+            .partition(|name| names.std.contains(*name));
+        if !core.is_empty() {
+            out.push_str(&format!("import {{ {} }} from \"gnoblin-core\"; ", core.join(", ")));
+        }
+        if !std.is_empty() {
+            out.push_str(&format!("import {{ {} }} from \"gnoblin-std\"; ", std.join(", ")));
+        }
+        out.push_str(&"\n".repeat(source[range.clone()].matches('\n').count()));
+        at = range.end;
+    }
+    out.push_str(&source[at..]);
+    out.replace("\"gnoblin/extensions/xr", "\"gnoblin-std/extensions/xr")
 }
 
 /// One line of an error as a table cell keeps it: ASCII, no markup characters, bounded.
@@ -569,6 +626,7 @@ fn makes_workspaces(source: &str) -> bool {
 
 /// Loads one JS fragment: as the entry `init.js` itself (`entry`), or as a module behind the prelude.
 fn run_js(source: &str, entry: bool) -> Result<(), String> {
+    let source = &spec_imports(source);
     let mut files = vec![("workspaces/DevelopmentWorkspace.js", DEVELOPMENT_WORKSPACE.to_owned())];
     let own_workspaces =
         source.contains("workspaces.add") || source.contains("new Workspace") || source.contains("extends Workspace");
@@ -608,13 +666,17 @@ fn run_js(source: &str, entry: bool) -> Result<(), String> {
     boot(&files, None, session_first && !entry).map(drop)
 }
 
-/// An error without what moves when the library is edited: a library module's own `gnoblin/name:LINE:COL: ` position
-/// and a generated object id (`View#4294967297`). A row that kept them would go stale on every edit of the stock
-/// modules, not on a change of what the shell supports.
+/// Where a library module sits in a position: `data/js/gnoblin-core/...` or `data/js/gnoblin-std/...`, as its source map
+/// names it.
+const LIBRARY_PATH: &str = "data/js/gnoblin-";
+
+/// An error without what moves when the library is edited: a library module's own `data/js/gnoblin-std/x.ts:LINE:COL: `
+/// position and a generated object id (`View#4294967297`). A row that kept them would go stale on every edit of the
+/// stock modules, not on a change of what the shell supports.
 fn steady(text: &str) -> String {
     let mut out = String::new();
     let mut rest = text;
-    while let Some(at) = rest.find("gnoblin/") {
+    while let Some(at) = rest.find(LIBRARY_PATH) {
         out.push_str(&rest[..at]);
         let tail = &rest[at..];
         let position = tail.split_once(": ").and_then(|(head, after)| {
@@ -626,8 +688,8 @@ fn steady(text: &str) -> String {
         match position {
             Some(after) => rest = after,
             None => {
-                out.push_str("gnoblin/");
-                rest = &tail["gnoblin/".len()..];
+                out.push_str(LIBRARY_PATH);
+                rest = &tail[LIBRARY_PATH.len()..];
             }
         }
     }

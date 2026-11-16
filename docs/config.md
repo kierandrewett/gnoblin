@@ -7,7 +7,7 @@ what the desktop does. There is no config object and nothing is layered under th
 A file replaces the stock setup, and a statement you delete is gone after the next reload.
 
 ```ts
-import { FloatingLayout, Workspace } from "gnoblin";
+import { FloatingLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "main", layout: new FloatingLayout() }));
 gnoblin.input.primary.bind("Super+Return", () => {

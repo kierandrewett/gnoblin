@@ -1,4 +1,4 @@
-//! XR on the JS shell (`data/js/gnoblin/{scene,xr}.ts`, `design/js-xr.md`) over the fake compositor of `tests/common`.
+//! XR on the JS shell (`data/js/gnoblin-std/{scene,extensions/xr}.ts`, `design/js-xr.md`) over the fake compositor of `tests/common`.
 //!
 //! The XR program is out of process, so what the shell sees of it is nodes: the seat named `xr`, the camera named
 //! `head`, and `controller` nodes. These tests make those nodes the way the program does (unparented, while the shell
@@ -22,7 +22,7 @@ const LEFT_HAND: u64 = 61;
 /// The first window's id: windows are 3, 4, 5, ...
 const WIN: u64 = 3;
 
-const IMPORTS: &str = "import * as g from \"gnoblin\";\nimport * as xrm from \"gnoblin/extensions/xr/exports\";\nObject.assign(globalThis, { g, ...xrm });\n";
+const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nimport * as xrm from \"gnoblin-std/extensions/xr/exports\";\nObject.assign(globalThis, { g, ...xrm });\n";
 
 fn near(got: f64, want: f64, what: &str) {
     assert!(
@@ -206,13 +206,13 @@ fn load(declared: bool, body: &str, setup: impl FnOnce(&FakeCompositor)) -> Resu
         .map_err(|error| error.to_string())
 }
 
-const STATIC_IMPORT: &str = "import { XRCamera3D, ViewMoveBinding } from \"gnoblin/extensions/xr\";\nconst made = [XRCamera3D, ViewMoveBinding];\n";
+const STATIC_IMPORT: &str = "import { XRCamera3D, ViewMoveBinding } from \"gnoblin-std/extensions/xr\";\nconst made = [XRCamera3D, ViewMoveBinding];\n";
 
 #[test]
 fn a_static_import_of_the_extension_module_fails_clearly_when_it_is_absent() {
     let error = load(false, STATIC_IMPORT, |_| {}).expect_err("the import fails");
     for needle in [
-        "gnoblin/extensions/xr",
+        "gnoblin-std/extensions/xr",
         "not available",
         "GNOBLIN_XR=1",
         "gnoblin.extensions.xr",

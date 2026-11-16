@@ -11,14 +11,15 @@
 //! - [`ConfigWatcher`] turns editor save bursts into one [`ReloadRequest`]; [`JsReloader`] stages and
 //!   commits on a request and reports failures at the author's `.ts` line; [`JsSupervisor`] counts
 //!   interrupts and panics and decides between restaging and giving up.
-//! - [`stock_modules`] is the TypeScript stock library (`data/js/gnoblin/`) as embedded `gnoblin` modules, and
+//! - [`stock_modules`] is the TypeScript stock library (`data/js/gnoblin-core/` and `data/js/gnoblin-std/`) as embedded
+//!   `gnoblin-core` and `gnoblin-std` modules, and
 //!   [`editor_library`] the same sources as the files an editor reads.
 //! - [`JsShell`] runs the shell over the compositor's tree: `gnoblin.clients` and the rest of the object
-//!   model in `data/js/gnoblin/host.ts` (the `gnoblin/host` module), over the host functions in `bindings`, with the
+//!   model in `data/js/gnoblin-core/host.ts` (the `gnoblin-core/host` module), over the host functions in `bindings`, with the
 //!   frame loop of `ShellVm`. A workspace is a script object: [`JsWorkspaceSnapshot`] carries which window was on
 //!   which one from a shell to the next that reloads.
 //! - [`JsConsole`] is the live console: a Unix socket that evaluates what `gnoblinctl console` sends in the running
-//!   generation, between frames, and answers with the value rendered by `data/js/gnoblin/inspect.ts`.
+//!   generation, between frames, and answers with the value rendered by `data/js/gnoblin-core/inspect.ts`.
 //! - [`JsRole`] is the runtime role's shell: it connects a [`JsShell`] to the owner socket, loads the user's
 //!   `init.ts`, and owns the watcher, reloader and supervisor that swap a new generation in or keep the old one.
 //!   It holds the shell's two other owner connections: one for slots (the dialog observation of `gnoblin.dialogs`)

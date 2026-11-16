@@ -3,7 +3,7 @@
 //! Each is a thin closure over a free function that works on [`HostState`] and plain Rust values, so the
 //! logic is testable without an engine. A function that can fail returns `undefined` for success and a
 //! short code for a refusal (`unknown-node`, `unknown-property`, `read-only`, `invalid-value`,
-//! `unknown-method`), which `data/js/gnoblin/host.ts` turns into an error naming the member.
+//! `unknown-method`), which `data/js/gnoblin-core/host.ts` turns into an error naming the member.
 //!
 //! The tests are in `tests.rs`.
 
@@ -520,7 +520,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
         })?,
     )?;
 
-    // `gnoblin.spawn` and `gnoblin.process` are the module's own (`data/js/gnoblin/session/`) over `host.api`.
+    // `gnoblin.spawn` and `gnoblin.process` are the module's own (`data/js/gnoblin-core/session/`) over `host.api`.
 
     crate::transition::install(ctx, &host, state)?;
     crate::input::install(ctx, &host, state)?;

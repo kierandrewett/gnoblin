@@ -2,10 +2,10 @@
 //!
 //! The implemented surface is what a script's editor sees: the generated schema declarations
 //! (`crates/gnoblin-js-types/tests/golden/gnoblin.d.ts`, which a golden test keeps equal to what
-//! `gnoblinctl types init` writes) and the library's own sources (`data/js/gnoblin`). A dotted `gnoblin.` name is
-//! followed member by member from the `Gnoblin` class through the types it names. A `gnoblin.<object>.<signal>`
-//! event is one of the keys of `GnoblinSignals`. A `.method(` call is matched by name across every class and
-//! interface, because a page does not say which object the receiver is.
+//! `gnoblinctl types init` writes) and the library's own sources (`data/js/gnoblin-core` and `data/js/gnoblin-std`).
+//! A dotted `gnoblin.` name is followed member by member from the `Gnoblin` class through the types it names. A
+//! `gnoblin.<object>.<signal>` event is one of the keys of `GnoblinSignals`. A `.method(` call is matched by name
+//! across every class and interface, because a page does not say which object the receiver is.
 //!
 //! A documented name that is not implemented must be listed in `design/docs-parity/allow.toml` with the
 //! slice that will implement it, or `docs wrong`. The gate fails on an unlisted name, and on a listed name
@@ -19,8 +19,8 @@ use std::process::ExitCode;
 use serde::Deserialize;
 
 const TYPES: &str = "crates/gnoblin-js-types/tests/golden/gnoblin.d.ts";
-/// The library the surface is read from, beside the generated declarations.
-const LIBRARY: &str = "data/js/gnoblin";
+/// The packages of the library the surface is read from, beside the generated declarations.
+const LIBRARY: &[&str] = &["data/js/gnoblin-core", "data/js/gnoblin-std"];
 const ALLOW: &str = "design/docs-parity/allow.toml";
 const DOC_DIRS: &[&str] = &["docs/shell-api", "docs/events"];
 const DOC_FILES: &[&str] = &["docs/user-shell.md", "docs/user-scripts.md"];
@@ -522,19 +522,22 @@ fn load_docs(root: &Path) -> Result<Vec<Mention>, String> {
 }
 
 /// The text the implemented surface is read from: the generated schema declarations (`TYPES`), then every source of the
-/// library under `LIBRARY`, in path order. The library is the real TypeScript that `gnoblinctl types init` hands an
-/// editor, so a name the docs promise is checked against the classes a script imports and not against a second
-/// declaration of them.
+/// library under `LIBRARY`, package by package and in path order within each. The library is the real TypeScript that
+/// `gnoblinctl types init` hands an editor, so a name the docs promise is checked against the classes a script
+/// imports and not against a second declaration of them.
 fn load_surface(root: &Path) -> Result<String, String> {
     let mut text = fs::read_to_string(root.join(TYPES)).map_err(|error| format!("could not read {TYPES}: {error}"))?;
-    let mut sources = Vec::new();
-    collect_sources(&root.join(LIBRARY), &mut sources)?;
-    sources.sort();
-    for source in sources {
-        text.push('\n');
-        text.push_str(
-            &fs::read_to_string(&source).map_err(|error| format!("could not read {}: {error}", source.display()))?,
-        );
+    for package in LIBRARY {
+        let mut sources = Vec::new();
+        collect_sources(&root.join(package), &mut sources)?;
+        sources.sort();
+        for source in sources {
+            text.push('\n');
+            text.push_str(
+                &fs::read_to_string(&source)
+                    .map_err(|error| format!("could not read {}: {error}", source.display()))?,
+            );
+        }
     }
     Ok(text)
 }
@@ -599,14 +602,14 @@ mod tests {
     use super::*;
 
     const DECLARATIONS: &str = r#"
-declare module "gnoblin" {
+declare module "gnoblin-core" {
     export interface Gnoblin {
         /** Docs. */
         readonly process: ProcessTable;
         readonly clients: Collection<Client>;
         readonly main: Client;
         readonly list: Client[];
-        readonly extensions: import("gnoblin/extensions/xr").Holder | null;
+        readonly extensions: import("gnoblin-std/extensions/xr").Holder | null;
         motion(seconds: number): number;
         on<K extends keyof GnoblinSignals>(name: K, handler: (event: GnoblinSignals[K]) => void): Subscription;
     }
@@ -635,7 +638,7 @@ declare module "gnoblin" {
     }
     export interface Rect extends Vec2, Size2D {}
 }
-declare module "gnoblin/schema/signals" {
+declare module "gnoblin-core/schema/signals" {
     export interface GnoblinSignals {
         "gnoblin.window.created": { readonly name: "gnoblin.window.created"; };
         "gnoblin.session.lock_state_changed": { readonly state: string; };

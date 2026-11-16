@@ -232,7 +232,7 @@ fn wait_for(what: &str, session: &Session, mapper: &mut Mapper, mut check: impl 
 /// An `init.ts` that puts every window at (`x`, `y`) when the shell learns of it.
 fn init_at(x: i32, y: i32) -> String {
     format!(
-        "import {{ Layout, Workspace, gnoblin }} from \"gnoblin\";\n\
+        "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
          \n\
          gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
          gnoblin.clients.addListener({{\n\
@@ -283,7 +283,7 @@ fn config_reload_reloads_the_javascript_shell_in_the_runtime_role_and_reports_a_
     // generation keeps placing windows.
     write_init(
         &session.config_dir(),
-        "import { gnoblin } from \"gnoblin\";\n\nconst broken: number = = 5;\n",
+        "import { gnoblin } from \"gnoblin-core\";\n\nconst broken: number = = 5;\n",
     );
     let (code, out, err) = session.ctl(&["config", "reload"]);
     assert_eq!(code, 1, "a refused reload exits 1; stdout {out}, stderr {err}");
@@ -489,7 +489,7 @@ fn wait_for_revision(session: &Session, revision: u64) -> serde_json::Value {
 /// through: a keyboard setting is the kind's and not the device's.
 fn init_with(setting: &str) -> String {
     format!(
-        "import {{ Keyboard, gnoblin }} from \"gnoblin\";\n\
+        "import {{ Keyboard, gnoblin }} from \"gnoblin-core\";\n\
          \n\
          const keyboard = new (Keyboard as any)(gnoblin.input.primary, \"test\", \"Test keyboard\", [\"keyboard\"]);\n\
          {setting}\n"

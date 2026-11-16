@@ -1,5 +1,5 @@
-//! What the stock shell answers when a client or a taskbar asks for a window state change: `data/js/gnoblin/window_state.ts`
-//! and the pieces of `gnoblin/host` it stands on, over the fake compositor of `tests/common`.
+//! What the stock shell answers when a client or a taskbar asks for a window state change: `data/js/gnoblin-std/window_state.ts`
+//! and the pieces of `gnoblin-core/host` it stands on, over the fake compositor of `tests/common`.
 //!
 //! The cases are the retired shell's: `the retired retired corpus` (12 cases) and the `retired corpus shell`
 //! cases for raising with a fullscreen sibling, activation and a repeat fullscreen. A case keeps its inputs and its
@@ -14,7 +14,7 @@ use gnoblin_tree_client::tree_mirror::MirrorValue;
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
+const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
 
 const SCREEN: u64 = 20;
 const SEAT: u64 = 21;

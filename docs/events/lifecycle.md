@@ -32,7 +32,8 @@ anything. A script that wants to start a reload calls `gnoblin.runtime.reloadCon
 | `failsafe` | The cover is up and no lock screen can proceed.                               |
 
 ```ts
-import { SessionListener, toast } from "gnoblin";
+import { SessionListener } from "gnoblin-core";
+import { toast } from "gnoblin-std";
 
 class LockToast extends SessionListener {
     onLockStateChanged(session, state) {

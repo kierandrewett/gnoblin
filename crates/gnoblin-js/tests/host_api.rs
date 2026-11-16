@@ -1,5 +1,5 @@
 //! The host API that is not about windows: `gnoblin.session`, `gnoblin.runtime`, `gnoblin.process`, `gnoblin.timers`,
-//! the session and runtime listeners, `gnoblin.find`, `gnoblin.focus` and `gnoblin.version` (`data/js/gnoblin/{operation,process,session}.ts`
+//! the session and runtime listeners, `gnoblin.find`, `gnoblin.focus` and `gnoblin.version` (`data/js/gnoblin-core/{operation,process,session}.ts`
 //! over `crates/gnoblin-js/src/host_{api,process,session}.rs`).
 //!
 //! The cases are the retired host's: `the retired retired corpus` (operations, timers, events, find,
@@ -82,7 +82,7 @@ impl FakeSession {
     }
 }
 
-const PRELUDE: &str = "import { ProcessListener, SessionListener } from \"gnoblin\";\nconst g = globalThis as any;\ng.g = g;\ng.log = [] as string[];\n";
+const PRELUDE: &str = "import { ProcessListener, SessionListener } from \"gnoblin-core\";\nconst g = globalThis as any;\ng.g = g;\ng.log = [] as string[];\n";
 
 /// `Rig::eval` runs plain JavaScript; the cases are written in TypeScript like a user's config.
 trait TsEval {

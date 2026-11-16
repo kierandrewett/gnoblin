@@ -66,8 +66,8 @@ entry is an object with a `label` and any of these:
 | `separator` | `true` draws a rule between groups. An entry with `separator` has no label.                       |
 
 ```ts
-import { windowMenu } from "gnoblin";
-import type { Client } from "gnoblin";
+import { windowMenu } from "gnoblin-std";
+import type { Client } from "gnoblin-core";
 
 const stock = windowMenu.items.bind(windowMenu);
 
@@ -90,7 +90,7 @@ Every request ends in `windowMenu.show(client, x, y)`, with the anchor in global
 else:
 
 ```ts
-import { Box, Text, windowMenu } from "gnoblin";
+import { Box, Text, windowMenu } from "gnoblin-std";
 
 windowMenu.show = (client, x = 0, y = 0) => {
     const card = new Box({ x, y, width: 160, height: 36, radius: 8, fill: "#1e1e2e", secure: client.secure });

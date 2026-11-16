@@ -1,5 +1,5 @@
 //! Window policy of the stock shell that the retired shell had and the TypeScript shell gained: the touchpad gesture actions
-//! and reduced motion (`data/js/gnoblin/gesture_actions.ts`), over the fake compositor of `tests/common`.
+//! and reduced motion (`data/js/gnoblin-std/gesture_actions.ts`), over the fake compositor of `tests/common`.
 //!
 //! The cases are the retired shell's: the last seven cases and the reduced-motion cases of
 //! `the retired retired corpus`, with the same inputs and the same expected values. A case with no the retired shell

@@ -1,6 +1,6 @@
 //! What the library has to register so that gating never leaves a change undrawn (`src/shell/gate.rs`).
 //!
-//! A frame runs when something arrived, script ran, or a source the library registered (`data/js/gnoblin/wake.ts`) says
+//! A frame runs when something arrived, script ran, or a source the library registered (`data/js/gnoblin-core/wake.ts`) says
 //! it is due. The first two are the shell's and are guarded where the links are (`frame_gating.rs`, `host_api.rs`,
 //! `host_idle.rs`, `config_slots.rs`). The third is the library's own, and the way it goes wrong is a part that keeps a
 //! clock and forgets to register: its deadline passes with no frame to see it. These tests make that a failure, from three
@@ -35,7 +35,7 @@ enum Part {
 
 use Part::{Driven, State, Wakes};
 
-/// Every field of `HostContext` (`data/js/gnoblin/host/context.ts`). A new field fails
+/// Every field of `HostContext` (`data/js/gnoblin-core/host/context.ts`). A new field fails
 /// `every_subsystem_of_the_host_context_is_classified` until it has a row: decide whether it can change the tree or hold
 /// a clock on its own, and if it can, register a wake source for it and name the source.
 const CONTEXT: &[(&str, Part)] = &[
@@ -119,10 +119,10 @@ const MODULES: &[&str] = &[
 
 /// The stock library as a user's `init.ts` starts it, with the widgets that are loaded on demand and the two modules the
 /// test reads.
-const STOCK: &str = "import * as lib from \"gnoblin\";\n\
-    import { ctx } from \"gnoblin/host/context\";\n\
-    import { wakeOwners } from \"gnoblin/wake\";\n\
-    import \"gnoblin/widgets\";\n\
+const STOCK: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\n\
+    import { ctx } from \"gnoblin-core/host/context\";\n\
+    import { wakeOwners } from \"gnoblin-core/wake\";\n\
+    import \"gnoblin-std/widgets\";\n\
     const { gnoblin: _runtime, ...exported } = lib;\n\
     Object.assign(globalThis, exported, { ctx, wakeOwners });\n";
 
@@ -182,7 +182,7 @@ fn the_stock_shell_registers_a_source_for_every_part_that_keeps_a_clock_and_for_
 #[test]
 fn a_source_that_throws_is_reported_and_does_not_end_the_shell() {
     let mut rig = rig_setup(
-        "import { onWake } from \"gnoblin/wake\";\n",
+        "import { onWake } from \"gnoblin-core/wake\";\n",
         "onWake(\"broken part\", () => { throw new Error(\"no deadline today\"); });\n",
         |_| {},
     );
@@ -199,7 +199,7 @@ fn a_source_that_throws_is_reported_and_does_not_end_the_shell() {
 // ---- the library's own clocks -------------------------------------------------------------------------------------
 
 fn library() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js/gnoblin")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")
 }
 
 fn sources(directory: &Path, found: &mut Vec<PathBuf>) {
@@ -219,36 +219,48 @@ const CLOCK_READS: &[&str] = &[".now()", "uiNow(", "Date.now(", "new Date("];
 /// Files that read a clock and need no source, and why. A file that registers one is not listed.
 const NO_SOURCE_NEEDED: &[(&str, &str)] = &[
     (
-        "ui/session.ts",
+        "gnoblin-std/ui/session.ts",
         "defines `uiNow`, which the parts below read; it keeps no deadline",
     ),
-    ("host/input_bridge.ts", "hands the toolkit the seat's clock"),
     (
-        "host/policy.ts",
+        "gnoblin-core/host/input_bridge.ts",
+        "hands the toolkit the seat's clock",
+    ),
+    (
+        "gnoblin-std/host/policy.ts",
         "hands the focus and window-state policies the seat's clock",
     ),
-    ("host/services.ts", "hands the launch registry the seat's clock"),
-    ("host/session_bridge.ts", "hands the host API the seat's clock"),
-    ("host/xr_bridge.ts", "hands the XR runtime the seat's clock"),
     (
-        "session/host_api.ts",
+        "gnoblin-core/host/services.ts",
+        "hands the launch registry the seat's clock",
+    ),
+    (
+        "gnoblin-core/host/session_bridge.ts",
+        "hands the host API the seat's clock",
+    ),
+    ("gnoblin-std/host/xr_bridge.ts", "hands the XR runtime the seat's clock"),
+    (
+        "gnoblin-core/session/host_api.ts",
         "hands the timers the host's clock; `operation.ts` registers them",
     ),
     (
-        "frame/drag.ts",
+        "gnoblin-std/frame/drag.ts",
         "stamps a press with the time it was handled, to tell a double click; the close fade's clock is `frame/actions.ts`'s",
     ),
     (
-        "input/gesture.ts",
+        "gnoblin-core/input/gesture.ts",
         "stamps a gesture's samples with the time they were handled",
     ),
     (
-        "input/hooks.ts",
+        "gnoblin-core/input/hooks.ts",
         "stamps a binding's event with the time it was handled",
     ),
-    ("input/keys.ts", "stamps a key event with the time it was handled"),
     (
-        "input/pointer.ts",
+        "gnoblin-core/input/keys.ts",
+        "stamps a key event with the time it was handled",
+    ),
+    (
+        "gnoblin-core/input/pointer.ts",
         "stamps a drag's samples with the time they were handled",
     ),
 ];
@@ -264,7 +276,9 @@ fn reads_a_clock(text: &str) -> bool {
 fn every_file_of_the_library_that_reads_a_clock_registers_a_source_or_says_why_not() {
     let root = library();
     let mut files = Vec::new();
-    sources(&root, &mut files);
+    for package in ["gnoblin-core", "gnoblin-std"] {
+        sources(&root.join(package), &mut files);
+    }
     assert!(files.len() > 50, "the library was not found at {}", root.display());
     let mut unaccounted = Vec::new();
     let mut stale = Vec::new();
@@ -288,8 +302,8 @@ fn every_file_of_the_library_that_reads_a_clock_registers_a_source_or_says_why_n
     assert!(
         unaccounted.is_empty(),
         "{unaccounted:?} read a clock and register no wake source: a deadline or a time-driven look that no frame is \
-         woken for is never drawn. Register one (`onWake` of `gnoblin/wake`), or add the file to NO_SOURCE_NEEDED with \
-         the reason it keeps no deadline"
+         woken for is never drawn. Register one (`onWake` of `gnoblin-core/wake`), or add the file to \
+         NO_SOURCE_NEEDED with the reason it keeps no deadline"
     );
     assert!(
         stale.is_empty(),
@@ -342,8 +356,8 @@ fn the_stock_shell_rests_when_nothing_happens() {
 /// A clock widget over a frozen wall clock the test moves: `fake` is its milliseconds since the epoch.
 const FAKE_TIME: &str = "globalThis.fake = 1700000000000;\n\
     Date.now = () => globalThis.fake;\n\
-    import { Box } from \"gnoblin/ui\";\n\
-    import { Clock } from \"gnoblin/widgets\";\n\
+    import { Box } from \"gnoblin-std/ui\";\n\
+    import { Clock } from \"gnoblin-std/widgets\";\n\
     globalThis.clock = new Clock({ format: FORMAT, now: () => new Date(globalThis.fake) });\n\
     const holder = new Box({ width: 200, height: 40 });\n\
     holder.add(globalThis.clock);\n\

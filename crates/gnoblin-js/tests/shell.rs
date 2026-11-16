@@ -99,7 +99,7 @@ fn rig(comp: &Comp, init: &str) -> Rig {
 }
 
 /// An entry module that keeps a log in `globalThis.log`, for tests to read back.
-const LOG: &str = "import { ClientListener, CollectionListener } from \"gnoblin\";\n\
+const LOG: &str = "import { ClientListener, CollectionListener } from \"gnoblin-core\";\n\
                    const log: string[] = [];\n\
                    (globalThis as any).log = log;\n";
 
@@ -112,8 +112,8 @@ fn boot_reads_two_windows_through_gnoblin_clients() {
     let comp = two_windows();
     let mut rig = rig(
         &comp,
-        "import { Client, ClientListener, FloatingLayout } from \"gnoblin\";\n\
-         import * as host from \"gnoblin/host\";\n\
+        "import { Client, ClientListener } from \"gnoblin-core\"; import { FloatingLayout } from \"gnoblin-std\";\n\
+         import * as hostCore from \"gnoblin-core/host\"; import * as hostStd from \"gnoblin-std/host\"; const host = { ...hostCore, ...hostStd };\n\
          (globalThis as any).Client = Client;\n\
          (globalThis as any).same = host.Client === Client && host.ClientListener === ClientListener;\n\
          (globalThis as any).stock = typeof FloatingLayout;\n",
@@ -526,7 +526,7 @@ fn where_is_a_live_selection_that_follows_appid_changes_and_tells_its_listeners(
 #[test]
 fn a_listener_that_throws_does_not_stop_its_siblings_and_is_reported_once_per_site() {
     let comp = two_windows();
-    let init = "import { ClientListener } from \"gnoblin\";\n\
+    let init = "import { ClientListener } from \"gnoblin-core\";\n\
                 const log: string[] = [];\n\
                 (globalThis as any).log = log;\n\
                 class Bad extends ClientListener {\n\
@@ -870,7 +870,7 @@ fn x_writes(comp: &Comp) -> Vec<(u64, f64)> {
 /// An entry that puts every client at `x`, on add.
 fn places_at(x: u32) -> String {
     format!(
-        "import {{ gnoblin }} from \"gnoblin\";\n\
+        "import {{ gnoblin }} from \"gnoblin-core\";\n\
          gnoblin.clients.addListener({{ onAdded(client: {{ x: number }}): void {{ client.x = {x}; }} }});\n"
     )
 }
@@ -915,7 +915,7 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
     // A syntax error keeps the running generation and reports the position in the author's file.
     fs::write(
         root.join("init.ts"),
-        "import { gnoblin } from \"gnoblin\";\n\nlet = = 5;\n",
+        "import { gnoblin } from \"gnoblin-core\";\n\nlet = = 5;\n",
     )
     .expect("init.ts");
     let report = role.reload_now();
@@ -931,7 +931,7 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
     // A file that writes and then throws leaves no write behind: the failed stage's top-level write is dropped.
     fs::write(
         root.join("init.ts"),
-        "import { gnoblin } from \"gnoblin\";\ngnoblin.clients.at(0).x = 999;\nthrow new Error(\"late\");\n",
+        "import { gnoblin } from \"gnoblin-core\";\ngnoblin.clients.at(0).x = 999;\nthrow new Error(\"late\");\n",
     )
     .expect("init.ts");
     let sent_before = x_writes(&comp).len();
@@ -1249,7 +1249,7 @@ fn the_inspector_helpers_return_plain_data() {
     let comp = two_windows();
     let mut rig = rig(
         &comp,
-        "import { Workspace, FloatingLayout } from \"gnoblin\";\n\
+        "import { Workspace, FloatingLayout } from \"gnoblin-std\";\n\
          for (const id of [\"1\", \"2\", \"3\", \"4\"]) gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));\n",
     );
     rig.frame();

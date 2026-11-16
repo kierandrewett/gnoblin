@@ -1,8 +1,8 @@
 /**
- * The runtime object, also reachable as `import { gnoblin } from "gnoblin"`. Its type is the real class of the library
- * (`gnoblin/host/gnoblin`), so a member is declared where it is implemented.
+ * The runtime object, also reachable as `import { gnoblin } from "gnoblin-core"`. Its type is the real class of the
+ * library (`gnoblin-core/host/gnoblin`), so a member is declared where it is implemented.
  */
-declare const gnoblin: import("gnoblin/host/gnoblin").Gnoblin;
+declare const gnoblin: import("gnoblin-core/host/gnoblin").Gnoblin;
 
 /**
  * The shell's log, as in Node. A call writes one line to the log (component `js`, area `script`; `log` and `info` at

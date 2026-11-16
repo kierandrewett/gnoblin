@@ -9,8 +9,8 @@ Attach a `ClientListener` to `gnoblin.clients` to hear every window, or to one w
 Every method is optional.
 
 ```ts
-import { ClientListener, gnoblin } from "gnoblin";
-import type { Client } from "gnoblin";
+import { ClientListener, gnoblin } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 class Titles extends ClientListener {
     onTitleChanged(client: Client, title: string) {
@@ -58,8 +58,9 @@ A `CollectionListener` on a collection hears members join and leave:
 - `onRemoved(member)` runs when one leaves.
 
 ```ts
-import { CollectionListener, gnoblin, toast } from "gnoblin";
-import type { Client } from "gnoblin";
+import { CollectionListener, gnoblin } from "gnoblin-core";
+import { toast } from "gnoblin-std";
+import type { Client } from "gnoblin-core";
 
 class Count extends CollectionListener<Client> {
     onAdded(client: Client) {

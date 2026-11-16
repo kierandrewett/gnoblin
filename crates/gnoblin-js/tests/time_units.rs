@@ -187,7 +187,7 @@ fn the_old_easing_names_and_the_old_timer_are_gone_from_everything_a_script_read
 
 #[test]
 fn the_declared_easing_names_are_the_ones_the_runtime_accepts() {
-    let source = std::fs::read_to_string(repo().join("data/js/gnoblin/transition/easing.ts")).expect("the library");
+    let source = std::fs::read_to_string(repo().join("data/js/gnoblin-std/transition/easing.ts")).expect("the library");
     let declared: Vec<String> = source
         .lines()
         .find_map(|line| line.trim().strip_prefix("export type Easing = "))

@@ -1,18 +1,23 @@
-//! Embed the stock library: every `.ts` file under `data/js/gnoblin`, as the table `stock.rs` strips and hands to the
-//! loader.
+//! Embed the stock library: every `.ts` file under `data/js/gnoblin-core` and `data/js/gnoblin-std`, as the table
+//! `stock.rs` strips and hands to the loader.
 //!
-//! The files are listed from the directory, not named in `stock.rs`, so a new module reaches the binary without an edit
-//! to a hand-kept array (whose length and entries used to be the thing a lane collided on). The import name is the path
-//! under the directory without its extension, prefixed `gnoblin/`; `index.ts` is the user-facing `gnoblin` itself, and
-//! the `index.ts` of a subdirectory is that directory's import name (`extensions/xr/index.ts` is
-//! `gnoblin/extensions/xr`), the same rule TypeScript applies when it resolves a directory.
+//! The files are listed from the directories, not named in `stock.rs`, so a new module reaches the binary without an
+//! edit to a hand-kept array (whose length and entries used to be the thing a lane collided on). The import name is the
+//! path under `data/js` without its extension, so the package directory is the package name (`gnoblin-std/scene/node`);
+//! the `index.ts` of a directory is that directory's import name (`gnoblin-core/index.ts` is `gnoblin-core`,
+//! `gnoblin-std/extensions/xr/index.ts` is `gnoblin-std/extensions/xr`), the same rule TypeScript applies when it
+//! resolves a directory. The starter beside them (`data/js/starter`) is not a library module and is embedded by
+//! `stock.rs` on its own.
 
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const STOCK_DIR: &str = "../../data/js/gnoblin";
+const JS_DIR: &str = "../../data/js";
+
+/// The packages of the stock library, one directory each under [`JS_DIR`].
+const PACKAGES: &[&str] = &["gnoblin-core", "gnoblin-std"];
 
 fn main() -> ExitCode {
     match run() {
@@ -26,7 +31,7 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let stock_dir = manifest.join(STOCK_DIR);
+    let js_dir = manifest.join(JS_DIR);
     let out_dir = std::env::var_os("OUT_DIR")
         .map(PathBuf::from)
         .ok_or_else(|| "OUT_DIR is not set".to_owned())?;
@@ -34,17 +39,19 @@ fn run() -> Result<(), String> {
     // A file appearing or disappearing changes the directory and not the files already inside it, so the directories
     // are watched as well as the files.
     let mut files = Vec::new();
-    collect(&stock_dir, &mut files)?;
+    for package in PACKAGES {
+        collect(&js_dir.join(package), &mut files)?;
+    }
     files.sort();
     if files.is_empty() {
-        return Err(format!("no .ts files in {}", stock_dir.display()));
+        return Err(format!("no .ts files in the packages under {}", js_dir.display()));
     }
 
-    let mut text = String::from("/// `(import name, file under data/js/gnoblin, source)`, in path order.\n");
+    let mut text = String::from("/// `(import name, file under data/js, source)`, in path order.\n");
     text.push_str("const MODULES: &[(&str, &str, &str)] = &[\n");
     for path in &files {
         let file = path
-            .strip_prefix(&stock_dir)
+            .strip_prefix(&js_dir)
             .ok()
             .and_then(Path::to_str)
             .ok_or_else(|| format!("{} is not a UTF-8 stock path", path.display()))?;
@@ -108,16 +115,10 @@ fn toolchain(manifest: &Path) -> String {
     })
 }
 
-/// The name a script imports `file` (a path under the stock directory, with `/` separators) by.
+/// The name a script imports `file` (a path under `data/js`, with `/` separators) by.
 fn import_name(file: &str) -> String {
     let stem = file.strip_suffix(".ts").unwrap_or(file);
-    if stem == "index" {
-        "gnoblin".to_owned()
-    } else if let Some(directory) = stem.strip_suffix("/index") {
-        format!("gnoblin/{directory}")
-    } else {
-        format!("gnoblin/{stem}")
-    }
+    stem.strip_suffix("/index").unwrap_or(stem).to_owned()
 }
 
 fn collect(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {

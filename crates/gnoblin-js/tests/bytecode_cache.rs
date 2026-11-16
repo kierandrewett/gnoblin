@@ -2,7 +2,8 @@
 //! trusted is compiled again, and the result is the same shell either way.
 //!
 //! The shells here run over the fake compositor of `common`, with the stock library embedded as the product embeds
-//! it, so `import "gnoblin"` is every stock module: the numbers asserted are how many of them came from bytecode.
+//! it, so importing `gnoblin-core` and `gnoblin-std` is every stock module: the numbers asserted are how many of
+//! them came from bytecode.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,7 +13,7 @@ use gnoblin_js::{JsBytecodeCache, JsShell, JsShellError};
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as lib from \"gnoblin\";\nvoid lib;\n";
+const IMPORTS: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nvoid lib;\n";
 
 /// A shell over a fresh fake compositor, whose config root is `root` and whose modules are cached by `cache`.
 fn boot(root: &Path, cache: &JsBytecodeCache) -> Result<JsShell, JsShellError> {

@@ -206,7 +206,7 @@ clients.addListener = (listener: unknown) => {
 /// add to `result`.
 fn probe(extra: &str) -> String {
     format!(
-        r#"import {{ windowMenu, notRespondingAlerts }} from "gnoblin";
+        r#"import {{ windowMenu, notRespondingAlerts }} from "gnoblin-std";
 const g = globalThis as any;
 const input = gnoblin.input.primary;
 const workspaces = gnoblin.workspaces.map((w: any) => ({{ id: w.id, name: w.name, layout: w.layout.constructor.name }}));

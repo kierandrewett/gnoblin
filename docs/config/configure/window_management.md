@@ -19,7 +19,7 @@ nearest corner. These gestures work on application windows with client or server
 the layout's triggers when you build it:
 
 ```ts
-import { FloatingLayout, Workspace } from "gnoblin";
+import { FloatingLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(
     new Workspace({

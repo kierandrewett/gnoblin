@@ -1,4 +1,4 @@
-//! The stock lock screen (`data/js/gnoblin/lock.ts`) over a fake compositor.
+//! The stock lock screen (`data/js/gnoblin-std/lock.ts`) over a fake compositor.
 //!
 //! The cases are the retired lock screen's (`the retired retired corpus`, the cases named `lock`), run on
 //! the JavaScript shell: the screen engages when the session locks, waits for a screen to cover, shows itself to a shell
@@ -182,7 +182,7 @@ impl Rig {
     /// screen.
     fn session(state: &str, screen: bool, focus: Option<u64>) -> Self {
         let inner = rig_setup(
-            "import { lockScreen } from \"gnoblin\";\n(globalThis as any).lockScreen = lockScreen;\n",
+            "import { lockScreen } from \"gnoblin-std\";\n(globalThis as any).lockScreen = lockScreen;\n",
             "",
             |comp| {
                 comp.add_node(LOCK, ROOT, "lock", vec![("state", text(state))]);

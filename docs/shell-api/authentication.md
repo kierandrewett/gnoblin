@@ -6,8 +6,8 @@ system settings changes. The compositor draws the password dialog itself and che
 `gnoblin.authentication` lets your config watch the requests and refuse one.
 
 ```ts
-import { AuthenticationListener } from "gnoblin";
-import type { AuthenticationRequest } from "gnoblin";
+import { AuthenticationListener } from "gnoblin-core";
+import type { AuthenticationRequest } from "gnoblin-core";
 
 class NoRoot extends AuthenticationListener {
     onAuthenticationRequest(request: AuthenticationRequest) {

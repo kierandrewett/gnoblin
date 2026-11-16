@@ -1,4 +1,4 @@
-//! Input contexts and devices (owner-spec.md sections 10 and 17, `data/js/gnoblin/{devices,input,input_list}.ts`) over the
+//! Input contexts and devices (owner-spec.md sections 10 and 17, `data/js/gnoblin-core/{devices,input,input_list}.ts`) over the
 //! fake compositor of `tests/common`: the device classes a seat's devices are, their settings reaching the
 //! configuration document, a second `InputContext` holding devices, the registry of extensions, and the style lists'
 //! `add`.
@@ -114,7 +114,7 @@ fn boot(body: &str, xr: bool) -> (World, Vec<String>) {
     }
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    let imports = "import * as lib from \"gnoblin\";\nconst { gnoblin, ...rest } = lib;\nconst g = globalThis as any;\ng.g = g;\nObject.assign(g, rest);\n";
+    let imports = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nconst { gnoblin, ...rest } = lib;\nconst g = globalThis as any;\ng.g = g;\nObject.assign(g, rest);\n";
     fs::write(root.join("init.ts"), format!("{imports}{body}\n")).expect("init.ts is written");
     let (config, _clock) = timed_config(&root);
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");

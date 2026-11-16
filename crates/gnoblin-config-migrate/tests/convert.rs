@@ -293,7 +293,7 @@ fn a_config_of_every_construct_that_converts_leaves_nothing_out() {
         ),
         "{ts}"
     );
-    assert!(ts.contains("import type { Client } from \"gnoblin\";"), "{ts}");
+    assert!(ts.contains("import type { Client } from \"gnoblin-core\";"), "{ts}");
     assert!(ts.contains("    CollectionListener,\n"), "{ts}");
     // `alerts = false` leaves the alert out of the stock desktop.
     assert!(!ts.contains("\nstartNotRespondingAlert();"), "{ts}");

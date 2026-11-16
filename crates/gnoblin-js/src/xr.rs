@@ -1,4 +1,4 @@
-//! `__gnoblinHost.xr`: the scene nodes the XR module (`gnoblin/scene`, `gnoblin/extensions/xr`) makes and finds.
+//! `__gnoblinHost.xr`: the scene nodes the XR module (`gnoblin-std/scene`, `gnoblin-std/extensions/xr`) makes and finds.
 //!
 //! The XR program reads `View` nodes under a node named `room` (`docs/xr.md`), so the shell has to make plain nodes,
 //! cameras and Views, put them in the tree and take them out. Like the UI toolkit's canvases, a node made here is
@@ -21,7 +21,7 @@ const CLASSES: [&str; 3] = ["Node", "Camera", "View"];
 pub(crate) struct JsXrState {
     /// The nodes this shell made and has not destroyed.
     owned: HashSet<NodeId>,
-    /// Whether the session declared XR (`JsShellConfig::xr_declared`): the `gnoblin/extensions/xr` module imports.
+    /// Whether the session declared XR (`JsShellConfig::xr_declared`): the `gnoblin-std/extensions/xr` module imports.
     declared: bool,
 }
 

@@ -55,12 +55,15 @@ fn evaluates_a_module_and_imports_a_ts_sibling() {
 #[test]
 fn module_paths_lists_the_entry_and_its_transitive_imports() {
     let root = root_with(&[
-        ("init.ts", "import './lib/a.ts';\nimport { gnoblin } from 'gnoblin';\n"),
+        (
+            "init.ts",
+            "import './lib/a.ts';\nimport { gnoblin } from 'gnoblin-core';\n",
+        ),
         ("lib/a.ts", "import '../b.js';\n"),
         ("b.js", "globalThis.b = 1;\n"),
         ("unused.ts", "export {};\n"),
     ]);
-    let config = JsConfig::new(&root.path).embed("gnoblin", "export const gnoblin = 1;\n");
+    let config = JsConfig::new(&root.path).embed("gnoblin-core", "export const gnoblin = 1;\n");
     let generation = JsGeneration::new(&config, 1).expect("a generation");
     assert!(generation.module_paths().is_empty(), "nothing is loaded before eval");
     generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
@@ -93,11 +96,11 @@ fn js_import_falls_back_to_the_ts_file_and_js_files_pass_through() {
 fn embedded_modules_resolve_by_name() {
     let root = root_with(&[(
         "init.ts",
-        "import { shell } from 'gnoblin';\nimport { grid } from 'gnoblin/layouts';\n(globalThis as any).out = shell + grid;\n",
+        "import { shell } from 'gnoblin-core';\nimport { grid } from 'gnoblin-std/layouts';\n(globalThis as any).out = shell + grid;\n",
     )]);
     let config = JsConfig::new(&root.path)
-        .embed("gnoblin", "export const shell = 10;")
-        .embed("gnoblin/layouts", "export const grid = 5;");
+        .embed("gnoblin-core", "export const shell = 10;")
+        .embed("gnoblin-std/layouts", "export const grid = 5;");
     let generation = JsGeneration::new(&config, 1).expect("a generation");
     generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
     assert_eq!(global_number(&generation, "out"), Some(15));
@@ -105,7 +108,10 @@ fn embedded_modules_resolve_by_name() {
 
 #[test]
 fn unknown_embedded_and_bare_modules_are_load_errors() {
-    let root = root_with(&[("a.ts", "import 'gnoblin/missing';\n"), ("b.ts", "import 'lodash';\n")]);
+    let root = root_with(&[
+        ("a.ts", "import 'gnoblin-core/missing';\n"),
+        ("b.ts", "import 'lodash';\n"),
+    ]);
     let generation = generation(&root);
     for entry in ["a.ts", "b.ts"] {
         let error = generation

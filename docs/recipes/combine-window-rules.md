@@ -4,8 +4,8 @@ Set shared defaults first, then override them for selected windows. Later statem
 Put this in `~/.config/gnoblin/init.ts`:
 
 ```ts
-import { CollectionListener } from "gnoblin";
-import type { Client } from "gnoblin";
+import { CollectionListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 gnoblin.clients.style.opacity = 1;
 

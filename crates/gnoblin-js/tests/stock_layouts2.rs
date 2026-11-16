@@ -1,4 +1,4 @@
-//! The second set of stock TypeScript layouts (`data/js/gnoblin/`): Dwindle, Kiosk, Strip and Carousel3d, and the
+//! The second set of stock TypeScript layouts (`data/js/gnoblin-std/`): Dwindle, Kiosk, Strip and Carousel3d, and the
 //! workspace slide gesture, run in a real generation with no host.
 //!
 //! The cases are the retired shell's: `the retired retired corpus` (Dwindle, Kiosk),
@@ -78,7 +78,7 @@ import { area, nodes, focusables, tiled, lay, named, thrown, rect, emit } from "
 import {
     DwindleLayout, KioskLayout, StripLayout, Carousel3dLayout, ring, clampColumn,
     WorkspaceSlideBinding,
-} from "gnoblin";
+} from "gnoblin-std";
 "#;
 
 /// Evaluates `body` (TypeScript) with the stock library imported and returns what it passed to `emit`.

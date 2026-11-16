@@ -128,7 +128,7 @@ A device is an instance of the class its capabilities name. Test with `instanceo
 - A device that is none of these, such as a lid switch, is a plain `InputDevice`.
 
 ```ts
-import { gnoblin, Keyboard, Mouse, Touchpad } from "gnoblin";
+import { gnoblin, Keyboard, Mouse, Touchpad } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Mouse) {
@@ -177,7 +177,7 @@ assigned to it with `device.context = context` is held by it, and the context's 
 devices it holds:
 
 ```ts
-import { gnoblin, InputContext } from "gnoblin";
+import { gnoblin, InputContext } from "gnoblin-core";
 
 const other = new InputContext({ name: "secondary" });
 gnoblin.input.contexts.add(other);

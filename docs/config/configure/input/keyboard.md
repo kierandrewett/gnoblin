@@ -4,7 +4,7 @@ A `Keyboard` has two settings, the key repeat rate and the delay before a key re
 compositor on a reload. This example repeats a held key 40 times a second after 250 ms:
 
 ```ts
-import { Keyboard } from "gnoblin";
+import { Keyboard } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Keyboard) {

@@ -359,7 +359,7 @@ ok  init.ts  loads in the dry-run shell
 The module runs in a throwaway shell with a one second budget. It reports:
 
 - a syntax error
-- an import that does not resolve, or a name the `gnoblin` module does not export
+- an import that does not resolve, or a name the `gnoblin-core` or `gnoblin-std` module does not export
 - an import cycle that fails
 - a value, trigger or object the shell refuses
 - a throw at the top level
@@ -385,11 +385,11 @@ hint:  import `./` or `../` paths under the config directory, or `gnoblin`
 An import that nothing in the file uses is dropped when types are stripped, as
 TypeScript drops it, so the check never loads it. `--types` does check it.
 
-A name the `gnoblin` module does not export, and a value or a trigger the shell
-refuses, are reported the way a session reports them:
+A name the `gnoblin-core` or `gnoblin-std` module does not export, and a value or
+a trigger the shell refuses, are reported the way a session reports them:
 
 ```text
-error: gnoblin/bindings:316:110: binding "bind-2:Super+k" conflicts with
+error: data/js/gnoblin-core/bindings/binding.ts:316:110: binding "bind-2:Super+k" conflicts with
        "bind-1:Super+k": both match Super+k at priority 0; give one a different
        priority or trigger
 hint:  the module threw while loading, before any handler could run
@@ -410,8 +410,9 @@ A file that reads live state sees that empty world. Counting windows, walking
 there is none.
 
 A file that assumes a window or an output is there, and reads a property of it,
-throws, as it does in a session with none. The `gnoblin` module is the real one
-and not a stand-in, so the names you import from it must exist.
+throws, as it does in a session with none. The `gnoblin-core` and `gnoblin-std`
+modules are the real ones and not stand-ins, so the names you import from them
+must exist.
 
 ### Type checking
 
@@ -448,7 +449,7 @@ With `--json`, `check` prints one document:
 `gnoblinctl types init [DIR]` writes the files an editor needs, so completion, hover and go-to-definition work with no
 build step. `DIR` defaults to the config directory, `$XDG_CONFIG_HOME/gnoblin` or `~/.config/gnoblin`.
 
-The types of `import ... from "gnoblin"` are the library's own TypeScript source, not a description of it. The command
+The types of `import ... from "gnoblin-core"` and `"gnoblin-std"` are the library's own TypeScript source, not a description of it. The command
 writes that source as files and points the compiler at them, so go-to-definition opens the file the shell runs, hover
 shows the comment written above the class, and a class extends the class it really extends (`Camera3D` is a `Node`).
 
@@ -459,8 +460,9 @@ shows the comment written above the class, and a class extends the class it real
   .gnoblin/                  generated, rewritten on every run
     tsconfig.json            the compiler options and the two `paths` that find the library
     gnoblin.d.ts             the schema declarations and the `gnoblin` and `console` globals
-    lib/gnoblin/             the library: `gnoblin` is index.ts, `gnoblin/scene` is scene.ts,
-                             `gnoblin/scene/node` is scene/node.ts, and so on
+    lib/                     the library, one directory a package: `gnoblin-core` is gnoblin-core/index.ts,
+                             `gnoblin-std/scene` is gnoblin-std/scene.ts, `gnoblin-std/scene/node` is
+                             gnoblin-std/scene/node.ts, and so on
     VERSION                  the release that wrote the directory
     .gitignore               so a repository that holds your config skips the directory
 ```

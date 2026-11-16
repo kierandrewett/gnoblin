@@ -253,7 +253,7 @@ tiled() {
     fi
     start_session
     three
-    set_config "import { DwindleLayout, MasterStackLayout, Workspace, gnoblin, startDecorations } from \"gnoblin\";
+    set_config "import { gnoblin } from \"gnoblin-core\"; import { DwindleLayout, MasterStackLayout, Workspace, startDecorations } from \"gnoblin-std\";
 
 $decorations
 gnoblin.workspaces.add(new Workspace({ id: \"dev\", layout: new $3 }));"
@@ -311,7 +311,7 @@ scenario_csd_double() {
 # picture shows foot's one bar and none of the shell's: a window is never left with no bar.
 scenario_csd_own() {
     start_session
-    set_config "import { FloatingLayout, Workspace, gnoblin } from \"gnoblin\";
+    set_config "import { gnoblin } from \"gnoblin-core\"; import { FloatingLayout, Workspace } from \"gnoblin-std\";
 
 gnoblin.workspaces.add(new Workspace({ id: \"1\", layout: new FloatingLayout() }));"
     window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
@@ -323,7 +323,7 @@ gnoblin.workspaces.add(new Workspace({ id: \"1\", layout: new FloatingLayout() }
 # csd-tiled: the same client in a tiled workspace with the shell's titlebars: one bar on each tile.
 scenario_csd_tiled() {
     start_session
-    set_config "import { DwindleLayout, Workspace, gnoblin, startDecorations } from \"gnoblin\";
+    set_config "import { gnoblin } from \"gnoblin-core\"; import { DwindleLayout, Workspace, startDecorations } from \"gnoblin-std\";
 
 startDecorations();
 gnoblin.workspaces.add(new Workspace({ id: \"dev\", layout: new DwindleLayout({ gap: 12 }) }));"
@@ -372,7 +372,7 @@ scenario_lock() {
 scenario_reload_tiled() {
     start_session
     three
-    set_config "import { MasterStackLayout, Workspace, gnoblin, startDecorations } from \"gnoblin\";
+    set_config "import { gnoblin } from \"gnoblin-core\"; import { MasterStackLayout, Workspace, startDecorations } from \"gnoblin-std\";
 
 startDecorations();
 gnoblin.workspaces.add(new Workspace({ id: \"dev\", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }));"

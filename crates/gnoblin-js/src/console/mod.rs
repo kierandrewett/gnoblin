@@ -10,7 +10,7 @@
 //!
 //! - `{"id", "ok": true, "type", "value", "text", "truncated"}`: `value` is the result as plain JSON data (absent
 //!   for `undefined`), `text` is how a terminal shows it, `type` names it, `truncated` says the size cap cut
-//!   something off. The renderer is `data/js/gnoblin/inspect.ts`.
+//!   something off. The renderer is `data/js/gnoblin-core/inspect.ts`.
 //! - `{"id", "ok": false, "error": {"kind", "message", "location", "stack"}}`: `kind` is `exception`, `budget`,
 //!   `memory`, `request` or `engine`, `location` is `{"file", "line", "column"}` (the file of a console expression
 //!   is `<console>`) or null.

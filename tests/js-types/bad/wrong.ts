@@ -1,7 +1,8 @@
 // What the types must refuse. Each `// expect:` line names the error the line after it must produce, and
 // scripts/js-types-check.sh fails when a line has a different one, none, or when another line has any.
-import { Client, Workspace } from "gnoblin";
-import { Camera3D, Node } from "gnoblin/scene";
+import { Client } from "gnoblin-core";
+import { Workspace } from "gnoblin-std";
+import { Camera3D, Node } from "gnoblin-std/scene";
 
 declare function focusClient(client: Client): void;
 declare const workspace: Workspace;

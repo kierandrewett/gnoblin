@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn a_spec_style_config_that_declares_workspaces_and_binds_keys_loads_and_has_an_empty_document() {
         let document = document(
-            r#"import { FloatingLayout, Workspace } from "gnoblin";
+            r#"import { FloatingLayout, Workspace } from "gnoblin-std";
             gnoblin.workspaces.add(new Workspace({ id: "web", layout: new FloatingLayout() }));
             gnoblin.input.primary.bind("Super+w", () => {});
             gnoblin.clients.style.cornerRadius = 8;"#,

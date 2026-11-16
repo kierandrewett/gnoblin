@@ -700,7 +700,7 @@ mod tests {
         // library sources exist beside it, echoes a diagnostic and fails.
         let tool = fake_tsc(
             &dir,
-            "d=\"$(dirname \"$5\")/.gnoblin\"\ntest -f \"$d/gnoblin.d.ts\" || exit 9\ntest -f \"$d/lib/gnoblin/scene/node.ts\" || exit 7\ngrep -q init.ts \"$5\" || exit 8\necho \"init.ts(1,1): error TS0000: fake\"\nexit 2",
+            "d=\"$(dirname \"$5\")/.gnoblin\"\ntest -f \"$d/gnoblin.d.ts\" || exit 9\ntest -f \"$d/lib/gnoblin-std/scene/node.ts\" || exit 7\ngrep -q init.ts \"$5\" || exit 8\necho \"init.ts(1,1): error TS0000: fake\"\nexit 2",
         );
         let search = TscSearch {
             explicit: Some(tool),

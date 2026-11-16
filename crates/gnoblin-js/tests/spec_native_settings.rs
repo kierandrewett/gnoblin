@@ -11,7 +11,7 @@ use gnoblin_tree_client::tree_mirror::MirrorValue;
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
+const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
 
 /// A shell over a screen of 1000 by 800, one seat, one lock and one server-decorated window (id 3) whose `init.ts` is
 /// `body`.

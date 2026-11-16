@@ -16,8 +16,10 @@ cat >"$temporary_config" <<EOF
     "allowImportingTsExtensions": true,
     "lib": ["ES2023"],
     "paths": {
-      "gnoblin": ["$repo_root/data/js/gnoblin/index.ts"],
-      "gnoblin/*": ["$repo_root/data/js/gnoblin/*"]
+      "gnoblin-core": ["$repo_root/data/js/gnoblin-core/index.ts"],
+      "gnoblin-core/*": ["$repo_root/data/js/gnoblin-core/*"],
+      "gnoblin-std": ["$repo_root/data/js/gnoblin-std/index.ts"],
+      "gnoblin-std/*": ["$repo_root/data/js/gnoblin-std/*"]
     }
   },
   "include": [

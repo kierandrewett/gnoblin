@@ -134,7 +134,7 @@ fn demo() -> String {
 
 fn module(text: &str) -> &str {
     let module = text
-        .split("declare module \"gnoblin/schema/demo\" {")
+        .split("declare module \"gnoblin-core/schema/demo\" {")
         .nth(1)
         .expect("the demo module is declared");
     module.split("\n}\n").next().expect("the module closes")

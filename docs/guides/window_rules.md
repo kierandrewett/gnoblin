@@ -9,8 +9,9 @@ listener to `gnoblin.clients` and decide in a function, or you style a selection
 This places every editor window on workspace `dev` and maximises it:
 
 ```ts
-import { CollectionListener, FloatingLayout, Workspace } from "gnoblin";
-import type { Client } from "gnoblin";
+import { CollectionListener } from "gnoblin-core";
+import { FloatingLayout, Workspace } from "gnoblin-std";
+import type { Client } from "gnoblin-core";
 
 gnoblin.workspaces.add(new Workspace({ id: "web", layout: new FloatingLayout() }));
 gnoblin.workspaces.add(new Workspace({ id: "dev", layout: new FloatingLayout() }));
@@ -66,8 +67,8 @@ Compare with `===` for a whole id, or use a `RegExp` for a part. A `RegExp` is t
 and `$` to match the whole value. Both are case-sensitive.
 
 ```ts
-import { CollectionListener } from "gnoblin";
-import type { Client } from "gnoblin";
+import { CollectionListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 gnoblin.clients.addListener(
     new (class extends CollectionListener {
@@ -107,8 +108,9 @@ id with `gnoblin.workspaces.get("code")`. It returns `undefined` for an id you d
 move a window:
 
 ```ts
-import { CollectionListener, FloatingLayout, Workspace } from "gnoblin";
-import type { Client } from "gnoblin";
+import { CollectionListener } from "gnoblin-core";
+import { FloatingLayout, Workspace } from "gnoblin-std";
+import type { Client } from "gnoblin-core";
 
 for (const id of ["code", "web"]) {
     gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));

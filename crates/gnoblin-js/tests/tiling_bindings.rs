@@ -1,4 +1,4 @@
-//! The two drag bindings of the tiling layouts, `ClientSwapBinding` and `SplitResizeBinding` (`data/js/gnoblin/bindings/`),
+//! The two drag bindings of the tiling layouts, `ClientSwapBinding` and `SplitResizeBinding` (`data/js/gnoblin-std/bindings/`),
 //! the dividers `MasterStackLayout` and `DwindleLayout` offer them (`Layout.findSplit`) and the order swap they stand on
 //! (`MutableCollection.swap`, `Layout.onClientsSwapped`), over the fake compositor of `tests/common`.
 //!
@@ -11,7 +11,7 @@ use gnoblin_tree_client::tree_mirror::MirrorValue;
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
+const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
 
 const SCREEN: u64 = 20;
 const SEAT: u64 = 21;

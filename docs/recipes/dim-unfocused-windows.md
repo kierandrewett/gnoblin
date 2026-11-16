@@ -3,8 +3,8 @@
 Set the opacity of windows that are not focused. Put this in `~/.config/gnoblin/init.ts`:
 
 ```ts
-import { ClientListener } from "gnoblin";
-import type { Client } from "gnoblin";
+import { ClientListener } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 gnoblin.clients.addListener(
     new (class extends ClientListener {

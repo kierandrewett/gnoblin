@@ -251,7 +251,7 @@ fn write(path: &Path, source: &str) {
 /// An `init.ts` that sets the repeat delay of the seat's keyboard, which the document carries as `input.keyboard.delay`.
 fn config_with_delay(delay: i64) -> String {
     format!(
-        "import {{ Keyboard, gnoblin }} from \"gnoblin\";\n\
+        "import {{ Keyboard, gnoblin }} from \"gnoblin-core\";\n\
          \n\
          for (const device of gnoblin.input.devices) {{\n\
          \x20   if (device instanceof Keyboard) {{\n\
@@ -263,7 +263,7 @@ fn config_with_delay(delay: i64) -> String {
 
 /// A config that asks for a reload itself, from a listener a real window opening raises, so the request starts inside
 /// the runtime and no `gnoblinctl config reload` is involved.
-const WITH_HANDLER: &str = r#"import { Keyboard, gnoblin } from "gnoblin";
+const WITH_HANDLER: &str = r#"import { Keyboard, gnoblin } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Keyboard) {
@@ -327,7 +327,7 @@ fn a_config_that_fails_to_load_runs_the_stock_config_and_the_role_still_commits_
     // A script that throws while it loads leaves the shell with no config of the user's to run. It must not be left
     // bare: the stock config runs and its document is committed.
     let (session, role, _directory, _init) = start(
-        "import { gnoblin } from \"gnoblin\";\n\
+        "import { gnoblin } from \"gnoblin-core\";\n\
          throw new Error(\"this config does not load\");\n",
     );
     let lines = wait_for("ready", &role, || {
@@ -371,7 +371,7 @@ fn a_script_reload_of_a_broken_file_keeps_the_accepted_configuration_and_the_rol
 
     write(
         &init,
-        "import { Keyboard, gnoblin } from \"gnoblin\";\n\
+        "import { Keyboard, gnoblin } from \"gnoblin-core\";\n\
          for (const device of gnoblin.input.devices) {\n\
          \x20   if (device instanceof Keyboard) {\n\
          \x20       device.repeatDelay = \"huge\";\n\

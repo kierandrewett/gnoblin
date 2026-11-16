@@ -1,0 +1,307 @@
+// Operations represent host calls that finish later, such as `gnoblin.session.poweroff()`, `process.kill()` and
+// `gnoblin.runtime.reloadConfig()`. Each settles once with a value or typed error. Callbacks run in the host's queue;
+// a failing callback is reported without stopping the next one. Callbacks added after settlement run after the
+// current call returns. These classes use a small host interface and run without a compositor.
+
+import type { ErrorCode } from "gnoblin-core/errors";
+import { NEVER, onWake } from "gnoblin-core/wake";
+
+/** The failure of an operation: a stable `code` to branch on and a `message` for a person. */
+export interface OperationError {
+    /** Stable reason code for branching on the failure. */
+    readonly code: ErrorCode;
+    /** Human-readable failure detail. */
+    readonly message: string;
+}
+
+/** Where an operation is. It starts `pending` and ends as `succeeded` or `failed`; it never goes back. */
+export type OperationStatus = "pending" | "succeeded" | "failed";
+
+/** Stops a callback or a handler before it runs. Calling it twice is harmless. */
+export interface Subscription {
+    /** Prevents the subscribed callback from running. Repeated calls have no effect. */
+    unsubscribe(): void;
+}
+
+/** What timers need of the shell. */
+export interface ClockHost {
+    /** Queues `task` after the calls already queued, under the listener budget. `site` names it in a report. */
+    schedule(site: string, task: () => void): void;
+    /** The monotonic clock, in milliseconds. */
+    now(): number;
+}
+
+/** What operations need of the shell: the queue, and a timer for a deadline. */
+export interface OperationHost extends ClockHost {
+    /** Schedules `fn` after `ms` milliseconds and returns a timer with a `cancel()` method. */
+    after(ms: number, fn: () => void): { cancel(): boolean };
+}
+
+/** The ceiling on pending timers, as the retired Lua host's. A config past it is looping. */
+export const MAX_TIMERS = 1024;
+
+/** The longest delay a timer takes, in milliseconds: a day. */
+export const MAX_TIMER_MS = 86_400_000;
+
+type Callback<T> = (value: T | undefined, error: OperationError | undefined) => void;
+
+/**
+ * The result of a call that finishes later. `status` is `pending` until the operation settles; then `value` holds the
+ * result of a success and `error` the failure of the other outcome, never both.
+ */
+export class Operation<T> {
+    /** Counts the operations of a generation, so a log line can name one. */
+    readonly id: number;
+    /** The call that made it, such as `session.poweroff`. */
+    readonly method: string;
+    #host: OperationHost;
+    #status: OperationStatus = "pending";
+    #value: T | undefined;
+    #error: OperationError | undefined;
+    #callbacks: { run: Callback<T>; live: boolean }[] = [];
+    #cancel: (() => void) | undefined;
+
+    /** Only the host makes operations: a script receives them from the call that started the work. */
+    constructor(host: OperationHost, id: number, method: string, cancel?: () => void) {
+        this.#host = host;
+        this.id = id;
+        this.method = method;
+        this.#cancel = cancel;
+    }
+
+    /** Current settlement state. */
+    get status(): OperationStatus {
+        return this.#status;
+    }
+
+    /** Result value after success; otherwise `undefined`. */
+    get value(): T | undefined {
+        return this.#value;
+    }
+
+    /** Failure detail after failure; otherwise `undefined`. */
+    get error(): OperationError | undefined {
+        return this.#error;
+    }
+
+    /**
+     * Calls `fn(value, error)` once when the operation settles: `error` is set on a failure and `value` on a
+     * success. The returned subscription stops the callback before it runs.
+     */
+    onComplete(fn: (value: T | undefined, error: OperationError | undefined) => void): Subscription {
+        if (typeof fn !== "function") {
+            throw new TypeError(`${this.method}.onComplete: expects a function`);
+        }
+        const entry = { run: fn, live: true };
+        const subscription: Subscription = {
+            unsubscribe: () => {
+                entry.live = false;
+            },
+        };
+        if (this.#status === "pending") {
+            this.#callbacks.push(entry);
+        } else {
+            this.#deliver(entry);
+        }
+        return subscription;
+    }
+
+    /** A new operation that succeeds with `fn(value)`, or fails with the same error. A throw in `fn` is `internal`. */
+    map<U>(fn: (value: T) => U): Operation<U> {
+        if (typeof fn !== "function") {
+            throw new TypeError(`${this.method}.map: expects a function`);
+        }
+        const mapped = new Operation<U>(this.#host, this.id, `${this.method}.map`);
+        this.onComplete((value, error) => {
+            if (error !== undefined) {
+                mapped.fail(error.code, error.message);
+                return;
+            }
+            try {
+                mapped.succeed(fn(value as T));
+            } catch (thrown) {
+                mapped.fail("internal", thrown instanceof Error ? thrown.message : String(thrown));
+            }
+        });
+        return mapped;
+    }
+
+    /**
+     * A new operation that fails `timed_out` if this one has not settled in `ms` milliseconds, and settles as this
+     * one does if it is first. It does not cancel this operation.
+     */
+    timeout(ms: number): Operation<T> {
+        const limited = new Operation<T>(this.#host, this.id, `${this.method}.timeout`);
+        const timer = this.#host.after(ms, () => limited.fail("timed_out", `${this.method} took over ${ms} ms`));
+        this.onComplete((value, error) => {
+            timer.cancel();
+            if (error !== undefined) {
+                limited.fail(error.code, error.message);
+            } else {
+                limited.succeed(value as T);
+            }
+        });
+        return limited;
+    }
+
+    /**
+     * Stops waiting: the operation fails `cancelled` and its callbacks run. Returns false when it had already
+     * settled. Work already sent to the compositor still happens; its result is ignored.
+     */
+    cancel(): boolean {
+        if (this.#status !== "pending") {
+            return false;
+        }
+        this.#cancel?.();
+        return this.fail("cancelled", `${this.method} was cancelled`);
+    }
+
+    /** Settles the operation with `value`. Host-only: a script has no use for it. Returns false if it was settled. */
+    succeed(value: T): boolean {
+        if (this.#status !== "pending") {
+            return false;
+        }
+        this.#status = "succeeded";
+        this.#value = value;
+        this.#flush();
+        return true;
+    }
+
+    /** Settles the operation with a failure. Host-only. Returns false if it was settled. */
+    fail(code: ErrorCode, message: string): boolean {
+        if (this.#status !== "pending") {
+            return false;
+        }
+        this.#status = "failed";
+        this.#error = { code, message };
+        this.#flush();
+        return true;
+    }
+
+    #flush(): void {
+        const callbacks = this.#callbacks;
+        this.#callbacks = [];
+        for (const entry of callbacks) {
+            this.#deliver(entry);
+        }
+    }
+
+    #deliver(entry: { run: Callback<T>; live: boolean }): void {
+        this.#host.schedule(`${this.method}.onComplete`, () => {
+            if (entry.live) {
+                entry.live = false;
+                entry.run(this.#value, this.#error);
+            }
+        });
+    }
+}
+
+/** A pending call of a function at a time. */
+export class Timer {
+    /** Unique timer id within its timer collection. */
+    readonly id: number;
+    /** The time it runs at, in milliseconds on the monotonic clock. */
+    readonly at: number;
+    #pending = true;
+    #fn: () => void;
+    #owner: Timers;
+
+    constructor(owner: Timers, id: number, at: number, fn: () => void) {
+        this.#owner = owner;
+        this.id = id;
+        this.at = at;
+        this.#fn = fn;
+    }
+
+    /** True until the timer has run or was cancelled. */
+    get pending(): boolean {
+        return this.#pending;
+    }
+
+    /** Stops the timer. Returns false when it had already run or was cancelled. */
+    cancel(): boolean {
+        if (!this.#pending) {
+            return false;
+        }
+        this.#pending = false;
+        this.#owner.forget(this);
+        return true;
+    }
+
+    /** Marks the timer spent and returns what it runs. Host-only: `Timers.fire` is its one caller. */
+    take(): () => void {
+        this.#pending = false;
+        return this.#fn;
+    }
+}
+
+/**
+ * `gnoblin.timers`: calls that run later, on the shell's frame loop.
+ *
+ * A timer runs at the first frame at or after its time, as a queued call under the listener budget, so one that
+ * throws is reported and never stops another. The clock is monotonic and measured in milliseconds; only the
+ * difference between two readings is meaningful. A generation's pending timers end with it: `cancelAll` runs when
+ * a reload or a shutdown retires the generation.
+ */
+export class Timers {
+    #host: ClockHost;
+    #pending: Timer[] = [];
+    #next = 1;
+
+    constructor(host: ClockHost) {
+        this.#host = host;
+        // A timer that is due needs a frame at its time, though nothing else happens.
+        onWake("timers", () => this.#pending.reduce((earliest, timer) => Math.min(earliest, timer.at), NEVER));
+    }
+
+    /** The monotonic clock in milliseconds. */
+    now(): number {
+        return this.#host.now();
+    }
+
+    /** How many timers are waiting. */
+    get size(): number {
+        return this.#pending.length;
+    }
+
+    /** Runs `fn` once, `ms` milliseconds from now (0 to a day). The returned timer can be cancelled. */
+    after(ms: number, fn: () => void): Timer {
+        if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0 || ms > MAX_TIMER_MS) {
+            throw new TypeError(`gnoblin.timers.after: ms must be a finite number from 0 to ${MAX_TIMER_MS}`);
+        }
+        if (typeof fn !== "function") {
+            throw new TypeError("gnoblin.timers.after: needs a function to run");
+        }
+        if (this.#pending.length >= MAX_TIMERS) {
+            throw new RangeError(`gnoblin.timers.after: ${MAX_TIMERS} timers are already pending`);
+        }
+        const timer = new Timer(this, this.#next++, this.#host.now() + ms, fn);
+        this.#pending.push(timer);
+        return timer;
+    }
+
+    /** Drops a timer from the pending list. Called by `Timer.cancel`. */
+    forget(timer: Timer): void {
+        const index = this.#pending.indexOf(timer);
+        if (index >= 0) {
+            this.#pending.splice(index, 1);
+        }
+    }
+
+    /** Queues every timer that is due, earliest first. The shell calls it once a frame. */
+    fire(): void {
+        const now = this.#host.now();
+        const due = this.#pending.filter((timer) => timer.at <= now).sort((a, b) => a.at - b.at || a.id - b.id);
+        for (const timer of due) {
+            this.forget(timer);
+            this.#host.schedule("gnoblin.timers.after", timer.take());
+        }
+    }
+
+    /** Cancels every pending timer. */
+    cancelAll(): void {
+        for (const timer of [...this.#pending]) {
+            timer.cancel();
+        }
+    }
+}

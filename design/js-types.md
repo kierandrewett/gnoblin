@@ -5,10 +5,10 @@
 The types of `import ... from "gnoblin"` used to be a second copy of the library.
 
 - A hand-written file of about 4,200 lines (`crates/gnoblin-js-types/static/gnoblin-stock.d.ts`) declared `module "gnoblin"`
-  and `module "gnoblin/extensions/xr"` next to the TypeScript in `data/js/gnoblin`.
+  and `module "gnoblin-std/extensions/xr"` next to the TypeScript in `data/js/gnoblin-core` and `data/js/gnoblin-std`.
 - A test (`crates/gnoblin-js/tests/dts_match.rs`) policed the two for drift, but the copy still disagreed in ways it
   could not see: the XR `Camera3D` extended a simplified `Node`, not the scene `Node`.
-- `gnoblin/scene`, `gnoblin/input` and `gnoblin/style` did not resolve.
+- `gnoblin-std/scene`, `gnoblin-core/input` and `gnoblin-std/style` did not resolve.
 - Go-to-definition opened the blob, and hover showed the blob's comments.
 
 ## Decision
@@ -30,7 +30,7 @@ The sources are the types.
 - Source of the files: `gnoblin_js::editor_library()`, which lists the same table `crates/gnoblin-js/build.rs` embeds for
   the shell. Packaging ships no `data/js` tree (the library lives in the binary), so there is no installed copy to point
   at, and the files cannot disagree with the binary that wrote them.
-- `index.ts` is the one file that is not byte for byte the source. The shell appends `export * from "gnoblin/host"` to
+- `index.ts` is the one file that is not byte for byte the source. The shell appends `export * from "gnoblin-core/host"` to
   the stock index (`stock::host_export`), because the stock modules are tested without a host. The editor copy gets
   the same line from the same function, so `Workspace` and `gnoblin` come from `"gnoblin"` in both.
 - The user's tsconfig extends the generated one. An upgrade changes options and paths without touching a user file. A
@@ -57,7 +57,7 @@ A module sits beside the directory it fronts, as `ui.ts` does with `ui/`.
 - They are ambient `declare module` blocks the generator writes, not hand-written.
 - No library source imports them.
 - They stay ambient and not files because they have no source to open. The globals `gnoblin` and `console` are declared in
-  `crates/gnoblin-js-types/static/globals.d.ts`. `gnoblin` is `import("gnoblin/host/gnoblin").Gnoblin`, so its members are
+  `crates/gnoblin-js-types/static/globals.d.ts`. `gnoblin` is `import("gnoblin-core/host/gnoblin").Gnoblin`, so its members are
   declared where they are implemented.
 
 ## Alternatives weighed
@@ -73,7 +73,7 @@ A module sits beside the directory it fronts, as `ui.ts` does with `ui/`.
 
 - `crates/gnoblin-js-types` tests: the layout, byte-exact rewrite, pruning, the upgrade, and that the generated file
   declares only schema modules and two globals. The golden is `tests/golden/gnoblin.d.ts`.
-- `crates/gnoblin-js` `stock` tests: the editor library is the embedded sources, and `gnoblin/scene`, `style`, `input`
+- `crates/gnoblin-js` `stock` tests: the editor library is the embedded sources, and `gnoblin-std/scene`, `style`, `input`
   and `ui` are modules.
 - `scripts/js-types-check.sh`, run by `scripts/js-typecheck.sh`, writes the files with `types init` and puts the starter
   `init.ts` beside the programs of `tests/js-types`. Then:

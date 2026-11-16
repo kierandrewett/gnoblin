@@ -49,11 +49,11 @@ fn the_console_is_on_unless_the_variable_is_zero() {
 #[test]
 fn a_stack_frame_in_the_console_gives_the_location() {
     assert_eq!(
-        console_location("    at <eval> (<console>:3:14)\n    at f (gnoblin/host:9:1)"),
+        console_location("    at <eval> (<console>:3:14)\n    at f (gnoblin-core/host:9:1)"),
         Some((3, 14))
     );
     assert_eq!(console_location("    at <console>:1:5\n"), Some((1, 5)));
-    assert_eq!(console_location("    at f (gnoblin/host:9:1)"), None);
+    assert_eq!(console_location("    at f (gnoblin-core/host:9:1)"), None);
 }
 
 #[test]

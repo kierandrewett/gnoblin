@@ -24,9 +24,9 @@ import {
     startDecorations,
     startNotRespondingAlert,
     startWindowMenu,
-} from "gnoblin";
+} from "gnoblin-std";
 // To use the examples below, add what they name to the import above.
-// import { MasterStackLayout } from "gnoblin";
+// import { MasterStackLayout } from "gnoblin-std";
 
 // Four floating workspaces. The first is shown until another is selected.
 // Choose a layout: FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout, DwindleLayout, KioskLayout or

@@ -3,7 +3,7 @@
 The JavaScript shell draws its own interface with a small toolkit. Import it from `gnoblin`:
 
 ```ts
-import { Box, Text } from "gnoblin";
+import { Box, Text } from "gnoblin-std";
 ```
 
 Every widget is an ordinary class with ordinary fields. Change a field and the next frame paints it. There is nothing to
@@ -15,7 +15,7 @@ A `Canvas` is a node of the compositor's tree that shows a paint list. Override 
 node-local pixels, later ops over earlier ones:
 
 ```ts
-import { Canvas } from "gnoblin";
+import { Canvas } from "gnoblin-std";
 
 class Meter extends Canvas {
     level = 0.5;
@@ -121,8 +121,8 @@ window:
 Its look is plain data, `TitlebarStyle`:
 
 ```ts
-import { Titlebar, defaultTitlebarStyle } from "gnoblin";
-import type { TitlebarStyle } from "gnoblin";
+import { Titlebar, defaultTitlebarStyle } from "gnoblin-std";
+import type { TitlebarStyle } from "gnoblin-std";
 
 const style: TitlebarStyle = { ...defaultTitlebarStyle, height: 36, buttons: ["close"], focusedFill: "#223344" };
 const bar = new Titlebar(client, style);
@@ -241,7 +241,7 @@ Start it with `startWindowMenu()`. The module is `gnoblin/menus`.
 
 ### Not-responding alert
 
-Start it with `startNotRespondingAlert()`. The module is `gnoblin/alerts`.
+Start it with `startNotRespondingAlert()`. The module is `gnoblin-std/alerts`.
 
 - A window the compositor marks `unresponsive` gets a card with Wait (the default, and Escape) and Force quit.
 - Force quit calls `client.kill()` and does nothing for the first 0.5 s. The compositor refuses its own process, init
@@ -251,7 +251,7 @@ Start it with `startNotRespondingAlert()`. The module is `gnoblin/alerts`.
 
 ### Launcher, toast and overview
 
-- **Launcher** (`gnoblin/launcher`). With no `launcher` command in the config, Super+Space opens an `Entry` on the
+- **Launcher** (`gnoblin-std/launcher`). With no `launcher` command in the config, Super+Space opens an `Entry` on the
   screen. Return starts what you typed (`gnoblin.spawn`) and Escape closes it. `launcher: "wofi"` runs that program on
   the key instead.
 - **`toast(text)`** shows a message card in the top right corner for a few seconds.

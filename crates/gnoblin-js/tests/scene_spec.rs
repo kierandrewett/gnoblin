@@ -1,6 +1,6 @@
 //! The scene API of the owner's specification (sections 8, 14, 15, 16) over the fake compositor of `tests/common`:
 //! script nodes with writable transforms, the `Scene`, a `View` of a client and of a workspace, `ArcLayout` and the
-//! `transform` placements of a layout, and property bindings that follow what they read (`data/js/gnoblin/scene/`,
+//! `transform` placements of a layout, and property bindings that follow what they read (`data/js/gnoblin-std/scene/`,
 //! `properties.ts`, `scene_mirror.ts`, `spatial.ts`, `layouts/arc.ts`).
 
 use gnoblin_tree_client::tree_mirror::MirrorValue;
@@ -12,7 +12,7 @@ const SEAT: u64 = 21;
 /// The first window's id: windows are 3, 4, 5, ...
 const WIN: u64 = 3;
 
-const IMPORTS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _shell, ...library } = g;\nObject.assign(globalThis, library);\n";
+const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _shell, ...library } = g;\nObject.assign(globalThis, library);\n";
 
 fn double(value: f64) -> MirrorValue {
     MirrorValue::Double(value)

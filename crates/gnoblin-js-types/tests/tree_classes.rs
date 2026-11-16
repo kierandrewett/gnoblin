@@ -11,7 +11,7 @@ fn rendered() -> String {
 /// The text of the tree module, without the modules around it.
 fn tree_module(text: &str) -> &str {
     let module = text
-        .split("declare module \"gnoblin/schema/tree\" {")
+        .split("declare module \"gnoblin-core/schema/tree\" {")
         .nth(1)
         .expect("the tree module is declared");
     module.split("\n}\n").next().expect("the module closes")
@@ -213,7 +213,7 @@ fn a_namespace_declares_its_error_codes_as_a_string_literal_union() {
 fn the_generated_file_declares_the_schema_and_two_globals_and_not_the_library() {
     let text = rendered();
     let tree = text
-        .find("declare module \"gnoblin/schema/tree\"")
+        .find("declare module \"gnoblin-core/schema/tree\"")
         .expect("the tree module is declared");
     let globals = text
         .find("declare const gnoblin:")
@@ -221,10 +221,10 @@ fn the_generated_file_declares_the_schema_and_two_globals_and_not_the_library() 
     assert!(tree < globals, "the globals follow the generated modules");
     assert!(text.contains("declare const console: {"));
     // The global is typed by the library's own class, so its members are declared where they are implemented.
-    assert!(text.contains("declare const gnoblin: import(\"gnoblin/host/gnoblin\").Gnoblin;"));
+    assert!(text.contains("declare const gnoblin: import(\"gnoblin-core/host/gnoblin\").Gnoblin;"));
     // Every ambient module is a schema module: the library is the real source, not a second declaration of it.
     for line in text.lines().filter(|line| line.starts_with("declare module")) {
-        assert!(line.starts_with("declare module \"gnoblin/schema"), "{line}");
+        assert!(line.starts_with("declare module \"gnoblin-core/schema"), "{line}");
     }
     assert!(!text.contains("PROPOSED API"));
     assert!(!text.contains("hand-written stock library"));

@@ -1,0 +1,284 @@
+// The stock touchpad gesture: a three-finger swipe slides to the next or previous workspace and follows the
+// fingers while they move. Fingers moving right bring the previous workspace in from the left, fingers moving
+// left the next one from the right. Lifting after `commit` of `travel` finishes the slide from where the fingers
+// left it; lifting sooner, or a cancel, slides back. A swipe that is more vertical than horizontal, or that has
+// no workspace to reveal, moves nothing.
+//
+// A TypeScript workspace is not a node, so the slide moves its windows: each window's `x` follows the fingers
+// and goes back to where it rests when the slide is over. The gesture reaches the shell through `SlideHost`
+// and never imports the host module. Read `gnoblin/bindings` (`GestureBinding`) first. This module does not
+// register itself: a script adds `new WorkspaceSlideBinding()` to the bindings it wants.
+
+import { GestureBinding } from "gnoblin-core/bindings/binding";
+import type { BindingOptions, DragEvent } from "gnoblin-core/bindings/types";
+
+// ---- What the slide needs of the shell ----
+
+/** What the slide needs of a window. */
+export interface SlideClient {
+    /** The window's horizontal position, in logical pixels. */
+    x: number;
+    /** Whether the window is visible on screen. */
+    visible: boolean;
+    /** Whether the window still exists. */
+    readonly alive: boolean;
+}
+
+/** What it needs of a workspace. */
+export interface SlideWorkspace {
+    /** Whether this is the active workspace. */
+    readonly active: boolean;
+    /** The position among the workspaces. */
+    readonly index: number;
+    /** Windows on this workspace. */
+    readonly clients: Iterable<SlideClient>;
+}
+
+/** What it needs of the shell: the `gnoblin` global. */
+export interface SlideHost {
+    /** Workspaces in their current order. */
+    readonly workspaces: {
+        /** The area windows are laid out in; null while there is no screen. */
+        readonly area: { readonly width: number } | null;
+        at(index: number): SlideWorkspace | undefined;
+        show(workspace: SlideWorkspace, options: { duration: number; progress: number }): void;
+        [Symbol.iterator](): Iterator<SlideWorkspace>;
+    };
+    /** Creates a timer that fires after the delay, in milliseconds. */
+    readonly timers: {
+        /** Runs `run` once, `ms` milliseconds from now. */
+        after(ms: number, run: () => void): unknown;
+    };
+    /** The milliseconds an animation takes: 0 while the seat asks for reduced motion. Absent, the time it was given. */
+    motion?(duration: number): number;
+    /** Runs `change` once and plays what it writes over `options.duration` milliseconds along the easing. */
+    requestTransition(change: () => void, options: { duration: number; easing: "ease-out" }): unknown;
+}
+
+/**
+ * The options of `WorkspaceSlideBinding`. Every field is optional; `id` is "workspace-slide" and `trigger` "Swipe3".
+ */
+export interface WorkspaceSlideOptions extends Partial<BindingOptions> {
+    /** How far fingers move for a slide of one whole workspace, in touchpad units. Default 400. */
+    travel?: number;
+    /** The share of a slide at which lifting the fingers finishes it, from 0 to 1. Default 0.25. */
+    commit?: number;
+    /** Milliseconds a whole slide takes, which a slide finished part way scales by what is left. Default 250. */
+    duration?: number;
+    /** The shell to slide in. Default the `gnoblin` global. */
+    host?: SlideHost;
+}
+
+/** The milliseconds the slide back takes, whatever `duration` is. It is a fixed 200 against the forward slide's 250. */
+const SETTLE_BACK_DURATION = 200;
+
+/** What one swipe knows between the fingers' first touch and their lift. */
+interface SlideState {
+    readonly from: SlideWorkspace;
+    /** Where each window the slide has moved rests. */
+    readonly rest: Map<SlideClient, number>;
+    sign: 0 | 1 | -1;
+    to: SlideWorkspace | null;
+    progress: number;
+    /** Something else switched workspace under the fingers: the slide has nothing more to do. */
+    over: boolean;
+}
+
+// ---- The binding ----
+
+/**
+ * A touchpad swipe that slides the workspace in the direction of the fingers.
+ *
+ * @example
+ * bindings.add(new WorkspaceSlideBinding({ travel: 500, commit: 0.3 }));
+ */
+export class WorkspaceSlideBinding extends GestureBinding {
+    /** Finger travel for a slide of one whole workspace, in touchpad units. */
+    travel: number;
+    /** The share of a slide at which lifting finishes it. */
+    commit: number;
+    /** Milliseconds a whole slide takes. */
+    duration: number;
+    readonly #host: SlideHost | undefined;
+
+    constructor(options: WorkspaceSlideOptions = {}) {
+        super({ ...options, id: options.id ?? "workspace-slide", trigger: options.trigger ?? "Swipe3" });
+        this.travel = options.travel ?? 400;
+        this.commit = options.commit ?? 0.25;
+        this.duration = options.duration ?? 250;
+        if (!(this.travel > 0) || !Number.isFinite(this.travel)) {
+            throw new RangeError("WorkspaceSlideBinding travel must be a finite number above 0");
+        }
+        if (!(this.commit >= 0 && this.commit <= 1)) {
+            throw new RangeError("WorkspaceSlideBinding commit must be a number from 0 to 1");
+        }
+        if (!(this.duration >= 0) || !Number.isFinite(this.duration)) {
+            throw new RangeError(
+                "WorkspaceSlideBinding duration must be a finite number of milliseconds of at least 0",
+            );
+        }
+        this.#host = options.host;
+    }
+
+    /** The shell the binding slides in: the one it was given, else the `gnoblin` global (set when the shell runs). */
+    #shell(): SlideHost {
+        return this.#host ?? ((globalThis as { gnoblin?: unknown }).gnoblin as SlideHost);
+    }
+
+    /** The workspace the primary display shows, which a slide starts from. */
+    #active(): SlideWorkspace | undefined {
+        return [...this.#shell().workspaces].find((workspace) => workspace.active);
+    }
+
+    /** Refuses the gesture when there is no workspace to leave or no screen; else records where each window rests. */
+    onStart(_event: DragEvent): SlideState | false {
+        const from = this.#active();
+        if (from === undefined || this.#shell().workspaces.area === null) {
+            return false;
+        }
+        const rest = new Map<SlideClient, number>();
+        for (const client of from.clients) {
+            rest.set(client, client.x);
+        }
+        return { from, rest, sign: 0, to: null, progress: 0, over: false };
+    }
+
+    /** Follows the fingers: picks the target workspace on the first horizontal move and re-places every window. */
+    onUpdate(event: DragEvent, state: object): void {
+        const slide = state as SlideState;
+        if (slide.over) {
+            return;
+        }
+        const active = this.#active();
+        if (active !== slide.from) {
+            if (active !== slide.to) {
+                this.#reset(slide);
+            }
+            slide.over = true;
+            return;
+        }
+        const dx = event.dx ?? 0;
+        const dy = event.dy ?? 0;
+        if (dx === 0) {
+            return; // no direction yet
+        }
+        const sign = dx > 0 ? 1 : -1;
+        if (slide.to === null && Math.abs(dy) > Math.abs(dx)) {
+            return; // vertical so far: not a slide
+        }
+        if (sign !== slide.sign) {
+            this.#reset(slide);
+            const index = slide.from.index - sign;
+            const target = index >= 0 ? this.#shell().workspaces.at(index) : undefined;
+            if (target !== undefined) {
+                slide.sign = sign;
+                slide.to = target;
+                for (const client of target.clients) {
+                    slide.rest.set(client, client.x);
+                    client.visible = true;
+                }
+            }
+        }
+        if (slide.to !== null) {
+            this.#place(slide, Math.min(Math.abs(dx) / this.travel, 1));
+        }
+    }
+
+    /**
+     * Finishes the slide through `workspaces.show` when it passed `commit` and went mostly sideways. Otherwise it
+     * settles back.
+     */
+    onEnd(event: DragEvent, state: object): void {
+        const slide = state as SlideState;
+        const to = slide.to;
+        if (slide.over || to === null || this.#active() !== slide.from) {
+            return;
+        }
+        const committed = slide.progress >= this.commit && Math.abs(event.dx ?? 0) >= Math.abs(event.dy ?? 0);
+        if (!committed) {
+            this.#settleBack(slide, to);
+            return;
+        }
+        // Back to rest at once, so the shell's slide starts from the positions it laid out and carries on from
+        // `progress` for the rest of its time.
+        for (const [client, rest] of slide.rest) {
+            if (client.alive) {
+                client.x = rest;
+            }
+        }
+        this.#shell().workspaces.show(to, {
+            duration: this.duration * (1 - slide.progress),
+            progress: slide.progress,
+        });
+    }
+
+    /** A cancelled gesture slides back like a short one. */
+    onCancel(_event: DragEvent, state: object): void {
+        const slide = state as SlideState;
+        if (slide.over || slide.to === null || this.#active() !== slide.from) {
+            return;
+        }
+        this.#settleBack(slide, slide.to);
+    }
+
+    /** Puts the windows where a slide of `progress` (0 to 1) in the direction of `slide.sign` has them. */
+    #place(slide: SlideState, progress: number): void {
+        const width = this.#shell().workspaces.area?.width ?? 0;
+        slide.progress = progress;
+        for (const client of slide.from.clients) {
+            client.x = (slide.rest.get(client) ?? client.x) + slide.sign * progress * width;
+        }
+        for (const client of slide.to?.clients ?? []) {
+            client.x = (slide.rest.get(client) ?? client.x) + slide.sign * (progress - 1) * width;
+        }
+    }
+
+    /** Hides the workspace a slide had brought in and puts every window it moved back. */
+    #reset(slide: SlideState): void {
+        if (slide.to === null) {
+            return;
+        }
+        for (const client of slide.to.clients) {
+            if (client.alive) {
+                client.visible = false;
+            }
+        }
+        for (const [client, rest] of slide.rest) {
+            if (client.alive) {
+                client.x = rest;
+            }
+        }
+        slide.to = null;
+        slide.sign = 0;
+    }
+
+    /**
+     * Animates the windows back to rest. The incoming workspace's windows are hidden again when the animation
+     * ends, unless the shell showed that workspace meanwhile.
+     */
+    #settleBack(slide: SlideState, to: SlideWorkspace): void {
+        const width = this.#shell().workspaces.area?.width ?? 0;
+        const duration = this.#shell().motion?.(SETTLE_BACK_DURATION) ?? SETTLE_BACK_DURATION;
+        const options = { duration, easing: "ease-out" } as const;
+        const incoming = [...to.clients];
+        this.#shell().requestTransition(() => {
+            for (const client of slide.from.clients) {
+                client.x = slide.rest.get(client) ?? client.x;
+            }
+            for (const client of incoming) {
+                client.x = (slide.rest.get(client) ?? client.x) - slide.sign * width;
+            }
+        }, options);
+        this.#shell().timers.after(duration, () => {
+            if (this.#active() === to) {
+                return; // the workspace came in for good meanwhile
+            }
+            for (const client of incoming) {
+                if (client.alive) {
+                    client.visible = false;
+                    client.x = slide.rest.get(client) ?? client.x;
+                }
+            }
+        });
+    }
+}

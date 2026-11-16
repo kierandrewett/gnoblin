@@ -1,6 +1,6 @@
 //! The lock screen when the shell that holds it fails, against a real compositor.
 //!
-//! The stock shell draws the lock screen and takes the password (`data/js/gnoblin/lock.ts`); the compositor's own card
+//! The stock shell draws the lock screen and takes the password (`data/js/gnoblin-std/lock.ts`); the compositor's own card
 //! (`gnoblin-wayland/src/lock_card.rs`) takes it when no shell holds the screen. A shell holds the screen by a lease it
 //! renews with the lock node's `heartbeat` call, and the compositor gives the screen to the card when the lease lapses
 //! (`LOCK_UI_LEASE_MS`) and the grace after it has gone (`LOCK_UI_GRACE_MS`). The shell is another process and can fail
@@ -42,7 +42,7 @@ use support::lock_session::*;
 
 /// What the scripts of these tests reach into: every export of the library on the global object (the lock screen, the
 /// frame hook, the toolkit) next to the runtime, which is already a global and read-only.
-const IMPORTS: &str = "import * as lib from \"gnoblin\";\n\
+const IMPORTS: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\n\
                        const { gnoblin: _runtime, ...exported } = lib;\n\
                        Object.assign(globalThis, exported);\n";
 

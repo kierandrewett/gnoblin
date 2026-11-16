@@ -72,7 +72,7 @@ fn typescript_sources() -> Vec<PathBuf> {
 
 #[test]
 fn the_docs_and_the_library_list_the_same_codes() {
-    let library = union_members(&read("data/js/gnoblin/errors.ts"));
+    let library = union_members(&read("data/js/gnoblin-core/errors.ts"));
     let documented = documented_codes();
     assert_eq!(library, documented, "errors.ts and docs/shell-api/errors.md");
     assert!(
@@ -101,7 +101,7 @@ fn first_literals(text: &str, opener: &str) -> Vec<String> {
 
 #[test]
 fn no_source_throws_a_code_outside_the_scheme() {
-    let allowed = union_members(&read("data/js/gnoblin/errors.ts"));
+    let allowed = union_members(&read("data/js/gnoblin-core/errors.ts"));
     let mut bad = Vec::new();
     for path in typescript_sources() {
         let text = std::fs::read_to_string(&path).expect("a readable source");
@@ -183,7 +183,7 @@ fn caught(rig: &mut common::Rig, source: &str) -> String {
 #[test]
 fn what_the_throw_sites_throw_carries_a_documented_code() {
     let mut rig = world(1, false, "new Layout()", "");
-    let allowed = union_members(&read("data/js/gnoblin/errors.ts"));
+    let allowed = union_members(&read("data/js/gnoblin-core/errors.ts"));
     for (source, expected) in [
         // a workspace that is not there
         (

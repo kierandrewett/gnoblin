@@ -51,7 +51,7 @@ fn wait_for_count(tag: &str, count: usize) {
 /// An entry that spawns `sleep <tag>` at its top level and keeps the handle where a test can read it.
 fn spawning(tag: &str, rest: &str) -> String {
     format!(
-        "import {{ gnoblin }} from \"gnoblin\";\n(globalThis as any).job = gnoblin.spawn([\"sleep\", \"{tag}\"]);\n{rest}\n"
+        "import {{ gnoblin }} from \"gnoblin-core\";\n(globalThis as any).job = gnoblin.spawn([\"sleep\", \"{tag}\"]);\n{rest}\n"
     )
 }
 

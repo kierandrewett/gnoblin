@@ -11,7 +11,7 @@ An `init.ts` is a program. It runs top to bottom, and each line reads or changes
 short:
 
 ```ts
-import { MasterStackLayout, Workspace, startDecorations } from "gnoblin";
+import { MasterStackLayout, Workspace, startDecorations } from "gnoblin-std";
 
 startDecorations();
 
@@ -148,7 +148,7 @@ of the wrong type. Without a compiler it says so and exits 0. See [Check and typ
 - a `tsconfig.json` that extends the one inside `.gnoblin`.
 
 An editor that understands TypeScript then completes every key and underlines a wrong one. Go-to-definition on an import
-such as `gnoblin/scene` opens the file the shell runs.
+such as `gnoblin-std/scene` opens the file the shell runs.
 
 - Commit `init.ts` and `tsconfig.json`. Do not commit `.gnoblin`: it holds a copy of the library that the command writes
   again, and it ignores itself in a Git repository.
@@ -203,7 +203,7 @@ A workspace with a layout tiles its windows. This file tiles three terminals wit
 pixels. It calls `startDecorations()` because a file that leaves it out draws no titlebars:
 
 ```ts
-import { MasterStackLayout, Workspace, startDecorations } from "gnoblin";
+import { MasterStackLayout, Workspace, startDecorations } from "gnoblin-std";
 
 startDecorations();
 gnoblin.workspaces.add(new Workspace({ id: "dev", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }));
@@ -253,7 +253,8 @@ A `ClientListener` with an `onRequest(client, request)` method hears every reque
 answer it yourself: the built-in answer does not run, and no later listener hears it.
 
 ```ts
-import { ClientListener, gnoblin, windowState } from "gnoblin";
+import { ClientListener, gnoblin } from "gnoblin-core";
+import { windowState } from "gnoblin-std";
 
 class KeepOnTop extends ClientListener {
     onRequest(client, request) {
@@ -321,8 +322,8 @@ then reloads only when asked.
 [console](/js-console). `log` and `info` write at info level, `warn` at warn, `error` at error and `debug` at debug:
 
 ```ts
-import { ClientListener, gnoblin } from "gnoblin";
-import type { Client } from "gnoblin";
+import { ClientListener, gnoblin } from "gnoblin-core";
+import type { Client } from "gnoblin-core";
 
 class Trace extends ClientListener {
     onFocusChanged(client: Client, focused: boolean) {

@@ -4,8 +4,8 @@
 start an application, run a helper and read its output, or hear when something ends. `gnoblin.spawn` is the same call.
 
 ```ts
-import { ProcessListener } from "gnoblin";
-import type { Process } from "gnoblin";
+import { ProcessListener } from "gnoblin-core";
+import type { Process } from "gnoblin-core";
 
 class Notify extends ProcessListener {
     onExit(process: Process, code: number | null) {

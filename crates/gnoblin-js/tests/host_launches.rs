@@ -1,4 +1,4 @@
-//! `gnoblin.launches` (`data/js/gnoblin/launches.ts`) over a fake compositor: the cases of
+//! `gnoblin.launches` (`data/js/gnoblin-core/launches.ts`) over a fake compositor: the cases of
 //! `docs/shell-api/launch-feedback.md`.
 //!
 //! A launch is pending until a window of its application appears or takes focus (`started`), its deadline passes

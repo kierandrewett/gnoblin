@@ -14,7 +14,7 @@ puts one back to the system's value. The compositor keeps one setting for each k
 is the setting of every mouse.
 
 ```ts
-import { Keyboard, Mouse, Touchpad } from "gnoblin";
+import { Keyboard, Mouse, Touchpad } from "gnoblin-core";
 
 for (const device of gnoblin.input.devices) {
     if (device instanceof Keyboard) {
@@ -41,7 +41,7 @@ An `OutputProfile` describes the mode, scale, transform and position of the outp
 hotplug. Add it to `gnoblin.outputs.profiles`. See [monitors](/config/configure/monitors).
 
 ```ts
-import { OutputProfile } from "gnoblin";
+import { OutputProfile } from "gnoblin-std";
 
 const main = new OutputProfile({
     match: { connector: "DP-1" },
@@ -71,7 +71,7 @@ A workspace is an object with a layout. The `gaps` of a workspace set its outer 
 overrides the inner one. See [workspaces](/shell-api/workspaces).
 
 ```ts
-import { MasterStackLayout, Workspace } from "gnoblin";
+import { MasterStackLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(
     new Workspace({
@@ -104,7 +104,7 @@ input.bind("Swipe4Up", () => {
 See [dialogs](/config/configure/dialogs).
 
 ```ts
-import { DialogListener } from "gnoblin";
+import { DialogListener } from "gnoblin-core";
 
 gnoblin.dialogs.addListener(
     new (class extends DialogListener {
