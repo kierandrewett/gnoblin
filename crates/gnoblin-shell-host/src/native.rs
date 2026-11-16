@@ -25,7 +25,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _, OpenOptionsExt as _};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use gnoblin_core_abi::{self as abi, GnoblinApi, GnoblinCtx, GnoblinShellEntry, GnoblinShellStats};
 
@@ -68,14 +68,36 @@ pub enum LoadError {
         /// The limit.
         max: usize,
     },
+    /// The module file does not exist. A build that failed, or has not finished, leaves none.
+    Missing {
+        /// The module path as asked for.
+        path: PathBuf,
+    },
     /// The private copy could not be made.
     Copy(String),
-    /// `dlopen` failed; the loader's own text, which names a missing library.
+    /// `dlopen` failed for a reason the loader has no better words for: a truncated or corrupt file, a missing
+    /// dependency. `message` is the dynamic loader's own text, with the private copy's path replaced by the module's.
     Dlopen {
         /// The module path as asked for.
         path: PathBuf,
         /// What `dlerror` said.
         message: String,
+    },
+    /// The shell references a symbol the installed core does not export: it was built against a newer core.
+    UndefinedSymbol {
+        /// The module path as asked for.
+        path: PathBuf,
+        /// The symbol the core lacks.
+        symbol: String,
+    },
+    /// The shell was linked against another core major (`NEEDED libgnoblin-core.so.2`), which is not installed.
+    OtherCore {
+        /// The module path as asked for.
+        path: PathBuf,
+        /// The library file name the shell asks for.
+        needed: String,
+        /// The ABI major that file name carries.
+        major: u32,
     },
     /// The file loaded but exports no `gnoshell_entry_v1`.
     NotAShell {
@@ -88,6 +110,8 @@ pub enum LoadError {
         path: PathBuf,
         /// The major the module was built for.
         built: u32,
+        /// The minor the module was built against.
+        built_minor: u32,
     },
     /// The module's `init` returned a failure.
     Init {
@@ -117,16 +141,44 @@ impl fmt::Display for LoadError {
                 "{retained} retired shell libraries are still mapped (the limit is {max}). Retired native code is never \
                  unloaded, so restart gnoblin to reload the shell again"
             ),
+            LoadError::Missing { path } => write!(
+                f,
+                "{}: the shell library does not exist (a build that failed or has not finished leaves no file)",
+                path.display()
+            ),
             LoadError::Copy(message) => write!(f, "cannot make a private copy of the shell module: {message}"),
-            LoadError::Dlopen { path, message } => write!(f, "{}: {message}", path.display()),
+            LoadError::Dlopen { path, message } => {
+                write!(f, "{}: cannot load the shell library: {message}", path.display())
+            }
+            LoadError::UndefinedSymbol { path, symbol } => write!(
+                f,
+                "{}: incompatible ABI: the shell needs the symbol `{symbol}`, which the installed core (ABI {}.{}) does not \
+                 provide; it was built against a newer libgnoblin-core, so install that one or rebuild the shell",
+                path.display(),
+                abi::ABI_MAJOR,
+                abi::ABI_MINOR
+            ),
+            LoadError::OtherCore { path, needed, major } => write!(
+                f,
+                "{}: incompatible ABI: this shell was built for gnoblin ABI {major}.x (it needs `{needed}`); the installed \
+                 core is {}.{} (`{}`)",
+                path.display(),
+                abi::ABI_MAJOR,
+                abi::ABI_MINOR,
+                abi::SONAME
+            ),
             LoadError::NotAShell { path } => write!(
                 f,
                 "{}: not a gnoblin shell: the library exports no `gnoshell_entry_v1` (was it built with gnoblin-core and #[gnoblin::main]?)",
                 path.display()
             ),
-            LoadError::AbiMajor { path, built } => write!(
+            LoadError::AbiMajor {
+                path,
+                built,
+                built_minor,
+            } => write!(
                 f,
-                "{}: incompatible ABI: this shell was built for gnoblin ABI {built}.x; the installed core is {}.{}",
+                "{}: incompatible ABI: this shell was built for gnoblin ABI {built}.{built_minor}; the installed core is {}.{}",
                 path.display(),
                 abi::ABI_MAJOR,
                 abi::ABI_MINOR
@@ -284,6 +336,9 @@ impl<E: 'static> NativeLoader<E> {
     /// another ABI major, or `init` failed.
     pub fn load(&'static self, path: &Path, copying: Copying, reload_count: u32) -> Result<NativeModule<E>, LoadError> {
         self.retained.check_room()?;
+        if matches!(fs::metadata(path), Err(error) if error.kind() == io::ErrorKind::NotFound) {
+            return Err(LoadError::Missing { path: path.to_owned() });
+        }
         let target = match copying {
             Copying::Unique => self.unique_copy(path)?,
             Copying::SamePath => path.to_owned(),
@@ -299,10 +354,7 @@ impl<E: 'static> NativeLoader<E> {
             // The mapping keeps the inode alive; the name is no longer needed.
             let _ = fs::remove_file(&target);
         }
-        let handle = opened.map_err(|message| LoadError::Dlopen {
-            path: path.to_owned(),
-            message,
-        })?;
+        let handle = opened.map_err(|message| classify_dlopen(path, &target, &message))?;
         // SAFETY: `handle` is a live handle from `dlopen`, and the symbol name is a NUL-terminated literal.
         let symbol = unsafe { dlsym(handle, c"gnoshell_entry_v1".as_ptr()) };
         if symbol.is_null() {
@@ -326,6 +378,7 @@ impl<E: 'static> NativeLoader<E> {
             return Err(LoadError::AbiMajor {
                 path: path.to_owned(),
                 built: entry.abi_major,
+                built_minor: entry.abi_minor_built,
             });
         }
         let label = if entry.label.ptr.is_null() {
@@ -381,6 +434,7 @@ impl<E: 'static> NativeLoader<E> {
             label,
             path: path.to_owned(),
             mapped_bytes,
+            ended: AtomicBool::new(false),
         })
     }
 }
@@ -395,6 +449,8 @@ pub struct NativeModule<E: 'static> {
     label: String,
     path: PathBuf,
     mapped_bytes: u64,
+    /// Whether the entry's `shutdown` and the shutdown hooks have run.
+    ended: AtomicBool,
 }
 
 impl<E: 'static> NativeModule<E> {
@@ -465,13 +521,14 @@ impl<E: 'static> NativeModule<E> {
         unsafe { (self.loader.api.dispatch)(self.ctx, timeout_ms) }
     }
 
-    /// Retires the generation: runs its shutdown hooks and the entry's `shutdown`, removes every registration (running
-    /// each `drop_user`), and marks it so every later call from its code returns `E_RETIRED`. The library stays mapped,
-    /// is put on the retire list, and the retirement is logged with the running count. Returns how many registrations
-    /// were removed; retiring twice does nothing the second time.
-    pub fn retire(&self) -> usize {
-        if self.state() == GenerationState::Retired {
-            return 0;
+    /// Ends the generation's own code: runs its shutdown hooks and then the entry's `shutdown`, while its registrations and
+    /// claims are still in place. A reload's commit calls this before the new generation takes over, so the old code
+    /// has finished (and may have written state for its successor) before anything of it is removed; [`retire`](Self::retire)
+    /// then removes what it registered. Ending twice does nothing the second time, and ending a retired generation does
+    /// nothing.
+    pub fn end(&self) {
+        if self.state() == GenerationState::Retired || self.ended.swap(true, Ordering::AcqRel) {
+            return;
         }
         self.loader.host.run_shutdown_hooks(self.generation);
         // SAFETY: `shutdown` is the entry's function, in code that is still mapped, called with the context it was made for.
@@ -484,6 +541,17 @@ impl<E: 'static> NativeModule<E> {
                 payload_text(payload.as_ref())
             );
         }
+    }
+
+    /// Retires the generation: [`end`](Self::end)s it if it has not ended, removes every registration (running each
+    /// `drop_user`), and marks it so every later call from its code returns `E_RETIRED`. The library stays mapped,
+    /// is put on the retire list, and the retirement is logged with the running count. Returns how many registrations
+    /// were removed; retiring twice does nothing the second time.
+    pub fn retire(&self) -> usize {
+        if self.state() == GenerationState::Retired {
+            return 0;
+        }
+        self.end();
         let removed = self.loader.host.finish_retire(self.generation);
         let stats = self.keep_mapped(RetainedWhy::Retired);
         log::info!(
@@ -590,5 +658,101 @@ fn dl_error() -> String {
         } else {
             CStr::from_ptr(text).to_string_lossy().into_owned()
         }
+    }
+}
+
+/// Turns the dynamic loader's complaint about the module into the error that tells the user what to do. A symbol the core
+/// lacks and a core of another major are ABI incompatibilities and say so, naming what is missing; anything else keeps the
+/// loader's own words, with the private copy's name replaced by the module's (the copy is gone, the user never saw it).
+fn classify_dlopen(path: &Path, copy: &Path, message: &str) -> LoadError {
+    if let Some(rest) = message.split("undefined symbol: ").nth(1) {
+        let symbol = rest
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .next()
+            .unwrap_or(rest);
+        return LoadError::UndefinedSymbol {
+            path: path.to_owned(),
+            symbol: symbol.to_owned(),
+        };
+    }
+    if let Some(before) = message
+        .split(": cannot open shared object file")
+        .next()
+        .filter(|b| *b != message)
+    {
+        let needed = before.rsplit(char::is_whitespace).next().unwrap_or(before);
+        let major = needed
+            .strip_prefix("libgnoblin-core.so.")
+            .and_then(|digits| digits.parse::<u32>().ok());
+        if let Some(major) = major.filter(|major| *major != abi::ABI_MAJOR) {
+            return LoadError::OtherCore {
+                path: path.to_owned(),
+                needed: needed.to_owned(),
+                major,
+            };
+        }
+    }
+    let named = message.replace(&copy.display().to_string(), &path.display().to_string());
+    let prefix = format!("{}: ", path.display());
+    LoadError::Dlopen {
+        path: path.to_owned(),
+        message: named.strip_prefix(&prefix).unwrap_or(&named).to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn classify(message: &str) -> String {
+        classify_dlopen(
+            Path::new("/home/u/shell/libmine.so"),
+            Path::new("/run/user/1000/gnoblin/42/gen-3-libmine.so"),
+            message,
+        )
+        .to_string()
+    }
+
+    #[test]
+    fn an_undefined_core_symbol_is_an_incompatible_abi_naming_it_and_the_installed_core() {
+        let text = classify("/run/user/1000/gnoblin/42/gen-3-libmine.so: undefined symbol: gnoblin_future_call");
+        assert_eq!(
+            text,
+            "/home/u/shell/libmine.so: incompatible ABI: the shell needs the symbol `gnoblin_future_call`, which the \
+             installed core (ABI 1.0) does not provide; it was built against a newer libgnoblin-core, so install that \
+             one or rebuild the shell"
+        );
+    }
+
+    #[test]
+    fn a_shell_linked_to_another_core_major_names_both_versions() {
+        let text = classify("libgnoblin-core.so.2: cannot open shared object file: No such file or directory");
+        assert_eq!(
+            text,
+            "/home/u/shell/libmine.so: incompatible ABI: this shell was built for gnoblin ABI 2.x (it needs \
+             `libgnoblin-core.so.2`); the installed core is 1.0 (`libgnoblin-core.so.1`)"
+        );
+    }
+
+    #[test]
+    fn a_missing_dependency_that_is_not_the_core_keeps_the_loaders_words_and_the_modules_name() {
+        let text = classify("libother.so.9: cannot open shared object file: No such file or directory");
+        assert_eq!(
+            text,
+            "/home/u/shell/libmine.so: cannot load the shell library: libother.so.9: cannot open shared object file: \
+             No such file or directory"
+        );
+        let truncated = classify("/run/user/1000/gnoblin/42/gen-3-libmine.so: file too short");
+        assert_eq!(
+            truncated,
+            "/home/u/shell/libmine.so: cannot load the shell library: file too short"
+        );
+    }
+
+    #[test]
+    fn the_core_of_this_major_not_being_found_is_not_called_an_abi_mismatch() {
+        let text = classify("libgnoblin-core.so.1: cannot open shared object file: No such file or directory");
+        assert!(text.contains("cannot load the shell library"), "{text}");
+        assert!(!text.contains("incompatible ABI"), "{text}");
     }
 }

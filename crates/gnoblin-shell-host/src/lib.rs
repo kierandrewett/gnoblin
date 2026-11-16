@@ -10,6 +10,9 @@
 //!   visible list of the libraries it cannot unmap. One loader: the core library instantiates it over its function table.
 //! - [`stage`]: the stage, commit, abandon and swap protocol, with rollback marks and failure recovery that keeps the old
 //!   generation. A language plugs its own stage and swap steps in through two traits.
+//! - [`reload`]: the native reload protocol over the loader ([`reload::NativeShell`]: stage, commit, abandon), the
+//!   [`reload::ReloadController`] the compositor edge, `gnoblinctl` and the watcher call, the build step and the module
+//!   watch of the developer loop.
 //! - [`supervisor`]: the strike policy that decides between restaging a faulted generation and giving up.
 //! - [`watch`]: the debounced file watcher, with a caller-supplied test of which files matter.
 //! - [`process`]: the programs a shell starts, owned by generation, adopted across a reload, ended with a report.
@@ -25,6 +28,7 @@ pub mod guard;
 pub mod handle;
 pub mod native;
 pub mod process;
+pub mod reload;
 pub mod retire;
 pub mod stage;
 pub mod supervisor;

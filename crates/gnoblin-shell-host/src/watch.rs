@@ -269,6 +269,35 @@ pub fn with_extensions(extensions: &'static [&'static str]) -> impl Fn(&Path) ->
     }
 }
 
+/// The extensions of a native shell: the shared library a build writes.
+pub const NATIVE_EXTENSIONS: &[&str] = &["so"];
+/// The extensions of a Python shell.
+pub const PYTHON_EXTENSIONS: &[&str] = &["py"];
+/// The extensions of a JavaScript or TypeScript shell.
+pub const SCRIPT_EXTENSIONS: &[&str] = &["ts", "mts", "js", "mjs"];
+/// The extension of a launcher file, which names a shell and its options (`name.toml`).
+pub const LAUNCHER_EXTENSIONS: &[&str] = &["toml"];
+
+/// A relevance test that accepts the files with an extension of any of `sets`: a runtime that serves several languages, or a
+/// host that reloads a native, a Python and a script shell and a launcher file alike. `sets` are the constants above.
+pub fn with_any_extension(sets: &'static [&'static [&'static str]]) -> impl Fn(&Path) -> bool + Send + 'static {
+    move |path| {
+        path.extension()
+            .and_then(OsStr::to_str)
+            .is_some_and(|extension| sets.iter().any(|set| set.contains(&extension)))
+    }
+}
+
+/// The relevance test for every kind of shell file: `.so`, `.py`, `.ts`, `.mts`, `.js`, `.mjs` and a launcher's `.toml`.
+pub fn shell_files() -> impl Fn(&Path) -> bool + Send + 'static {
+    with_any_extension(&[
+        NATIVE_EXTENSIONS,
+        PYTHON_EXTENSIONS,
+        SCRIPT_EXTENSIONS,
+        LAUNCHER_EXTENSIONS,
+    ])
+}
+
 /// Whether `name` is an editor's temp, backup or lock file name.
 ///
 /// - `shell.ts~`: backup (vim, emacs, gedit).
@@ -367,6 +396,35 @@ mod tests {
             request.paths,
             vec![root.join("libshell.so"), root.join("shell.py"), root.join("shell.toml")]
         );
+    }
+
+    #[test]
+    fn shell_files_covers_every_kind_of_shell_and_a_launcher_and_nothing_else() {
+        let relevant = super::shell_files();
+        for yes in [
+            "/s/libshell.so",
+            "/s/shell.py",
+            "/s/shell.ts",
+            "/s/shell.mts",
+            "/s/shell.js",
+            "/s/shell.mjs",
+            "/s/shell.toml",
+        ] {
+            assert!(is_watched(Path::new(yes), &relevant), "{yes}");
+        }
+        for no in [
+            "/s/notes.txt",
+            "/s/shell.so.1",
+            "/s/shell.rs",
+            "/s/shell.py~",
+            "/s/.shell.toml.swp",
+            "/s/Makefile",
+        ] {
+            assert!(!is_watched(Path::new(no), &relevant), "{no}");
+        }
+        let only_native = super::with_any_extension(&[super::NATIVE_EXTENSIONS]);
+        assert!(only_native(Path::new("/s/libshell.so")));
+        assert!(!only_native(Path::new("/s/shell.py")));
     }
 
     #[test]

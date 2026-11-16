@@ -27,10 +27,9 @@ notify.workspace = true
 thiserror.workspace = true
 # The effective user (the private directory module copies live in is ours), and signals to a spawned process group.
 rustix.workspace = true
-# The options of a spawn cross the module boundary as JSON.
+# The options of a spawn cross the module boundary as JSON, and the build step reads cargo's artifact messages.
 serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 tempfile = "3.23.0"
-# The tests of the process module read spawn options from JSON text, as a script host hands them over.
-serde_json.workspace = true
