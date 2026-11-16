@@ -5,7 +5,7 @@ import { CREATE } from "gnoblin-core/host/bridge";
 import { collectionState, itemsOf } from "gnoblin-core/host/collection_state";
 import type { CollectionState, Member, Mutation } from "gnoblin-core/host/collection_state";
 import { ctx } from "gnoblin-core/host/context";
-import { handlerOf, run } from "gnoblin-core/host/dispatch";
+import { attach, detach, handlerOf, run } from "gnoblin-core/host/dispatch";
 import { assertListener } from "gnoblin-core/host/listeners";
 import type { ClientListener, CollectionListener, OutputListener } from "gnoblin-core/host/listeners";
 import { focusedAmong } from "gnoblin-core/host/seat";
@@ -105,10 +105,9 @@ export class Collection<T extends Member> implements Iterable<T> {
     addListener(listener: ClientListener | OutputListener | CollectionListener): void {
         assertListener(listener, "Collection.addListener");
         const state = collectionState(this);
-        if (state.listeners.includes(listener)) {
+        if (!attach(state.listeners, listener)) {
             return;
         }
-        state.listeners.push(listener);
         if (state.parent !== null && state.members === null) {
             state.members = new Set(itemsOf(state));
             ctx.tracked.push(state);
@@ -123,11 +122,9 @@ export class Collection<T extends Member> implements Iterable<T> {
     /** Removes a listener and detaches it from the members it was attached to. */
     removeListener(listener: ClientListener | OutputListener | CollectionListener): void {
         const state = collectionState(this);
-        const at = state.listeners.indexOf(listener);
-        if (at < 0) {
+        if (!detach(state.listeners, listener)) {
             return;
         }
-        state.listeners.splice(at, 1);
         if (state.parent !== null && state.listeners.length === 0 && state.members !== null) {
             state.members = null;
             ctx.tracked.splice(ctx.tracked.indexOf(state), 1);

@@ -38,6 +38,25 @@ export function describeListener(listener: object): string {
     return typeof name === "string" && name ? name : "listener";
 }
 
+/** Adds `listener` to `list` unless it is there already. Returns whether it was added. */
+export function attach<L extends object>(list: L[], listener: L): boolean {
+    if (list.includes(listener)) {
+        return false;
+    }
+    list.push(listener);
+    return true;
+}
+
+/** Removes `listener` from `list`. Returns whether it was there. */
+export function detach<L extends object>(list: L[], listener: L): boolean {
+    const at = list.indexOf(listener);
+    if (at < 0) {
+        return false;
+    }
+    list.splice(at, 1);
+    return true;
+}
+
 /** Runs one queued call if its listener is still attached; a throw is reported, never propagated. */
 export function run(call: Invocation | Task): void {
     if ("task" in call) {

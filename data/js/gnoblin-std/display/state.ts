@@ -48,11 +48,3 @@ let counter = 0;
 export function nextDisplayNumber(): number {
     return ++counter;
 }
-
-/** Checks that a value is a finite number and returns it. */
-export function finite(target: string, value: unknown): number {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-        throw new TypeError(`${target}: must be a finite number`);
-    }
-    return value;
-}

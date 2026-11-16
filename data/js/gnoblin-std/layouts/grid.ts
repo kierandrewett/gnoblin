@@ -3,7 +3,7 @@
 // `triggers` replaces the binding trigger, and `null` leaves the binding out.
 
 import { resolveTriggers } from "gnoblin-core/bindings/binding";
-import { ClientSwapBinding } from "gnoblin-std/bindings/tiling";
+import { addTilingBindings } from "gnoblin-std/bindings/tiling";
 import { checkGap, Layout, tile, tilingGeometry } from "gnoblin-std/layout";
 import type { LayoutContext, Placement } from "gnoblin-std/layout";
 
@@ -41,9 +41,7 @@ export class GridLayout extends Layout {
         this.fill = options.fill ?? "row";
         this.gap = checkGap(options.gap, "GridLayout");
         this.triggers = Object.freeze(resolveTriggers(DEFAULT_TRIGGERS, options.triggers));
-        if (this.triggers.swap !== null) {
-            this.bindings.add(new ClientSwapBinding({ id: "swap", trigger: this.triggers.swap }));
-        }
+        addTilingBindings(this.bindings, this.triggers);
     }
 
     /** Returns one tiled placement per child in the selected grid order. */

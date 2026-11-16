@@ -3,6 +3,7 @@
 // queued call under the listener budget, a throw is reported once and the next listener still runs, and a listener
 // that is added twice is called once. A reload detaches every listener the old file attached.
 
+import { attach, detach } from "gnoblin-core/host/dispatch";
 import type { Runtime, Session } from "gnoblin-core/session/calls";
 import { camel } from "gnoblin-core/session/names";
 import type { Host, LockState, SignalMessage } from "gnoblin-core/session/types";
@@ -77,17 +78,12 @@ export class Listeners<L extends object> {
                 throw new TypeError(`${this.#site}.addListener: ${name} must be a function`);
             }
         }
-        if (!this.#list.includes(listener)) {
-            this.#list.push(listener);
-        }
+        attach(this.#list, listener);
     }
 
     /** Detaches `listener`; a call already queued for it does not run. */
     remove(listener: L): void {
-        const at = this.#list.indexOf(listener);
-        if (at >= 0) {
-            this.#list.splice(at, 1);
-        }
+        detach(this.#list, listener);
     }
 
     /** The listeners now attached, in the order they were added. */

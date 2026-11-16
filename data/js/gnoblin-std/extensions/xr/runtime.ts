@@ -6,6 +6,7 @@ import { XRList } from "gnoblin-std/extensions/xr/controller";
 import type { XRController } from "gnoblin-std/extensions/xr/controller";
 import { matches } from "gnoblin-std/extensions/xr/availability";
 import { SpatialLayout } from "gnoblin-std/extensions/xr/layout";
+import { XRListeners } from "gnoblin-std/extensions/xr/listeners";
 import { XRRoom } from "gnoblin-std/extensions/xr/room";
 import { XRExtension, XRSession } from "gnoblin-std/extensions/xr/session";
 import type { XROptions } from "gnoblin-std/extensions/xr/session";
@@ -33,7 +34,7 @@ interface Run {
 export class XRRuntime {
     readonly #world: XRWorld;
     readonly #sessions: XRList<XRSession>;
-    readonly #listeners: object[] = [];
+    readonly #listeners: XRListeners;
     readonly #runs = new Map<XRController, Run>();
     readonly #declined = new Set<XRController>();
     readonly #since = new Map<XRController, { key: string; at: number }>();
@@ -46,6 +47,7 @@ export class XRRuntime {
     constructor(world: XRWorld) {
         this.#world = world;
         this.#sessions = new XRList<XRSession>(world.report);
+        this.#listeners = new XRListeners("XRListener", world.report);
         // A running session follows the room and the drags every frame.
         onWake("xr session", () => (this.#session === null ? NEVER : NOW));
     }
@@ -57,29 +59,16 @@ export class XRRuntime {
 
     /** Receives session start and end notifications. */
     addListener(listener: object): void {
-        if (typeof listener !== "object" || listener === null) {
-            throw new TypeError("addListener: the listener must be an object");
-        }
-        this.#listeners.push(listener);
+        this.#listeners.add(listener);
     }
 
     /** Stops receiving session lifecycle notifications. */
     removeListener(listener: object): void {
-        const at = this.#listeners.indexOf(listener);
-        if (at >= 0) this.#listeners.splice(at, 1);
+        this.#listeners.remove(listener);
     }
 
     #tell(method: "onSessionStarted" | "onSessionEnded", session: XRSession): void {
-        for (const listener of [...this.#listeners]) {
-            const handler = Reflect.get(listener, method);
-            if (typeof handler === "function") {
-                try {
-                    handler.call(listener, session);
-                } catch (error) {
-                    this.#world.report(`XRListener.${method}`, error);
-                }
-            }
-        }
+        this.#listeners.tell(method, session);
     }
 
     /** Whether `gnoblin-std/extensions/xr` may be imported now: the session declared XR, or the program has a session. */

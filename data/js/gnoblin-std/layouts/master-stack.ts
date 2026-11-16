@@ -4,7 +4,7 @@
 // `triggers` replaces a binding trigger, and `null` leaves that binding out.
 
 import { resolveTriggers } from "gnoblin-core/bindings/binding";
-import { ClientSwapBinding, SplitResizeBinding } from "gnoblin-std/bindings/tiling";
+import { addTilingBindings } from "gnoblin-std/bindings/tiling";
 import type { LayoutSplit } from "gnoblin-std/bindings/tiling";
 import type { Point } from "gnoblin-core/bindings/types";
 import { checkGap, clamp, Layout, tile, tilingGeometry } from "gnoblin-std/layout";
@@ -65,12 +65,7 @@ export class MasterStackLayout extends Layout {
         this.gap = checkGap(options.gap, "MasterStackLayout");
         this.orientation = options.orientation ?? "left";
         this.triggers = Object.freeze(resolveTriggers(DEFAULT_TRIGGERS, options.triggers));
-        if (this.triggers.swap !== null) {
-            this.bindings.add(new ClientSwapBinding({ id: "swap", trigger: this.triggers.swap }));
-        }
-        if (this.triggers.resize !== null) {
-            this.bindings.add(new SplitResizeBinding({ id: "resize", trigger: this.triggers.resize }));
-        }
+        addTilingBindings(this.bindings, this.triggers);
     }
 
     /** Returns one tiled placement per child in the master and stack regions. */

@@ -5,6 +5,7 @@
 import { Operation } from "gnoblin-core/operation";
 import type { OperationHost } from "gnoblin-core/operation";
 import type { ErrorCode } from "gnoblin-core/errors";
+import { attach, describeListener, detach } from "gnoblin-core/host/dispatch";
 
 /** Where one standard stream goes: the session log, nowhere, or into the end event (up to `outputLimit` bytes). */
 export type StreamMode = "inherit" | "discard" | "capture";
@@ -277,17 +278,12 @@ export class ProcessTable {
         if (listener === null || typeof listener !== "object") {
             throw new TypeError("gnoblin.process.addListener: expects a ProcessListener");
         }
-        if (!this.#listeners.includes(listener)) {
-            this.#listeners.push(listener);
-        }
+        attach(this.#listeners, listener);
     }
 
     /** Removes a listener. A listener that is not there is ignored. */
     removeListener(listener: ProcessListener): void {
-        const index = this.#listeners.indexOf(listener);
-        if (index >= 0) {
-            this.#listeners.splice(index, 1);
-        }
+        detach(this.#listeners, listener);
     }
 
     /** The end of a process, as the host reports it. A process of another generation is not ours and is ignored. */
@@ -301,7 +297,7 @@ export class ProcessTable {
         process.end(exit);
         for (const listener of [...this.#listeners]) {
             if (typeof listener.onExit === "function") {
-                this.#host.schedule(`${describe(listener)}.onExit`, () => {
+                this.#host.schedule(`${describeListener(listener)}.onExit`, () => {
                     if (this.#listeners.includes(listener)) {
                         listener.onExit?.(process, process.exitCode);
                     }
@@ -335,10 +331,4 @@ export class ProcessTable {
         }
         return operation;
     }
-}
-
-/** The name of a listener's class, for the report when one of its calls throws; `listener` when it has none. */
-function describe(listener: object): string {
-    const name: string | undefined = listener.constructor?.name;
-    return name !== undefined && name !== "" ? name : "listener";
 }

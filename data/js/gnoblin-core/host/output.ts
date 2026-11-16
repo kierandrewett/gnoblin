@@ -3,6 +3,7 @@
 import type { OutputConfig } from "gnoblin-core/output_config";
 import { CREATE, host } from "gnoblin-core/host/bridge";
 import { ctx } from "gnoblin-core/host/context";
+import { attach, detach } from "gnoblin-core/host/dispatch";
 import { assertListener } from "gnoblin-core/host/listeners";
 import type { OutputListener } from "gnoblin-core/host/listeners";
 import { read, stateOf } from "gnoblin-core/host/node_state";
@@ -264,19 +265,12 @@ export class Output extends NativeObject {
     /** Attaches a listener to this output. Adding the same listener twice has no effect. */
     addListener(listener: OutputListener): void {
         assertListener(listener, `${this}.addListener`);
-        const { listeners } = stateOf(this);
-        if (!listeners.includes(listener)) {
-            listeners.push(listener);
-        }
+        attach(stateOf(this).listeners, listener);
     }
 
     /** Detaches a listener that `addListener` attached; one that is not attached is ignored. */
     removeListener(listener: OutputListener): void {
-        const { listeners } = stateOf(this);
-        const at = listeners.indexOf(listener);
-        if (at >= 0) {
-            listeners.splice(at, 1);
-        }
+        detach(stateOf(this).listeners, listener);
     }
 
     /** The output's label for messages, such as `Output#DP-1`. */

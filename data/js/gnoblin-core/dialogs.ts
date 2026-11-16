@@ -6,6 +6,7 @@
 // compositor. It does not own the polkit view: read `gnoblin-core/authentication`, which the manager also serves.
 
 import type { AuthenticationListener, AuthenticationRequest } from "gnoblin-core/authentication";
+import { attach, describeListener, detach } from "gnoblin-core/host/dispatch";
 
 /**
  * What a request is: a consent dialog for a portal request, the compositor's passphrase prompt, or a polkit
@@ -214,12 +215,6 @@ function classify(event: DialogEvent): Classified | null {
     return null;
 }
 
-/** The name of a listener's class, for the report when one of its calls throws; `listener` when it has none. */
-function describe(listener: object): string {
-    const name: string | undefined = listener.constructor?.name;
-    return name !== undefined && name !== "" ? name : "listener";
-}
-
 /** Runs the method of `listener` that takes a consent or passphrase request. */
 function notify(listener: DialogListener, request: ObservedRequest<"consent"> | ObservedRequest<"secret">): void {
     if (request.kind === "consent") {
@@ -261,32 +256,22 @@ export class DialogManager {
         if (listener === null || typeof listener !== "object") {
             throw new TypeError("gnoblin.dialogs.addListener: expects a DialogListener");
         }
-        if (!this.#listeners.includes(listener)) {
-            this.#listeners.push(listener);
-        }
+        attach(this.#listeners, listener);
     }
 
     /** Removes a listener. A listener that is not there is ignored. */
     removeListener(listener: DialogListener): void {
-        const index = this.#listeners.indexOf(listener);
-        if (index >= 0) {
-            this.#listeners.splice(index, 1);
-        }
+        detach(this.#listeners, listener);
     }
 
     /** Adds a listener of polkit authentications. The shell calls this for `gnoblin.authentication`. */
     addAuthenticationListener(listener: AuthenticationListener): void {
-        if (!this.#authListeners.includes(listener)) {
-            this.#authListeners.push(listener);
-        }
+        attach(this.#authListeners, listener);
     }
 
     /** Removes an authentication listener. A listener that is not there is ignored. */
     removeAuthenticationListener(listener: AuthenticationListener): void {
-        const index = this.#authListeners.indexOf(listener);
-        if (index >= 0) {
-            this.#authListeners.splice(index, 1);
-        }
+        detach(this.#authListeners, listener);
     }
 
     /** What the compositor sent since the last frame. The shell calls this; a script does not. */
@@ -346,7 +331,7 @@ export class DialogManager {
         // Iterate a copy: a listener may remove itself while the calls are being queued.
         for (const listener of [...this.#authListeners]) {
             if (typeof listener.onAuthenticationRequest === "function") {
-                this.#host.schedule(`${describe(listener)}.onAuthenticationRequest`, () => {
+                this.#host.schedule(`${describeListener(listener)}.onAuthenticationRequest`, () => {
                     // A listener removed since the call was queued is not called.
                     if (this.#authListeners.includes(listener)) {
                         listener.onAuthenticationRequest?.(authentication);
@@ -370,7 +355,7 @@ export class DialogManager {
         const method = found.kind === "consent" ? "onConsentRequest" : "onSecretRequest";
         for (const listener of [...this.#listeners]) {
             if (typeof listener[method] === "function") {
-                this.#host.schedule(`${describe(listener)}.${method}`, () => {
+                this.#host.schedule(`${describeListener(listener)}.${method}`, () => {
                     if (this.#listeners.includes(listener)) {
                         notify(listener, observed);
                     }

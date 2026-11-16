@@ -1,7 +1,7 @@
 // `Camera2D`, the flat camera of a viewport.
 
 import type { Camera2DInit, DisplayVec2 } from "gnoblin-std/display/types";
-import { finite } from "gnoblin-std/display/state";
+import { finite } from "gnoblin-core/math/vector";
 import { Node } from "gnoblin-std/scene/node";
 import type { NodeOptions } from "gnoblin-std/scene/node";
 

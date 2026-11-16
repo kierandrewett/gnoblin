@@ -3,6 +3,7 @@
 import { GnoblinError } from "gnoblin-core/errors";
 import { CREATE, host } from "gnoblin-core/host/bridge";
 import { ctx } from "gnoblin-core/host/context";
+import { attach, detach } from "gnoblin-core/host/dispatch";
 import { hooks } from "gnoblin-core/host/hooks";
 import { assertListener } from "gnoblin-core/host/listeners";
 import type { ClientListener } from "gnoblin-core/host/listeners";
@@ -404,19 +405,12 @@ export class Client extends NativeObject {
     /** Attaches a listener to this client; adding the same listener twice has no effect. */
     addListener(listener: ClientListener): void {
         assertListener(listener, `Client#${host.label(stateOf(this).node)}.addListener`);
-        const { listeners } = stateOf(this);
-        if (!listeners.includes(listener)) {
-            listeners.push(listener);
-        }
+        attach(stateOf(this).listeners, listener);
     }
 
     /** Detaches a listener from this client. */
     removeListener(listener: ClientListener): void {
-        const { listeners } = stateOf(this);
-        const at = listeners.indexOf(listener);
-        if (at >= 0) {
-            listeners.splice(at, 1);
-        }
+        detach(stateOf(this).listeners, listener);
     }
 
     /** Asks the client to close. The client is `alive` until the compositor destroys the window. */

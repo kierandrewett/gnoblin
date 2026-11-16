@@ -5,6 +5,7 @@ import { errorCodeOfRefusal } from "gnoblin-core/errors";
 import { SceneError } from "gnoblin-std/scene/backend";
 import { Transform3D } from "gnoblin-core/math/transform";
 import { Ray, Vector3 } from "gnoblin-core/math/vector";
+import { XRListeners } from "gnoblin-std/extensions/xr/listeners";
 import type { NodeNumber, XRWorld } from "gnoblin-std/extensions/xr/types";
 
 /** What a shell may claim on a controller, in the order the node lists it: the names `controller.claimed` accepts. */
@@ -196,11 +197,10 @@ export class XRController {
 /** A list the XR module keeps current, which a listener can follow. */
 export class XRList<T extends { readonly id: string }> implements Iterable<T> {
     readonly #items: T[] = [];
-    readonly #listeners: object[] = [];
-    readonly #report: (site: string, error: unknown) => void;
+    readonly #listeners: XRListeners;
 
     constructor(report: (site: string, error: unknown) => void) {
-        this.#report = report;
+        this.#listeners = new XRListeners("XRList", report);
     }
 
     /** Number of items in the list. */
@@ -220,16 +220,12 @@ export class XRList<T extends { readonly id: string }> implements Iterable<T> {
 
     /** Calls `onAdded(item)` and `onRemoved(item)` on `listener` for later changes. */
     addListener(listener: object): void {
-        if (typeof listener !== "object" || listener === null) {
-            throw new TypeError("addListener: the listener must be an object");
-        }
-        this.#listeners.push(listener);
+        this.#listeners.add(listener);
     }
 
     /** Stops notifications to this listener. */
     removeListener(listener: object): void {
-        const at = this.#listeners.indexOf(listener);
-        if (at >= 0) this.#listeners.splice(at, 1);
+        this.#listeners.remove(listener);
     }
 
     /** @internal */
@@ -248,16 +244,7 @@ export class XRList<T extends { readonly id: string }> implements Iterable<T> {
     }
 
     #tell(method: "onAdded" | "onRemoved", item: T): void {
-        for (const listener of [...this.#listeners]) {
-            const handler = Reflect.get(listener, method);
-            if (typeof handler === "function") {
-                try {
-                    handler.call(listener, item);
-                } catch (error) {
-                    this.#report(`XRList.${method}`, error);
-                }
-            }
-        }
+        this.#listeners.tell(method, item);
     }
 
     /** Iterates over a snapshot of the current items. */

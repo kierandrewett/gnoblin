@@ -2,7 +2,7 @@
 // pointer, and `SplitResizeBinding` moves the split between two tiles.
 
 import { PointerDragBinding } from "gnoblin-core/bindings/binding";
-import type { PointerDragBindingOptions } from "gnoblin-core/bindings/binding";
+import type { BindingCollection, PointerDragBindingOptions } from "gnoblin-core/bindings/binding";
 import { draggable } from "gnoblin-std/bindings/drag";
 import type { BindingClient, DragEvent, Point } from "gnoblin-core/bindings/types";
 
@@ -202,6 +202,23 @@ export class SplitResizeBinding extends PointerDragBinding {
         const { split, cross } = state as SplitState;
         split.reset();
         cross?.split.reset();
+    }
+}
+
+/**
+ * Adds the drag bindings a tiling layout offers to `bindings`: the swap binding for a `swap` trigger, and the resize
+ * binding for a `resize` trigger. A `null` trigger leaves its binding out, and so does an absent `resize` (a layout
+ * with no divider has none).
+ */
+export function addTilingBindings(
+    bindings: BindingCollection,
+    triggers: { readonly swap: string | null; readonly resize?: string | null },
+): void {
+    if (triggers.swap !== null) {
+        bindings.add(new ClientSwapBinding({ id: "swap", trigger: triggers.swap }));
+    }
+    if (triggers.resize !== undefined && triggers.resize !== null) {
+        bindings.add(new SplitResizeBinding({ id: "resize", trigger: triggers.resize }));
     }
 }
 
