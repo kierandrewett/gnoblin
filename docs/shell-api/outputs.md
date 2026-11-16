@@ -84,16 +84,36 @@ value.
 A value of the wrong shape throws before anything is sent, naming the key: `Output#output-1.apply.scale must be a number
 from 0.5 to 4`.
 
-The compositor answers a frame later. `apply` returns an `OutputApplication` with `done` and `error`, which is `null` on
-success. An `OutputListener` hears the same answer in `onApplied(output, error)`. A refusal names the key, as in
-`position: HDMI-1 and DP-1 would overlap`.
+The compositor answers a frame later. `apply` and `mirror` return an [`Operation`](/shell-api/errors#operations), like the
+other calls that finish later.
 
-**Mode and scale.** Drive an output at another mode, composed at a fractional scale:
+- It succeeds with the output.
+- It fails with the compositor's own words as `error.message`. A refusal names the key, as in
+  `position: HDMI-1 and DP-1 would overlap`.
+
+The `code` says what kind of refusal it was:
+
+- `unsupported`: the compositor cannot do what the key asks, a `transform` other than `normal`.
+- `not_found`: the output went away before the answer, or the compositor does not have it connected.
+- `denied`: the compositor refused the arrangement and kept the last good one, a mode, a position or a mirror.
+- `read_only`: the compositor refused to let the shell write the node, as it refuses a property write.
+
+An `OutputListener` hears the same answer in `onApplied(output, error)`, where `error` is the words or `null`.
+
+**Mode and scale.** Drive an output at another mode, composed at a fractional scale, and read what happened:
 
 ```ts
 import { gnoblin } from "gnoblin-core";
 
-const app = gnoblin.outputs.where({ name: "output-1" }).at(0)!.apply({ mode: "2560x1440@60", scale: 1.25 });
+gnoblin.outputs
+    .where({ name: "output-1" })
+    .at(0)!
+    .apply({ mode: "2560x1440@60", scale: 1.25 })
+    .onComplete((output, error) => {
+        if (error) {
+            gnoblin.spawn(["notify-send", `Display change refused (${error.code}): ${error.message}`]);
+        }
+    });
 ```
 
 **Position.** Put an output below another. Outputs share one coordinate space, so a window can straddle the seam:

@@ -884,7 +884,7 @@ fn world_with_connectors(body: &str) -> Rig {
 }
 
 #[test]
-fn apply_sends_the_request_and_the_compositors_answer_reaches_the_application_and_the_listeners() {
+fn apply_sends_the_request_and_the_compositors_answer_settles_the_operation_and_reaches_the_listeners() {
     let mut rig = world_with_connectors("");
     exec(
         &mut rig,
@@ -892,7 +892,8 @@ fn apply_sends_the_request_and_the_compositors_answer_reaches_the_application_an
          gnoblin.outputs.addListener(new (class extends OutputListener {\n\
              onApplied(o, error) { g.log.push(o.connector + ' ' + error); }\n\
          })());\n\
-         g.app = gnoblin.outputs.at(1).apply({ mode: '1920x1080@60', scale: 1.25, position: [1000, 0], enabled: true });",
+         g.app = gnoblin.outputs.at(1).apply({ mode: '1920x1080@60', scale: 1.25, position: [1000, 0], enabled: true });\n\
+         g.app.onComplete((value, error) => g.log.push('done ' + (error ? error.code : value.connector)));",
     );
     settle(&mut rig);
     let sent = rig.comp.applies();
@@ -903,30 +904,105 @@ fn apply_sends_the_request_and_the_compositors_answer_reaches_the_application_an
         "mode=1920x1080@60\nscale=1.25\nposition=1000,0\nenabled=true"
     );
     assert_eq!(
-        rig.eval("`${g.app.done} ${g.app.error}`"),
-        "false null",
-        "nothing is known until it answers"
+        rig.eval("`${g.app.constructor.name} ${g.app.method} ${g.app.status} ${g.app.value} ${g.app.error}`"),
+        format!("Operation Output#{B}.apply pending undefined undefined"),
+        "an operation like the other asynchronous verbs; nothing is known until it answers"
     );
 
     rig.comp.answer(sent[0].2, "ok", "");
     settle(&mut rig);
-    assert_eq!(rig.eval("`${g.app.done} ${g.app.error}`"), "true null");
-    assert_eq!(rig.eval("g.log.join('|')"), "HDMI-1 null");
+    assert_eq!(
+        rig.eval("`${g.app.status} ${g.app.value === gnoblin.outputs.at(1)} ${g.app.error}`"),
+        "succeeded true undefined",
+        "it succeeds with the output"
+    );
+    assert_eq!(
+        rig.eval("g.log.join('|')"),
+        "done HDMI-1|HDMI-1 null",
+        "the operation's callback and the output's listeners hear the one answer, the operation's first"
+    );
 
-    // A refusal is the compositor's text, under the same object and to the same listeners.
-    exec(&mut rig, "g.refused = gnoblin.outputs.at(1).apply({ mode: '1x1@1' });");
+    // A refusal is the compositor's text, under the same object and to the same listeners: the operation fails with those
+    // words as its message, so the key they name is still the first thing a script reads.
+    exec(
+        &mut rig,
+        "g.refused = gnoblin.outputs.at(1).apply({ mode: '1x1@1' });\n\
+         g.refused.onComplete((value, error) => g.log.push('done ' + error.code));",
+    );
     settle(&mut rig);
     let token = rig.comp.applies()[1].2;
     rig.comp
         .answer(token, "", "mode: HDMI-1: the backend refused the change");
     settle(&mut rig);
     assert_eq!(
-        rig.eval("g.refused.error"),
-        "mode: HDMI-1: the backend refused the change"
+        rig.eval("`${g.refused.status} ${g.refused.value} ${g.refused.error.code}: ${g.refused.error.message}`"),
+        "failed undefined denied: mode: HDMI-1: the backend refused the change"
     );
     assert_eq!(
         rig.eval("g.log.join('|')"),
-        "HDMI-1 null|HDMI-1 mode: HDMI-1: the backend refused the change"
+        "done HDMI-1|HDMI-1 null|done denied|HDMI-1 mode: HDMI-1: the backend refused the change"
+    );
+}
+
+#[test]
+fn an_apply_the_compositor_refuses_fails_with_its_words_and_a_code_that_says_what_kind_of_refusal() {
+    let mut rig = world_with_connectors("");
+    // The compositor's own refusals, as `gnoblin-wayland`'s output policy words them, and the shell's word for a call it
+    // had to give up on: the key a refusal names stays in the message, exactly as the compositor said it.
+    let cases = [
+        ("transform: this compositor draws only `normal`", "unsupported"),
+        ("the output is not connected", "not_found"),
+        (
+            "failed: the transaction was refused unknown-node and the call was not sent again",
+            "not_found",
+        ),
+        (
+            "failed: the transaction was refused read-only and the call was not sent again",
+            "read_only",
+        ),
+        ("mirror_of: DP-9 is not another connected output", "denied"),
+        ("no output would stay enabled", "denied"),
+    ];
+    for (index, (words, code)) in cases.iter().enumerate() {
+        exec(
+            &mut rig,
+            &format!("g.op{index} = gnoblin.outputs.at(1).apply({{ scale: 1.{index} }});"),
+        );
+        settle(&mut rig);
+        let token = rig.comp.applies()[index].2;
+        rig.comp.answer(token, "", words);
+        settle(&mut rig);
+        assert_eq!(
+            rig.eval(&format!(
+                "`${{g.op{index}.status}}|${{g.op{index}.error.code}}|${{g.op{index}.error.message}}`"
+            )),
+            format!("failed|{code}|{words}")
+        );
+    }
+}
+
+#[test]
+fn an_apply_on_an_output_that_is_gone_throws_and_a_mirror_is_an_operation_too() {
+    let mut rig = world_with_connectors("");
+    exec(
+        &mut rig,
+        "g.gone = gnoblin.outputs.at(1); g.mirrored = g.gone.mirror(gnoblin.outputs.at(0));",
+    );
+    settle(&mut rig);
+    let sent = rig.comp.applies();
+    assert_eq!(sent[0].1, "mirror_of=DP-1");
+    assert_eq!(
+        rig.eval("`${g.mirrored.method} ${g.mirrored.status}`"),
+        format!("Output#{B}.mirror pending")
+    );
+    rig.comp.answer(sent[0].2, "", "");
+    settle(&mut rig);
+    assert_eq!(rig.eval("g.mirrored.status"), "succeeded");
+    unplug(&mut rig, B);
+    assert_eq!(
+        rig.eval("try { g.gone.apply({ scale: 1 }); 'none' } catch (e) { `${e.constructor.name}: ${e.code}: ${e.message.endsWith('the output is gone')}` }"),
+        "GnoblinError: not_found: true",
+        "a call that cannot be made throws, as the other verbs do"
     );
 }
 
@@ -1006,7 +1082,7 @@ fn the_profiles_of_the_config_are_applied_by_connector_and_a_refusal_names_the_k
     let diagnostics = rig.settle();
     assert!(
         diagnostics.iter().all(|line| !line.starts_with("outputs.")),
-        "a script's own apply reports on its application, not as a config notice: {diagnostics:?}"
+        "a script's own apply reports on its operation, not as a config notice: {diagnostics:?}"
     );
 }
 

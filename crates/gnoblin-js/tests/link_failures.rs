@@ -129,9 +129,9 @@ fn a_call_beside_a_refused_op_goes_again_and_is_answered() {
     rig.comp.answer(sent[1].2, "ok", "");
     settle(&mut rig);
     assert_eq!(
-        rig.eval("`${g.app.done} ${g.app.error}`"),
-        "true null",
-        "the application hears the compositor's answer"
+        rig.eval("`${g.app.status} ${g.app.value === gnoblin.outputs.at(1)}`"),
+        "succeeded true",
+        "the operation hears the compositor's answer"
     );
 }
 
@@ -149,8 +149,15 @@ fn a_call_the_compositor_refuses_is_answered_failed_and_not_left_waiting() {
         1,
         "a call that is wrong is not sent again: {told:?}"
     );
-    assert_eq!(rig.eval("g.app.done"), "true", "the application is settled");
-    assert_ne!(rig.eval("String(g.app.error)"), "null", "and says it failed");
+    assert_eq!(
+        rig.eval("g.app.status"),
+        "failed",
+        "the operation is settled, and says it failed"
+    );
+    assert_eq!(
+        rig.eval("g.app.error.message"),
+        "failed: the transaction was refused unknown-member and the call was not sent again"
+    );
 }
 
 #[test]
@@ -175,11 +182,15 @@ fn a_refusal_that_names_no_op_gives_the_whole_frame_up_and_answers_its_calls() {
         "and the script reads what the compositor holds"
     );
     assert_eq!(
-        rig.eval("g.app.done"),
-        "true",
+        rig.eval("g.app.status"),
+        "failed",
         "the apply is settled, not waiting for an answer"
     );
-    assert_ne!(rig.eval("String(g.app.error)"), "null");
+    assert_eq!(
+        rig.eval("`${g.app.error.code}: ${g.app.error.message}`"),
+        "denied: failed: the transaction was refused too-large and the call was not sent again",
+        "with the compositor's word for the refusal"
+    );
     assert_eq!(rig.comp.refused(), 1, "nothing was sent again to be refused again");
 }
 

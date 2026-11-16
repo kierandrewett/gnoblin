@@ -129,7 +129,7 @@ fn an_output_apply_refused_stale_base_with_no_op_named_goes_again_and_is_answere
     shell.forged.borrow_mut().forge = Some(Forge::NextBaseAhead);
     shell.eval("globalThis.app = gnoblin.outputs.at(0).apply({ scale: 1 }); 0");
     shell.until("the apply is answered", |shell| {
-        shell.eval("String(app.done)") == "true"
+        shell.eval("String(app.status)") != "pending"
     });
 
     let forged = shell.forged.borrow();

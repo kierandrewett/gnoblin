@@ -62,7 +62,7 @@ fn world(windows: u64, layout: &str) -> Rig {
 // ---- a call whose text is content --------------------------------------------------------------------------------
 
 #[test]
-fn an_output_apply_refused_stale_base_is_sent_again_and_its_answer_reaches_the_application() {
+fn an_output_apply_refused_stale_base_is_sent_again_and_its_answer_settles_the_operation() {
     let mut rig = world(0, "new Layout()");
     // The compositor writes the screen just before the shell's transaction lands: stale at the apply, which is op 0.
     rig.comp.stale(1, None, B, "name");
@@ -87,9 +87,9 @@ fn an_output_apply_refused_stale_base_is_sent_again_and_its_answer_reaches_the_a
     rig.comp.answer(sent[1].2, "ok", "");
     settle(&mut rig);
     assert_eq!(
-        rig.eval("`${g.app.done} ${g.app.error}`"),
-        "true null",
-        "the application hears the compositor's answer"
+        rig.eval("`${g.app.status} ${g.app.value === gnoblin.outputs.at(1)}`"),
+        "succeeded true",
+        "the operation hears the compositor's answer"
     );
 }
 
@@ -109,8 +109,12 @@ fn an_output_apply_on_a_screen_that_is_gone_is_answered_with_a_refusal_and_not_l
         1,
         "a call on a node that is gone is not sent again"
     );
-    assert_eq!(rig.eval("g.app.done"), "true", "the application is settled");
-    assert_ne!(rig.eval("String(g.app.error)"), "null", "and says it failed");
+    assert_eq!(
+        rig.eval("g.app.status"),
+        "failed",
+        "the operation is settled, and says it failed"
+    );
+    assert_eq!(rig.eval("g.app.error.code"), "not_found", "because the screen is gone");
 }
 
 #[test]
@@ -128,8 +132,12 @@ fn an_apply_whose_screen_is_destroyed_while_it_waits_to_go_again_is_answered_fai
     exec(&mut rig, "g.app = gnoblin.outputs.at(1).apply({ scale: 1.25 });");
     rig.settle();
     assert_eq!(rig.comp.applies().len(), 1, "the apply was never sent a second time");
-    assert_eq!(rig.eval("g.app.done"), "true", "the application is settled");
-    assert_ne!(rig.eval("String(g.app.error)"), "null", "and says it failed");
+    assert_eq!(
+        rig.eval("g.app.status"),
+        "failed",
+        "the operation is settled, and says it failed"
+    );
+    assert_eq!(rig.eval("g.app.error.code"), "not_found", "because the screen is gone");
 }
 
 // ---- a refusal that names no op ----------------------------------------------------------------------------------

@@ -8,7 +8,7 @@ import { assertListener } from "gnoblin-core/host/listeners";
 import type { OutputListener } from "gnoblin-core/host/listeners";
 import { read, stateOf } from "gnoblin-core/host/node_state";
 import { applyOutput } from "gnoblin-core/host/output_apply";
-import type { OutputApplication } from "gnoblin-core/host/output_apply";
+import type { Operation } from "gnoblin-core/operation";
 import { NativeObject } from "gnoblin-core/native_object";
 import type { NodeId, Rect } from "gnoblin-core/types";
 
@@ -246,14 +246,18 @@ export class Output extends NativeObject {
      * monitor's profile, so the same monitor on the same port gets it back after an unplug. A key left out keeps its
      * value. The whole arrangement is checked before hardware is touched; if the backend then refuses a mode, the
      * earlier changes are put back and the last good arrangement stays. A bad value throws here, naming the key.
-     * The compositor's answer arrives a frame later on the returned `OutputApplication` and `onApplied`.
+     *
+     * The compositor answers a frame later, and the returned operation settles with it: it succeeds with this output,
+     * or fails with the compositor's own words as `error.message` (they name the key, as `position: HDMI-1 and DP-1
+     * would overlap`) and the code `denied`, `unsupported` (a `transform` it cannot draw) or `not_found` (the output
+     * is gone). An `OutputListener` hears the same answer in `onApplied`.
      */
-    apply(options: OutputConfig & { mirrorOf?: Output | string | null }): OutputApplication {
+    apply(options: OutputConfig & { mirrorOf?: Output | string | null }): Operation<Output> {
         return applyOutput(this, options, `${this}.apply`);
     }
 
     /** Shows an exact copy of `source` (scaled to fit, letterboxed) on this display, or stops mirroring with null. */
-    mirror(source: Output | null): OutputApplication {
+    mirror(source: Output | null): Operation<Output> {
         return applyOutput(this, { mirrorOf: source }, `${this}.mirror`);
     }
 

@@ -10,4 +10,3 @@ export { Client } from "gnoblin-core/host/client";
 export type { FramePolicy } from "gnoblin-core/host/client";
 export { Collection, MutableCollection } from "gnoblin-core/host/collections";
 export { Output } from "gnoblin-core/host/output";
-export type { OutputApplication } from "gnoblin-core/host/output_apply";

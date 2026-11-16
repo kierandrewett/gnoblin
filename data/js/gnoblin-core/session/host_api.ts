@@ -1,6 +1,6 @@
 // Script-facing session, process and event APIs backed by functions supplied by the shell.
 
-import { Timers } from "gnoblin-core/operation";
+import { Operation, Timers } from "gnoblin-core/operation";
 import type { OperationHost } from "gnoblin-core/operation";
 import { ProcessTable } from "gnoblin-core/process";
 import { Calls, Runtime, Session } from "gnoblin-core/session/calls";
@@ -37,6 +37,7 @@ export class HostApi {
     #host: Host;
     #sources: ApiSources;
     #calls: Calls;
+    #operations: OperationHost;
     /** Called when the compositor reports that a timed transition has ended. */
     onTrackEnded: (event: TrackEndedEvent) => void = () => {};
 
@@ -49,6 +50,7 @@ export class HostApi {
             now: () => host.now(),
             after: (ms, fn) => this.timers.after(ms, fn),
         };
+        this.#operations = operations;
         this.process = new ProcessTable({
             ...operations,
             spawn: (argv, options) => host.spawn(argv, options),
@@ -74,6 +76,14 @@ export class HostApi {
     /** Returns the build identity, reading it on each call. */
     version(): Version {
         return Object.freeze(JSON.parse(this.#host.version()) as Version);
+    }
+
+    /**
+     * A new pending operation for a call of the host's own that the host settles later, as `Output.apply` does when the
+     * compositor answers. `method` names the call in a report.
+     */
+    operation<T>(method: string): Operation<T> {
+        return new Operation<T>(this.#operations, this.#host.operationId(), method);
     }
 
     /** Returns matching live objects in list order. */
