@@ -1,246 +1,85 @@
-//! Workspaces and the layout driver of `JsShell`, over a fake compositor.
+//! Workspaces and the layout driver of `JsShell`, over the shared fake compositor of `tests/common`.
 //!
-//! The compositor is `FakeLink`, a trimmed copy of the one in `tests/shell.rs`: it applies every
-//! transaction to a node map at once and echoes it as a change batch. The tree has a root (1) and a primary
-//! screen (2) of 1000 by 800; windows are made by `create_window`.
+//! The shared fake applies every transaction to a node map at once and echoes it as a change batch. The tree has a root
+//! (1) and a primary screen (2) of 1000 by 800; windows are made by `Script::create_window`, which publishes a window
+//! with a title and an app id and no size of its own.
 
-use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use std::rc::Rc;
 use std::time::Duration;
 
 use gnoblin_js::{JsConfig, JsGeneration, JsManualClock, JsShell, stock_modules};
-use gnoblin_tree_client::tree_mirror::{
-    Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
-    TxOp, TxReply,
-};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 use tempfile::TempDir;
 
 mod common;
-use common::timed_config;
+use common::{FakeCompositor, ROOT, text, timed_config};
 
-struct Node {
-    class: String,
-    parent: u64,
-    props: BTreeMap<String, MirrorValue>,
-}
+type Comp = FakeCompositor;
 
-#[derive(Default)]
-struct Compositor {
-    nodes: BTreeMap<u64, Node>,
-    serial: u64,
-    /// Transactions the link has received, in order.
-    sent: Vec<Vec<TxOp>>,
-    queue: Vec<TreeIncoming>,
-}
-
-type Comp = Rc<RefCell<Compositor>>;
-
+/// The compositor's script of these tests, over the shared fake: what the compositor does on its own while the shell
+/// runs.
 #[derive(Clone)]
-struct FakeLink(Comp);
+struct Script(Comp);
 
-fn change(kind: MirrorChangeKind, node: u64) -> MirrorChange {
-    MirrorChange {
-        kind,
-        node,
-        class: String::new(),
-        parent: 0,
-        index: 0,
-        key: String::new(),
-        value: None,
-        removed: Vec::new(),
-    }
-}
-
-fn set_change(node: u64, key: &str, value: MirrorValue) -> MirrorChange {
-    MirrorChange {
-        key: key.into(),
-        value: Some(value),
-        ..change(MirrorChangeKind::Set, node)
-    }
-}
-
-impl FakeLink {
-    /// Publishes `changes` as a batch of the compositor's own.
-    fn publish(&self, changes: Vec<MirrorChange>) {
-        let mut c = self.0.borrow_mut();
-        c.serial += 1;
-        let serial = c.serial;
-        c.queue.push(TreeIncoming::Changes { serial, changes });
-    }
-
+impl Script {
     /// A native write of `node.key` the shell did not make.
     fn external_set(&self, node: u64, key: &str, value: MirrorValue) {
-        if let Some(entry) = self.0.borrow_mut().nodes.get_mut(&node) {
-            entry.props.insert(key.to_owned(), value.clone());
-        }
-        self.publish(vec![set_change(node, key, value)]);
+        self.0.external_set(node, key, value);
     }
 
     /// A window the compositor maps: created, parented under the root, with its title and app id.
     fn create_window(&self, id: u64, title: &str) {
-        let props = BTreeMap::from([
-            ("title".to_owned(), MirrorValue::Text(title.into())),
-            ("app_id".to_owned(), MirrorValue::Text("app".into())),
-        ]);
-        self.0.borrow_mut().nodes.insert(
-            id,
-            Node {
-                class: "window".into(),
-                parent: 1,
-                props,
-            },
-        );
-        self.publish(vec![
-            MirrorChange {
-                class: "window".into(),
-                ..change(MirrorChangeKind::Created, id)
-            },
-            MirrorChange {
-                parent: 1,
-                index: 99,
-                ..change(MirrorChangeKind::Parented, id)
-            },
-            set_change(id, "title", MirrorValue::Text(title.into())),
-            set_change(id, "app_id", MirrorValue::Text("app".into())),
-        ]);
+        self.0.create_bare_window(id, title, "app");
     }
 
     /// The compositor destroys `node` on its own, as it does a window whose client closed.
     fn destroy(&self, node: u64) {
-        self.0.borrow_mut().nodes.remove(&node);
-        self.publish(vec![MirrorChange {
-            removed: vec![node],
-            ..change(MirrorChangeKind::Destroyed, node)
-        }]);
-    }
-}
-
-impl TreeLink for FakeLink {
-    fn attach(&mut self, _version: u64) -> Result<(), LinkError> {
-        let mut c = self.0.borrow_mut();
-        let attached = Attached {
-            epoch: 1,
-            root: 1,
-            serial: c.serial,
-        };
-        let nodes = c
-            .nodes
-            .iter()
-            .map(|(id, node)| SnapshotNode {
-                id: *id,
-                parent: node.parent,
-                index: 0,
-                class: node.class.clone(),
-                title: String::new(),
-                app_id: String::new(),
-                props: node.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-            })
-            .collect();
-        let snapshot = TreeIncoming::Snapshot {
-            serial: c.serial,
-            chunk: 0,
-            last: true,
-            nodes,
-        };
-        c.queue.push(TreeIncoming::Attached(attached));
-        c.queue.push(snapshot);
-        Ok(())
-    }
-
-    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
-        let mut c = self.0.borrow_mut();
-        c.sent.push(tx.ops.clone());
-        let mut changes = Vec::new();
-        for op in &tx.ops {
-            if let TxOp::Set { node, key, value, .. } = op {
-                if let Some(entry) = c.nodes.get_mut(node) {
-                    entry.props.insert(key.clone(), value.clone());
-                }
-                changes.push(set_change(*node, key, value.clone()));
-            }
-        }
-        c.serial = tx.serial;
-        c.queue.push(TreeIncoming::Changes {
-            serial: tx.serial,
-            changes,
-        });
-        c.queue.push(TreeIncoming::Reply(TxReply {
-            serial: tx.serial,
-            applied: true,
-            failed_op: -1,
-            code: String::new(),
-            removed: Vec::new(),
-        }));
-        Ok(())
-    }
-
-    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
-        Ok(std::mem::take(&mut self.0.borrow_mut().queue))
+        self.0.destroy(node);
     }
 }
 
 /// A root and a primary screen of 1000 by 800 (and a window `3` at 10,20 sized 300x200 when `boot_window`).
 fn compositor(boot_window: bool) -> Comp {
-    let mut c = Compositor::default();
-    let node = |class: &str, parent: u64, props: Vec<(&str, MirrorValue)>| Node {
-        class: class.into(),
-        parent,
-        props: props.into_iter().map(|(k, v)| (k.to_owned(), v)).collect(),
-    };
-    c.nodes.insert(1, node("node", 0, vec![]));
-    c.nodes.insert(
+    let comp = FakeCompositor::new();
+    comp.add_node(
         2,
-        node(
-            "screen",
-            1,
-            vec![
-                ("width", MirrorValue::Double(1000.0)),
-                ("height", MirrorValue::Double(800.0)),
-                ("primary", MirrorValue::Bool(true)),
-            ],
-        ),
+        ROOT,
+        "screen",
+        vec![
+            ("width", MirrorValue::Double(1000.0)),
+            ("height", MirrorValue::Double(800.0)),
+            ("primary", MirrorValue::Bool(true)),
+        ],
     );
     if boot_window {
-        c.nodes.insert(
+        comp.add_node(
             3,
-            node(
-                "window",
-                1,
-                vec![
-                    ("title", MirrorValue::Text("term".into())),
-                    ("x", MirrorValue::Double(10.0)),
-                    ("y", MirrorValue::Double(20.0)),
-                    ("width", MirrorValue::Double(300.0)),
-                    ("height", MirrorValue::Double(200.0)),
-                ],
-            ),
+            ROOT,
+            "window",
+            vec![
+                ("title", text("term")),
+                ("x", MirrorValue::Double(10.0)),
+                ("y", MirrorValue::Double(20.0)),
+                ("width", MirrorValue::Double(300.0)),
+                ("height", MirrorValue::Double(200.0)),
+            ],
         );
     }
-    c.serial = 1;
-    Rc::new(RefCell::new(c))
+    comp
 }
 
 fn prop(comp: &Comp, node: u64, key: &str) -> f64 {
-    match comp.borrow().nodes.get(&node).and_then(|n| n.props.get(key)) {
-        Some(MirrorValue::Double(value)) => *value,
-        _ => 0.0,
-    }
+    comp.number(node, key)
 }
 
 /// `x,y,width,height` of a window as the compositor holds it.
 fn rect(comp: &Comp, node: u64) -> String {
-    ["x", "y", "width", "height"]
-        .iter()
-        .map(|key| prop(comp, node, key).to_string())
-        .collect::<Vec<_>>()
-        .join(",")
+    comp.rect(node)
 }
 
 fn sent(comp: &Comp) -> Vec<Vec<TxOp>> {
-    comp.borrow().sent.clone()
+    comp.transactions()
 }
 
 /// A booted shell with its entry module loaded.
@@ -282,7 +121,7 @@ fn rig(comp: &Comp, init: &str) -> Rig {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), init).expect("init.ts is written");
     let (config, clock) = timed_config(&root);
-    let mut shell = JsShell::new(Box::new(FakeLink(comp.clone())), config).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     Rig {
@@ -391,7 +230,7 @@ fn a_config_with_no_workspace_gets_one_floating_desktop_and_declared_workspaces_
 #[test]
 fn a_workspaces_clients_are_the_same_client_objects_and_adding_one_transfers_it() {
     let comp = compositor(true);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     let mut rig = rig(
         &comp,
         &init(
@@ -457,7 +296,7 @@ fn a_workspaces_clients_are_the_same_client_objects_and_adding_one_transfers_it(
 #[test]
 fn a_workspace_can_be_subclassed_and_listened_to_through_its_clients() {
     let comp = compositor(true);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     let mut rig = rig(
         &comp,
         &init(
@@ -499,7 +338,7 @@ fn a_workspace_can_be_subclassed_and_listened_to_through_its_clients() {
 #[test]
 fn a_new_window_joins_the_shown_workspace_and_show_switches_it() {
     let comp = compositor(false);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     let mut rig = rig(
         &comp,
         &init(
@@ -534,7 +373,7 @@ const COUNTING: &str = "class Counting extends MasterStackLayout {\n\
 #[test]
 fn a_dirty_workspace_computes_once_per_frame_and_its_writes_are_one_transaction() {
     let comp = compositor(false);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     let mut rig = rig(
         &comp,
         &init(&format!(
@@ -600,7 +439,7 @@ fn a_dirty_workspace_computes_once_per_frame_and_its_writes_are_one_transaction(
 #[test]
 fn the_area_follows_the_screen_and_a_screen_less_tree_lays_nothing_out() {
     let comp = compositor(false);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     let mut tiled = rig(
         &comp,
         &init(&format!(
@@ -621,19 +460,7 @@ fn the_area_follows_the_screen_and_a_screen_less_tree_lays_nothing_out() {
         "once for the two changes"
     );
 
-    let bare = Rc::new(RefCell::new(Compositor::default()));
-    {
-        let mut c = bare.borrow_mut();
-        c.nodes.insert(
-            1,
-            Node {
-                class: "node".into(),
-                parent: 0,
-                props: BTreeMap::new(),
-            },
-        );
-        c.serial = 1;
-    }
+    let bare = FakeCompositor::new();
     let mut rig = rig(
         &bare,
         &init(&format!(
@@ -743,7 +570,7 @@ fn a_workspace_that_is_not_shown_is_laid_out_when_it_is() {
 #[test]
 fn floating_places_a_window_on_arrival_only_and_leaves_a_moved_window_alone() {
     let comp = compositor(true);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     {
         let mut c = comp.borrow_mut();
         let window = c.nodes.get_mut(&3).expect("the boot window");
@@ -796,7 +623,7 @@ fn first_generation(comp: &Comp) -> gnoblin_js::JsWorkspaceSnapshot {
              gnoblin.workspaces.add(new Workspace({ id: 'dev', layout: new MasterStackLayout() }));\n",
         ),
     );
-    FakeLink(comp.clone()).create_window(4, "web");
+    Script(comp.clone()).create_window(4, "web");
     rig.settle();
     assert_eq!(
         rig.eval("gnoblin.clients.get('3').workspace.id + gnoblin.clients.get('4').workspace.id"),
@@ -987,9 +814,9 @@ fn list(comp: &Comp, node: u64, key: &str) -> Option<Vec<f64>> {
 }
 
 /// A shell with `layout` on the one workspace `w` and the windows 10, 11 and 12 mapped.
-fn three_windows(layout: &str) -> (Comp, FakeLink, Rig) {
+fn three_windows(layout: &str) -> (Comp, Script, Rig) {
     let comp = compositor(false);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     let mut rig = rig(
         &comp,
         &init(&format!(
@@ -1009,7 +836,7 @@ fn a_dwindle_workspace_places_its_windows_in_the_split_tree_and_marks_them_tiled
     // retired corpus tiling "Dwindle: 2 and 3 windows split the last cell by aspect" through the layout driver: the window
     // that maps second splits the first's cell; the third splits the second's, top and bottom.
     let comp = compositor(false);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     let mut rig = rig(
         &comp,
         &init("gnoblin.workspaces.add(new Workspace({ id: 'd', layout: 'dwindle' }));\n"),
@@ -1124,7 +951,7 @@ fn a_carousel_workspace_writes_the_depth_and_rotation_of_its_cards_and_a_layout_
 #[test]
 fn showing_a_workspace_hides_the_windows_of_the_one_it_replaces() {
     let comp = compositor(false);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     let mut rig = rig(
         &comp,
         &init(
@@ -1157,7 +984,7 @@ fn a_slide_animates_both_workspaces_along_ease_out_and_hides_the_old_one_when_it
     // Desk:show: the new workspace comes in from a screen's width away and the old one leaves the other way, over
     // 250 milliseconds on the CSS `ease-out` curve sampled 33 times; the old one is hidden when that is over.
     let comp = compositor(false);
-    let link = FakeLink(comp.clone());
+    let link = Script(comp.clone());
     let mut rig = rig(
         &comp,
         &init(

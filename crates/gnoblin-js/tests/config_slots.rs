@@ -1,13 +1,12 @@
 //! The document settings a script's device objects write, `ClientListener`s on `gnoblin.clients`, and `gnoblin.dialogs`,
 //! over a fake compositor.
 //!
-//! The tree is a trimmed copy of the fake of `tests/workspaces.rs`. The configuration document and the slot
-//! connection are fakes too: `FakeDoc` keeps the document the compositor would hold and every commit it was sent,
-//! and `FakeSlots` records every call the shell makes on the slot link and delivers the offers a test queues.
+//! The tree is the shared fake compositor of `tests/common`. The configuration document and the slot connection are
+//! fakes too: `FakeDoc` keeps the document the compositor would hold and every commit it was sent, and `FakeSlots`
+//! records every call the shell makes on the slot link and delivers the offers a test queues.
 //! The same behaviour against the real compositor is in `crates/gnoblin/tests/js_shell.rs`.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::rc::Rc;
@@ -15,213 +14,65 @@ use std::time::Duration;
 
 use gnoblin_js::{JsConfigCommit, JsConfigLink, JsLinkError, JsRole, JsRoleLinks, JsShell, JsShellConfig};
 use gnoblin_tree_client::slot_link::{SlotEvent, SlotLink};
-use gnoblin_tree_client::tree_mirror::{
-    Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
-    TxOp, TxReply,
-};
+use gnoblin_tree_client::tree_mirror::{LinkError, MirrorValue};
 use tempfile::TempDir;
 
 mod common;
-use common::{RUNAWAY_BUDGET, frame_runs, go_quiet, honest_config, honest_role_config};
+use common::{FakeCompositor, ROOT, RUNAWAY_BUDGET, frame_runs, go_quiet, honest_config, honest_role_config, text};
 
 // --- the fake tree ---------------------------------------------------------------------------------------------
 
-struct Node {
-    class: String,
-    parent: u64,
-    props: BTreeMap<String, MirrorValue>,
-}
+type Comp = FakeCompositor;
 
-#[derive(Default)]
-struct Compositor {
-    nodes: BTreeMap<u64, Node>,
-    serial: u64,
-    queue: Vec<TreeIncoming>,
-}
-
-type Comp = Rc<RefCell<Compositor>>;
-
+/// The compositor's script of these tests, over the shared fake: what the compositor does on its own while the shell
+/// runs.
 #[derive(Clone)]
-struct FakeLink(Comp);
+struct Script(Comp);
 
-fn change(kind: MirrorChangeKind, node: u64) -> MirrorChange {
-    MirrorChange {
-        kind,
-        node,
-        class: String::new(),
-        parent: 0,
-        index: 0,
-        key: String::new(),
-        value: None,
-        removed: Vec::new(),
-    }
-}
-
-fn set_change(node: u64, key: &str, value: MirrorValue) -> MirrorChange {
-    MirrorChange {
-        key: key.into(),
-        value: Some(value),
-        ..change(MirrorChangeKind::Set, node)
-    }
-}
-
-impl FakeLink {
-    fn publish(&self, changes: Vec<MirrorChange>) {
-        let mut c = self.0.borrow_mut();
-        c.serial += 1;
-        let serial = c.serial;
-        c.queue.push(TreeIncoming::Changes { serial, changes });
-    }
-
+impl Script {
     fn external_set(&self, node: u64, key: &str, value: MirrorValue) {
-        if let Some(entry) = self.0.borrow_mut().nodes.get_mut(&node) {
-            entry.props.insert(key.to_owned(), value.clone());
-        }
-        self.publish(vec![set_change(node, key, value)]);
+        self.0.external_set(node, key, value);
     }
 
+    /// A window the compositor maps: created, parented under the root, with its title and app id.
     fn create_window(&self, id: u64, title: &str) {
-        let props = BTreeMap::from([
-            ("title".to_owned(), MirrorValue::Text(title.into())),
-            ("app_id".to_owned(), MirrorValue::Text("app".into())),
-        ]);
-        self.0.borrow_mut().nodes.insert(
-            id,
-            Node {
-                class: "window".into(),
-                parent: 1,
-                props,
-            },
-        );
-        self.publish(vec![
-            MirrorChange {
-                class: "window".into(),
-                ..change(MirrorChangeKind::Created, id)
-            },
-            MirrorChange {
-                parent: 1,
-                index: 99,
-                ..change(MirrorChangeKind::Parented, id)
-            },
-            set_change(id, "title", MirrorValue::Text(title.into())),
-            set_change(id, "app_id", MirrorValue::Text("app".into())),
-        ]);
+        self.0.create_bare_window(id, title, "app");
     }
 
     fn destroy(&self, node: u64) {
-        self.0.borrow_mut().nodes.remove(&node);
-        self.publish(vec![MirrorChange {
-            removed: vec![node],
-            ..change(MirrorChangeKind::Destroyed, node)
-        }]);
+        self.0.destroy(node);
     }
 }
 
-impl TreeLink for FakeLink {
-    fn attach(&mut self, _version: u64) -> Result<(), LinkError> {
-        let mut c = self.0.borrow_mut();
-        let attached = Attached {
-            epoch: 1,
-            root: 1,
-            serial: c.serial,
-        };
-        let nodes = c
-            .nodes
-            .iter()
-            .map(|(id, node)| SnapshotNode {
-                id: *id,
-                parent: node.parent,
-                index: 0,
-                class: node.class.clone(),
-                title: String::new(),
-                app_id: String::new(),
-                props: node.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-            })
-            .collect();
-        let snapshot = TreeIncoming::Snapshot {
-            serial: c.serial,
-            chunk: 0,
-            last: true,
-            nodes,
-        };
-        c.queue.push(TreeIncoming::Attached(attached));
-        c.queue.push(snapshot);
-        Ok(())
-    }
-
-    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
-        let mut c = self.0.borrow_mut();
-        let mut changes = Vec::new();
-        for op in &tx.ops {
-            if let TxOp::Set { node, key, value, .. } = op {
-                if let Some(entry) = c.nodes.get_mut(node) {
-                    entry.props.insert(key.clone(), value.clone());
-                }
-                changes.push(set_change(*node, key, value.clone()));
-            }
-        }
-        c.serial = tx.serial;
-        c.queue.push(TreeIncoming::Changes {
-            serial: tx.serial,
-            changes,
-        });
-        c.queue.push(TreeIncoming::Reply(TxReply {
-            serial: tx.serial,
-            applied: true,
-            failed_op: -1,
-            code: String::new(),
-            removed: Vec::new(),
-        }));
-        Ok(())
-    }
-
-    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
-        Ok(std::mem::take(&mut self.0.borrow_mut().queue))
-    }
-}
-
-/// A root and a primary screen of 1000 by 800.
+/// A root, a primary screen of 1000 by 800 (2) and a seat (9) with a keyboard and a mouse.
 fn compositor() -> Comp {
-    let mut c = Compositor::default();
-    c.nodes.insert(
-        1,
-        Node {
-            class: "node".into(),
-            parent: 0,
-            props: BTreeMap::new(),
-        },
-    );
-    c.nodes.insert(
+    let comp = FakeCompositor::new();
+    comp.add_node(
         2,
-        Node {
-            class: "screen".into(),
-            parent: 1,
-            props: BTreeMap::from([
-                ("width".to_owned(), MirrorValue::Double(1000.0)),
-                ("height".to_owned(), MirrorValue::Double(800.0)),
-                ("primary".to_owned(), MirrorValue::Bool(true)),
-            ]),
-        },
+        ROOT,
+        "screen",
+        vec![
+            ("width", MirrorValue::Double(1000.0)),
+            ("height", MirrorValue::Double(800.0)),
+            ("primary", MirrorValue::Bool(true)),
+        ],
     );
-    c.nodes.insert(
+    comp.add_node(
         9,
-        Node {
-            class: "seat".into(),
-            parent: 1,
-            props: BTreeMap::from([
-                ("name".to_owned(), MirrorValue::Text("seat0".into())),
-                (
-                    "device".to_owned(),
-                    MirrorValue::Texts(vec![
-                        "1:USB Keyboard:keyboard".to_owned(),
-                        "2:Logitech MX Master:pointer".to_owned(),
-                    ]),
-                ),
-            ]),
-        },
+        ROOT,
+        "seat",
+        vec![
+            ("name", text("seat0")),
+            (
+                "device",
+                MirrorValue::Texts(vec![
+                    "1:USB Keyboard:keyboard".to_owned(),
+                    "2:Logitech MX Master:pointer".to_owned(),
+                ]),
+            ),
+        ],
     );
-    c.serial = 1;
-    Rc::new(RefCell::new(c))
+    comp
 }
 
 // --- the fake document -----------------------------------------------------------------------------------------
@@ -369,7 +220,7 @@ impl SlotLink for FakeSlots {
 
 struct Rig {
     shell: JsShell,
-    link: FakeLink,
+    link: Script,
     doc: FakeDoc,
     slots: FakeSlots,
     _dir: TempDir,
@@ -407,12 +258,12 @@ fn rig_with(init: &str, document: Option<&str>, tune: impl FnOnce(&mut JsShellCo
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), init).expect("init.ts is written");
     let comp = compositor();
-    let link = FakeLink(comp);
+    let link = Script(comp);
     let doc = document.map_or_else(FakeDoc::default, FakeDoc::with);
     let slots = FakeSlots::default();
     let mut config = shell_config(&root);
     tune(&mut config);
-    let mut shell = JsShell::new(Box::new(link.clone()), config).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(link.0.clone()), config).expect("the shell boots");
     shell.set_config_link(Box::new(doc.clone()));
     shell.set_slot_link(Box::new(slots.clone()));
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
@@ -486,7 +337,7 @@ fn a_refused_value_fails_the_entry_with_the_device_and_the_setting_and_commits_n
     fs::write(root.join("init.ts"), init("mouse().sensitivity = 5000;")).expect("init.ts");
     let doc = FakeDoc::default();
     let role = JsRole::over_link(
-        Box::new(FakeLink(compositor())),
+        Box::new(compositor()),
         JsRoleLinks {
             slots: None,
             config: Some(Box::new(doc.clone())),
@@ -525,7 +376,7 @@ fn role_rig(first: &str, document: Option<&str>) -> RoleRig {
     let mut config = honest_role_config(&root);
     config.watch = false;
     let role = JsRole::over_link(
-        Box::new(FakeLink(compositor())),
+        Box::new(compositor()),
         JsRoleLinks {
             slots: None,
             config: Some(Box::new(doc.clone())),
@@ -629,7 +480,7 @@ fn a_document_the_compositor_refuses_is_a_diagnostic_and_the_shell_keeps_running
         let mut config = honest_role_config(&root);
         config.watch = false;
         let role = JsRole::over_link(
-            Box::new(FakeLink(compositor())),
+            Box::new(compositor()),
             JsRoleLinks {
                 slots: None,
                 config: Some(Box::new(doc.clone())),
@@ -658,7 +509,7 @@ fn compositor_notices_are_reported_as_not_applied() {
     fs::write(root.join("init.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
     let doc = FakeDoc::default();
     doc.0.borrow_mut().notices = vec!["compositor.renderer: restart required".to_owned()];
-    let mut shell = JsShell::new(Box::new(FakeLink(compositor())), shell_config(&root)).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(compositor()), shell_config(&root)).expect("the shell boots");
     shell.set_config_link(Box::new(doc.clone()));
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     assert_eq!(
@@ -672,7 +523,7 @@ fn without_a_configuration_connection_document_settings_are_reported_not_committ
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
-    let mut shell = JsShell::new(Box::new(FakeLink(compositor())), shell_config(&root)).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(compositor()), shell_config(&root)).expect("the shell boots");
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
     assert!(
@@ -743,7 +594,7 @@ fn an_entry_that_throws_fails_the_load_naming_the_file() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), init("throw new Error('nope');")).expect("init");
-    let mut shell = JsShell::new(Box::new(FakeLink(compositor())), shell_config(&root)).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(compositor()), shell_config(&root)).expect("the shell boots");
     let error = shell.load_entry(Path::new("init.ts")).expect_err("the entry threw");
     assert!(error.to_string().contains("nope"), "{error}");
     assert!(error.to_string().contains("init.ts"), "{error}");
@@ -1006,7 +857,7 @@ fn without_a_slot_connection_a_listener_is_reported_once() {
         init("gnoblin.dialogs.addListener(new DialogListener());"),
     )
     .expect("init");
-    let mut shell = JsShell::new(Box::new(FakeLink(compositor())), shell_config(&root)).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(compositor()), shell_config(&root)).expect("the shell boots");
     shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     let first = shell.frame().expect("a frame").diagnostics;
     let second = shell.frame().expect("a frame").diagnostics;
@@ -1027,7 +878,7 @@ fn a_reload_keeps_the_dialog_slot_for_a_generation_with_a_listener_and_releases_
     let mut config = honest_role_config(&root);
     config.watch = false;
     let mut role = JsRole::over_link(
-        Box::new(FakeLink(compositor())),
+        Box::new(compositor()),
         JsRoleLinks {
             slots: Some(Box::new(slots.clone())),
             config: Some(Box::new(FakeDoc::default())),

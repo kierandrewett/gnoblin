@@ -8,428 +8,36 @@
 //! for: the clock, the keyboard focus it takes and gives back, an Enter that is not an attempt, a key typed after the
 //! unlock, and the password never being drawn, stored in the tree or kept in the entry once it is sent.
 //!
-//! `Compositor` is an in-memory `TreeLink` that applies the ops the way the real one does, answers nothing by itself
-//! (a test answers a password check under its token) and keeps what a real compositor would hold. What it cannot show
-//! (the cover, the keys the compositor routes, PAM) is `crates/gnoblin/tests/js_lock.rs`'s.
+//! The compositor is the shared fake of `tests/common`: an in-memory `TreeLink` that applies the ops the way the real
+//! one does, answers nothing by itself (a test answers a password check under its token) and keeps what a real
+//! compositor would hold. `Comp` is what these tests add to it: the lock's state, the keyboard routed to whatever holds
+//! it, and the lock screen's canvases found by their place under the `lock` node. What the fake cannot show (the cover,
+//! the keys the compositor routes, PAM) is `crates/gnoblin/tests/js_lock.rs`'s.
 
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::Path;
-use std::rc::Rc;
+use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 
-use gnoblin_js::{JsShell, JsShellConfig};
-use gnoblin_paint::{PaintOp, decode};
-use gnoblin_tree_client::tree_mirror::{
-    Attached, EventFields, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeEvent,
-    TreeIncoming, TreeLink, TreeTx, TxOp, TxReply,
-};
-use tempfile::TempDir;
+use gnoblin_tree_client::tree_mirror::{MirrorChange, MirrorChangeKind, MirrorValue, TxOp};
 
 mod common;
-use common::{frame_runs, go_quiet};
+use common::{FakeCompositor, ROOT, SentCall, change, frame_runs, go_quiet, rig_setup, set_change, text};
 
-const ROOT: u64 = 1;
 const LOCK: u64 = 2;
 const SEAT: u64 = 3;
 const SCREEN: u64 = 4;
 const WINDOW: u64 = 5;
 
-// ---- the fake compositor ------------------------------------------------------------------------------------------
+// ---- the compositor ---------------------------------------------------------------------------------------------
 
-struct Node {
-    class: String,
-    parent: u64,
-    children: Vec<u64>,
-    props: BTreeMap<String, MirrorValue>,
-}
-
-/// A call the shell sent, with the secret text it carried.
-#[derive(Clone, Debug, PartialEq)]
-struct Call {
-    node: u64,
-    method: String,
-    args: Vec<u8>,
-    token: u64,
-    text: String,
-}
-
-struct Compositor {
-    nodes: BTreeMap<u64, Node>,
-    serial: u64,
-    sent: Vec<Vec<TxOp>>,
-    calls: Vec<Call>,
-    queue: Vec<TreeIncoming>,
-}
-
+/// The shared fake compositor, scripted as the lock tests need it.
 #[derive(Clone)]
-struct FakeCompositor(Rc<RefCell<Compositor>>);
+struct Comp(FakeCompositor);
 
-fn change(kind: MirrorChangeKind, node: u64) -> MirrorChange {
-    MirrorChange {
-        kind,
-        node,
-        class: String::new(),
-        parent: 0,
-        index: 0,
-        key: String::new(),
-        value: None,
-        removed: Vec::new(),
-    }
-}
+impl Deref for Comp {
+    type Target = FakeCompositor;
 
-fn set_change(node: u64, key: &str, value: MirrorValue) -> MirrorChange {
-    MirrorChange {
-        key: key.to_owned(),
-        value: Some(value),
-        ..change(MirrorChangeKind::Set, node)
-    }
-}
-
-fn text(value: &str) -> MirrorValue {
-    MirrorValue::Text(value.to_owned())
-}
-
-fn node(class: &str, parent: u64, props: Vec<(&str, MirrorValue)>) -> Node {
-    Node {
-        class: class.to_owned(),
-        parent,
-        children: Vec::new(),
-        props: props.into_iter().map(|(key, value)| (key.to_owned(), value)).collect(),
-    }
-}
-
-impl Compositor {
-    fn subtree(&self, start: u64) -> Vec<u64> {
-        let mut out = vec![start];
-        let mut at = 0;
-        while at < out.len() {
-            if let Some(entry) = self.nodes.get(&out[at]) {
-                out.extend(entry.children.iter().copied());
-            }
-            at += 1;
-        }
-        out
-    }
-
-    fn detach(&mut self, id: u64) {
-        let parent = self.nodes.get(&id).map_or(0, |entry| entry.parent);
-        if let Some(entry) = self.nodes.get_mut(&parent) {
-            entry.children.retain(|child| *child != id);
-        }
-    }
-
-    fn apply(&mut self, op: &TxOp) -> Option<MirrorChange> {
-        match op {
-            TxOp::New { id, class } => {
-                self.nodes.insert(*id, node(class, 0, Vec::new()));
-                Some(MirrorChange {
-                    class: class.clone(),
-                    ..change(MirrorChangeKind::Created, *id)
-                })
-            }
-            TxOp::Insert {
-                node: id,
-                parent,
-                index,
-            } => {
-                self.detach(*id);
-                let held = self.nodes.get_mut(parent)?;
-                let at = usize::try_from(*index).map_or(held.children.len(), |i| i.min(held.children.len()));
-                held.children.insert(at, *id);
-                self.nodes.get_mut(id)?.parent = *parent;
-                Some(MirrorChange {
-                    parent: *parent,
-                    index: at as i64,
-                    ..change(MirrorChangeKind::Parented, *id)
-                })
-            }
-            TxOp::Set {
-                node: id, key, value, ..
-            } => {
-                self.nodes.get_mut(id)?.props.insert(key.clone(), value.clone());
-                Some(set_change(*id, key, value.clone()))
-            }
-            TxOp::Destroy { node: id } => {
-                let removed = self.subtree(*id);
-                self.detach(*id);
-                for gone in &removed {
-                    self.nodes.remove(gone);
-                }
-                Some(MirrorChange {
-                    removed,
-                    ..change(MirrorChangeKind::Destroyed, *id)
-                })
-            }
-            TxOp::Call {
-                node: id,
-                method,
-                args,
-                token,
-                text,
-            } => {
-                self.calls.push(Call {
-                    node: *id,
-                    method: method.clone(),
-                    args: args.clone(),
-                    token: *token,
-                    text: text.expose().to_owned(),
-                });
-                None
-            }
-        }
-    }
-}
-
-impl FakeCompositor {
-    /// A session with a lock in `state`, a seat (focused on `focus`), a window and, when `screen` is set, a screen.
-    fn new(state: &str, screen: bool, focus: Option<u64>) -> Self {
-        let mut nodes = BTreeMap::new();
-        nodes.insert(ROOT, node("node", 0, Vec::new()));
-        nodes.insert(LOCK, node("lock", ROOT, vec![("state", text(state))]));
-        let seat_props = focus.map_or_else(Vec::new, |id| vec![("focus", MirrorValue::Node(id))]);
-        nodes.insert(SEAT, node("seat", ROOT, seat_props));
-        nodes.insert(WINDOW, node("window", ROOT, vec![("title", text("Editor"))]));
-        let mut order = vec![LOCK, SEAT, WINDOW];
-        if screen {
-            nodes.insert(
-                SCREEN,
-                node(
-                    "screen",
-                    ROOT,
-                    vec![
-                        ("width", MirrorValue::Double(1000.0)),
-                        ("height", MirrorValue::Double(800.0)),
-                        ("primary", MirrorValue::Bool(true)),
-                    ],
-                ),
-            );
-            order.push(SCREEN);
-        }
-        if let Some(root) = nodes.get_mut(&ROOT) {
-            root.children = order;
-        }
-        Self(Rc::new(RefCell::new(Compositor {
-            nodes,
-            serial: 1,
-            sent: Vec::new(),
-            calls: Vec::new(),
-            queue: Vec::new(),
-        })))
-    }
-
-    fn land(&self, tx: &TreeTx) {
-        let mut c = self.0.borrow_mut();
-        c.sent.push(tx.ops.clone());
-        let mut changes = Vec::new();
-        for op in &tx.ops {
-            if let Some(applied) = c.apply(op) {
-                changes.push(applied);
-            }
-        }
-        c.serial = tx.serial;
-        if !changes.is_empty() {
-            c.queue.push(TreeIncoming::Changes {
-                serial: tx.serial,
-                changes,
-            });
-        }
-        c.queue.push(TreeIncoming::Reply(TxReply {
-            serial: tx.serial,
-            applied: true,
-            failed_op: -1,
-            code: String::new(),
-            removed: Vec::new(),
-        }));
-    }
-
-    fn publish(&self, changes: Vec<MirrorChange>) {
-        let mut c = self.0.borrow_mut();
-        c.serial += 1;
-        let serial = c.serial;
-        c.queue.push(TreeIncoming::Changes { serial, changes });
-    }
-
-    /// The compositor writes a property of its own.
-    fn external_set(&self, id: u64, key: &str, value: MirrorValue) {
-        if let Some(entry) = self.0.borrow_mut().nodes.get_mut(&id) {
-            entry.props.insert(key.to_owned(), value.clone());
-        }
-        self.publish(vec![set_change(id, key, value)]);
-    }
-
-    /// The compositor's lock moves to `state`.
-    fn lock_state(&self, state: &str) {
-        self.external_set(LOCK, "state", text(state));
-    }
-
-    /// A screen comes up after the shell attached.
-    fn add_screen(&self) {
-        {
-            let mut c = self.0.borrow_mut();
-            c.nodes.insert(
-                SCREEN,
-                node(
-                    "screen",
-                    ROOT,
-                    vec![
-                        ("width", MirrorValue::Double(1000.0)),
-                        ("height", MirrorValue::Double(800.0)),
-                    ],
-                ),
-            );
-            if let Some(root) = c.nodes.get_mut(&ROOT) {
-                root.children.push(SCREEN);
-            }
-        }
-        self.publish(vec![
-            MirrorChange {
-                class: "screen".to_owned(),
-                ..change(MirrorChangeKind::Created, SCREEN)
-            },
-            MirrorChange {
-                parent: ROOT,
-                index: 99,
-                ..change(MirrorChangeKind::Parented, SCREEN)
-            },
-            set_change(SCREEN, "width", MirrorValue::Double(1000.0)),
-            set_change(SCREEN, "height", MirrorValue::Double(800.0)),
-        ]);
-    }
-
-    /// The keyboard focus, as the seat holds it.
-    fn focus(&self) -> Option<u64> {
-        match self.0.borrow().nodes.get(&SEAT)?.props.get("focus") {
-            Some(MirrorValue::Node(id)) if *id != 0 => Some(*id),
-            _ => None,
-        }
-    }
-
-    /// A key reaches the node that holds the keyboard, as the compositor routes it; nothing happens with no focus.
-    fn key(&self, key: &str, typed: &str, pressed: bool) {
-        let Some(target) = self.focus() else { return };
-        self.key_to(target, key, typed, pressed);
-    }
-
-    fn key_to(&self, target: u64, key: &str, typed: &str, pressed: bool) {
-        self.0.borrow_mut().queue.push(TreeIncoming::Event(TreeEvent {
-            frame: 0,
-            seq: 0,
-            node: target,
-            kind: "key".to_owned(),
-            fields: EventFields {
-                key: key.to_owned(),
-                text: typed.to_owned(),
-                pressed,
-                ..EventFields::default()
-            },
-        }));
-    }
-
-    fn answer(&self, token: u64, result: &str, error: &str) {
-        self.0.borrow_mut().queue.push(TreeIncoming::Answer {
-            token,
-            result: result.as_bytes().to_vec(),
-            error: error.to_owned(),
-        });
-    }
-
-    fn calls(&self) -> Vec<Call> {
-        self.0.borrow().calls.clone()
-    }
-
-    fn checks(&self) -> Vec<Call> {
-        self.calls()
-            .into_iter()
-            .filter(|call| call.method == "authenticate")
-            .collect()
-    }
-
-    fn children(&self, id: u64) -> Vec<u64> {
-        self.0
-            .borrow()
-            .nodes
-            .get(&id)
-            .map_or_else(Vec::new, |entry| entry.children.clone())
-    }
-
-    fn flag(&self, id: u64, key: &str) -> Option<bool> {
-        match self.0.borrow().nodes.get(&id).and_then(|entry| entry.props.get(key)) {
-            Some(MirrorValue::Bool(value)) => Some(*value),
-            _ => None,
-        }
-    }
-
-    fn exists(&self, id: u64) -> bool {
-        self.0.borrow().nodes.contains_key(&id)
-    }
-
-    fn content(&self, id: u64) -> Option<Vec<u8>> {
-        match self
-            .0
-            .borrow()
-            .nodes
-            .get(&id)
-            .and_then(|entry| entry.props.get("content"))
-        {
-            Some(MirrorValue::Bytes(bytes)) => Some(bytes.clone()),
-            _ => None,
-        }
-    }
-
-    /// The strings a canvas paints, in order.
-    fn texts(&self, id: u64) -> Vec<String> {
-        let Some(bytes) = self.content(id) else {
-            return Vec::new();
-        };
-        decode(&bytes)
-            .expect("the shell wrote a paint list")
-            .ops
-            .iter()
-            .filter_map(|op| match op {
-                PaintOp::Text { text, .. } => Some(text.clone()),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn rect(&self, id: u64) -> (f64, f64, f64, f64) {
-        let number = |key: &str| match self.0.borrow().nodes.get(&id).and_then(|entry| entry.props.get(key)) {
-            Some(MirrorValue::Double(value)) => *value,
-            _ => 0.0,
-        };
-        (number("x"), number("y"), number("width"), number("height"))
-    }
-
-    /// The lock screen's canvases: the scrim under the lock node, the card, then the clock, entry and message.
-    fn screen(&self) -> Option<Screen> {
-        let scrim = *self.children(LOCK).first()?;
-        let card = *self.children(scrim).first()?;
-        let parts = self.children(card);
-        let [clock, entry, message] = parts[..] else {
-            return None;
-        };
-        Some(Screen {
-            scrim,
-            card,
-            clock,
-            entry,
-            message,
-        })
-    }
-
-    /// Whether any property of any node holds `needle` as text, or inside paint bytes.
-    fn holds(&self, needle: &str) -> bool {
-        let c = self.0.borrow();
-        c.nodes
-            .values()
-            .flat_map(|entry| entry.props.values())
-            .any(|value| match value {
-                MirrorValue::Text(held) => held.contains(needle),
-                MirrorValue::Bytes(bytes) => bytes.windows(needle.len()).any(|window| window == needle.as_bytes()),
-                _ => false,
-            })
+    fn deref(&self) -> &FakeCompositor {
+        &self.0
     }
 }
 
@@ -442,92 +50,159 @@ struct Screen {
     message: u64,
 }
 
-impl TreeLink for FakeCompositor {
-    fn attach(&mut self, _version: u64) -> Result<(), LinkError> {
-        let mut c = self.0.borrow_mut();
-        let attached = Attached {
-            epoch: 1,
-            root: ROOT,
-            serial: c.serial,
-        };
-        let nodes = c
-            .nodes
+impl Comp {
+    /// The compositor's lock moves to `state`.
+    fn lock_state(&self, state: &str) {
+        self.0.external_set(LOCK, "state", text(state));
+    }
+
+    /// A screen comes up after the shell attached.
+    fn add_screen(&self) {
+        let size = [
+            ("width", MirrorValue::Double(1000.0)),
+            ("height", MirrorValue::Double(800.0)),
+        ];
+        self.0.add_node(SCREEN, ROOT, "screen", size.to_vec());
+        let mut changes = vec![
+            MirrorChange {
+                class: "screen".to_owned(),
+                ..change(MirrorChangeKind::Created, SCREEN)
+            },
+            MirrorChange {
+                parent: ROOT,
+                index: 99,
+                ..change(MirrorChangeKind::Parented, SCREEN)
+            },
+        ];
+        changes.extend(size.into_iter().map(|(key, value)| set_change(SCREEN, key, value)));
+        self.0.publish(changes);
+    }
+
+    /// The keyboard focus, as the seat holds it.
+    fn focus(&self) -> Option<u64> {
+        match self.0.value(SEAT, "focus") {
+            Some(MirrorValue::Node(id)) if id != 0 => Some(id),
+            _ => None,
+        }
+    }
+
+    /// A key reaches the node that holds the keyboard, as the compositor routes it; nothing happens with no focus.
+    fn key(&self, key: &str, typed: &str, pressed: bool) {
+        let Some(target) = self.focus() else { return };
+        self.key_to(target, key, typed, pressed);
+    }
+
+    fn key_to(&self, target: u64, key: &str, typed: &str, pressed: bool) {
+        self.0.key(target, key, typed, pressed);
+    }
+
+    /// Every call the shell sent, with the secret text it carried, in order.
+    fn calls(&self) -> Vec<SentCall> {
+        self.0
+            .borrow()
+            .sent
             .iter()
-            .map(|(id, entry)| SnapshotNode {
-                id: *id,
-                parent: entry.parent,
-                index: c
-                    .nodes
-                    .get(&entry.parent)
-                    .and_then(|parent| parent.children.iter().position(|child| child == id))
-                    .map_or(0, |at| at as i64),
-                class: entry.class.clone(),
-                title: String::new(),
-                app_id: String::new(),
-                props: entry.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            .flatten()
+            .filter_map(|op| match op {
+                TxOp::Call {
+                    node,
+                    method,
+                    args,
+                    token,
+                    text,
+                } => Some(SentCall {
+                    node: *node,
+                    method: method.clone(),
+                    args: args.clone(),
+                    token: *token,
+                    text: text.expose().to_owned(),
+                }),
+                _ => None,
             })
-            .collect();
-        let snapshot = TreeIncoming::Snapshot {
-            serial: c.serial,
-            chunk: 0,
-            last: true,
-            nodes,
+            .collect()
+    }
+
+    /// The password checks the shell sent, in order.
+    fn checks(&self) -> Vec<SentCall> {
+        self.0.authentications()
+    }
+
+    /// The strings a canvas paints, in order.
+    fn texts(&self, id: u64) -> Vec<String> {
+        self.0.text_of(id)
+    }
+
+    fn rect(&self, id: u64) -> (f64, f64, f64, f64) {
+        let number = |key: &str| self.0.number(id, key);
+        (number("x"), number("y"), number("width"), number("height"))
+    }
+
+    /// The lock screen's canvases: the scrim under the lock node, the card, then the clock, entry and message.
+    fn screen(&self) -> Option<Screen> {
+        let scrim = *self.0.children(LOCK).first()?;
+        let card = *self.0.children(scrim).first()?;
+        let parts = self.0.children(card);
+        let [clock, entry, message] = parts[..] else {
+            return None;
         };
-        c.queue.push(TreeIncoming::Attached(attached));
-        c.queue.push(snapshot);
-        Ok(())
-    }
-
-    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
-        self.land(tx);
-        Ok(())
-    }
-
-    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
-        Ok(std::mem::take(&mut self.0.borrow_mut().queue))
+        Some(Screen {
+            scrim,
+            card,
+            clock,
+            entry,
+            message,
+        })
     }
 }
 
 // ---- the rig ------------------------------------------------------------------------------------------------------
 
+/// A shell over a session, and the compositor it is scripted by. The rest of the rig is the shared one's.
 struct Rig {
-    shell: JsShell,
-    comp: FakeCompositor,
-    _dir: TempDir,
+    inner: common::Rig,
+    comp: Comp,
+}
+
+impl Deref for Rig {
+    type Target = common::Rig;
+
+    fn deref(&self) -> &common::Rig {
+        &self.inner
+    }
+}
+
+impl DerefMut for Rig {
+    fn deref_mut(&mut self) -> &mut common::Rig {
+        &mut self.inner
+    }
 }
 
 impl Rig {
-    fn new(comp: FakeCompositor) -> Self {
-        let dir = tempfile::tempdir().expect("a temp dir");
-        let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-        fs::write(
-            root.join("init.ts"),
+    /// A shell over a session with a lock in `state`, a seat (focused on `focus`), a window and, when `screen` is set, a
+    /// screen.
+    fn session(state: &str, screen: bool, focus: Option<u64>) -> Self {
+        let inner = rig_setup(
             "import { lockScreen } from \"gnoblin\";\n(globalThis as any).lockScreen = lockScreen;\n",
-        )
-        .expect("init.ts is written");
-        let mut shell = JsShell::new(Box::new(comp.clone()), JsShellConfig::new(&root)).expect("the shell boots");
-        let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        Self { shell, comp, _dir: dir }
-    }
-
-    fn frame(&mut self) -> Vec<String> {
-        self.shell.frame().expect("a frame").diagnostics
+            "",
+            |comp| {
+                comp.add_node(LOCK, ROOT, "lock", vec![("state", text(state))]);
+                let seat = focus.map_or_else(Vec::new, |id| vec![("focus", MirrorValue::Node(id))]);
+                comp.add_node(SEAT, ROOT, "seat", seat);
+                comp.add_node(WINDOW, ROOT, "window", vec![("title", text("Editor"))]);
+                if screen {
+                    comp.add_screen(SCREEN, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
+                }
+            },
+        );
+        assert!(inner.load_diagnostics.is_empty(), "{:?}", inner.load_diagnostics);
+        let comp = Comp(inner.comp.clone());
+        Self { inner, comp }
     }
 
     /// Runs frames until the shell and the compositor have nothing left to say, asserting that nothing went wrong.
     fn settle(&mut self) {
-        for _ in 0..6 {
-            let diagnostics = self.frame();
-            assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        }
-    }
-
-    fn eval(&mut self, source: &str) -> String {
-        self.shell
-            .eval(source)
-            .expect("the script runs")
-            .expect("the script has a value")
+        let diagnostics = self.inner.settle();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     /// Types `typed` one character at a time to whatever holds the keyboard, then lets the shell see it.
@@ -554,7 +229,7 @@ impl Rig {
 
 /// A shell on a session that is not locked yet, with a screen and the window focused.
 fn unlocked() -> Rig {
-    let mut rig = Rig::new(FakeCompositor::new("not-locked", true, Some(WINDOW)));
+    let mut rig = Rig::session("not-locked", true, Some(WINDOW));
     rig.settle();
     rig
 }
@@ -600,7 +275,7 @@ fn a_lock_request_puts_the_screen_up_and_engages_the_lock() {
 
 #[test]
 fn a_lock_requested_before_the_tree_has_a_screen_waits_for_one() {
-    let mut rig = Rig::new(FakeCompositor::new("pending", false, None));
+    let mut rig = Rig::session("pending", false, None);
     rig.settle();
     assert!(
         rig.comp.screen().is_none(),
@@ -623,7 +298,7 @@ fn a_lock_requested_before_the_tree_has_a_screen_waits_for_one() {
 #[test]
 fn a_shell_that_attaches_to_a_locked_session_shows_the_lock_screen() {
     // The request is one-shot: a shell that comes up after it hears nothing, so the state is the request.
-    let mut rig = Rig::new(FakeCompositor::new("locked", true, None));
+    let mut rig = Rig::session("locked", true, None);
     rig.settle();
     assert!(
         rig.comp.screen().is_some(),
@@ -634,7 +309,7 @@ fn a_shell_that_attaches_to_a_locked_session_shows_the_lock_screen() {
 
 #[test]
 fn a_lock_that_unlocks_before_the_screen_exists_leaves_no_screen_behind() {
-    let mut rig = Rig::new(FakeCompositor::new("pending", false, None));
+    let mut rig = Rig::session("pending", false, None);
     rig.settle();
     rig.comp.lock_state("not-locked");
     rig.settle();

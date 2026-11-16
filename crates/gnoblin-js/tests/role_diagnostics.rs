@@ -121,3 +121,28 @@ fn what_arrived_since_a_look_is_asked_for_by_count_and_does_not_shift_with_the_d
         "the first reload came before the look"
     );
 }
+
+#[test]
+fn a_role_keeps_the_documented_number_of_lines_unless_it_is_told_to_keep_fewer() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    assert_eq!(honest_role_config(&root).diagnostics_kept, DIAGNOSTICS_KEPT);
+}
+
+#[test]
+fn a_line_longer_than_the_bound_is_cut_at_it() {
+    let (mut role, root, _dir) = role_keeping_four();
+    let long = "x".repeat(3 * DIAGNOSTIC_LINE_BYTES);
+    refuse_a_reload(&mut role, &root, &long);
+    let lines = role.diagnostics();
+    assert!(!lines.is_empty(), "the refusal was reported");
+    assert!(
+        lines.iter().all(|line| line.len() <= DIAGNOSTIC_LINE_BYTES),
+        "no line is longer than the bound: {:?}",
+        lines.iter().map(String::len).collect::<Vec<_>>()
+    );
+    assert!(
+        lines.iter().any(|line| line.ends_with("...")),
+        "a line that was cut says so: the reload's message was longer than the bound"
+    );
+}

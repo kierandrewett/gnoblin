@@ -61,6 +61,17 @@ pub struct Claim {
     pub text: String,
     /// The claim's second integer: a chord's grab flag or a gesture's finger count; 0 for a device.
     pub second: i64,
+    /// The seat node the call was made on.
+    pub seat: u64,
+}
+
+/// A pointer chord's drag as the fake streams it: where it began and what the chord is.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Drag {
+    pub seat: u64,
+    pub origin: (f64, f64),
+    pub button: i64,
+    pub modifiers: String,
 }
 
 /// How the fake answers a transaction instead of applying it, in the words of the real compositor
@@ -119,6 +130,28 @@ pub struct Compositor {
     pub refuse_every: usize,
     /// How many transactions have landed (refused ones included), for `refuse_every`.
     pub landed: usize,
+    /// The claim calls the shell made, in order, unclaims included: `(method, id, second, text)`.
+    pub claim_calls: Vec<(String, i64, i64, String)>,
+    /// The claims the compositor refused, as `(method, text)`: while [`Compositor::refuse_duplicate_claims`] is set, a
+    /// claim of a chord, a gesture or a device that another live claim on the same seat holds.
+    pub refused_claims: Vec<(String, String)>,
+    /// Whether a claim another live claim on the same seat already holds is refused, as the real compositor refuses it.
+    pub refuse_duplicate_claims: bool,
+    /// The pointer chord drags in flight, by claim id.
+    pub drags: BTreeMap<i64, Drag>,
+    /// How many of the transactions the shell sent [`FakeCompositor::take_ops`] has handed over already.
+    pub reported: usize,
+    /// While set, a transaction is recorded and held until [`FakeCompositor::release`], as a real compositor echoes
+    /// them later.
+    pub hold: bool,
+    /// The transactions held back.
+    pub held: Vec<TreeTx>,
+    /// Whether the fake refuses as the real compositor's revision check does (`gnoblin_render::tree_revision`): a write
+    /// to a node that is gone is `unknown-node`, and a write to a node that a published batch changed after the
+    /// transaction's base is `stale-base`. A fault queued with [`FakeCompositor::fault`] comes first.
+    pub strict: bool,
+    /// The serial at which each node last changed in a batch the compositor published, for [`Compositor::strict`].
+    pub changed: BTreeMap<u64, u64>,
 }
 
 #[derive(Clone)]
@@ -149,6 +182,36 @@ pub fn text(value: &str) -> MirrorValue {
     MirrorValue::Text(value.to_owned())
 }
 
+/// The `pointer_chord` signal of `drag` in `phase` with the pointer at `at`.
+fn drag_message(
+    claim: i64,
+    drag: &Drag,
+    phase: &str,
+    at: (f64, f64),
+) -> gnoblin_tree_client::tree_mirror::TreePointerChord {
+    gnoblin_tree_client::tree_mirror::TreePointerChord {
+        claim,
+        phase: phase.to_owned(),
+        x: at.0,
+        y: at.1,
+        dx: at.0 - drag.origin.0,
+        dy: at.1 - drag.origin.1,
+        button: drag.button,
+        modifiers: drag.modifiers.clone(),
+        time: 0,
+    }
+}
+
+/// Where the seat's pointer is, as the fake holds it.
+fn pointer_at(c: &Compositor, seat: u64) -> (f64, f64) {
+    let props = &c.nodes[&seat].props;
+    let axis = |key: &str| match props.get(key) {
+        Some(MirrorValue::Double(value)) => *value,
+        _ => 0.0,
+    };
+    (axis("pointer_x"), axis("pointer_y"))
+}
+
 impl Compositor {
     pub fn new() -> Self {
         let root = Node {
@@ -174,6 +237,15 @@ impl Compositor {
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(0),
             landed: 0,
+            claim_calls: Vec::new(),
+            refused_claims: Vec::new(),
+            refuse_duplicate_claims: false,
+            drags: BTreeMap::new(),
+            reported: 0,
+            hold: false,
+            held: Vec::new(),
+            strict: false,
+            changed: BTreeMap::new(),
         }
     }
 
@@ -253,21 +325,42 @@ impl Compositor {
                 if matches!(method.as_str(), "claim" | "claim_gesture" | "claim_device")
                     && let Some(bits) = id_bits
                 {
-                    self.claims.push(Claim {
-                        id: i64::from_le_bytes(bits),
-                        method: method.clone(),
-                        text: text.expose().to_owned(),
-                        second: args
-                            .get(8..16)
-                            .and_then(|bits| <[u8; 8]>::try_from(bits).ok())
-                            .map_or(0, i64::from_le_bytes),
-                    });
+                    let id = i64::from_le_bytes(bits);
+                    let text = text.expose().to_owned();
+                    let second = args
+                        .get(8..16)
+                        .and_then(|bits| <[u8; 8]>::try_from(bits).ok())
+                        .map_or(0, i64::from_le_bytes);
+                    self.claim_calls.push((method.clone(), id, second, text.clone()));
+                    // A gesture is held by its kind and its finger count: three and four fingers are two claims.
+                    let held = self.refuse_duplicate_claims
+                        && self.claims.iter().any(|other| {
+                            other.id != id
+                                && other.method == *method
+                                && other.text == text
+                                && other.seat == *node
+                                && (method != "claim_gesture" || other.second == second)
+                        });
+                    if held {
+                        self.refused_claims.push((method.clone(), text));
+                    } else {
+                        self.claims.push(Claim {
+                            id,
+                            method: method.clone(),
+                            text,
+                            second,
+                            seat: *node,
+                        });
+                    }
                 }
                 if method == "unclaim"
                     && let Some(bits) = id_bits
                 {
                     let id = i64::from_le_bytes(bits);
                     self.claims.retain(|claim| claim.id != id);
+                    // A drag whose claim goes ends without a word to the owner.
+                    self.drags.remove(&id);
+                    self.claim_calls.push((method.clone(), id, 0, String::new()));
                 }
                 if method == "measure" {
                     let bits: [u8; 8] = args.as_slice().try_into().ok()?;
@@ -338,18 +431,126 @@ impl FakeCompositor {
         c.landed = 0;
     }
 
-    /// What the link answers a transaction the shell sends: applies it, refuses it or fails, by the next fault.
+    /// From now on a claim that another live claim on the same seat already holds is refused, as the real compositor
+    /// refuses it. What was refused is in [`Compositor::refused_claims`].
+    pub fn refuse_duplicate_claims(&self) {
+        self.0.borrow_mut().refuse_duplicate_claims = true;
+    }
+
+    /// From now on the fake refuses as the real compositor's revision check does: a write to a node that is gone is
+    /// `unknown-node`, and a write to a node that a published batch changed after the transaction's base is
+    /// `stale-base`. A fault queued with [`Self::fault`] still comes first.
+    pub fn strict(&self) {
+        self.0.borrow_mut().strict = true;
+    }
+
+    /// From now on a transaction is recorded and held until [`Self::release`], as a real compositor echoes them later.
+    pub fn hold(&self) {
+        self.0.borrow_mut().hold = true;
+    }
+
+    /// Answers every held transaction, in order, as the compositor echoes them. The fake goes on holding.
+    pub fn release(&self) {
+        let held = std::mem::take(&mut self.0.borrow_mut().held);
+        for tx in &held {
+            let _ = self.respond(tx);
+        }
+    }
+
+    /// What the shell sent since the last call, as its ops in order.
+    pub fn take_ops(&self) -> Vec<TxOp> {
+        let mut c = self.0.borrow_mut();
+        let from = c.reported.min(c.sent.len());
+        c.reported = c.sent.len();
+        c.sent[from..].iter().flatten().cloned().collect()
+    }
+
+    /// Moves the pointer of `seat`: writes its `pointer_x` and `pointer_y` and publishes them. A pointer chord drag live
+    /// on the seat streams an `update` with the new place.
+    pub fn set_pointer(&self, seat: u64, x: f64, y: f64) {
+        {
+            let mut c = self.0.borrow_mut();
+            let node = c.nodes.get_mut(&seat).expect("the seat exists");
+            node.props.insert("pointer_x".to_owned(), MirrorValue::Double(x));
+            node.props.insert("pointer_y".to_owned(), MirrorValue::Double(y));
+        }
+        self.publish(vec![
+            set_change(seat, "pointer_x", MirrorValue::Double(x)),
+            set_change(seat, "pointer_y", MirrorValue::Double(y)),
+        ]);
+        let mut c = self.0.borrow_mut();
+        let updates: Vec<_> = c
+            .drags
+            .iter()
+            .filter(|(_, drag)| drag.seat == seat)
+            .map(|(claim, drag)| drag_message(*claim, drag, "update", (x, y)))
+            .collect();
+        c.queue.extend(updates.into_iter().map(TreeIncoming::PointerChord));
+    }
+
+    /// A pointer chord (one that ends in `ButtonN`) pressed or released. Its drag starts at the seat's pointer on `press`
+    /// and ends there on `release`, as the compositor's `pointer_chord` signal does.
+    pub fn drag(&self, claim: i64, chord: &str, state: &str) {
+        let (modifiers, button) = chord.rsplit_once("Button").expect("a pointer chord");
+        let mut c = self.0.borrow_mut();
+        let seat = c
+            .claims
+            .iter()
+            .find(|held| held.id == claim)
+            .expect("a pointer chord claim was made on a seat")
+            .seat;
+        let at = pointer_at(&c, seat);
+        let message = if state == "press" {
+            let drag = Drag {
+                seat,
+                origin: at,
+                button: button.parse().expect("a button number"),
+                modifiers: modifiers.to_owned(),
+            };
+            let message = drag_message(claim, &drag, "start", at);
+            c.drags.insert(claim, drag);
+            message
+        } else {
+            let drag = c.drags.remove(&claim).expect("a drag is live");
+            drag_message(claim, &drag, "end", at)
+        };
+        c.queue.push(TreeIncoming::PointerChord(message));
+    }
+
+    /// The compositor ending a live drag with `cancel`.
+    pub fn cancel_drag(&self, claim: i64) {
+        let mut c = self.0.borrow_mut();
+        let drag = c.drags.remove(&claim).expect("a drag is live");
+        let message = drag_message(claim, &drag, "cancel", pointer_at(&c, drag.seat));
+        c.queue.push(TreeIncoming::PointerChord(message));
+    }
+
+    /// What the link does with a transaction the shell sends: records it, holds it while [`Compositor::hold`] is set, and
+    /// otherwise answers it (see [`Self::respond`]).
     ///
     /// # Errors
     ///
     /// The link is dead, or the transaction meets [`Fault::Disconnect`].
     pub fn land(&self, tx: &TreeTx) -> Result<(), LinkError> {
-        let mut c = self.0.borrow_mut();
-        if c.dead {
-            return Err(LinkError("the compositor closed the link".to_owned()));
+        {
+            let mut c = self.0.borrow_mut();
+            if c.dead {
+                return Err(LinkError("the compositor closed the link".to_owned()));
+            }
+            c.sent.push(tx.ops.clone());
+            c.landed += 1;
+            if c.hold {
+                c.held.push(tx.clone());
+                return Ok(());
+            }
         }
-        c.sent.push(tx.ops.clone());
-        c.landed += 1;
+        self.respond(tx)
+    }
+
+    /// Answers a transaction that reached the compositor: applies it, refuses it or fails, by the next fault, or by the
+    /// revision check when [`Compositor::strict`] is set.
+    fn respond(&self, tx: &TreeTx) -> Result<(), LinkError> {
+        let mut c = self.0.borrow_mut();
         // A password check is never refused by the periodic mode: the lock tests want the check to arrive, and its
         // text cannot be sent again.
         let periodic = c.refuse_every > 0
@@ -458,6 +659,35 @@ impl FakeCompositor {
             Some(Fault::Late { polls }) => stall = polls,
             None => {}
         }
+        // The revision check of the real compositor, when the test asks for it.
+        if c.strict {
+            let gone = tx.ops.iter().position(|op| match op {
+                TxOp::Set { node, .. } | TxOp::Destroy { node } | TxOp::Call { node, .. } => {
+                    !c.nodes.contains_key(node)
+                }
+                _ => false,
+            });
+            let stale = tx.ops.iter().position(|op| match op {
+                TxOp::Set { node, .. } | TxOp::Destroy { node } if tx.base_serial != c.serial => {
+                    c.changed.get(node).is_some_and(|serial| *serial > tx.base_serial)
+                }
+                _ => false,
+            });
+            let refusal = gone
+                .map(|at| ("unknown-node", at, c.serial))
+                .or_else(|| stale.map(|at| ("stale-base", at, tx.serial)));
+            if let Some((code, failed_op, serial)) = refusal {
+                c.refused += 1;
+                c.queue.push(TreeIncoming::Reply(TxReply {
+                    serial,
+                    applied: false,
+                    failed_op: failed_op as i64,
+                    code: code.to_owned(),
+                    removed: Vec::new(),
+                }));
+                return Ok(());
+            }
+        }
         Self::apply_whole(&mut c, tx);
         c.queue.push(TreeIncoming::Reply(TxReply {
             serial: tx.serial,
@@ -475,6 +705,9 @@ impl FakeCompositor {
     /// Queues a batch of changes for the shell, unless a drop is pending: then the batch is lost, and the one after it
     /// skips its serial.
     fn deliver(c: &mut Compositor, serial: u64, changes: Vec<MirrorChange>) {
+        for change in &changes {
+            c.changed.insert(change.node, serial);
+        }
         if c.drop_batches > 0 {
             c.drop_batches -= 1;
             return;
@@ -559,6 +792,31 @@ impl FakeCompositor {
             set_change(id, "decoration", text(decoration)),
             set_change(id, "width", MirrorValue::Double(400.0)),
             set_change(id, "height", MirrorValue::Double(300.0)),
+        ]);
+    }
+
+    /// A window the compositor maps with a title and an app id and nothing else: no size and no decoration, as a test
+    /// about where the shell puts a window of no size of its own wants it. It is created, parented under the root and
+    /// given its two properties.
+    pub fn create_bare_window(&self, id: u64, title: &str, app_id: &str) {
+        self.add_node(
+            id,
+            ROOT,
+            "window",
+            vec![("title", text(title)), ("app_id", text(app_id))],
+        );
+        self.publish(vec![
+            MirrorChange {
+                class: "window".to_owned(),
+                ..change(MirrorChangeKind::Created, id)
+            },
+            MirrorChange {
+                parent: ROOT,
+                index: 99,
+                ..change(MirrorChangeKind::Parented, id)
+            },
+            set_change(id, "title", text(title)),
+            set_change(id, "app_id", text(app_id)),
         ]);
     }
 
@@ -1202,11 +1460,6 @@ impl FakeCompositor {
     /// The same, for a test that changes it.
     pub fn borrow_mut(&self) -> std::cell::RefMut<'_, Compositor> {
         self.0.borrow_mut()
-    }
-
-    /// Whether `node` is in the compositor's tree.
-    pub fn exists(&self, node: u64) -> bool {
-        self.0.borrow().nodes.contains_key(&node)
     }
 
     /// Every `authenticate` call the shell sent, with its arguments and the secret text it carried, in order.

@@ -48,7 +48,9 @@ impl FakeCompositor {
 
     /// Forgets what the shell has sent, so the next assertion sees only what comes after.
     pub fn clear_sent(&self) {
-        self.0.borrow_mut().sent.clear();
+        let mut c = self.0.borrow_mut();
+        c.sent.clear();
+        c.reported = 0;
     }
 
     /// How many `Set` ops of `node` the shell has sent, per key.
