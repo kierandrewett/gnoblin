@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-example-minimal-core-shell"
+description = "Example 1: the smallest useful shell, written on gnoblin-core only. It places windows, starts a terminal on a chord and closes the focused window on another."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "minimal_core_shell"
+crate-type = ["cdylib"]
+
+# A shell depends on the core SDK and nothing else: it links the installed `libgnoblin-core.so.1` and carries no copy of the
+# compositor. (`gnoblin-core = "1"` outside this workspace.)
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+
+# A shell author writes no unsafe code: the workspace table forbids it, and the macro's expansion needs none.
+[lints]
+workspace = true

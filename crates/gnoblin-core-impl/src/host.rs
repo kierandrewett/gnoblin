@@ -18,14 +18,15 @@ use crate::catalog;
 use crate::registry;
 
 pub use crate::memory::{lend_bytes, lend_text};
-pub use crate::registry::{GenerationState, OwnedValue, SignalDelivery};
+pub use crate::registry::{GenerationState, OwnedValue, ShellEvent, SignalDelivery};
+pub use crate::session::{AttachMode, TreeLinkProvider};
 
 /// One loaded generation of a native shell, in this core's host.
-pub type Module = gnoblin_shell_host::native::NativeModule<SignalDelivery>;
+pub type Module = gnoblin_shell_host::native::NativeModule<ShellEvent>;
 
 /// The one loader of the process: it loads native shell modules into the host this core owns, initialises them with this
 /// core's function table, and keeps what it cannot unmap on the bounded retire list.
-static LOADER: NativeLoader<SignalDelivery> = NativeLoader::new(&registry::HOST, &crate::table::API);
+static LOADER: NativeLoader<ShellEvent> = NativeLoader::new(&registry::HOST, &crate::table::API);
 
 /// Loads a native shell module into a staged generation and runs its `init`. See [`NativeLoader::load`].
 ///
@@ -34,6 +35,24 @@ static LOADER: NativeLoader<SignalDelivery> = NativeLoader::new(&registry::HOST,
 /// [`LoadError`]: the retire list is full, the copy or `dlopen` failed, the file is not a shell, or `init` failed.
 pub fn load(path: &Path, copying: Copying, reload_count: u32) -> Result<Module, LoadError> {
     LOADER.load(path, copying, reload_count)
+}
+
+/// Gives the shell thread a way to reach the compositor's tree: what `tree_attach` opens. Call it on the shell thread (the thread
+/// that loads the shell) before the shell attaches. The provider is not `Send`, so a link over a non-`Send` handle is welcome; the
+/// in-process compositor edge provides one over its tree queue, and the tests one over the fake compositor.
+pub fn set_tree_link_provider(provider: Box<dyn TreeLinkProvider>) {
+    crate::session::with(|session| session.set_provider(provider));
+}
+
+/// Replaces the clock this thread's timers read. Tests give a manual one so that no assertion rests on how fast the machine is.
+pub fn set_clock(clock: std::sync::Arc<dyn gnoblin_shell_host::supervisor::Clock>) {
+    crate::session::with(|session| session.set_clock(clock));
+}
+
+/// Ends the shell instance of this thread: the tree is detached and everything that belonged to it is dropped (the compositor
+/// releases a connection's claims by itself). The provider and the clock stay. For a host that restarts its shell and for tests.
+pub fn reset_session() {
+    crate::session::with(crate::session::Session::reset);
 }
 
 /// How many module libraries are kept mapped after retirement, abandonment or a failed load.

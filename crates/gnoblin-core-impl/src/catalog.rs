@@ -10,12 +10,28 @@
 
 use gnoblin_core_abi::{self as abi, GnoblinMember};
 
+/// What a property reads as before anything wrote it, when the schema says (`opacity` is 1, a `scale` 1): the mirror holds only
+/// the properties that differ from their defaults.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum DefaultDef {
+    /// The schema gives none: the empty value of the property's kind.
+    None,
+    Bool(bool),
+    Int(i64),
+    Uint(u64),
+    Double(f64),
+    Text(&'static str),
+    Numbers(&'static [f64]),
+    Texts(&'static [&'static str]),
+}
+
 /// One property, method or signal.
 pub(crate) struct MemberDef {
     pub name: &'static str,
     pub value_kind: u32,
     pub flags: u32,
     pub args: &'static [u32],
+    pub default: DefaultDef,
 }
 
 /// One class with its members.
@@ -108,6 +124,51 @@ pub(crate) fn signal_id(class_id: u32, name: &str) -> Option<u32> {
         .iter()
         .position(|def| def.name == name)
         .map(|position| position as u32 + 1)
+}
+
+/// The class of the tree namespace called `name` (`window`), zero when the catalog has none: what a node of that class is, as an
+/// id. A node's class in the mirror is its schema name, so this is how a mirror class becomes a catalog class.
+pub(crate) fn tree_class_id(name: &str) -> u32 {
+    class_id(name).unwrap_or(0)
+}
+
+/// The name a class is looked up by: `window` for a tree class, `namespace.object` for another namespace's.
+pub(crate) fn class_label(id: u32) -> Option<String> {
+    let class = class(id)?;
+    Some(if class.namespace == "tree" {
+        class.name.to_owned()
+    } else {
+        format!("{}.{}", class.namespace, class.name)
+    })
+}
+
+/// The property of `class_id` with id `prop` (a position plus one), with its class.
+pub(crate) fn property_def(class_id: u32, prop: u32) -> Option<&'static MemberDef> {
+    let class = class(class_id)?;
+    class.properties.get(usize::try_from(prop.checked_sub(1)?).ok()?)
+}
+
+/// The method of `class_id` with id `method`.
+pub(crate) fn method_def(class_id: u32, method: u32) -> Option<&'static MemberDef> {
+    let class = class(class_id)?;
+    class.methods.get(usize::try_from(method.checked_sub(1)?).ok()?)
+}
+
+/// The id of the property of `class_id` called `name`.
+pub(crate) fn property_id(class_id: u32, name: &str) -> Option<u32> {
+    let class = class(class_id)?;
+    class
+        .properties
+        .iter()
+        .position(|def| def.name == name)
+        .map(|position| position as u32 + 1)
+}
+
+/// The signal of `class_id` with id `signal`.
+#[cfg(test)]
+pub(crate) fn signal_def(class_id: u32, signal: u32) -> Option<&'static MemberDef> {
+    let class = class(class_id)?;
+    class.signals.get(usize::try_from(signal.checked_sub(1)?).ok()?)
 }
 
 #[cfg(test)]

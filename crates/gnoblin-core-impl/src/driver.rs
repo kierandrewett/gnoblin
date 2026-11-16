@@ -62,9 +62,11 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             (Some("load"), Some(shell), _, _) => load_only(&shell),
             (Some("retain"), Some(shell), limit, _) => retain(&shell, limit.as_deref()),
             (Some("unload"), Some(safe), Some(unsure), Some(plain)) => unload(&safe, &unsure, &plain),
+            (Some("example01"), Some(shell), _, _) => crate::driver_examples::minimal(&shell),
+            (Some("example08"), Some(shell), _, _) => crate::driver_examples::tiler(&shell),
             _ => {
                 out!(
-                    "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|retain|unload> MODULE..."
+                    "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|retain|unload|example01|example08> MODULE..."
                 );
                 2
             }
@@ -84,7 +86,7 @@ fn publish(class: &str, signal: &str, values: Vec<OwnedValue>) {
     }
 }
 
-fn shell_stats_line(prefix: &str, module: &Module) {
+pub(crate) fn shell_stats_line(prefix: &str, module: &Module) {
     match module.shell_stats() {
         Some(stats) => out!(
             "{prefix} registered={} calls={} drops={}",
@@ -96,7 +98,7 @@ fn shell_stats_line(prefix: &str, module: &Module) {
     }
 }
 
-fn core_stats_line(prefix: &str, ctx: abi::GnoblinCtx) {
+pub(crate) fn core_stats_line(prefix: &str, ctx: abi::GnoblinCtx) {
     let mut stats = GnoblinStats {
         size: size_of::<GnoblinStats>() as u32,
         reserved: 0,
@@ -119,7 +121,7 @@ fn core_stats_line(prefix: &str, ctx: abi::GnoblinCtx) {
 }
 
 /// The core and shell mappings of this process, read from `/proc/self/maps`.
-fn maps_line() {
+pub(crate) fn maps_line() {
     let maps = std::fs::read_to_string("/proc/self/maps").unwrap_or_default();
     let mut cores = std::collections::BTreeSet::new();
     let mut shells = std::collections::BTreeSet::new();
@@ -135,7 +137,20 @@ fn maps_line() {
             shells.insert(path.to_owned());
         }
     }
-    out!("maps core_copies={} shell_mappings={}", cores.len(), shells.len());
+    let std_copies = maps
+        .lines()
+        .filter_map(|line| line.split_whitespace().nth(5))
+        .filter(|path| {
+            path.rsplit('/')
+                .next()
+                .is_some_and(|name| name.contains("gnoblin-std") || name.contains("gnoblin_std"))
+        })
+        .count();
+    out!(
+        "maps core_copies={} shell_mappings={} std_mappings={std_copies}",
+        cores.len(),
+        shells.len()
+    );
     for core in &cores {
         out!("maps core_path={core}");
     }

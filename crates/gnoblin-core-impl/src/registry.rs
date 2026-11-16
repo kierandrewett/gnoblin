@@ -5,55 +5,43 @@
 //! the C ABI: a handle the shell holds is an encoded generation or registration id, a callback is an `extern "C"` function
 //! with a `user` pointer and an optional `drop_user`, an error is a code and a last-error text, and an event is a
 //! `GnoblinEvent` built from a published [`SignalDelivery`].
+//!
+//! `dispatch` is also where the shell thread's own work happens, once per turn: the tree link is read and its change batches
+//! applied (so a callback reads the tree as the whole batch left it), the events that brings are published to the mailbox with
+//! the timers that fell due and the programs that ended, the host delivers them, and what the callbacks wrote goes out as one
+//! transaction (`design/modular-framework.md` section 5.4).
 #![allow(unsafe_code)]
 
 use core::ffi::c_void;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 
 use gnoblin_core_abi::{
     self as abi, GnoblinCtx, GnoblinCtxInfo, GnoblinDropFn, GnoblinEvent, GnoblinEventFn, GnoblinPostFn, GnoblinReg,
-    GnoblinShutdownFn, GnoblinStats, GnoblinStr, GnoblinValue,
+    GnoblinShutdownFn, GnoblinStats, GnoblinStr,
 };
 pub use gnoblin_shell_host::generation::GenerationState;
 use gnoblin_shell_host::generation::{CallbackOutcome, GenerationHost, Listener, Release, RemoveError, Work};
 use gnoblin_shell_host::handle::{KIND_CTX, KIND_REG, decode, encode};
 
+pub use crate::events::{ShellEvent, SignalDelivery};
 use crate::guard::{PANICS, set_code_error, set_error};
+use crate::session::{self, Lifecycle};
+pub use crate::values::OwnedValue;
+use crate::values::RawScope;
 use crate::{catalog, log};
 
-/// A value the compositor side publishes with an event. Owned, so it outlives the queue.
-#[derive(Clone, Debug, PartialEq)]
-pub enum OwnedValue {
-    /// A boolean.
-    Bool(bool),
-    /// A signed integer.
-    Int(i64),
-    /// An unsigned integer.
-    Uint(u64),
-    /// A double.
-    Double(f64),
-    /// Text.
-    Text(String),
-    /// A node id.
-    Node(u64),
-}
-
-/// A signal to deliver to the shell, by class and signal id.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SignalDelivery {
-    /// The catalog class id.
-    pub class: u32,
-    /// The signal id within the class.
-    pub signal: u32,
-    /// The node it came from, or zero.
-    pub node: u64,
-    /// The payload fields.
-    pub values: Vec<OwnedValue>,
-}
+/// The host's lifecycle hooks: they keep the session's programs and claims in step with the generations.
+static LIFECYCLE: Lifecycle = Lifecycle;
 
 /// The one host of the process: every generation, registration and queued event.
-pub(crate) static HOST: GenerationHost<SignalDelivery> = GenerationHost::new();
+pub(crate) static HOST: GenerationHost<ShellEvent> = GenerationHost::with_observer(&LIFECYCLE);
+
+/// How long one wait for the compositor's link may last, when nothing else (a post, a timer) is due sooner. The link has no
+/// descriptor the host sleeps on together with its mailbox, so a quiet turn is a short sleep; a post or a published signal wakes
+/// the mailbox at once.
+const LINK_POLL: Duration = Duration::from_millis(4);
 
 // ---- contexts ---------------------------------------------------------------------------------------------------------
 
@@ -118,6 +106,11 @@ pub(crate) fn check_ctx(handle: GnoblinCtx, what: &str, shell_thread: bool) -> R
     Ok(index)
 }
 
+/// Whether generation `id` is the active one: the one whose claims and timers are live now.
+pub(crate) fn is_active(id: u64) -> bool {
+    HOST.state_of(id) == Some(GenerationState::Active)
+}
+
 // ---- table functions, over the host ---------------------------------------------------------------------------------
 
 /// `ctx_info`.
@@ -151,7 +144,7 @@ pub(crate) enum Registering {
 }
 
 /// The release of a registration: the shell's `drop_user`, called once with the `user` pointer it came with.
-fn release_of(user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> Option<Release> {
+pub(crate) fn release_of(user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> Option<Release> {
     let user = user as usize;
     drop_user.map(|drop_user| {
         let release: Release = Box::new(move || {
@@ -165,8 +158,9 @@ fn release_of(user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> Option<Rel
 
 /// Runs a shell's signal callback for one event, building the ABI's event struct from the published delivery.
 fn call_signal(cb: GnoblinEventFn, user: usize, event: &SignalDelivery) -> CallbackOutcome {
-    // The payload as the ABI struct: values point into `event`, which outlives the call.
-    let values: Vec<GnoblinValue> = event.values.iter().map(raw_value).collect();
+    // The payload as the ABI struct: values point into `event` and into `scope`, which outlive the call.
+    let mut scope = RawScope::default();
+    let values: Vec<_> = event.values.iter().map(|value| scope.raw(value)).collect();
     let raw = GnoblinEvent {
         size: size_of::<GnoblinEvent>() as u32,
         class: event.class,
@@ -179,6 +173,11 @@ fn call_signal(cb: GnoblinEventFn, user: usize, event: &SignalDelivery) -> Callb
     // SAFETY: `cb` and `user` came from one `on_signal` call. `raw` and the `values` it points at are live locals, valid
     // for the whole call, as the ABI promises the callback.
     let rc = unsafe { cb(user as *mut c_void, &raw const raw) };
+    outcome_of(rc)
+}
+
+/// What a callback's return code says about how it ended: the SDK's trampoline returns `E_PANIC` after it caught a panic.
+pub(crate) fn outcome_of(rc: i32) -> CallbackOutcome {
     if rc == abi::E_PANIC {
         CallbackOutcome::Panicked
     } else {
@@ -213,10 +212,14 @@ pub(crate) fn register(
             HOST.register_listener(
                 owner,
                 Listener {
-                    matches: Box::new(move |event: &SignalDelivery| {
-                        class == event.class && signal == event.signal && (node == 0 || node == event.node)
+                    matches: Box::new(move |event: &ShellEvent| {
+                        matches!(event, ShellEvent::Signal(event)
+                            if class == event.class && signal == event.signal && (node == 0 || node == event.node))
                     }),
-                    call: Arc::new(move |event: &SignalDelivery| call_signal(cb, user, event)),
+                    call: Arc::new(move |event: &ShellEvent| match event {
+                        ShellEvent::Signal(delivery) => call_signal(cb, user, delivery),
+                        _ => CallbackOutcome::Handled,
+                    }),
                 },
                 release,
             )
@@ -239,6 +242,72 @@ pub(crate) fn register(
     }
 }
 
+/// A registration that is not for a signal: the events it takes, what it does with one, and what to clean up when it ends.
+pub(crate) struct Subscription {
+    /// Whether an event is for this registration. Called with the host's lock held: keep it to a comparison.
+    pub matches: Box<dyn Fn(&ShellEvent) -> bool + Send + Sync>,
+    /// Calls the shell's callback for an event this registration matched.
+    pub call: Arc<dyn Fn(&ShellEvent) -> CallbackOutcome + Send + Sync>,
+    /// Runs when the registration ends, before the shell's `drop_user`: the core's own state that went with it (a timer, a claim).
+    pub cleanup: Option<Release>,
+}
+
+/// Registers `subscription` for the generation of `ctx`, adopting `user` and `drop_user`. Returns the registration's id, or the
+/// ABI code with the last error recorded (`user` is then not adopted and `cleanup` was not run: the caller undoes what it did).
+pub(crate) fn subscribe(
+    ctx: GnoblinCtx,
+    what: &str,
+    subscription: Subscription,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+) -> Result<u64, i32> {
+    let owner = check_ctx(ctx, what, true)?;
+    let shell_release = release_of(user, drop_user);
+    let Subscription { matches, call, cleanup } = subscription;
+    let release: Option<Release> = match (cleanup, shell_release) {
+        (None, release) => release,
+        (Some(cleanup), None) => Some(cleanup),
+        (Some(cleanup), Some(release)) => Some(Box::new(move || {
+            cleanup();
+            release();
+        })),
+    };
+    match HOST.register_listener(owner, Listener { matches, call }, release) {
+        Ok(id) => Ok(id),
+        Err((error, _unadopted)) => Err(error.report(what)),
+    }
+}
+
+/// The owner of a context, for a caller that registers against it.
+pub(crate) fn owner_of(ctx: GnoblinCtx, what: &str) -> Result<u64, i32> {
+    check_ctx(ctx, what, true)
+}
+
+/// Removes a registration by its id (a one-shot callback removing itself, or a cancelled pending call). The shell's `drop_user`
+/// runs now, or after the callback that is running returns.
+pub(crate) fn remove_id(id: u64) {
+    let _ = HOST.remove(id);
+}
+
+/// Removes the registration with id `id` for `remove` and `cancel`: the ABI code for a registration that is gone or called from
+/// another thread.
+pub(crate) fn remove_pending(id: u64) -> Result<(), i32> {
+    match HOST.remove(id) {
+        Ok(()) => Ok(()),
+        Err(RemoveError::Gone) => {
+            set_code_error(abi::E_STALE, "the registration was already removed");
+            Err(abi::E_STALE)
+        }
+        Err(RemoveError::WrongThread) => {
+            set_code_error(
+                abi::E_THREAD,
+                "remove must be called on the shell thread of the registration's generation",
+            );
+            Err(abi::E_THREAD)
+        }
+    }
+}
+
 /// `remove`.
 pub(crate) fn remove(handle: GnoblinReg) -> i32 {
     let Some(id) = decode(KIND_REG, handle) else {
@@ -248,19 +317,9 @@ pub(crate) fn remove(handle: GnoblinReg) -> i32 {
         );
         return abi::E_STALE;
     };
-    match HOST.remove(id) {
+    match remove_pending(id) {
         Ok(()) => abi::E_OK,
-        Err(RemoveError::Gone) => {
-            set_code_error(abi::E_STALE, "remove: the registration was already removed");
-            abi::E_STALE
-        }
-        Err(RemoveError::WrongThread) => {
-            set_code_error(
-                abi::E_THREAD,
-                "remove must be called on the shell thread of the registration's generation",
-            );
-            abi::E_THREAD
-        }
+        Err(code) => code,
     }
 }
 
@@ -350,7 +409,7 @@ pub(crate) fn set_last_error(ctx: GnoblinCtx, message: &str) -> i32 {
 
 /// Queues a signal for the shell, waking its dispatch loop. The compositor side calls this from any thread.
 pub(crate) fn publish(delivery: SignalDelivery) {
-    HOST.publish(delivery);
+    HOST.publish(ShellEvent::Signal(delivery));
 }
 
 /// How many events are waiting.
@@ -358,59 +417,84 @@ pub(crate) fn queued_events() -> usize {
     HOST.queued_events()
 }
 
-/// `dispatch`: runs the posts of `ctx`, then delivers every queued event, waiting up to `timeout_ms` for the first.
-/// Returns the number of callbacks run, or a negative error code.
+/// The shell thread's own turn of work: reads the tree link, applies what it sent, and publishes what that brings with the
+/// timers that fell due and the programs that ended.
+///
+/// # Errors
+///
+/// The tree link failed or a change batch was missed. The tree is dropped (the shell must attach again).
+fn pump_into_host() -> Result<(), String> {
+    let events = session::with(session::Session::pump)?;
+    for event in events {
+        HOST.publish(event);
+    }
+    let fired = session::with(|session| session.take_due(is_active));
+    for timer in fired {
+        HOST.publish(ShellEvent::Timer(timer));
+    }
+    Ok(())
+}
+
+/// `dispatch`: runs the posts of `ctx`, then delivers every queued event, waiting up to `timeout_ms` for the first. Returns the
+/// number of callbacks run, or a negative error code.
+///
+/// A turn is: pump the link, deliver, then send what the callbacks wrote as one transaction. It returns after the first turn that
+/// ran a callback, or when the time is up.
 pub(crate) fn dispatch(ctx: GnoblinCtx, timeout_ms: u32) -> i32 {
     let owner = match check_ctx(ctx, "dispatch", true) {
         Ok(owner) => owner,
         Err(code) => return code,
     };
-    match HOST.dispatch(owner, timeout_ms) {
-        Ok(called) => i32::try_from(called).unwrap_or(i32::MAX),
-        Err(error) => error.report("dispatch"),
-    }
-}
-
-/// An owned value as the ABI struct, borrowing its text from the owner.
-fn raw_value(value: &OwnedValue) -> GnoblinValue {
-    let mut raw = GnoblinValue {
-        size: size_of::<GnoblinValue>() as u32,
-        kind: 0,
-        flags: 0,
-        reserved: 0,
-        bits: 0,
-        ptr: core::ptr::null(),
-        len: 0,
-    };
-    match value {
-        OwnedValue::Bool(value) => {
-            raw.kind = abi::VALUE_BOOL;
-            raw.bits = u64::from(*value);
+    let deadline = Instant::now() + Duration::from_millis(u64::from(timeout_ms));
+    let mut called = 0usize;
+    let mut failure: Option<String> = None;
+    loop {
+        if let Err(text) = pump_into_host() {
+            log::error!(generation = owner, "the tree link failed: {text}");
+            failure = Some(text);
         }
-        OwnedValue::Int(value) => {
-            raw.kind = abi::VALUE_INT;
-            // Two's complement, as the ABI defines the bit pattern.
-            raw.bits = *value as u64;
+        match HOST.dispatch(owner, 0) {
+            Ok(n) => called += n,
+            Err(error) => return error.report("dispatch"),
         }
-        OwnedValue::Uint(value) => {
-            raw.kind = abi::VALUE_UINT;
-            raw.bits = *value;
+        if let Err(text) = session::with(session::Session::flush) {
+            log::error!(generation = owner, "the tree link failed: {text}");
+            failure = Some(text);
         }
-        OwnedValue::Double(value) => {
-            raw.kind = abi::VALUE_DOUBLE;
-            raw.bits = value.to_bits();
+        let now = Instant::now();
+        if called > 0 || failure.is_some() || now >= deadline {
+            break;
         }
-        OwnedValue::Node(value) => {
-            raw.kind = abi::VALUE_NODE;
-            raw.bits = *value;
+        // Nothing ran. Sleep on the mailbox (a post or a published signal wakes it) until the first of the deadline, the next timer
+        // and the next look at the link.
+        let mut wait = deadline - now;
+        if session::with(|session| session.attached()) {
+            wait = wait.min(LINK_POLL);
         }
-        OwnedValue::Text(text) => {
-            raw.kind = abi::VALUE_TEXT;
-            raw.ptr = text.as_ptr().cast();
-            raw.len = text.len();
+        if let Some(timer) = session::with(|session| session.next_due_in(is_active)) {
+            wait = wait.min(timer);
+        }
+        // Round up to a whole millisecond: a wait of zero would spin.
+        let wait_ms = u32::try_from(wait.as_millis()).unwrap_or(u32::MAX).saturating_add(1);
+        match HOST.dispatch(owner, wait_ms) {
+            Ok(n) => called += n,
+            Err(error) => return error.report("dispatch"),
+        }
+        if called > 0 {
+            if let Err(text) = session::with(session::Session::flush) {
+                log::error!(generation = owner, "the tree link failed: {text}");
+                failure = Some(text);
+            }
+            break;
         }
     }
-    raw
+    if let Some(text) = failure {
+        set_code_error(abi::E_ERR, format!("dispatch: the tree link failed: {text}"));
+        if called == 0 {
+            return abi::E_ERR;
+        }
+    }
+    i32::try_from(called).unwrap_or(i32::MAX)
 }
 
 /// A snapshot of the host's size, for the tests.

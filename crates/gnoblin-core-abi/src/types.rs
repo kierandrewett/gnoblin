@@ -42,6 +42,17 @@ abi_callbacks! {
     pub type GnoblinEventFn = unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinEvent) -> i32;
     /// One catalog member, from `catalog_each`. `member` is valid until the callback returns.
     pub type GnoblinMemberFn = unsafe extern "C" fn(user: *mut c_void, member: *const GnoblinMember) -> i32;
+    /// A change in the tree. `event` is valid until the callback returns. Returns `E_OK`, or `E_PANIC` when the SDK
+    /// trampoline caught a panic.
+    pub type GnoblinNodeFn = unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinNodeEvent) -> i32;
+    /// The answer to a call or a flush. `answer` is valid until the callback returns.
+    pub type GnoblinAnswerFn = unsafe extern "C" fn(user: *mut c_void, answer: *const GnoblinAnswer) -> i32;
+    /// One event of an input claim. `event` is valid until the callback returns.
+    pub type GnoblinClaimFn = unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinClaimEvent) -> i32;
+    /// A timer fired.
+    pub type GnoblinTimerFn = unsafe extern "C" fn(user: *mut c_void) -> i32;
+    /// A program the shell started has ended. `exit` is valid until the callback returns.
+    pub type GnoblinExitFn = unsafe extern "C" fn(user: *mut c_void, exit: *const GnoblinProcessExit) -> i32;
 }
 
 abi_consts! {
@@ -141,6 +152,51 @@ abi_consts! {
 
     /// `GnoblinShellEntry.flags`: the shell runs its own event loop and drives `dispatch` itself.
     pub const SHELL_FLAG_FOREIGN_LOOP: u32 = 1;
+
+    /// `tree_attach` mode: take the tree as the shell, the only one that may change it.
+    pub const ATTACH_HOLDER: u32 = 1;
+    /// `tree_attach` mode: read the tree and its changes.
+    pub const ATTACH_OBSERVER: u32 = 2;
+
+    /// `GnoblinNodeEvent.kind`: a node came into the tree.
+    pub const NODE_CREATED: u32 = 1;
+    /// `GnoblinNodeEvent.kind`: a node and its subtree left the tree.
+    pub const NODE_DESTROYED: u32 = 2;
+    /// `GnoblinNodeEvent.kind`: a property of a node changed.
+    pub const NODE_CHANGED: u32 = 3;
+
+    /// `GnoblinClaim.kind`: a key chord, or a pointer chord when it ends in `Button1` to `Button9`.
+    pub const CLAIM_CHORD: u32 = 1;
+    /// `GnoblinClaim.kind`: a touchpad gesture of `subject` kind with `fingers` contacts.
+    pub const CLAIM_GESTURE: u32 = 2;
+    /// `GnoblinClaim.kind`: every key of the devices named by `device`, which then fire only the chords claimed for them.
+    pub const CLAIM_DEVICE: u32 = 3;
+    /// `GnoblinClaim.kind`: every pointer button of the pointers named by `device`.
+    pub const CLAIM_POINTER: u32 = 4;
+    /// `GnoblinClaim.kind`: the seat's pointer, keyboard or both (`subject`) for the shell node `node`.
+    pub const CLAIM_GRAB: u32 = 5;
+
+    /// `GnoblinClaim.flags`: a chord claim withholds the key from clients and the seat's key state ("grab" in the schema).
+    pub const CLAIM_FLAG_GRAB: u32 = 1;
+
+    /// `GnoblinClaimEvent.kind`: a claimed chord changed state.
+    pub const CLAIM_EVENT_CHORD: u32 = 1;
+    /// `GnoblinClaimEvent.kind`: a claimed gesture advanced.
+    pub const CLAIM_EVENT_GESTURE: u32 = 2;
+    /// `GnoblinClaimEvent.kind`: a claimed pointer chord's drag advanced.
+    pub const CLAIM_EVENT_POINTER_CHORD: u32 = 3;
+    /// `GnoblinClaimEvent.kind`: a button of a claimed pointer went down or up.
+    pub const CLAIM_EVENT_POINTER_BUTTON: u32 = 4;
+
+    /// `GnoblinSpawn` stream mode: write to the compositor's own output, which the session log records.
+    pub const STREAM_INHERIT: u32 = 0;
+    /// `GnoblinSpawn` stream mode: drop the output.
+    pub const STREAM_DISCARD: u32 = 1;
+    /// `GnoblinSpawn` stream mode: keep the output, up to `output_limit` bytes, for the exit callback.
+    pub const STREAM_CAPTURE: u32 = 2;
+
+    /// The most bytes `state_put` keeps across all keys: 16 MiB.
+    pub const STATE_MAX_BYTES: u64 = 16 * 1024 * 1024;
 }
 
 abi_structs! {
@@ -263,6 +319,149 @@ abi_structs! {
         pub drops: u64,
     }
 
+    /// An array of node ids the core lends for the call: `ptr` points at `len` ids, valid until the next ABI call on the
+    /// calling thread.
+    pub struct GnoblinNodes {
+        /// First id, or null when `len` is zero.
+        pub ptr: *const GnoblinNode,
+        /// Number of ids.
+        pub len: usize,
+    }
+
+    /// A change in the tree, delivered to `on_node_created`, `on_node_destroyed` and `on_change` callbacks. Valid until the
+    /// callback returns.
+    pub struct GnoblinNodeEvent {
+        /// Size of this struct, set by the core.
+        pub size: u32,
+        /// `NODE_CREATED`, `NODE_DESTROYED` or `NODE_CHANGED`.
+        pub kind: u32,
+        /// The catalog class id of the node, zero when the class is not in the catalog.
+        pub class: u32,
+        /// For `NODE_CHANGED`: the changed property's id in the node's class, zero when the catalog does not know it.
+        pub property: u32,
+        /// The node. For `NODE_DESTROYED` it is already gone from reads.
+        pub node: GnoblinNode,
+        /// The node's parent when the event is `NODE_CREATED` and the batch parented it, else zero.
+        pub parent: GnoblinNode,
+        /// For `NODE_CHANGED`: the new value, null otherwise.
+        pub value: *const GnoblinValue,
+    }
+
+    /// The compositor's answer to a call or a flush. Valid until the callback returns.
+    pub struct GnoblinAnswer {
+        /// Size of this struct, set by the core.
+        pub size: u32,
+        /// `E_OK`, or `E_REFUSED` / `E_ERR` with the compositor's words in `error`.
+        pub code: i32,
+        /// The answer's bytes (text for most calls). For a flush: the serial the transaction was applied at, in decimal.
+        pub result: GnoblinStr,
+        /// The failure, empty on success.
+        pub error: GnoblinStr,
+    }
+
+    /// What an input claim asks for: the argument of `claim`. A struct that starts with `size` may grow.
+    pub struct GnoblinClaim {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `CLAIM_CHORD`, `CLAIM_GESTURE`, `CLAIM_DEVICE`, `CLAIM_POINTER` or `CLAIM_GRAB`.
+        pub kind: u32,
+        /// `CLAIM_FLAG_*` flags.
+        pub flags: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// A gesture's finger count (2 to 5).
+        pub fingers: i64,
+        /// The chord (`Super+Return`, or one ending in `Button1` for a pointer chord), the gesture kind (`swipe` or
+        /// `pinch`), or a grab's scope (`pointer`, `keyboard` or `both`). Empty for a device or pointer claim.
+        pub subject: GnoblinStr,
+        /// The device a claim is scoped to (a name from the seat's `device`), empty for every device. Required for
+        /// `CLAIM_DEVICE` and `CLAIM_POINTER`.
+        pub device: GnoblinStr,
+        /// A grab's node: the shell node that hears the input.
+        pub node: GnoblinNode,
+    }
+
+    /// One event of an input claim. Valid until the callback returns; fields a kind does not use are zero or empty.
+    pub struct GnoblinClaimEvent {
+        /// Size of this struct, set by the core.
+        pub size: u32,
+        /// `CLAIM_EVENT_CHORD`, `CLAIM_EVENT_GESTURE`, `CLAIM_EVENT_POINTER_CHORD` or `CLAIM_EVENT_POINTER_BUTTON`.
+        pub kind: u32,
+        /// The claim's id, as the shell allocated it.
+        pub claim: i64,
+        /// A chord's `press`, `release` or `repeat`; a gesture's or drag's phase (`start`, `update`, `end`, `cancel`, or
+        /// a gesture's own); a button's `press` or `release`.
+        pub state: GnoblinStr,
+        /// A chord's text, a gesture's kind (`swipe` or `pinch`), a pointer chord's modifiers.
+        pub text: GnoblinStr,
+        /// A gesture's finger count.
+        pub fingers: i64,
+        /// A pointer chord's button number or a pointer button's evdev code.
+        pub button: i64,
+        /// The pointer's global x for a pointer chord or button.
+        pub x: f64,
+        /// The pointer's global y.
+        pub y: f64,
+        /// Movement since the start (a pointer drag) or of the gesture.
+        pub dx: f64,
+        /// Movement since the start (a pointer drag) or of the gesture.
+        pub dy: f64,
+        /// A pinch's scale.
+        pub scale: f64,
+        /// A pinch's rotation.
+        pub rotation: f64,
+        /// The input event's time in milliseconds.
+        pub time: i64,
+    }
+
+    /// How a program is started: the argument of `spawn`. A struct that starts with `size` may grow.
+    pub struct GnoblinSpawn {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// What to do with standard output: `STREAM_INHERIT`, `STREAM_DISCARD` or `STREAM_CAPTURE`.
+        pub stdout: u32,
+        /// What to do with standard error.
+        pub stderr: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The working directory, empty for the shell's own.
+        pub cwd: GnoblinStr,
+        /// `n_env` strings of the form `NAME=value`, added to the session's environment.
+        pub env: *const GnoblinStr,
+        /// Number of `env` strings.
+        pub n_env: usize,
+        /// Text written to standard input, then closed; a null `ptr` means no input.
+        pub stdin: GnoblinStr,
+        /// The most bytes of captured output kept, zero for the default.
+        pub output_limit: u64,
+        /// Milliseconds before the process group is terminated, zero for never.
+        pub timeout_ms: f64,
+    }
+
+    /// How a program ended: the argument of the `on_exit` callback. Valid until the callback returns.
+    pub struct GnoblinProcessExit {
+        /// Size of this struct, set by the core.
+        pub size: u32,
+        /// Nonzero when `code` is the exit status of a normal exit.
+        pub has_code: u32,
+        /// The exit status after a normal exit.
+        pub code: i32,
+        /// Nonzero when the `timeout_ms` option ended it.
+        pub timed_out: u32,
+        /// The process.
+        pub process: GnoblinProc,
+        /// The name of the signal that ended it, empty after a normal exit.
+        pub signal: GnoblinStr,
+        /// What a captured standard output held.
+        pub stdout: GnoblinStr,
+        /// What a captured standard error held.
+        pub stderr: GnoblinStr,
+        /// Bit 0: standard output passed `output_limit`. Bit 1: standard error did.
+        pub truncated: u32,
+        /// Zero.
+        pub reserved: u32,
+    }
+
     /// What a native shell module exports through its one symbol, `gnoshell_entry_v1`.
     pub struct GnoblinShellEntry {
         /// Size of this struct, set by the shell.
@@ -341,6 +540,96 @@ abi_structs! {
 
         /// Fills the core's counters. Any thread.
         pub stats: unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinStats) -> i32,
+
+        // ---- the tree: attach, read, write ----------------------------------------------------------------------------
+
+        /// Attaches the shell to the compositor's tree: `ATTACH_HOLDER` takes it as the shell (one holder at a time,
+        /// `E_BUSY` for a second), `ATTACH_OBSERVER` reads it. Blocks up to the boot wait for the snapshot. A reload's
+        /// generation attaches again and shares the tree the first one holds. Shell thread.
+        pub tree_attach: unsafe extern "C" fn(ctx: GnoblinCtx, mode: u32) -> i32,
+        /// Writes the id of the tree's root node to `out`: the parent of the windows and of the shell's top-level nodes. Shell thread.
+        pub tree_root: unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinNode) -> i32,
+        /// 1 when `node` is in the tree as this tick sees it (a write made in this tick counts), 0 when it is not, or a
+        /// negative error. Shell thread.
+        pub node_exists: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode) -> i32,
+        /// The catalog class id of `node` (`catalog_class`), or zero when the node is not in the tree or its class is not
+        /// in the catalog (`gnoblin_last_error` says which). Shell thread.
+        pub node_class: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode) -> u32,
+        /// Writes the parent of `node` to `out`: zero for the root and for a node not inserted yet. Shell thread.
+        pub node_parent: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinNode) -> i32,
+        /// Writes the children of `node`, in order, to `out`. The array is valid until the next ABI call on this thread.
+        /// Shell thread.
+        pub node_children: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinNodes) -> i32,
+        /// Reads a property of `node`, through this tick's writes: `prop` is the property's id in the node's class
+        /// (`catalog_member`). A property that was never set reads as its schema default, or the empty value of its kind (zero,
+        /// false, empty text). Text and bytes are owned by the caller (`VALUE_OWNED`, freed with `value_free`); a list is lent
+        /// until the next call that lends transient data on this thread (`node_children`, `class_name`, another list read).
+        /// Shell thread.
+        pub node_get: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, prop: u32, out: *mut GnoblinValue) -> i32,
+        /// Writes the schema name of a catalog class (`window`, `gnoblin.session`) to `out`. The text is valid until the next
+        /// ABI call on this thread. Shell thread.
+        pub class_name: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, out: *mut GnoblinStr) -> i32,
+
+        /// Makes a node of `class` in this tick and writes its id to `out`. The id is the shell's own; the node exists in
+        /// this shell's reads at once and in the compositor when the tick's transaction is applied. Shell thread.
+        pub write_create: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, out: *mut GnoblinNode) -> i32,
+        /// Destroys `node` and everything beneath it. Shell thread.
+        pub write_destroy: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode) -> i32,
+        /// Inserts `node` under `parent` at `index` (negative appends), moving it from its parent. Shell thread.
+        pub write_insert: unsafe extern "C" fn(ctx: GnoblinCtx, parent: GnoblinNode, node: GnoblinNode, index: i64) -> i32,
+        /// Sets a property of `node` to `value`. With `seconds > 0` on an `MEMBER_ANIMATED` property the compositor plays
+        /// the change over that many seconds. Writes are queued in this tick and sent as one transaction when the dispatch
+        /// cycle ends (or at `flush`). Shell thread.
+        pub write_set: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, prop: u32, value: *const GnoblinValue, seconds: f64) -> i32,
+        /// Calls method `method` (its id in the node's class) of `node` with `n_args` arguments, queued like a write. When
+        /// `cb` is given, it receives the compositor's answer once, on the shell thread, and the pending call's handle is
+        /// written to `out` (cancel it with `cancel`); an answer that never comes is the shell's to cancel. Without `cb` nobody
+        /// waits: `user` and `drop_user` are ignored and `out` receives zero. A call that fails has not adopted `user`. The
+        /// arguments are checked against the method's parameters (`catalog_member` gives their kinds): integers, booleans and
+        /// node ids travel as the call's integers and text as its text. Shell thread.
+        pub write_call: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, method: u32, args: *const GnoblinValue, n_args: usize, cb: Option<GnoblinAnswerFn>, user: *mut c_void, drop_user: Option<GnoblinDropFn>, out: *mut GnoblinPending) -> i32,
+        /// Sends this tick's writes now, as one transaction when the gate allows (one is in flight at a time). `cb` is
+        /// told once when everything sent so far has been answered: `E_OK` with the serial, or the refusal. Shell thread.
+        pub flush: unsafe extern "C" fn(ctx: GnoblinCtx, cb: Option<GnoblinAnswerFn>, user: *mut c_void, drop_user: Option<GnoblinDropFn>, out: *mut GnoblinPending) -> i32,
+        /// Cancels a pending call or flush: its callback never runs and `drop_user` runs now. Shell thread.
+        pub cancel: unsafe extern "C" fn(pending: GnoblinPending) -> i32,
+
+        // ---- events -----------------------------------------------------------------------------------------------------
+
+        /// Calls `cb` when a property changes: of one node (`node` nonzero) or of every node of `class`, for property `prop`
+        /// of that class or for every property (`prop` zero). A node made in the same batch raises none: it is born with its
+        /// final values. Zero on failure, with `user` not adopted. Shell thread.
+        pub on_change: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, class: u32, prop: u32, cb: GnoblinNodeFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg,
+        /// Calls `cb` when a node of `class` (zero for every class) comes into the tree: a window appearing. The batch that
+        /// made it has been applied, so the callback reads the node as it will stay. Shell thread.
+        pub on_node_created: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, cb: GnoblinNodeFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg,
+        /// Calls `cb` when a node of `class` (zero for every class) leaves the tree. The node is already gone from reads;
+        /// the event carries what is left of it. Shell thread.
+        pub on_node_destroyed: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, cb: GnoblinNodeFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg,
+
+        // ---- input claims, timers, processes, state -------------------------------------------------------------------
+
+        /// Claims input on `seat` as `spec` describes (a chord, a touchpad gesture, a pointer's buttons, a device, or an input
+        /// grab) and calls `cb` for each event of the claim. The claim is made as a call on the seat in the next
+        /// transaction and lasts until `remove(reg)`, which gives it up, or the generation retires. Zero on failure, with
+        /// `user` not adopted. Shell thread.
+        pub claim: unsafe extern "C" fn(ctx: GnoblinCtx, seat: GnoblinNode, spec: *const GnoblinClaim, cb: Option<GnoblinClaimFn>, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg,
+        /// Calls `cb` after `ms` milliseconds, and every `ms` milliseconds when `repeat` is nonzero, until `remove(reg)` or
+        /// the generation retires. Zero on failure, with `user` not adopted. Shell thread.
+        pub timer_add: unsafe extern "C" fn(ctx: GnoblinCtx, ms: u32, repeat: u32, cb: GnoblinTimerFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg,
+        /// Starts `argv` (`n_argv` strings) in a process group of its own and writes its handle to `out`. `options` may be
+        /// null. A program the shell's `init` starts waits until the generation takes over, and one that a reload's
+        /// generation starts again with the same arguments is adopted, not doubled. `on_exit` is called once when it ends.
+        /// Shell thread.
+        pub spawn: unsafe extern "C" fn(ctx: GnoblinCtx, argv: *const GnoblinStr, n_argv: usize, options: *const GnoblinSpawn, on_exit: Option<GnoblinExitFn>, user: *mut c_void, drop_user: Option<GnoblinDropFn>, out: *mut GnoblinProc) -> i32,
+        /// Sends the named signal (`term`, `kill`, `int`, `hup`, `usr1`, `usr2`, `stop`, `cont`) to a process group. Shell thread.
+        pub proc_kill: unsafe extern "C" fn(ctx: GnoblinCtx, process: GnoblinProc, signal: *const u8, len: usize) -> i32,
+        /// Keeps `bytes` under `key` for the next generation of this shell (a reload), with the caller's `version` number.
+        /// The store is dropped when the compositor restarts and holds at most `STATE_MAX_BYTES` in all. Shell thread.
+        pub state_put: unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, bytes: *const u8, len: usize, version: u32) -> i32,
+        /// Reads what an earlier generation kept under `key`: the bytes (owned by the caller, freed with `buf_free`) and the
+        /// version they were kept with. `E_NO_SUCH_MEMBER` when nothing is kept under `key`. Shell thread.
+        pub state_get: unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, out: *mut GnoblinBuf, version: *mut u32) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]

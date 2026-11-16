@@ -154,6 +154,9 @@ pub enum NodeEvent {
     },
 }
 
+/// A node a batch destroyed, with its class and the classes of the nodes beneath it, read before the batch was applied.
+type Gone = (NodeId, String, Vec<(NodeId, String)>);
+
 /// What one pump found, in the order the compositor said it.
 #[derive(Debug, Default)]
 pub struct Pumped {
@@ -348,16 +351,17 @@ impl TreeSession {
     }
 
     /// Calls `method` on `node`. `args` are the call's integers as the wire carries them and `text` its text (a chord, a
-    /// password). Returns the token the answer will come under.
+    /// password): the session keeps it as secret text, which never prints and is wiped once the transaction is sent. Returns the
+    /// token the answer will come under.
     ///
     /// # Errors
     ///
     /// The node is not in the tree.
-    pub fn call(&mut self, node: NodeId, method: &str, args: Vec<u8>, text: SecretText) -> Result<u64, WriteError> {
+    pub fn call(&mut self, node: NodeId, method: &str, args: Vec<u8>, text: String) -> Result<u64, WriteError> {
         self.tokens += 1;
         let token = self.tokens;
         self.tick
-            .call(&self.mirror, node, method, args, token, text)
+            .call(&self.mirror, node, method, args, token, SecretText::new(text))
             .map_err(WriteError::Tx)?;
         Ok(token)
     }
@@ -384,7 +388,7 @@ impl TreeSession {
                 TreeIncoming::Changes { serial, changes } => {
                     // A destroyed node's class and its subtree's go before the batch is applied: afterwards the mirror
                     // has forgotten them.
-                    let mut destroyed: Vec<(NodeId, String, Vec<(NodeId, String)>)> = Vec::new();
+                    let mut destroyed: Vec<Gone> = Vec::new();
                     for change in changes.iter().filter(|c| c.kind == MirrorChangeKind::Destroyed) {
                         let class_of = |id: NodeId| self.mirror.node(id).map(|record| wire_class(&record.class));
                         let removed = change

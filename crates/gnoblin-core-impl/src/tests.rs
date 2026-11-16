@@ -19,24 +19,24 @@ use crate::host::{self, GenerationState, OwnedValue, SignalDelivery};
 use crate::{catalog, registry};
 
 /// The registry is process-wide; one test at a time.
-fn serial() -> MutexGuard<'static, ()> {
+pub(crate) fn serial() -> MutexGuard<'static, ()> {
     static SERIAL: Mutex<()> = Mutex::new(());
     SERIAL.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// A context that retires itself when the test ends, even by panic.
-struct Gen {
-    ctx: GnoblinCtx,
+pub(crate) struct Gen {
+    pub(crate) ctx: GnoblinCtx,
 }
 
 impl Gen {
-    fn staged() -> Gen {
+    pub(crate) fn staged() -> Gen {
         Gen {
             ctx: registry::new_context("tests", abi::LANG_NATIVE, 0, false),
         }
     }
 
-    fn active() -> Gen {
+    pub(crate) fn active() -> Gen {
         let generation = Gen::staged();
         registry::activate(generation.ctx).unwrap();
         generation
@@ -49,7 +49,7 @@ impl Drop for Gen {
     }
 }
 
-fn api() -> &'static GnoblinApi {
+pub(crate) fn api() -> &'static GnoblinApi {
     host::api()
 }
 

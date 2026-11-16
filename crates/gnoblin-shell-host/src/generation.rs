@@ -203,6 +203,20 @@ pub struct GenerationHost<E> {
     callbacks: AtomicU64,
     retired: AtomicU64,
     stale_calls: AtomicU64,
+    observer: Option<&'static dyn LifecycleObserver>,
+}
+
+/// Told when a generation changes state, so state that belongs to the shell instance and not to a registration (the programs it
+/// started, the input claims it holds) can follow the generation. Called on the thread that changed the state, with no lock of
+/// the host held; a panic in it is contained.
+pub trait LifecycleObserver: Send + Sync {
+    /// A generation was made, staged.
+    fn staged(&self, _id: GenerationId) {}
+    /// A staged generation became active. `on_shell_thread` is whether the caller is the generation's own thread.
+    fn activated(&self, _id: GenerationId, _on_shell_thread: bool) {}
+    /// A generation retired, after every registration it owned was removed. `was` is its state before: a generation that was
+    /// still staged was abandoned or failed its `init`.
+    fn retired(&self, _id: GenerationId, _was: GenerationState, _on_shell_thread: bool) {}
 }
 
 impl<E> Default for GenerationHost<E> {
@@ -214,6 +228,16 @@ impl<E> Default for GenerationHost<E> {
 impl<E> GenerationHost<E> {
     /// An empty host.
     pub const fn new() -> Self {
+        Self::with_observer_slot(None)
+    }
+
+    /// An empty host that tells `observer` when a generation is staged, activated and retired. The observer is part of the
+    /// host's identity: it is fixed at construction, so no generation can exist that it did not see.
+    pub const fn with_observer(observer: &'static dyn LifecycleObserver) -> Self {
+        Self::with_observer_slot(Some(observer))
+    }
+
+    const fn with_observer_slot(observer: Option<&'static dyn LifecycleObserver>) -> Self {
         Self {
             state: Mutex::new(HostTables {
                 next_generation: 1,
@@ -228,6 +252,7 @@ impl<E> GenerationHost<E> {
             callbacks: AtomicU64::new(0),
             retired: AtomicU64::new(0),
             stale_calls: AtomicU64::new(0),
+            observer,
         }
     }
 
@@ -248,17 +273,23 @@ impl<E> GenerationHost<E> {
     /// Makes a generation for a module that is about to run, staged, owned by the calling thread (which becomes the shell
     /// thread). The generation's number is its sequence number.
     pub fn new_generation(&self, info: GenerationInfo) -> GenerationId {
-        let mut state = self.lock();
-        let id = state.next_generation;
-        state.next_generation += 1;
-        state.generations.insert(
-            id,
-            Generation {
-                state: GenerationState::Staged,
-                thread: thread::current().id(),
-                info: Arc::new(info),
-            },
-        );
+        let id = {
+            let mut state = self.lock();
+            let id = state.next_generation;
+            state.next_generation += 1;
+            state.generations.insert(
+                id,
+                Generation {
+                    state: GenerationState::Staged,
+                    thread: thread::current().id(),
+                    info: Arc::new(info),
+                },
+            );
+            id
+        };
+        if let Some(observer) = self.observer {
+            contained((), "lifecycle observer", || observer.staged(id));
+        }
         id
     }
 
@@ -283,15 +314,21 @@ impl<E> GenerationHost<E> {
     ///
     /// The generation is unknown or is not staged.
     pub fn activate(&self, id: GenerationId) -> Result<(), String> {
-        let mut state = self.lock();
-        match state.generations.get_mut(&id) {
-            Some(generation) if generation.state == GenerationState::Staged => {
-                generation.state = GenerationState::Active;
-                Ok(())
+        let on_shell_thread = {
+            let mut state = self.lock();
+            match state.generations.get_mut(&id) {
+                Some(generation) if generation.state == GenerationState::Staged => {
+                    generation.state = GenerationState::Active;
+                    generation.thread == thread::current().id()
+                }
+                Some(generation) => return Err(format!("generation {id} is {:?}, not staged", generation.state)),
+                None => return Err("no such context".to_owned()),
             }
-            Some(generation) => Err(format!("generation {id} is {:?}, not staged", generation.state)),
-            None => Err("no such context".to_owned()),
+        };
+        if let Some(observer) = self.observer {
+            contained((), "lifecycle observer", || observer.activated(id, on_shell_thread));
         }
+        Ok(())
     }
 
     /// Checks that `id` names a generation the caller may use for a call named `what`. A retired generation counts as a
@@ -374,7 +411,7 @@ impl<E> GenerationHost<E> {
     /// A registration whose callback is running (retire called from inside it) is marked dead and removed when the
     /// callback returns.
     pub fn finish_retire(&self, id: GenerationId) -> usize {
-        let (removed, posts) = {
+        let (removed, posts, was, on_shell_thread) = {
             let mut state = self.lock();
             let Some(generation) = state.generations.get_mut(&id) else {
                 return 0;
@@ -382,6 +419,8 @@ impl<E> GenerationHost<E> {
             if generation.state == GenerationState::Retired {
                 return 0;
             }
+            let was = generation.state;
+            let on_shell_thread = generation.thread == thread::current().id();
             generation.state = GenerationState::Retired;
             self.retired.fetch_add(1, Ordering::Relaxed);
             let in_flight = state.in_flight;
@@ -405,7 +444,7 @@ impl<E> GenerationHost<E> {
                 .into_iter()
                 .partition(|post| post.owner == id);
             state.posts = rest;
-            (removed, mine)
+            (removed, mine, was, on_shell_thread)
         };
         let count = removed.len();
         for registration in removed {
@@ -413,6 +452,9 @@ impl<E> GenerationHost<E> {
         }
         for post in posts {
             Self::run_release(Some(post.discard), "discard of a posted call");
+        }
+        if let Some(observer) = self.observer {
+            contained((), "lifecycle observer", || observer.retired(id, was, on_shell_thread));
         }
         count
     }

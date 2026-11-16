@@ -9,6 +9,9 @@
 pub const KIND_CTX: u64 = 1;
 /// The kind of a registration handle.
 pub const KIND_REG: u64 = 2;
+/// The kind of a pending-call handle: the registration that waits for the answer, under another tag, so a pending handle
+/// passed to `remove` (or the reverse) is refused instead of reaching the wrong object.
+pub const KIND_PENDING: u64 = 3;
 
 const INDEX_BITS: u32 = 40;
 const INDEX_MASK: u64 = (1 << INDEX_BITS) - 1;

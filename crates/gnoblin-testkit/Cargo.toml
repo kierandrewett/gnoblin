@@ -19,9 +19,5 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # The fake compositor behind the tree link (`compositor`), which every shell runtime's tests share.
 gnoblin-tree-client = { path = "../gnoblin-tree-client" }
 
-[dev-dependencies]
-# The session tests make calls whose text is a secret.
-gnoblin-secret.workspace = true
-
 [lints]
 workspace = true

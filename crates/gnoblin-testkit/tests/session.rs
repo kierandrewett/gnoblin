@@ -4,7 +4,6 @@
 
 use std::time::Duration;
 
-use gnoblin_secret::SecretText;
 use gnoblin_testkit::compositor::{FakeCompositor, ROOT, text};
 use gnoblin_tree_client::session::{NodeEvent, TreeSession};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TreeIncoming, TxAnimation};
@@ -164,7 +163,7 @@ fn a_call_is_answered_by_its_token_and_a_lost_call_is_answered_failed() {
     comp.add_window(WINDOW, "Terminal", "foot");
     let mut session = session(&comp);
     let token = session
-        .call(WINDOW, "close", Vec::new(), SecretText::default())
+        .call(WINDOW, "close", Vec::new(), String::new())
         .expect("the node exists");
     session.flush().expect("a flush");
     comp.answer(token, "closed", "");
@@ -175,7 +174,7 @@ fn a_call_is_answered_by_its_token_and_a_lost_call_is_answered_failed() {
 
     // A refusal no base cures gives the call up: it comes back as an answer that failed, so its caller is not left waiting.
     let doomed = session
-        .call(WINDOW, "close", Vec::new(), SecretText::default())
+        .call(WINDOW, "close", Vec::new(), String::new())
         .expect("the node exists");
     comp.fault(gnoblin_testkit::compositor::Fault::Refuse {
         code: "bad-value",

@@ -1209,3 +1209,49 @@ What the InProc lane built (`gnoblin-compositor/src/inproc_shell.rs`), where it 
   fake shell against the real compositor over both transports with one script (`tests/support/shell.rs`: a `Shell` is a socket link
   on the test thread or an in-process link on the shell thread, driven by jobs) and compares what each saw; and the hung-shell
   lock, panic, guardian-hook and shutdown tests. The lock helpers `lock_card.rs` used moved to `tests/support/lock.rs`.
+
+## 19. Implementation notes, M3.1, M3.2 and M3.4
+
+What the RustSdk lane built against a fake compositor, where it differs from section 5.9, and what the later lanes still need.
+
+- **One shell side of the tree protocol.** The language-neutral part of the JavaScript shell moved into `gnoblin-tree-client`:
+  `gate::TxGate` (one transaction in flight, the `stale-base` and `unknown-node` resend rules, `STALE_RETRIES`, the `failed_op`
+  partition, the secret-call split, per-property coalescing), `session::boot_mirror`, and `session::TreeSession` (link, mirror,
+  per-tick `TxBuilder` and gate, with `pump` and `flush`). `gnoblin-js` drives the same gate and boot; its suite is unchanged and
+  green. The core holds one mirror for every language (D4). The fake compositor moved from `gnoblin-js/tests` to
+  `gnoblin-testkit::compositor` and both suites use it.
+- **Table additions** (all appended, `abi.lock` regenerated, ABI still unreleased): `tree_attach`, `tree_root`, `node_exists`,
+  `node_class`, `node_parent`, `node_children`, `node_get`, `class_name`, `write_create`, `write_destroy`, `write_insert`,
+  `write_set`, `write_call`, `flush`, `cancel`, `on_change`, `on_node_created`, `on_node_destroyed`, `claim`, `timer_add`,
+  `spawn`, `proc_kill`, `state_put`, `state_get`.
+- **Deviations from 5.9.** A function that returned a handle and could fail with a code (`write_call`, `flush`, `spawn`) returns
+  `i32` and writes the handle through `out`. Chords, gestures, pointer claims, devices and grabs are one function, `claim`, with a
+  `GnoblinClaim` spec; `remove(reg)` gives the claim up. `proc_kill` takes `ctx` first. Call arguments reach the wire as the
+  schema's convention: integers, booleans and node ids as packed `i64`s, text arguments joined into the call's one text
+  (`device`, a line feed, `subject`). A timed `write_set` plays a linear curve. Lists read by `node_get` are transient; text and bytes
+  are owned. A property nothing wrote reads as its schema default (the catalog now carries defaults).
+- **Host seam.** `host::set_tree_link_provider` gives the shell thread a `TreeLinkProvider` (not `Send`, called on the shell
+  thread at `tree_attach`); `host::set_clock` and `host::reset_session` serve tests. `GenerationHost` gained a
+  `LifecycleObserver` (staged, activated, retired) so the session's programs and claims follow generations: a staged generation's
+  claims and spawns wait for the takeover, the old generation's claims are released and the new ones sent in the same
+  transaction, and an abandoned generation leaves nothing behind. `dispatch` is one turn: pump the link (a whole batch applied
+  before any callback), publish node events, answers, claim events, due timers and program exits, deliver, flush one transaction.
+- **SDK.** `Gnoblin` (Rc-shared, `!Send`), `Node`, `Window` (`Client` is an alias), `Rect`, `Value`, typed `on_client_created`,
+  `on_client_destroyed`, `on_title_changed`, `on_app_id_changed`, `on_window_property_changed`, `on_focus_changed`,
+  `on_window_request`, `on_node_event`, `bind`, `bind_events`, `bind_pointer`, `bind_gesture`, `grab_input`, `spawn`/`command`,
+  `after`/`every` (milliseconds), `flush`, `keep_state`. Subscriptions return `Subscription` (`unsubscribe`, `scoped`); dropping one
+  does not unsubscribe. `#[gnoblin::main]` reads `g: &Gnoblin` as `&'static Gnoblin` so closures may use `g` without cloning it.
+  Handles hold their generation's context, so a handle kept past a reload fails with `Retired`, and node ids are never reused, so
+  a closed window fails with `NoSuchNode`.
+- **Examples and tests.** `examples/01-minimal-core-shell` and `examples/08-no-workspaces` are workspace cdylib members using only
+  `gnoblin-core`. `crates/gnoblin-core-impl/tests/examples.rs` loads each `.so` through the loader into the launcher fixture's
+  process (feature `test-driver`, which now pulls the fake compositor; `deps` allows that one edge), drives windows, a closing window
+  and chords, and asserts placement, tiling, no node created, `NEEDED` = the core only, one defined symbol, one core mapping, no
+  std mapping, and the same compiled examples running unchanged on a core built with an added function (`next-minor`).
+- **Not done here, and what the next lanes need.** `wake_fd`, verbs (`call`, `subscribe` for the `gnoblin` namespace),
+  `provider_register` and `setting_*` are not implemented: verbs ride the session socket, not the tree link. Flip (M3.3, M2.10) needs
+  `host::load` plus `module.activate()` on the shell thread, a `TreeLinkProvider` over the in-process `TreeQueue` link set on that
+  thread before the load, a loop calling `module.dispatch(timeout)`, and `take_reload_request`/`take_exit_request`. M3.5 (lock
+  tests) needs a hung callback to be observable: `dispatch` runs callbacks inline, so the compositor edge must time them
+  (`LOCK_UI_LEASE_MS`) from outside the shell thread. M3.6 (guardian) needs "attached" and "init done" signals: `tree_attach` success
+  and `NativeLoader::load` returning. Observer attach mode is passed to the provider only; `TreeLink::attach` carries no mode.

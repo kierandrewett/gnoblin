@@ -139,17 +139,23 @@ impl StreamMode {
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SpawnOptions {
-    cwd: Option<PathBuf>,
+    /// The working directory, the shell's own when `None`.
+    pub cwd: Option<PathBuf>,
+    /// Variables added to the session's environment.
     #[serde(default)]
-    env: BTreeMap<String, String>,
-    stdin: Option<String>,
+    pub env: BTreeMap<String, String>,
+    /// Text written to standard input, which is then closed.
+    pub stdin: Option<String>,
+    /// What standard output does.
     #[serde(default)]
-    stdout: StreamMode,
+    pub stdout: StreamMode,
+    /// What standard error does.
     #[serde(default)]
-    stderr: StreamMode,
-    output_limit: Option<u64>,
+    pub stderr: StreamMode,
+    /// The most bytes of a captured stream kept.
+    pub output_limit: Option<u64>,
     /// Milliseconds before the group is terminated.
-    timeout: Option<f64>,
+    pub timeout: Option<f64>,
 }
 
 /// How a process ended.
@@ -397,6 +403,11 @@ impl Processes {
     /// spawn of a staged generation that has not taken over, which has not started.
     pub fn pid(&self, id: u64) -> Option<u32> {
         self.running.get(&id).map(|running| running.pid)
+    }
+
+    /// Whether a generation is staged: its spawns wait for the takeover.
+    pub fn is_staging(&self) -> bool {
+        self.stage.is_some()
     }
 
     /// The generation that owns process `id`, or `None` when it is not running.

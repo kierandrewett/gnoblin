@@ -17,7 +17,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 # Test only: adds the `gnoblin_test_main` export, the scenario driver the integration tests run through a launcher, and
 # turns the log console on. Never in a build that ships; `cargo xtask dist-check` rejects the export.
-test-driver = ["gnoblin-log/init"]
+test-driver = ["gnoblin-log/init", "dep:gnoblin-testkit"]
 # Test only: a core of a hypothetical ABI 1.1 (one function appended to the table). See `gnoblin-core-abi`.
 next-minor = ["gnoblin-core-abi/next-minor"]
 
@@ -27,6 +27,17 @@ gnoblin-log = { path = "../gnoblin-log" }
 # The host: generations and their registrations, the dispatch loop, the loader and its retire list, panic containment.
 # This crate adds the C handles and the function table over it.
 gnoblin-shell-host = { path = "../gnoblin-shell-host" }
+# The shell side of the tree protocol, in one place: the link seam, the mirror, the per-tick builder and the gate that keeps one
+# transaction in flight. The core holds the one mirror for every language (D4).
+gnoblin-tree-client = { path = "../gnoblin-tree-client" }
+# Test only (`test-driver`): the fake compositor the scenario driver gives the shells it loads, so one process can load a shell
+# `.so` and drive it with windows and keys. It is the same fake the JavaScript runtime's tests use. A shipped core has no use for
+# it, and `cargo xtask dist-check` rejects the driver's export.
+gnoblin-testkit = { path = "../gnoblin-testkit", optional = true }
+
+[dev-dependencies]
+# The unit tests of the table's tree functions run over the fake compositor.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
 
 [build-dependencies]
 # The ABI crate names the SONAME and the value kinds the generated catalog uses; the schema is the catalog's source.

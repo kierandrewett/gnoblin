@@ -186,7 +186,8 @@ mod tests {
     #[test]
     fn the_next_minor_table_is_one_function_longer() {
         let table = size_of::<GnoblinApi>();
-        let base = offset_of!(GnoblinApi, stats) + size_of::<unsafe extern "C" fn()>();
+        // `state_get` is the last function of the ABI 1.0 table.
+        let base = offset_of!(GnoblinApi, state_get) + size_of::<unsafe extern "C" fn()>();
         if cfg!(feature = "next-minor") {
             assert_eq!(ABI_MINOR, 1);
             assert_eq!(table, base + size_of::<usize>());

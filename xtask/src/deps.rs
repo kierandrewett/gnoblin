@@ -1056,12 +1056,17 @@ const PRIVACY_CRATE: &str = "gnoblin-service-privacy";
 const KEYRING_HANDOFF_CRATE: &str = "gnoblin-keyring-handoff";
 const PAM_KEYRING_CRATE: &str = "pam-gnoblin-keyring";
 
+/// The core library's scenario driver (feature `test-driver`, never in a shipped build: `dist-check` rejects its export) loads
+/// shells into one process and needs a compositor to drive them against, so `gnoblin-core-impl` takes the test kit's fake
+/// compositor as an optional dependency of that feature. It is the same fake the JavaScript runtime's tests use.
+const TESTKIT_IN_THE_DRIVER: &str = "gnoblin-core-impl";
+
 /// The test kit and the parity harness are development dependencies only.
 fn dev_crates(package: &Package, dep: &Dep) -> Option<String> {
     if dep.name != "gnoblin-testkit" && dep.name != "gnoblin-parity" {
         return None;
     }
-    if dep.kind == DepKind::Dev {
+    if dep.kind == DepKind::Dev || (package.name == TESTKIT_IN_THE_DRIVER && dep.name == "gnoblin-testkit") {
         return None;
     }
     Some(format!(
@@ -1570,6 +1575,15 @@ mod tests {
             "unexpected violation: {}",
             reported[0]
         );
+    }
+
+    #[test]
+    fn only_the_core_librarys_test_driver_may_take_the_test_kit_as_a_normal_dependency() {
+        let allowed = violations(&[("gnoblin-core-impl", &["gnoblin-testkit"])]);
+        assert!(allowed.is_empty(), "{allowed:?}");
+        let refused = violations(&[("gnoblin-shell-host", &["gnoblin-testkit"])]);
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert!(refused[0].contains("[dev-crates]"), "{refused:?}");
     }
 
     /// A metadata document with one package per `(name, dependencies)` pair.

@@ -19,7 +19,7 @@ use crate::gnoblin::{CALLS, DROPS, Gnoblin, LogLevel, REGISTERED};
 use crate::sys;
 
 /// The shell's entry function, recorded by `gnoshell_entry_v1` before the core calls `init`.
-type UserFn = fn(&Gnoblin) -> Result<(), String>;
+type UserFn = fn(&'static Gnoblin) -> Result<(), String>;
 
 static USER: OnceLock<UserFn> = OnceLock::new();
 
@@ -79,12 +79,15 @@ pub unsafe extern "C" fn init(_api: *const GnoblinApi, ctx: GnoblinCtx) -> i32 {
         return abi::E_ABI;
     };
     install_panic_hook(api, ctx);
-    let g = Gnoblin::new(api, ctx);
+    // The handle is leaked: sixteen bytes per generation, so the author's closures may capture `g` for as long as the shell runs
+    // (`g.bind("Super+Return", || g.spawn("foot"))`). The core never unmaps a generation's code (D16), so what the box costs is
+    // what the library already costs, and a handle kept past its generation fails with `Retired` instead of acting.
+    let g: &'static Gnoblin = Box::leak(Box::new(Gnoblin::new(api, ctx)));
     let Some(user) = USER.get() else {
         g.log_at(LogLevel::CoreError, "the shell's entry function was not recorded");
         return abi::E_LOAD;
     };
-    match catch_unwind(AssertUnwindSafe(|| user(&g))) {
+    match catch_unwind(AssertUnwindSafe(|| user(g))) {
         Ok(Ok(())) => abi::E_OK,
         Ok(Err(message)) => {
             // SAFETY: `set_last_error` reads `len` bytes at `msg` for the call.

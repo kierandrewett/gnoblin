@@ -20,7 +20,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use gnoblin_core_abi as abi;
-use gnoblin_schema::{Catalog, Namespace, Type};
+use gnoblin_schema::{Catalog, DefaultValue, Namespace, Type};
 
 fn main() {
     println!("cargo:rustc-cdylib-link-arg=-Wl,-soname,{}", abi::SONAME);
@@ -96,8 +96,9 @@ fn render(catalog: &Catalog) -> (String, u64) {
                 let _ = writeln!(canonical, "p {} {kind} {flags}", property.name);
                 let _ = writeln!(
                     source,
-                    "        MemberDef {{ name: {:?}, value_kind: {kind}, flags: {flags}, args: &[] }},",
-                    property.name
+                    "        MemberDef {{ name: {:?}, value_kind: {kind}, flags: {flags}, args: &[], default: {} }},",
+                    property.name,
+                    default_source(property.default.as_ref(), kind)
                 );
             }
             source.push_str("    ], methods: &[\n");
@@ -111,7 +112,7 @@ fn render(catalog: &Catalog) -> (String, u64) {
                 let _ = writeln!(canonical, "m {} {flags} {args:?}", method.name);
                 let _ = writeln!(
                     source,
-                    "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?} }},",
+                    "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?}, default: DefaultDef::None }},",
                     method.name
                 );
             }
@@ -126,7 +127,7 @@ fn render(catalog: &Catalog) -> (String, u64) {
                 let _ = writeln!(canonical, "s {} {flags} {args:?}", signal.name);
                 let _ = writeln!(
                     source,
-                    "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?} }},",
+                    "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?}, default: DefaultDef::None }},",
                     signal.name
                 );
             }
@@ -135,6 +136,50 @@ fn render(catalog: &Catalog) -> (String, u64) {
     }
     source.push_str("];\n");
     (source, fnv1a64(canonical.as_bytes()))
+}
+
+/// The source of a property's default (`DefaultDef` in `catalog.rs`): what the property reads as before any write. A property
+/// the schema gives no default reads as the empty value of its kind, which the reader supplies.
+fn default_source(default: Option<&DefaultValue>, kind: u32) -> String {
+    let Some(default) = default else {
+        return "DefaultDef::None".to_owned();
+    };
+    match (default, kind) {
+        (DefaultValue::Bool(value), abi::VALUE_BOOL) => format!("DefaultDef::Bool({value})"),
+        (DefaultValue::Int(value), abi::VALUE_INT) => format!("DefaultDef::Int({value})"),
+        (DefaultValue::Uint(value), abi::VALUE_UINT) => format!("DefaultDef::Uint({value})"),
+        (DefaultValue::Int(value), abi::VALUE_UINT) if *value >= 0 => format!("DefaultDef::Uint({value})"),
+        (DefaultValue::Uint(value), abi::VALUE_INT) if i64::try_from(*value).is_ok() => {
+            format!("DefaultDef::Int({value})")
+        }
+        (DefaultValue::Double(value), abi::VALUE_DOUBLE) => format!("DefaultDef::Double({:?}_f64)", value),
+        (DefaultValue::Int(value), abi::VALUE_DOUBLE) => format!("DefaultDef::Double({value}.0_f64)"),
+        (DefaultValue::Uint(value), abi::VALUE_DOUBLE) => format!("DefaultDef::Double({value}.0_f64)"),
+        (DefaultValue::Text(value), abi::VALUE_TEXT) => format!("DefaultDef::Text({value:?})"),
+        (DefaultValue::List(items), abi::VALUE_LIST) => {
+            let numbers: Vec<String> = items
+                .iter()
+                .filter_map(|item| match item {
+                    DefaultValue::Double(value) => Some(format!("{value:?}_f64")),
+                    DefaultValue::Int(value) => Some(format!("{value}.0_f64")),
+                    DefaultValue::Uint(value) => Some(format!("{value}.0_f64")),
+                    _ => None,
+                })
+                .collect();
+            format!("DefaultDef::Numbers(&[{}])", numbers.join(", "))
+        }
+        (DefaultValue::List(items), abi::VALUE_TEXTS) => {
+            let texts: Vec<String> = items
+                .iter()
+                .filter_map(|item| match item {
+                    DefaultValue::Text(value) => Some(format!("{value:?}")),
+                    _ => None,
+                })
+                .collect();
+            format!("DefaultDef::Texts(&[{}])", texts.join(", "))
+        }
+        _ => "DefaultDef::None".to_owned(),
+    }
 }
 
 fn flag(condition: bool, bit: u32) -> u32 {

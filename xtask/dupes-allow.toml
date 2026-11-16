@@ -1481,3 +1481,285 @@ left = "gnoblin-core::ModuleInfo"
 right = "gnoblin-shell-host::GenerationInfo"
 kind = "near-shape"
 reason = "ModuleInfo is the SDK's safe copy of what `ctx_info` reports to a shell; GenerationInfo is the host's record the report is made from. The SDK may not name the host (sdk-isolation), so the two are declared apart"
+
+[[allow]]
+left = "gnoblin-core::DragPhase"
+right = "gnoblin-wayland::PointerChordPhase"
+kind = "same-shape"
+reason = "the SDK's DragPhase is what a shell is told of a pointer drag or a gesture (start, update, end, cancel), decoded from the phase text the ABI carries; the engine's PointerChordPhase is the compositor's own state of the drag. The SDK may not name the engine (sdk-isolation), so the two are declared apart"
+
+[[allow]]
+left = "gnoblin-core::GrabScope"
+right = "gnoblin-input::Scope"
+kind = "same-shape"
+reason = "the SDK's GrabScope is what a shell asks an input grab to take (pointer, keyboard, both), spelled as the text the ABI carries; the router's Scope is the compositor's own record of what a grab holds. The SDK may not name the input engine (sdk-isolation), so the two are declared apart"
+
+[[allow]]
+left = "gnoblin-core::Rect"
+right = "gnoblin-types::RectF"
+kind = "same-shape"
+reason = "the SDK's Rect is the rectangle a shell writes to a window and reads back, in the logical pixels the tree's doubles carry; gnoblin-types is a foundation crate and the SDK may not name one (sdk-isolation: a shell compiles the SDK and never a workspace crate), so a shell author's rectangle is the SDK's own"
+
+[[allow]]
+left = "gnoblin-core::Value"
+right = "gnoblin-core-impl::OwnedValue"
+kind = "same-shape"
+reason = "the SDK's Value is what a shell reads and writes as a property, converted to and from the ABI's GnoblinValue on the shell's side of the boundary; the implementation's OwnedValue is the same conversion on the core's side. The SDK and the implementation share no crate by design (sdk-isolation, impl-sealed): the C struct is the contract between them"
+
+[[allow]]
+left = "gnoblin-a11y::PointerButton"
+right = "gnoblin-core::PointerButton"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-authority::Answer"
+right = "gnoblin-core::Answer"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-backend-drm::Seen"
+right = "gnoblin-core-impl::Seen"
+kind = "same-name"
+reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
+
+[[allow]]
+left = "gnoblin-backend-drm::SessionError"
+right = "gnoblin-tree-client::SessionError"
+kind = "same-name"
+reason = "the shell side of the tree protocol names its own session and event types; the other crate's type belongs to another subsystem (the compositor side of the same protocol, or an unrelated one) and means something else"
+
+[[allow]]
+left = "gnoblin-capture::Session"
+right = "gnoblin-core-impl::Session"
+kind = "same-name"
+reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
+
+[[allow]]
+left = "gnoblin-compositor::AttachMode"
+right = "gnoblin-core-impl::AttachMode"
+kind = "same-name"
+reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
+
+[[allow]]
+left = "gnoblin-compositor::Compositor"
+right = "gnoblin-testkit::Compositor"
+kind = "same-name"
+reason = "the fake compositor of the shared test kit names its own model of a node, a fault or a claim; the other crate's type is the real subsystem's"
+
+[[allow]]
+left = "gnoblin-compositor::Session"
+right = "gnoblin-core-impl::Session"
+kind = "same-name"
+reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
+
+[[allow]]
+left = "gnoblin-compositor::SessionError"
+right = "gnoblin-tree-client::SessionError"
+kind = "same-name"
+reason = "the shell side of the tree protocol names its own session and event types; the other crate's type belongs to another subsystem (the compositor side of the same protocol, or an unrelated one) and means something else"
+
+[[allow]]
+left = "gnoblin-compositor::TreeSession"
+right = "gnoblin-tree-client::TreeSession"
+kind = "same-name"
+reason = "the shell side of the tree protocol names its own session and event types; the other crate's type belongs to another subsystem (the compositor side of the same protocol, or an unrelated one) and means something else"
+
+[[allow]]
+left = "gnoblin-config::Fault"
+right = "gnoblin-testkit::Fault"
+kind = "same-name"
+reason = "the fake compositor of the shared test kit names its own model of a node, a fault or a claim; the other crate's type is the real subsystem's"
+
+[[allow]]
+left = "gnoblin-config::Value"
+right = "gnoblin-core::Value"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core-impl::Lifecycle"
+right = "gnoblin-xwayland::Lifecycle"
+kind = "same-name"
+reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
+
+[[allow]]
+left = "gnoblin-core-impl::Provider"
+right = "gnoblin-model::Provider"
+kind = "same-name"
+reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
+
+[[allow]]
+left = "gnoblin-core-impl::Session"
+right = "gnoblin-wayland::Session"
+kind = "same-name"
+reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
+
+[[allow]]
+left = "gnoblin-core-impl::Session"
+right = "xdg-desktop-portal-gnoblin::Session"
+kind = "same-name"
+reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
+
+[[allow]]
+left = "gnoblin-core-impl::Subscription"
+right = "gnoblin-model::Subscription"
+kind = "same-name"
+reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
+
+[[allow]]
+left = "gnoblin-core::ChordEvent"
+right = "gnoblin-wayland::ChordEvent"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::ChordState"
+right = "gnoblin-wayland::ChordState"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Command"
+right = "gnoblin-wayland::Command"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Command"
+right = "xdg-desktop-portal-gnoblin::Command"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::GestureEvent"
+right = "gnoblin-input::GestureEvent"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::GestureKind"
+right = "gnoblin-input::GestureKind"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Node"
+right = "gnoblin-render::Node"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Node"
+right = "gnoblin-testkit::Node"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::NodeEvent"
+right = "gnoblin-tree-client::NodeEvent"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::NodeNotice"
+right = "gnoblin-core-impl::NodeNotice"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::PointerDrag"
+right = "gnoblin-wayland::PointerDrag"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::ProcessExit"
+right = "gnoblin-shell-host::ProcessExit"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Rect"
+right = "gnoblin-types::Rect"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Shared"
+right = "xdg-desktop-portal-gnoblin::Shared"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Signal"
+right = "gnoblin-schema::Signal"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Signal"
+right = "gnoblin-session::Signal"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Slot"
+right = "gnoblin-render-gles::Slot"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Stream"
+right = "xdg-desktop-portal-gnoblin::Stream"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Subscription"
+right = "gnoblin-core-impl::Subscription"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Subscription"
+right = "gnoblin-model::Subscription"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Value"
+right = "gnoblin-model::Value"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::Window"
+right = "gnoblin-wm-api::Window"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-core::WindowRequest"
+right = "gnoblin-wayland::WindowRequest"
+kind = "same-name"
+reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
+
+[[allow]]
+left = "gnoblin-render::Node"
+right = "gnoblin-testkit::Node"
+kind = "same-name"
+reason = "the fake compositor of the shared test kit names its own model of a node, a fault or a claim; the other crate's type is the real subsystem's"
+
+[[allow]]
+left = "gnoblin-testkit::Claim"
+right = "gnoblin-wayland::Claim"
+kind = "same-name"
+reason = "the fake compositor of the shared test kit names its own model of a node, a fault or a claim; the other crate's type is the real subsystem's"
+
+[[allow]]
+left = "gnoblin-testkit::Drag"
+right = "gnoblin-wayland::Drag"
+kind = "same-name"
+reason = "the fake compositor of the shared test kit names its own model of a node, a fault or a claim; the other crate's type is the real subsystem's"

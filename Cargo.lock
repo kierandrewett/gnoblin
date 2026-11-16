@@ -1490,6 +1490,8 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-schema",
  "gnoblin-shell-host",
+ "gnoblin-testkit",
+ "gnoblin-tree-client",
 ]
 
 [[package]]
@@ -1503,6 +1505,20 @@ dependencies = [
  "serde_json",
  "xcursor",
  "zip",
+]
+
+[[package]]
+name = "gnoblin-example-minimal-core-shell"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+]
+
+[[package]]
+name = "gnoblin-example-no-workspaces"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
 ]
 
 [[package]]
@@ -2022,7 +2038,6 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-model",
  "gnoblin-schema",
- "gnoblin-secret",
  "gnoblin-tree-client",
  "serde_json",
 ]

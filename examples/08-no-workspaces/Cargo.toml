@@ -1,0 +1,18 @@
+[package]
+name = "gnoblin-example-no-workspaces"
+description = "Example 8: a tiling shell with no workspaces and no scene graph: it tiles raw window nodes by writing their rectangles, and creates no node of its own."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "no_workspaces"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+
+[lints]
+workspace = true

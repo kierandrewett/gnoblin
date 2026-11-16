@@ -13,13 +13,16 @@ use core::ffi::c_void;
 use std::slice;
 
 use gnoblin_core_abi::{
-    self as abi, GnoblinApi, GnoblinBuf, GnoblinCtx, GnoblinCtxInfo, GnoblinDropFn, GnoblinEventFn, GnoblinMember,
-    GnoblinMemberFn, GnoblinNode, GnoblinPostFn, GnoblinReg, GnoblinShutdownFn, GnoblinStats, GnoblinValue,
+    self as abi, GnoblinAnswerFn, GnoblinApi, GnoblinBuf, GnoblinClaim, GnoblinClaimFn, GnoblinCtx, GnoblinCtxInfo,
+    GnoblinDropFn, GnoblinEventFn, GnoblinExitFn, GnoblinMember, GnoblinMemberFn, GnoblinNode, GnoblinNodeFn,
+    GnoblinNodes, GnoblinPending, GnoblinPostFn, GnoblinProc, GnoblinReg, GnoblinShutdownFn, GnoblinSpawn,
+    GnoblinStats, GnoblinStr, GnoblinTimerFn, GnoblinValue,
 };
 
 use crate::guard::{guard, set_code_error};
+use crate::listen::{self, NodeFilter};
 use crate::registry::{self, Registering};
-use crate::{catalog, log, memory};
+use crate::{catalog, log, memory, procs, tree, values};
 
 /// The table of this core, built at compile time. Its `size` is what lets a caller built against another minor probe it.
 pub(crate) static API: GnoblinApi = GnoblinApi {
@@ -44,6 +47,30 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     post: api_post,
     dispatch: api_dispatch,
     stats: api_stats,
+    tree_attach: api_tree_attach,
+    tree_root: api_tree_root,
+    node_exists: api_node_exists,
+    node_class: api_node_class,
+    node_parent: api_node_parent,
+    node_children: api_node_children,
+    node_get: api_node_get,
+    class_name: api_class_name,
+    write_create: api_write_create,
+    write_destroy: api_write_destroy,
+    write_insert: api_write_insert,
+    write_set: api_write_set,
+    write_call: api_write_call,
+    flush: api_flush,
+    cancel: api_cancel,
+    on_change: api_on_change,
+    on_node_created: api_on_node_created,
+    on_node_destroyed: api_on_node_destroyed,
+    claim: api_claim,
+    timer_add: api_timer_add,
+    spawn: api_spawn,
+    proc_kill: api_proc_kill,
+    state_put: api_state_put,
+    state_get: api_state_get,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -305,6 +332,292 @@ unsafe extern "C" fn api_stats(ctx: GnoblinCtx, out: *mut GnoblinStats) -> i32 {
         // SAFETY: the table's contract passes `out` as a writable `GnoblinStats`.
         Ok(stats) => unsafe { write_sized(out, stats, "stats") },
         Err(code) => code,
+    })
+}
+
+// ---- the tree, claims, timers, processes and state ------------------------------------------------------------------------
+
+/// Writes `value` through `out` after checking it is not null: a function that returns a value through a pointer.
+///
+/// # Safety
+///
+/// `out` must be null or writable.
+unsafe fn put<T>(out: *mut T, value: T, what: &str) -> i32 {
+    if out.is_null() {
+        set_code_error(abi::E_ERR, format!("{what}: a null output pointer"));
+        return abi::E_ERR;
+    }
+    // SAFETY: the caller guarantees a non-null `out` is writable.
+    unsafe { out.write(value) };
+    abi::E_OK
+}
+
+unsafe extern "C" fn api_tree_attach(ctx: GnoblinCtx, mode: u32) -> i32 {
+    guard(abi::E_PANIC, "tree_attach", || tree::attach(ctx, mode))
+}
+
+unsafe extern "C" fn api_tree_root(ctx: GnoblinCtx, out: *mut GnoblinNode) -> i32 {
+    guard(abi::E_PANIC, "tree_root", || match tree::root(ctx) {
+        // SAFETY: the table's contract passes `out` as a writable node id.
+        Ok(root) => unsafe { put(out, root, "tree_root") },
+        Err(code) => code,
+    })
+}
+
+unsafe extern "C" fn api_node_exists(ctx: GnoblinCtx, node: GnoblinNode) -> i32 {
+    guard(abi::E_PANIC, "node_exists", || tree::node_exists(ctx, node))
+}
+
+unsafe extern "C" fn api_node_class(ctx: GnoblinCtx, node: GnoblinNode) -> u32 {
+    guard(0, "node_class", || tree::node_class(ctx, node))
+}
+
+unsafe extern "C" fn api_node_parent(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinNode) -> i32 {
+    guard(abi::E_PANIC, "node_parent", || match tree::node_parent(ctx, node) {
+        // SAFETY: the table's contract passes `out` as a writable node id.
+        Ok(parent) => unsafe { put(out, parent, "node_parent") },
+        Err(code) => code,
+    })
+}
+
+unsafe extern "C" fn api_node_children(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinNodes) -> i32 {
+    guard(abi::E_PANIC, "node_children", || match tree::node_children(ctx, node) {
+        // SAFETY: the table's contract passes `out` as a writable `GnoblinNodes`.
+        Ok(children) => unsafe { put(out, values::lend_nodes(&children), "node_children") },
+        Err(code) => code,
+    })
+}
+
+unsafe extern "C" fn api_node_get(ctx: GnoblinCtx, node: GnoblinNode, prop: u32, out: *mut GnoblinValue) -> i32 {
+    guard(abi::E_PANIC, "node_get", || match tree::node_get(ctx, node, prop) {
+        // SAFETY: the table's contract passes `out` as a writable `GnoblinValue`.
+        Ok(value) => unsafe { put(out, value, "node_get") },
+        Err(code) => code,
+    })
+}
+
+unsafe extern "C" fn api_class_name(ctx: GnoblinCtx, class: u32, out: *mut GnoblinStr) -> i32 {
+    guard(abi::E_PANIC, "class_name", || match tree::class_name(ctx, class) {
+        // SAFETY: the table's contract passes `out` as a writable `GnoblinStr`.
+        Ok(name) => unsafe { put(out, name, "class_name") },
+        Err(code) => code,
+    })
+}
+
+unsafe extern "C" fn api_write_create(ctx: GnoblinCtx, class: u32, out: *mut GnoblinNode) -> i32 {
+    guard(abi::E_PANIC, "write_create", || match tree::create(ctx, class) {
+        // SAFETY: the table's contract passes `out` as a writable node id.
+        Ok(node) => unsafe { put(out, node, "write_create") },
+        Err(code) => code,
+    })
+}
+
+unsafe extern "C" fn api_write_destroy(ctx: GnoblinCtx, node: GnoblinNode) -> i32 {
+    guard(abi::E_PANIC, "write_destroy", || tree::destroy(ctx, node))
+}
+
+unsafe extern "C" fn api_write_insert(ctx: GnoblinCtx, parent: GnoblinNode, node: GnoblinNode, index: i64) -> i32 {
+    guard(abi::E_PANIC, "write_insert", || tree::insert(ctx, parent, node, index))
+}
+
+unsafe extern "C" fn api_write_set(
+    ctx: GnoblinCtx,
+    node: GnoblinNode,
+    prop: u32,
+    value: *const GnoblinValue,
+    seconds: f64,
+) -> i32 {
+    guard(abi::E_PANIC, "write_set", || {
+        // SAFETY: the table's contract passes `value` as a readable `GnoblinValue` valid for the call.
+        unsafe { tree::set(ctx, node, prop, value, seconds) }
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe extern "C" fn api_write_call(
+    ctx: GnoblinCtx,
+    node: GnoblinNode,
+    method: u32,
+    args: *const GnoblinValue,
+    n_args: usize,
+    cb: Option<GnoblinAnswerFn>,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+    out: *mut GnoblinPending,
+) -> i32 {
+    guard(abi::E_PANIC, "write_call", || {
+        // SAFETY: the table's contract passes `args` as `n_args` readable values and `out` as null or writable.
+        unsafe { tree::call(ctx, node, method, args, n_args, cb, user, drop_user, out) }
+    })
+}
+
+unsafe extern "C" fn api_flush(
+    ctx: GnoblinCtx,
+    cb: Option<GnoblinAnswerFn>,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+    out: *mut GnoblinPending,
+) -> i32 {
+    guard(abi::E_PANIC, "flush", || {
+        // SAFETY: the table's contract passes `out` as null or writable.
+        unsafe { tree::flush(ctx, cb, user, drop_user, out) }
+    })
+}
+
+unsafe extern "C" fn api_cancel(pending: GnoblinPending) -> i32 {
+    guard(abi::E_PANIC, "cancel", || tree::cancel(pending))
+}
+
+unsafe extern "C" fn api_on_change(
+    ctx: GnoblinCtx,
+    node: GnoblinNode,
+    class: u32,
+    prop: u32,
+    cb: GnoblinNodeFn,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+) -> GnoblinReg {
+    guard(0, "on_change", || {
+        listen::on_node(
+            ctx,
+            "on_change",
+            NodeFilter {
+                kind: abi::NODE_CHANGED,
+                node,
+                class,
+                property: prop,
+            },
+            cb,
+            user,
+            drop_user,
+        )
+    })
+}
+
+unsafe extern "C" fn api_on_node_created(
+    ctx: GnoblinCtx,
+    class: u32,
+    cb: GnoblinNodeFn,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+) -> GnoblinReg {
+    guard(0, "on_node_created", || {
+        listen::on_node(
+            ctx,
+            "on_node_created",
+            NodeFilter {
+                kind: abi::NODE_CREATED,
+                node: 0,
+                class,
+                property: 0,
+            },
+            cb,
+            user,
+            drop_user,
+        )
+    })
+}
+
+unsafe extern "C" fn api_on_node_destroyed(
+    ctx: GnoblinCtx,
+    class: u32,
+    cb: GnoblinNodeFn,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+) -> GnoblinReg {
+    guard(0, "on_node_destroyed", || {
+        listen::on_node(
+            ctx,
+            "on_node_destroyed",
+            NodeFilter {
+                kind: abi::NODE_DESTROYED,
+                node: 0,
+                class,
+                property: 0,
+            },
+            cb,
+            user,
+            drop_user,
+        )
+    })
+}
+
+unsafe extern "C" fn api_claim(
+    ctx: GnoblinCtx,
+    seat: GnoblinNode,
+    spec: *const GnoblinClaim,
+    cb: Option<GnoblinClaimFn>,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+) -> GnoblinReg {
+    guard(0, "claim", || {
+        // SAFETY: the table's contract passes `spec` as a readable `GnoblinClaim` with valid strings.
+        unsafe { listen::claim(ctx, seat, spec, cb, user, drop_user) }
+    })
+}
+
+unsafe extern "C" fn api_timer_add(
+    ctx: GnoblinCtx,
+    ms: u32,
+    repeat: u32,
+    cb: GnoblinTimerFn,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+) -> GnoblinReg {
+    guard(0, "timer_add", || {
+        listen::timer_add(ctx, ms, repeat, cb, user, drop_user)
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe extern "C" fn api_spawn(
+    ctx: GnoblinCtx,
+    argv: *const GnoblinStr,
+    n_argv: usize,
+    options: *const GnoblinSpawn,
+    on_exit: Option<GnoblinExitFn>,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+    out: *mut GnoblinProc,
+) -> i32 {
+    guard(abi::E_PANIC, "spawn", || {
+        // SAFETY: the table's contract passes `argv` as `n_argv` readable strings, `options` as null or readable, and `out`
+        // as null or writable.
+        unsafe { procs::spawn(ctx, argv, n_argv, options, on_exit, user, drop_user, out) }
+    })
+}
+
+unsafe extern "C" fn api_proc_kill(ctx: GnoblinCtx, process: GnoblinProc, signal: *const u8, len: usize) -> i32 {
+    guard(abi::E_PANIC, "proc_kill", || {
+        // SAFETY: the table's contract passes `signal` as `len` readable bytes.
+        unsafe { procs::kill(ctx, process, signal, len) }
+    })
+}
+
+unsafe extern "C" fn api_state_put(
+    ctx: GnoblinCtx,
+    key: *const u8,
+    key_len: usize,
+    bytes: *const u8,
+    len: usize,
+    version: u32,
+) -> i32 {
+    guard(abi::E_PANIC, "state_put", || {
+        // SAFETY: the table's contract passes `key` and `bytes` as readable byte ranges of the lengths given.
+        unsafe { procs::state_put(ctx, key, key_len, bytes, len, version) }
+    })
+}
+
+unsafe extern "C" fn api_state_get(
+    ctx: GnoblinCtx,
+    key: *const u8,
+    key_len: usize,
+    out: *mut GnoblinBuf,
+    version: *mut u32,
+) -> i32 {
+    guard(abi::E_PANIC, "state_get", || {
+        // SAFETY: the table's contract passes `key` as `key_len` readable bytes and `out` and `version` as writable.
+        unsafe { procs::state_get(ctx, key, key_len, out, version) }
     })
 }
 

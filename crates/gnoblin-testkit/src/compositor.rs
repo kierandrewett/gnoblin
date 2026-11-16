@@ -212,6 +212,12 @@ fn pointer_at(c: &Compositor, seat: u64) -> (f64, f64) {
     (axis("pointer_x"), axis("pointer_y"))
 }
 
+impl Default for Compositor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Compositor {
     pub fn new() -> Self {
         let root = Node {
@@ -376,6 +382,12 @@ impl Compositor {
                 None
             }
         }
+    }
+}
+
+impl Default for FakeCompositor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
