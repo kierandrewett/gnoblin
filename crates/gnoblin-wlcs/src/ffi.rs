@@ -126,6 +126,7 @@ extensions![
     (c"zwp_pointer_gestures_v1", 3),
     (c"zwp_primary_selection_device_manager_v1", 1),
     (c"zwp_relative_pointer_manager_v1", 1),
+    (c"zwp_tablet_manager_v2", 1),
     (c"zwp_text_input_manager_v3", 1),
     (c"zwp_virtual_keyboard_manager_v1", 1),
     (c"zxdg_decoration_manager_v1", 1),
