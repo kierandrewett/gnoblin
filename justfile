@@ -38,6 +38,14 @@ pipewire-test:
     cargo test --locked -p gnoblin-pipewire-export
     cargo test --locked -p gnoblin-wayland --test view_capture_e2e
 
+# Phase 1 acceptance of the modular framework (design/modular-framework.md, M1.8): the core with no std code compiled.
+# `std-providers` is the cargo feature that compiles the stock providers (window manager, accessibility, visual bell,
+# portal dialogs) into the compositor, and it is on by default; with it off the compositor is the core, and so are the
+# Wayland engine's test sessions, which run a test-only focus provider over `NullWm`. Both crates' whole suites must
+# pass. The tests whose subject is the stock desktop are `cfg(feature = "std-providers")` and are not built here;
+# `just test` runs them.
+core-only:
+    cargo test --locked -p gnoblin-compositor -p gnoblin-wayland --no-default-features
 
 # Run the JavaScript conformance tests, including the ignored acceptance gates.
 spec-gate:
@@ -173,5 +181,5 @@ js-check:
 # The root workspace's whole gate, in the order that fails fastest.
 workspace-ci: js-check fmt-check build clippy test deps logging layout dupes docs-parity deny
 
-# Everything CI runs: the root workspace and the extension workspace.
-ci: workspace-ci ext-ci
+# Everything CI runs: the root workspace, the extension workspace and the core build with no std providers.
+ci: workspace-ci ext-ci core-only

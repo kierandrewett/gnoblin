@@ -225,24 +225,24 @@ Rejected alternatives:
 
 All edits land in M0.2 (new sets and rules, no crates yet, so nothing fails) and are completed in M2.7.
 
-| Rule or set                            | Change                                                                                                                                                                                                                                                                                 |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `FOUNDATION`                           | add `gnoblin-core-abi`, `gnoblin-wm-api`, `gnoblin-shell-discovery`.                                                                                                                                                                                                                   |
-| new `SDK` set                          | `gnoblin-core-abi`, `gnoblin-macros`, `gnoblin-core`, `gnoblin-std`.                                                                                                                                                                                                                   |
-| new `sdk-isolation`                    | an SDK crate names only SDK crates among workspace crates (build-dependency on `gnoblin-schema` allowed for `gnoblin-core-abi`). Guarantees a shell never compiles compositor code or a foundation crate into itself.                                                                  |
-| new `IMPL` set, `impl-sealed`          | `gnoblin-core-impl`, `gnoblin-std-impl`, `gnoblin-runtime-js`, `gnoblin-runtime-python`: no crate may depend on an impl crate except as a dev-dependency (tests) and except `gnoblin-core-impl` -> its own lower crates.                                                               |
-| new `impl-unsafe`                      | only impl crates, `gnoblin-core`, `gnoblin-macros`, and the existing FFI crates may omit `[lints] workspace = true`; each must restate the clippy table with `unsafe_code = "deny"` (the pattern at `Cargo.toml:119-124`).                                                             |
-| `ENGINE`                               | unchanged; `gnoblin-wm-api` is foundation, so `engine-isolation` still bans engine-to-engine edges and `gnoblin-wayland` -> `gnoblin-wm-api` is a foundation edge.                                                                                                                     |
-| `CLIENT_SIDE`                          | add `gnoblin-shell-host`. `gnoblin-js` stays (D8). New edge `gnoblin-compositor` -> `gnoblin-shell-host` is allowed (clients are hosted by the compositor, not the reverse).                                                                                                           |
-| `binary-roots` / `BINARY_ROOTS`        | `gnoblin-session`, `gnoblin-services`, `gnoblin-shell-discovery`; remove `gnoblin-compositor`, `gnoblin-js`. New rule `core-through-abi`: the `gnoblin` binary may reach the compositor only through the stub link; no `gnoblin-core-impl` edge exists either.                         |
-| new `std-below-core`                   | no foundation, engine, client-side or SDK(core) crate depends on `gnoblin-std*`, `gnoblin-wm-api` excepted (it is core-side by design). `gnoblin-std-wm` depends on `gnoblin-wm-api` and `gnoblin-types` only.                                                                         |
-| `cursor-isolation`, portal rules       | unchanged. `PORTAL_ALLOWED` gets `gnoblin-std-impl` in M1.9 (the portal dialog UI crate is std's).                                                                                                                                                                                     |
-| `log-features`                         | a cdylib counts as a binary for the sinks: `gnoblin-core-impl` may enable `init` (it installs the log for the compositor process). Add `IMPL` to the exemption.                                                                                                                        |
-| new `profile-unwind` (not a deps rule) | `xtask` fails if any `[profile.*]` sets `panic = "abort"`; the SDK `build.rs` fails the shell build when `CARGO_CFG_PANIC=abort`.                                                                                                                                                      |
-| `layout`, `dupes`                      | `xtask/layout-allow.toml` gets the stub `build.rs` paths if they name `src/`; ABI structs that mirror `Rect`/`Point` must reuse `gnoblin-types` or carry a `dupes-allow.toml` row (`gnoblin_core_abi::Rect`: one waiver, justified by `repr(C)`). Moved types (M1) restate their rows. |
-| `native-libs`                          | add `pyo3`/`pyo3-ffi` (Python runtime) as `NATIVE` with `libpython3-dev` in `scripts/ci-install-system-libraries.sh`; QuickJS stays classified.                                                                                                                                        |
-| new `abi-lock` check                   | `cargo xtask abi-check`: `crates/gnoblin-core-abi/abi.lock` (sorted exports, table field names/offsets, struct sizes, error codes) must be a prefix of the regenerated manifest. Additive diffs update the lock in the same commit; removals fail.                                     |
-| new `dist-check`                       | section 11.                                                                                                                                                                                                                                                                            |
+| Rule or set                            | Change                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FOUNDATION`                           | add `gnoblin-core-abi`, `gnoblin-wm-api`, `gnoblin-shell-discovery`.                                                                                                                                                                                                                                                                                          |
+| new `SDK` set                          | `gnoblin-core-abi`, `gnoblin-macros`, `gnoblin-core`, `gnoblin-std`.                                                                                                                                                                                                                                                                                          |
+| new `sdk-isolation`                    | an SDK crate names only SDK crates among workspace crates (build-dependency on `gnoblin-schema` allowed for `gnoblin-core-abi`). Guarantees a shell never compiles compositor code or a foundation crate into itself.                                                                                                                                         |
+| new `IMPL` set, `impl-sealed`          | `gnoblin-core-impl`, `gnoblin-std-impl`, `gnoblin-runtime-js`, `gnoblin-runtime-python`: no crate may depend on an impl crate except as a dev-dependency (tests) and except `gnoblin-core-impl` -> its own lower crates.                                                                                                                                      |
+| new `impl-unsafe`                      | only impl crates, `gnoblin-core`, `gnoblin-macros`, and the existing FFI crates may omit `[lints] workspace = true`; each must restate the clippy table with `unsafe_code = "deny"` (the pattern at `Cargo.toml:119-124`).                                                                                                                                    |
+| `ENGINE`                               | unchanged; `gnoblin-wm-api` is foundation, so `engine-isolation` still bans engine-to-engine edges and `gnoblin-wayland` -> `gnoblin-wm-api` is a foundation edge.                                                                                                                                                                                            |
+| `CLIENT_SIDE`                          | add `gnoblin-shell-host`. `gnoblin-js` stays (D8). New edge `gnoblin-compositor` -> `gnoblin-shell-host` is allowed (clients are hosted by the compositor, not the reverse).                                                                                                                                                                                  |
+| `binary-roots` / `BINARY_ROOTS`        | `gnoblin-session`, `gnoblin-services`, `gnoblin-shell-discovery`; remove `gnoblin-compositor`, `gnoblin-js`. New rule `core-through-abi`: the `gnoblin` binary may reach the compositor only through the stub link; no `gnoblin-core-impl` edge exists either.                                                                                                |
+| new `std-below-core`                   | no foundation, engine, client-side or SDK(core) crate depends on `gnoblin-std*`, `gnoblin-wm-api` excepted (it is core-side by design). `gnoblin-std-wm` depends on `gnoblin-wm-api` and `gnoblin-types` only. As built (M1.8): `gnoblin-compositor` names a std crate only as an `optional` dependency that its `std-providers` feature enables; section 21. |
+| `cursor-isolation`, portal rules       | unchanged. `PORTAL_ALLOWED` gets `gnoblin-std-impl` in M1.9 (the portal dialog UI crate is std's).                                                                                                                                                                                                                                                            |
+| `log-features`                         | a cdylib counts as a binary for the sinks: `gnoblin-core-impl` may enable `init` (it installs the log for the compositor process). Add `IMPL` to the exemption.                                                                                                                                                                                               |
+| new `profile-unwind` (not a deps rule) | `xtask` fails if any `[profile.*]` sets `panic = "abort"`; the SDK `build.rs` fails the shell build when `CARGO_CFG_PANIC=abort`.                                                                                                                                                                                                                             |
+| `layout`, `dupes`                      | `xtask/layout-allow.toml` gets the stub `build.rs` paths if they name `src/`; ABI structs that mirror `Rect`/`Point` must reuse `gnoblin-types` or carry a `dupes-allow.toml` row (`gnoblin_core_abi::Rect`: one waiver, justified by `repr(C)`). Moved types (M1) restate their rows.                                                                        |
+| `native-libs`                          | add `pyo3`/`pyo3-ffi` (Python runtime) as `NATIVE` with `libpython3-dev` in `scripts/ci-install-system-libraries.sh`; QuickJS stays classified.                                                                                                                                                                                                               |
+| new `abi-lock` check                   | `cargo xtask abi-check`: `crates/gnoblin-core-abi/abi.lock` (sorted exports, table field names/offsets, struct sizes, error codes) must be a prefix of the regenerated manifest. Additive diffs update the lock in the same commit; removals fail.                                                                                                            |
+| new `dist-check`                       | section 11.                                                                                                                                                                                                                                                                                                                                                   |
 
 ## 5. The C ABI
 
@@ -1319,3 +1319,77 @@ which the installed core (ABI 1.0) does not provide ...` (a symbol the core lack
   exists for one transaction round trip after a takeover: a key pressed inside it reaches the old claim and is dropped.
 - **`cargo xtask watch-shell`** is built (`xtask/src/watch_shell.rs`); the trigger is the library file, see 8.4. Its unit test runs the watch loop
   over a stand-in build command: an edit rebuilds, a broken edit leaves the library and is reported, a fix rebuilds and clears the failure.
+
+## 21. Implementation notes, M1.5 to M1.8
+
+What lane StdMove built, where it differs from sections 4.4, 9.3, 9.4 and 13, and why. Phase 1 is complete when `just core-only` passes: the compositor and the Wayland engine build and pass their whole suites with no std code compiled.
+
+### 21.1 What moved
+
+| From                                                        | To                                                                      |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `gnoblin-wayland/src/fallback.rs`                           | `gnoblin-std-wm/src/fallback.rs` (`Fallback` is `pub`)                  |
+| `gnoblin-types/src/cascade.rs`                              | `gnoblin-std-wm/src/cascade.rs` (private: `Fallback` was its only user) |
+| `WindowManagerFactory` in `gnoblin-wayland/src/server.rs`   | `gnoblin-wm-api`; `gnoblin-wayland` re-exports it                       |
+| `gnoblin-compositor/src/window_management.rs`               | `gnoblin-compositor/src/std_providers/wm.rs`                            |
+| `gnoblin-compositor/src/accessibility.rs`                   | `gnoblin-compositor/src/std_providers/a11y.rs`                          |
+| `gnoblin-compositor/src/bell.rs`                            | `gnoblin-compositor/src/std_providers/bell.rs`                          |
+| `gnoblin-compositor/src/portal/ui.rs` and `portal/style.rs` | `gnoblin-compositor/src/std_providers/portal_ui.rs`                     |
+| new                                                         | `gnoblin-compositor/src/portal/provider.rs`: `UiProvider`, `NoUi`       |
+
+### 21.2 Decisions and deviations
+
+- **Default provider.** `gnoblin_wayland::Config::default()` has `window_manager: None`, which is `NullWm`. The engine holds no stock provider. `Compositor::run` fills in `gnoblin_std_wm::factory()` when the configuration names none and `std-providers` is on.
+- **`interactive.rs`** stays in `gnoblin-wayland`, unchanged. Section 9.3 already keeps it: its start gating is `State::decider`, and its steps end in `WindowManager::set_rect`, so `NullWm` and `Fallback` both move the window.
+- **Focus on map and on click** needed no change. `may_take_focus` and `activate` have been provider calls since M1.3, and `NullWm` has no focus policy.
+- **Setting keys.** `Composer::setting_set` takes `Setting::Zoom` (`a11y.zoom`), `Setting::ColourFilter` (`a11y.filter`) and `Setting::BellFlash` (`bell.flash`) beside `Setting::Motion`. The composer owns the values. `Config::settings` sets them at start and `ControlHandle::setting_set` live. `VisualBellSettings`, `VisualBellScope` and `VisualAccessibilitySettings` left the engine's public API, so each setting has one owner.
+- **Motion default is not flipped.** `MotionPolicy::default()` is still 200 ms in core, and the stock providers write no `Setting::Motion`. D11 asks for an instant core default with std setting 200 ms. About 200 backend tests assume the fades, so the flip is its own change.
+- **Reload.** `std_providers::commit` re-derives the window management, accessibility and bell settings from an accepted document. With the feature off a commit reads none of those sections.
+- **Portal dialogs.** `PortalService` drives a `portal::UiProvider`. `PortalService::new` starts the stock UI under `std-providers` and `NoUi` otherwise. With no UI the request is refused `no-ui` before it is held, so a consent that cannot be shown is never granted.
+- **Dialog style.** `portal::dialog_style` stays in core as a feature-gated call into `std_providers::portal_ui`. D7 keeps the lock card in core and it draws with the style. Without the feature the lock card, secret and polkit prompts draw the stock look.
+
+### 21.3 Feature plumbing and the rule
+
+- `gnoblin-compositor` has `std-providers` (default on). It enables the optional `gnoblin-std-wm` and `gnoblin-a11y`, and forwards to `gnoblin-wayland/std-providers`.
+- `gnoblin-wayland/std-providers` is a test-only feature, not a default. A default there would be switched on by every crate that depends on the engine, so `--no-default-features` in `core-only` could not turn it off.
+- `gnoblin-std-wm` is a development dependency of `gnoblin-wayland`, `gnoblin-xwayland` and `gnoblin-input-eis`, and a normal dependency of `gnoblin-wlcs`. `gnoblin-wayland` links it into no library.
+- **`std-below-core`** now checks the one edge section 4.4 allowed: `gnoblin-compositor` names a std crate only as an `optional` dependency that its `std-providers` feature enables. Development dependencies stay exempt.
+- **`core-only`** is `just core-only`, which runs `cargo test --locked -p gnoblin-compositor -p gnoblin-wayland --no-default-features`. The CI job `core-only` runs it and `just ci` includes it.
+
+### 21.4 Tests that run under the feature only
+
+With `std-providers` off, the Wayland engine's test sessions run `FocusOnMap`, a test-only provider in `gnoblin-wayland/tests/stock/mod.rs` (`NullWm` plus focus on map and on click). With the feature on they run the stock window manager. The 50 tests below assert policy that only the stock desktop has, so they are `cfg(feature = "std-providers")`. None was edited to pass.
+
+Placement (windows cascade from (32, 32); `NullWm` and `FocusOnMap` use the origin), in `gnoblin-wayland/tests`:
+
+- `dmabuf_capture.rs`: `a_gpu_buffer_in_an_offered_format_is_copied_and_the_frame_is_ready`.
+- `null_wm.rs`: `the_stock_provider_cascades_the_same_two_windows`.
+- `protocols.rs`: `a_pointer_constraint_waits_until_its_window_has_the_keyboard`, `a_window_remembers_its_layout`, `destroying_one_clients_window_ends_only_its_point`, `one_client_disconnecting_does_not_disturb_anothers_touch`, `two_clients_touching_at_once_each_get_only_their_own_point`, `two_windows_of_one_client_each_get_the_point_on_them`.
+- `real_client.rs`: `a_second_client_takes_focus_and_a_click_switches_it_back`, `overlapping_windows_at_equal_depth_go_to_the_last_drawn_and_a_raise_moves_the_winner`, `raise_on_click_raises_the_window_pressed_in_its_exposed_part`, and the two `a_text_input_hears_one_leave_and_one_enter_when_the_keyboard_changes_windows` tests.
+- `render.rs`: `overlapping_windows_are_drawn_in_stacking_order`.
+- `surface_tree.rs`: `a_bar_above_the_surface_is_the_top_of_the_window`, `a_window_with_a_shadow_margin_is_placed_by_its_geometry_and_draws_its_shadow`.
+
+Focus policy (modal handover, refusing a window with no output), in `gnoblin-wayland/tests`:
+
+- `new_globals.rs`: `a_modal_dialog_takes_focus_from_its_parent_and_is_reported_modal`.
+- `real_client.rs`: `a_window_with_no_output_to_land_on_is_not_managed`.
+
+Focus on map and click (a core with no provider has none), in `gnoblin-compositor/tests`:
+
+- `eis.rs`: the three tests that move a client's pointer or type into it.
+- `end_to_end.rs`: `a_shell_lists_watches_and_focuses_through_gnoblinctl`.
+- `ipc.rs`: `focus_completes_after_the_diff_it_caused`.
+- `tree_ipc.rs`: `a_shell_write_of_the_seat_focus_moves_the_keyboard_to_that_window`.
+
+Built-in portal dialogs (the stock `UiProvider`; the core answers `no-ui`), in `gnoblin-compositor/tests`:
+
+- `portal_ui.rs`: the whole file, 8 tests.
+- `portal_provider.rs`: the 8 tests that end in the built-in dialog.
+- `portal_e2e.rs`: the 10 tests that ask the user.
+
+New core tests:
+
+- `portal_no_ui.rs` runs only without the feature: a consent request is refused `no-ui` over real IPC.
+- `portal::provider` tests `NoUi`, in both builds.
+- `ipc::portal::no_ui_tests` runs the service over `NoUi`, in both builds.
+- `xwayland::core_tests` runs an X11 window's open, close and role over `NullWm`, in both builds.

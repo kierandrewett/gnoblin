@@ -341,10 +341,12 @@ mod tests {
                     name: (*name).to_owned(),
                     kind: *kind,
                     features: Vec::new(),
+                    optional: false,
                 })
                 .collect(),
             is_binary: false,
             lints: crate::metadata::Lints::Unread,
+            feature_table: std::collections::BTreeMap::new(),
         }
     }
 

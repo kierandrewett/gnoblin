@@ -151,3 +151,29 @@ jobs:
         run: rustup toolchain install 1.97.0 --profile minimal
       - name: Check the workspace with the minimum supported toolchain
         run: just msrv
+
+  # Phase 1 acceptance of the modular framework (design/modular-framework.md, M1.8): the core builds and its whole test
+  # suites pass with no std code compiled. `std-providers` is on by default and compiles the stock providers into the
+  # compositor; the Wayland engine's tests run the stock window manager under the same feature. The workspace job runs
+  # both crates with the feature on; this job runs them with it off, so a core module that reached into std (or a test
+  # that silently needed the stock desktop) fails here by name.
+  core-only:
+    name: Core without the std providers
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      # The libraries the crates link and the `pipewire` daemon, from the one list.
+      - name: Install system libraries
+        run: scripts/ci-install-system-libraries.sh
+      - name: Show the pinned toolchain
+        run: rustup show active-toolchain
+      - name: Test the compositor and the Wayland engine with no std providers
+        run: just core-only

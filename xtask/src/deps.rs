@@ -163,6 +163,14 @@ const STD: &[&str] = &["gnoblin-a11y", "gnoblin-std", "gnoblin-std-impl", "gnobl
 /// The pure fallback window manager. It may name the provider trait crate and the primitives only.
 const STD_WM: &str = "gnoblin-std-wm";
 
+/// The one crate outside the std tier that may depend on a std crate, and the one feature it may do it through
+/// (design/modular-framework.md, 9.4): the composition root compiles the stock providers in until the C ABI carries
+/// them (M2.11), and with the feature off it is core.
+const STD_ROOT: &str = "gnoblin-compositor";
+
+/// The feature of [`STD_ROOT`] that brings every std crate in.
+const STD_FEATURE: &str = "std-providers";
+
 /// The crates that may omit `[lints] workspace = true` and restate the table with
 /// `unsafe_code = "deny"` (the pattern at the top of the workspace `Cargo.toml`): the existing FFI and
 /// generated-protocol crates, `gnoblin-core-abi` (the `repr(C)` types), `gnoblin-core` and `gnoblin-macros` of the SDK, the
@@ -1128,11 +1136,16 @@ fn impl_sealed(package: &Package, dep: &Dep) -> Option<String> {
 /// in `gnoblin-std-wm` reaches core through it. `gnoblin-std-wm` itself is pure and names the provider
 /// trait crate and the primitives only. A development dependency is exempt.
 ///
-/// The composition root `gnoblin-compositor` is in none of these sets, so it may name `gnoblin-std-wm`
-/// and `gnoblin-a11y` while they are compiled in behind its `std-providers` feature (M1.5 to M2.11).
+/// The composition root `gnoblin-compositor` is the one crate outside the std tier that may name a std crate (the
+/// stock providers are compiled in behind its `std-providers` feature from M1.5 to M2.11), and only that way: the
+/// dependency is `optional` and the feature `std-providers` is what enables it, so building the root with
+/// `--no-default-features` compiles no std code (the CI job `core-only`).
 fn std_below_core(package: &Package, dep: &Dep) -> Option<String> {
     if dep.kind == DepKind::Dev {
         return None;
+    }
+    if package.name == STD_ROOT && is_std(&dep.name) {
+        return std_root_edge(package, dep);
     }
     if package.name == STD_WM {
         if is_workspace_crate(&dep.name) && dep.name != "gnoblin-wm-api" && dep.name != TYPES {
@@ -1157,6 +1170,30 @@ fn std_below_core(package: &Package, dep: &Dep) -> Option<String> {
         ));
     }
     None
+}
+
+/// The edge from [`STD_ROOT`] to a std crate: optional, and enabled by [`STD_FEATURE`].
+fn std_root_edge(package: &Package, dep: &Dep) -> Option<String> {
+    if !dep.optional {
+        return Some(format!(
+            "`{STD_ROOT}` may name the std crate `{}` only as an `optional` dependency enabled by its `{STD_FEATURE}` feature, so a build without the feature compiles no std code",
+            dep.name
+        ));
+    }
+    let enables = |feature: &str, entry: &str| {
+        package.feature_table.get(feature).is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| item == &format!("dep:{entry}") || item == entry)
+        })
+    };
+    if enables(STD_FEATURE, &dep.name) {
+        return None;
+    }
+    Some(format!(
+        "`{STD_ROOT}` depends on the std crate `{}` but its `{STD_FEATURE}` feature does not enable it (`{STD_FEATURE} = [\"dep:{}\"]`), so another feature or the default build would compile std code",
+        dep.name, dep.name
+    ))
 }
 
 /// Only the crates in [`LINT_OPT_OUT`] and the [`IMPL`] crates may omit `[lints] workspace = true`,
@@ -2099,14 +2136,61 @@ mod tests {
         }
     }
 
+    /// A package `gnoblin-compositor` with one edge to `dependency`, declared `optional` or not, and a feature table.
+    fn root_edge_violations(dependency: &str, optional: bool, features: serde_json::Value) -> Vec<String> {
+        let document = serde_json::json!({ "packages": [{
+            "name": "gnoblin-compositor",
+            "dependencies": [{ "name": dependency, "kind": null, "optional": optional }],
+            "features": features,
+        }] });
+        let graph = from_json(&document.to_string()).expect("the fixture parses");
+        check(&graph).iter().map(DepViolation::to_string).collect()
+    }
+
     #[test]
-    fn the_composition_root_and_std_itself_may_name_the_std_crates() {
+    fn the_composition_root_names_a_std_crate_only_as_an_optional_dependency_of_its_std_providers_feature() {
         for std in ["gnoblin-std-wm", "gnoblin-a11y"] {
-            assert_eq!(
-                edge_violations("gnoblin-compositor", std, "normal"),
-                Vec::<String>::new()
+            let allowed = serde_json::json!({ "default": ["std-providers"], "std-providers": [format!("dep:{std}")] });
+            assert_eq!(root_edge_violations(std, true, allowed), Vec::<String>::new(), "{std}");
+
+            let required = root_edge_violations(std, false, serde_json::json!({ "std-providers": [] }));
+            assert!(
+                required
+                    .iter()
+                    .any(|line| line.contains("[std-below-core]") && line.contains("optional")),
+                "{std}: a std crate the root always compiles is refused: {required:?}"
+            );
+
+            let unlisted = root_edge_violations(std, true, serde_json::json!({ "std-providers": [] }));
+            assert!(
+                unlisted
+                    .iter()
+                    .any(|line| line.contains("[std-below-core]") && line.contains("does not enable")),
+                "{std}: an optional crate the feature does not enable is refused: {unlisted:?}"
+            );
+
+            let other_feature =
+                root_edge_violations(std, true, serde_json::json!({ "extras": [format!("dep:{std}")] }));
+            assert!(
+                other_feature.iter().any(|line| line.contains("[std-below-core]")),
+                "{std}: only the std-providers feature may bring it in: {other_feature:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_composition_root_may_name_the_crates_below_std_however_they_are_declared() {
+        for dependency in ["gnoblin-wm-api", "gnoblin-types", "gnoblin-wayland"] {
+            assert_eq!(
+                root_edge_violations(dependency, false, serde_json::json!({})),
+                Vec::<String>::new(),
+                "{dependency}"
+            );
+        }
+    }
+
+    #[test]
+    fn std_itself_may_name_the_std_crates() {
         assert_eq!(edge_violations("gnoblin-std-impl", "gnoblin-std-wm", "normal").len(), 0);
         assert_eq!(
             edge_violations("gnoblin-wayland", "gnoblin-std-wm", "dev"),
@@ -2149,6 +2233,7 @@ mod tests {
                 deps: Vec::new(),
                 is_binary: false,
                 lints,
+                feature_table: std::collections::BTreeMap::new(),
             }],
         };
         check(&graph).iter().map(DepViolation::to_string).collect()
