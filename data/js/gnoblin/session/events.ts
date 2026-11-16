@@ -101,6 +101,24 @@ export class Listeners<L extends object> {
     }
 }
 
+/** Stops a subscription made by an `on<Method>` function. Calling it twice is harmless. */
+export type Unsubscribe = () => void;
+
+/** The named subscription of one listener method: `handler` is the method, called with the object first. */
+export type Subscribe<L, K extends keyof L> = (handler: NonNullable<L[K]>) => Unsubscribe;
+
+/** The one implementation of every `on<Method>(handler)`: a listener that has just that method. */
+export function subscriber<L extends object, K extends keyof L & string>(
+    listeners: Listeners<L>,
+    method: K,
+): Subscribe<L, K> {
+    return (handler) => {
+        const listener = { [method]: handler } as unknown as L;
+        listeners.add(listener);
+        return () => listeners.remove(listener);
+    };
+}
+
 /** The fields of a signal, named the way a script reads them. */
 function fieldsOf(message: SignalMessage): Record<string, unknown> {
     const fields: Record<string, unknown> = {};

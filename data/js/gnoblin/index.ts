@@ -130,7 +130,7 @@ export { Process, ProcessListener } from "gnoblin/process";
 export type { ProcessExit, ProcessSignal, SpawnOptions, StreamMode } from "gnoblin/process";
 export type { FocusHistoryFilter } from "gnoblin/session/focus_history";
 export { RuntimeListener, SessionListener } from "gnoblin/session/events";
-export type { ConfigReloaded, ConfigReloadFailed } from "gnoblin/session/events";
+export type { ConfigReloaded, ConfigReloadFailed, Subscribe, Unsubscribe } from "gnoblin/session/events";
 export type { Accepted, LockRequest, LockState, ReloadResult, SessionStatus, Version } from "gnoblin/session/types";
 // The style classes and their list elements (`gnoblin/style`).
 export * from "gnoblin/style";

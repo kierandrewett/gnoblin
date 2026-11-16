@@ -30,6 +30,7 @@ detaches every listener the old file attached, so the new file attaches its own.
 | `ProcessListener`    | `gnoblin.process.addListener(l)`                             | A process that ended. See [Processes](/shell-api/processes). |
 
 - Every method of a listener is optional.
+- Each method of `SessionListener` and `RuntimeListener` is also a function of its object that takes just that handler and returns the function that detaches it: `const stop = gnoblin.session.onBell((session, count) => toast(`Bell ${count}`))`.
 - A listener added twice is called once, and `removeListener` detaches it.
 - A method runs as a queued call under the same time budget as every other listener.
 - A method that throws is reported once in the log, and the next listener still runs.

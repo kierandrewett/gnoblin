@@ -4,7 +4,8 @@
 import type { ErrorCode } from "gnoblin/errors";
 import { Operation } from "gnoblin/operation";
 import type { OperationHost } from "gnoblin/operation";
-import type { RuntimeListener, SessionEvents, SessionListener } from "gnoblin/session/events";
+import { subscriber } from "gnoblin/session/events";
+import type { RuntimeListener, SessionEvents, SessionListener, Subscribe } from "gnoblin/session/events";
 import type {
     Accepted,
     Failure,
@@ -84,11 +85,23 @@ export class Session {
     #host: Host;
     #calls: Calls;
     #events: SessionEvents;
+    /** `addListener` for `SessionListener.onReady` alone: `handler(session)`. Returns the detaching function. */
+    readonly onReady: Subscribe<SessionListener, "onReady">;
+    /** `addListener` for `SessionListener.onBell` alone: `handler(session, count)`. Returns the detaching function. */
+    readonly onBell: Subscribe<SessionListener, "onBell">;
+    /** `addListener` for `SessionListener.onReloadRequested` alone. Returns the detaching function. */
+    readonly onReloadRequested: Subscribe<SessionListener, "onReloadRequested">;
+    /** `addListener` for `SessionListener.onLockStateChanged` alone. Returns the detaching function. */
+    readonly onLockStateChanged: Subscribe<SessionListener, "onLockStateChanged">;
 
     constructor(host: Host, calls: Calls, events: SessionEvents) {
         this.#host = host;
         this.#calls = calls;
         this.#events = events;
+        this.onReady = subscriber(events.session, "onReady");
+        this.onBell = subscriber(events.session, "onBell");
+        this.onReloadRequested = subscriber(events.session, "onReloadRequested");
+        this.onLockStateChanged = subscriber(events.session, "onLockStateChanged");
     }
 
     /** Attaches a `SessionListener`; adding the same listener twice has no effect. */
@@ -151,11 +164,17 @@ export class Runtime {
     #host: Host;
     #calls: Calls;
     #events: SessionEvents;
+    /** `addListener` for `RuntimeListener.onConfigReloaded` alone: `handler(runtime, reload)`. Returns the detaching function. */
+    readonly onConfigReloaded: Subscribe<RuntimeListener, "onConfigReloaded">;
+    /** `addListener` for `RuntimeListener.onConfigReloadFailed` alone. Returns the detaching function. */
+    readonly onConfigReloadFailed: Subscribe<RuntimeListener, "onConfigReloadFailed">;
 
     constructor(host: Host, calls: Calls, events: SessionEvents) {
         this.#host = host;
         this.#calls = calls;
         this.#events = events;
+        this.onConfigReloaded = subscriber(events.runtime, "onConfigReloaded");
+        this.onConfigReloadFailed = subscriber(events.runtime, "onConfigReloadFailed");
     }
 
     /** Attaches a `RuntimeListener`; adding the same listener twice has no effect. */

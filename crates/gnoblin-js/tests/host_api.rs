@@ -641,6 +641,46 @@ fn a_listener_removed_after_its_signal_arrived_hears_nothing() {
 }
 
 #[test]
+fn every_named_subscription_exists_hears_its_signal_and_unsubscribes() {
+    let (mut rig, session) = rig("const objects: Record<string, any> = { session: gnoblin.session, runtime: gnoblin.runtime };
+         const names: [string, string, string][] = [
+            ['session', 'onReady', 'gnoblin.session.ready'],
+            ['session', 'onBell', 'gnoblin.session.bell'],
+            ['session', 'onReloadRequested', 'gnoblin.session.reload_requested'],
+            ['session', 'onLockStateChanged', 'gnoblin.session.lock_state_changed'],
+            ['runtime', 'onConfigReloaded', 'gnoblin.config.reloaded'],
+            ['runtime', 'onConfigReloadFailed', 'gnoblin.config.reload_failed'],
+         ];
+         g.off = {} as Record<string, () => void>;
+         for (const [object, method] of names) {
+            g.off[method] = objects[object][method]((origin: any) => { g.log.push(method + ':' + (origin === objects[object])); });
+         }");
+    for signal in [
+        "gnoblin.session.ready",
+        "gnoblin.session.bell",
+        "gnoblin.session.reload_requested",
+        "gnoblin.session.lock_state_changed",
+        "gnoblin.config.reloaded",
+        "gnoblin.config.reload_failed",
+    ] {
+        session.signal(signal, 1, serde_json::json!({ "not_applied": [], "warnings": [] }));
+    }
+    rig.settle();
+    assert_eq!(
+        rig.ts("g.log.join('|')"),
+        "onReady:true|onBell:true|onReloadRequested:true|onLockStateChanged:true|onConfigReloaded:true|onConfigReloadFailed:true"
+    );
+    rig.ts("(Object.values(g.off).forEach((off: any) => { off(); off(); }), g.log.length = 0, 'off')");
+    session.signal("gnoblin.session.bell", 1, serde_json::json!({ "count": 2 }));
+    rig.settle();
+    assert_eq!(
+        rig.ts("g.log.length"),
+        "0",
+        "an unsubscribed handler hears nothing, and twice is harmless"
+    );
+}
+
+#[test]
 fn the_string_named_bus_is_gone_and_a_bad_listener_is_refused() {
     let (mut rig, _session) = rig("export {};");
     for member in ["on", "once", "off"] {
