@@ -189,24 +189,44 @@ The card is wanted when both of these hold:
 - The lock is the compositor's own and the cover is proven (`locked`). An `ext-session-lock-v1` client's lock is that
   client's to draw and check, so the card is never drawn over it.
 - No shell holds the lock screen: none holds the tree, or one does and has not set `engaged`, or one has and its lease
-  has lapsed.
+  has lapsed, or one has a fresh lease and the keyboard is not on its screen.
 
 `engaged` alone is a claim. A shell that engaged and then hung, or whose lock frame throws every frame, would hold the
-lock UI with nothing to type into. So holding the lock screen is a lease:
+lock UI with nothing to type into. So holding the lock screen takes a lease and a keyboard.
 
-- The shell renews it with the lock node's `heartbeat` call, at most twice a second, while its screen is up and its
-  frame ran to its end.
+The lease:
+
+- The shell renews it with the lock node's `heartbeat` call, at most twice a second, and only after a healthy turn.
 - A lease that is not renewed for two seconds lapses.
-- The call has no answer and changes no node, and only the shell that holds the tree may send it.
 - A lock first seen engaged starts the lease, so a shell has two seconds to send its first beat.
+- The call has no answer and changes no node, and only the shell that holds the tree may send it.
+
+A turn is healthy when:
+
+- the screen is up and its frame ran to its end;
+- every canvas of the screen is still in the tree;
+- the toolkit drew all of them: no refresh, arrange or draw of one failed, such as a `draw()` that throws or a write the
+  compositor refused.
+
+A turn that failed to draw renews nothing, and the first healthy turn after it renews again. A key handler that throws is
+reported and does not make a turn unhealthy.
+
+The keyboard:
+
+- The keyboard is on the screen when the seat's focus is a node under the `lock` node that takes input: the entry.
+- A shell with a fresh lease and the keyboard elsewhere holds nothing. No key reaches the screen, and a healthy shell is
+  no guarantee that anybody can type a password.
+- A window that arrives under the lock is given the focus by the focus policy, and a script can move it too. The screen
+  takes the keyboard back on its next frame, and the card takes the keys after the grace below if nothing does.
 
 A shell that is attached gets one second to engage or renew before the card is drawn, and the same second after it lets
-go, so a reload does not flash the card.
+go or loses the keyboard, so a reload does not flash the card.
 
 - A shell that disconnects releases `engaged`, so the card is back at once, and the next shell starts from a lock nobody
   holds.
 - A shell that hangs while holding the lock screen loses it to the card after three seconds.
-- The shell takes the screen back, and the card is dropped, when it renews its lease.
+- A shell that renews its lease and has no keyboard on its screen loses it to the card after one second.
+- The shell takes the screen back, and the card is dropped, when it renews its lease and the keyboard is on its screen.
 
 When a shell engages the lock, the card is dropped with anything typed into it, and the shell's screen is drawn from the
 same frame. The session stays locked throughout and the desktop is never drawn.
@@ -267,6 +287,18 @@ or an empty password never unlocks it. What the shell's failure changes is who t
 The three seconds do not depend on the shell's budgets. A frame may use 5 seconds and a module load 30. The tests spin a
 script for 10 seconds, longer than the bound, and the card unlocks the session inside the spin.
 
+A healthy shell that has lost the keyboard is the one failure no beat shows. A window that arrives under the lock takes
+the focus from the focus policy, and its keys go nowhere the screen can read. The shell keeps renewing its lease, so the
+card would stay away and nobody could unlock the session.
+
+So the lock screen counts as held only while the keyboard is on its entry, and the card takes the keys one second after
+it is not. The bounds:
+
+- The card takes the password at most 3 seconds after the last healthy beat.
+- The card takes it at most 1 second after the keyboard left the screen.
+- Each bound gains at most 100 ms for the session loop and 50 ms for the card's pump.
+- The tests allow 5 seconds more for a machine that other tests keep busy.
+
 The compositor does not wait for the shell. Its tree answers a second connection within milliseconds while the shell is
 inside a call, and while a frozen shell's socket is not read.
 
@@ -280,15 +312,23 @@ inside a call, and while a frozen shell's socket is not read.
     - the clock, the focus given back, an Enter during a check and keys after the unlock;
     - the password is in no node of the tree.
 - `crates/gnoblin-js/tests/write_refusals.rs` runs the same screen over the shared fake compositor, which can refuse a
-  transaction as the real one does: a check lost to a `stale-base` refusal is answered `failed` and the next Enter is an
-  attempt, a check nobody answers fails after 30 s, the screen renews its lease twice a second while it is up and not after
-  it comes down, and a lock frame that throws renews nothing.
+  transaction as the real one does:
+    - a check lost to a `stale-base` refusal is answered `failed` and the next Enter is an attempt;
+    - a check nobody answers fails after 30 s;
+    - the screen renews its lease twice a second while it is up and not after it comes down;
+    - a lock frame that throws renews nothing, and neither does a canvas of the screen that fails to draw every frame or
+      a screen whose canvases the compositor destroyed, and the lease comes back when the screen draws again;
+    - a key handler that throws does not stop the lease;
+    - a window that takes the focus while the screen is up loses it to the screen and has it back when the screen comes
+      down.
 - `crates/gnoblin-compositor/tests/lock_card.rs` runs against the real compositor with a scripted check in place of PAM:
     - with no shell the right password unlocks the session;
     - a wrong one does not, and the card still takes the right one after it;
     - a shell that holds the lock screen keeps the card away, and one that dies brings it back;
     - a shell that attaches while the card is up takes over;
-    - a shell that stays attached and `engaged` but stops renewing its lease loses the lock UI to the card.
+    - a shell that stays attached and `engaged` but stops renewing its lease loses the lock UI to the card;
+    - a shell that renews its lease on time but whose keyboard is outside its lock screen loses it to the card, and the
+      card gives the keys back when the shell takes the keyboard again.
 - `crates/gnoblin/tests/js_lock.rs` runs the JavaScript shell against the real compositor: no shell and the card, the
   shell's screen painted under the `lock` node, a wrong password answered on it, the right one unlocking, and a check the
   compositor refused `stale-base` answered `failed` on the screen.
@@ -299,8 +339,23 @@ inside a call, and while a frozen shell's socket is not read.
     - one whose lock frame throws every frame;
     - one that crashes;
     - a slow shell that renews in time, and one that does not;
-    - a script that spins in a frame handler, and one that spins in a reload (10 seconds each, every read of the tree
-      timed).
+    - a script that spins in a frame handler, one that spins in a reload, one that spins when a window arrives, and one
+      that spins while windows arrive and go (10 seconds each, every read of the tree timed).
+
+    A spin test also reads, from outside, how long the shell's thread has been inside one tick. It fails unless the shell
+    was still in the spin when the card took the password, because a script that never spun leaves the shell's own screen
+    to take it, which passes every other assertion.
+
+    Its second half is the windows. A healthy shell, which renews its lease on time, must still leave the keys with a
+    taker in each of these cases:
+
+    - a window arrives under the lock, or five do;
+    - one arrives and is closed;
+    - a client opens a window and never draws;
+    - a window maps as the lock is taken, or was open before it.
+
+    A healthy shell that keeps the keyboard from its own screen on every frame gets the card within the grace.
+
 - `crates/gnoblin/tests/js_lock_boundary.rs` pins what the lock keeps back: a window that had the keyboard hears nothing
   typed at the shell's screen or at the card, and the password is in no node of the tree, typed or checked.
 - `crates/gnoblin/tests/js_guardian.rs` kills the real runtime process while the session is locked (the session stays
