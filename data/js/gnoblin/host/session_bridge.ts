@@ -18,6 +18,7 @@ export function installHostApi(): void {
             now: () => host.input.now(),
             spawn: (argv, options) => host.api.spawn(argv, options),
             kill: (id, signal) => host.api.kill(id, signal),
+            pid: (id) => host.api.pid(id),
             begin: (verb) => host.api.begin(verb),
             status: () => host.api.status(),
             version: () => host.api.version(),

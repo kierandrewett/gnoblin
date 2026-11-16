@@ -90,8 +90,9 @@ The shell runs the file from top to bottom against the live objects. What the fi
 do: an `init.ts` replaces the starter entirely. A statement you delete from `init.ts` is gone after the next reload or
 restart.
 
-Programs you start with `gnoblin.spawn` start again on every reload, because the file runs again. To start something
-once per session, use your session's own autostart.
+Programs you start with `gnoblin.spawn` at the top level of the file start when the file loads, once: a reload keeps the
+one that runs and stops one you took out of the file. A program a key binding or a listener started is left alone by a
+reload. To start something once per session, use your session's own autostart.
 
 A save reloads the file. So does `gnoblinctl config reload`, which prints the revision it committed or the error it
 refused, with the file, line and column. `GNOBLIN_JS_WATCH=0` turns the reload on save off, and then only the command

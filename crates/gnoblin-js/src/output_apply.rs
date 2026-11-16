@@ -48,6 +48,17 @@ impl JsOutputApplies {
         });
         true
     }
+
+    /// The `apply` calls waited on now, kept by a stage to give back.
+    pub(crate) fn mark(&self) -> HashSet<u64> {
+        self.asked.clone()
+    }
+
+    /// Gives back what a failed stage asked: its `apply` calls were rolled back with the pending writes, so nothing
+    /// will answer them.
+    pub(crate) fn rollback(&mut self, asked: HashSet<u64>) {
+        self.asked = asked;
+    }
 }
 
 /// Sends `text` as `apply` on the screen node a script holds. Returns the token the answer comes back under, or

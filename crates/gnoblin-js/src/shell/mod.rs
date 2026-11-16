@@ -38,13 +38,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gnoblin_tree_client::tree_mirror::{NodeId, SnapshotNode, TreeIncoming, TreeLink, TreeMirror, TxBuilder, TxOp};
+use gnoblin_tree_client::tree_mirror::{NodeId, SnapshotNode, TreeIncoming, TreeLink, TreeMirror, TxOp};
 use rquickjs::convert::Coerced;
 use rquickjs::{FromJs, Function, Module, Object, Value};
 use thiserror::Error;
 
 use self::txgate::Sent;
-use crate::bindings::{HostState, SharedState};
+use crate::bindings::{HostState, SharedState, StageMark};
 use crate::budget::{ENTRY_BUDGET, FRAME_BUDGET};
 use crate::dialogs::JsDialogs;
 use crate::error::JsError;
@@ -168,8 +168,10 @@ impl JsStaging {
     }
 
     /// Installs the host objects in `generation` and loads `gnoblin/host`, so `gnoblin.clients` is there when
-    /// the entry module runs. Run it on a fresh generation, before the entry.
+    /// the entry module runs. Run it on a fresh generation, before the entry. A restage inside the same stage
+    /// starts its spawns over: what an interrupted generation spawned does not count for the one that replaces it.
     pub fn prepare(&self, generation: &JsGeneration) -> Result<(), JsError> {
+        self.state.borrow_mut().api.processes.restage();
         install_host(generation, &self.state, self.js.stage_budget)
     }
 }
@@ -181,9 +183,9 @@ pub struct JsShell {
     /// The config generations are built from, with the stock library and the host module embedded.
     js: JsConfig,
     state: SharedState,
-    /// The writes the shell held when a stage began, kept until that stage is swapped in or abandoned so a stage
-    /// that fails after writing leaves nothing behind.
-    stage_mark: Option<TxBuilder>,
+    /// What the shell held when a stage began, kept until that stage is swapped in or abandoned so a stage that fails
+    /// after writing, spawning or making a canvas leaves nothing behind.
+    stage_mark: Option<StageMark>,
     entry_budget: Duration,
     frame_budget: Duration,
     /// Messages that arrived with the boot snapshot, handled by the first frame.
@@ -282,25 +284,24 @@ impl JsShell {
 
     /// Marks the start of a stage. A generation staged through [`JsStaging`] evaluates the user's entry against
     /// the live tree, so a top-level write such as `client.x = 5` lands in the shell's pending writes before it
-    /// is known that the stage succeeds. The mark is what [`abandon_stage`](Self::abandon_stage) returns them to.
-    /// The seat claims the staged generation makes are kept apart for the same reason: they are sent only when the
-    /// generation takes over, after the old one's have been released.
+    /// is known that the stage succeeds. The mark is what [`abandon_stage`](Self::abandon_stage) returns them to,
+    /// with the toolkit's canvases, the XR nodes, the output applies and the lock checks the entry made. The seat
+    /// claims the staged generation makes are kept apart for the same reason: they are sent only when the
+    /// generation takes over, after the old one's have been released. So are the programs it spawns.
     pub fn begin_stage(&mut self) {
         // The staged generation's entry runs against the live tree, so it is script that runs between frames.
         self.note_script_ran();
-        let tick = self.state.borrow().tick.clone();
-        self.stage_mark = Some(tick);
-        input::begin_staging(&mut self.state.borrow_mut());
+        let mark = self.state.borrow_mut().begin_stage();
+        self.stage_mark = Some(mark);
     }
 
     /// Ends a stage that failed: the pending writes go back to what they were at [`begin_stage`](Self::begin_stage),
-    /// and the claims it kept are dropped. The running generation was never touched.
+    /// the claims it kept are dropped, and the programs it spawned never start. The running generation was never
+    /// touched.
     pub fn abandon_stage(&mut self) {
         self.note_script_ran();
-        let mut state = self.state.borrow_mut();
-        input::abandon_staging(&mut state);
-        if let Some(tick) = self.stage_mark.take() {
-            state.tick = tick;
+        if let Some(mark) = self.stage_mark.take() {
+            self.state.borrow_mut().abandon_stage(mark);
         }
     }
 
@@ -318,6 +319,10 @@ impl JsShell {
     /// workspaces of the same id ([`reconcile`](Self::reconcile)), without being offered to the layout as
     /// arrivals. It is announced `ready` for every window the tree holds on the next frame, as at boot. The old
     /// generation is dropped with its listeners, queued calls and error reports, and strikes start again at zero.
+    ///
+    /// The programs the staged config spawned at its top level start now, unless the old config started the same
+    /// program already, in which case the new generation takes that process over; what the old config started and
+    /// the new one does not is stopped (`JsProcesses::end_stage`).
     ///
     /// A script failure while the old generation ends or the new one finishes is a diagnostic in the result, not
     /// an error: the swap has happened.
@@ -340,6 +345,12 @@ impl JsShell {
             }
             Err(other) => return Err(other),
         };
+        // The new generation's programs start now, before the old one ends: what the old one's end handlers spawn is
+        // then a handler's spawn, started at once, and not one that waits for a takeover that is already under way.
+        let unstarted = self.state.borrow_mut().api.processes.end_stage(generation.id());
+        for (id, error) in unstarted {
+            diagnostics.push(format!("the program of process {id} did not start: {error}"));
+        }
         // The new generation's claims were kept while it was staged. They go out behind everything the old one
         // gives up, in one transaction: the compositor applies a transaction's calls in order, so each chord is
         // free when its new claim arrives. A claim the old generation did not release (its script threw first) is

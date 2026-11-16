@@ -297,6 +297,15 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
 
     let shared = state.clone();
     api.set(
+        "pid",
+        Function::new(ctx.clone(), move |id: f64| -> f64 {
+            let id = if id.is_finite() && id >= 0.0 { id as u64 } else { 0 };
+            shared.borrow().api.processes.pid(id).map_or(0.0, f64::from)
+        })?,
+    )?;
+
+    let shared = state.clone();
+    api.set(
         "begin",
         Function::new(ctx.clone(), move |verb: String| -> String {
             shared.borrow_mut().api.begin(&verb)

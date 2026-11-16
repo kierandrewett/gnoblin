@@ -54,6 +54,7 @@ export class HostApi {
             ...operations,
             spawn: (argv, options) => host.spawn(argv, options),
             kill: (id, signal) => host.kill(id, signal),
+            pid: (id) => host.pid(id),
             operationId: () => host.operationId(),
             error: (code, target, message) => host.error(code, target, message),
         });

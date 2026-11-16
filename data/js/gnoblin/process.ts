@@ -63,6 +63,8 @@ export interface ProcessHost extends OperationHost {
     spawn(argv: string, options: string): string;
     /** The native kill: an error as JSON, or undefined when the signal was sent. */
     kill(id: number, signal: string): string | undefined;
+    /** The operating system's process id of a process, or 0 while its program has not started or after it has ended. */
+    pid(id: number): number;
     /** A fresh operation id. */
     operationId(): number;
     /** The error a failed call throws: `code` says why, `target` names the call. */
@@ -88,11 +90,10 @@ export interface ExitEvent extends ProcessExit {
 export class Process {
     /** The id the shell gave the process. It is the handle's identity within this generation. */
     readonly id: number;
-    /** The operating system's process id. */
-    readonly pid: number;
     /** The program and its arguments. A command string is `["/bin/sh", "-c", command]`. */
     readonly argv: readonly string[];
     #table: ProcessTable;
+    #pid: number;
     #exit: ProcessExit | null = null;
     #waiting: Operation<ProcessExit> | null = null;
 
@@ -100,8 +101,19 @@ export class Process {
     constructor(table: ProcessTable, id: number, pid: number, argv: readonly string[]) {
         this.#table = table;
         this.id = id;
-        this.pid = pid;
+        this.#pid = pid;
         this.argv = argv;
+    }
+
+    /**
+     * The operating system's process id. A program the config's top level spawns starts when the config takes over, so
+     * until then its `pid` is 0; a program the same config started before and that a reload keeps has its pid at once.
+     */
+    get pid(): number {
+        if (this.#pid === 0 && this.alive) {
+            this.#pid = this.#table.pidOf(this);
+        }
+        return this.#pid;
     }
 
     /** True from the spawn until the host reports the end. */
@@ -296,6 +308,11 @@ export class ProcessTable {
                 });
             }
         }
+    }
+
+    /** The operating system's process id of `process`, 0 while its program has not started. Only a `Process` calls this. */
+    pidOf(process: Process): number {
+        return this.#host.pid(process.id);
     }
 
     /** The operation behind `Process.wait`. Only a `Process` calls this. */

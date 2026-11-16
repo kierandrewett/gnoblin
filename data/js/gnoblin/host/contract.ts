@@ -147,6 +147,7 @@ export interface Host {
     api: {
         spawn(argv: string, options: string): string;
         kill(id: number, signal: string): string | undefined;
+        pid(id: number): number;
         begin(verb: string): string;
         status(): string | undefined;
         version(): string;

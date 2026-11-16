@@ -55,12 +55,27 @@ The stream modes:
 - `discard` throws the output away.
 - `capture` keeps it, up to `outputLimit` bytes, for `wait()` to return.
 
+## Programs the file starts
+
+A `gnoblin.spawn` at the top level of `init.ts`, outside any handler, starts a program for the configuration, and a reload
+looks after it:
+
+- The program starts when the new configuration takes over. A file that fails to load starts nothing, and the programs of
+  the configuration that keeps running are left alone.
+- A program the running configuration started with the same command and options is not started again. The new
+  configuration's `Process` is the one that already runs, with its `id` and `pid`.
+- A program the running configuration started that the new file does not start receives SIGTERM.
+- A program a key binding or a listener started belongs to you, and a reload leaves it running.
+
+Until the configuration has taken over, the `pid` of a `Process` made at the top level reads 0. A program that cannot start
+then ends with exit code 127, so a handle never stays running for a program that does not, and the reload reports why.
+
 ## The `Process` object
 
 | Member     | Meaning                                                              |
 | ---------- | -------------------------------------------------------------------- |
 | `id`       | The shell's number for the process. What `byId` takes.               |
-| `pid`      | The operating system's process id.                                   |
+| `pid`      | The operating system's process id, 0 until a top-level spawn starts. |
 | `argv`     | The program and its arguments.                                       |
 | `alive`    | `true` while it runs.                                                |
 | `status`   | `running` or `exited`.                                               |

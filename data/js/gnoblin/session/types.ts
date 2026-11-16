@@ -84,6 +84,8 @@ export interface ApiHost extends ClockHost {
     spawn(argv: string, options: string): string;
     /** The native kill: an error as JSON, or undefined when the signal was sent. */
     kill(id: number, signal: string): string | undefined;
+    /** The operating system's process id of a process, or 0 while its program has not started or after it has ended. */
+    pid(id: number): number;
     /** A fresh operation id. */
     operationId(): number;
     /** The error a failed call throws: `code` says why, `target` names the call. */

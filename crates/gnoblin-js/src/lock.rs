@@ -94,6 +94,17 @@ impl JsLockState {
         true
     }
 
+    /// The password checks waited on now, kept by a stage to give back.
+    pub(crate) fn mark(&self) -> HashMap<u64, Duration> {
+        self.checks.clone()
+    }
+
+    /// Gives back what a failed stage asked: its checks were rolled back with the pending writes, so nothing will
+    /// answer them.
+    pub(crate) fn rollback(&mut self, checks: HashMap<u64, Duration>) {
+        self.checks = checks;
+    }
+
     /// Answers `failed` for every check that has waited longer than [`CHECK_DEADLINE`], and hands over the answers.
     fn take_answers(&mut self) -> Vec<JsLockAnswer> {
         let now = self.clock.now();

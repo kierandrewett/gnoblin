@@ -1,9 +1,10 @@
 # Autostart
 
-Gnoblin's TypeScript shell has no autostart list, so a program you want in your session starts from outside `init.ts`.
+A `gnoblin.spawn` at the top level of `init.ts` starts its program when the shell loads the file. A reload does not start
+a second copy: the program that is running stays, and one you take out of the file is stopped (see
+[processes](/shell-api/processes#programs-the-file-starts)).
 
-An `init.ts` runs again on every reload, so a `gnoblin.spawn` at the top level of the file would start a second copy each
-time you save. Use one of these instead:
+The programs end with the shell, so this is not a startup list for the login session. For that, use one of these:
 
 - A systemd user unit, enabled with `systemctl --user enable --now waybar.service`, for a program that should run for the
   whole login session.

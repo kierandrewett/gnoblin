@@ -126,7 +126,7 @@ table says what stays in each case.
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
 | Window rules (`rules`)                                                                                                                                             | Listeners and `where(...).style`: see above      |
 | Focus mode, new-window focus, raise, auto raise, `edgeTiling`, `dragConstraint`                                                                                    | Click focus, raise on click, edge snapping on    |
-| `autostart`                                                                                                                                                        | `gnoblin.spawn` runs on every reload             |
+| `autostart`                                                                                                                                                        | `gnoblin.spawn` at the top of `init.ts`          |
 | `protocols`, `keyring`, `compositor`, `appearance`, `accessibility`, `layerShell`, `auth`, `location`, `xwayland`, `cursor`, `monitors`, `dialogs.style`           | The default of each                              |
 | `touchpadGestures` (drawn paths), `workspaceSets`, `launcher`, `inputSources`, tablets, styluses, trackballs, pointing sticks, `orientationLock`, keyboard options | A swipe or pinch is `input.bind`; the rest: none |
 

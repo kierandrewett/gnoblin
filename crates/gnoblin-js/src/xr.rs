@@ -39,6 +39,22 @@ impl JsXrState {
             self.owned.remove(node);
         }
     }
+
+    /// The nodes owned now, kept by a stage to give back.
+    pub(crate) fn mark(&self) -> HashSet<NodeId> {
+        self.owned.clone()
+    }
+
+    /// Gives back what a failed stage made: the nodes owned at the mark, and no others.
+    pub(crate) fn rollback(&mut self, owned: HashSet<NodeId>) {
+        self.owned = owned;
+    }
+
+    /// Whether `node` is one the XR module made, for the tests of a stage.
+    #[cfg(test)]
+    pub(crate) fn owns(&self, node: NodeId) -> bool {
+        self.owned.contains(&node)
+    }
 }
 
 /// Makes a node of `class` in this tick. `Err` is a refusal code: `unknown-class` or `refused` (no id left).

@@ -88,6 +88,15 @@ How it is done (`crates/gnoblin-js/src/input.rs`, `shell.rs`):
   is held in `JsInput::staged`, not sent. A claim the staged generation gives up again is dropped without a call.
   `abandon_stage` drops what was kept, so a failed stage leaves the compositor and the host's table as they were, and a
   claim of a failed stage is never mistaken for a held one.
+- The claims are not the only side effect of a stage. `HostState::begin_stage` (`bindings/stage.rs`) takes one mark of
+  everything the staged entry touches in the shared state: the pending writes, the UI toolkit's canvases and measurements,
+  the XR module's nodes, the output applies and the lock's password checks. `abandon_stage` gives them all back. A
+  `gnoblin.spawn` at the top level is held back, not started (`JsProcesses::begin_stage`): the staged generation starts
+  its programs when `swap_generation` takes over, and a program the running config started with the same command and
+  options is taken over instead (same `id` and `pid`), so a reload does not double it. A program the running config
+  started and the new one does not is sent SIGTERM; one a handler started is left alone. Each process records its owner,
+  the generation that started or took it over. A restage inside one stage (the supervisor's) starts the stage's spawns
+  over (`JsStaging::prepare`). A session verb called at the top level is not held back.
 - `swap_generation` ends the old generation (`cancelAll`, its drags' `onCancel`, its `unclaim` calls), releases any claim
   the old script did not (it threw first), then sends the kept claims, and sends the one transaction. A transaction still
   in flight holds all of it back together.

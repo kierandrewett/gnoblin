@@ -28,9 +28,9 @@ gnoblin.input.primary.bind("Super+d", () => {
 });
 ```
 
-Save the file. The shell reloads it, starts Waybar and Mako, and `Super+d` opens Fuzzel. The file runs again on every
-reload, so a reload starts a second copy of each program that does not refuse one: start it from your session's own
-autostart if you reload often.
+Save the file. The shell reloads it, starts Waybar and Mako, and `Super+d` opens Fuzzel. A reload keeps a program the
+file starts at its top level running and does not start it a second time; it stops one you took out of the file (see
+[processes](/shell-api/processes#programs-the-file-starts)).
 
 Configure Waybar's clock, tray and system modules as usual. Its Sway and
 Hyprland modules need those compositors' own interfaces and do not work in Gnoblin.

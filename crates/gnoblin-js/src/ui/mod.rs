@@ -125,6 +125,12 @@ impl<'js> IntoJs<'js> for JsUiEvent {
     }
 }
 
+/// What a stage keeps of the toolkit's state to give back (see [`JsUiState::mark`]).
+pub(crate) struct UiMark {
+    owned: HashSet<NodeId>,
+    measures: HashSet<u64>,
+}
+
 /// What the toolkit keeps on the host between frames.
 #[derive(Default)]
 pub(crate) struct JsUiState {
@@ -195,6 +201,27 @@ impl JsUiState {
         for node in nodes {
             self.owned.remove(node);
         }
+    }
+
+    /// What the toolkit owns and waits on now, kept by a stage to give back.
+    pub(crate) fn mark(&self) -> UiMark {
+        UiMark {
+            owned: self.owned.clone(),
+            measures: self.measures.clone(),
+        }
+    }
+
+    /// Gives back what a failed stage made: its canvases and its measurements were rolled back with the pending
+    /// writes, so nothing is owned or waited on that the tree will not have.
+    pub(crate) fn rollback(&mut self, mark: UiMark) {
+        self.owned = mark.owned;
+        self.measures = mark.measures;
+    }
+
+    /// Whether `node` is a canvas the toolkit owns, for the tests of a stage.
+    #[cfg(test)]
+    pub(crate) fn owns(&self, node: NodeId) -> bool {
+        self.owned.contains(&node)
     }
 }
 

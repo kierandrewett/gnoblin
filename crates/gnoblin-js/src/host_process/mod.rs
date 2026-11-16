@@ -9,6 +9,12 @@
 //! A process leaves [`JsProcesses`] when its end is drained. A kill of a process that is not there answers
 //! `not-found` at once, so nothing waits on an end that can no longer arrive.
 //!
+//! Each process has an owner, the generation that started or adopted it, and a process the config's top level starts
+//! (`gnoblin.spawn` while the entry loads) is the config's: a stage defers it and starts it only when its generation
+//! takes over, so a stage that fails starts nothing and a reload that starts the same program again keeps the process it
+//! has instead of doubling it. What a reload's generation no longer starts is stopped; a process a handler started is the
+//! user's and a reload leaves it running.
+//!
 //! The tests are in `tests.rs`.
 
 use std::collections::BTreeMap;
@@ -130,7 +136,7 @@ impl JsStream {
 }
 
 /// The options of a spawn as the script's module hands them over, checked against the limits above.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JsSpawnOptions {
     cwd: Option<PathBuf>,
@@ -174,11 +180,44 @@ pub struct JsStarted {
     pub pid: u32,
 }
 
+/// A program and the options it starts with: what two spawns have to share for one to stand in for the other.
+#[derive(Clone, Debug, PartialEq)]
+struct Spawn {
+    argv: Vec<String>,
+    options: JsSpawnOptions,
+}
+
 struct JsRunning {
     pid: u32,
     /// True once the waiter has reaped the child, under the lock the waiter reaps with, so a signal is never
     /// sent to a process id the kernel may already have handed to something else.
     reaped: Arc<Mutex<bool>>,
+    /// The generation that started it, or took it over at a reload.
+    owner: u64,
+    /// What the config's top level started it with. `None` for a process a handler started.
+    declared: Option<Spawn>,
+}
+
+impl JsRunning {
+    /// Sends `signal` to the process group unless the waiter has reaped it. False when it has: nobody is left to signal.
+    fn signal(&self, signal: Signal) -> bool {
+        let Ok(reaped) = self.reaped.lock() else {
+            return false;
+        };
+        if *reaped {
+            return false;
+        }
+        signal_group(self.pid, signal);
+        true
+    }
+}
+
+/// What a spawn made while a generation was staged will do when it takes over.
+enum Staged {
+    /// A running process of the generation being replaced that the stage started again: it stays, and is the stage's.
+    Adopt(u64),
+    /// A program that has not started: it starts when the generation takes over, under the id the script was given.
+    Start { id: u64, spawn: Spawn },
 }
 
 /// The processes a shell started and has not seen end.
@@ -187,6 +226,10 @@ pub struct JsProcesses {
     running: BTreeMap<u64, JsRunning>,
     ends: Receiver<(u64, JsExit)>,
     sender: Sender<(u64, JsExit)>,
+    /// The generation that runs, to which a process started now belongs.
+    owner: u64,
+    /// The spawns of the generation being staged, `None` when none is.
+    stage: Option<Vec<Staged>>,
 }
 
 impl Default for JsProcesses {
@@ -197,6 +240,8 @@ impl Default for JsProcesses {
             running: BTreeMap::new(),
             ends,
             sender,
+            owner: 0,
+            stage: None,
         }
     }
 }
@@ -348,7 +393,23 @@ impl JsProcesses {
         self.running.len()
     }
 
+    /// The operating system's process id of process `id`, or `None` when it is not running: it has ended, or it is a
+    /// spawn of a staged generation that has not taken over, which has not started.
+    pub fn pid(&self, id: u64) -> Option<u32> {
+        self.running.get(&id).map(|running| running.pid)
+    }
+
+    /// The generation that owns process `id`, or `None` when it is not running.
+    pub fn owner(&self, id: u64) -> Option<u64> {
+        self.running.get(&id).map(|running| running.owner)
+    }
+
     /// Starts `argv` in a process group of its own, with `options` over the session's environment.
+    ///
+    /// While a generation is staged ([`begin_stage`](Self::begin_stage)) nothing starts: the spawn is checked, given the
+    /// id its handle will carry and kept, and the answer's `pid` is 0 until the generation takes over. A program the
+    /// running generation's config started with the same arguments and options is not started again: the staged
+    /// generation takes that process over, and the answer is its id and pid.
     ///
     /// # Errors
     ///
@@ -356,6 +417,59 @@ impl JsProcesses {
     /// `internal` when the operating system refuses to start the program, with its reason.
     pub fn spawn(&mut self, argv: &[String], options: &JsSpawnOptions) -> Result<JsStarted, JsProcessError> {
         checked(argv, options)?;
+        let spawn = Spawn {
+            argv: argv.to_vec(),
+            options: options.clone(),
+        };
+        if self.stage.is_some() {
+            return self.stage_spawn(spawn);
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        let pid = self.start(id, spawn, false)?;
+        Ok(JsStarted { id, pid })
+    }
+
+    /// Keeps a spawn of the staged generation: it adopts the running process of the generation being replaced that the
+    /// config declared with the same arguments, if one is not adopted already, and otherwise waits to start.
+    fn stage_spawn(&mut self, spawn: Spawn) -> Result<JsStarted, JsProcessError> {
+        let staged = self.stage.get_or_insert_with(Vec::new);
+        let adopted = |id: &u64| {
+            staged
+                .iter()
+                .any(|kept| matches!(kept, Staged::Adopt(taken) if taken == id))
+        };
+        let same = self
+            .running
+            .iter()
+            .find(|(id, running)| {
+                running.owner == self.owner && running.declared.as_ref() == Some(&spawn) && !adopted(id)
+            })
+            .map(|(id, running)| (*id, running.pid));
+        if let Some((id, pid)) = same {
+            staged.push(Staged::Adopt(id));
+            return Ok(JsStarted { id, pid });
+        }
+        let waiting = staged
+            .iter()
+            .filter(|kept| matches!(kept, Staged::Start { .. }))
+            .count();
+        if self.running.len() + waiting >= MAX_RUNNING {
+            return Err(JsProcessError::new(
+                JsProcessCode::Busy,
+                format!("{MAX_RUNNING} processes are already running"),
+            ));
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        staged.push(Staged::Start { id, spawn });
+        Ok(JsStarted { id, pid: 0 })
+    }
+
+    /// Starts `spawn` as process `id`, owned by the running generation, and returns its operating system id.
+    /// `declared` says the config's top level asked for it.
+    fn start(&mut self, id: u64, spawn: Spawn, declared: bool) -> Result<u32, JsProcessError> {
+        let Spawn { argv, options } = &spawn;
         if self.running.len() >= MAX_RUNNING {
             return Err(JsProcessError::new(
                 JsProcessCode::Busy,
@@ -403,8 +517,6 @@ impl JsProcesses {
                 .take()
                 .map(|stream| std::thread::spawn(move || capture(stream, limit))),
         };
-        let id = self.next_id;
-        self.next_id += 1;
         let pid = child.id();
         let reaped = Arc::new(Mutex::new(false));
         let waiter_reaped = Arc::clone(&reaped);
@@ -420,18 +532,92 @@ impl JsProcesses {
             .map_err(|error| {
                 JsProcessError::new(JsProcessCode::Internal, format!("cannot watch the process: {error}"))
             })?;
-        self.running.insert(id, JsRunning { pid, reaped });
-        Ok(JsStarted { id, pid })
+        self.running.insert(
+            id,
+            JsRunning {
+                pid,
+                reaped,
+                owner: self.owner,
+                declared: declared.then_some(spawn),
+            },
+        );
+        Ok(pid)
     }
 
-    /// Sends the named signal (`term`, `kill`, `int`, `hup`, `usr1`, `usr2`, `stop`, `cont`) to the process group.
+    /// A generation is about to be staged: what its config spawns is kept, not started, until it takes over.
+    pub fn begin_stage(&mut self) {
+        self.stage = Some(Vec::new());
+    }
+
+    /// Another generation is staged inside the same stage (a restage after the first was interrupted): the spawns the
+    /// first one kept are dropped, or a program both spawn would start twice. Nothing happens when no stage is open.
+    pub fn restage(&mut self) {
+        if let Some(kept) = self.stage.as_mut() {
+            kept.clear();
+        }
+    }
+
+    /// The stage failed: the spawns it kept are dropped, and nothing that runs was touched.
+    pub fn abandon_stage(&mut self) {
+        self.stage = None;
+    }
+
+    /// The staged generation `owner` takes over. The config's processes it started again stay and become its own, the
+    /// ones it did not are stopped (SIGTERM to the group), and the programs it spawned for the first time start now.
+    ///
+    /// Returns the spawns that could not start, as `(id, why)`. Each has been ended with exit status 127 and its reason
+    /// as standard error, so the handle the script holds is not left running for ever.
+    pub fn end_stage(&mut self, owner: u64) -> Vec<(u64, JsProcessError)> {
+        let Some(staged) = self.stage.take() else {
+            return Vec::new();
+        };
+        let previous = std::mem::replace(&mut self.owner, owner);
+        let adopted: Vec<u64> = staged
+            .iter()
+            .filter_map(|kept| match kept {
+                Staged::Adopt(id) => Some(*id),
+                Staged::Start { .. } => None,
+            })
+            .collect();
+        for (id, running) in &mut self.running {
+            if running.owner != previous || running.declared.is_none() {
+                continue;
+            }
+            if adopted.contains(id) {
+                running.owner = owner;
+            } else {
+                // The config no longer starts it: it is not the config's any more, and it is told to stop.
+                running.declared = None;
+                running.signal(Signal::TERM);
+            }
+        }
+        let mut failed = Vec::new();
+        for kept in staged {
+            if let Staged::Start { id, spawn } = kept
+                && let Err(error) = self.start(id, spawn, true)
+            {
+                let exit = JsExit {
+                    exit_code: Some(127),
+                    stderr: Some(error.message.clone()),
+                    ..JsExit::default()
+                };
+                // The shell may be gone: nobody is left to tell.
+                let _ = self.sender.send((id, exit));
+                failed.push((id, error));
+            }
+        }
+        failed
+    }
+
+    /// Sends the named signal (`term`, `kill`, `int`, `hup`, `usr1`, `usr2`, `stop`, `cont`) to the process group. A
+    /// process a staged generation has not started yet is not started, and ends with that signal.
     ///
     /// # Errors
     ///
     /// `invalid_argument` for another name, `not_found` once the process has ended or when this shell never
     /// started it.
     pub fn kill(&mut self, id: u64, signal: &str) -> Result<(), JsProcessError> {
-        let Some((_, signal)) = SIGNALS.iter().find(|(name, _)| *name == signal) else {
+        let Some((name, signal)) = SIGNALS.iter().find(|(name, _)| *name == signal) else {
             let names: Vec<&str> = SIGNALS.iter().map(|(name, _)| *name).collect();
             return Err(JsProcessError::new(
                 JsProcessCode::InvalidArgument,
@@ -444,13 +630,26 @@ impl JsProcesses {
                 format!("process {id} has ended or was never started"),
             )
         };
-        let running = self.running.get(&id).ok_or_else(not_found)?;
-        let reaped = running.reaped.lock().map_err(|_| not_found())?;
-        if *reaped {
-            return Err(not_found());
+        if let Some(staged) = self.stage.as_mut()
+            && let Some(at) = staged
+                .iter()
+                .position(|kept| matches!(kept, Staged::Start { id: waiting, .. } if *waiting == id))
+        {
+            staged.remove(at);
+            let exit = JsExit {
+                signal: Some((*name).to_owned()),
+                ..JsExit::default()
+            };
+            // The shell may be gone: nobody is left to tell.
+            let _ = self.sender.send((id, exit));
+            return Ok(());
         }
-        signal_group(running.pid, *signal);
-        Ok(())
+        let running = self.running.get(&id).ok_or_else(not_found)?;
+        if running.signal(*signal) {
+            Ok(())
+        } else {
+            Err(not_found())
+        }
     }
 
     /// The ends the waiters have reported since the last call, oldest first. A process is forgotten here.

@@ -9,6 +9,7 @@
 
 mod host;
 mod props;
+mod stage;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -22,6 +23,7 @@ use rquickjs::{Array, Ctx, IntoJs, Object, Value};
 use crate::supervisor::JsClock;
 
 pub(crate) use host::{adopt_windows, install, parents_first, prepare, script_value};
+pub(crate) use stage::StageMark;
 
 /// Everything the host functions share with the shell's frame loop.
 ///

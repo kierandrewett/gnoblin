@@ -123,3 +123,237 @@ fn a_missing_program_is_not_found_and_limits_are_refused_by_name() {
     );
     assert_eq!(JsStream::default(), JsStream::Log);
 }
+
+// ---- stages -----------------------------------------------------------------------------------------------------------
+
+/// Whether the process with this operating system id exists and has not ended (a zombie has).
+fn alive(pid: u32) -> bool {
+    std::fs::metadata(format!("/proc/{pid}")).is_ok()
+        && std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| !stat.contains(") Z "))
+}
+
+fn sleeping(tag: &str) -> Vec<String> {
+    argv(&["sleep", tag])
+}
+
+#[test]
+fn a_staged_spawn_starts_nothing_until_the_generation_takes_over() {
+    let mut processes = JsProcesses::default();
+    processes.begin_stage();
+    let started = processes
+        .spawn(&sleeping("32.5001"), &JsSpawnOptions::default())
+        .expect("a spawn is kept");
+    assert_eq!((started.id, started.pid), (1, 0), "it has its id and no pid");
+    assert_eq!(processes.running(), 0, "nothing runs");
+    assert_eq!(processes.pid(started.id), None);
+
+    let failed = processes.end_stage(1);
+    assert!(failed.is_empty(), "{failed:?}");
+    assert_eq!(processes.running(), 1);
+    let pid = processes.pid(started.id).expect("it runs under the id it was given");
+    assert!(pid > 0);
+    assert_eq!(
+        processes.owner(started.id),
+        Some(1),
+        "the generation that took over owns it"
+    );
+    processes.kill(started.id, "kill").expect("it is killed");
+    let _ = end_of(&mut processes, started.id);
+}
+
+#[test]
+fn an_abandoned_stage_starts_nothing_and_a_handler_spawn_after_it_runs_at_once() {
+    let mut processes = JsProcesses::default();
+    processes.begin_stage();
+    processes
+        .spawn(&sleeping("32.5002"), &JsSpawnOptions::default())
+        .expect("a spawn is kept");
+    processes.abandon_stage();
+    assert_eq!(processes.running(), 0);
+    assert!(processes.end_stage(1).is_empty(), "there is no stage left to take over");
+
+    let started = processes
+        .spawn(&sleeping("32.5003"), &JsSpawnOptions::default())
+        .expect("a handler's spawn starts at once");
+    assert!(started.pid > 0);
+    processes.kill(started.id, "kill").expect("it is killed");
+    let _ = end_of(&mut processes, started.id);
+}
+
+#[test]
+fn a_stage_that_spawns_what_the_running_config_spawned_takes_that_process_over() {
+    let mut processes = JsProcesses::default();
+    processes.begin_stage();
+    let first = processes
+        .spawn(&sleeping("32.5004"), &JsSpawnOptions::default())
+        .expect("kept");
+    assert!(processes.end_stage(1).is_empty());
+    let pid = processes.pid(first.id).expect("it runs");
+
+    processes.begin_stage();
+    let again = processes
+        .spawn(&sleeping("32.5004"), &JsSpawnOptions::default())
+        .expect("kept");
+    assert_eq!(
+        (again.id, again.pid),
+        (first.id, pid),
+        "the stage is given the process that runs"
+    );
+    let twice = processes
+        .spawn(&sleeping("32.5004"), &JsSpawnOptions::default())
+        .expect("kept");
+    assert_ne!(
+        twice.id, first.id,
+        "a process is taken over once: a second spawn of the same program is a second process"
+    );
+    assert!(processes.end_stage(2).is_empty());
+    assert_eq!(processes.running(), 2);
+    assert_eq!(processes.owner(first.id), Some(2), "the process has a new owner");
+    assert_eq!(processes.pid(first.id), Some(pid), "and is the same process");
+    assert!(alive(pid));
+
+    for id in [first.id, twice.id] {
+        processes.kill(id, "kill").expect("it is killed");
+        let _ = end_of(&mut processes, id);
+    }
+}
+
+#[test]
+fn the_same_program_with_other_options_is_another_process() {
+    let mut processes = JsProcesses::default();
+    processes.begin_stage();
+    let first = processes
+        .spawn(&sleeping("32.5005"), &JsSpawnOptions::default())
+        .expect("kept");
+    assert!(processes.end_stage(1).is_empty());
+
+    processes.begin_stage();
+    let other = processes
+        .spawn(&sleeping("32.5005"), &options(r#"{"env":{"A":"b"}}"#))
+        .expect("kept");
+    assert_ne!(other.id, first.id);
+    assert!(processes.end_stage(2).is_empty());
+    assert_eq!(
+        processes.running(),
+        2,
+        "the old one is stopped by the signal and ends on its own time"
+    );
+    for id in [first.id, other.id] {
+        let _ = processes.kill(id, "kill");
+        let _ = end_of(&mut processes, id);
+    }
+}
+
+#[test]
+fn what_the_config_no_longer_starts_is_stopped_and_what_a_handler_started_is_left() {
+    let mut processes = JsProcesses::default();
+    processes.begin_stage();
+    let declared = processes
+        .spawn(&sleeping("32.5006"), &JsSpawnOptions::default())
+        .expect("kept");
+    assert!(processes.end_stage(1).is_empty());
+    let handled = processes
+        .spawn(&sleeping("32.5007"), &JsSpawnOptions::default())
+        .expect("a handler's spawn starts at once");
+    let (declared_pid, handled_pid) = (processes.pid(declared.id).expect("runs"), handled.pid);
+
+    processes.begin_stage();
+    assert!(processes.end_stage(2).is_empty(), "the new config spawns nothing");
+    let exit = end_of(&mut processes, declared.id);
+    assert_eq!(
+        exit.signal.as_deref(),
+        Some("term"),
+        "the config's process was told to stop"
+    );
+    assert!(!alive(declared_pid));
+    assert!(alive(handled_pid), "the process a handler started keeps running");
+    assert_eq!(
+        processes.owner(handled.id),
+        Some(1),
+        "and belongs to the generation that was running when it started"
+    );
+
+    processes.kill(handled.id, "kill").expect("it is killed");
+    let _ = end_of(&mut processes, handled.id);
+}
+
+#[test]
+fn a_program_that_cannot_start_when_the_generation_takes_over_ends_with_status_127_and_is_reported() {
+    let mut processes = JsProcesses::default();
+    processes.begin_stage();
+    let started = processes
+        .spawn(&argv(&["/nonexistent/program"]), &JsSpawnOptions::default())
+        .expect("the stage cannot know");
+    let failed = processes.end_stage(1);
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].0, started.id);
+    assert_eq!(failed[0].1.code, JsProcessCode::NotFound);
+    let exit = end_of(&mut processes, started.id);
+    assert_eq!(exit.exit_code, Some(127), "the handle the script holds ends");
+    assert!(exit.stderr.is_some_and(|text| text.contains("/nonexistent/program")));
+}
+
+#[test]
+fn a_program_killed_before_the_generation_takes_over_never_starts_and_ends_with_the_signal() {
+    let mut processes = JsProcesses::default();
+    processes.begin_stage();
+    let started = processes
+        .spawn(&sleeping("32.5008"), &JsSpawnOptions::default())
+        .expect("kept");
+    processes.kill(started.id, "term").expect("a kept spawn can be killed");
+    assert!(processes.end_stage(1).is_empty());
+    assert_eq!(processes.running(), 0, "it never started");
+    let exit = end_of(&mut processes, started.id);
+    assert_eq!(exit.signal.as_deref(), Some("term"));
+}
+
+#[test]
+fn a_stage_counts_the_spawns_it_keeps_against_the_running_limit() {
+    let mut processes = JsProcesses::default();
+    processes.begin_stage();
+    for _ in 0..super::MAX_RUNNING {
+        processes
+            .spawn(&sleeping("32.5009"), &JsSpawnOptions::default())
+            .expect("under the limit");
+    }
+    let refused = processes
+        .spawn(&sleeping("32.5009"), &JsSpawnOptions::default())
+        .expect_err("past it");
+    assert_eq!(refused.code, JsProcessCode::Busy);
+    processes.abandon_stage();
+}
+
+#[test]
+fn a_restage_inside_a_stage_starts_the_program_once_whatever_the_interrupted_generation_spawned() {
+    let mut processes = JsProcesses::default();
+    processes.begin_stage();
+    processes
+        .spawn(&sleeping("32.5010"), &JsSpawnOptions::default())
+        .expect("kept");
+    // The first generation was interrupted: the one that replaces it spawns the same program.
+    processes.restage();
+    let again = processes
+        .spawn(&sleeping("32.5010"), &JsSpawnOptions::default())
+        .expect("kept");
+    assert!(processes.end_stage(1).is_empty());
+    assert_eq!(
+        processes.running(),
+        1,
+        "one process, not one for each generation staged"
+    );
+    assert!(processes.pid(again.id).is_some(), "and it is the second generation's");
+    processes.kill(again.id, "kill").expect("it is killed");
+    let _ = end_of(&mut processes, again.id);
+}
+
+#[test]
+fn a_restage_with_no_stage_open_changes_nothing() {
+    let mut processes = JsProcesses::default();
+    processes.restage();
+    let started = processes
+        .spawn(&sleeping("32.5011"), &JsSpawnOptions::default())
+        .expect("a spawn outside a stage starts at once");
+    assert!(started.pid > 0);
+    processes.kill(started.id, "kill").expect("it is killed");
+    let _ = end_of(&mut processes, started.id);
+}
