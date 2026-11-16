@@ -88,6 +88,9 @@ use gnoblin_wayland::{
     ControlHandle, KillRefusal, Observer, PresentAnswer, SessionSnapshot, TreeBatch, TreeFrameInput, WindowChange,
     WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
 };
+use rustix::io::Errno;
+use rustix::net::{self, SendFlags};
+use zeroize::{Zeroize, Zeroizing};
 
 use super::applied::StartedDocuments;
 use super::consent::Consent;
@@ -113,11 +116,18 @@ use crate::log;
 /// spend a thread on forever, and the handshake is one fixed 20-byte frame.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// How long one write may block before the connection is dropped.
+/// How long a client may take nothing of what the dispatcher holds for it before the connection is dropped.
 ///
-/// The dispatcher writes to every subscriber from one thread, so a client that stops
-/// reading must cost its own connection and not the session.
-const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+/// The dispatcher serves every connection from one thread, and the lock card is pumped from that thread, so it must
+/// never wait for a client's socket: a write to a full one would stand the session still for as long as it waited. It
+/// hands each socket what the socket takes at once, keeps the rest in the connection's outbox, and tries again on
+/// every tick. A client that has taken none of it for this long has stopped reading and costs its own connection.
+const STALL_LIMIT: Duration = Duration::from_secs(5);
+
+/// The most bytes the dispatcher holds for one client that is not taking them. A client over it is dropped at once: a
+/// shell that does not read for a few seconds is kept (see [`STALL_LIMIT`]), but nothing may make the compositor hold
+/// memory for it without end. One frame larger than this is still sent, to a client with nothing waiting.
+const MAX_OUTBOX: usize = 8 * 1024 * 1024;
 
 /// How often the dispatcher looks at its own clock.
 ///
@@ -480,10 +490,6 @@ fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<
         log::debug!(area = "ipc", %error, "a connection could not drop its handshake deadline");
         return;
     }
-    if let Err(error) = writer.set_write_timeout(Some(WRITE_TIMEOUT)) {
-        log::debug!(area = "ipc", %error, "a connection could not be given a write deadline");
-        return;
-    }
     if events.send(IpcEvent::Accepted { client, writer, owner }).is_err() {
         return;
     }
@@ -666,7 +672,8 @@ fn write_handshake(writer: &UnixStream, handshake: &Handshake) -> io::Result<()>
 
 /// What the dispatcher holds for one client.
 struct Connection {
-    /// The socket this connection's frames are written to.
+    /// The socket this connection's frames are written to. It is written to without waiting, never with a blocking
+    /// write: see [`Connection::drain`].
     writer: UnixStream,
     /// Whether this connection is the session owner's, which gates the owner's members.
     owner: bool,
@@ -675,17 +682,103 @@ struct Connection {
     /// Set once a write fails, so the connection is dropped after this turn instead
     /// of being written to again.
     broken: bool,
+    /// The encoded frames the socket has not taken yet. A frame can carry a secret, so it is wiped once it is gone.
+    outbox: Zeroizing<Vec<u8>>,
+    /// How many bytes of `outbox` the socket has taken.
+    sent: usize,
+    /// When the socket last took a byte, or when the outbox last went from empty to waiting.
+    progress: Instant,
 }
 
 impl Connection {
-    /// Writes one frame, and marks the connection broken when it cannot.
+    fn new(writer: UnixStream, owner: bool) -> Self {
+        Self {
+            writer,
+            owner,
+            subscriptions: Vec::new(),
+            broken: false,
+            outbox: Zeroizing::new(Vec::new()),
+            sent: 0,
+            progress: Instant::now(),
+        }
+    }
+
+    /// Queues one frame and gives the socket what it takes now, and marks the connection broken when it cannot be
+    /// served: the socket failed, the client has taken nothing for [`STALL_LIMIT`], or more than [`MAX_OUTBOX`] bytes are
+    /// waiting for it.
     fn send(&mut self, envelope: &Envelope) {
         if self.broken {
             return;
         }
-        if let Err(error) = write_frame(&mut self.writer, envelope) {
-            log::debug!(area = "ipc", %error, "a connection could not be written, dropping it");
+        let waiting = self.outbox.len() > self.sent;
+        if !waiting {
+            self.progress = Instant::now();
+        }
+        if let Err(error) = write_frame(&mut *self.outbox, envelope) {
+            log::debug!(area = "ipc", %error, "a frame could not be encoded for a connection, dropping it");
             self.broken = true;
+            return;
+        }
+        if waiting && self.outbox.len() - self.sent > MAX_OUTBOX {
+            log::debug!(
+                area = "ipc",
+                "a client that is not reading has more than the outbox holds, dropping it"
+            );
+            self.broken = true;
+            return;
+        }
+        self.drain();
+    }
+
+    /// Hands the socket what it takes at once and keeps the rest, and never waits: the dispatcher is one thread for every
+    /// connection and the lock card, so a client whose socket is full must cost its own connection and not the session.
+    /// Called on every frame queued and on every tick of the dispatcher, so a client that starts reading again gets what
+    /// was kept for it, in order.
+    fn drain(&mut self) {
+        if self.broken {
+            return;
+        }
+        while self.sent < self.outbox.len() {
+            match net::send(
+                &self.writer,
+                &self.outbox[self.sent..],
+                SendFlags::DONTWAIT | SendFlags::NOSIGNAL,
+            ) {
+                Ok(0) => {
+                    self.broken = true;
+                    return;
+                }
+                Ok(taken) => {
+                    self.sent += taken;
+                    self.progress = Instant::now();
+                }
+                Err(Errno::INTR) => {}
+                Err(Errno::AGAIN) => {
+                    if self.progress.elapsed() >= STALL_LIMIT {
+                        log::debug!(
+                            area = "ipc",
+                            "a client has taken nothing for {:?}, dropping it",
+                            STALL_LIMIT
+                        );
+                        self.broken = true;
+                    }
+                    return;
+                }
+                Err(error) => {
+                    log::debug!(area = "ipc", %error, "a connection could not be written, dropping it");
+                    self.broken = true;
+                    return;
+                }
+            }
+        }
+        // Everything was taken: the frames are wiped, and a buffer a flood grew is given back. A connection with nothing
+        // sent has nothing to wipe, and zeroizing a vector clears its spare capacity too.
+        if !self.outbox.is_empty() {
+            self.outbox.zeroize();
+            self.sent = 0;
+            if self.outbox.capacity() > 1024 * 1024 {
+                *self.outbox = Vec::new();
+            }
         }
     }
 }
@@ -779,15 +872,7 @@ impl Dispatcher {
             let Some(event) = event else { continue };
             match event {
                 IpcEvent::Accepted { client, writer, owner } => {
-                    self.connections.insert(
-                        client,
-                        Connection {
-                            writer,
-                            owner,
-                            subscriptions: Vec::new(),
-                            broken: false,
-                        },
-                    );
+                    self.connections.insert(client, Connection::new(writer, owner));
                 }
                 IpcEvent::Request { client, mut envelope } => {
                     self.request(client, &envelope);
@@ -2806,6 +2891,8 @@ impl Dispatcher {
     fn flush(&mut self) {
         let mut broken = Vec::new();
         for (client, connection) in self.connections.iter_mut() {
+            // What a client that was slow to read still waits for goes first, in the order it was queued.
+            connection.drain();
             // Moved aside so the subscription list is not borrowed while the
             // connection is written to.
             let subscriptions = std::mem::take(&mut connection.subscriptions);
