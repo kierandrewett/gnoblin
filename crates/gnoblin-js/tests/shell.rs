@@ -1,326 +1,56 @@
 //! Tests for `JsShell`: the JavaScript shell over the tree protocol.
 //!
-//! The compositor is played by `FakeLink`, an in-memory `TreeLink` modelled on the one in
+//! The compositor is the shared fake of `tests/common`, an in-memory `TreeLink` modelled on the one in
 //! `the retired retired host`'s `shell_vm` tests: it applies every transaction to a node map, answers it with a change
-//! batch carrying the serial and then the reply, refuses a write to a node a published batch changed since
-//! the base (`stale-base`) and a write to a node that is gone (`unknown-node`), and can hold a transaction
-//! in flight.
+//! batch carrying the serial and then the reply, can refuse as the real compositor's revision check does (`strict`:
+//! `stale-base` for a write to a node a published batch changed since the base, `unknown-node` for a write to a node
+//! that is gone) and can hold a transaction in flight.
 
-use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use std::rc::Rc;
 use std::time::Duration;
 
 use gnoblin_js::{JsRole, JsRoleLinks, JsShell, JsShellConfig, JsShellError};
-use gnoblin_tree_client::tree_mirror::{
-    Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
-    TxOp, TxReply,
-};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, TreeIncoming, TxOp};
 use tempfile::TempDir;
 
 mod common;
-use common::{RUNAWAY_BUDGET, honest_config, honest_role_config};
+use common::{FakeCompositor, Fault, ROOT, RUNAWAY_BUDGET, honest_config, honest_role_config, text};
 
-struct Node {
-    class: String,
-    parent: u64,
-    props: BTreeMap<String, MirrorValue>,
-}
-
-#[derive(Default)]
-struct Compositor {
-    nodes: BTreeMap<u64, Node>,
-    serial: u64,
-    /// The serial at which each node last changed in a batch the compositor published.
-    changed: BTreeMap<u64, u64>,
-    /// Transactions the link has received, in order.
-    sent: Vec<Vec<TxOp>>,
-    /// The next transaction is refused when set.
-    refuse_next: bool,
-    /// Transactions are recorded in `held` and applied only by `release`, as a real compositor echoes them later.
-    hold: bool,
-    held: Vec<TreeTx>,
-    queue: Vec<TreeIncoming>,
-}
-
-#[derive(Clone)]
-struct FakeLink(Rc<RefCell<Compositor>>);
-
-fn change(kind: MirrorChangeKind, node: u64) -> MirrorChange {
-    MirrorChange {
-        kind,
-        node,
-        class: String::new(),
-        parent: 0,
-        index: 0,
-        key: String::new(),
-        value: None,
-        removed: Vec::new(),
-    }
-}
-
-fn set_change(node: u64, key: &str, value: MirrorValue) -> MirrorChange {
-    MirrorChange {
-        key: key.into(),
-        value: Some(value),
-        ..change(MirrorChangeKind::Set, node)
-    }
-}
-
-fn text(value: &str) -> MirrorValue {
-    MirrorValue::Text(value.into())
-}
-
-impl FakeLink {
-    fn snapshot(&self) -> TreeIncoming {
-        let c = self.0.borrow();
-        let nodes = c
-            .nodes
-            .iter()
-            .map(|(id, node)| SnapshotNode {
-                id: *id,
-                parent: node.parent,
-                index: 0,
-                class: node.class.clone(),
-                title: String::new(),
-                app_id: String::new(),
-                props: node.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-            })
-            .collect();
-        TreeIncoming::Snapshot {
-            serial: c.serial,
-            chunk: 0,
-            last: true,
-            nodes,
-        }
-    }
-
-    /// Applies `ops` to the node map and returns the change batch describing them.
-    fn apply(&self, ops: &[TxOp], serial: u64) -> Vec<MirrorChange> {
-        let mut c = self.0.borrow_mut();
-        let mut changes = Vec::new();
-        for op in ops {
-            match op {
-                TxOp::Set { node, key, value, .. } => {
-                    if let Some(entry) = c.nodes.get_mut(node) {
-                        entry.props.insert(key.clone(), value.clone());
-                    }
-                    changes.push(set_change(*node, key, value.clone()));
-                }
-                TxOp::Destroy { node } => {
-                    c.nodes.remove(node);
-                    changes.push(MirrorChange {
-                        removed: vec![*node],
-                        ..change(MirrorChangeKind::Destroyed, *node)
-                    });
-                }
-                _ => {}
-            }
-        }
-        for change in &changes {
-            c.changed.insert(change.node, serial);
-        }
-        changes
-    }
-
-    /// Lands `tx` as the compositor does: refused `unknown-node` at the first op on a node that is gone, then
-    /// `stale-base` at the first op on a node a batch published after the base changed, otherwise applied
-    /// whole and echoed.
-    fn land(&self, tx: &TreeTx) {
-        let refusal = {
-            let c = self.0.borrow();
-            let gone = tx.ops.iter().position(|op| match op {
-                TxOp::Set { node, .. } | TxOp::Destroy { node } | TxOp::Call { node, .. } => {
-                    !c.nodes.contains_key(node)
-                }
-                _ => false,
-            });
-            let stale = tx.ops.iter().position(|op| match op {
-                TxOp::Set { node, .. } | TxOp::Destroy { node } if tx.base_serial != c.serial => {
-                    c.changed.get(node).is_some_and(|serial| *serial > tx.base_serial)
-                }
-                _ => false,
-            });
-            gone.map(|at| ("unknown-node", at, c.serial))
-                .or_else(|| stale.map(|at| ("stale-base", at, tx.serial)))
-        };
-        if let Some((code, failed_op, serial)) = refusal {
-            self.0.borrow_mut().queue.push(TreeIncoming::Reply(TxReply {
-                serial,
-                applied: false,
-                failed_op: failed_op as i64,
-                code: code.into(),
-                removed: Vec::new(),
-            }));
-            return;
-        }
-        let changes = self.apply(&tx.ops, tx.serial);
-        let mut c = self.0.borrow_mut();
-        c.serial = tx.serial;
-        c.queue.push(TreeIncoming::Changes {
-            serial: tx.serial,
-            changes,
-        });
-        c.queue.push(TreeIncoming::Reply(TxReply {
-            serial: tx.serial,
-            applied: true,
-            failed_op: -1,
-            code: String::new(),
-            removed: Vec::new(),
-        }));
-    }
-
-    /// Publishes `changes` as a batch of the compositor's own.
-    fn publish(&self, changes: Vec<MirrorChange>) {
-        let mut c = self.0.borrow_mut();
-        c.serial += 1;
-        let serial = c.serial;
-        for change in &changes {
-            c.changed.insert(change.node, serial);
-        }
-        c.queue.push(TreeIncoming::Changes { serial, changes });
-    }
-
-    /// A native write of `node.key` the shell did not make.
-    fn external_set(&self, node: u64, key: &str, value: MirrorValue) {
-        if let Some(entry) = self.0.borrow_mut().nodes.get_mut(&node) {
-            entry.props.insert(key.to_owned(), value.clone());
-        }
-        self.publish(vec![set_change(node, key, value)]);
-    }
-
-    /// A window the compositor maps: created, parented under the root and given its title and app id.
-    fn create_window(&self, id: u64, title: &str, app_id: &str) {
-        self.0.borrow_mut().nodes.insert(
-            id,
-            Node {
-                class: "window".into(),
-                parent: 1,
-                props: BTreeMap::from([("title".to_owned(), text(title)), ("app_id".to_owned(), text(app_id))]),
-            },
-        );
-        self.publish(vec![
-            MirrorChange {
-                class: "window".into(),
-                ..change(MirrorChangeKind::Created, id)
-            },
-            MirrorChange {
-                parent: 1,
-                index: 99,
-                ..change(MirrorChangeKind::Parented, id)
-            },
-            set_change(id, "title", text(title)),
-            set_change(id, "app_id", text(app_id)),
-        ]);
-    }
-
-    /// The compositor destroys `node` on its own, as it does a window whose client closed.
-    fn destroy(&self, node: u64) {
-        self.0.borrow_mut().nodes.remove(&node);
-        self.publish(vec![MirrorChange {
-            removed: vec![node],
-            ..change(MirrorChangeKind::Destroyed, node)
-        }]);
-    }
-
-    /// Lands every held transaction in order, as the compositor echoes them.
-    fn release(&self) {
-        let held = std::mem::take(&mut self.0.borrow_mut().held);
-        for tx in &held {
-            self.land(tx);
-        }
-    }
-}
-
-impl TreeLink for FakeLink {
-    fn attach(&mut self, _version: u64) -> Result<(), LinkError> {
-        let attached = Attached {
-            epoch: 1,
-            root: 1,
-            serial: self.0.borrow().serial,
-        };
-        let snapshot = self.snapshot();
-        let mut c = self.0.borrow_mut();
-        c.queue.push(TreeIncoming::Attached(attached));
-        c.queue.push(snapshot);
-        Ok(())
-    }
-
-    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
-        {
-            let mut c = self.0.borrow_mut();
-            c.sent.push(tx.ops.clone());
-            if c.hold {
-                c.held.push(tx.clone());
-                return Ok(());
-            }
-            if std::mem::replace(&mut c.refuse_next, false) {
-                c.queue.push(TreeIncoming::Reply(TxReply {
-                    serial: tx.serial,
-                    applied: false,
-                    failed_op: 0,
-                    code: "refused".into(),
-                    removed: Vec::new(),
-                }));
-                return Ok(());
-            }
-        }
-        self.land(tx);
-        Ok(())
-    }
-
-    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
-        Ok(std::mem::take(&mut self.0.borrow_mut().queue))
-    }
-}
-
-type Comp = Rc<RefCell<Compositor>>;
-
-fn node(class: &str, parent: u64, props: Vec<(&str, MirrorValue)>) -> Node {
-    Node {
-        class: class.into(),
-        parent,
-        props: props.into_iter().map(|(k, v)| (k.to_owned(), v)).collect(),
-    }
-}
+type Comp = FakeCompositor;
 
 /// A root, a workspace (2) and two windows: 3 `term` (foot) at 10,20 sized 300x200 with the focus, and 4 `web`
-/// (firefox).
+/// (firefox). The fake refuses as the real compositor's revision check does.
 fn two_windows() -> Comp {
-    let mut c = Compositor::default();
-    c.nodes.insert(1, node("node", 0, vec![]));
-    c.nodes.insert(
+    let c = FakeCompositor::new();
+    c.strict();
+    c.add_node(
         2,
-        node(
-            "workspace",
-            1,
-            vec![("index", MirrorValue::Uint(0)), ("active", MirrorValue::Bool(true))],
-        ),
+        ROOT,
+        "workspace",
+        vec![("index", MirrorValue::Uint(0)), ("active", MirrorValue::Bool(true))],
     );
-    c.nodes.insert(
+    c.add_node(
         3,
-        node(
-            "window",
-            1,
-            vec![
-                ("title", text("term")),
-                ("app_id", text("foot")),
-                ("focused", MirrorValue::Bool(true)),
-                ("x", MirrorValue::Double(10.0)),
-                ("y", MirrorValue::Double(20.0)),
-                ("width", MirrorValue::Double(300.0)),
-                ("height", MirrorValue::Double(200.0)),
-            ],
-        ),
+        ROOT,
+        "window",
+        vec![
+            ("title", text("term")),
+            ("app_id", text("foot")),
+            ("focused", MirrorValue::Bool(true)),
+            ("x", MirrorValue::Double(10.0)),
+            ("y", MirrorValue::Double(20.0)),
+            ("width", MirrorValue::Double(300.0)),
+            ("height", MirrorValue::Double(200.0)),
+        ],
     );
-    c.nodes.insert(
+    c.add_node(
         4,
-        node("window", 1, vec![("title", text("web")), ("app_id", text("firefox"))]),
+        ROOT,
+        "window",
+        vec![("title", text("web")), ("app_id", text("firefox"))],
     );
-    c.serial = 1;
-    Rc::new(RefCell::new(c))
+    c
 }
 
 fn sent(comp: &Comp) -> Vec<Vec<TxOp>> {
@@ -355,7 +85,7 @@ fn rig_with(comp: &Comp, init: &str, tweak: impl FnOnce(&mut JsShellConfig)) -> 
     fs::write(root.join("init.ts"), init).expect("init.ts is written");
     let mut config = honest_config(&root);
     tweak(&mut config);
-    let mut shell = JsShell::new(Box::new(FakeLink(comp.clone())), config).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     Rig {
         shell,
@@ -459,7 +189,7 @@ fn a_title_change_calls_on_title_changed_once_with_the_same_client() {
 }
 
 fn comp_title(comp: &Comp, node: u64, title: &str) {
-    FakeLink(comp.clone()).external_set(node, "title", text(title));
+    comp.external_set(node, "title", text(title));
 }
 
 #[test]
@@ -473,7 +203,7 @@ fn a_focus_and_a_geometry_change_each_raise_their_own_event_with_their_value() {
          gnoblin.clients.addListener(new All());\n",
     );
     let mut rig = rig(&comp, &init);
-    let link = FakeLink(comp.clone());
+    let link = comp.clone();
     link.external_set(3, "focused", MirrorValue::Bool(false));
     link.external_set(4, "focused", MirrorValue::Bool(true));
     link.external_set(3, "x", MirrorValue::Double(1.0));
@@ -589,7 +319,7 @@ fn a_destroyed_window_is_not_alive_keeps_its_values_and_rejects_writes_naming_th
     );
     let mut rig = rig(&comp, &init);
     rig.eval("gnoblin.clients.get('3').x = 1; 0");
-    FakeLink(comp.clone()).destroy(3);
+    comp.destroy(3);
     assert!(rig.frame().is_empty());
     assert_eq!(rig.eval("kept.alive"), "false");
     assert_eq!(rig.eval("kept.title"), "term", "the last values stay readable");
@@ -628,13 +358,11 @@ fn close_is_a_call_on_the_window_and_focus_is_a_write_of_the_seats_focus() {
     // The compositor answers no `focus` call on a window (only `close` and `kill`); a shell gives focus by writing
     // the seat's `focus`, as the retired shell's `seat.focus = window` does (crates/gnoblin/tests/js_shell.rs proves it).
     let comp = two_windows();
-    comp.borrow_mut().nodes.insert(
+    comp.add_node(
         9,
-        node(
-            "seat",
-            1,
-            vec![("name", text("seat0")), ("focus", MirrorValue::Node(3))],
-        ),
+        ROOT,
+        "seat",
+        vec![("name", text("seat0")), ("focus", MirrorValue::Node(3))],
     );
     let mut rig = rig(
         &comp,
@@ -694,19 +422,19 @@ fn a_collection_listener_added_late_is_told_of_the_members_already_there_and_the
         "added:3:2 added:4:2",
         "replay on attach: each existing member, in order, as soon as the listener is added"
     );
-    FakeLink(comp.clone()).create_window(5, "new", "kitty");
+    comp.create_bare_window(5, "new", "kitty");
     assert!(rig.frame().is_empty());
     assert_eq!(rig.eval("log.join(' ')"), "added:3:2 added:4:2 added:5:3");
     assert_eq!(rig.eval("gnoblin.clients.get('5').appId"), "kitty");
     // Adding the same listener twice does not subscribe it twice.
     rig.eval("gnoblin.clients.addListener(members); 0");
     assert_eq!(rig.eval("log.length"), "3");
-    FakeLink(comp.clone()).destroy(4);
+    comp.destroy(4);
     rig.frame();
     assert_eq!(rig.eval("log.join(' ')"), "added:3:2 added:4:2 added:5:3 removed:4");
     rig.eval("gnoblin.clients.removeListener(members); 0");
-    FakeLink(comp.clone()).create_window(6, "later", "foot");
-    FakeLink(comp.clone()).destroy(3);
+    comp.create_bare_window(6, "later", "foot");
+    comp.destroy(3);
     rig.frame();
     assert_eq!(rig.eval("log.length"), "4", "a removed listener hears nothing more");
 }
@@ -728,7 +456,7 @@ fn a_client_listener_on_a_collection_follows_current_and_future_members() {
         "a client listener is not replayed: nothing happened yet"
     );
     comp_title(&comp, 4, "an existing member");
-    FakeLink(comp.clone()).create_window(5, "first", "kitty");
+    comp.create_bare_window(5, "first", "kitty");
     rig.frame();
     comp_title(&comp, 5, "a future member");
     rig.frame();
@@ -770,14 +498,14 @@ fn where_is_a_live_selection_that_follows_appid_changes_and_tells_its_listeners(
     assert_eq!(rig.eval("view.length"), "1");
     assert_eq!(rig.eval("view.at(0).id"), "4");
     assert_eq!(rig.eval("log.join(' ')"), "added:4:1");
-    FakeLink(comp.clone()).external_set(3, "app_id", text("firefox"));
+    comp.external_set(3, "app_id", text("firefox"));
     rig.frame();
     assert_eq!(rig.eval("view.length"), "2");
-    FakeLink(comp.clone()).external_set(4, "app_id", text("chromium"));
+    comp.external_set(4, "app_id", text("chromium"));
     rig.frame();
     assert_eq!(rig.eval("view.map((c) => c.id).join()"), "3");
     assert_eq!(rig.eval("log.join(' ')"), "added:4:1 added:3:2 removed:4");
-    FakeLink(comp.clone()).destroy(3);
+    comp.destroy(3);
     rig.frame();
     assert_eq!(rig.eval("view.length"), "0");
     assert_eq!(rig.eval("log.join(' ')"), "added:4:1 added:3:2 removed:4 removed:3");
@@ -848,7 +576,7 @@ fn a_listener_that_never_returns_is_stopped_counts_a_strike_and_the_others_still
          gnoblin.clients.addListener(new After());\n",
     );
     let mut rig = rig_with(&comp, &init, |config| config.entry_budget = RUNAWAY_BUDGET);
-    let link = FakeLink(comp.clone());
+    let link = comp.clone();
     link.external_set(3, "focused", MirrorValue::Bool(false));
     link.external_set(4, "focused", MirrorValue::Bool(true));
     let diagnostics = rig.frame();
@@ -861,13 +589,11 @@ fn a_listener_that_never_returns_is_stopped_counts_a_strike_and_the_others_still
 
 #[test]
 fn ready_is_announced_for_snapshot_nodes_parents_first_after_the_entry_ran_and_for_new_nodes_after_added() {
-    let mut c = Compositor::default();
-    c.nodes.insert(1, node("node", 0, vec![]));
+    let comp = FakeCompositor::new();
+    comp.strict();
     // The child has the smaller id, so only a walk of the tree puts its parent first.
-    c.nodes.insert(5, node("window", 1, vec![("title", text("parent"))]));
-    c.nodes.insert(3, node("window", 5, vec![("title", text("child"))]));
-    c.serial = 1;
-    let comp = Rc::new(RefCell::new(c));
+    comp.add_node(5, ROOT, "window", vec![("title", text("parent"))]);
+    comp.add_node(3, 5, "window", vec![("title", text("child"))]);
     let init = with_log(
         "class Lifecycle {\n\
          \x20   onAdded(client: any) { log.push(`added:${client.id}`); }\n\
@@ -884,7 +610,7 @@ fn ready_is_announced_for_snapshot_nodes_parents_first_after_the_entry_ran_and_f
     );
     rig.frame();
     assert_eq!(rig.eval("log.join()"), "added:5,added:3,entry,ready:5,ready:3");
-    FakeLink(comp.clone()).create_window(7, "late", "foot");
+    comp.create_bare_window(7, "late", "foot");
     rig.frame();
     assert_eq!(rig.eval("log.slice(5).join()"), "added:7,ready:7");
 }
@@ -893,13 +619,11 @@ fn ready_is_announced_for_snapshot_nodes_parents_first_after_the_entry_ran_and_f
 fn input_events_with_no_api_yet_are_consumed_without_a_failure() {
     let comp = two_windows();
     let mut rig = rig(&comp, "export {};\n");
-    comp.borrow_mut()
-        .queue
-        .push(TreeIncoming::Chord(gnoblin_tree_client::tree_mirror::TreeChord {
-            claim: 1,
-            chord: "Super+a".into(),
-            state: "press".into(),
-        }));
+    comp.push(TreeIncoming::Chord(gnoblin_tree_client::tree_mirror::TreeChord {
+        claim: 1,
+        chord: "Super+a".into(),
+        state: "press".into(),
+    }));
     assert!(rig.frame().is_empty());
 }
 
@@ -908,7 +632,7 @@ fn input_events_with_no_api_yet_are_consumed_without_a_failure() {
 #[test]
 fn holds_writes_while_a_transaction_is_in_flight() {
     let comp = two_windows();
-    comp.borrow_mut().hold = true;
+    comp.hold();
     let mut rig = rig(&comp, "export {};\n");
     rig.frame();
     rig.eval("gnoblin.clients.get('3').x = 11; 0");
@@ -928,11 +652,11 @@ fn holds_writes_while_a_transaction_is_in_flight() {
         "a held write still reads back"
     );
 
-    FakeLink(comp.clone()).release();
+    comp.release();
     rig.frame();
     rig.frame();
     assert_eq!(sent(&comp).len(), 2, "the held write is sent after the echo");
-    FakeLink(comp.clone()).release();
+    comp.release();
     rig.frame();
     assert_eq!(
         rig.eval("JSON.stringify([gnoblin.clients.get('3').x, gnoblin.clients.get('3').y])"),
@@ -944,7 +668,7 @@ fn holds_writes_while_a_transaction_is_in_flight() {
 #[test]
 fn a_batch_of_the_compositors_own_does_not_open_the_gate_before_the_reply() {
     let comp = two_windows();
-    comp.borrow_mut().hold = true;
+    comp.hold();
     let mut rig = rig(&comp, "export {};\n");
     rig.frame();
     rig.eval("gnoblin.clients.get('3').x = 7; 0");
@@ -953,12 +677,12 @@ fn a_batch_of_the_compositors_own_does_not_open_the_gate_before_the_reply() {
 
     // A batch of the compositor's takes the serial the first transaction was stamped for. The mirror reaches that
     // serial, but the first transaction has not landed: a second one built now would lack its writes.
-    FakeLink(comp.clone()).external_set(4, "title", text("moved"));
+    comp.external_set(4, "title", text("moved"));
     rig.eval("gnoblin.clients.get('3').y = 8; 0");
     rig.frame();
     assert_eq!(sent(&comp).len(), 1, "the second write waits for the first's reply");
 
-    FakeLink(comp.clone()).release();
+    comp.release();
     rig.frame();
     rig.frame();
     assert_eq!(
@@ -972,7 +696,7 @@ fn a_batch_of_the_compositors_own_does_not_open_the_gate_before_the_reply() {
 #[test]
 fn a_stale_base_refusal_sends_every_write_again_on_the_new_base_and_the_scripts_write_stands() {
     let comp = two_windows();
-    comp.borrow_mut().hold = true;
+    comp.hold();
     let mut rig = rig(&comp, "export {};\n");
     rig.frame();
     rig.eval("gnoblin.clients.get('3').x = 7; gnoblin.clients.get('4').y = 8; 0");
@@ -980,8 +704,8 @@ fn a_stale_base_refusal_sends_every_write_again_on_the_new_base_and_the_scripts_
     assert!(first.is_empty(), "{first:?}");
     assert_eq!(sent(&comp).len(), 1, "the first transaction is held in flight");
 
-    FakeLink(comp.clone()).external_set(3, "x", MirrorValue::Double(99.0));
-    FakeLink(comp.clone()).release();
+    comp.external_set(3, "x", MirrorValue::Double(99.0));
+    comp.release();
     let refused = rig.frame();
     assert!(
         refused.is_empty(),
@@ -1002,7 +726,7 @@ fn a_stale_base_refusal_sends_every_write_again_on_the_new_base_and_the_scripts_
         "the refused write goes again, with the one beside it"
     );
 
-    FakeLink(comp.clone()).release();
+    comp.release();
     let done = rig.frame();
     assert!(done.is_empty(), "{done:?}");
     assert_eq!(
@@ -1016,7 +740,7 @@ fn a_stale_base_refusal_sends_every_write_again_on_the_new_base_and_the_scripts_
 #[test]
 fn a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_others_land() {
     let comp = two_windows();
-    comp.borrow_mut().hold = true;
+    comp.hold();
     let mut rig = rig(&comp, "export {};\n");
     rig.frame();
     rig.eval("gnoblin.clients.get('3').x = 7; gnoblin.clients.get('4').y = 8; 0");
@@ -1024,8 +748,8 @@ fn a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_ot
     // The compositor changes window 3 before every landing, so its write is refused each time.
     let mut told = Vec::new();
     for round in 0..=gnoblin_js::STALE_RETRIES {
-        FakeLink(comp.clone()).external_set(3, "title", text(&format!("t{round}")));
-        FakeLink(comp.clone()).release();
+        comp.external_set(3, "title", text(&format!("t{round}")));
+        comp.release();
         told.extend(rig.frame());
     }
     assert_eq!(told.len(), 1, "the drop is reported once: {told:?}");
@@ -1049,13 +773,13 @@ fn a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_ot
 #[test]
 fn an_unknown_node_refusal_sends_the_writes_on_nodes_that_are_still_there() {
     let comp = two_windows();
-    comp.borrow_mut().hold = true;
+    comp.hold();
     let mut rig = rig(&comp, "export {};\n");
     rig.frame();
     rig.eval("gnoblin.clients.get('3').x = 7; gnoblin.clients.get('4').y = 8; 0");
     rig.frame();
-    FakeLink(comp.clone()).destroy(3);
-    FakeLink(comp.clone()).release();
+    comp.destroy(3);
+    comp.release();
     let refused = rig.frame();
     assert!(refused.is_empty(), "{refused:?}");
     let txs = sent(&comp);
@@ -1067,7 +791,10 @@ fn an_unknown_node_refusal_sends_the_writes_on_nodes_that_are_still_there() {
 #[test]
 fn a_refused_transaction_is_reported_naming_the_op_and_opens_the_gate() {
     let comp = two_windows();
-    comp.borrow_mut().refuse_next = true;
+    comp.fault(Fault::Refuse {
+        code: "refused",
+        failed_op: 0,
+    });
     let mut rig = rig(&comp, "export {};\n");
     rig.frame();
     rig.eval("gnoblin.clients.get('3').x = 7; 0");
@@ -1099,7 +826,7 @@ fn an_entry_that_throws_is_an_error_with_its_ts_location_and_a_budget_trip_count
     let mut config = honest_config(&root);
     // Short, so the loop is cheap. The shell installs its own library under its own budget, however short this is.
     config.js.stage_budget = RUNAWAY_BUDGET;
-    let mut shell = JsShell::new(Box::new(FakeLink(comp)), config).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(comp), config).expect("the shell boots");
     match shell.load_entry(Path::new("bad.ts")) {
         Err(JsShellError::Js(error)) => {
             assert_eq!(error.location.expect("a location").line, 2);
@@ -1120,7 +847,7 @@ fn a_stage_budget_too_short_for_the_embedded_library_does_not_stop_the_shell_fro
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     let mut config = honest_config(&root);
     config.js.stage_budget = Duration::from_millis(1);
-    JsShell::new(Box::new(FakeLink(comp)), config).expect("the shell boots");
+    JsShell::new(Box::new(comp), config).expect("the shell boots");
 }
 
 /// Every `x` write the shell has sent, as (node, value), oldest first.
@@ -1155,7 +882,7 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), places_at(100)).expect("init.ts");
     let mut role = JsRole::over_link(
-        Box::new(FakeLink(comp.clone())),
+        Box::new(comp.clone()),
         JsRoleLinks::default(),
         honest_role_config(&root),
     )
@@ -1569,7 +1296,7 @@ fn the_role_serves_its_console_between_frames_and_a_reload_drops_what_the_prompt
     config.watch = false;
     config.console = JsConsoleSite::At(site.clone());
     let role = std::cell::RefCell::new(
-        JsRole::over_link(Box::new(FakeLink(comp.clone())), JsRoleLinks::default(), config).expect("the role boots"),
+        JsRole::over_link(Box::new(comp.clone()), JsRoleLinks::default(), config).expect("the role boots"),
     );
     let mut prompt = Prompt::connect(&site);
     let mut serve = || role.borrow_mut().tick().expect("a frame");

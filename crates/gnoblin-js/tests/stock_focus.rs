@@ -5,26 +5,20 @@
 //! inputs and its expected values; where the JavaScript API changed a word (`hover` is `sloppy`, a retired pattern is a
 //! glob, `last matching rule wins` is `first wins unless all`), the case says so. A case with no retired original says
 //! "new". The pure functions run in a bare generation (no host); everything that touches a window runs a real
-//! `JsShell` over `FakeLink`, an in-memory compositor that records the calls and writes the shell sends and plays back
-//! pointer edges, new windows and drags. Nothing here proves what the real compositor does with those calls: that is
-//! `crates/gnoblin/tests/js_shell.rs`.
+//! `JsShell` over the shared fake compositor of `tests/common`, an in-memory compositor that records the calls and
+//! writes the shell sends and plays back pointer edges, new windows and drags. Nothing here proves what the real
+//! compositor does with those calls: that is `crates/gnoblin/tests/js_shell.rs`.
 
-use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use std::rc::Rc;
 use std::time::Duration;
 
 use gnoblin_js::{JsConfig, JsGeneration, JsManualClock, JsShell, stock_modules};
-use gnoblin_tree_client::tree_mirror::{
-    Attached, EventFields, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeEvent,
-    TreeIncoming, TreeLink, TreePointerChord, TreeTx, TxOp, TxReply,
-};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 use tempfile::TempDir;
 
 mod common;
-use common::timed_config;
+use common::{FakeCompositor, ROOT, text, timed_config};
 
 // -- the pure functions, run in a bare generation -----------------------------------------------------------
 
@@ -376,61 +370,12 @@ fn the_resize_binding_takes_nearest_as_an_edges_option() {
     );
 }
 
-// -- the fake compositor ------------------------------------------------------------------------------------
+// -- the compositor's script --------------------------------------------------------------------------------
 
-struct Node {
-    class: String,
-    parent: u64,
-    props: BTreeMap<String, MirrorValue>,
-}
-
-#[derive(Default)]
-struct Compositor {
-    nodes: BTreeMap<u64, Node>,
-    serial: u64,
-    queue: Vec<TreeIncoming>,
-    /// What the shell sent, one line each, in order: `call:3:focus`, `insert:3->1`, `set:3.secure=true`.
-    ops: Vec<String>,
-    /// The seat claims the shell holds: id to the chord.
-    claims: BTreeMap<i64, String>,
-    claim_seats: BTreeMap<i64, u64>,
-    /// The pointer chord drags in flight, by claim id: the seat and where the drag began.
-    drags: BTreeMap<i64, (u64, (f64, f64), i64, String)>,
-}
-
+/// The shared fake compositor of `tests/common`, with the words these cases use for what the compositor does while
+/// the shell runs: a pointer's edge on a window, a new window, a property the compositor itself writes.
 #[derive(Clone)]
-struct FakeLink(Rc<RefCell<Compositor>>);
-
-type Comp = Rc<RefCell<Compositor>>;
-
-fn change(kind: MirrorChangeKind, node: u64) -> MirrorChange {
-    MirrorChange {
-        kind,
-        node,
-        class: String::new(),
-        parent: 0,
-        index: 0,
-        key: String::new(),
-        value: None,
-        removed: Vec::new(),
-    }
-}
-
-fn set_change(node: u64, key: &str, value: MirrorValue) -> MirrorChange {
-    MirrorChange {
-        key: key.into(),
-        value: Some(value),
-        ..change(MirrorChangeKind::Set, node)
-    }
-}
-
-fn text(value: &str) -> MirrorValue {
-    MirrorValue::Text(value.into())
-}
-
-fn le(bytes: &[u8]) -> i64 {
-    i64::from_le_bytes(bytes.try_into().expect("eight bytes"))
-}
+struct Comp(FakeCompositor);
 
 fn short(value: &MirrorValue) -> String {
     match value {
@@ -442,319 +387,90 @@ fn short(value: &MirrorValue) -> String {
     }
 }
 
-impl FakeLink {
-    /// Applies a transaction: writes go to the node map and the log, seat claims to the claim table.
-    fn land(&self, tx: &TreeTx) {
-        let mut c = self.0.borrow_mut();
-        let mut changes = Vec::new();
-        for op in &tx.ops {
-            match op {
-                TxOp::Set { node, key, value, .. } => {
-                    c.ops.push(format!("set:{node}.{key}={}", short(value)));
-                    if let Some(entry) = c.nodes.get_mut(node) {
-                        entry.props.insert(key.clone(), value.clone());
-                    }
-                    changes.push(set_change(*node, key, value.clone()));
-                }
-                TxOp::Insert { node, parent, .. } => {
-                    c.ops.push(format!("insert:{node}->{parent}"));
-                    if let Some(entry) = c.nodes.get_mut(node) {
-                        entry.parent = *parent;
-                    }
-                    changes.push(MirrorChange {
-                        parent: *parent,
-                        index: 99,
-                        ..change(MirrorChangeKind::Parented, *node)
-                    });
-                }
-                TxOp::Call {
-                    node,
-                    method,
-                    args,
-                    text,
-                    ..
-                } => match method.as_str() {
-                    "claim" => {
-                        let id = le(&args[0..8]);
-                        c.claim_seats.insert(id, *node);
-                        c.claims.insert(id, text.expose().to_owned());
-                    }
-                    "unclaim" => {
-                        let id = le(&args[0..8]);
-                        c.claims.remove(&id);
-                        c.claim_seats.remove(&id);
-                        c.drags.remove(&id);
-                    }
-                    other => c.ops.push(format!("call:{node}:{other}")),
-                },
-                _ => {}
-            }
-        }
-        c.serial = tx.serial;
-        c.queue.push(TreeIncoming::Changes {
-            serial: tx.serial,
-            changes,
-        });
-        c.queue.push(TreeIncoming::Reply(TxReply {
-            serial: tx.serial,
-            applied: true,
-            failed_op: -1,
-            code: String::new(),
-            removed: Vec::new(),
-        }));
-    }
-
-    fn publish(&self, changes: Vec<MirrorChange>) {
-        let mut c = self.0.borrow_mut();
-        c.serial += 1;
-        let serial = c.serial;
-        c.queue.push(TreeIncoming::Changes { serial, changes });
-    }
-}
-
-impl TreeLink for FakeLink {
-    fn attach(&mut self, _version: u64) -> Result<(), LinkError> {
-        let mut c = self.0.borrow_mut();
-        let attached = Attached {
-            epoch: 1,
-            root: 1,
-            serial: c.serial,
-        };
-        let nodes = c
-            .nodes
-            .iter()
-            .map(|(id, node)| SnapshotNode {
-                id: *id,
-                parent: node.parent,
-                index: 0,
-                class: node.class.clone(),
-                title: String::new(),
-                app_id: String::new(),
-                props: node.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-            })
-            .collect();
-        let snapshot = TreeIncoming::Snapshot {
-            serial: c.serial,
-            chunk: 0,
-            last: true,
-            nodes,
-        };
-        c.queue.push(TreeIncoming::Attached(attached));
-        c.queue.push(snapshot);
-        Ok(())
-    }
-
-    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
-        self.land(tx);
-        Ok(())
-    }
-
-    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
-        Ok(std::mem::take(&mut self.0.borrow_mut().queue))
-    }
-}
-
-/// The compositor's side of a scripted session.
-trait Script {
-    /// What the shell has sent since the last call, oldest first.
-    fn ops(&self) -> Vec<String>;
-    /// The pointer's edge on a window: `enter`, `motion`, `leave`, `press` or `release`.
-    fn edge(&self, node: u64, kind: &str);
-    /// A window the compositor makes while the shell runs.
-    fn new_window(&self, id: u64, app_id: &str, title: &str);
-    /// A property the compositor itself changes on a node.
-    fn external(&self, node: u64, key: &str, value: MirrorValue);
-    fn set_pointer(&self, seat: u64, x: f64, y: f64);
-    fn chord(&self, claim: i64, chord: &str, state: &str);
-    fn claim_id(&self, chord: &str) -> i64;
-    fn number(&self, node: u64, key: &str) -> f64;
-    fn flag(&self, node: u64, key: &str) -> bool;
-    fn rect(&self, node: u64) -> String;
-}
-
-impl Script for Comp {
+impl Comp {
+    /// What the shell has sent since the last call, one line each, oldest first: `call:3:focus`, `insert:3->1`,
+    /// `set:3.secure=true`. A seat claim is no line: it is read through [`Comp::claim_id`].
     fn ops(&self) -> Vec<String> {
-        std::mem::take(&mut self.borrow_mut().ops)
+        self.0
+            .take_ops()
+            .iter()
+            .filter_map(|op| match op {
+                TxOp::Set { node, key, value, .. } => Some(format!("set:{node}.{key}={}", short(value))),
+                TxOp::Insert { node, parent, .. } => Some(format!("insert:{node}->{parent}")),
+                TxOp::Call { node, method, .. } if !matches!(method.as_str(), "claim" | "unclaim") => {
+                    Some(format!("call:{node}:{method}"))
+                }
+                _ => None,
+            })
+            .collect()
     }
 
+    /// The pointer's edge on a window: `enter`, `motion`, `leave`, `press` or `release`.
     fn edge(&self, node: u64, kind: &str) {
-        let fields = EventFields {
-            x: 5.0,
-            y: 6.0,
-            button: if matches!(kind, "press" | "release") { 272 } else { 0 },
-            ..EventFields::default()
-        };
-        self.borrow_mut().queue.push(TreeIncoming::Event(TreeEvent {
-            frame: 0,
-            seq: 0,
-            node,
-            kind: kind.into(),
-            fields,
-        }));
+        let button = if matches!(kind, "press" | "release") { 272 } else { 0 };
+        self.0.pointer(node, kind, 5.0, 6.0, button);
     }
 
+    /// A window the compositor makes while the shell runs.
     fn new_window(&self, id: u64, app_id: &str, title: &str) {
-        self.borrow_mut().nodes.insert(
-            id,
-            Node {
-                class: "window".into(),
-                parent: 1,
-                props: BTreeMap::from([("title".to_owned(), text(title)), ("app_id".to_owned(), text(app_id))]),
-            },
-        );
-        FakeLink(self.clone()).publish(vec![
-            MirrorChange {
-                class: "window".into(),
-                ..change(MirrorChangeKind::Created, id)
-            },
-            MirrorChange {
-                parent: 1,
-                index: 99,
-                ..change(MirrorChangeKind::Parented, id)
-            },
-            set_change(id, "title", text(title)),
-            set_change(id, "app_id", text(app_id)),
-        ]);
+        self.0.create_bare_window(id, title, app_id);
     }
 
+    /// A property the compositor itself changes on a node.
     fn external(&self, node: u64, key: &str, value: MirrorValue) {
-        if let Some(entry) = self.borrow_mut().nodes.get_mut(&node) {
-            entry.props.insert(key.into(), value.clone());
-        }
-        FakeLink(self.clone()).publish(vec![set_change(node, key, value)]);
+        self.0.external_set(node, key, value);
     }
 
     fn set_pointer(&self, seat: u64, x: f64, y: f64) {
-        {
-            let mut c = self.borrow_mut();
-            let node = c.nodes.get_mut(&seat).expect("the seat exists");
-            node.props.insert("pointer_x".into(), MirrorValue::Double(x));
-            node.props.insert("pointer_y".into(), MirrorValue::Double(y));
-        }
-        FakeLink(self.clone()).publish(vec![
-            set_change(seat, "pointer_x", MirrorValue::Double(x)),
-            set_change(seat, "pointer_y", MirrorValue::Double(y)),
-        ]);
-        let mut c = self.borrow_mut();
-        let updates: Vec<TreePointerChord> = c
-            .drags
-            .iter()
-            .filter(|(_, drag)| drag.0 == seat)
-            .map(|(claim, drag)| drag_message(*claim, drag, "update", (x, y)))
-            .collect();
-        c.queue.extend(updates.into_iter().map(TreeIncoming::PointerChord));
+        self.0.set_pointer(seat, x, y);
     }
 
     fn chord(&self, claim: i64, chord: &str, state: &str) {
-        let (modifiers, button) = chord.rsplit_once("Button").expect("a pointer chord");
-        let mut c = self.borrow_mut();
-        let seat = *c.claim_seats.get(&claim).expect("a claim on a seat");
-        let at = pointer_at(&c, seat);
-        let message = if state == "press" {
-            let drag = (seat, at, button.parse().expect("a button number"), modifiers.to_owned());
-            let message = drag_message(claim, &drag, "start", at);
-            c.drags.insert(claim, drag);
-            message
-        } else {
-            let drag = c.drags.remove(&claim).expect("a drag is live");
-            drag_message(claim, &drag, "end", at)
-        };
-        c.queue.push(TreeIncoming::PointerChord(message));
+        self.0.drag(claim, chord, state);
     }
 
     fn claim_id(&self, chord: &str) -> i64 {
-        let c = self.borrow();
-        *c.claims
-            .iter()
-            .find(|(_, held)| held.as_str() == chord)
-            .unwrap_or_else(|| panic!("no live claim for {chord:?}; live: {:?}", c.claims))
-            .0
-    }
-
-    fn number(&self, node: u64, key: &str) -> f64 {
-        match self.borrow().nodes[&node].props.get(key) {
-            Some(MirrorValue::Double(value)) => *value,
-            None => 0.0,
-            other => panic!("node {node} has no double {key}: {other:?}"),
-        }
+        self.0.claim_id(chord)
     }
 
     fn flag(&self, node: u64, key: &str) -> bool {
-        matches!(self.borrow().nodes[&node].props.get(key), Some(MirrorValue::Bool(true)))
+        self.0.flag(node, key) == Some(true)
     }
 
     fn rect(&self, node: u64) -> String {
-        ["x", "y", "width", "height"]
-            .iter()
-            .map(|key| self.number(node, key).to_string())
-            .collect::<Vec<_>>()
-            .join(",")
-    }
-}
-
-fn drag_message(claim: i64, drag: &(u64, (f64, f64), i64, String), phase: &str, at: (f64, f64)) -> TreePointerChord {
-    TreePointerChord {
-        claim,
-        phase: phase.to_owned(),
-        x: at.0,
-        y: at.1,
-        dx: at.0 - drag.1.0,
-        dy: at.1 - drag.1.1,
-        button: drag.2,
-        modifiers: drag.3.clone(),
-        time: 0,
-    }
-}
-
-fn pointer_at(c: &Compositor, seat: u64) -> (f64, f64) {
-    let props = &c.nodes[&seat].props;
-    let axis = |key: &str| match props.get(key) {
-        Some(MirrorValue::Double(value)) => *value,
-        _ => 0.0,
-    };
-    (axis("pointer_x"), axis("pointer_y"))
-}
-
-fn node(class: &str, parent: u64, props: Vec<(&str, MirrorValue)>) -> Node {
-    Node {
-        class: class.into(),
-        parent,
-        props: props.into_iter().map(|(k, v)| (k.to_owned(), v)).collect(),
+        self.0.rect(node)
     }
 }
 
 /// A root (1), a workspace (2), window 3 at 10,20 sized 300x200 with the focus, window 4 (a browser) with no size,
 /// seat 5 with `seat` published on it, and a 1000 by 800 primary screen (7).
 fn world(seat: Vec<(&str, MirrorValue)>) -> Comp {
-    let mut c = Compositor::default();
-    c.nodes.insert(1, node("node", 0, vec![]));
-    c.nodes.insert(
+    let c = FakeCompositor::new();
+    c.add_node(
         2,
-        node(
-            "workspace",
-            1,
-            vec![("index", MirrorValue::Uint(0)), ("active", MirrorValue::Bool(true))],
-        ),
+        ROOT,
+        "workspace",
+        vec![("index", MirrorValue::Uint(0)), ("active", MirrorValue::Bool(true))],
     );
-    c.nodes.insert(
+    c.add_node(
         3,
-        node(
-            "window",
-            1,
-            vec![
-                ("title", text("term")),
-                ("app_id", text("foot")),
-                ("focused", MirrorValue::Bool(true)),
-                ("x", MirrorValue::Double(10.0)),
-                ("y", MirrorValue::Double(20.0)),
-                ("width", MirrorValue::Double(300.0)),
-                ("height", MirrorValue::Double(200.0)),
-            ],
-        ),
+        ROOT,
+        "window",
+        vec![
+            ("title", text("term")),
+            ("app_id", text("foot")),
+            ("focused", MirrorValue::Bool(true)),
+            ("x", MirrorValue::Double(10.0)),
+            ("y", MirrorValue::Double(20.0)),
+            ("width", MirrorValue::Double(300.0)),
+            ("height", MirrorValue::Double(200.0)),
+        ],
     );
-    c.nodes.insert(
+    c.add_node(
         4,
-        node("window", 1, vec![("title", text("web")), ("app_id", text("firefox"))]),
+        ROOT,
+        "window",
+        vec![("title", text("web")), ("app_id", text("firefox"))],
     );
     let mut props = vec![
         ("name", text("seat0")),
@@ -763,21 +479,18 @@ fn world(seat: Vec<(&str, MirrorValue)>) -> Comp {
         ("focus", MirrorValue::Node(3)),
     ];
     props.extend(seat);
-    c.nodes.insert(5, node("seat", 1, props));
-    c.nodes.insert(
+    c.add_node(5, ROOT, "seat", props);
+    c.add_node(
         7,
-        node(
-            "screen",
-            1,
-            vec![
-                ("width", MirrorValue::Double(1000.0)),
-                ("height", MirrorValue::Double(800.0)),
-                ("primary", MirrorValue::Bool(true)),
-            ],
-        ),
+        ROOT,
+        "screen",
+        vec![
+            ("width", MirrorValue::Double(1000.0)),
+            ("height", MirrorValue::Double(800.0)),
+            ("primary", MirrorValue::Bool(true)),
+        ],
     );
-    c.serial = 1;
-    Rc::new(RefCell::new(c))
+    Comp(c)
 }
 
 struct Rig {
@@ -824,7 +537,7 @@ fn boot(comp: &Comp, init: &str) -> Rig {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), format!("{PRELUDE}{init}")).expect("init.ts is written");
     let (config, clock) = timed_config(&root);
-    let mut shell = JsShell::new(Box::new(FakeLink(comp.clone())), config).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(comp.0.clone()), config).expect("the shell boots");
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     let mut rig = Rig {
