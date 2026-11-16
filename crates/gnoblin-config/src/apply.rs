@@ -68,6 +68,9 @@ pub enum Applies {
 }
 
 /// The rule for one setting, or for a whole section whose keys are entries (`key` is `*`).
+///
+/// A setting a section applies except for one leaf has a rule of its own for that leaf, whose `key` is the
+/// path inside the section (`mouse.double-click-time`): the section is live and the leaf says what it is not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ApplyRule {
     /// The top-level section.
@@ -192,14 +195,51 @@ pub const RULES: &[ApplyRule] = &[
     live("appearance", "reduced-motion"),
     live("appearance", "high-contrast"),
     live("dialogs", "style"),
-    unused("input", "orientation-lock", "no device applies it yet"),
-    unused("input", "mouse", "no device applies the libinput settings yet"),
-    unused("input", "touchpad", "no device applies the libinput settings yet"),
-    unused("input", "trackball", "no device applies the libinput settings yet"),
-    unused("input", "pointing-stick", "no device applies the libinput settings yet"),
+    unused(
+        "input",
+        "orientation-lock",
+        "the compositor has no accelerometer and no automatic rotation, so there is nothing for the lock to hold",
+    ),
+    live("input", "mouse"),
+    unused(
+        "input",
+        "mouse.double-click-time",
+        "the toolkits read it and no device does, and nothing publishes it to them yet",
+    ),
+    unused(
+        "input",
+        "mouse.drag-threshold",
+        "the toolkits read it and no device does, and nothing publishes it to them yet",
+    ),
+    unused(
+        "input",
+        "mouse.accel-curve",
+        "a custom acceleration curve needs libinput 1.23, and this build is made for libinput 1.19",
+    ),
+    live("input", "touchpad"),
+    unused(
+        "input",
+        "touchpad.accel-curve",
+        "a custom acceleration curve needs libinput 1.23, and this build is made for libinput 1.19",
+    ),
+    unused(
+        "input",
+        "touchpad.disable-while-typing-timeout",
+        "the timeout needs libinput 1.31, and this build is made for libinput 1.19",
+    ),
+    live("input", "trackball"),
+    live("input", "pointing-stick"),
     live("input", "keyboard"),
-    unused("input", "tablets", "no device applies the tablet settings yet"),
-    unused("input", "styluses", "no device applies the stylus settings yet"),
+    unused(
+        "input",
+        "tablets",
+        "no tablet setting is applied: libinput's tablet area needs 1.27, and the mapping, output, aspect and pad buttons have no code behind them",
+    ),
+    unused(
+        "input",
+        "styluses",
+        "no stylus setting is applied: the buttons a tool reports reach clients as they are, with no remapping",
+    ),
     live("input-sources", "sources"),
     live("input-sources", "per-window"),
     live("accessibility", "magnifier"),
@@ -385,7 +425,10 @@ fn lookup<'a>(document: &'a Value, rule: &ApplyRule) -> Option<&'a Value> {
     if rule.key == "*" {
         return Some(section);
     }
-    section.as_table()?.get(rule.key)
+    // A key with a dot names a setting inside a record of the section: `mouse.double-click-time`.
+    rule.key
+        .split('.')
+        .try_fold(section, |value, segment| value.as_table()?.get(segment))
 }
 
 /// The value an unset setting behaves as, from the schema, so an explicit default and an absent
@@ -496,6 +539,23 @@ mod tests {
             .map(|pending| pending.setting)
             .collect();
         assert_eq!(services, ["keyring.enabled"]);
+    }
+
+    #[test]
+    fn a_leaf_a_live_section_does_not_apply_is_reported_and_the_rest_of_the_section_is_not() {
+        let before = config("{}");
+        let applied = config(r#"{"input":{"mouse":{"speed":0.5}}}"#);
+        assert!(no_effect(&before, &applied).is_empty(), "the mouse's speed is applied");
+        let leaf = config(r#"{"input":{"mouse":{"speed":0.5,"double-click-time":300}}}"#);
+        let reported = no_effect(&applied, &leaf);
+        assert_eq!(reported.len(), 1, "{reported:?}");
+        assert_eq!(reported[0].setting, "input.mouse.double-click-time");
+        assert!(
+            reported[0].describe().contains("toolkits read it"),
+            "{}",
+            reported[0].describe()
+        );
+        assert!(no_effect(&leaf, &leaf).is_empty());
     }
 
     #[test]

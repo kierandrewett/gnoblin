@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 
 use gnoblin_config::apply::{Applies, RULES, rule_of};
 use gnoblin_config::{CARRIED_SECTIONS, TOP_LEVEL_KEYS, generated::SETTINGS};
+use gnoblin_config::{Config, Fault, Value};
 
 const DESIGN: &str = include_str!("../../../design/config-reload.md");
 
@@ -23,8 +24,10 @@ fn declared() -> BTreeSet<String> {
 
 #[test]
 fn every_declared_setting_has_a_rule_and_every_rule_names_a_declared_setting() {
+    // A rule for one leaf of a record (`mouse.double-click-time`) is checked by the test below.
     let ruled: BTreeSet<String> = RULES
         .iter()
+        .filter(|rule| !rule.key.contains('.'))
         .map(|rule| format!("{}.{}", rule.section, rule.key))
         .collect();
     let declared = declared();
@@ -35,7 +38,45 @@ fn every_declared_setting_has_a_rule_and_every_rule_names_a_declared_setting() {
         unknown.is_empty(),
         "rules for settings the schema does not declare: {unknown:?}"
     );
-    assert_eq!(ruled.len(), RULES.len(), "a setting has two rules");
+    let all: BTreeSet<String> = RULES
+        .iter()
+        .map(|rule| format!("{}.{}", rule.section, rule.key))
+        .collect();
+    assert_eq!(all.len(), RULES.len(), "a setting has two rules");
+}
+
+/// A document that sets the leaf a rule names to a string, nested as the rule's path nests.
+fn leaf_document(rule: &gnoblin_config::apply::ApplyRule) -> Value {
+    let mut path = vec![rule.section];
+    path.extend(rule.key.split('.'));
+    let mut value = Value::string("leaf");
+    for key in path.iter().rev() {
+        value = Value::table([(*key, value)]);
+    }
+    value
+}
+
+#[test]
+fn a_rule_for_one_leaf_names_a_leaf_the_schema_has_inside_a_section_with_a_rule() {
+    let mut leaves = 0;
+    for rule in RULES.iter().filter(|rule| rule.key.contains('.')) {
+        leaves += 1;
+        let named = format!("{}.{}", rule.section, rule.key);
+        let (record, _) = rule.key.split_once('.').expect("a dotted key");
+        assert!(
+            rule_of(rule.section, record).is_some(),
+            "{named} is a leaf of a setting with no rule of its own"
+        );
+        // A string is the wrong value for these leaves, but the schema must refuse it for the value and not
+        // for the key: an unknown key means the rule names something the document does not have.
+        if let Err(report) = Config::from_value(leaf_document(rule)) {
+            let unknown = report.problems().iter().any(|problem| {
+                matches!(problem.fault, Fault::UnknownKey { .. }) && problem.path.to_string().starts_with(&named)
+            });
+            assert!(!unknown, "{named} is not a setting the schema declares");
+        }
+    }
+    assert!(leaves > 0, "the input section's leaves that nothing applies are listed");
 }
 
 #[test]
