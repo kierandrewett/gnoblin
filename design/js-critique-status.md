@@ -28,6 +28,55 @@ test it says so. Measurements are a debug build on one 4-CPU Agent37 box, one ru
 | `JsRole.diagnostics` grows without bound (5.1)                                                                                                    | fixed (lane LockFix)                                                                                                            | `diagnostics.rs` keeps the newest 256 lines, each cut at 4096 bytes, counts the dropped ones and puts one summary line at the head                                                                                                                                                                                                                                                                                                                                                                                                               | `role_diagnostics.rs`: `a_flood_of_diagnostics_keeps_the_newest_lines_and_counts_the_rest`, `what_arrived_since_a_look_is_asked_for_by_count_and_does_not_shift_with_the_drops`; unit tests in `diagnostics.rs`                                                                                                                                                                                   |
 | `evaluate_document` runs user code in the keyring service (2.6)                                                                                   | fixed (`0689f4b6a`)                                                                                                             | the services role no longer depends on `gnoblin-js`. `gnoblinctl check` was not examined                                                                                                                                                                                                                                                                                                                                                                                                                                                         | none here                                                                                                                                                                                                                                                                                                                                                                                         |
 
+## The write-loss class, staging and the frame's order (lane WriteLoss)
+
+Critique plan items 1, 9 and 12, each checked against the tip before anything was changed. Red means the test failed on the
+tip (`a890416fa`) with the tests of this lane added and nothing else.
+
+**Item 1, writes lost on refusal.** The critique's claims about text calls, `failed_op` -1, exhausted resends and the lock
+check's hang were already fixed on the tip (`ca31fd1e0`, `641dfca50`, `5b464c66b`), and the tests the plan asks for were there: `an_output_apply_refused_stale_base_is_sent_again_and_its_answer_reaches_the_application`
+(an `Output.apply` answered after a stale), `a_refusal_with_no_op_index_sends_the_whole_frame_again_on_the_new_base` and
+`a_placement_dropped_after_its_resends_is_laid_out_again` (placements converge after a `-1` refusal and after the resends
+run out), `a_password_check_a_stale_refusal_dropped_is_answered_and_the_screen_takes_another_try` (a lock check after a
+stale gets an answer), all in `crates/gnoblin-js/tests/write_refusals.rs`, all green on the tip. Whether a call is kept for a
+resend comes from the schema's `secret` flag (`gnoblin_proto::tree_call_is_secret`); `PLAIN_TEXT_CALLS` is gone.
+
+Two claims were open and are closed. **A secret call shared a transaction with the frame's other writes**, so a `stale-base`
+that the frame's window writes caused lost the password check. The check now goes first and alone, and the rest of the frame
+goes behind it (`split_secret` in `shell/txgate.rs`). Red: `a_password_check_goes_in_a_transaction_of_its_own_and_the_frames_other_writes_follow_it`
+and `a_stale_refusal_of_the_writes_beside_a_password_check_does_not_cost_the_check`.
+
+**The layout driver does not compare the mirror with its last placement, and does not need to.** The critique's loss was
+permanent because nothing laid a lost placement out again; the shell now hands every write it gives up on back to the layout
+(`lost_writes`, `relayLostWrites`), and a refusal that names no op sends the whole frame again, so no way of losing a
+placement that the traced chain describes is left. A level-triggered comparison would also run against a mirror that is
+right to differ: a client that sets its own size, a value the compositor clamps, and a write refused for a reason no base
+cures (`read-only`, `too-large`) would be written again every frame and refused again every frame. The shell forgets such a
+write on purpose (`give_up_refused`). If a loss turns up that this chain does not cover, the test that reproduces it comes
+first.
+
+**Item 9, staging shared its side effects.** Confirmed by a red run: of `stage_effects.rs`, 5 of 6 tests failed (a stage that
+spawned and then threw left the program running; a reload started a second copy; a refused reload doubled the running
+config's program; a reload that dropped a spawn left its program; a reload that changed it left both). A staged generation
+now holds its `gnoblin.spawn` calls back and starts them when it takes over; a spawn of the same command and options as a
+process the running config started takes that process over (same `id`, same `pid`); a process the new file no longer
+starts receives SIGTERM; a process a handler started is left alone. Each process has an owner, the generation that started
+or took it over (`JsProcesses::owner`). The canvases, measurements, XR nodes, output applies and lock checks a failed stage
+made are given back with the pending writes (`HostState::begin_stage` and `abandon_stage`, `bindings/stage.rs`). Not
+covered: a session verb (`gnoblin.session.lock()` and the like) called at the top level of a file runs at once, stage or not.
+A `Process` made at the top level has `pid` 0 until the generation has taken over, which is the one visible change.
+
+**Item 12, the frame's order lived in comments.** `shell/frame.rs` holds the frame as `STAGES`, one entry per stage with the
+comment that says what it needs from the stages before it, and `tests/frame_order.rs` records every call a frame makes into
+the entry and pins the order. The test passes on the tip and after the change, as a pin should; its failing case is a
+mutation (two stages swapped in the table), run once and not kept.
+
+**The lock leftovers** were closed before this lane: the J8 decision is recorded in `design/js-runtime.md` (J8, "Recorded
+exception") with its trade-off, and `docs/session-lock.md` says what the lock protects; every pending check has a deadline
+(30 s, `CHECK_DEADLINE`; `a_check_the_compositor_never_answers_fails_once_its_deadline_has_passed_and_the_screen_takes_another`);
+and the lock is held by a lease, not a flag (the row above, `5b464c66b`, with the card taking over on a lapse in
+`crates/gnoblin-compositor/tests/lock_card.rs`). Nothing there changed in this lane.
+
 ## Inert settings and properties, and what was decided
 
 Tree properties no native code reads, each with its reason in the test: `effect.algorithm` (one blur kernel, said in the
