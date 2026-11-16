@@ -175,8 +175,10 @@ impl TreeLink for SocketTreeLink {
     }
 }
 
-/// The wire form of one write. The kind names are the ones the compositor's tree host reads.
-fn to_op(op: &TxOp) -> op::Properties {
+/// The wire form of one write. The kind names are the ones the compositor's tree host reads. The in-process link of the
+/// compositor sends the same form to the same host, so a write means one thing whichever way it travels.
+#[must_use]
+pub fn to_op(op: &TxOp) -> op::Properties {
     match op {
         TxOp::New { id, class } => op::Properties {
             kind: "new".to_owned(),
@@ -293,159 +295,200 @@ fn to_incoming(envelope: &Envelope) -> Result<TreeIncoming, LinkError> {
             "the compositor refused tree {member}: {}",
             envelope.error_code().unwrap_or("unknown")
         ))),
-        (Some(Kind::Reply(_)), "attach") => {
-            let payload = envelope
-                .payload_as::<AttachedPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            Ok(TreeIncoming::Attached(Attached {
-                epoch: payload.epoch,
-                root: payload.root,
-                serial: payload.serial,
-            }))
-        }
-        (Some(Kind::Reply(_)), "transact") => {
-            let payload = envelope
-                .payload_as::<ReplyPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            Ok(TreeIncoming::Reply(TxReply {
-                serial: payload.serial,
-                applied: payload.applied,
-                failed_op: payload.failed_op,
-                code: payload.code,
-                removed: payload.removed,
-            }))
-        }
+        (Some(Kind::Reply(_)), "attach") => Ok(incoming_attached(
+            envelope.payload_as().ok_or_else(|| undecodable(member))?,
+        )),
+        (Some(Kind::Reply(_)), "transact") => Ok(incoming_reply(
+            envelope.payload_as().ok_or_else(|| undecodable(member))?,
+        )),
         (Some(Kind::Event(_)), "snapshot") => {
-            let payload = envelope
-                .payload_as::<SnapshotPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            let chunk = u32::try_from(payload.chunk)
-                .map_err(|_| LinkError(format!("snapshot chunk {} is out of range", payload.chunk)))?;
-            Ok(TreeIncoming::Snapshot {
-                serial: payload.serial,
-                chunk,
-                last: payload.last,
-                nodes: payload
-                    .nodes
-                    .into_iter()
-                    .map(to_snapshot_node)
-                    .collect::<Result<Vec<_>, _>>()?,
-            })
+            incoming_snapshot(envelope.payload_as().ok_or_else(|| undecodable(member))?)
         }
-        (Some(Kind::Event(_)), "event") => {
-            let payload = envelope
-                .payload_as::<EventPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            Ok(TreeIncoming::Event(TreeEvent {
-                frame: payload.frame,
-                seq: payload.seq,
-                node: payload.node,
-                kind: payload.kind,
-                fields: EventFields {
-                    x: payload.x,
-                    y: payload.y,
-                    button: payload.button,
-                    dx: payload.dx,
-                    dy: payload.dy,
-                    key: payload.key,
-                    text: payload.text,
-                    pressed: payload.pressed,
-                    request: payload.request,
-                },
-            }))
-        }
-        (Some(Kind::Event(_)), "chord") => {
-            let payload = envelope
-                .payload_as::<ChordPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            Ok(TreeIncoming::Chord(TreeChord {
-                claim: payload.id,
-                chord: payload.chord,
-                state: payload.state,
-            }))
-        }
-        (Some(Kind::Event(_)), "gesture") => {
-            let payload = envelope
-                .payload_as::<GesturePayload>()
-                .ok_or_else(|| undecodable(member))?;
-            Ok(TreeIncoming::Gesture(TreeGesture {
-                claim: payload.id,
-                kind: payload.kind,
-                fingers: payload.fingers,
-                phase: payload.phase,
-                dx: payload.dx,
-                dy: payload.dy,
-                scale: payload.scale,
-                rotation: payload.rotation,
-            }))
-        }
-        (Some(Kind::Event(_)), "pointer_chord") => {
-            let payload = envelope
-                .payload_as::<PointerChordPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            Ok(TreeIncoming::PointerChord(TreePointerChord {
-                claim: payload.claim,
-                phase: payload.phase,
-                x: payload.x,
-                y: payload.y,
-                dx: payload.dx,
-                dy: payload.dy,
-                button: payload.button,
-                modifiers: payload.modifiers,
-                time: payload.time,
-            }))
-        }
-        (Some(Kind::Event(_)), "pointer_button") => {
-            let payload = envelope
-                .payload_as::<PointerButtonPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            Ok(TreeIncoming::PointerButton(TreePointerButton {
-                claim: payload.claim,
-                button: payload.button,
-                state: payload.state,
-                x: payload.x,
-                y: payload.y,
-                time: payload.time,
-            }))
-        }
+        (Some(Kind::Event(_)), "event") => Ok(incoming_event(
+            envelope.payload_as().ok_or_else(|| undecodable(member))?,
+        )),
+        (Some(Kind::Event(_)), "chord") => Ok(incoming_chord(
+            envelope.payload_as().ok_or_else(|| undecodable(member))?,
+        )),
+        (Some(Kind::Event(_)), "gesture") => Ok(incoming_gesture(
+            envelope.payload_as().ok_or_else(|| undecodable(member))?,
+        )),
+        (Some(Kind::Event(_)), "pointer_chord") => Ok(incoming_pointer_chord(
+            envelope.payload_as().ok_or_else(|| undecodable(member))?,
+        )),
+        (Some(Kind::Event(_)), "pointer_button") => Ok(incoming_pointer_button(
+            envelope.payload_as().ok_or_else(|| undecodable(member))?,
+        )),
         (Some(Kind::Event(_)), "changes") => {
-            let payload = envelope
-                .payload_as::<ChangesPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            let changes = payload
-                .changes
-                .into_iter()
-                .map(to_change)
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(TreeIncoming::Changes {
-                serial: payload.serial,
-                changes,
-            })
+            incoming_changes(envelope.payload_as().ok_or_else(|| undecodable(member))?)
         }
-        (Some(Kind::Event(_)), "answer") => {
-            let payload = envelope
-                .payload_as::<AnswerPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            Ok(TreeIncoming::Answer {
-                token: payload.token,
-                result: payload.result,
-                error: payload.error,
-            })
-        }
-        (Some(Kind::Event(_)), "track_ended") => {
-            let payload = envelope
-                .payload_as::<TrackEndedPayload>()
-                .ok_or_else(|| undecodable(member))?;
-            Ok(TreeIncoming::TrackEnded {
-                node: payload.node,
-                property: payload.property,
-                completed: payload.reason == "completed",
-                tween: (payload.tween != 0).then_some(payload.tween),
-            })
-        }
+        (Some(Kind::Event(_)), "answer") => Ok(incoming_answer(
+            envelope.payload_as().ok_or_else(|| undecodable(member))?,
+        )),
+        (Some(Kind::Event(_)), "track_ended") => Ok(incoming_track_ended(
+            envelope.payload_as().ok_or_else(|| undecodable(member))?,
+        )),
         _ => Err(LinkError(format!(
             "an unexpected tree message {member} came over the tree socket"
         ))),
+    }
+}
+
+/// The attach answer as the shell sees it. The `incoming_*` functions are the one translation from a wire payload to
+/// [`TreeIncoming`], used by the socket link and by the compositor's in-process link, so a message reads the same
+/// whichever way it came.
+#[must_use]
+pub fn incoming_attached(payload: AttachedPayload) -> TreeIncoming {
+    TreeIncoming::Attached(Attached {
+        epoch: payload.epoch,
+        root: payload.root,
+        serial: payload.serial,
+    })
+}
+
+/// The transact answer.
+#[must_use]
+pub fn incoming_reply(payload: ReplyPayload) -> TreeIncoming {
+    TreeIncoming::Reply(TxReply {
+        serial: payload.serial,
+        applied: payload.applied,
+        failed_op: payload.failed_op,
+        code: payload.code,
+        removed: payload.removed,
+    })
+}
+
+/// One chunk of the snapshot.
+///
+/// # Errors
+///
+/// A chunk number out of range, or a node value of a kind the shell has no form for.
+pub fn incoming_snapshot(payload: SnapshotPayload) -> Result<TreeIncoming, LinkError> {
+    let chunk = u32::try_from(payload.chunk)
+        .map_err(|_| LinkError(format!("snapshot chunk {} is out of range", payload.chunk)))?;
+    Ok(TreeIncoming::Snapshot {
+        serial: payload.serial,
+        chunk,
+        last: payload.last,
+        nodes: payload
+            .nodes
+            .into_iter()
+            .map(to_snapshot_node)
+            .collect::<Result<Vec<_>, _>>()?,
+    })
+}
+
+/// An input or request event of a node.
+#[must_use]
+pub fn incoming_event(payload: EventPayload) -> TreeIncoming {
+    TreeIncoming::Event(TreeEvent {
+        frame: payload.frame,
+        seq: payload.seq,
+        node: payload.node,
+        kind: payload.kind,
+        fields: EventFields {
+            x: payload.x,
+            y: payload.y,
+            button: payload.button,
+            dx: payload.dx,
+            dy: payload.dy,
+            key: payload.key,
+            text: payload.text,
+            pressed: payload.pressed,
+            request: payload.request,
+        },
+    })
+}
+
+/// A claimed chord that changed state.
+#[must_use]
+pub fn incoming_chord(payload: ChordPayload) -> TreeIncoming {
+    TreeIncoming::Chord(TreeChord {
+        claim: payload.id,
+        chord: payload.chord,
+        state: payload.state,
+    })
+}
+
+/// A claimed touchpad gesture that advanced.
+#[must_use]
+pub fn incoming_gesture(payload: GesturePayload) -> TreeIncoming {
+    TreeIncoming::Gesture(TreeGesture {
+        claim: payload.id,
+        kind: payload.kind,
+        fingers: payload.fingers,
+        phase: payload.phase,
+        dx: payload.dx,
+        dy: payload.dy,
+        scale: payload.scale,
+        rotation: payload.rotation,
+    })
+}
+
+/// A claimed pointer chord's drag that advanced.
+#[must_use]
+pub fn incoming_pointer_chord(payload: PointerChordPayload) -> TreeIncoming {
+    TreeIncoming::PointerChord(TreePointerChord {
+        claim: payload.claim,
+        phase: payload.phase,
+        x: payload.x,
+        y: payload.y,
+        dx: payload.dx,
+        dy: payload.dy,
+        button: payload.button,
+        modifiers: payload.modifiers,
+        time: payload.time,
+    })
+}
+
+/// A button of a claimed pointer that changed state.
+#[must_use]
+pub fn incoming_pointer_button(payload: PointerButtonPayload) -> TreeIncoming {
+    TreeIncoming::PointerButton(TreePointerButton {
+        claim: payload.claim,
+        button: payload.button,
+        state: payload.state,
+        x: payload.x,
+        y: payload.y,
+        time: payload.time,
+    })
+}
+
+/// One batch of changes.
+///
+/// # Errors
+///
+/// A change of a kind, or a value of a kind, the shell has no form for.
+pub fn incoming_changes(payload: ChangesPayload) -> Result<TreeIncoming, LinkError> {
+    let changes = payload
+        .changes
+        .into_iter()
+        .map(to_change)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(TreeIncoming::Changes {
+        serial: payload.serial,
+        changes,
+    })
+}
+
+/// The answer to a call the compositor settled.
+#[must_use]
+pub fn incoming_answer(payload: AnswerPayload) -> TreeIncoming {
+    TreeIncoming::Answer {
+        token: payload.token,
+        result: payload.result,
+        error: payload.error,
+    }
+}
+
+/// The end of a timed `set`.
+#[must_use]
+pub fn incoming_track_ended(payload: TrackEndedPayload) -> TreeIncoming {
+    TreeIncoming::TrackEnded {
+        node: payload.node,
+        property: payload.property,
+        completed: payload.reason == "completed",
+        tween: (payload.tween != 0).then_some(payload.tween),
     }
 }
 
