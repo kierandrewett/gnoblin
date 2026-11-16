@@ -531,7 +531,11 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
     crate::lock::install(ctx, &host, state)?;
     crate::output_apply::install(ctx, &host, state)?;
 
-    ctx.globals().set("__gnoblinHost", host)
+    // Defined with no attributes: not writable, not configurable. The library reads the bridge once when it loads, but
+    // the shell reads `__gnoblinHost.entry` from the global on every frame, so a script that could replace or delete the
+    // global would replace what the shell runs each frame (the lock screen's frame among it). The members stay
+    // assignable: a script is the user's own code and is trusted with them (`docs/session-lock.md`).
+    ctx.globals().prop("__gnoblinHost", host)
 }
 
 #[cfg(test)]
