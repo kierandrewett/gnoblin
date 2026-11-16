@@ -81,6 +81,8 @@ const | STREAM_INHERIT | u32 = 0 | 1.0
 const | STREAM_DISCARD | u32 = 1 | 1.0
 const | STREAM_CAPTURE | u32 = 2 | 1.0
 const | STATE_MAX_BYTES | u64 = 16777216 | 1.0
+const | ADOPTED | i32 = 1 | 1.0
+const | NODE_FLAG_EPHEMERAL | u32 = 1 | 1.0
 
 alias | GnoblinCtx | u64 | 1.0
 alias | GnoblinReg | u64 | 1.0
@@ -253,7 +255,7 @@ field | GnoblinShellEntry.shutdown | unsafe extern "C" fn(ctx: GnoblinCtx) @24 +
 field | GnoblinShellEntry.stats | Option<unsafe extern "C" fn(out: *mut GnoblinShellStats)> @32 +8 | 1.0
 field | GnoblinShellEntry.label | GnoblinStr @40 +16 | 1.0
 
-struct | GnoblinApi | size 344 align 8 extensible | 1.0
+struct | GnoblinApi | size 352 align 8 extensible | 1.0
 
 field | GnoblinApi.size | u32 @0 +4 | 1.0
 field | GnoblinApi.major | u32 @4 +4 | 1.0
@@ -300,3 +302,4 @@ field | GnoblinApi.spawn | unsafe extern "C" fn(ctx: GnoblinCtx, argv: *const Gn
 field | GnoblinApi.proc_kill | unsafe extern "C" fn(ctx: GnoblinCtx, process: GnoblinProc, signal: *const u8, len: usize) -> i32 @320 +8 | 1.0
 field | GnoblinApi.state_put | unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, bytes: *const u8, len: usize, version: u32) -> i32 @328 +8 | 1.0
 field | GnoblinApi.state_get | unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, out: *mut GnoblinBuf, version: *mut u32) -> i32 @336 +8 | 1.0
+field | GnoblinApi.node_adopt | unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, name: *const u8, name_len: usize, flags: u32, out: *mut GnoblinNode) -> i32 @344 +8 | 1.0

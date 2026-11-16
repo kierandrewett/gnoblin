@@ -176,6 +176,14 @@ impl Pumped {
     }
 }
 
+/// What [`TreeSession::mark_tick`] remembered: the tick's writes at that moment.
+#[derive(Debug)]
+pub struct TickMark {
+    tick: TxBuilder,
+    /// The transactions sent at that moment.
+    sent: u64,
+}
+
 /// A shell's connection to the tree: the link, the mirror, the builder of the tick and the gate.
 pub struct TreeSession {
     link: Box<dyn TreeLink>,
@@ -254,6 +262,38 @@ impl TreeSession {
     /// Whether every transaction has been answered and none waits to go again.
     pub fn is_settled(&self) -> bool {
         self.gate.is_settled()
+    }
+
+    // ---- a stage's rollback mark ---------------------------------------------------------------------------------
+
+    /// Remembers this tick's writes, so a generation that is staged against the live tree can be taken back: a reload's
+    /// `init` writes before it is known that the reload will commit. See [`rollback_tick`](Self::rollback_tick).
+    pub fn mark_tick(&self) -> TickMark {
+        TickMark {
+            tick: self.tick.clone(),
+            sent: self.gate.transactions_sent(),
+        }
+    }
+
+    /// Puts this tick's writes back to what they were at `mark`: whatever was written since is dropped, unsent. Returns
+    /// `false`, and leaves the tick as it is, when a transaction has been sent since the mark (the generation flushed in
+    /// its `init`): those writes are the compositor's now, and putting the earlier ones back would send them twice.
+    pub fn rollback_tick(&mut self, mark: TickMark) -> bool {
+        if self.gate.transactions_sent() != mark.sent {
+            return false;
+        }
+        self.tick = mark.tick;
+        true
+    }
+
+    /// Drops every write this tick holds, for a stage that began before the shell had a tree to mark. Returns `false`,
+    /// and leaves the tick as it is, when a transaction has been sent.
+    pub fn discard_tick(&mut self) -> bool {
+        if self.gate.transactions_sent() != 0 {
+            return false;
+        }
+        self.tick = TxBuilder::new();
+        true
     }
 
     // ---- reads: the tree as this tick sees it --------------------------------------------------------------------

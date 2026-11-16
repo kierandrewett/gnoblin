@@ -197,6 +197,11 @@ abi_consts! {
 
     /// The most bytes `state_put` keeps across all keys: 16 MiB.
     pub const STATE_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+    /// `node_adopt` result: the node was made by an earlier generation and is the shell's again. A success, like `E_OK`.
+    pub const ADOPTED: i32 = 1;
+    /// `node_adopt` flag: the node dies with its generation unless the next one adopts it during its `init`.
+    pub const NODE_FLAG_EPHEMERAL: u32 = 1;
 }
 
 abi_structs! {
@@ -630,6 +635,15 @@ abi_structs! {
         /// Reads what an earlier generation kept under `key`: the bytes (owned by the caller, freed with `buf_free`) and the
         /// version they were kept with. `E_NO_SUCH_MEMBER` when nothing is kept under `key`. Shell thread.
         pub state_get: unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, out: *mut GnoblinBuf, version: *mut u32) -> i32,
+        /// Makes the node of `class` this shell calls `name`, or finds it again after a reload. If an earlier generation of this
+        /// shell made a node of that class under that name and it is still in the tree, its id is written to `out` and the
+        /// result is `ADOPTED`: the node, its children and every value on it are exactly as they were, so a reload does not
+        /// make a second one. Otherwise a node is made as `write_create` does, its `name` property is set to `name`, and the
+        /// result is `E_OK`. Asking twice in one generation gives the same node. With `NODE_FLAG_EPHEMERAL` the node dies
+        /// with its generation: when the next generation takes over, an ephemeral node it did not adopt during its `init` is
+        /// destroyed. Nodes made by `write_create`, and nodes the compositor owns (windows, screens, seats), are never
+        /// destroyed by a reload. Shell thread.
+        pub node_adopt: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, name: *const u8, name_len: usize, flags: u32, out: *mut GnoblinNode) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]

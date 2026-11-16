@@ -71,6 +71,7 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     proc_kill: api_proc_kill,
     state_put: api_state_put,
     state_get: api_state_get,
+    node_adopt: api_node_adopt,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -618,6 +619,31 @@ unsafe extern "C" fn api_state_get(
     guard(abi::E_PANIC, "state_get", || {
         // SAFETY: the table's contract passes `key` as `key_len` readable bytes and `out` and `version` as writable.
         unsafe { procs::state_get(ctx, key, key_len, out, version) }
+    })
+}
+
+unsafe extern "C" fn api_node_adopt(
+    ctx: GnoblinCtx,
+    class: u32,
+    name: *const u8,
+    name_len: usize,
+    flags: u32,
+    out: *mut GnoblinNode,
+) -> i32 {
+    guard(abi::E_PANIC, "node_adopt", || {
+        // SAFETY: the table's contract passes `name` as `name_len` readable bytes.
+        let name = match unsafe { text(name, name_len, "node_adopt name") } {
+            Ok(name) => name,
+            Err(code) => return code,
+        };
+        match tree::adopt(ctx, class, name, flags) {
+            // SAFETY: the table's contract passes `out` as a writable node id.
+            Ok((node, adopted)) => match unsafe { put(out, node, "node_adopt") } {
+                abi::E_OK if adopted => abi::ADOPTED,
+                code => code,
+            },
+            Err(code) => code,
+        }
     })
 }
 

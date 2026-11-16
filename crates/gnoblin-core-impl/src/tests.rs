@@ -333,8 +333,9 @@ fn a_retired_context_is_refused_and_every_refusal_is_counted() {
     assert_eq!(unsafe { (api().dispatch)(retired.ctx, 0) }, abi::E_RETIRED);
     // SAFETY: `request_reload` is a function of the core's table.
     assert_eq!(unsafe { (api().request_reload)(retired.ctx) }, abi::E_RETIRED);
-    assert!(
-        !host::take_reload_request(),
+    assert_eq!(
+        host::take_reload_request(),
+        None,
         "a retired generation cannot ask for a reload"
     );
     assert_eq!(stats(live.ctx).stale_calls - before.stale_calls, 3);

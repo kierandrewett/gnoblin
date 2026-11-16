@@ -60,7 +60,7 @@ pub use gnoblin_macros::main;
 pub use input::{ChordEvent, ChordState, DragPhase, GestureEvent, GestureKind, GrabScope, PointerButton, PointerDrag};
 pub use owned::Value;
 pub use process::{Command, Process, ProcessExit, Signal, Stream};
-pub use tree::{Answer, Client, Node, PendingCall, Rect, Window};
+pub use tree::{Adoption, Answer, Client, Node, PendingCall, Rect, Window};
 pub use value::{CatalogMember, Class, MemberKind, NodeId, ShellValue, SignalEvent};
 
 /// The ABI major version this SDK was built for. A core of another major refuses to load the shell.

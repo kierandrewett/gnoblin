@@ -1244,3 +1244,7 @@ fn a_catalog_class_has_a_name_and_a_value_the_abi_does_not_carry_is_unsupported(
         abi::E_UNSUPPORTED
     );
 }
+
+// ---- reload: what a generation hands the next, and what an abandoned stage gives back --------------------------------------
+
+mod reload;

@@ -167,26 +167,28 @@ pub(crate) fn class_name(ctx: GnoblinCtx, class: u32) -> Result<GnoblinStr, i32>
     Ok(crate::values::lend_name(&label))
 }
 
-/// `write_create`.
-pub(crate) fn create(ctx: GnoblinCtx, class: u32) -> Result<u64, i32> {
-    check_ctx(ctx, "write_create", true)?;
-    let name = match catalog::class(class) {
-        Some(def) if def.namespace == "tree" => def.name,
+/// The name of the tree class with catalog id `class`, or the recorded refusal for `what`.
+fn tree_class_name(class: u32, what: &str) -> Result<&'static str, i32> {
+    match catalog::class(class) {
+        Some(def) if def.namespace == "tree" => Ok(def.name),
         Some(def) => {
             set_code_error(
                 abi::E_NO_SUCH_MEMBER,
-                format!(
-                    "write_create: `{}.{}` is not a class of the tree",
-                    def.namespace, def.name
-                ),
+                format!("{what}: `{}.{}` is not a class of the tree", def.namespace, def.name),
             );
-            return Err(abi::E_NO_SUCH_MEMBER);
+            Err(abi::E_NO_SUCH_MEMBER)
         }
         None => {
-            set_code_error(abi::E_NO_SUCH_MEMBER, format!("write_create: no class with id {class}"));
-            return Err(abi::E_NO_SUCH_MEMBER);
+            set_code_error(abi::E_NO_SUCH_MEMBER, format!("{what}: no class with id {class}"));
+            Err(abi::E_NO_SUCH_MEMBER)
         }
-    };
+    }
+}
+
+/// `write_create`.
+pub(crate) fn create(ctx: GnoblinCtx, class: u32) -> Result<u64, i32> {
+    check_ctx(ctx, "write_create", true)?;
+    let name = tree_class_name(class, "write_create")?;
     session::with(|session| {
         session
             .tree()?
@@ -194,6 +196,26 @@ pub(crate) fn create(ctx: GnoblinCtx, class: u32) -> Result<u64, i32> {
             .map_err(|error| (abi::E_ERR, error.to_string()))
     })
     .map_err(|error| fail("write_create", error))
+}
+
+/// `node_adopt`: the node and whether an earlier generation made it.
+pub(crate) fn adopt(ctx: GnoblinCtx, class: u32, name: &str, flags: u32) -> Result<(u64, bool), i32> {
+    let owner = check_ctx(ctx, "node_adopt", true)?;
+    let class = tree_class_name(class, "node_adopt")?;
+    if name.is_empty() {
+        set_code_error(abi::E_ERR, "node_adopt: a node needs a name to be found by");
+        return Err(abi::E_ERR);
+    }
+    if flags & !abi::NODE_FLAG_EPHEMERAL != 0 {
+        set_code_error(
+            abi::E_ERR,
+            format!("node_adopt: {flags:#x} holds flags this core does not know"),
+        );
+        return Err(abi::E_ERR);
+    }
+    let ephemeral = flags & abi::NODE_FLAG_EPHEMERAL != 0;
+    session::with(|session| session.adopt_node(owner, class, name, ephemeral))
+        .map_err(|error| fail("node_adopt", error))
 }
 
 /// `write_destroy`.

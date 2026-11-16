@@ -109,6 +109,16 @@ impl PendingCall {
     }
 }
 
+/// What [`Gnoblin::adopt_node`] found or made.
+#[derive(Clone, Debug)]
+pub struct Adoption {
+    /// The node.
+    pub node: Node,
+    /// Whether an earlier generation made it: the node is as that generation left it, so the caller keeps what it holds
+    /// rather than building it again. `false` for a node made now.
+    pub adopted: bool,
+}
+
 impl Node {
     pub(crate) fn new(g: Gnoblin, id: NodeId) -> Node {
         Node { g, id }
@@ -580,6 +590,38 @@ impl Gnoblin {
         // SAFETY: `write_create` writes one node id through the pointer it is given, a live local.
         check(unsafe { (self.api().write_create)(self.ctx(), class.0, &mut node) })?;
         Ok(Node::new(self.clone(), NodeId(node)))
+    }
+
+    /// The node of class `class` that this shell calls `name`: the one an earlier generation made (a reload runs the shell's
+    /// entry again, and it must find its nodes where the last one left them), or a new one when there is none. Its `name`
+    /// property is `name`. An adopted node is exactly as it was: its children and its values are untouched, so a canvas keeps
+    /// what it drew and the compositor sees no node come or go.
+    ///
+    /// The node outlives the generation that made it. For one that should not, see
+    /// [`adopt_ephemeral_node`](Self::adopt_ephemeral_node).
+    pub fn adopt_node(&self, class: &str, name: &str) -> Result<Adoption> {
+        self.adopt_with(class, name, 0)
+    }
+
+    /// As [`adopt_node`](Self::adopt_node), for a node that dies with its generation: when the next generation takes over, the
+    /// compositor destroys every ephemeral node it did not adopt during its `init`. The place for a toast, an overlay or a
+    /// debug marker that a reload should clear unless the new code still wants it.
+    pub fn adopt_ephemeral_node(&self, class: &str, name: &str) -> Result<Adoption> {
+        self.adopt_with(class, name, abi::NODE_FLAG_EPHEMERAL)
+    }
+
+    fn adopt_with(&self, class: &str, name: &str, flags: u32) -> Result<Adoption> {
+        self.attach()?;
+        let class = self.class(class)?;
+        let mut node = 0;
+        // SAFETY: `node_adopt` reads `name.len()` bytes at the pointer for the call and writes one node id through `node`, a
+        // live local.
+        let rc = unsafe { (self.api().node_adopt)(self.ctx(), class.0, name.as_ptr(), name.len(), flags, &mut node) };
+        check(rc)?;
+        Ok(Adoption {
+            node: Node::new(self.clone(), NodeId(node)),
+            adopted: rc == abi::ADOPTED,
+        })
     }
 
     /// Sends the tick's writes now, and runs `on_done` once, on the shell thread, when everything sent so far has been answered:

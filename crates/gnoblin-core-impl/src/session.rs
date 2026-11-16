@@ -19,8 +19,8 @@ use gnoblin_core_abi as abi;
 use gnoblin_shell_host::generation::{GenerationId, GenerationState, LifecycleObserver};
 use gnoblin_shell_host::process::{ProcessError, ProcessExit, Processes, SpawnOptions, Started};
 use gnoblin_shell_host::supervisor::{Clock, SystemClock};
-use gnoblin_tree_client::session::{NodeEvent, SessionError, TreeSession};
-use gnoblin_tree_client::tree_mirror::{LinkError, NodeId, TreeIncoming, TreeLink};
+use gnoblin_tree_client::session::{NodeEvent, SessionError, TickMark, TreeSession};
+use gnoblin_tree_client::tree_mirror::{LinkError, MirrorValue, NodeId, TreeIncoming, TreeLink, TxAnimation};
 
 use crate::catalog;
 use crate::events::{AnswerNotice, ClaimNotice, ExitNotice, NodeNotice, ShellEvent, SignalDelivery};
@@ -74,9 +74,33 @@ struct TimerRecord {
 }
 
 /// A value kept across reloads, with the version its writer gave it.
+#[derive(Clone)]
 struct Stored {
     version: u32,
     bytes: Vec<u8>,
+}
+
+/// A node a generation made under a name, so that the next generation finds it again (`node_adopt`).
+#[derive(Clone, Debug)]
+struct NamedNode {
+    node: NodeId,
+    /// The generation that made it.
+    made_by: GenerationId,
+    /// The latest generation that asked for it.
+    claimed_by: GenerationId,
+    /// Whether it dies with its generation unless the next one adopts it.
+    ephemeral: bool,
+}
+
+/// What a stage puts back when it is abandoned: everything a staged generation's `init` can change in the instance that is
+/// not a registration (those the generation host drops). Taken when the generation is made, forgotten when it takes over.
+struct StageMark {
+    generation: GenerationId,
+    /// This tick's writes at that moment, when the shell was attached.
+    tick: Option<TickMark>,
+    named: BTreeMap<(String, String), NamedNode>,
+    /// The state entries the stage replaced or added, by key, as they were before the stage first touched them.
+    state: BTreeMap<String, Option<Stored>>,
 }
 
 /// The shell instance's state. See the module docs.
@@ -95,6 +119,10 @@ pub(crate) struct Session {
     refusals: Vec<String>,
     state: BTreeMap<String, Stored>,
     state_bytes: usize,
+    /// The nodes generations made under a name, by class and name: what `node_adopt` finds again.
+    named: BTreeMap<(String, String), NamedNode>,
+    /// The stage in progress, if a generation is staged.
+    stage: Option<StageMark>,
     clock: Arc<dyn Clock>,
 }
 
@@ -113,6 +141,8 @@ impl Default for Session {
             refusals: Vec::new(),
             state: BTreeMap::new(),
             state_bytes: 0,
+            named: BTreeMap::new(),
+            stage: None,
             clock: Arc::new(SystemClock),
         }
     }
@@ -458,6 +488,14 @@ impl Session {
                 "the state store holds at most {STATE_LIMIT} bytes, and this would make it {after}"
             ));
         }
+        if let Some(stage) = self.stage.as_mut() {
+            // A staged generation's write is undone if the stage is abandoned: remember what the key held before the stage first
+            // touched it.
+            stage
+                .state
+                .entry(key.to_owned())
+                .or_insert_with(|| self.state.get(key).cloned());
+        }
         self.state_bytes = after;
         self.state.insert(key.to_owned(), Stored { version, bytes });
         Ok(())
@@ -468,15 +506,143 @@ impl Session {
         self.state.get(key).map(|stored| (stored.bytes.clone(), stored.version))
     }
 
+    // ---- nodes found again by name -----------------------------------------------------------------------------------
+
+    /// `node_adopt`: the node of `class` that `owner`'s generation or an earlier one made under `name`, or a new one. Returns the
+    /// node and whether an earlier generation made it.
+    ///
+    /// # Errors
+    ///
+    /// The shell has not attached, or the write was refused.
+    pub(crate) fn adopt_node(
+        &mut self,
+        owner: GenerationId,
+        class: &str,
+        name: &str,
+        ephemeral: bool,
+    ) -> Result<(NodeId, bool), (i32, String)> {
+        let key = (class.to_owned(), name.to_owned());
+        let tree = self.tree.as_mut().ok_or_else(|| {
+            (
+                abi::E_ERR,
+                "the shell has not attached to the tree: call tree_attach first".to_owned(),
+            )
+        })?;
+        if let Some(named) = self.named.get_mut(&key) {
+            if tree.class_of(named.node).as_deref() == Some(class) {
+                let adopted = named.made_by != owner;
+                named.claimed_by = owner;
+                named.ephemeral = ephemeral;
+                return Ok((named.node, adopted));
+            }
+            // The shell destroyed it, or the compositor did: the name is free again.
+            self.named.remove(&key);
+        }
+        let node = tree.create(class).map_err(|error| (abi::E_ERR, error.to_string()))?;
+        tree.set(node, "name", MirrorValue::Text(name.to_owned()), TxAnimation::default())
+            .map_err(|error| (abi::E_NO_SUCH_NODE, error.to_string()))?;
+        self.named.insert(
+            key,
+            NamedNode {
+                node,
+                made_by: owner,
+                claimed_by: owner,
+                ephemeral,
+            },
+        );
+        Ok((node, false))
+    }
+
+    /// The ephemeral nodes that `id`, which just took over, did not adopt: destroyed, as the design says a generation's
+    /// ephemeral nodes die with it unless the next one takes them over.
+    fn destroy_unadopted_ephemerals(&mut self, id: GenerationId) {
+        let gone: Vec<(String, String)> = self
+            .named
+            .iter()
+            .filter(|(_, named)| named.ephemeral && named.claimed_by != id)
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in gone {
+            let Some(named) = self.named.remove(&key) else {
+                continue;
+            };
+            let Some(tree) = self.tree.as_mut() else {
+                continue;
+            };
+            if !tree.exists(named.node) {
+                continue;
+            }
+            match tree.destroy(named.node) {
+                Ok(removed) => log::info!(
+                    "destroyed the ephemeral {} `{}` (node {}, {} node(s)): generation {id} did not adopt it",
+                    key.0,
+                    key.1,
+                    named.node,
+                    removed.len()
+                ),
+                Err(error) => log::warn!("cannot destroy the ephemeral {} `{}`: {error}", key.0, key.1),
+            }
+        }
+    }
+
     // ---- the generation lifecycle ------------------------------------------------------------------------------------
 
-    fn staged(&mut self) {
+    /// A generation was made and will run its `init` against the live instance: remember what that `init` can change, to put it
+    /// back if the stage is abandoned.
+    fn staged(&mut self, id: GenerationId) {
         self.processes.begin_stage();
+        self.stage = Some(StageMark {
+            generation: id,
+            tick: self.tree.as_ref().map(TreeSession::mark_tick),
+            named: self.named.clone(),
+            state: BTreeMap::new(),
+        });
+    }
+
+    /// The stage failed or was abandoned: the writes its `init` queued, the nodes it named and the state it kept are put back.
+    fn roll_back_stage(&mut self, id: GenerationId) {
+        let Some(mark) = self.stage.take_if(|mark| mark.generation == id) else {
+            return;
+        };
+        let mut restored = true;
+        if let Some(tree) = self.tree.as_mut() {
+            restored = match mark.tick {
+                Some(tick) => tree.rollback_tick(tick),
+                // The shell attached during this very `init`: everything the tick holds is the stage's.
+                None => tree.discard_tick(),
+            };
+            if !restored {
+                log::warn!(
+                    "generation {id} flushed during its init before it failed: the writes it sent are the compositor's now and \
+                     cannot be taken back, so the nodes it made under a name stay and the next generation finds them"
+                );
+            }
+        }
+        if restored {
+            self.named = mark.named;
+        }
+        for (key, before) in mark.state {
+            match before {
+                Some(stored) => {
+                    self.state.insert(key, stored);
+                }
+                None => {
+                    self.state.remove(&key);
+                }
+            }
+        }
+        self.state_bytes = self
+            .state
+            .iter()
+            .map(|(key, stored)| key.len() + stored.bytes.len())
+            .sum();
     }
 
     /// A staged generation took over: the old one's claims are released, the new one's go out behind the releases in the same
     /// transaction, the programs it started begin (and the ones the old config started and it did not are stopped).
     fn activated(&mut self, id: GenerationId) {
+        // The stage committed: its mark is no longer needed.
+        self.stage = self.stage.take().filter(|mark| mark.generation != id);
         let old: Vec<i64> = self
             .claims
             .iter()
@@ -500,6 +666,7 @@ impl Session {
         for (process, error) in self.processes.end_stage(id) {
             log::warn!("the program of process {process} did not start: {error}");
         }
+        self.destroy_unadopted_ephemerals(id);
     }
 
     /// A generation retired. If it never took over, what it staged is dropped: its spawns never start, its claims never go out.
@@ -507,6 +674,7 @@ impl Session {
         if was != GenerationState::Staged {
             return;
         }
+        self.roll_back_stage(id);
         self.processes.abandon_stage();
         let unsent: Vec<i64> = self
             .claims
@@ -524,8 +692,8 @@ impl Session {
 pub(crate) struct Lifecycle;
 
 impl LifecycleObserver for Lifecycle {
-    fn staged(&self, _id: GenerationId) {
-        with(Session::staged);
+    fn staged(&self, id: GenerationId) {
+        with(|session| session.staged(id));
     }
 
     fn activated(&self, id: GenerationId, on_shell_thread: bool) {

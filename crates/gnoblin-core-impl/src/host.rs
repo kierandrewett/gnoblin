@@ -4,14 +4,17 @@
 //! sees this module: load a module, activate or retire a generation, publish a signal into the shell's mailbox, read the
 //! requests a shell made (reload, exit), and lend owned buffers back to a shell.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{LazyLock, Mutex, PoisonError};
 
 use std::path::Path;
 
 use gnoblin_core_abi::{GnoblinApi, GnoblinCtx};
 use gnoblin_shell_host::native::NativeLoader;
 pub use gnoblin_shell_host::native::{Copying, LoadError, UnloadRefused};
+pub use gnoblin_shell_host::reload::{
+    BuildFailure, BuildStep, Built, ModuleWatch, ReloadController, ReloadError, ReloadFailure, ReloadRecord,
+    ReloadStatus, ReloadTrigger, Reloaded,
+};
 pub use gnoblin_shell_host::retire::{RetainedStats, RetirePolicy};
 
 use crate::catalog;
@@ -23,6 +26,9 @@ pub use crate::session::{AttachMode, TreeLinkProvider};
 
 /// One loaded generation of a native shell, in this core's host.
 pub type Module = gnoblin_shell_host::native::NativeModule<ShellEvent>;
+
+/// The native shell of this core: a running generation and the reload protocol over it.
+pub type NativeShell = gnoblin_shell_host::reload::NativeShell<ShellEvent>;
 
 /// The one loader of the process: it loads native shell modules into the host this core owns, initialises them with this
 /// core's function table, and keeps what it cannot unmap on the bounded retire list.
@@ -114,12 +120,27 @@ pub fn queued_events() -> usize {
     registry::queued_events()
 }
 
-static RELOAD_REQUESTED: AtomicBool = AtomicBool::new(false);
 static EXIT_REQUEST: Mutex<Option<i32>> = Mutex::new(None);
 
-/// True once, if a shell asked for a reload since the last call. The host reloads between dispatches.
-pub fn take_reload_request() -> bool {
-    RELOAD_REQUESTED.swap(false, Ordering::AcqRel)
+/// What every request for a reload goes through: a shell's `request_reload`, `gnoblinctl shell reload`, the file watcher. A
+/// handle on the one controller of this core; clones share it. See [`ReloadController`].
+pub fn reload_controller() -> ReloadController {
+    static CONTROLLER: LazyLock<ReloadController> = LazyLock::new(ReloadController::new);
+    CONTROLLER.clone()
+}
+
+/// The reload request nobody has served yet, once: what asked for it. The host reloads between dispatches
+/// ([`NativeShell::serve_requests`] does both). A request is made with [`reload_controller`], by the shell through the table
+/// (`request_reload`), and by the watcher.
+pub fn take_reload_request() -> Option<ReloadTrigger> {
+    reload_controller().take_request()
+}
+
+/// A native shell that loads `path` into this core's host and reloads through this core's controller: the shell thread's
+/// handle on the running generation. Call [`NativeShell::start`] on the shell thread, after
+/// [`set_tree_link_provider`], and [`NativeShell::serve_requests`] between dispatches.
+pub fn native_shell(path: impl Into<std::path::PathBuf>) -> NativeShell {
+    NativeShell::new(&LOADER, path, reload_controller())
 }
 
 /// The exit code a shell asked for, once.
@@ -132,7 +153,7 @@ pub(crate) fn request_reload(ctx: GnoblinCtx) -> i32 {
     if let Err(code) = check_live(ctx, "request_reload") {
         return code;
     }
-    RELOAD_REQUESTED.store(true, Ordering::Release);
+    reload_controller().request(ReloadTrigger::Shell);
     gnoblin_core_abi::E_OK
 }
 
