@@ -8,11 +8,8 @@ use gnoblin_tree_client::tree_mirror::MirrorValue;
 mod common;
 use common::*;
 
-const SEAT: u64 = 21;
 /// The first window's id: windows are 3, 4, 5, ...
 const WIN: u64 = 3;
-
-const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _shell, ...library } = g;\nObject.assign(globalThis, library);\n";
 
 fn double(value: f64) -> MirrorValue {
     MirrorValue::Double(value)
@@ -28,19 +25,8 @@ fn world(count: u64, body: &str) -> Rig {
 
 /// Like [`world`], returning the diagnostics of the boot frames instead of requiring none.
 fn boot(count: u64, body: &str) -> (Rig, Vec<String>) {
-    let mut rig = rig_setup(IMPORTS, body, move |comp| {
-        comp.add_node(
-            20,
-            ROOT,
-            "screen",
-            vec![
-                ("width", double(1000.0)),
-                ("height", double(800.0)),
-                ("primary", MirrorValue::Bool(true)),
-            ],
-        );
-        comp.add_node(SEAT, ROOT, "seat", vec![("name", text("seat0"))]);
-        comp.add_node(22, ROOT, "lock", Vec::new());
+    let mut rig = rig_setup(LIBRARY_GLOBALS, body, move |comp| {
+        comp.add_desktop(1000.0, 800.0);
         for n in 0..count {
             comp.add_node(
                 WIN + n,

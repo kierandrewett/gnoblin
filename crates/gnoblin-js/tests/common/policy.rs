@@ -4,7 +4,10 @@
 
 use super::*;
 
-pub const IMPORTS: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nconst { gnoblin: _runtime, ...exported } = lib;\nObject.assign(globalThis, exported);\n(globalThis as any).g = globalThis;\n";
+/// The library prelude of the shared tests, and `g` as the global object for `exec`.
+pub fn imports() -> String {
+    format!("{LIBRARY_GLOBALS}(globalThis as any).g = globalThis;\n")
+}
 
 pub const SEAT: u64 = 21;
 pub const LOCK: u64 = 23;
@@ -21,7 +24,7 @@ pub fn world(n: u64, second: bool, layout: &str, config: &str) -> Rig {
     let init = format!(
         "{FILL}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id, layout: {layout} }}));\n{config}\n"
     );
-    let mut rig = rig_setup(IMPORTS, &init, move |comp| populate(comp, n, second));
+    let mut rig = rig_setup(&imports(), &init, move |comp| populate(comp, n, second));
     let diagnostics = rig.settle();
     assert!(diagnostics.is_empty(), "{diagnostics:?} {:?}", rig.load_diagnostics);
     rig
@@ -148,7 +151,8 @@ pub fn next_generation(rig: &Rig, config: &str) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
     let init = format!(
-        "{IMPORTS}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id }}));\n{config}\n"
+        "{}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id }}));\n{config}\n",
+        imports()
     );
     std::fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let (config, clock) = timed_config(&root);

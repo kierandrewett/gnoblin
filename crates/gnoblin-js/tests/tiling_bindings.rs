@@ -11,8 +11,6 @@ use gnoblin_tree_client::tree_mirror::MirrorValue;
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
-
 const SCREEN: u64 = 20;
 const SEAT: u64 = 21;
 const SWAP: &str = "<Super>Button1";
@@ -31,7 +29,7 @@ fn world(n: u64, layout: &str) -> Rig {
          }};\n\
          gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout: {layout} }}));\n"
     );
-    let mut rig = rig_setup(IMPORTS, &init, move |comp| {
+    let mut rig = rig_setup(LIBRARY_GLOBALS, &init, move |comp| {
         comp.add_node(
             SCREEN,
             ROOT,

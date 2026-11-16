@@ -337,7 +337,7 @@ const FILL: &str = "class Fill extends Layout {\n\
 /// A shell over one screen and the workspace `1` with the layout `Fill`, and no window.
 fn tiled() -> Rig {
     let init = format!("{FILL}gnoblin.workspaces.add(new Workspace({{ id: \"1\", layout: new Fill() }}));\n");
-    let mut rig = rig_setup(common::policy::IMPORTS, &init, |comp| {
+    let mut rig = rig_setup(&common::policy::imports(), &init, |comp| {
         comp.add_screen(20, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
         comp.add_node(
             21,

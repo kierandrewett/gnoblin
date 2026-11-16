@@ -12,12 +12,10 @@ use serde_json::json;
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
-
 /// A shell over a screen of 1000 by 800 and two windows (ids 3 and 4, titled `win1` and `win2`, app id `foot`),
 /// whose `shell.ts` is `body`, settled. The only diagnostics it may have said are the `not applied` notices.
 fn world(body: &str) -> Rig {
-    let mut rig = rig_setup(IMPORTS, body, |comp| {
+    let mut rig = rig_setup(LIBRARY_GLOBALS, body, |comp| {
         comp.add_node(
             20,
             ROOT,

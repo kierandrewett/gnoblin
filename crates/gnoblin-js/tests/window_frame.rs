@@ -14,8 +14,6 @@ use common::*;
 
 const LEFT: u64 = 272;
 
-const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
-
 /// A frame with a different room on every side, so no side can be mistaken for another: 30 above, 20 right, 40 below and
 /// 10 left of the content.
 const FOUR: &str = "startDecorations({ frame(client, frame) {\n\
@@ -25,19 +23,8 @@ const FOUR: &str = "startDecorations({ frame(client, frame) {\n\
 
 /// A shell over a screen of 1000 by 800, one seat, one lock and `windows` windows (ids 3 on), whose `shell.ts` is `body`.
 fn world(windows: u64, body: &str) -> Rig {
-    let mut rig = rig_setup(IMPORTS, body, move |comp| {
-        comp.add_node(
-            20,
-            ROOT,
-            "screen",
-            vec![
-                ("width", MirrorValue::Double(1000.0)),
-                ("height", MirrorValue::Double(800.0)),
-                ("primary", MirrorValue::Bool(true)),
-            ],
-        );
-        comp.add_node(21, ROOT, "seat", vec![("name", text("seat0"))]);
-        comp.add_node(22, ROOT, "lock", Vec::new());
+    let mut rig = rig_setup(LIBRARY_GLOBALS, body, move |comp| {
+        comp.add_desktop(1000.0, 800.0);
         for n in 0..windows {
             comp.add_window(3 + n, &format!("win{}", n + 1), "foot");
         }
@@ -878,22 +865,15 @@ fn the_recipe_with_a_status_strip_and_a_dock_handle_mounts_and_works() {
 #[test]
 fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
     let comp = FakeCompositor::new();
-    comp.add_node(
-        20,
-        ROOT,
-        "screen",
-        vec![
-            ("width", MirrorValue::Double(1000.0)),
-            ("height", MirrorValue::Double(800.0)),
-            ("primary", MirrorValue::Bool(true)),
-        ],
-    );
-    comp.add_node(21, ROOT, "seat", vec![("name", text("seat0"))]);
-    comp.add_node(22, ROOT, "lock", Vec::new());
+    comp.add_desktop(1000.0, 800.0);
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
     let entry = root.join("shell.ts");
-    std::fs::write(&entry, format!("{IMPORTS}startDecorations({{ resizeHandles: 6 }});\n")).expect("shell.ts");
+    std::fs::write(
+        &entry,
+        format!("{LIBRARY_GLOBALS}startDecorations({{ resizeHandles: 6 }});\n"),
+    )
+    .expect("shell.ts");
     let mut config = honest_role_config(&root);
     config.watch = false;
     let mut role = JsRole::over_link(Box::new(comp.clone()), JsRoleLinks::default(), config).expect("the role boots");
@@ -915,7 +895,7 @@ fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
 
     // The next generation has a frame of another shape: none of the first one's nodes may be left, and the window's
     // content moves to where the new frame wants it with the frame itself kept in place.
-    std::fs::write(&entry, format!("{IMPORTS}{FOUR}\n")).expect("shell.ts");
+    std::fs::write(&entry, format!("{LIBRARY_GLOBALS}{FOUR}\n")).expect("shell.ts");
     let report = role.reload_now();
     assert!(report.ok, "{:?}", report.errors);
     settle(&mut role);
@@ -932,7 +912,7 @@ fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
     );
 
     // A generation that never frames a window takes the last frame away and gives the window its room back.
-    std::fs::write(&entry, format!("{IMPORTS}\n")).expect("shell.ts");
+    std::fs::write(&entry, format!("{LIBRARY_GLOBALS}\n")).expect("shell.ts");
     assert!(role.reload_now().ok);
     settle(&mut role);
     assert!(

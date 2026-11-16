@@ -23,7 +23,6 @@ use gnoblin_js::{
     ENTRY_BUDGET, FRAME_BUDGET, JsConfig, JsErrorKind, JsShell, JsShellConfig, JsShellError, STAGE_BUDGET,
     STARTER_CONFIG,
 };
-use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 mod common;
 use common::*;
@@ -63,18 +62,7 @@ fn the_stock_default_config_is_a_load_and_runs_under_the_stage_budget() {
 
 /// A screen, a seat, a lock and `windows` windows, as a busy desktop would have.
 fn populate(comp: &FakeCompositor, windows: u64) {
-    comp.add_node(
-        20,
-        ROOT,
-        "screen",
-        vec![
-            ("width", MirrorValue::Double(1920.0)),
-            ("height", MirrorValue::Double(1080.0)),
-            ("primary", MirrorValue::Bool(true)),
-        ],
-    );
-    comp.add_node(21, ROOT, "seat", vec![("name", text("seat0"))]);
-    comp.add_node(22, ROOT, "lock", Vec::new());
+    comp.add_desktop(1920.0, 1080.0);
     for index in 0..windows {
         comp.add_window(100 + index, &format!("window {index}"), "foot");
     }

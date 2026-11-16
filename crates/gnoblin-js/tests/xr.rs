@@ -39,18 +39,7 @@ fn double(value: f64) -> MirrorValue {
 fn world(sizes: &[(f64, f64)], body: &str) -> Rig {
     let sizes = sizes.to_vec();
     let mut rig = rig_setup(IMPORTS, body, move |comp| {
-        comp.add_node(
-            20,
-            ROOT,
-            "screen",
-            vec![
-                ("width", double(1000.0)),
-                ("height", double(800.0)),
-                ("primary", MirrorValue::Bool(true)),
-            ],
-        );
-        comp.add_node(SEAT, ROOT, "seat", vec![("name", text("seat0"))]);
-        comp.add_node(22, ROOT, "lock", Vec::new());
+        comp.add_desktop(1000.0, 800.0);
         for (n, (width, height)) in sizes.iter().enumerate() {
             comp.add_node(
                 WIN + n as u64,
