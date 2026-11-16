@@ -64,6 +64,19 @@ choice the main agent made on the owner's behalf; the owner may still overrule i
 | D20 | The custom shader pass (core gap G8) reverses owner decision O7 ("no user shader pass"). It is scheduled as the last step of Phase 7 (M7.9) and flagged to the owner.                                                                                                               | Needed for "control of rendering"; a WGSL effect kind is the narrow way. Overrule: leave it out; shells then render only through canvas, view and the three effects. **Resolved:** scheduled last, after every other Phase 7 step, so the owner can still veto it before any shader code lands.                                                                                                                                                                                                                                                                                                                                                                                                                |
 | D21 | XR stays the out-of-process `extensions/gnoblin-xr` program (J7's first sentence stands; its "no `.so`" clause is reversed for everything else).                                                                                                                                    | An OpenXR runtime loads client code into the calling process and `xrWaitFrame` blocks (`design/xr-extension.md:105-107`). Overrule: an XR std library behind the ABI is possible later and is not planned here.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
+**D7, proven end to end.** The JS library is two packages: the stock lock screen lives in `gnoblin-std`, so a shell that imports
+only `gnoblin-core` draws none. The card in core is what keeps such a session from being a black screen with no way back, and
+`crates/gnoblin/tests/js_lock_core_only.rs` proves it against the real compositor (the lock taken through the tree, keys on
+the seat path of a real keyboard, the PAM test double). With a shell whose entry imports only `gnoblin-core` and holds the tree (it
+places a window, which the tree shows), and with no shell at all: no lock screen is drawn, the card takes the password, an
+empty and a wrong one never unlock, the right one does, a window that had the keyboard hears none of it and hears keys again
+after the unlock. Everything the compositor told a core-only shell, and the tree after every key, holds neither the password
+nor its bytes. What a core-only shell must know about the lock is nothing: it does not engage, beat or authenticate, and the
+card appears. It took no change to the product. A stock shell whose screen throws, hangs or crashes is `js_lock_failures.rs`,
+which still passes after the split. Release build, 20 runs, from the cover proven to the password accepted: a core-only shell
+1.137 to 1.180 s (1 s of grace plus the half second the page allows), no shell 0.079 to 0.117 s; the page says what a core-only shell must know (`docs/session-lock.md`, "A shell on gnoblin-core only"), which is nothing. The takeover tests of the stock screen (`js_lock_boundary.rs`, `js_lock_bound.rs`) had stayed on
+a shell with an empty `shell.ts`, which the split left without a lock screen; they now import `gnoblin-std`.
+
 ### 2.1 Reversals recorded
 
 These earlier decisions said the opposite of what this plan does. Each gets a retraction note in its own file in the first

@@ -81,58 +81,6 @@ fn locked_with_a_shell(body: &str) -> (Session, tempfile::TempDir, Driven) {
     (session, config, shell)
 }
 
-/// What a locked session asks of whoever takes the keys, the shell's screen or the compositor's card: a wrong password
-/// and an empty one never unlock it, and the right one does within `card_after + SLACK` of `since`. `card_after` is
-/// when the card is surely up: [`CARD_WITHIN`] after a shell stopped renewing, nothing after one is gone. `wait` passes
-/// the time between the attempts: it ticks a shell that is alive, and sleeps for one that is not. Returns how long after
-/// `since` the session unlocked.
-#[track_caller]
-fn the_password_is_still_needed(
-    session: &Session,
-    since: Instant,
-    card_after: Duration,
-    mut wait: impl FnMut(Duration),
-) -> Duration {
-    let ipc = session.ipc();
-    let still_locked = |when: &str| {
-        let seen = view(&ipc);
-        assert_eq!(
-            seen.state, "locked",
-            "{when}: a password that was not the right one unlocked: {seen:?}"
-        );
-    };
-    // Before the card can be up: a wrong password and an empty one, typed at whoever holds the keys.
-    type_a_wrong_password(session);
-    wait(Duration::from_millis(300));
-    still_locked("a wrong password");
-    type_nothing(session);
-    wait(Duration::from_millis(300));
-    still_locked("an empty password");
-    // Across the takeover, and then a wrong one when the card is surely up.
-    while since.elapsed() < card_after + Duration::from_millis(500) {
-        wait(Duration::from_millis(100));
-        still_locked("the takeover");
-    }
-    type_a_wrong_password(session);
-    wait(Duration::from_millis(300));
-    still_locked("a wrong password at the card");
-    // The right one, until it takes.
-    let deadline = since + card_after + SLACK;
-    loop {
-        type_the_password(session);
-        wait(Duration::from_millis(400));
-        if view(&ipc).state == "not-locked" {
-            return since.elapsed();
-        }
-        assert!(
-            Instant::now() < deadline,
-            "nobody took the right password within {:?} of the failure: {:?}",
-            card_after + SLACK,
-            view(&ipc)
-        );
-    }
-}
-
 // ---- a shell that hangs, throws, crashes ---------------------------------------------------------------------------
 
 #[test]

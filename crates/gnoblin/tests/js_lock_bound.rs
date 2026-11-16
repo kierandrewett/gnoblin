@@ -126,7 +126,7 @@ fn within_the_bound(what: &str, bound: Duration, took: &[Duration]) {
 fn the_card_takes_the_password_within_the_documented_bound_after_the_last_healthy_beat() {
     let mut measured = Vec::new();
     for run in 0..runs() {
-        let (session, _config, shell) = locked_with_a_driven_shell("export {};\n");
+        let (session, _config, shell) = locked_with_a_driven_shell("import \"gnoblin-std\";\nexport {};\n");
         let beat = *shell
             .forged
             .borrow()
@@ -209,4 +209,62 @@ fn the_card_takes_the_password_within_the_documented_bound_after_the_keyboard_le
         measured.clone(),
     );
     within_the_bound("after the keyboard left the screen", AFTER_THE_KEYBOARD, &measured);
+}
+
+/// The instant the lock was first seen proven: the cover is up and the card's clocks run from here. Read after the
+/// proof, so never earlier than it.
+fn locked_at(session: &Session) -> Instant {
+    lock(session);
+    wait_until("the session locked", session, |seen| seen.state == "locked");
+    Instant::now()
+}
+
+#[test]
+fn the_card_takes_the_password_within_the_grace_when_the_shell_imports_only_gnoblin_core() {
+    // A core-only shell holds the tree and never touches the lock: the compositor cannot know it will not draw a lock
+    // screen, so it gives the shell the grace every shell has, and then the card is the lock UI.
+    let mut measured = Vec::new();
+    for run in 0..runs() {
+        let session = Session::start();
+        let (_mapper, _keys) = client_with_the_keyboard(&session);
+        let (shell, _config) = core_only_shell_holding_the_tree(&session);
+        let proven = locked_at(&session);
+        let unlocked = until_unlocked(
+            &session,
+            AFTER_THE_KEYBOARD + TAIL + Duration::from_secs(5),
+            std::thread::sleep,
+        );
+        let took = unlocked.duration_since(proven);
+        eprintln!("run {run}: the card took the password {took:?} after the cover was proven (core-only shell)");
+        // Not before the grace: the card follows the grace, whoever holds the tree. The compositor's clock moves on turns
+        // of at most 100 ms, so the grace it counts can be that much shorter than the wall clock's.
+        assert!(
+            took + RESOLUTION + Duration::from_millis(100) >= AFTER_THE_KEYBOARD,
+            "run {run}: the card took the password {took:?} after the cover, inside the grace of a shell that holds the tree"
+        );
+        measured.push(took);
+        drop(shell);
+    }
+    report(
+        "the card after the cover, shell on gnoblin-core only",
+        AFTER_THE_KEYBOARD,
+        measured.clone(),
+    );
+    within_the_bound("after the cover with a core-only shell", AFTER_THE_KEYBOARD, &measured);
+}
+
+#[test]
+fn the_card_takes_the_password_within_the_tail_when_no_shell_is_attached() {
+    let mut measured = Vec::new();
+    for run in 0..runs() {
+        let session = Session::start();
+        let (_mapper, _keys) = client_with_the_keyboard(&session);
+        let proven = locked_at(&session);
+        let unlocked = until_unlocked(&session, TAIL + Duration::from_secs(5), std::thread::sleep);
+        let took = unlocked.duration_since(proven);
+        eprintln!("run {run}: the card took the password {took:?} after the cover was proven (no shell)");
+        measured.push(took);
+    }
+    report("the card after the cover, no shell", Duration::ZERO, measured.clone());
+    within_the_bound("after the cover with no shell", Duration::ZERO, &measured);
 }

@@ -16,56 +16,15 @@
 //! (`a_failed_check_logs_one_warning_without_the_password`). The pointer is not exercised here.
 
 use std::fs;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 mod support;
 use support::Mapper;
 use support::lock_session::*;
 
-/// evdev codes of the letters of the password the secrecy test types.
-const HUNTER2: [u32; 7] = [35, 22, 49, 20, 18, 19, 3];
-
-/// Dispatches the client until it has heard `code` pressed, or the time is up.
-fn heard(mapper: &mut Mapper, keys: &support::KeyLog, code: u32) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        mapper.roundtrip();
-        if keys.pressed().contains(&code) {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    false
-}
-
-/// Types the right password until the session unlocks, dispatching the client between the attempts.
-fn unlock(session: &Session, mapper: &mut Mapper) {
-    let deadline = Instant::now() + PATIENCE;
-    loop {
-        type_the_password(session);
-        std::thread::sleep(Duration::from_millis(400));
-        mapper.roundtrip();
-        let seen = view(&session.ipc());
-        if seen.state == "not-locked" {
-            return;
-        }
-        assert!(Instant::now() < deadline, "the session never unlocked: {seen:?}");
-    }
-}
-
-/// A client with a mapped window and the keyboard, and the log of what it hears.
-fn client_with_the_keyboard(session: &Session) -> (Mapper, support::KeyLog) {
-    let mut mapper = Mapper::connect(&session.wayland());
-    mapper.map_window("org.example.app", "App");
-    let keys = mapper.keyboard();
-    // The window has the keyboard when a key typed at the session reaches it.
-    key(session, KEY_A);
-    assert!(
-        heard(&mut mapper, &keys, KEY_A),
-        "the client never heard a key typed before the lock"
-    );
-    (mapper, keys)
-}
+/// The entry of a shell that draws the stock lock screen: importing `gnoblin-std` is what loads it, and a shell that
+/// imports only `gnoblin-core` has none (`js_lock_core_only.rs` is that one).
+const STD_SHELL: &str = "import \"gnoblin-std\";\nexport {};\n";
 
 #[test]
 fn a_window_that_had_the_keyboard_hears_nothing_while_the_shells_lock_screen_takes_the_password() {
@@ -75,7 +34,7 @@ fn a_window_that_had_the_keyboard_hears_nothing_while_the_shells_lock_screen_tak
     // window that has the keyboard and gives the keyboard back to it. (A shell that starts under a lock finds no window
     // to give it back to; the compositor's card restores the focus itself.)
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("shell.ts"), "export {};\n").expect("shell.ts");
+    fs::write(config.path().join("shell.ts"), STD_SHELL).expect("shell.ts");
     let mut shell = Shell::start(&session, config.path());
     std::thread::sleep(Duration::from_millis(1500));
     lock(&session);
@@ -152,7 +111,7 @@ fn a_window_that_arrived_under_the_lock_leaves_the_keyboard_with_the_one_that_ha
     let session = Session::start();
     let (mut mapper, keys) = client_with_the_keyboard(&session);
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("shell.ts"), "export {};\n").expect("shell.ts");
+    fs::write(config.path().join("shell.ts"), STD_SHELL).expect("shell.ts");
     let mut shell = Shell::start(&session, config.path());
     std::thread::sleep(Duration::from_millis(1500));
     lock(&session);
@@ -218,7 +177,7 @@ fn a_window_that_arrived_under_the_lock_leaves_the_keyboard_with_the_one_that_ha
 fn a_window_that_arrived_under_the_lock_has_the_keyboard_after_the_unlock_when_no_window_had_it_before() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("shell.ts"), "export {};\n").expect("shell.ts");
+    fs::write(config.path().join("shell.ts"), STD_SHELL).expect("shell.ts");
     let mut shell = Shell::start(&session, config.path());
     std::thread::sleep(Duration::from_millis(1500));
     lock(&session);
@@ -244,27 +203,13 @@ fn a_window_that_arrived_under_the_lock_has_the_keyboard_after_the_unlock_when_n
     assert!(problems.is_empty(), "the shell reported: {problems:?}");
 }
 
-/// Whether any property of any node in the compositor's tree holds `needle`, as text, in a list of texts or in bytes.
-fn tree_holds(ipc: &std::path::Path, needle: &str) -> bool {
-    support::snapshot(ipc).iter().any(|node| {
-        node.props.iter().any(|prop| {
-            prop.value_text.contains(needle)
-                || prop.value_texts.iter().any(|text| text.contains(needle))
-                || prop
-                    .value_bytes
-                    .windows(needle.len())
-                    .any(|window| window == needle.as_bytes())
-        })
-    })
-}
-
 #[test]
 fn the_password_is_in_no_node_of_the_compositors_tree_typed_or_checked() {
     let session = Session::start();
     lock(&session);
     wait_until("the session locked", &session, |seen| seen.state == "locked");
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("shell.ts"), "export {};\n").expect("shell.ts");
+    fs::write(config.path().join("shell.ts"), STD_SHELL).expect("shell.ts");
     let mut shell = Shell::start(&session, config.path());
     wait_until("the shell's lock screen is up and engaged", &session, |seen| {
         seen.engaged && seen.texts.iter().any(|text| text == "Enter your password.")

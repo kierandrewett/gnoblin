@@ -28,7 +28,7 @@ use gnoblin_tree_client::tree_link::SocketTreeLink;
 use gnoblin_tree_client::tree_mirror::{LinkError, TreeIncoming, TreeLink, TreeTx, TxOp, TxReply};
 use gnoblin_types::DeviceId;
 
-use super::snapshot;
+use super::{KeyLog, Mapper, snapshot};
 
 pub const PATIENCE: Duration = Duration::from_secs(60);
 pub const USER: &str = "kieran";
@@ -40,6 +40,11 @@ pub const KEY_I: u32 = 23;
 pub const KEY_N: u32 = 49;
 pub const KEY_O: u32 = 24;
 pub const KEY_ENTER: u32 = 28;
+
+/// evdev codes of the letters of "hunter2": a password the scripted check can be made to accept
+/// ([`Session::start_accepting`]), long and odd enough to be found in nothing else a session says.
+pub const HUNTER2: [u32; 7] = [35, 22, 49, 20, 18, 19, 3];
+pub const HUNTER2_TEXT: &str = "hunter2";
 
 /// The keyboard the tests type on. The seat reads the character a key types from its keyboard's own state, so the
 /// keyboard is announced first, as a backend announces a real one.
@@ -64,6 +69,12 @@ pub struct Session {
 
 impl Session {
     pub fn start() -> Self {
+        Self::start_accepting("hi")
+    }
+
+    /// A session whose scripted password check accepts `password` for the session user.
+    pub fn start_accepting(password: &str) -> Self {
+        let password = password.to_owned();
         let directory = tempfile::tempdir().expect("a temporary directory");
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).expect("the directory mode");
         let stop = StopHandle::new();
@@ -81,7 +92,7 @@ impl Session {
         // The screens' memory numbers are published as a change a second into a session: a change the tests do not count.
         config.wayland.gpu_memory_period = Duration::ZERO;
         config.wayland.lock_check = Some(gnoblin_wayland::LockCheck {
-            authenticator: Arc::new(gnoblin_lock_auth::FakeAuthenticator::new().accept(USER, "hi")),
+            authenticator: Arc::new(gnoblin_lock_auth::FakeAuthenticator::new().accept(USER, &password)),
             user: Some(USER.to_owned()),
         });
         let thread = std::thread::Builder::new()
@@ -316,6 +327,58 @@ pub fn type_nothing(session: &Session) {
     key(session, KEY_ENTER);
 }
 
+/// What a locked session asks of whoever takes the keys, the shell's screen or the compositor's card: a wrong password
+/// and an empty one never unlock it, and the right one does within `card_after + SLACK` of `since`. `card_after` is
+/// when the card is surely up: [`CARD_WITHIN`] after a shell stopped renewing, nothing after one is gone. `wait` passes
+/// the time between the attempts: it ticks a shell that is alive, and sleeps for one that is not. Returns how long after
+/// `since` the session unlocked.
+#[track_caller]
+pub fn the_password_is_still_needed(
+    session: &Session,
+    since: Instant,
+    card_after: Duration,
+    mut wait: impl FnMut(Duration),
+) -> Duration {
+    let ipc = session.ipc();
+    let still_locked = |when: &str| {
+        let seen = view(&ipc);
+        assert_eq!(
+            seen.state, "locked",
+            "{when}: a password that was not the right one unlocked: {seen:?}"
+        );
+    };
+    // Before the card can be up: a wrong password and an empty one, typed at whoever holds the keys.
+    type_a_wrong_password(session);
+    wait(Duration::from_millis(300));
+    still_locked("a wrong password");
+    type_nothing(session);
+    wait(Duration::from_millis(300));
+    still_locked("an empty password");
+    // Across the takeover, and then a wrong one when the card is surely up.
+    while since.elapsed() < card_after + Duration::from_millis(500) {
+        wait(Duration::from_millis(100));
+        still_locked("the takeover");
+    }
+    type_a_wrong_password(session);
+    wait(Duration::from_millis(300));
+    still_locked("a wrong password at the card");
+    // The right one, until it takes.
+    let deadline = since + card_after + SLACK;
+    loop {
+        type_the_password(session);
+        wait(Duration::from_millis(400));
+        if view(&ipc).state == "not-locked" {
+            return since.elapsed();
+        }
+        assert!(
+            Instant::now() < deadline,
+            "nobody took the right password within {:?} of the failure: {:?}",
+            card_after + SLACK,
+            view(&ipc)
+        );
+    }
+}
+
 // ---- a shell over a link the compositor can be made to refuse ------------------------------------------------------
 
 /// What the forging link does to a transaction on its way out.
@@ -344,6 +407,9 @@ pub struct Forged {
     pub beats: Vec<Instant>,
     /// When each write of the seat's `focus` went out, with the node it named.
     pub focus_writes: Vec<(Instant, u64)>,
+    /// Everything the compositor told the shell on the tree link since a test set this to `Some`: `None` records
+    /// nothing, as the long tests do not need the paint lists of a lock screen kept.
+    pub incoming: Option<Vec<TreeIncoming>>,
 }
 
 /// The shell's own socket link, with the compositor's answers recorded and one transaction made stale on demand.
@@ -395,9 +461,13 @@ impl TreeLink for ForgingLink {
 
     fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
         let incoming = self.inner.poll()?;
+        let mut forged = self.forged.borrow_mut();
         for message in &incoming {
             if let TreeIncoming::Reply(reply) = message {
-                self.forged.borrow_mut().replies.push(reply.clone());
+                forged.replies.push(reply.clone());
+            }
+            if let Some(recorded) = forged.incoming.as_mut() {
+                recorded.push(message.clone());
             }
         }
         Ok(incoming)
@@ -486,5 +556,116 @@ impl Driven {
     /// One more frame, and what it said if it failed: the end of a role, as a crash is.
     pub fn try_tick(&mut self) -> Result<(), JsShellError> {
         self.role.tick()
+    }
+}
+
+// ---- a client with the keyboard, and what a locked session keeps from it ---------------------------------------------
+
+/// Dispatches the client until it has heard `code` pressed, or the time is up.
+pub fn heard(mapper: &mut Mapper, keys: &KeyLog, code: u32) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        mapper.roundtrip();
+        if keys.pressed().contains(&code) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    false
+}
+
+/// Types the right password until the session unlocks, dispatching the client between the attempts.
+#[track_caller]
+pub fn unlock(session: &Session, mapper: &mut Mapper) {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        type_the_password(session);
+        std::thread::sleep(Duration::from_millis(400));
+        mapper.roundtrip();
+        let seen = view(&session.ipc());
+        if seen.state == "not-locked" {
+            return;
+        }
+        assert!(Instant::now() < deadline, "the session never unlocked: {seen:?}");
+    }
+}
+
+/// A client with a mapped window and the keyboard, and the log of what it hears.
+#[track_caller]
+pub fn client_with_the_keyboard(session: &Session) -> (Mapper, KeyLog) {
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.map_window("org.example.app", "App");
+    let keys = mapper.keyboard();
+    // The window has the keyboard when a key typed at the session reaches it.
+    key(session, KEY_A);
+    assert!(
+        heard(&mut mapper, &keys, KEY_A),
+        "the client never heard a key typed before the lock"
+    );
+    (mapper, keys)
+}
+
+/// Whether any property of any node in the compositor's tree holds `needle`, as text, in a list of texts or in bytes.
+pub fn tree_holds(ipc: &Path, needle: &str) -> bool {
+    snapshot(ipc).iter().any(|node| {
+        node.props.iter().any(|prop| {
+            prop.value_text.contains(needle)
+                || prop.value_texts.iter().any(|text| text.contains(needle))
+                || prop
+                    .value_bytes
+                    .windows(needle.len())
+                    .any(|window| window == needle.as_bytes())
+        })
+    })
+}
+
+// ---- a shell that imports only gnoblin-core ----------------------------------------------------------------------------
+
+/// The app id of the window [`CORE_ONLY_SHELL`] places.
+pub const PLACED_APP: &str = "org.example.app";
+
+/// Where [`CORE_ONLY_SHELL`] puts a window: not where the compositor would, so a window found here was placed by the
+/// shell and the shell holds the tree.
+pub const PLACED_AT: f64 = 120.0;
+
+/// The entry of a shell that imports only `gnoblin-core`: it places every window at [`PLACED_AT`] and does nothing else.
+/// It never touches the lock: no lock screen, no `engaged`, no `authenticate`, no `heartbeat`.
+pub const CORE_ONLY_SHELL: &str = "import { gnoblin } from \"gnoblin-core\";\n\
+    import type { Client } from \"gnoblin-core\";\n\
+    gnoblin.clients.addListener({\n\
+    \x20   onAdded(client: Client) {\n\
+    \x20       client.bounds = { x: 120, y: 80, width: 300, height: 200 };\n\
+    \x20   },\n\
+    });\n";
+
+/// Starts [`CORE_ONLY_SHELL`] on `session` in a thread of its own and waits until the compositor's tree shows the window
+/// of [`PLACED_APP`] where the shell puts it: the shell attached, holds the tree and runs.
+#[track_caller]
+pub fn core_only_shell_holding_the_tree(session: &Session) -> (Shell, tempfile::TempDir) {
+    let config = tempfile::tempdir().expect("a config directory");
+    fs::write(config.path().join("shell.ts"), CORE_ONLY_SHELL).expect("shell.ts");
+    let shell = Shell::start(session, config.path());
+    wait_until_placed(session, || {});
+    (shell, config)
+}
+
+/// Runs `between` and reads the tree until the window of [`PLACED_APP`] is at [`PLACED_AT`].
+#[track_caller]
+pub fn wait_until_placed(session: &Session, mut between: impl FnMut()) {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        between();
+        let windows = super::scene(&session.ipc());
+        if windows
+            .iter()
+            .any(|window| window.app_id == PLACED_APP && (window.x - PLACED_AT).abs() < 0.5)
+        {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the core-only shell never placed the window: {windows:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
     }
 }

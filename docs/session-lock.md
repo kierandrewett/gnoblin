@@ -163,8 +163,8 @@ The answers are tested through the compositor's lock path with a scripted authen
 When the compositor holds the lock itself, something has to take the password. The lock is the compositor's own when it
 was taken through the `lock` node: `gnoblinctl`, the screensaver service or logind.
 
-The stock JavaScript shell takes the password with a lock screen of its own. `data/js/gnoblin-std/lock.ts` draws a clock and a
-masked password entry over the cover, under the `lock` node:
+The stock JavaScript shell takes the password with a lock screen of its own. `data/js/gnoblin-std/lock.ts`, which a script
+loads by importing `gnoblin-std`, draws a clock and a masked password entry over the cover, under the `lock` node:
 
 - It comes up when `state` leaves `not-locked`. A shell that starts while the session is locked finds the state already
   there.
@@ -243,6 +243,29 @@ The card cannot be reached from a script:
 The cover and the input gate are unchanged. The card's colours, radius and font follow `dialogs.style`, clamped like the
 other built-in dialogs. The time of day is read from `$TZ` or `/etc/localtime`, including the rule at the end of a TZif
 file. A zone the card cannot read shows UTC.
+
+### A shell on gnoblin-core only
+
+The stock lock screen is `gnoblin-std/lock`. A shell that imports only `gnoblin-core` loads no std module, so it draws no
+lock screen. The card is in core on purpose (`design/modular-framework.md`, D7): a locked session whose shell does not draw
+a lock screen is never a black screen with no way back.
+
+What a core-only shell must know about the lock is nothing:
+
+- It does not draw a lock screen, set `engaged`, send `heartbeat` or call `authenticate`. It holds the tree and places its
+  windows, and the lock is not its business.
+- The lock is taken, the cover is proven, and the card takes the password. A shell that holds the tree gets the one second
+  of grace every shell gets, and a session with no shell attached gets the card at once.
+- A wrong password and an empty one never unlock the session, and the right one does. No key reaches a window while the
+  session is locked, and the window that had the keyboard hears keys again after the unlock.
+- The shell is told nothing of the password. The card keeps it in a wiped buffer on the compositor's side, the check
+  runs there, and nothing the compositor sends the shell, a node, an event or an answer, carries it.
+
+A core-only shell that wants a lock screen of its own can draw one: the same contract as the stock screen (the nodes, the
+`engaged` flag, the lease and the keyboard above) is open to it, and the card steps aside while it holds.
+
+The card takes the password after the grace for a shell that holds the tree, and at once when no shell is attached, in both
+cases plus the half second below.
 
 ### What this protects, and what it cannot
 
@@ -385,7 +408,14 @@ inside a call, and while a frozen shell's socket is not read.
     - after an unlock, when a window arrived under the lock, the window that had the keyboard before the lock has it
       again, through the shell's screen and through the card;
     - a window that arrived under the lock when none had the keyboard before gets it.
-- `crates/gnoblin/tests/js_lock_bound.rs` measures the takeover bounds above and asserts them.
+- `crates/gnoblin/tests/js_lock_bound.rs` measures the takeover bounds above and asserts them, and the card's bounds with a
+  shell that imports only `gnoblin-core` and with none.
+- `crates/gnoblin/tests/js_lock_core_only.rs` runs the real compositor with a shell that imports only `gnoblin-core` and
+  holds the tree, and with no shell:
+    - no lock screen is drawn and the card takes the password;
+    - an empty and a wrong password never unlock the session, and the right one does;
+    - a window that had the keyboard hears none of it, and hears keys again after the unlock;
+    - nothing the compositor told a core-only shell, and no node of the tree, holds the password or its bytes.
 - `crates/gnoblin/tests/js_guardian.rs` kills the real runtime process while the session is locked (the session stays
   locked and the restarted shell holds the screen again) and freezes it with `SIGSTOP` while a window floods the tree with
   1.4 MB of title changes (the compositor's tree answers within 150 ms and the session stays locked).
