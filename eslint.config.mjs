@@ -62,15 +62,5 @@ export default [
         files: ["data/js/gnoblin-std/layout.ts", "data/js/gnoblin-std/ui/canvas.ts"],
         rules: { "@typescript-eslint/no-unsafe-declaration-merging": "off" },
     },
-    {
-        // The generated declarations are generated from the schema; lint the handwritten API sources instead.
-        files: ["crates/gnoblin-js-types/tests/golden/gnoblin.d.ts"],
-        rules: {
-            "@typescript-eslint/no-empty-object-type": "off",
-            "@typescript-eslint/no-unsafe-function-type": "off",
-            "@typescript-eslint/no-unsafe-declaration-merging": "off",
-            "@typescript-eslint/ban-ts-comment": "off",
-        },
-    },
     { files: ["**/*.cjs"], languageOptions: { sourceType: "commonjs" } },
 ];

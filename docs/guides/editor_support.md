@@ -36,8 +36,8 @@ Any editor that runs the TypeScript language service, such as VS Code, Neovim, H
   classes from `scene/camera.ts` and `scene/node.ts`. Every module name maps to the file of that name under
   `.gnoblin/lib`, and `"gnoblin-core"` and `"gnoblin-std"` are the `index.ts` of their directories.
 - A class extends the class it really extends: `Camera3D` is assignable to `Node`, and a `Client` to a `NativeObject`.
-- `.gnoblin/gnoblin.d.ts` holds what is not source: the interfaces generated from the object schema (the modules
-  `gnoblin-core/schema/...`) and the two globals, `gnoblin` and `console`.
+- `.gnoblin/gnoblin.d.ts` holds what is not source: the two globals, `gnoblin` and `console`. `gnoblin` is the
+  library's `Gnoblin` class, so its members are the ones `gnoblin-core/host/gnoblin` implements.
 - `tsconfig.json` is yours. It extends the generated one, so a release can change the compiler options and the paths
   without touching your file. Add your own `include`, `exclude` or options next to the `extends`. A `files` list of
   your own replaces the generated one, which names `gnoblin.d.ts`: keep `./.gnoblin/gnoblin.d.ts` in it.

@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "lib": [
+      "es2023"
+    ],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "paths": {
+      "gnoblin-core": [
+        "./lib/gnoblin-core/index.ts"
+      ],
+      "gnoblin-core/*": [
+        "./lib/gnoblin-core/*"
+      ],
+      "gnoblin-std": [
+        "./lib/gnoblin-std/index.ts"
+      ],
+      "gnoblin-std/*": [
+        "./lib/gnoblin-std/*"
+      ]
+    },
+    "strict": true,
+    "target": "es2023",
+    "types": []
+  },
+  "files": [
+    "./gnoblin.d.ts"
+  ]
+}

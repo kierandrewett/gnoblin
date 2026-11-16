@@ -377,7 +377,7 @@ fn type_check(file: &Path, search: &TscSearch) -> TypeCheck {
 /// The name of the configuration `check --types` hands the compiler, in the scratch directory.
 const CHECK_TSCONFIG_FILE: &str = "check.tsconfig.json";
 
-/// Write the editor files into `dir`: the library as the shell embeds it, the schema declarations and the tsconfigs.
+/// Write the editor files into `dir`: the library as the shell embeds it, the global declarations and the tsconfigs.
 /// `types init`, `config init`, `migrate` and `check --types` all write the same files through this.
 pub(crate) fn write_editor_files(dir: &Path) -> io::Result<JsWritten> {
     ensure_user_files(dir, &editor_library())

@@ -1,11 +1,10 @@
 //! The docs-parity gate: a name that a shell-api or events page documents must be implemented.
 //!
-//! The implemented surface is what a script's editor sees: the generated schema declarations
-//! (`crates/gnoblin-js-types/tests/golden/gnoblin.d.ts`, which a golden test keeps equal to what
-//! `gnoblinctl types init` writes) and the library's own sources (`data/js/gnoblin-core` and `data/js/gnoblin-std`).
-//! A dotted `gnoblin.` name is followed member by member from the `Gnoblin` class through the types it names. A
-//! `gnoblin.<object>.<signal>` event is one of the keys of `GnoblinSignals`. A `.method(` call is matched by name
-//! across every class and interface, because a page does not say which object the receiver is.
+//! The implemented surface is what a script imports: the library's own sources (`data/js/gnoblin-core` and
+//! `data/js/gnoblin-std`), which `gnoblinctl types init` hands an editor as they are, and the schema's signals. A
+//! dotted `gnoblin.` name is followed member by member from the `Gnoblin` class through the types it names. A
+//! `gnoblin.<object>.<signal>` event is a signal of the schema. A `.method(` call is matched by name across every
+//! class and interface, because a page does not say which object the receiver is.
 //!
 //! A documented name that is not implemented must be listed in `design/docs-parity/allow.toml` with the
 //! slice that will implement it, or `docs wrong`. The gate fails on an unlisted name, and on a listed name
@@ -16,18 +15,16 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
+use gnoblin_schema::{Catalog, proto};
 use serde::Deserialize;
 
-const TYPES: &str = "crates/gnoblin-js-types/tests/golden/gnoblin.d.ts";
-/// The packages of the library the surface is read from, beside the generated declarations.
+/// The packages of the library the surface is read from.
 const LIBRARY: &[&str] = &["data/js/gnoblin-core", "data/js/gnoblin-std"];
 const ALLOW: &str = "design/docs-parity/allow.toml";
 const DOC_DIRS: &[&str] = &["docs/shell-api", "docs/events"];
 const DOC_FILES: &[&str] = &["docs/user-shell.md", "docs/user-scripts.md"];
 /// The interface every dotted `gnoblin.` name starts from.
 const ROOT_TYPE: &str = "Gnoblin";
-/// The interface whose quoted keys are the schema's signal names.
-const SIGNALS_TYPE: &str = "GnoblinSignals";
 /// Methods of the JavaScript built-ins. A documented `list.map(` is language code, not a gnoblin name.
 const BUILTIN_METHODS: &[&str] = &[
     "map",
@@ -288,14 +285,8 @@ fn split_top_level(list: &str) -> Vec<&str> {
 }
 
 /// Record one member line of the type `owner`: a method adds `.name` to the methods, a property or accessor
-/// adds the type it names. In the signals interface a quoted key is an event instead.
+/// adds the type it names.
 fn read_member(owner: &str, body: &str, implemented: &mut Implemented) {
-    if owner == SIGNALS_TYPE {
-        if let Some(key) = body.strip_prefix('"').and_then(|rest| rest.split('"').next()) {
-            implemented.events.insert(key.replace('-', "_"));
-        }
-        return;
-    }
     let mut rest = body;
     let mut accessor = false;
     loop {
@@ -521,12 +512,12 @@ fn load_docs(root: &Path) -> Result<Vec<Mention>, String> {
     Ok(mentions)
 }
 
-/// The text the implemented surface is read from: the generated schema declarations (`TYPES`), then every source of the
-/// library under `LIBRARY`, package by package and in path order within each. The library is the real TypeScript that
-/// `gnoblinctl types init` hands an editor, so a name the docs promise is checked against the classes a script
-/// imports and not against a second declaration of them.
+/// The text the implemented surface is read from: every source of the library under `LIBRARY`, package by package and
+/// in path order within each. The library is the real TypeScript that `gnoblinctl types init` hands an editor, so a
+/// name the docs promise is checked against the classes a script imports and not against a second declaration of
+/// them.
 fn load_surface(root: &Path) -> Result<String, String> {
-    let mut text = fs::read_to_string(root.join(TYPES)).map_err(|error| format!("could not read {TYPES}: {error}"))?;
+    let mut text = String::new();
     for package in LIBRARY {
         let mut sources = Vec::new();
         collect_sources(&root.join(package), &mut sources)?;
@@ -540,6 +531,21 @@ fn load_surface(root: &Path) -> Result<String, String> {
         }
     }
     Ok(text)
+}
+
+/// Every signal the schema declares, as `namespace.object.signal`: the events the compositor raises, which the
+/// documents name as `gnoblin.<object>.<signal>`.
+fn schema_signals(root: &Path) -> Result<BTreeSet<String>, String> {
+    let catalog = Catalog::load_dir(&root.join(proto::SCHEMA_DIR)).map_err(|error| error.to_string())?;
+    let mut signals = BTreeSet::new();
+    for namespace in catalog.namespaces() {
+        for object in catalog.objects(&namespace) {
+            for signal in &object.signals {
+                signals.insert(format!("{namespace}.{}.{}", object.name, signal.name).replace('-', "_"));
+            }
+        }
+    }
+    Ok(signals)
 }
 
 /// Every `.ts` file under `dir`.
@@ -562,7 +568,8 @@ fn collect_sources(dir: &Path, into: &mut Vec<std::path::PathBuf>) -> Result<(),
 pub fn run() -> ExitCode {
     let root = Path::new(".");
     let outcome = (|| -> Result<DocsReport, String> {
-        let implemented = parse_declarations(&load_surface(root)?);
+        let mut implemented = parse_declarations(&load_surface(root)?);
+        implemented.events.extend(schema_signals(root)?);
         let allow = load_allow(root)?;
         Ok(reconcile(&load_docs(root)?, &implemented, &allow))
     })();
@@ -638,16 +645,15 @@ declare module "gnoblin-core" {
     }
     export interface Rect extends Vec2, Size2D {}
 }
-declare module "gnoblin-core/schema/signals" {
-    export interface GnoblinSignals {
-        "gnoblin.window.created": { readonly name: "gnoblin.window.created"; };
-        "gnoblin.session.lock_state_changed": { readonly state: string; };
-    }
-}
 "#;
 
+    /// The surface of the declarations, and two of the schema's signals (the gate reads those from the schema).
     fn implemented() -> Implemented {
-        parse_declarations(DECLARATIONS)
+        let mut surface = parse_declarations(DECLARATIONS);
+        surface
+            .events
+            .extend(["gnoblin.window.created", "gnoblin.session.lock_state_changed"].map(str::to_owned));
+        surface
     }
 
     fn entry(name: &str, doc: &str) -> AllowEntry {
@@ -831,8 +837,9 @@ declare module "gnoblin-core/schema/signals" {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("the xtask lives in the repository");
-        let text = load_surface(root).expect("the published declarations and the library read");
-        let surface = parse_declarations(&text);
+        let text = load_surface(root).expect("the library reads");
+        let mut surface = parse_declarations(&text);
+        surface.events.extend(schema_signals(root).expect("the schema loads"));
         for name in [
             "gnoblin.clients",
             "gnoblin.process.spawn",

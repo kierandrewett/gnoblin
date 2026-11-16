@@ -143,11 +143,6 @@ for (const [fixture, word, after, tail] of [
         `go-to-definition of ${word} in ${fixture} opens ${tail} (${first?.file ?? "nothing"})`,
     );
 }
-const [schema] = definitionOf("modules.ts", "Config", "= Config;");
-check(
-    schema !== undefined && real(schema.file) === real(path.join(configDir, ".gnoblin", "gnoblin.d.ts")),
-    `go-to-definition of the schema interface Config opens .gnoblin/gnoblin.d.ts (${schema?.file ?? "nothing"})`,
-);
 
 // -- 4. inheritance -------------------------------------------------------------------------------------------------
 

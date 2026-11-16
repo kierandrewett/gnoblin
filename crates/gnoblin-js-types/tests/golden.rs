@@ -1,42 +1,57 @@
-//! The generated declarations of the real schema, pinned to a golden file.
+//! The generated files, pinned to golden files: `gnoblin.d.ts` and the two `tsconfig.json` files `types init` writes.
 //!
-//! A schema change that alters any declaration fails here; a change that is meant to
-//! alter them regenerates the golden with
+//! A change that alters any of them fails here; a change that is meant to alter them regenerates the goldens with
 //! `UPDATE_GOLDEN=1 cargo test -p gnoblin-js-types --test golden`.
 
 use std::path::{Path, PathBuf};
 
-use gnoblin_js_types::{render_dts, stock_catalog};
+use gnoblin_js_types::{render_dts, render_generated_tsconfig, render_user_tsconfig};
 
-fn golden_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/gnoblin.d.ts")
+fn golden_path(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden").join(name)
 }
 
-#[test]
-fn the_rendered_stock_schema_matches_the_golden() {
-    let catalog = stock_catalog().expect("the embedded schema loads");
-    let rendered = render_dts(&catalog);
+fn matches_golden(name: &str, rendered: &str) {
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
-        std::fs::write(golden_path(), &rendered).expect("write the golden");
+        std::fs::write(golden_path(name), rendered).expect("write the golden");
         return;
     }
-    let golden = std::fs::read_to_string(golden_path()).expect("the golden is checked in");
+    let golden = std::fs::read_to_string(golden_path(name)).expect("the golden is checked in");
     assert!(
         rendered == golden,
-        "gnoblin.d.ts drifted from tests/golden/gnoblin.d.ts; if the schema change is meant, \
-         regenerate with UPDATE_GOLDEN=1"
+        "{name} drifted from tests/golden/{name}; if the change is meant, regenerate with UPDATE_GOLDEN=1"
     );
 }
 
 #[test]
-fn rendering_twice_is_the_same_text() {
-    let first = render_dts(&stock_catalog().expect("the embedded schema loads"));
-    let second = render_dts(&stock_catalog().expect("the embedded schema loads"));
-    assert_eq!(first, second);
+fn the_declarations_match_the_golden() {
+    matches_golden("gnoblin.d.ts", &render_dts());
 }
 
 #[test]
-fn the_declarations_are_ascii() {
-    let rendered = render_dts(&stock_catalog().expect("the embedded schema loads"));
+fn the_generated_tsconfig_matches_the_golden() {
+    matches_golden("tsconfig.generated.json", &render_generated_tsconfig());
+}
+
+#[test]
+fn the_user_tsconfig_matches_the_golden() {
+    matches_golden("tsconfig.user.json", &render_user_tsconfig());
+}
+
+#[test]
+fn the_declarations_are_ascii_and_the_same_every_time() {
+    let rendered = render_dts();
     assert!(rendered.is_ascii(), "the generated file must be ASCII");
+    assert_eq!(rendered, render_dts());
+}
+
+#[test]
+fn the_declarations_declare_only_the_two_globals() {
+    let rendered = render_dts();
+    let declared: Vec<&str> = rendered
+        .lines()
+        .filter(|line| line.starts_with("declare "))
+        .map(|line| line.split(':').next().unwrap_or(line))
+        .collect();
+    assert_eq!(declared, ["declare const gnoblin", "declare const console"]);
 }

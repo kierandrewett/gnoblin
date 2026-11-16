@@ -9,7 +9,7 @@
 //!   .gitignore               "*", so a dotfiles repository ignores the directory
 //!   VERSION                  the version that wrote the directory
 //!   tsconfig.json            strict ES2023, bundler resolution, and the two `paths` that map the library
-//!   gnoblin.d.ts             the schema declarations and the globals (`gnoblin`, `console`), generated
+//!   gnoblin.d.ts             the globals (`gnoblin`, `console`)
 //!   lib/gnoblin-core/**.ts   the sources of `gnoblin-core`: `gnoblin-core` is lib/gnoblin-core/index.ts,
 //!                            `gnoblin-core/host/client` is lib/gnoblin-core/host/client.ts, ...
 //!   lib/gnoblin-std/**.ts    the sources of `gnoblin-std`: `gnoblin-std/scene/node` is
@@ -29,7 +29,6 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::render::render_dts;
-use crate::stock::stock_catalog;
 
 /// The directory under the configuration directory that holds everything generated.
 pub const GENERATED_DIR: &str = ".gnoblin";
@@ -159,10 +158,9 @@ fn legacy_user_tsconfig() -> Value {
 ///
 /// # Errors
 ///
-/// An [`io::Error`] when the directory or a file cannot be written, when the embedded schema does not load, or of kind
-/// [`io::ErrorKind::InvalidInput`] when a library path is absolute or leaves the library directory.
+/// An [`io::Error`] when the directory or a file cannot be written, or of kind [`io::ErrorKind::InvalidInput`] when a
+/// library path is absolute or leaves the library directory.
 pub fn ensure_user_files(config_dir: &Path, library: &[(String, String)]) -> io::Result<JsWritten> {
-    let catalog = stock_catalog().map_err(io::Error::other)?;
     let wanted = library_paths(library)?;
 
     let generated = config_dir.join(GENERATED_DIR);
@@ -178,7 +176,7 @@ pub fn ensure_user_files(config_dir: &Path, library: &[(String, String)]) -> io:
     prune(&library_dir, &library_dir, &wanted)?;
 
     let types = generated.join(TYPES_FILE);
-    write_if_changed(&types, &render_dts(&catalog))?;
+    write_if_changed(&types, &render_dts())?;
     write_if_changed(&generated.join(GENERATED_TSCONFIG_FILE), &render_generated_tsconfig())?;
     write_if_changed(
         &generated.join(VERSION_FILE),
@@ -395,11 +393,11 @@ mod tests {
             "the sources are written as given"
         );
         let types = fs::read_to_string(&written.types).expect("the types are readable");
-        assert!(types.contains("declare module \"gnoblin-core/schema/gnoblin\""));
         assert!(types.contains("declare const gnoblin:"));
+        assert!(types.contains("declare const console:"));
         assert!(
-            !types.contains("declare module \"gnoblin\""),
-            "the library is not declared a second time"
+            !types.contains("declare module"),
+            "the file declares the two globals and nothing else"
         );
         let version = fs::read_to_string(written.generated.join(VERSION_FILE)).expect("the version");
         assert_eq!(version, format!("gnoblin {}\n", env!("CARGO_PKG_VERSION")));

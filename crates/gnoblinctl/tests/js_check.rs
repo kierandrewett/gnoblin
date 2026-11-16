@@ -327,12 +327,9 @@ fn types_init_writes_the_real_sources_and_a_second_run_keeps_an_edited_tsconfig(
     assert!(out.contains("gnoblin.d.ts refreshed"), "{out}");
     assert!(out.contains("tsconfig.json created"), "{out}");
     let declarations = fs::read_to_string(target.join(".gnoblin/gnoblin.d.ts")).expect("the declarations are written");
+    assert!(declarations.contains("declare const gnoblin:"), "{declarations}");
     assert!(
-        declarations.contains("declare module \"gnoblin-core/schema/tree\""),
-        "{declarations}"
-    );
-    assert!(
-        !declarations.contains("declare module \"gnoblin\""),
+        !declarations.contains("declare module"),
         "the library is not declared a second time"
     );
     let tsconfig = fs::read_to_string(target.join("tsconfig.json")).expect("the tsconfig is written");

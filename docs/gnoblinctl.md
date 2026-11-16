@@ -461,7 +461,7 @@ shows the comment written above the class, and a class extends the class it real
   tsconfig.json              yours: extends .gnoblin/tsconfig.json
   .gnoblin/                  generated, rewritten on every run
     tsconfig.json            the compiler options and the two `paths` that find the library
-    gnoblin.d.ts             the schema declarations and the `gnoblin` and `console` globals
+    gnoblin.d.ts             the `gnoblin` and `console` globals
     lib/                     the library, one directory a package: `gnoblin-core` is gnoblin-core/index.ts,
                              `gnoblin-std/scene` is gnoblin-std/scene.ts, `gnoblin-std/scene/node` is
                              gnoblin-std/scene/node.ts, and so on
