@@ -1357,7 +1357,8 @@ impl Dispatcher {
                 self.portal.configure(&config);
                 self.secret.configure(&config);
                 self.lock_card.configure(&config);
-                crate::portal::report_dialog_style(&config);
+                #[cfg(feature = "std-providers")]
+                crate::std_providers::portal_ui::report_dialog_style(&config);
                 // Reduced motion turns animations off in the compositor loop. A document that
                 // does not name the key is not reduced, so it animates as before.
                 let reduced_motion = config

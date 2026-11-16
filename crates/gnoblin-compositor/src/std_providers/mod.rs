@@ -8,6 +8,8 @@
 //!   (`Fallback`), registered by [`window_manager`]; the `window-management` section that configures it is [`wm`];
 //! - the visual accessibility ([`a11y`]) and the visual bell ([`bell`]) turn their configuration sections into the
 //!   composer's `a11y.zoom`, `a11y.filter` and `bell.flash` settings, which the frame and the bell mechanisms read;
+//! - the portal dialogs ([`portal_ui`]) are the built-in [`crate::portal::UiProvider`], with the `dialogs.style`
+//!   section that styles every built-in dialog.
 //!
 //! With the feature off none of this is compiled: the session has no window-manager provider (`NullWm`), reads none of
 //! those sections, draws no portal dialog (a request that needs one is refused `no-ui`), and the settings stay at their
@@ -16,13 +18,21 @@
 
 pub mod a11y;
 pub mod bell;
+pub(crate) mod portal_ui;
 pub mod wm;
 
 use gnoblin_wayland::{ControlHandle, Setting, TitlebarActions, WindowManagerFactory};
 
+use crate::portal::UiProvider;
+
 /// The window-manager provider a session starts with when its configuration names none: the stock one.
 pub(crate) fn window_manager() -> WindowManagerFactory {
     gnoblin_std_wm::factory()
+}
+
+/// The portal UI provider a session starts with: the built-in dialogs, drawn into a frame of `width` by `height` pixels.
+pub(crate) fn portal_ui(width: usize, height: usize) -> Box<dyn UiProvider> {
+    Box::new(portal_ui::PortalUi::new(width, height))
 }
 
 /// Puts `settings` into `list`, replacing a setting of the same key already there, so a document read twice (from the

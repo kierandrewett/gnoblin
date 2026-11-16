@@ -7,6 +7,10 @@
 //! A request and a key travel on different connections, so nothing orders a key after its
 //! request. `admit` is the barrier: a test admits a dialog before it keys it. Each test owns
 //! its sockets and directory, so the tests run concurrently.
+//!
+//! The dialogs are the stock `UiProvider` (`std_providers/portal_ui.rs`), so the whole file is `std-providers`; with the
+//! feature off a request is refused `no-ui` (`portal_no_ui.rs`).
+#![cfg(feature = "std-providers")]
 
 mod support;
 

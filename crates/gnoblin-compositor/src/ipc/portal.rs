@@ -1,8 +1,8 @@
-//! The compositor-side service that connects `portal.ui` requests to the [`PortalUi`]
+//! The compositor-side service that connects `portal.ui` requests to the [`UiProvider`]
 //! session. It records the owner of each admitted request, settles each outcome to
 //! that owner, withdraws a departed connection's requests, and settles open requests on a lock.
 //!
-//! [`PortalService`] owns the [`PortalUi`] session and the owner of every request
+//! [`PortalService`] owns the [`UiProvider`] session and the owner of every request
 //! it admitted. Each method returns the replies the dispatcher must write, so the
 //! service itself never touches a socket. Its rules:
 //!
@@ -41,10 +41,12 @@ use gnoblin_types::{ClientId, KeyState, OutputId, ParentWindow, Rect, RequestId,
 use gnoblin_wayland::{Modal, ModalEvent, SessionSnapshot, WindowProcess};
 
 use crate::log;
-use crate::portal::{CancelReason, PortalError, PortalUi, Verdict};
+use crate::portal::{CancelReason, PortalError, UiProvider, Verdict};
 
 /// The built-in dialog's frame size, in pixels.
+#[cfg(feature = "std-providers")]
 const FRAME_WIDTH: usize = 640;
+#[cfg(feature = "std-providers")]
 const FRAME_HEIGHT: usize = 360;
 
 /// The wire code for a key name the dialog grammar does not know.
@@ -121,8 +123,9 @@ struct HeldRequest {
 
 /// The portal UI session and the routing of its requests to their owners.
 pub struct PortalService {
-    /// The dialog UI that shows requests to the user, one dialog at a time.
-    ui: PortalUi,
+    /// The dialog UI that shows requests to the user, one dialog at a time: the stock provider with the
+    /// `std-providers` feature, `NoUi` without it, which refuses every request `no-ui`.
+    ui: Box<dyn UiProvider>,
     /// Admitted requests still waiting for an outcome, in admission order.
     owners: Vec<HeldRequest>,
     /// Requests offered to a `portal.ui` claimant and not yet settled.
@@ -155,8 +158,18 @@ impl PortalService {
     /// portal dialog has the same geometry regardless of the request that opened it.
     #[must_use]
     pub fn new() -> Self {
+        #[cfg(feature = "std-providers")]
+        let ui = crate::std_providers::portal_ui(FRAME_WIDTH, FRAME_HEIGHT);
+        #[cfg(not(feature = "std-providers"))]
+        let ui: Box<dyn UiProvider> = Box::new(crate::portal::NoUi);
+        Self::with_ui(ui)
+    }
+
+    /// Builds an empty portal service that shows its dialogs with `ui`.
+    #[must_use]
+    pub fn with_ui(ui: Box<dyn UiProvider>) -> Self {
         Self {
-            ui: PortalUi::new(FRAME_WIDTH, FRAME_HEIGHT),
+            ui,
             owners: Vec::new(),
             routed: Vec::new(),
             abandoned: Vec::new(),
@@ -996,7 +1009,56 @@ impl PortalService {
     }
 }
 
+/// A request with no UI to ask the user with is refused `no-ui` and never granted: the consent flow fails safe.
 #[cfg(test)]
+mod no_ui_tests {
+    use gnoblin_model::Fields;
+
+    use super::*;
+
+    fn request(interface: &str) -> PortalRequest {
+        PortalRequest {
+            interface: interface.to_owned(),
+            caller: VerifiedCaller::new(0, "org.example.Requester"),
+            prompt: "Share the screen?".to_owned(),
+            timeout_ms: 30_000,
+            options: Fields::default(),
+            parent_window: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_consent_request_is_refused_no_ui_and_holds_nothing() {
+        let mut service = PortalService::with_ui(Box::new(crate::portal::NoUi));
+        let requester = ClientId::new(1);
+        for (envelope_id, interface) in [
+            (1, "Screenshot"),
+            (2, "ScreenCast"),
+            (3, "RemoteDesktop"),
+            (4, "Secret"),
+        ] {
+            let replies = service
+                .submit(requester, envelope_id, &request(interface), Tick::ZERO)
+                .expect("a refusal is a reply, not a protocol error");
+            assert_eq!(replies.len(), 1, "{interface} is answered at once");
+            assert_eq!(replies[0].0, requester, "the answer goes to the requester");
+            assert_eq!(replies[0].1.error_code(), Some("no-ui"), "{interface}");
+        }
+        assert!(!service.wants_pump(), "no dialog is open or shown");
+        assert!(!service.secret_granted("org.example.Requester"), "nothing was granted");
+    }
+
+    #[test]
+    fn a_session_with_no_ui_has_no_dialog_to_draw_or_key() {
+        let mut service = PortalService::with_ui(Box::new(crate::portal::NoUi));
+        let replies = service.key("enter", false, Tick::new(600)).expect("a known key");
+        assert!(replies.is_empty(), "a key with no dialog settles nothing");
+        assert!(service.set_locked(true).is_empty(), "a lock has nothing to settle");
+    }
+}
+
+/// The portal service over the built-in dialogs, which are the stock UI provider (`std-providers`).
+#[cfg(all(test, feature = "std-providers"))]
 mod tests {
     use gnoblin_model::Fields;
 
