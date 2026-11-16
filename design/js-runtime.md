@@ -41,7 +41,7 @@ Inputs (all in `design/js-research/`):
     Why: Types come from the schema, like `gnoblin.d.lua` does today.
 
 - **J4 (revised).** The public API is the owner's spec. There is no declarative config layer: an `init.ts` runs top to
-  bottom against live objects. The first design's plain-data tier (`defineConfig`) was removed.
+  bottom against live objects. The first design's plain-data tier was removed.
 
     Why: The owner never asked for a second tier. A setting with no spec object gets no invented home
     (design/js-spec-native.md, 3.11).

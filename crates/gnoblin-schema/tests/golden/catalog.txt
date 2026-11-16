@@ -835,7 +835,6 @@ object window since 0.2.0 secret false
   property fullscreen type bool since 0.2.0 secret false
   property maximised type bool since 0.2.0 secret false
   property minimised type bool since 0.2.0 secret false
-  property workspace type object:workspace since 0.2.0 secret false
   property tiled type bool since 0.2.0 secret false
   property unresponsive type bool since 0.2.0 secret false
   property parent_window type object:window since 0.2.0 secret false
@@ -845,32 +844,6 @@ object window since 0.2.0 secret false
   method focus since 0.2.0 secret false function false
   method close since 0.2.0 secret false function false
   method kill since 0.2.0 secret false function false
-  signal destroyed since 0.2.0 secret false
-object workspace since 0.2.0 secret false
-  property id type uint since 0.2.0 secret false
-  property parent type object:node since 0.2.0 secret false
-  property name type string since 0.2.0 secret false
-  property x type double since 0.2.0 secret false
-  property y type double since 0.2.0 secret false
-  property z type double since 0.2.0 secret false
-  property rotation type list<double> since 0.2.0 secret false
-  property scale type list<double> since 0.2.0 secret false
-  property width type double since 0.2.0 secret false
-  property height type double since 0.2.0 secret false
-  property opacity type double since 0.2.0 secret false
-  property corner_radius type double since 0.2.0 secret false
-  property visible type bool since 0.2.0 secret false
-  property clip type bool since 0.2.0 secret false
-  property input type bool since 0.2.0 secret false
-  property input_mode type string since 0.2.0 secret false
-  property secure type bool since 0.2.0 secret false
-  property tags type list<string> since 0.2.0 secret false
-  property effects type list<object:effect> since 0.2.0 secret false
-  property skipped type list<string> since 0.2.0 secret false
-  property index type uint since 0.2.0 secret false
-  property active type bool since 0.2.0 secret false
-  property output type object:screen since 0.2.0 secret false
-  method activate since 0.2.0 secret false function false
   signal destroyed since 0.2.0 secret false
 == proto ==
 -- gnoblin.proto
@@ -1705,7 +1678,7 @@ enum GnoblinError {
 //
 // Namespace: tree
 // Version: 0.2.0
-// Schema: crates/gnoblin-schema/schema (camera.toml, canvas.toml, controller.toml, effect.toml, lock.toml, messages.toml, node.toml, screen.toml, seat.toml, surface.toml, tween.toml, view.toml, window.toml, workspace.toml)
+// Schema: crates/gnoblin-schema/schema (camera.toml, canvas.toml, controller.toml, effect.toml, lock.toml, messages.toml, node.toml, screen.toml, seat.toml, surface.toml, tween.toml, view.toml, window.toml)
 
 syntax = "proto3";
 
@@ -2870,20 +2843,18 @@ message Window {
     bool maximised = 25;
     // since 0.2.0
     bool minimised = 26;
-    // since 0.2.0; object id of `workspace`
-    string workspace = 27;
     // since 0.2.0
-    bool tiled = 28;
+    bool tiled = 27;
     // since 0.2.0
-    bool unresponsive = 29;
+    bool unresponsive = 28;
     // since 0.2.0; object id of `window`
-    string parent_window = 30;
+    string parent_window = 29;
     // since 0.2.0
-    bool from_launcher = 31;
+    bool from_launcher = 30;
     // since 0.2.0
-    string decoration = 32;
+    string decoration = 31;
     // since 0.2.0
-    string decoration_wanted = 33;
+    string decoration_wanted = 32;
   }
 
   // Method `focus`, since 0.2.0.
@@ -2894,65 +2865,6 @@ message Window {
 
   // Method `kill`, since 0.2.0.
   message KillArgs {}
-
-  // Signal `destroyed`, since 0.2.0.
-  message DestroyedPayload {}
-}
-
-// Object `workspace`, since 0.2.0.
-message Workspace {
-  // Property values, carried by a property diff. Field numbers never change.
-  message Properties {
-    // since 0.2.0
-    uint64 id = 1;
-    // since 0.2.0; object id of `node`
-    string parent = 2;
-    // since 0.2.0
-    string name = 3;
-    // since 0.2.0
-    double x = 4;
-    // since 0.2.0
-    double y = 5;
-    // since 0.2.0
-    double z = 6;
-    // since 0.2.0; list
-    repeated double rotation = 7;
-    // since 0.2.0; list
-    repeated double scale = 8;
-    // since 0.2.0
-    double width = 9;
-    // since 0.2.0
-    double height = 10;
-    // since 0.2.0
-    double opacity = 11;
-    // since 0.2.0
-    double corner_radius = 12;
-    // since 0.2.0
-    bool visible = 13;
-    // since 0.2.0
-    bool clip = 14;
-    // since 0.2.0
-    bool input = 15;
-    // since 0.2.0
-    string input_mode = 16;
-    // since 0.2.0
-    bool secure = 17;
-    // since 0.2.0; list
-    repeated string tags = 18;
-    // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 19;
-    // since 0.2.0; list
-    repeated string skipped = 20;
-    // since 0.2.0
-    uint64 index = 21;
-    // since 0.2.0
-    bool active = 22;
-    // since 0.2.0; object id of `screen`
-    string output = 23;
-  }
-
-  // Method `activate`, since 0.2.0.
-  message ActivateArgs {}
 
   // Signal `destroyed`, since 0.2.0.
   message DestroyedPayload {}

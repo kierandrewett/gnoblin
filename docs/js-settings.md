@@ -4,7 +4,7 @@
 on one of them. This page lists what you can set, one example for each kind of object, and the settings that have no
 object to set them on yet.
 
-There is no `defineConfig`. Delete a statement and that part of the setup is gone after the next reload. See
+There is no config object to fill in. Delete a statement and that part of the setup is gone after the next reload. See
 [the TypeScript shell](/typescript-shell) for where the file lives and how it reloads.
 
 ## Device settings

@@ -37,13 +37,12 @@ const CLASSES: &[&str] = &[
     "screen",
     "camera",
     "seat",
-    "workspace",
     "lock",
     "controller",
 ];
 
 #[test]
-fn the_eleven_classes_exist_in_the_tree_namespace() {
+fn the_ten_classes_exist_in_the_tree_namespace() {
     let catalog = stock();
     for class in CLASSES {
         object(&catalog, class);
@@ -62,7 +61,6 @@ fn the_classes_derive_as_node_core_says() {
         ("screen", Some("view")),
         ("camera", Some("node")),
         ("seat", Some("node")),
-        ("workspace", Some("node")),
         ("lock", Some("node")),
         ("controller", Some("node")),
     ];
@@ -189,7 +187,7 @@ fn a_window_inherits_every_node_property() {
             property.name
         );
     }
-    for own in ["title", "focused", "fullscreen", "workspace"] {
+    for own in ["title", "focused", "fullscreen"] {
         assert!(
             window.properties.iter().any(|property| property.name == own),
             "window declares `{own}`"

@@ -140,16 +140,15 @@ Signals: `destroyed()`. Input signals (`press`, `release`, `motion`, `scroll`, `
 
 **Window** (base `Node`). A toplevel: xdg-shell, X11, foreign toplevel.
 
-| Property     | Type               | Default | Flags    | Notes                                                |
-| ------------ | ------------------ | ------- | -------- | ---------------------------------------------------- |
-| `title`      | `string`           | `""`    |          | set by the client; not trusted for attribution       |
-| `app_id`     | `string`           | `""`    | readonly | set by the client                                    |
-| `focused`    | `bool`             | `false` | readonly | written by the shell's focus policy                  |
-| `fullscreen` | `bool`             | `false` |          | a client request; the shell may refuse (section 5.2) |
-| `maximised`  | `bool`             | `false` |          |                                                      |
-| `minimised`  | `bool`             | `false` |          |                                                      |
-| `parent`     | `object:Window`    | nil     | readonly | the dialog's parent (unverified: plan 8.2)           |
-| `workspace`  | `object:Workspace` | nil     |          | the workspace the window belongs to                  |
+| Property     | Type            | Default | Flags    | Notes                                                |
+| ------------ | --------------- | ------- | -------- | ---------------------------------------------------- |
+| `title`      | `string`        | `""`    |          | set by the client; not trusted for attribution       |
+| `app_id`     | `string`        | `""`    | readonly | set by the client                                    |
+| `focused`    | `bool`          | `false` | readonly | written by the shell's focus policy                  |
+| `fullscreen` | `bool`          | `false` |          | a client request; the shell may refuse (section 5.2) |
+| `maximised`  | `bool`          | `false` |          |                                                      |
+| `minimised`  | `bool`          | `false` |          |                                                      |
+| `parent`     | `object:Window` | nil     | readonly | the dialog's parent (unverified: plan 8.2)           |
 
 Methods: `focus()`, `close()`. `present` (`window.toml:84-88` today) moves to the shell in step 6.
 
@@ -255,15 +254,10 @@ Method: `warp(x, y)`. Chords are a `call` to the seat (section 5.1).
 
 `focus` accepts a window node, a shell node that takes input (`class` other than `window`, `input` set), or `nil` (clears it). Any other target is refused `bad_value` and the previous focus stays; a non-node value is refused `wrong_type`. The compositor writes `focus` itself when keyboard focus moves (`set_main_seat_focus`), and the frame re-publishes it each frame. A shell write to a shell node holds the keyboard there (see 5.1); a shell write to a window moves the keyboard to that window.
 
-**Workspace** (base `Node`). A named set of windows on one screen. Replaces `workspace.toml`. Created by the compositor.
-
-| Property | Type            | Default | Flags | Notes                          |
-| -------- | --------------- | ------- | ----- | ------------------------------ |
-| `index`  | `uint`          | none    |       | position in the workspace list |
-| `active` | `bool`          | `false` |       | one active per screen          |
-| `output` | `object:Screen` | nil     |       |                                |
-
-Method: `activate()`.
+**Workspace.** There is no `workspace` class in the tree, and `Window` has no `workspace` property (lane Hardening: the
+compositor never made either, and nothing read them). A workspace is the shell's own object (`gnoblin.workspaces`); the
+compositor knows only the windows, their placements and the screens. The `gnoblin` namespace's `workspace` object
+(`schema/workspace.toml`) is the compositor's window-manager side and is a different thing.
 
 **Lock** (base `Node`). The session lock. The compositor owns the one `Lock` node of a session, makes it at startup and never
 destroys it. While the session is covered the compositor draws only the cover and routes input only to the locker; the node is
@@ -313,7 +307,7 @@ that sends `lock.lock_session` is refused `unknown-member` (no IPC version bump,
 | --------------------------------------------------------------- | -------------------------------- | --------------------------------------------------- | ------------------- |
 | `window`                                                        | `Window`                         | replaced; `focus` moves, `present` moves            | 3 schema, 6 methods |
 | `output`                                                        | `Screen`                         | replaced                                            | 3 schema, 5 apply   |
-| `workspace`                                                     | `Workspace`                      | replaced                                            | 7                   |
+| `workspace`                                                     | the shell's own `Workspace`      | replaced                                            | 7                   |
 | `layers`                                                        | none                             | deleted: nothing read it (8C, O14 b)                | 8                   |
 | `lock`                                                          | `Lock`                           | replaced (done: `lock.lock_session` is `Lock:lock`) | 8                   |
 | `portal_ui`                                                     | none                             | kept: the built-in dialog stays (O3)                | -                   |
@@ -348,11 +342,11 @@ surface), nor destroy a compositor-owned node; both are refused `not-owner`. Mov
 other placement properties of a compositor-owned window, and may not write a read-only property (`title`, `app_id`,
 ...), which is refused `read-only`.
 
-| Node                                                       | Created by         | Destroyed by                                        | Shell may `insert` it? |
-| ---------------------------------------------------------- | ------------------ | --------------------------------------------------- | ---------------------- |
-| `root`                                                     | compositor         | never                                               | no                     |
-| `Screen`, `Seat`, `Lock`, `Surface`, `Window`, `Workspace` | compositor         | compositor, when the protocol object or output ends | yes                    |
-| any other class                                            | shell (`core.new`) | the shell (`destroy`), or an ancestor's destroy     | yes                    |
+| Node                                          | Created by         | Destroyed by                                        | Shell may `insert` it? |
+| --------------------------------------------- | ------------------ | --------------------------------------------------- | ---------------------- |
+| `root`                                        | compositor         | never                                               | no                     |
+| `Screen`, `Seat`, `Lock`, `Surface`, `Window` | compositor         | compositor, when the protocol object or output ends | yes                    |
+| any other class                               | shell (`core.new`) | the shell (`destroy`), or an ancestor's destroy     | yes                    |
 
 The shell destroys only the nodes it created. Destroying a compositor node is refused `not-owner`. Destroying a node
 ends its subtree; the change batch names every id removed (`scene.rs:501` `remove` returns the subtree).

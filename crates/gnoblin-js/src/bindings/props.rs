@@ -80,7 +80,6 @@ const WINDOW: &[JsPropDef] = &[
     animated("y", JsPropKind::Double),
     animated("width", JsPropKind::Double),
     animated("height", JsPropKind::Double),
-    def("workspace", JsPropKind::Node, false),
     // The window this one is a dialog of, and whether a launcher's activation token opened it. The compositor writes
     // both from the client's protocol requests.
     def("parent_window", JsPropKind::Node, false),

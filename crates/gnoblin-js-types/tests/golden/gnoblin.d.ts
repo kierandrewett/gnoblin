@@ -702,7 +702,6 @@ declare module "gnoblin/schema/tree" {
         maximised: boolean;
         /** Default `false`. */
         minimised: boolean;
-        workspace: Workspace | null;
         /** Default `false`. */
         tiled: boolean;
         /** Default `false`. */
@@ -718,15 +717,6 @@ declare module "gnoblin/schema/tree" {
         focus(): Reply;
         close(): Reply;
         kill(): Reply;
-    }
-
-    /** Schema object `tree.workspace` (since 0.2.0). */
-    export interface Workspace extends Node {
-        index: number;
-        /** Default `false`. */
-        active: boolean;
-        output: Screen | null;
-        activate(): Reply;
     }
 }
 
@@ -775,7 +765,6 @@ declare module "gnoblin/schema/signals" {
         "tree.tween.destroyed": { readonly name: "tree.tween.destroyed"; readonly object: number; };
         "tree.view.destroyed": { readonly name: "tree.view.destroyed"; readonly object: number; };
         "tree.window.destroyed": { readonly name: "tree.window.destroyed"; readonly object: number; };
-        "tree.workspace.destroyed": { readonly name: "tree.workspace.destroyed"; readonly object: number; };
     }
 }
 

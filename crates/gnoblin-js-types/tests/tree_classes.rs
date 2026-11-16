@@ -107,7 +107,7 @@ fn window_declares_only_its_own_members() {
     has(&window, "/** Schema name `app_id`. Default `\"\"`. */");
     has(&window, "readonly focused: boolean;");
     has(&window, "fullscreen: boolean;");
-    has(&window, "workspace: Workspace | null;");
+    lacks(&window, "workspace: Workspace | null;");
     has(&window, "readonly unresponsive: boolean;");
     has(&window, "focus(): Reply;");
     has(&window, "close(): Reply;");
@@ -118,18 +118,12 @@ fn window_declares_only_its_own_members() {
 }
 
 #[test]
-fn surface_workspace_screen_and_view_extend_their_bases() {
+fn surface_screen_and_view_extend_their_bases() {
     let text = rendered();
     let (first, surface) = interface(&text, "Surface");
     assert_eq!(first, "    export interface Surface extends Node {");
     has(&surface, "readonly role: string;");
     has(&surface, "readonly mapped: boolean;");
-
-    let (first, workspace) = interface(&text, "Workspace");
-    assert_eq!(first, "    export interface Workspace extends Node {");
-    has(&workspace, "index: number;");
-    has(&workspace, "output: Screen | null;");
-    has(&workspace, "activate(): Reply;");
 
     let (first, view) = interface(&text, "View");
     assert_eq!(first, "    export interface View extends Node {");

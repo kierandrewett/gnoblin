@@ -93,11 +93,6 @@ const UNREAD: &[(&str, &str)] = &[
         "declared read-only and never published, so a read gives the default 0; `height` is the screen's size",
     ),
     (
-        "workspace.index",
-        "the compositor creates no workspace node (workspaces are the script's, `gnoblin.workspaces`), so the whole class \
-         is unused: its `active`, `output` and `activate` go with it, and so does `window.workspace`, which is always nil",
-    ),
-    (
         "node.parent",
         "no native code reads or writes a value named `parent`: a node's parent is the tree's structure (`insert` ops and \
          `parented` changes), and the property only repeats it",
