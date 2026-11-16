@@ -1,0 +1,48 @@
+[package]
+name = "gnoblin-core-impl"
+description = "libgnoblin-core: the implementation of the shell ABI (registry, queue, panic guard, loader). Built as a cdylib with SONAME libgnoblin-core.so.1; shells link it through the gnoblin-core SDK, never as a Rust dependency."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[lib]
+name = "gnoblin_core_impl"
+# The cdylib is the library. The rlib exists for this crate's own tests and for the compositor edge a later step adds;
+# nothing else may depend on it (`impl-sealed`).
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Test only: adds the `gnoblin_test_main` export, the scenario driver the integration tests run through a launcher, and
+# turns the log console on. Never in a build that ships; `cargo xtask dist-check` rejects the export.
+test-driver = ["gnoblin-log/init"]
+# Test only: a core of a hypothetical ABI 1.1 (one function appended to the table). See `gnoblin-core-abi`.
+next-minor = ["gnoblin-core-abi/next-minor"]
+
+[dependencies]
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-log = { path = "../gnoblin-log" }
+# The effective user, to check that the private directory module copies live in is ours.
+rustix.workspace = true
+
+[build-dependencies]
+# The ABI crate names the SONAME and the value kinds the generated catalog uses; the schema is the catalog's source.
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-schema = { path = "../gnoblin-schema" }
+
+# Negative control for the dependency test: a shell that links this crate as a Rust library carries its own copy of the
+# core and defines `gnoblin_*` itself. The test builds it and checks that `dist-check` would catch it.
+[[example]]
+name = "rlib_control"
+path = "examples/rlib_control.rs"
+crate-type = ["cdylib"]
+
+# The workspace table forbids unsafe code; a library that exports a C ABI and loads modules needs it. Only the modules
+# that open with `#![allow(unsafe_code)]` and a SAFETY note use it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

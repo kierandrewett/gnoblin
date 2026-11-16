@@ -1467,6 +1467,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-core"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+ "gnoblin-macros",
+]
+
+[[package]]
+name = "gnoblin-core-abi"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-core-impl"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+ "gnoblin-log",
+ "gnoblin-schema",
+ "rustix 1.1.6",
+]
+
+[[package]]
 name = "gnoblin-cursor"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1477,6 +1499,27 @@ dependencies = [
  "serde_json",
  "xcursor",
  "zip",
+]
+
+[[package]]
+name = "gnoblin-fixture-launcher"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+]
+
+[[package]]
+name = "gnoblin-fixture-shell-hot"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+]
+
+[[package]]
+name = "gnoblin-fixture-shell-min"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
 ]
 
 [[package]]
@@ -1581,6 +1624,10 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
 ]
+
+[[package]]
+name = "gnoblin-macros"
+version = "0.2.0-alpha.0"
 
 [[package]]
 name = "gnoblin-model"
@@ -5054,6 +5101,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 name = "xtask"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-core-abi",
  "gnoblin-schema",
  "proc-macro2",
  "quote",

@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
 use std::io::{self, ErrorKind};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -30,9 +30,16 @@ const PLACEHOLDER: &str = "@PREFIX@";
 /// Where the install manifest lives, relative to the prefix.
 const MANIFEST: &str = "share/gnoblin/install-manifest";
 const DEFAULT_PROFILE: &str = "release";
+const DEFAULT_LIBDIR: &str = "lib";
+/// The token a destination uses where the library directory goes.
+const LIBDIR_TOKEN: &str = "@LIBDIR@";
+/// The manifest records a symlink as this prefix followed by its target, where a file has its sha256.
+const LINK_PREFIX: &str = "symlink:";
+/// What cargo names the core's `cdylib` (`libgnoblin_core_impl.so`); dist installs it under the SONAME's name.
+const CORE_BUILT_NAME: &str = "libgnoblin_core_impl.so";
 
 pub const USAGE: &str = "\
-usage: cargo xtask dist install --prefix PREFIX [--destdir DIR] [--profile NAME]
+usage: cargo xtask dist install --prefix PREFIX [--destdir DIR] [--profile NAME] [--libdir NAME]
        cargo xtask dist uninstall --prefix PREFIX [--destdir DIR]";
 
 /// The permission bits an installed file gets.
@@ -74,6 +81,31 @@ enum InstallItem {
     /// there and skipped when it is not. An optional extension has its own workspace, so building the
     /// session alone must still install.
     BuiltIfPresent { name: &'static str, to: &'static str },
+    /// A shared library the build wrote: installed as `<libdir>/<stem>.so.<major>.<minor>.<patch>` with the SONAME link
+    /// `<stem>.so.<major>` and the linker link `<stem>.so`, when `target/<profile>/<name>` is there.
+    BuiltLibrary {
+        name: &'static str,
+        stem: &'static str,
+        major: u32,
+        minor: u32,
+        patch: u32,
+    },
+    /// A development file made from the ABI crate (the C header, the pkg-config file), installed when `requires_built`
+    /// was built, so a tree never describes a library it does not contain.
+    Generated {
+        to: &'static str,
+        kind: Generated,
+        requires_built: &'static str,
+    },
+}
+
+/// What a generated development file is.
+#[derive(Clone, Copy, Debug)]
+enum Generated {
+    /// `include/gnoblin/core.h`.
+    CoreHeader,
+    /// `<libdir>/pkgconfig/gnoblin-core.pc`.
+    CorePkgConfig,
 }
 
 /// What the session installs. The optional packages (ananicy rules, the GeoClue authorisation file)
@@ -148,13 +180,44 @@ const ITEMS: &[InstallItem] = &[
         mode: FileMode::Data,
         template: false,
     },
+    // The core library, when the build wrote it: the versioned file, the SONAME link and the linker link, then the
+    // development files that describe it. An install of a build without the core ships none of these. The build names
+    // the file after the crate (`libgnoblin_core_impl.so`); the install gives it the SONAME's name.
+    InstallItem::BuiltLibrary {
+        name: CORE_BUILT_NAME,
+        stem: "libgnoblin-core",
+        major: gnoblin_core_abi::ABI_MAJOR,
+        minor: gnoblin_core_abi::ABI_MINOR,
+        patch: gnoblin_core_abi::ABI_PATCH,
+    },
+    InstallItem::Generated {
+        to: "include/gnoblin/core.h",
+        kind: Generated::CoreHeader,
+        requires_built: CORE_BUILT_NAME,
+    },
+    InstallItem::Generated {
+        to: "@LIBDIR@/pkgconfig/gnoblin-core.pc",
+        kind: Generated::CorePkgConfig,
+        requires_built: CORE_BUILT_NAME,
+    },
 ];
 
-/// One file the install would write, with its source resolved.
+/// What an installed path holds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PlannedContent {
+    /// A file, read when the install runs.
+    File(PathBuf),
+    /// Bytes generated while planning.
+    Bytes(Vec<u8>),
+    /// A symlink with this relative target.
+    Link(String),
+}
+
+/// One path the install would write, with its content resolved.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Planned {
     to: String,
-    source: PathBuf,
+    content: PlannedContent,
     mode: FileMode,
     template: bool,
 }
@@ -182,6 +245,8 @@ pub enum DistError {
     Duplicate(String),
     /// A source the install table names is not a regular file or directory, or is not text.
     Unsupported(PathBuf, &'static str),
+    /// A development file could not be generated from the ABI crate.
+    Generate(String),
     Io(PathBuf, io::Error),
 }
 
@@ -205,6 +270,7 @@ impl fmt::Display for DistError {
             }
             Self::Duplicate(to) => write!(f, "the install table names {to} twice"),
             Self::Unsupported(path, reason) => write!(f, "{} {reason}", path.display()),
+            Self::Generate(message) => write!(f, "cannot generate a development file: {message}"),
             Self::Io(path, error) => write!(f, "{}: {error}", path.display()),
         }
     }
@@ -243,7 +309,7 @@ fn render(template: &str, prefix: &str) -> Result<String, DistError> {
 
 /// The directory an install writes under: `destdir` followed by the prefix, so a staged tree keeps
 /// the absolute layout of the target system.
-fn install_root(destdir: &Path, prefix: &str) -> PathBuf {
+pub(crate) fn install_root(destdir: &Path, prefix: &str) -> PathBuf {
     let mut root = destdir.as_os_str().to_owned();
     root.push(prefix);
     PathBuf::from(root)
@@ -275,8 +341,14 @@ fn parse_manifest(path: &Path, text: &str) -> Result<Manifest, DistError> {
         let Some((digest, rel)) = line.split_once("  ") else {
             return Err(bad("expected `<sha256>  <path>`"));
         };
-        if !is_sha256(digest) {
-            return Err(bad("the digest is not a lower-case sha256"));
+        if let Some(target) = digest.strip_prefix(LINK_PREFIX) {
+            if target.is_empty() || target.starts_with('/') || target.split('/').any(|part| part == "..") {
+                return Err(bad(
+                    "a symlink target must be a relative path that stays inside the prefix",
+                ));
+            }
+        } else if !is_sha256(digest) {
+            return Err(bad("the digest is not a lower-case sha256 or a symlink target"));
         }
         if rel.is_empty() || rel.starts_with('/') || rel.split('/').any(|part| part == "..") {
             return Err(bad("the path must be relative and stay inside the prefix"));
@@ -323,10 +395,23 @@ fn removal(current: Option<&str>, recorded: &str) -> Removal {
     }
 }
 
-/// The digest of the file at `path`, or `None` if nothing is there.
+/// What the manifest records for a symlink: its target, not the content it resolves to, so a link repointed elsewhere is a
+/// modification and a dangling link is still a link.
+fn link_digest(target: &str) -> String {
+    format!("{LINK_PREFIX}{target}")
+}
+
+/// The digest of what is at `path` (a file's sha256, or `symlink:<target>` for a link), or `None` if nothing is there.
 fn current_digest(path: &Path) -> Result<Option<String>, DistError> {
-    match fs::read(path) {
-        Ok(bytes) => Ok(Some(sha256_hex(&bytes))),
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            let target = fs::read_link(path).map_err(io_at(path))?;
+            Ok(Some(link_digest(&target.to_string_lossy())))
+        }
+        Ok(_) => match fs::read(path) {
+            Ok(bytes) => Ok(Some(sha256_hex(&bytes))),
+            Err(error) => Err(DistError::Io(path.to_owned(), error)),
+        },
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
         Err(error) => Err(DistError::Io(path.to_owned(), error)),
     }
@@ -354,6 +439,25 @@ fn write_file(dest: &Path, contents: &[u8], mode: FileMode) -> Result<(), DistEr
     fs::rename(&temp, dest).map_err(io_at(dest))
 }
 
+/// Makes a symlink at `dest` pointing at `target`, replacing a link already there, through a sibling temporary link so a
+/// reader never finds the name missing.
+fn write_link(dest: &Path, target: &str) -> Result<(), DistError> {
+    let parent = dest
+        .parent()
+        .ok_or_else(|| DistError::Unsupported(dest.to_owned(), "has no parent directory"))?;
+    fs::create_dir_all(parent).map_err(io_at(parent))?;
+    let mut name = dest.file_name().unwrap_or_default().to_os_string();
+    name.push(".gnoblin-dist");
+    let temp = parent.join(name);
+    match fs::remove_file(&temp) {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => return Err(DistError::Io(temp, error)),
+    }
+    symlink(target, &temp).map_err(io_at(&temp))?;
+    fs::rename(&temp, dest).map_err(io_at(dest))
+}
+
 /// Removes the directories that `removed` left empty, stopping below `root`. A directory that still
 /// holds files stops the walk, and so does any error: the directory is then not ours to remove.
 fn prune_dirs(root: &Path, removed: &Path) {
@@ -373,9 +477,9 @@ fn origin_path(repo: &Path, built: &Path, origin: InstallSource) -> PathBuf {
     }
 }
 
-/// Expands the install table into one entry per file. Nothing is read here; the sources of built files are read when
-/// they are installed.
-fn plan(repo: &Path, built: &Path) -> Result<Vec<Planned>, DistError> {
+/// Expands the install table into one entry per file or link. Built files are not read here (they are read when installed);
+/// generated files are made now. `libdir` replaces `@LIBDIR@` in a destination.
+fn plan(repo: &Path, built: &Path, libdir: &str) -> Result<Vec<Planned>, DistError> {
     let mut planned = Vec::new();
     for item in ITEMS {
         match *item {
@@ -385,8 +489,8 @@ fn plan(repo: &Path, built: &Path) -> Result<Vec<Planned>, DistError> {
                 mode,
                 template,
             } => planned.push(Planned {
-                to: to.to_owned(),
-                source: origin_path(repo, built, from),
+                to: expand_libdir(to, libdir),
+                content: PlannedContent::File(origin_path(repo, built, from)),
                 mode,
                 template,
             }),
@@ -394,10 +498,68 @@ fn plan(repo: &Path, built: &Path) -> Result<Vec<Planned>, DistError> {
                 let source = built.join(name);
                 if source.is_file() {
                     planned.push(Planned {
-                        to: to.to_owned(),
-                        source,
+                        to: expand_libdir(to, libdir),
+                        content: PlannedContent::File(source),
                         mode: FileMode::Program,
                         template: false,
+                    });
+                }
+            }
+            InstallItem::BuiltLibrary {
+                name,
+                stem,
+                major,
+                minor,
+                patch,
+            } => {
+                let source = built.join(name);
+                if source.is_file() {
+                    let versioned = format!("{stem}.so.{major}.{minor}.{patch}");
+                    let soname = format!("{stem}.so.{major}");
+                    let linker = format!("{stem}.so");
+                    let dir = |file: &str| format!("{libdir}/{file}");
+                    planned.push(Planned {
+                        to: dir(&versioned),
+                        content: PlannedContent::File(source),
+                        mode: FileMode::Program,
+                        template: false,
+                    });
+                    // The SONAME link is what the dynamic loader resolves a NEEDED entry through; the linker name is what
+                    // `-lgnoblin-core` finds, and points at the SONAME link so a build records the SONAME, not the file.
+                    planned.push(Planned {
+                        to: dir(&soname),
+                        content: PlannedContent::Link(versioned),
+                        mode: FileMode::Program,
+                        template: false,
+                    });
+                    planned.push(Planned {
+                        to: dir(&linker),
+                        content: PlannedContent::Link(soname),
+                        mode: FileMode::Program,
+                        template: false,
+                    });
+                }
+            }
+            InstallItem::Generated {
+                to,
+                kind,
+                requires_built,
+            } => {
+                if built.join(requires_built).is_file() {
+                    let (bytes, template) = match kind {
+                        Generated::CoreHeader => (
+                            crate::abi_c::render_header(&gnoblin_core_abi::reflect::reflection())
+                                .map_err(DistError::Generate)?
+                                .into_bytes(),
+                            false,
+                        ),
+                        Generated::CorePkgConfig => (core_pkg_config(libdir).into_bytes(), true),
+                    };
+                    planned.push(Planned {
+                        to: expand_libdir(to, libdir),
+                        content: PlannedContent::Bytes(bytes),
+                        mode: FileMode::Data,
+                        template,
                     });
                 }
             }
@@ -410,6 +572,30 @@ fn plan(repo: &Path, built: &Path) -> Result<Vec<Planned>, DistError> {
         }
     }
     Ok(planned)
+}
+
+fn expand_libdir(to: &str, libdir: &str) -> String {
+    to.replace(LIBDIR_TOKEN, libdir)
+}
+
+/// `gnoblin-core.pc`, for the development package. `@PREFIX@` is replaced with the install prefix when it is written, so
+/// a relocated or staged install still names its own location; a consumer can override it with
+/// `pkg-config --define-variable=prefix=...`.
+fn core_pkg_config(libdir: &str) -> String {
+    format!(
+        "prefix={PLACEHOLDER}\n\
+         libdir=${{prefix}}/{libdir}\n\
+         includedir=${{prefix}}/include\n\
+         \n\
+         Name: gnoblin-core\n\
+         Description: The Gnoblin compositor core library: the shell ABI\n\
+         Version: {}.{}.{}\n\
+         Libs: -L${{libdir}} -lgnoblin-core\n\
+         Cflags: -I${{includedir}}\n",
+        gnoblin_core_abi::ABI_MAJOR,
+        gnoblin_core_abi::ABI_MINOR,
+        gnoblin_core_abi::ABI_PATCH,
+    )
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -425,9 +611,32 @@ struct DistOptions {
     destdir: PathBuf,
     profile: String,
     target_dir: PathBuf,
+    /// Where libraries go under the prefix: `lib`, `lib64`, or a multiarch directory such as `lib/x86_64-linux-gnu`.
+    libdir: String,
 }
 
-/// Parses `install|uninstall --prefix P [--destdir D] [--profile NAME]`. The target directory comes
+/// The library directory must be a plain relative path: it is joined to the prefix and written into the `.pc` file.
+fn validate_libdir(libdir: &str) -> Result<(), String> {
+    let reason = if libdir.is_empty() {
+        "is empty"
+    } else if libdir.starts_with('/') {
+        "must be relative to the prefix"
+    } else if libdir.ends_with('/') {
+        "must not end with a slash"
+    } else if libdir.split('/').any(|part| part.is_empty() || part == "..") {
+        "must not contain empty or `..` components"
+    } else if libdir
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '"' | '\\' | '%' | '$' | '@'))
+    {
+        "must not contain whitespace, control characters, quotes, backslashes, `%`, `$` or `@`"
+    } else {
+        return Ok(());
+    };
+    Err(format!("libdir `{libdir}` {reason}"))
+}
+
+/// Parses `install|uninstall --prefix P [--destdir D] [--profile NAME] [--libdir NAME]`. The target directory comes
 /// from `CARGO_TARGET_DIR`, as cargo itself reads it, and defaults to `target`.
 fn parse(args: &[String], target_dir: PathBuf) -> Result<DistOptions, String> {
     let (action, flags) = match args.split_first() {
@@ -439,6 +648,7 @@ fn parse(args: &[String], target_dir: PathBuf) -> Result<DistOptions, String> {
     let mut prefix = None;
     let mut destdir = PathBuf::new();
     let mut profile = DEFAULT_PROFILE.to_owned();
+    let mut libdir = DEFAULT_LIBDIR.to_owned();
     let mut rest = flags.iter();
     while let Some(flag) = rest.next() {
         let mut value = || rest.next().cloned().ok_or_else(|| format!("`{flag}` needs a value"));
@@ -446,17 +656,39 @@ fn parse(args: &[String], target_dir: PathBuf) -> Result<DistOptions, String> {
             "--prefix" => prefix = Some(value()?),
             "--destdir" => destdir = PathBuf::from(value()?),
             "--profile" => profile = value()?,
+            "--libdir" => libdir = value()?,
             other => return Err(format!("unexpected argument `{other}`")),
         }
     }
     let prefix = prefix.ok_or_else(|| "`--prefix` is required".to_owned())?;
+    validate_libdir(&libdir)?;
     Ok(DistOptions {
         action,
         prefix,
         destdir,
         profile,
         target_dir,
+        libdir,
     })
+}
+
+/// What an entry writes, with its template already rendered.
+enum Payload {
+    Bytes(Vec<u8>),
+    Link(String),
+}
+
+/// Renders a template entry's text with the prefix and digests what will be written.
+fn prepare(raw: Vec<u8>, origin: &Path, entry: &Planned, prefix: &str) -> Result<(Payload, String), DistError> {
+    let contents = if entry.template {
+        let text = String::from_utf8(raw)
+            .map_err(|_| DistError::Unsupported(origin.to_owned(), "is a template but not UTF-8 text"))?;
+        render(&text, prefix)?.into_bytes()
+    } else {
+        raw
+    };
+    let digest = sha256_hex(&contents);
+    Ok((Payload::Bytes(contents), digest))
 }
 
 fn install(repo: &Path, options: &DistOptions) -> Result<(), DistError> {
@@ -464,21 +696,20 @@ fn install(repo: &Path, options: &DistOptions) -> Result<(), DistError> {
     let root = install_root(&options.destdir, &options.prefix);
     let manifest_path = root.join(MANIFEST);
     let recorded = read_manifest(&manifest_path)?;
-    let planned = plan(repo, &options.target_dir.join(&options.profile))?;
+    let planned = plan(repo, &options.target_dir.join(&options.profile), &options.libdir)?;
 
     // Preflight: every source is read and every destination checked before the first write, so a
     // refusal leaves the tree as it was.
     let mut staged = Vec::with_capacity(planned.len());
     for entry in &planned {
-        let raw = fs::read(&entry.source).map_err(io_at(&entry.source))?;
-        let contents = if entry.template {
-            let text = String::from_utf8(raw)
-                .map_err(|_| DistError::Unsupported(entry.source.clone(), "is a template but not UTF-8 text"))?;
-            render(&text, &options.prefix)?.into_bytes()
-        } else {
-            raw
+        let (payload, digest) = match &entry.content {
+            PlannedContent::Link(target) => (Payload::Link(target.clone()), link_digest(target)),
+            PlannedContent::File(source) => {
+                let raw = fs::read(source).map_err(io_at(source))?;
+                prepare(raw, source, entry, &options.prefix)?
+            }
+            PlannedContent::Bytes(bytes) => prepare(bytes.clone(), Path::new(&entry.to), entry, &options.prefix)?,
         };
-        let digest = sha256_hex(&contents);
         let dest = root.join(&entry.to);
         let current = current_digest(&dest)?;
         match destination(current.as_deref(), recorded.get(&entry.to).map(String::as_str)) {
@@ -486,15 +717,19 @@ fn install(repo: &Path, options: &DistOptions) -> Result<(), DistError> {
             Destination::Foreign => return Err(DistError::Foreign(dest)),
             Destination::Modified => return Err(DistError::Modified(dest)),
         }
-        staged.push((entry, dest, contents, digest));
+        staged.push((entry, dest, payload, digest));
     }
 
     // The manifest starts as the old record, and each file written is added as it lands. If a write
     // fails, the manifest still describes what is on disk, so `uninstall` can remove it.
     let mut manifest = recorded.clone();
     let mut failure = None;
-    for (entry, dest, contents, digest) in &staged {
-        if let Err(error) = write_file(dest, contents, entry.mode) {
+    for (entry, dest, payload, digest) in &staged {
+        let written = match payload {
+            Payload::Bytes(contents) => write_file(dest, contents, entry.mode),
+            Payload::Link(target) => write_link(dest, target),
+        };
+        if let Err(error) = written {
             failure = Some(error);
             break;
         }
@@ -609,6 +844,8 @@ pub fn run(args: &[String]) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::{good_core, launcher, scratch};
+    use gnoblin_core_abi as abi;
 
     fn repo_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
@@ -702,7 +939,7 @@ mod tests {
 
     #[test]
     fn the_install_table_names_each_destination_once() {
-        let planned = plan(&repo_root(), Path::new("target/release")).unwrap();
+        let planned = plan(&repo_root(), Path::new("target/release"), "lib").unwrap();
         let mut seen = BTreeSet::new();
         for entry in &planned {
             assert!(seen.insert(entry.to.clone()), "{} listed twice", entry.to);
@@ -723,19 +960,19 @@ mod tests {
     fn the_xr_extension_is_installed_only_when_it_was_built() {
         let built = std::env::temp_dir().join(format!("gnoblin-dist-xr-{}", std::process::id()));
         fs::create_dir_all(&built).unwrap();
-        let without = plan(&repo_root(), &built).unwrap();
+        let without = plan(&repo_root(), &built, "lib").unwrap();
         assert!(
             without.iter().all(|entry| entry.to != "libexec/gnoblin-xr"),
             "a build without the extension installs without it"
         );
 
         fs::write(built.join("gnoblin-xr"), b"binary").unwrap();
-        let with = plan(&repo_root(), &built).unwrap();
+        let with = plan(&repo_root(), &built, "lib").unwrap();
         let entry = with
             .iter()
             .find(|entry| entry.to == "libexec/gnoblin-xr")
             .expect("the built extension is installed");
-        assert_eq!(entry.source, built.join("gnoblin-xr"));
+        assert_eq!(entry.content, PlannedContent::File(built.join("gnoblin-xr")));
         assert_eq!(entry.mode, FileMode::Program);
         assert!(!entry.template);
         fs::remove_dir_all(&built).unwrap();
@@ -743,16 +980,18 @@ mod tests {
 
     #[test]
     fn every_repository_source_exists_and_every_template_carries_the_placeholder() {
-        let planned = plan(&repo_root(), Path::new("target/release")).unwrap();
-        for entry in planned.iter().filter(|entry| !entry.source.starts_with("target")) {
-            assert!(entry.source.is_file(), "missing source {}", entry.source.display());
+        let planned = plan(&repo_root(), Path::new("target/release"), "lib").unwrap();
+        for entry in &planned {
+            let PlannedContent::File(source) = &entry.content else {
+                continue;
+            };
+            if source.starts_with("target") {
+                continue;
+            }
+            assert!(source.is_file(), "missing source {}", source.display());
             if entry.template {
-                let text = fs::read_to_string(&entry.source).unwrap();
-                assert!(
-                    text.contains(PLACEHOLDER),
-                    "{} has no placeholder",
-                    entry.source.display()
-                );
+                let text = fs::read_to_string(source).unwrap();
+                assert!(text.contains(PLACEHOLDER), "{} has no placeholder", source.display());
             }
         }
     }
@@ -771,7 +1010,235 @@ mod tests {
         .unwrap();
         assert_eq!(parsed.action, DistAction::Uninstall);
         assert_eq!(parsed.profile, DEFAULT_PROFILE);
+        assert_eq!(parsed.libdir, DEFAULT_LIBDIR);
         assert_eq!(parsed.destdir, PathBuf::from("/tmp/s"));
         assert_eq!(parsed.target_dir, target);
+    }
+
+    #[test]
+    fn the_libdir_is_a_plain_relative_directory_name() {
+        let target = PathBuf::from("target");
+        let parsed = parse(
+            &args(&["install", "--prefix", "/usr", "--libdir", "lib/x86_64-linux-gnu"]),
+            target.clone(),
+        )
+        .unwrap();
+        assert_eq!(parsed.libdir, "lib/x86_64-linux-gnu");
+        assert_eq!(
+            parse(
+                &args(&["install", "--prefix", "/usr", "--libdir", "lib64"]),
+                target.clone()
+            )
+            .unwrap()
+            .libdir,
+            "lib64"
+        );
+        for bad in ["", "/usr/lib", "../lib", "lib/../x", "lib/", "a b", "lib\\x"] {
+            assert!(
+                parse(&args(&["install", "--prefix", "/usr", "--libdir", bad]), target.clone()).is_err(),
+                "accepted libdir `{bad}`"
+            );
+        }
+    }
+
+    /// A build directory with the programs the install table needs, as plain bytes, plus the core library when `core` is
+    /// given (a path to a file to copy as `libgnoblin_core_impl.so`).
+    fn fake_build(dir: &Path, launcher: Option<&Path>, core: Option<&Path>) -> PathBuf {
+        let built = dir.join("target/release");
+        fs::create_dir_all(&built).unwrap();
+        for name in ["gnoblinctl", "xdg-desktop-portal-gnoblin", "libpam_gnoblin_keyring.so"] {
+            fs::write(built.join(name), format!("fake {name}")).unwrap();
+        }
+        match launcher {
+            Some(launcher) => {
+                fs::copy(launcher, built.join("gnoblin")).unwrap();
+            }
+            None => fs::write(built.join("gnoblin"), b"fake launcher").unwrap(),
+        }
+        if let Some(core) = core {
+            fs::copy(core, built.join(CORE_BUILT_NAME)).unwrap();
+        }
+        dir.join("target")
+    }
+
+    fn options(destdir: &Path, target: &Path, libdir: &str) -> DistOptions {
+        DistOptions {
+            action: DistAction::Install,
+            prefix: "/usr".to_owned(),
+            destdir: destdir.to_owned(),
+            profile: DEFAULT_PROFILE.to_owned(),
+            target_dir: target.to_owned(),
+            libdir: libdir.to_owned(),
+        }
+    }
+
+    #[test]
+    fn the_core_library_and_its_development_files_are_planned_only_when_it_was_built() {
+        let dir = scratch("dist-plan-core");
+        let without = plan(&repo_root(), &fake_build(&dir, None, None).join("release"), "lib64").unwrap();
+        assert!(
+            without
+                .iter()
+                .all(|entry| !entry.to.contains("libgnoblin-core") && !entry.to.starts_with("include/")),
+            "an install without the core ships no core files"
+        );
+
+        let core_dir = dir.join("fixture-core-src");
+        fs::create_dir_all(&core_dir).unwrap();
+        let core = good_core(&core_dir);
+        let with = plan(
+            &repo_root(),
+            &fake_build(&dir, None, Some(&core)).join("release"),
+            "lib64",
+        )
+        .unwrap();
+        let version = format!("{}.{}.{}", abi::ABI_MAJOR, abi::ABI_MINOR, abi::ABI_PATCH);
+        let find = |to: &str| {
+            with.iter()
+                .find(|entry| entry.to == to)
+                .unwrap_or_else(|| panic!("{to} is not planned"))
+        };
+        let file = find(&format!("lib64/libgnoblin-core.so.{version}"));
+        assert!(matches!(file.content, PlannedContent::File(_)));
+        assert_eq!(file.mode, FileMode::Program);
+        assert_eq!(
+            find("lib64/libgnoblin-core.so.1").content,
+            PlannedContent::Link(format!("libgnoblin-core.so.{version}"))
+        );
+        assert_eq!(
+            find("lib64/libgnoblin-core.so").content,
+            PlannedContent::Link("libgnoblin-core.so.1".to_owned())
+        );
+        assert!(matches!(
+            find("include/gnoblin/core.h").content,
+            PlannedContent::Bytes(_)
+        ));
+        let pc = find("lib64/pkgconfig/gnoblin-core.pc");
+        assert!(pc.template, "the .pc file carries the prefix");
+        let PlannedContent::Bytes(bytes) = &pc.content else {
+            panic!("the .pc file is generated")
+        };
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        assert!(text.contains("libdir=${prefix}/lib64"), "{text}");
+        assert!(text.contains(&format!("Version: {version}")), "{text}");
+        assert!(text.contains("prefix=@PREFIX@"), "{text}");
+    }
+
+    #[test]
+    fn the_manifest_records_a_symlink_by_its_target_and_refuses_one_that_escapes() {
+        let good = sha256_hex(b"x");
+        let text = format!("{good}  lib/a.so.1.0.0\nsymlink:a.so.1.0.0  lib/a.so.1\n");
+        let manifest = parse_manifest(Path::new("m"), &text).unwrap();
+        assert_eq!(manifest["lib/a.so.1"], "symlink:a.so.1.0.0");
+        assert_eq!(
+            parse_manifest(Path::new("m"), &format_manifest(&manifest)).unwrap(),
+            manifest
+        );
+        for bad in [
+            "symlink:  lib/a",
+            "symlink:/etc/passwd  lib/a",
+            "symlink:../x  lib/a",
+            "symlink:a/../b  lib/a",
+        ] {
+            assert!(
+                parse_manifest(Path::new("m"), &format!("{bad}\n")).is_err(),
+                "accepted {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_built_core_installs_with_its_links_and_the_installed_tree_passes_dist_check() {
+        let dir = scratch("dist-install-core");
+        let core_dir = dir.join("fixture-core");
+        fs::create_dir_all(&core_dir).unwrap();
+        let core = good_core(&core_dir);
+        let launcher = launcher(&dir, "launcher", &core_dir, "$ORIGIN/../lib64");
+        let target = fake_build(&dir, Some(&launcher), Some(&core));
+        let destdir = dir.join("dest");
+
+        install(&repo_root(), &options(&destdir, &target, "lib64")).unwrap();
+
+        let root = install_root(&destdir, "/usr");
+        let version = format!("{}.{}.{}", abi::ABI_MAJOR, abi::ABI_MINOR, abi::ABI_PATCH);
+        assert!(root.join(format!("lib64/libgnoblin-core.so.{version}")).is_file());
+        assert_eq!(
+            fs::read_link(root.join("lib64/libgnoblin-core.so.1")).unwrap(),
+            Path::new(&format!("libgnoblin-core.so.{version}"))
+        );
+        assert_eq!(
+            fs::read_link(root.join("lib64/libgnoblin-core.so")).unwrap(),
+            Path::new("libgnoblin-core.so.1")
+        );
+        let pc = fs::read_to_string(root.join("lib64/pkgconfig/gnoblin-core.pc")).unwrap();
+        assert!(pc.contains("prefix=/usr\n"), "the prefix is substituted: {pc}");
+        let manifest = read_manifest(&root.join(MANIFEST)).unwrap();
+        assert_eq!(manifest["lib64/libgnoblin-core.so"], "symlink:libgnoblin-core.so.1");
+        assert!(manifest.contains_key("include/gnoblin/core.h"));
+
+        // The whole point of the install: what it wrote passes the dynamic-linking checks, including a C program built
+        // through pkg-config and run against the installed library.
+        let failures = crate::dist_check::check_installed(&destdir, "/usr", "lib64").unwrap();
+        assert_eq!(
+            failures, 0,
+            "dist-check found problems in the installed tree (printed above)"
+        );
+    }
+
+    #[test]
+    fn a_reinstall_replaces_links_and_a_foreign_link_is_refused_before_anything_is_written() {
+        let dir = scratch("dist-reinstall-core");
+        let core_dir = dir.join("fixture-core");
+        fs::create_dir_all(&core_dir).unwrap();
+        let core = good_core(&core_dir);
+        let target = fake_build(&dir, None, Some(&core));
+        let destdir = dir.join("dest");
+        install(&repo_root(), &options(&destdir, &target, "lib")).unwrap();
+        install(&repo_root(), &options(&destdir, &target, "lib")).unwrap();
+
+        let root = install_root(&destdir, "/usr");
+        let link = root.join("lib/libgnoblin-core.so");
+        assert_eq!(fs::read_link(&link).unwrap(), Path::new("libgnoblin-core.so.1"));
+
+        // Someone repointed the linker name: the install notices it is no longer what it wrote.
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink("elsewhere.so", &link).unwrap();
+        let error = install(&repo_root(), &options(&destdir, &target, "lib")).unwrap_err();
+        assert!(matches!(error, DistError::Modified(_)), "{error}");
+        assert_eq!(
+            fs::read_link(&link).unwrap(),
+            Path::new("elsewhere.so"),
+            "the refused install changed nothing"
+        );
+
+        // A link where the manifest knows nothing is foreign.
+        let fresh = dir.join("fresh");
+        fs::create_dir_all(fresh.join("usr/lib")).unwrap();
+        std::os::unix::fs::symlink("elsewhere.so", fresh.join("usr/lib/libgnoblin-core.so")).unwrap();
+        let error = install(&repo_root(), &options(&fresh, &target, "lib")).unwrap_err();
+        assert!(matches!(error, DistError::Foreign(_)), "{error}");
+    }
+
+    #[test]
+    fn uninstall_removes_the_links_with_the_files_and_prunes_the_directories() {
+        let dir = scratch("dist-uninstall-core");
+        let core_dir = dir.join("fixture-core");
+        fs::create_dir_all(&core_dir).unwrap();
+        let core = good_core(&core_dir);
+        let target = fake_build(&dir, None, Some(&core));
+        let destdir = dir.join("dest");
+        install(&repo_root(), &options(&destdir, &target, "lib")).unwrap();
+        let root = install_root(&destdir, "/usr");
+        assert!(fs::symlink_metadata(root.join("lib/libgnoblin-core.so")).is_ok());
+
+        let mut remove = options(&destdir, &target, "lib");
+        remove.action = DistAction::Uninstall;
+        uninstall(&remove).unwrap();
+        assert!(
+            fs::symlink_metadata(root.join("lib/libgnoblin-core.so")).is_err(),
+            "the link is gone"
+        );
+        assert!(!root.join("lib/pkgconfig").exists(), "the empty directory is pruned");
+        assert!(!root.join(MANIFEST).exists());
     }
 }

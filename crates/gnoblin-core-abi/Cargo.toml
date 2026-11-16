@@ -1,0 +1,24 @@
+[package]
+name = "gnoblin-core-abi"
+description = "The C ABI of libgnoblin-core: repr(C) types, error codes, the versioned function table, the export list and the layout manifest the abi.lock check reads."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# The link-stub helpers a `build.rs` calls (`build_support`). A crate that links the core turns this on for its
+# build dependency only, so no shell carries the code.
+build-support = []
+# Test only: the table of a hypothetical ABI 1.1, one function appended (`uptime_ms`). The upgrade tests build a core
+# and a shell with it. It is never on in a build that ships and `cargo xtask abi-check` refuses it.
+next-minor = []
+
+# The workspace table forbids unsafe code. This crate has exactly one `unsafe impl` (the shell entry descriptor is a
+# `static` and holds a pointer to a label), so it sets its own levels and allows it in that one place.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

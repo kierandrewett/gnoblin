@@ -1,0 +1,24 @@
+[package]
+name = "gnoblin-fixture-shell-min"
+description = "Test fixture: a minimal shell that links only the core SDK. It registers one callback that prints and one that panics."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "shell_min"
+crate-type = ["cdylib"]
+
+[features]
+# Test only: build against the SDK of a hypothetical ABI 1.1 (see `gnoblin-core-abi`).
+next-minor = ["gnoblin-core/next-minor"]
+
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+
+# The shell uses the workspace lints, `forbid(unsafe_code)` included: a shell author writes no unsafe, so the macro's
+# expansion must not need it either.
+[lints]
+workspace = true

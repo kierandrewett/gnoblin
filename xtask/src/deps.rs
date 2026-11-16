@@ -277,6 +277,10 @@ const RULES: &[Rule] = &[
         id: "service-privacy-isolation",
         check: service_privacy_isolation,
     },
+    Rule {
+        id: "abi-leaf",
+        check: abi_leaf,
+    },
 ];
 
 /// One broken edge.
@@ -887,6 +891,20 @@ fn keyring_handoff_isolation(package: &Package, dep: &Dep) -> Option<String> {
     Some(format!(
         "`{KEYRING_HANDOFF_CRATE}` may not depend on workspace crates, but depends on `{}`",
         dep.name
+    ))
+}
+
+/// The ABI crate and the macro crate are the leaves of the shell SDK: a shell compiles them, so they name no workspace crate
+/// (not even as a build dependency), and nothing of the compositor can reach a shell through them.
+const ABI_LEAVES: &[&str] = &["gnoblin-core-abi", "gnoblin-macros"];
+
+fn abi_leaf(package: &Package, dep: &Dep) -> Option<String> {
+    if !ABI_LEAVES.contains(&package.name.as_str()) || !is_workspace_crate(&dep.name) {
+        return None;
+    }
+    Some(format!(
+        "`{}` is a leaf of the shell SDK and may not depend on workspace crates, but depends on `{}`",
+        package.name, dep.name
     ))
 }
 
@@ -1711,6 +1729,30 @@ mod tests {
             reported[0].starts_with("gnoblin-pipewire-export -> gnoblin-wayland [pipewire-export-isolation]"),
             "unexpected violation: {}",
             reported[0]
+        );
+    }
+
+    #[test]
+    fn the_abi_crate_and_the_macro_crate_name_no_workspace_crate() {
+        assert_eq!(
+            violations(&[
+                ("gnoblin-core-abi", &[]),
+                ("gnoblin-macros", &[]),
+                ("gnoblin-core", &["gnoblin-core-abi", "gnoblin-macros"])
+            ]),
+            Vec::<String>::new()
+        );
+        let abi = violations(&[("gnoblin-core-abi", &["gnoblin-schema"])]);
+        assert_eq!(
+            abi.iter().filter(|found| found.contains("[abi-leaf]")).count(),
+            1,
+            "{abi:?}"
+        );
+        let macros = violations(&[("gnoblin-macros", &["gnoblin-core-abi"])]);
+        assert_eq!(
+            macros.iter().filter(|found| found.contains("[abi-leaf]")).count(),
+            1,
+            "{macros:?}"
         );
     }
 

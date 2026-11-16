@@ -1,0 +1,19 @@
+[package]
+name = "gnoblin-fixture-shell-hot"
+description = "Test fixture: a shell whose behaviour is chosen at build time by FIXTURE_LABEL, so one source builds the generations of a reload test."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[lib]
+name = "shell_hot"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+
+[lints]
+workspace = true

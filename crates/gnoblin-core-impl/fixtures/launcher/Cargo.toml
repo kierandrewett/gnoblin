@@ -1,0 +1,19 @@
+[package]
+name = "gnoblin-fixture-launcher"
+description = "Test fixture: a launcher that links libgnoblin-core through the link stub and runs one scenario of the core's test driver."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[build-dependencies]
+gnoblin-core-abi = { path = "../../../gnoblin-core-abi", features = ["build-support"] }
+
+# The launcher calls one C function; the workspace table forbids the unsafe call.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

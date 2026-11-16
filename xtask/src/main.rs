@@ -2,18 +2,24 @@
 //! duplicate-type report over every crate's sources, and the code generation the
 //! schema drives.
 
+mod abi_c;
+mod abi_check;
 mod allow;
 mod compat_report;
 mod deps;
 mod dist;
+mod dist_check;
 mod docs_parity;
 mod dupes;
+mod elf;
 mod gen_proto;
 mod layout;
 mod logging;
 mod metadata;
 mod native_libs;
 mod native_probe;
+#[cfg(test)]
+mod test_fixtures;
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -34,8 +40,12 @@ subcommands:
   logging            fail on a direct logging-crate dependency or a stock print in library code
   docs-parity        fail on a documented gnoblin name the implemented surface lacks, unless allow-listed
   compat-report --json  the same report as JSON
-  dist install|uninstall --prefix P [--destdir D] [--profile NAME]
-                     install or remove the session tree; see xtask/src/dist.rs";
+  dist install|uninstall --prefix P [--destdir D] [--profile NAME] [--libdir NAME]
+                     install or remove the session tree; see xtask/src/dist.rs
+  dist-check ...     check an installed or staged tree: core SONAME and exports, NEEDED entries, links, header, pkg-config;
+                     see xtask/src/dist_check.rs
+  abi-check [--update]  fail when crates/gnoblin-core-abi/abi.lock and the ABI crate disagree, or a released entry changed
+  abi-header [--out FILE]  write the C header (include/gnoblin/core.h) generated from the ABI crate";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -58,6 +68,9 @@ fn main() -> ExitCode {
         ("dupes", [flag]) if flag == "--warn" => dupes::run(false),
         ("native-probe", _) => native_probe::run(&rest),
         ("dist", _) => dist::run(&rest),
+        ("dist-check", _) => dist_check::run(&rest),
+        ("abi-check", _) => abi_check::run_check(&rest),
+        ("abi-header", _) => abi_check::run_header(&rest),
         (
             "deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "layout" | "docs-parity" | "native-libs",
             _,

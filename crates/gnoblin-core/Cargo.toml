@@ -1,0 +1,29 @@
+[package]
+name = "gnoblin-core"
+description = "The Rust SDK for Gnoblin shells: safe wrappers over the installed libgnoblin-core. It links the library and never contains a copy of it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[features]
+# Test only: the SDK of a hypothetical ABI 1.1 (one more function in the table). See `gnoblin-core-abi`.
+next-minor = ["gnoblin-core-abi/next-minor"]
+
+[dependencies]
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-macros = { path = "../gnoblin-macros" }
+
+[build-dependencies]
+# The link stub and the `panic = "abort"` check run in build.rs, so the helper code is a build dependency only.
+gnoblin-core-abi = { path = "../gnoblin-core-abi", features = ["build-support"] }
+
+# The workspace table forbids unsafe code; the SDK's FFI modules need it. Only the modules that open with
+# `#![allow(unsafe_code)]` and a SAFETY note use it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

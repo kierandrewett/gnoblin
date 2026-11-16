@@ -41,6 +41,13 @@ members = [
     "crates/gnoblin-config",
     "crates/gnoblin-config-codegen",
     "crates/gnoblin-config-migrate",
+    "crates/gnoblin-core",
+    "crates/gnoblin-core-abi",
+    "crates/gnoblin-core-impl",
+    "crates/gnoblin-core-impl/fixtures/launcher",
+    "crates/gnoblin-core-impl/fixtures/shell-hot",
+    "crates/gnoblin-core-impl/fixtures/shell-min",
+    "crates/gnoblin-macros",
     "crates/gnoblin-cursor",
     "crates/gnoblin-portal",
     "crates/gnoblin-portal-appchooser",
@@ -121,7 +128,11 @@ publish = false
 # the clippy levels below with `unsafe_code = "deny"`; it then confines unsafe to
 # named FFI shim modules that each open with `#[allow(unsafe_code)]` and a
 # `// SAFETY:` comment. Adding such a crate is a reviewable change to this file
-# and to the dependency rules in `xtask/src/deps.rs`.
+# and to the dependency rules in `xtask/src/deps.rs`. The ABI crates are the other
+# kind of opt-out: `gnoblin-core-abi` (one `unsafe impl Sync`), `gnoblin-core` (the
+# SDK's extern declarations and trampolines), `gnoblin-core-impl` (the exported C
+# ABI and the module loader) and the fixture launcher. Shell crates and
+# `gnoblin-macros` inherit the forbid: the macro's expansion needs no unsafe.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

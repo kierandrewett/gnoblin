@@ -1373,3 +1373,9 @@ left = "gnoblin-backend::Part"
 right = "gnoblin-types::Edge"
 kind = "same-shape"
 reason = "a strip of the nested session's window frame (the title bar is above, the others beside and below); it is positioned by the frame's layout and is not a side of a rectangle"
+
+[[allow]]
+left = "gnoblin-compat-core::Kind"
+right = "gnoblin-core::MemberKind"
+kind = "same-shape"
+reason = "the compat matrix's Kind names the three kinds of schema member a compat adapter supports; the SDK's MemberKind names the three kinds of catalog member a shell can look up through the ABI; the variant names coincide because both mirror the schema's property, method and signal"
