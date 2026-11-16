@@ -40,10 +40,15 @@ export function bindKeys(input: typeof gnoblin.input.primary): void {
 
 ```ts
 // appearance.ts
+import "gnoblin-std";
+
 export function styleWindows(): void {
     gnoblin.clients.style.cornerRadius = 12;
 }
 ```
+
+`gnoblin.clients.style` is part of `gnoblin-std`, which a file loads with `import "gnoblin-std";`, so `appearance.ts`
+imports it before it uses the style.
 
 ```ts
 import { styleWindows } from "./appearance.ts";

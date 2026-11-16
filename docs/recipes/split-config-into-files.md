@@ -1,9 +1,12 @@
 # Split a config into files
 
-Import functions from `shell.ts` and call them in the order you want them applied. In `appearance.ts`:
+Import functions from `shell.ts` and call them in the order you want them applied. In `appearance.ts`, which imports
+`gnoblin-std` because `gnoblin.clients.style` is part of it:
 
 ```ts
 // appearance.ts
+import "gnoblin-std";
+
 export function styleWindows(): void {
     gnoblin.clients.style.cornerRadius = 12;
     gnoblin.clients.style.opacity = 1;

@@ -1,10 +1,11 @@
 # Combine window rules
 
 Set shared defaults first, then override them for selected windows. Later statements win, so put the general one first.
-Put this in `~/.config/gnoblin/shell.ts`:
+Put this in `~/.config/gnoblin/shell.ts`. It imports `gnoblin-std`, which provides `gnoblin.clients.style`:
 
 ```ts
 import { CollectionListener } from "gnoblin-core";
+import "gnoblin-std";
 import type { Client } from "gnoblin-core";
 
 gnoblin.clients.style.opacity = 1;
