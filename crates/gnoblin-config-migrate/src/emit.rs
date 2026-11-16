@@ -294,172 +294,160 @@ pub(crate) fn rules(items: &[Placed<RuleDef>], needs: &mut Needs) -> Vec<String>
     out
 }
 
-/// The stock keys that carry a command: the trigger and the program.
-const MEDIA_KEYS: &[(&str, &[&str])] = &[
-    (
-        "XF86AudioRaiseVolume",
-        &["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"],
-    ),
-    (
-        "XF86AudioLowerVolume",
-        &["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"],
-    ),
-    (
-        "XF86AudioMute",
-        &["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"],
-    ),
-    (
-        "XF86AudioMicMute",
-        &["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"],
-    ),
-    ("XF86AudioPlay", &["playerctl", "play-pause"]),
-    ("XF86AudioNext", &["playerctl", "next"]),
-    ("XF86AudioPrev", &["playerctl", "previous"]),
-];
+/// The stock desktop's one description: the starter, `data/js/starter/shell.ts`.
+const STARTER: &str = include_str!("../../../data/js/starter/shell.ts");
+
+/// The first line of the starter's statement that binds `Super+1` to `Super+9`.
+const POSITION_LOOP: &str = "for (let position = 1; position <= 9; position++) {";
+
+/// The starter, split for [`stock`]: the names it imports, and its blocks of statements. A block ends at a blank line
+/// and keeps the comment above it. A block of comments only is an example the starter offers, and `const input` is the
+/// document's own line, so neither is a block.
+struct Starter {
+    names: Vec<&'static str>,
+    blocks: Vec<Vec<&'static str>>,
+}
+
+impl Starter {
+    fn read() -> Starter {
+        let lines: Vec<&'static str> = STARTER.lines().collect();
+        let open = lines
+            .iter()
+            .position(|line| *line == "import {")
+            .expect("the starter imports the library");
+        let close = lines
+            .iter()
+            .position(|line| line.starts_with("} from "))
+            .expect("the starter's import ends");
+        let names = lines[open + 1..close]
+            .iter()
+            .map(|line| line.trim().trim_end_matches(','))
+            .collect();
+        let blocks = lines[close + 1..]
+            .split(|line| line.is_empty())
+            .filter(|block| block.iter().any(|line| !line.starts_with("//")))
+            .filter(|block| !block.iter().any(|line| line.starts_with("const input =")))
+            .map(<[&'static str]>::to_vec)
+            .collect();
+        Starter { names, blocks }
+    }
+}
 
 /// The stock desktop: what `data/js/starter/shell.ts` does, written out for a config that replaces it.
 ///
-/// `own_workspaces` says the Lua config declared workspaces, which then stand where the stock four would. `alerts` is
-/// whether the not-responding alert is on. `taken` holds the canonical triggers the Lua config binds itself: a stock
-/// key on one of them is left out, as the Lua config's key took its place when the two were layered.
+/// The text is the starter's own, so it cannot drift from it. Each of its blocks is kept whole except for what the Lua
+/// config said: `own_workspaces` (the Lua config declared workspaces, which then stand where the stock four would) drops
+/// the workspaces; `alerts` false turns the not-responding alert into a comment; `taken` holds the canonical triggers
+/// the Lua config binds itself, and a stock key on one of them is left out, as the Lua config's key took its place when
+/// the two were layered. A block whose keys are all left out goes with its comment and helpers. The names the kept
+/// statements use are the ones the file imports.
 ///
 /// A test (`crates/gnoblinctl/tests/config_migrate.rs`) boots the converted Lua starter and the starter and compares the
-/// worlds, so this text cannot drift from the starter unseen.
+/// worlds.
 pub(crate) fn stock(needs: &mut Needs, own_workspaces: bool, alerts: bool, taken: &BTreeSet<String>) -> Vec<String> {
     let free = |trigger: &str| !taken.contains(&canonical_trigger(trigger));
-    let mut blocks: Vec<Vec<String>> = Vec::new();
-    blocks.push(comment(&[
+    let starter = Starter::read();
+    let mut blocks: Vec<Vec<String>> = vec![comment(&[
         "The stock desktop. A shell.ts replaces the stock default instead of layering over it, so what the Lua shell"
             .to_owned(),
         "kept on its own is written out here. Delete a statement and that part of the desktop is gone.".to_owned(),
-    ]));
-    if !own_workspaces {
-        needs.import("Workspace");
-        needs.import("FloatingLayout");
-        blocks.push(
-            [
-                "// Four floating workspaces. The first is shown until a key shows another.",
-                "for (const id of [\"1\", \"2\", \"3\", \"4\"]) {",
-                "    gnoblin.workspaces.add(new Workspace({ id, name: `Workspace ${id}`, layout: new FloatingLayout() }));",
-                "}",
-            ]
-            .map(str::to_owned)
-            .to_vec(),
-        );
-    }
-    needs.import("startDecorations");
-    needs.import("startWindowMenu");
-    let mut services = vec![
-        "// A titlebar on every window, the menu the compositor asks for, and the dialog for a window that stops answering."
-            .to_owned(),
-        "startDecorations();".to_owned(),
-        "startWindowMenu();".to_owned(),
-    ];
-    if alerts {
-        needs.import("startNotRespondingAlert");
-        services.push("startNotRespondingAlert();".to_owned());
-    } else {
-        services.push("// startNotRespondingAlert() is left out: the Lua config switched alerts off.".to_owned());
-    }
-    blocks.push(services);
-
-    needs.input = true;
-    let positions: Vec<usize> = (1..=9).filter(|position| free(&format!("Super+{position}"))).collect();
-    if !positions.is_empty() {
-        let head = if positions.len() == 9 {
-            "for (let position = 1; position <= 9; position++) {".to_owned()
-        } else {
-            let list: Vec<String> = positions.iter().map(ToString::to_string).collect();
-            format!("for (const position of [{}]) {{", list.join(", "))
-        };
-        let mut block = comment(&[
-            "Super+1 .. Super+9 show the workspace at that position on the display the pointer is on. A key past the last"
-                .to_owned(),
-            "workspace does nothing.".to_owned(),
-        ]);
-        block.extend(
-            [
-                "    input.bind(`Super+${position}`, () => {",
-                "        const target = gnoblin.workspaces.at(position - 1);",
-                "        if (target !== undefined) {",
-                "            gnoblin.workspaces.show(target, { duration: 250 });",
-                "        }",
-                "    });",
-                "}",
-            ]
-            .map(str::to_owned),
-        );
-        block.insert(2, head);
-        blocks.push(block);
-    }
-
-    let strip: Vec<(&str, &str)> = [("Super+Left", "focusLeft"), ("Super+Right", "focusRight")]
-        .into_iter()
-        .filter(|(trigger, _)| free(trigger))
-        .collect();
-    if !strip.is_empty() {
-        needs.import("StripLayout");
-        needs.import("Workspace");
-        let mut block = comment(&[
-            "Super+Left and Super+Right move the focus between the columns of a StripLayout, and do nothing on other layouts."
-                .to_owned(),
-        ]);
-        block.extend(
-            [
-                "const moveColumn = (side: \"focusLeft\" | \"focusRight\") => {",
-                "    const shown = (input.activeDisplay as { viewport: { content: Workspace | null } } | null)?.viewport.content;",
-                "    if (shown?.layout instanceof StripLayout) {",
-                "        shown.layout[side](shown);",
-                "    }",
-                "};",
-            ]
-            .map(str::to_owned),
-        );
-        for (trigger, side) in strip {
-            block.push(format!(
-                "input.bind({}, () => moveColumn({}));",
-                names::string(trigger),
-                names::string(side)
-            ));
+    ])];
+    blocks.extend(
+        starter
+            .blocks
+            .iter()
+            .filter_map(|block| kept(block, own_workspaces, alerts, &free)),
+    );
+    for line in blocks.iter().skip(1).flatten().filter(|line| !line.starts_with("//")) {
+        for &name in &starter.names {
+            if mentions(line, name) {
+                needs.import(name);
+            }
         }
-        blocks.push(block);
-    }
-
-    needs.import("WorkspaceSlideBinding");
-    let mut swipe = comment(&["Three fingers sliding sideways slide between workspaces.".to_owned()]);
-    swipe.push("input.bind(\"Swipe3\", new WorkspaceSlideBinding());".to_owned());
-    blocks.push(swipe);
-
-    let media: Vec<&(&str, &[&str])> = MEDIA_KEYS.iter().filter(|(trigger, _)| free(trigger)).collect();
-    if !media.is_empty() {
-        let mut block = comment(&["Volume, microphone and media player keys: each key runs one command.".to_owned()]);
-        block.push("const mediaKeys: Record<string, string[]> = {".to_owned());
-        for (trigger, program) in media {
-            let program: Vec<String> = program.iter().map(|part| (*part).to_owned()).collect();
-            block.push(format!("    {trigger}: {},", argv(&program)));
-        }
-        block.extend(
-            [
-                "};",
-                "for (const [key, command] of Object.entries(mediaKeys)) {",
-                "    input.bind(key, () => {",
-                "        gnoblin.spawn(command);",
-                "    });",
-                "}",
-            ]
-            .map(str::to_owned),
-        );
-        blocks.push(block);
-    }
-
-    if free("Super+space") {
-        needs.import("openLauncher");
-        let mut block =
-            comment(&["Super+space opens the launcher: a command entry in the middle of the screen.".to_owned()]);
-        block.extend(["input.bind(\"Super+space\", () => {", "    openLauncher();", "});"].map(str::to_owned));
-        blocks.push(block);
+        needs.input |= line.contains("input.");
     }
     join(blocks)
+}
+
+/// One block of the starter, less what the config says; `None` when nothing is left of it. A key is a literal
+/// `input.bind("Trigger", ...)` statement, a media entry `Name: [...]` and the loop over `Super+1` to `Super+9`.
+fn kept(block: &[&str], own_workspaces: bool, alerts: bool, free: &dyn Fn(&str) -> bool) -> Option<Vec<String>> {
+    if own_workspaces
+        && block
+            .iter()
+            .any(|line| line.trim_start().starts_with("gnoblin.workspaces.add("))
+    {
+        return None;
+    }
+    let (mut seen, mut left) = (0, 0);
+    let mut out: Vec<String> = Vec::new();
+    let mut at = 0;
+    while at < block.len() {
+        let line = block[at];
+        at += 1;
+        if let Some(trigger) = line
+            .strip_prefix("input.bind(\"")
+            .and_then(|rest| rest.split('"').next())
+        {
+            seen += 1;
+            let end = statement_end(block, at - 1);
+            if free(trigger) {
+                left += 1;
+                out.extend(block[at - 1..end].iter().map(|statement| (*statement).to_owned()));
+            }
+            at = end;
+        } else if let Some(key) = line
+            .strip_prefix("    ")
+            .and_then(|rest| rest.split_once(": ["))
+            .map(|(key, _)| key)
+            .filter(|key| key.chars().all(|c| c.is_alphanumeric() || c == '_'))
+        {
+            seen += 1;
+            if free(key) {
+                left += 1;
+                out.push(line.to_owned());
+            }
+        } else if line == POSITION_LOOP {
+            seen += 1;
+            let positions: Vec<usize> = (1..=9).filter(|position| free(&format!("Super+{position}"))).collect();
+            if positions.is_empty() {
+                at = statement_end(block, at - 1);
+            } else {
+                left += 1;
+                out.push(if positions.len() == 9 {
+                    line.to_owned()
+                } else {
+                    let list: Vec<String> = positions.iter().map(ToString::to_string).collect();
+                    format!("for (const position of [{}]) {{", list.join(", "))
+                });
+            }
+        } else if line == "startNotRespondingAlert();" && !alerts {
+            out.push("// startNotRespondingAlert() is left out: the Lua config switched alerts off.".to_owned());
+        } else {
+            out.push(line.to_owned());
+        }
+    }
+    (seen == 0 || left > 0).then_some(out)
+}
+
+/// The index one past the statement that starts at `start`: its own line when that ends in `;`, else the line that
+/// closes it, which starts in the first column.
+fn statement_end(block: &[&str], start: usize) -> usize {
+    if block[start].ends_with(';') {
+        return start + 1;
+    }
+    block[start + 1..]
+        .iter()
+        .position(|line| line.starts_with('}'))
+        .map_or(block.len(), |close| start + close + 2)
+}
+
+/// Whether `line` names `name` as a whole identifier.
+fn mentions(line: &str, name: &str) -> bool {
+    let ident = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    line.match_indices(name).any(|(at, _)| {
+        !line[..at].chars().next_back().is_some_and(ident) && !line[at + name.len()..].chars().next().is_some_and(ident)
+    })
 }
 
 /// Blocks of lines with a blank line between them.
@@ -639,5 +627,39 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("XF86AudioMicMute"), "{text}");
+    }
+
+    #[test]
+    fn the_stock_desktop_is_the_starter_less_what_the_config_declares() {
+        let mut needs = Needs::default();
+        let text = stock(&mut needs, true, false, &BTreeSet::new()).join("\n");
+        assert!(
+            !text.contains("gnoblin.workspaces.add("),
+            "the Lua config's workspaces stand in place: {text}"
+        );
+        assert!(text.contains("// startNotRespondingAlert() is left out"), "{text}");
+        assert!(!text.contains("startNotRespondingAlert();"), "{text}");
+        assert!(
+            text.contains("for (let position = 1; position <= 9; position++) {"),
+            "{text}"
+        );
+        assert!(text.contains("openLauncher();"), "{text}");
+        let imported = import_lines(&needs).join("\n");
+        assert!(imported.contains("openLauncher"), "{imported}");
+        assert!(!imported.contains("startNotRespondingAlert"), "{imported}");
+        assert!(
+            !imported.contains("FloatingLayout"),
+            "the workspaces are the Lua config's: {imported}"
+        );
+    }
+
+    #[test]
+    fn a_block_whose_keys_are_all_taken_goes_with_its_comment_and_helper() {
+        let mut needs = Needs::default();
+        let taken: BTreeSet<String> = ["Super+Left", "Super+Right"].into_iter().map(str::to_owned).collect();
+        let text = stock(&mut needs, false, true, &taken).join("\n");
+        assert!(!text.contains("moveColumn"), "{text}");
+        assert!(!text.contains("Super+Left and Super+Right"), "{text}");
+        assert!(!import_lines(&needs).join("\n").contains("StripLayout"));
     }
 }

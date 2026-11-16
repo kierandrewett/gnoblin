@@ -21,12 +21,13 @@ const input = gnoblin.input.primary;
 // The stock desktop. A shell.ts replaces the stock default instead of layering over it, so what the Lua shell
 // kept on its own is written out here. Delete a statement and that part of the desktop is gone.
 
-// A titlebar on every window, the menu the compositor asks for, and the dialog for a window that stops answering.
+// Add a titlebar to each window, the window menu and the not-responding alert.
+// Remove a call to disable that part.
 startDecorations();
 startWindowMenu();
 startNotRespondingAlert();
 
-// Super+1 .. Super+9 show the workspace at that position on the display the pointer is on. A key past the last
+// Super+1 .. Super+9 show the workspace at that position on the display under the pointer. A key past the last
 // workspace does nothing.
 for (let position = 1; position <= 9; position++) {
     input.bind(`Super+${position}`, () => {
@@ -37,7 +38,7 @@ for (let position = 1; position <= 9; position++) {
     });
 }
 
-// Super+Left and Super+Right move the focus between the columns of a StripLayout, and do nothing on other layouts.
+// Super+Left and Super+Right move focus between StripLayout columns. They do nothing on other layouts.
 const moveColumn = (side: "focusLeft" | "focusRight") => {
     const shown = (input.activeDisplay as { viewport: { content: Workspace | null } } | null)?.viewport.content;
     if (shown?.layout instanceof StripLayout) {
@@ -47,10 +48,10 @@ const moveColumn = (side: "focusLeft" | "focusRight") => {
 input.bind("Super+Left", () => moveColumn("focusLeft"));
 input.bind("Super+Right", () => moveColumn("focusRight"));
 
-// Three fingers sliding sideways slide between workspaces.
+// Three-finger sideways swipes switch workspaces.
 input.bind("Swipe3", new WorkspaceSlideBinding());
 
-// Super+space opens the launcher: a command entry in the middle of the screen.
+// Super+space opens the launcher, with a command entry in the middle of the screen.
 input.bind("Super+space", () => {
     openLauncher();
 });
