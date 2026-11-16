@@ -119,7 +119,7 @@ impl Composer {
         let (Some(_), Some(rect)) = (self.lock_node, self.scene.outputs().get(&output).copied()) else {
             return false;
         };
-        if !self.lock_ui_engaged() || !self.scene.shell_places() {
+        if !self.lock_ui_engaged() || !self.scene.holder_attached() {
             return false;
         }
         let ranks = self.paint_ranks();

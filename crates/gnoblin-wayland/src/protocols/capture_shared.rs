@@ -724,7 +724,7 @@ impl State {
         match target {
             Target::Output(output) => self.output_rect(output).unwrap_or(Rect::from_size(bounds.size())),
             Target::Window(window) => self
-                .fallback
+                .wm
                 .windows()
                 .find(|managed| managed.id == window)
                 .map(|managed| self.geometry_of(window).unwrap_or(managed.geometry))
@@ -928,7 +928,7 @@ impl State {
             };
             targets.outputs.insert(output, scale_size(rect.size(), scale));
         }
-        for managed in self.fallback.windows() {
+        for managed in self.wm.windows() {
             let window = managed.id;
             let shown = self.geometry_of(window).unwrap_or(managed.geometry);
             let Some(output) = managed.output else {

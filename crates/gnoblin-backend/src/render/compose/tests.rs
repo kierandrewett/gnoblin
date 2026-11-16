@@ -2106,7 +2106,7 @@ fn while_the_shell_holds_the_tree_the_composer_publishes_no_x_or_y() {
     composer.insert_window(window, Rect::new(10, 10, 100, 100));
     composer.set_window_content(window, Some(content()));
     let node = node_of(&composer, window);
-    composer.with_scene(|scene| scene.set_shell_places(true));
+    composer.with_scene(|scene| scene.set_holder_attached(true));
     composer.follow_placement();
     composer.take_tree_changes();
     // The window manager moves the window while the shell holds the tree: the shell's x and y
@@ -2117,7 +2117,7 @@ fn while_the_shell_holds_the_tree_the_composer_publishes_no_x_or_y() {
     assert_eq!(set_number(&held, node, "y"), None, "no y is published during the hold");
     // Once the shell lets go, the placed position is published, because the tree no longer
     // holds the value it last saw.
-    composer.with_scene(|scene| scene.set_shell_places(false));
+    composer.with_scene(|scene| scene.set_holder_attached(false));
     composer.set_reduced_motion(true);
     composer.follow_placement();
     let released = composer.take_tree_changes();
@@ -2132,7 +2132,7 @@ fn a_shell_holding_the_tree_keeps_the_position_it_set() {
     composer.insert_window(window, Rect::new(10, 10, 100, 100));
     composer.set_window_content(window, Some(content()));
     let node = node_of(&composer, window);
-    composer.with_scene(|scene| scene.set_shell_places(true));
+    composer.with_scene(|scene| scene.set_holder_attached(true));
     composer.follow_placement();
     // The shell moves the node; the window manager's placement must not move it back.
     composer.with_scene(|scene| {
@@ -2154,10 +2154,10 @@ fn the_window_manager_places_the_window_again_when_the_shell_lets_go() {
     composer.insert_window(window, Rect::new(10, 10, 100, 100));
     composer.set_window_content(window, Some(content()));
     let node = node_of(&composer, window);
-    composer.with_scene(|scene| scene.set_shell_places(true));
+    composer.with_scene(|scene| scene.set_holder_attached(true));
     composer.follow_placement();
     composer.place_window(window, Rect::new(200, 120, 100, 100));
-    composer.with_scene(|scene| scene.set_shell_places(false));
+    composer.with_scene(|scene| scene.set_holder_attached(false));
     // Reduced motion lands the placement at once, so the node's offset is the placed one.
     composer.set_reduced_motion(true);
     composer.follow_placement();
@@ -2399,7 +2399,7 @@ fn while_a_shell_holds_the_tree_only_focus_is_published_and_the_flags_are_read_f
     composer.set_window_content(window, Some(content()));
     composer.take_tree_changes();
     let node = composer.window_node(window).expect("the window has a node");
-    composer.with_scene(|scene| scene.set_shell_places(true));
+    composer.with_scene(|scene| scene.set_holder_attached(true));
     assert_eq!(
         composer.shell_window_flags(window),
         Some([false; 3]),
@@ -2428,7 +2428,7 @@ fn while_a_shell_holds_the_tree_only_focus_is_published_and_the_flags_are_read_f
         "{changes:?}"
     );
 
-    composer.with_scene(|scene| scene.set_shell_places(false));
+    composer.with_scene(|scene| scene.set_holder_attached(false));
     assert_eq!(
         composer.shell_window_flags(window),
         None,
@@ -4062,7 +4062,7 @@ fn the_main_seat_publishes_the_effect_kinds_the_renderer_draws() {
 fn shell_writes_builtin_motion(composer: &mut Composer, on: bool) -> NodeId {
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     composer.with_scene(|scene| {
-        scene.set_shell_places(true);
+        scene.set_holder_attached(true);
         scene
             .set_value(seat, "builtin_motion", TreeValue::Bool(on))
             .expect("the seat holds the value");
@@ -4115,7 +4115,7 @@ fn the_builtin_motion_switch_is_ignored_while_no_shell_holds_the_tree() {
     let (mut composer, _output) = screen();
     let seat = shell_writes_builtin_motion(&mut composer, false);
     // The shell is gone, but a value it wrote is still on the seat: the compositor's own desktop animates as ever.
-    composer.with_scene(|scene| scene.set_shell_places(false));
+    composer.with_scene(|scene| scene.set_holder_attached(false));
     assert!(!composer.builtin_motion_off());
     composer.with_scene(|scene| {
         scene
@@ -4245,7 +4245,7 @@ fn a_shell_that_lets_go_of_the_tree_leaves_the_compositor_animating_and_every_wi
         }
     });
     composer.take_tree_changes();
-    composer.with_scene(|scene| scene.set_shell_places(false));
+    composer.with_scene(|scene| scene.set_holder_attached(false));
     composer.follow_placement();
     let changes = composer.take_tree_changes();
     let set = |node: NodeId, key: &str, value: TreeValue| TreeChange::Set {
@@ -4279,7 +4279,7 @@ fn shell_paced_window(composer: &mut Composer, values: &[(&str, TreeValue)]) -> 
     composer.set_window_content(window, Some(content()));
     let node = node_of(composer, window);
     composer.with_scene(|scene| {
-        scene.set_shell_places(true);
+        scene.set_holder_attached(true);
         for (key, value) in values {
             scene
                 .set_value(node, key, value.clone())
@@ -4335,7 +4335,7 @@ fn a_policy_the_shell_wrote_means_nothing_while_no_shell_holds_the_tree() {
     let (mut composer, _output) = screen();
     let (window, _node) = shell_paced_window(&mut composer, &[("frame_policy", TreeValue::Text("hold".to_owned()))]);
     assert_eq!(composer.window_frame_policy(window), FramePolicy::Hold);
-    composer.with_scene(|scene| scene.set_shell_places(false));
+    composer.with_scene(|scene| scene.set_holder_attached(false));
     assert_eq!(
         composer.window_frame_policy(window),
         FramePolicy::Auto,

@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-wm-api"
+description = "The window-manager provider contract: the WindowManager trait, the records and effects it speaks in, the window management options and the NullWm a core without a provider uses."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The rectangles, insets and identities every record is made of, and the cascade a provider may place with.
+gnoblin-types.workspace = true
+
+[lints]
+workspace = true

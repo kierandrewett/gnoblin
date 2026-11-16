@@ -484,8 +484,8 @@ pub struct Scene {
     pending: Vec<Rect>,
     full: BTreeSet<OutputId>,
     damage_rect_limit: usize,
-    /// Whether the shell holds the tree, so the composer leaves window x and y to it.
-    shell_places: bool,
+    /// Whether a holder (a shell) is attached to the tree, so the composer leaves window x and y to it.
+    holder_attached: bool,
     /// The name of each seat node, set once when the node is created.
     seat_names: BTreeMap<NodeId, String>,
 }
@@ -509,7 +509,7 @@ impl Scene {
             pending: Vec::new(),
             full: BTreeSet::new(),
             damage_rect_limit: DEFAULT_DAMAGE_RECT_LIMIT,
-            shell_places: false,
+            holder_attached: false,
             seat_names: BTreeMap::new(),
         }
     }
@@ -530,18 +530,17 @@ impl Scene {
         self.seat_names.iter().map(|(id, name)| (*id, name.as_str()))
     }
 
-    /// Whether the shell holds the tree: while it does, the composer does not write a window's
-    /// x and y, so the shell's placement stands. The window manager places them again when it
-    /// does not.
+    /// Whether a holder is attached to the tree: while one is, the composer does not write a window's
+    /// x and y, so the holder's placement stands. The window-manager provider places them again when none is.
     #[must_use]
-    pub fn shell_places(&self) -> bool {
-        self.shell_places
+    pub fn holder_attached(&self) -> bool {
+        self.holder_attached
     }
 
-    /// Set whether the shell holds the tree. Changes no pixels by itself; the composer resyncs
+    /// Set whether a holder is attached to the tree. Changes no pixels by itself; the composer resyncs
     /// the windows when it next follows placement.
-    pub fn set_shell_places(&mut self, shell_places: bool) {
-        self.shell_places = shell_places;
+    pub fn set_holder_attached(&mut self, holder_attached: bool) {
+        self.holder_attached = holder_attached;
     }
 
     /// Insert a node as the last child of its parent, or as the last root, so it

@@ -686,6 +686,13 @@ Provider        = the registered WM provider, or NullWm when none is registered
 the order it arrived in, and the compositor does not change keyboard focus on click. It refuses nothing and drops no request. It is what a
 core-only session without a holder does, and the only thing core tests need.
 
+Landed in M1.1 to M1.3. `State::decider(window)` is the rule above and is the one place a window-scoped decision asks it. The scene flag is
+`holder_attached`; a question about the holder alone, with no window to decide for (the lock card's lease, a control request the shell owns,
+dropping a provider's effects while a shell is attached, the pointer pick), reads `holder_attached` directly and keeps the condition it had, so
+the default desktop does not change. `NullWm` also keeps the record of windows and outputs the compositor reads for every provider, and it
+refuses only a window that is already open or one past `MAX_WINDOWS`. A session reaches it by starting with `Config::window_manager = None`; the
+default is still the stock provider until M1.5 moves it.
+
 ### 9.3 What moves out of core
 
 The move list, exact. Sizes are from `wc -c` on `17e44ef17`.

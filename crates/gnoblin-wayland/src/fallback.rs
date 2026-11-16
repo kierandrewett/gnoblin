@@ -12,137 +12,20 @@
 //! - an output's arrival, loss, move or reservation re-fits the windows on it, and a window never points at an
 //!   output that is gone.
 //!
-//! A decision never touches a Smithay type. It returns [`FallbackEffect`]s the caller applies, and reads the paint order and
+//! A decision never touches a Smithay type. It returns [`WmEffect`]s the caller applies, and reads the paint order and
 //! the focus through [`Standing`], so the one record of both stays the scene's and the keyboard's. While a shell holds
 //! the tree the caller keeps this record current and applies none of the effects: the shell decides.
+//!
+//! `Fallback` is the stock [`WindowManager`] provider. The records and the vocabulary it speaks in live in
+//! `gnoblin-wm-api`, which is what the session drives it through.
 
 use std::collections::BTreeMap;
 
 use gnoblin_types::{Insets, OutputId, Point, Rect, Size, WindowId, cascade_position};
-
-use crate::policy::NewWindowFocus;
-
-/// The size of a window whose client asked for none.
-const DEFAULT_SIZE: Size = Size::new(800, 600);
-
-/// The most windows the record holds. A window past it is left unmanaged, so a client that opens toplevels in a
-/// loop cannot grow the record without bound.
-pub(crate) const MAX_WINDOWS: usize = 256;
-
-/// What kind of toplevel a window is. A transient is centred over its parent and focus goes to a modal child first.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum WindowKind {
-    /// An application toplevel.
-    #[default]
-    Normal,
-    /// A dialog with a parent.
-    Dialog,
-    /// A dialog that blocks its parent.
-    Modal,
-}
-
-/// The three state flags of a window.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct WindowState {
-    /// The window fills its output's work area.
-    pub maximised: bool,
-    /// The window covers its whole output, over panels.
-    pub fullscreen: bool,
-    /// The window is hidden and out of the focus rotation.
-    pub minimised: bool,
-}
-
-/// One window the record holds.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Window {
-    /// The compositor's identity for the window.
-    pub id: WindowId,
-    /// What kind of toplevel it is.
-    pub kind: WindowKind,
-    /// The window it is a transient of, while that window is open.
-    pub transient_for: Option<WindowId>,
-    /// The output it is on; `None` only while no output is connected.
-    pub output: Option<OutputId>,
-    /// Its frame rectangle in global logical coordinates.
-    pub geometry: Rect,
-    /// The floating rectangle it returns to when it leaves maximise or fullscreen. Equal to `geometry` while floating.
-    restore: Rect,
-    /// The state flags.
-    pub state: WindowState,
-}
-
-/// One connected output: its rectangle and what layer surfaces reserved along its edges.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct OutputRecord {
-    /// The output's identity, as the backend numbers it.
-    pub id: OutputId,
-    /// The whole monitor rectangle, which a fullscreen window covers.
-    pub rect: Rect,
-    /// The insets layer surfaces reserved.
-    pub reserved: Insets,
-}
-
-impl OutputRecord {
-    /// The monitor rectangle less the reserved insets, never smaller than a pixel.
-    pub(crate) fn work_area(&self) -> Rect {
-        self.reserved.applied_to(self.rect).at_least_one()
-    }
-}
-
-/// What a decision asks the caller to do.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum FallbackEffect {
-    /// Place the window at `geometry` and tell its client the state.
-    Configure {
-        window: WindowId,
-        geometry: Rect,
-        state: WindowState,
-    },
-    /// Show or hide the window.
-    Visible { window: WindowId, visible: bool },
-    /// The paint order, topmost first.
-    Stack(Vec<WindowId>),
-    /// Move keyboard focus to the window, or to none.
-    Focus(Option<WindowId>),
-}
-
-/// The paint order and the focus a decision starts from, which the scene and the keyboard own.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Standing<'a> {
-    /// Every window drawn, topmost first.
-    pub stack: &'a [WindowId],
-    /// The focused window.
-    pub focus: Option<WindowId>,
-}
-
-/// A window the compositor opens.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Open {
-    pub id: WindowId,
-    pub kind: WindowKind,
-    pub transient_for: Option<WindowId>,
-    /// The rectangle the client asked for; only its size is used.
-    pub requested: Option<Rect>,
-}
-
-/// Why the record refused a request.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FallbackRefusal {
-    /// The window is already open.
-    Duplicate,
-    /// The record is full.
-    TooMany,
-    /// No output is connected to place the window on.
-    NoOutput,
-    /// The window is not open.
-    Gone,
-    /// The window is maximised or fullscreen, so it has no floating rectangle to change.
-    NotFloating,
-    /// The output is not connected.
-    UnknownOutput,
-    /// A transient moves with its parent, not on its own.
-    FollowsParent,
-}
+use gnoblin_wm_api::{
+    DEFAULT_SIZE, MAX_WINDOWS, NewWindowFocus, Open, OutputRecord, Standing, Window, WindowKind, WindowManager,
+    WindowState, WmEffect, WmRefusal,
+};
 
 /// The record of windows and outputs, and the decisions over it.
 #[derive(Debug, Default)]
@@ -151,44 +34,32 @@ pub(crate) struct Fallback {
     outputs: Vec<OutputRecord>,
 }
 
-impl Fallback {
+impl WindowManager for Fallback {
     /// One window.
-    pub(crate) fn window(&self, id: WindowId) -> Option<&Window> {
+    fn window(&self, id: WindowId) -> Option<&Window> {
         self.windows.get(&id)
     }
 
     /// Every window, by identity.
-    pub(crate) fn windows(&self) -> impl Iterator<Item = &Window> {
-        self.windows.values()
+    fn windows(&self) -> Box<dyn Iterator<Item = &Window> + '_> {
+        Box::new(self.windows.values())
     }
 
     /// One connected output.
-    pub(crate) fn output(&self, id: OutputId) -> Option<&OutputRecord> {
+    fn output(&self, id: OutputId) -> Option<&OutputRecord> {
         self.outputs.iter().find(|output| output.id == id)
-    }
-
-    /// The work area of an output.
-    pub(crate) fn work_area(&self, id: OutputId) -> Option<Rect> {
-        self.output(id).map(OutputRecord::work_area)
-    }
-
-    /// Whether the window would be drawn: it is on an output and not minimised.
-    pub(crate) fn is_visible(&self, id: WindowId) -> bool {
-        self.windows
-            .get(&id)
-            .is_some_and(|window| window.output.is_some() && !window.state.minimised)
     }
 
     /// Applies a window's role: its kind and parent, as its protocol says. A window that becomes a transient is
     /// stacked directly above its parent, and a modal that appears while its parent holds focus takes it. A parent
     /// that is not open changes nothing.
-    pub(crate) fn set_role(
+    fn set_role(
         &mut self,
         id: WindowId,
         kind: WindowKind,
         transient_for: Option<WindowId>,
         seat: Standing<'_>,
-    ) -> Vec<FallbackEffect> {
+    ) -> Vec<WmEffect> {
         let parent = transient_for.filter(|parent| *parent != id);
         if parent.is_some_and(|parent| !self.windows.contains_key(&parent)) {
             return Vec::new();
@@ -204,14 +75,14 @@ impl Fallback {
             effects.extend(self.restacked(seat, |this, order| this.put_on_top(order, id, parent)));
         }
         if kind == WindowKind::Modal && parent.is_some() && seat.focus == parent && self.is_visible(id) {
-            effects.push(FallbackEffect::Focus(Some(id)));
+            effects.push(WmEffect::Focus(Some(id)));
         }
         effects
     }
 
     /// Whether a window that has just mapped may take focus: any window under `Allow`; under `Prevent` only when
     /// nothing is focused or it is a transient of the focused window.
-    pub(crate) fn may_take_focus(&self, id: WindowId, policy: NewWindowFocus, seat: Standing<'_>) -> bool {
+    fn may_take_focus(&self, id: WindowId, policy: NewWindowFocus, seat: Standing<'_>) -> bool {
         let Some(window) = self.windows.get(&id) else {
             return false;
         };
@@ -226,13 +97,13 @@ impl Fallback {
     /// above its parent.
     ///
     /// # Errors
-    /// [`FallbackRefusal::Duplicate`], [`FallbackRefusal::TooMany`] or [`FallbackRefusal::NoOutput`]; nothing changes.
-    pub(crate) fn open(&mut self, open: Open, seat: Standing<'_>) -> Result<Vec<FallbackEffect>, FallbackRefusal> {
+    /// [`WmRefusal::Duplicate`], [`WmRefusal::TooMany`] or [`WmRefusal::NoOutput`]; nothing changes.
+    fn open(&mut self, open: Open, seat: Standing<'_>) -> Result<Vec<WmEffect>, WmRefusal> {
         if self.windows.contains_key(&open.id) {
-            return Err(FallbackRefusal::Duplicate);
+            return Err(WmRefusal::Duplicate);
         }
         if self.windows.len() >= MAX_WINDOWS {
-            return Err(FallbackRefusal::TooMany);
+            return Err(WmRefusal::TooMany);
         }
         let focused_output = seat
             .focus
@@ -240,7 +111,7 @@ impl Fallback {
             .filter(|output| self.output(*output).is_some());
         let home = focused_output
             .or_else(|| self.outputs.first().map(|output| output.id))
-            .ok_or(FallbackRefusal::NoOutput)?;
+            .ok_or(WmRefusal::NoOutput)?;
         let size = open.requested.map_or(DEFAULT_SIZE, Rect::size).at_least_one();
         let parent = open
             .transient_for
@@ -291,12 +162,12 @@ impl Fallback {
             },
         );
         let mut effects = vec![
-            FallbackEffect::Configure {
+            WmEffect::Configure {
                 window: open.id,
                 geometry,
                 state: WindowState::default(),
             },
-            FallbackEffect::Visible {
+            WmEffect::Visible {
                 window: open.id,
                 visible: true,
             },
@@ -306,7 +177,7 @@ impl Fallback {
     }
 
     /// Forgets a closed window. A parent loses its link to it, and focus moves on when it held it.
-    pub(crate) fn close(&mut self, id: WindowId, seat: Standing<'_>) -> Vec<FallbackEffect> {
+    fn close(&mut self, id: WindowId, seat: Standing<'_>) -> Vec<WmEffect> {
         if self.windows.remove(&id).is_none() {
             return Vec::new();
         }
@@ -323,7 +194,7 @@ impl Fallback {
 
     /// Focuses a window, and raises it when `raise` is set. A window that is not drawn cannot take focus, and a
     /// parent with a modal child hands the focus to the child.
-    pub(crate) fn activate(&self, id: WindowId, raise: bool, seat: Standing<'_>) -> Vec<FallbackEffect> {
+    fn activate(&self, id: WindowId, raise: bool, seat: Standing<'_>) -> Vec<WmEffect> {
         if !self.is_visible(id) {
             return Vec::new();
         }
@@ -333,13 +204,13 @@ impl Fallback {
             effects.extend(self.restacked(seat, |this, order| this.raise_in(order, target)));
         }
         if seat.focus != Some(target) {
-            effects.push(FallbackEffect::Focus(Some(target)));
+            effects.push(WmEffect::Focus(Some(target)));
         }
         effects
     }
 
     /// Puts a window on top of its layer.
-    pub(crate) fn raise(&self, id: WindowId, seat: Standing<'_>) -> Vec<FallbackEffect> {
+    fn raise(&self, id: WindowId, seat: Standing<'_>) -> Vec<WmEffect> {
         if !self.windows.contains_key(&id) {
             return Vec::new();
         }
@@ -349,7 +220,7 @@ impl Fallback {
     }
 
     /// Puts a window under every other window of its layer.
-    pub(crate) fn lower(&self, id: WindowId, seat: Standing<'_>) -> Vec<FallbackEffect> {
+    fn lower(&self, id: WindowId, seat: Standing<'_>) -> Vec<WmEffect> {
         if !self.windows.contains_key(&id) {
             return Vec::new();
         }
@@ -364,7 +235,7 @@ impl Fallback {
 
     /// Maximises a window to the work area of its output, or returns it to its floating rectangle. Refused, with no
     /// effect, for a fullscreen window and for a window on no output; unchanged when it already is as asked.
-    pub(crate) fn set_maximised(&mut self, id: WindowId, on: bool) -> Vec<FallbackEffect> {
+    fn set_maximised(&mut self, id: WindowId, on: bool) -> Vec<WmEffect> {
         let Some(window) = self.windows.get(&id) else {
             return Vec::new();
         };
@@ -389,7 +260,7 @@ impl Fallback {
 
     /// Makes a window cover its output, or returns it to the maximised or floating rectangle it came from. Fullscreen
     /// windows are the top layer of the paint order.
-    pub(crate) fn set_fullscreen(&mut self, id: WindowId, on: bool, seat: Standing<'_>) -> Vec<FallbackEffect> {
+    fn set_fullscreen(&mut self, id: WindowId, on: bool, seat: Standing<'_>) -> Vec<WmEffect> {
         let Some(window) = self.windows.get(&id) else {
             return Vec::new();
         };
@@ -425,7 +296,7 @@ impl Fallback {
 
     /// Hides a window and hands focus on, or brings it back. Bringing a window back focuses something when nothing
     /// holds focus, because a desktop with no focused window cannot receive a key.
-    pub(crate) fn set_minimised(&mut self, id: WindowId, on: bool, seat: Standing<'_>) -> Vec<FallbackEffect> {
+    fn set_minimised(&mut self, id: WindowId, on: bool, seat: Standing<'_>) -> Vec<WmEffect> {
         let Some(window) = self.windows.get_mut(&id) else {
             return Vec::new();
         };
@@ -434,7 +305,7 @@ impl Fallback {
         }
         window.state.minimised = on;
         let visible = !on && window.output.is_some();
-        let mut effects = vec![FallbackEffect::Visible { window: id, visible }];
+        let mut effects = vec![WmEffect::Visible { window: id, visible }];
         if (on && seat.focus == Some(id)) || (!on && seat.focus.is_none()) {
             effects.extend(self.refocused(seat));
         }
@@ -444,16 +315,16 @@ impl Fallback {
     /// Moves and resizes a floating window, as a control request asks. The rectangle is kept inside the work area.
     ///
     /// # Errors
-    /// [`FallbackRefusal::Gone`] for a window that is not open, [`FallbackRefusal::NotFloating`] for a maximised or fullscreen one.
-    pub(crate) fn move_resize(&mut self, id: WindowId, wanted: Rect) -> Result<Vec<FallbackEffect>, FallbackRefusal> {
-        let window = self.windows.get(&id).ok_or(FallbackRefusal::Gone)?;
+    /// [`WmRefusal::Gone`] for a window that is not open, [`WmRefusal::NotFloating`] for a maximised or fullscreen one.
+    fn move_resize(&mut self, id: WindowId, wanted: Rect) -> Result<Vec<WmEffect>, WmRefusal> {
+        let window = self.windows.get(&id).ok_or(WmRefusal::Gone)?;
         if window.state.maximised || window.state.fullscreen {
-            return Err(FallbackRefusal::NotFloating);
+            return Err(WmRefusal::NotFloating);
         }
         let Some(area) = window.output.and_then(|output| self.work_area(output)) else {
-            return Err(FallbackRefusal::Gone);
+            return Err(WmRefusal::Gone);
         };
-        let window = self.windows.get_mut(&id).ok_or(FallbackRefusal::Gone)?;
+        let window = self.windows.get_mut(&id).ok_or(WmRefusal::Gone)?;
         let fitted = wanted.at_least_one().clamp_inside(area);
         if fitted == window.geometry {
             return Ok(Vec::new());
@@ -465,16 +336,16 @@ impl Fallback {
 
     /// Puts a floating window's top left at an exact position and keeps its size, with no work-area constraint.
     ///
-    /// [`Fallback::move_resize`] is the policy for a request that comes from a user or a script: it keeps the window
+    /// [`WindowManager::move_resize`] is the policy for a request that comes from a user or a script: it keeps the window
     /// where a person can reach it. This is for the embedder that positions windows deliberately, such as the
     /// conformance suite's `position_window_absolute`, whose tests place a window wherever its geometry needs.
     ///
     /// # Errors
-    /// [`FallbackRefusal::Gone`] for a window that is not open, [`FallbackRefusal::NotFloating`] for a maximised or fullscreen one.
-    pub(crate) fn place(&mut self, id: WindowId, at: Point) -> Result<Vec<FallbackEffect>, FallbackRefusal> {
-        let window = self.windows.get_mut(&id).ok_or(FallbackRefusal::Gone)?;
+    /// [`WmRefusal::Gone`] for a window that is not open, [`WmRefusal::NotFloating`] for a maximised or fullscreen one.
+    fn place(&mut self, id: WindowId, at: Point) -> Result<Vec<WmEffect>, WmRefusal> {
+        let window = self.windows.get_mut(&id).ok_or(WmRefusal::Gone)?;
         if window.state.maximised || window.state.fullscreen {
-            return Err(FallbackRefusal::NotFloating);
+            return Err(WmRefusal::NotFloating);
         }
         let placed = Rect::new(at.x, at.y, window.geometry.width, window.geometry.height);
         if placed == window.geometry {
@@ -489,11 +360,11 @@ impl Fallback {
     /// ends each pointer step on, where the user, not the policy, decides where the window is.
     ///
     /// # Errors
-    /// [`FallbackRefusal::Gone`] for a window that is not open, [`FallbackRefusal::NotFloating`] for a maximised or fullscreen one.
-    pub(crate) fn set_rect(&mut self, id: WindowId, wanted: Rect) -> Result<Vec<FallbackEffect>, FallbackRefusal> {
-        let window = self.windows.get_mut(&id).ok_or(FallbackRefusal::Gone)?;
+    /// [`WmRefusal::Gone`] for a window that is not open, [`WmRefusal::NotFloating`] for a maximised or fullscreen one.
+    fn set_rect(&mut self, id: WindowId, wanted: Rect) -> Result<Vec<WmEffect>, WmRefusal> {
+        let window = self.windows.get_mut(&id).ok_or(WmRefusal::Gone)?;
         if window.state.maximised || window.state.fullscreen {
-            return Err(FallbackRefusal::NotFloating);
+            return Err(WmRefusal::NotFloating);
         }
         let wanted = wanted.at_least_one();
         if wanted == window.geometry {
@@ -510,7 +381,7 @@ impl Fallback {
     /// the client's commit. A later maximise or fullscreen then returns to the size the client chose. Nothing is sent:
     /// the client already has this size. A maximised or fullscreen window keeps the size the policy gave it.
     /// Returns whether the record changed.
-    pub(crate) fn adopt_size(&mut self, id: WindowId, size: Size) -> bool {
+    fn adopt_size(&mut self, id: WindowId, size: Size) -> bool {
         let Some(window) = self.windows.get_mut(&id) else {
             return false;
         };
@@ -527,19 +398,15 @@ impl Fallback {
     /// its own; a fullscreen window stays where it is.
     ///
     /// # Errors
-    /// [`FallbackRefusal::Gone`], [`FallbackRefusal::UnknownOutput`], [`FallbackRefusal::FollowsParent`] or [`FallbackRefusal::NotFloating`].
-    pub(crate) fn move_to_output(
-        &mut self,
-        id: WindowId,
-        target: OutputId,
-    ) -> Result<Vec<FallbackEffect>, FallbackRefusal> {
-        let window = self.windows.get(&id).ok_or(FallbackRefusal::Gone)?;
-        let output = *self.output(target).ok_or(FallbackRefusal::UnknownOutput)?;
+    /// [`WmRefusal::Gone`], [`WmRefusal::UnknownOutput`], [`WmRefusal::FollowsParent`] or [`WmRefusal::NotFloating`].
+    fn move_to_output(&mut self, id: WindowId, target: OutputId) -> Result<Vec<WmEffect>, WmRefusal> {
+        let window = self.windows.get(&id).ok_or(WmRefusal::Gone)?;
+        let output = *self.output(target).ok_or(WmRefusal::UnknownOutput)?;
         if window.kind != WindowKind::Normal && window.transient_for.is_some() {
-            return Err(FallbackRefusal::FollowsParent);
+            return Err(WmRefusal::FollowsParent);
         }
         if window.state.fullscreen {
-            return Err(FallbackRefusal::NotFloating);
+            return Err(WmRefusal::NotFloating);
         }
         if window.output == Some(target) {
             return Ok(Vec::new());
@@ -563,7 +430,7 @@ impl Fallback {
     }
 
     /// An output arrived. A window left on no output is adopted by it, and focus is chosen when none was held.
-    pub(crate) fn output_added(&mut self, id: OutputId, rect: Rect, seat: Standing<'_>) -> Vec<FallbackEffect> {
+    fn output_added(&mut self, id: OutputId, rect: Rect, seat: Standing<'_>) -> Vec<WmEffect> {
         if self.output(id).is_some() {
             return Vec::new();
         }
@@ -582,7 +449,7 @@ impl Fallback {
 
     /// An output went away. Its windows move to the first output left and are re-fitted there; with none left they
     /// are hidden until one returns. Focus moves on when its window is no longer drawn.
-    pub(crate) fn output_removed(&mut self, id: OutputId, seat: Standing<'_>) -> Vec<FallbackEffect> {
+    fn output_removed(&mut self, id: OutputId, seat: Standing<'_>) -> Vec<WmEffect> {
         let Some(index) = self.outputs.iter().position(|output| output.id == id) else {
             return Vec::new();
         };
@@ -603,7 +470,7 @@ impl Fallback {
                 }
                 orphans
                     .into_iter()
-                    .map(|window| FallbackEffect::Visible { window, visible: false })
+                    .map(|window| WmEffect::Visible { window, visible: false })
                     .collect()
             }
         };
@@ -614,7 +481,7 @@ impl Fallback {
     }
 
     /// An output's rectangle changed: the windows on it follow.
-    pub(crate) fn output_moved(&mut self, id: OutputId, rect: Rect) -> Vec<FallbackEffect> {
+    fn output_moved(&mut self, id: OutputId, rect: Rect) -> Vec<WmEffect> {
         let Some(output) = self.outputs.iter_mut().find(|output| output.id == id) else {
             return Vec::new();
         };
@@ -624,7 +491,7 @@ impl Fallback {
     }
 
     /// The insets layer surfaces reserve on an output changed: maximised windows follow the new work area.
-    pub(crate) fn reserve(&mut self, id: OutputId, reserved: Insets) -> Vec<FallbackEffect> {
+    fn reserve(&mut self, id: OutputId, reserved: Insets) -> Vec<WmEffect> {
         let Some(output) = self.outputs.iter_mut().find(|output| output.id == id) else {
             return Vec::new();
         };
@@ -632,9 +499,11 @@ impl Fallback {
         let output = *output;
         self.refit(&output)
     }
+}
 
+impl Fallback {
     /// Re-fits every window on `output` to its rectangles, reporting the ones that moved.
-    fn refit(&mut self, output: &OutputRecord) -> Vec<FallbackEffect> {
+    fn refit(&mut self, output: &OutputRecord) -> Vec<WmEffect> {
         let mut effects = Vec::new();
         for window in self
             .windows
@@ -652,13 +521,13 @@ impl Fallback {
     }
 
     /// Moves the windows `which` selects onto `output` and re-fits them there.
-    fn rehome(&mut self, which: impl Fn(&Window) -> bool, output: &OutputRecord) -> Vec<FallbackEffect> {
+    fn rehome(&mut self, which: impl Fn(&Window) -> bool, output: &OutputRecord) -> Vec<WmEffect> {
         let mut effects = Vec::new();
         for window in self.windows.values_mut().filter(|window| which(window)) {
             window.output = Some(output.id);
             window.restore = window.restore.clamp_inside(output.work_area());
             window.geometry = Self::fitted(window, output);
-            effects.push(FallbackEffect::Visible {
+            effects.push(WmEffect::Visible {
                 window: window.id,
                 visible: !window.state.minimised,
             });
@@ -688,8 +557,8 @@ impl Fallback {
         }
     }
 
-    fn configured(window: &Window) -> FallbackEffect {
-        FallbackEffect::Configure {
+    fn configured(window: &Window) -> WmEffect {
+        WmEffect::Configure {
             window: window.id,
             geometry: window.geometry,
             state: window.state,
@@ -710,7 +579,7 @@ impl Fallback {
     }
 
     /// The focus after the focused window left: the topmost drawn window, or none.
-    fn refocused(&self, seat: Standing<'_>) -> Vec<FallbackEffect> {
+    fn refocused(&self, seat: Standing<'_>) -> Vec<WmEffect> {
         let next = seat
             .stack
             .iter()
@@ -720,13 +589,13 @@ impl Fallback {
         if next == seat.focus {
             Vec::new()
         } else {
-            vec![FallbackEffect::Focus(next)]
+            vec![WmEffect::Focus(next)]
         }
     }
 
-    /// The paint order after `change`, with every fullscreen window above the others, as a [`FallbackEffect::Stack`] when
+    /// The paint order after `change`, with every fullscreen window above the others, as a [`WmEffect::Stack`] when
     /// it differs from the one the caller holds.
-    fn restacked(&self, seat: Standing<'_>, change: impl FnOnce(&Self, &mut Vec<WindowId>)) -> Option<FallbackEffect> {
+    fn restacked(&self, seat: Standing<'_>, change: impl FnOnce(&Self, &mut Vec<WindowId>)) -> Option<WmEffect> {
         let mut order = seat.stack.to_vec();
         for id in self.windows.keys().rev() {
             if !order.contains(id) {
@@ -736,7 +605,7 @@ impl Fallback {
         change(self, &mut order);
         // A stable sort: only the layer decides, so windows keep their order within it.
         order.sort_by_key(|id| !self.is_fullscreen(*id));
-        (order != seat.stack).then_some(FallbackEffect::Stack(order))
+        (order != seat.stack).then_some(WmEffect::Stack(order))
     }
 
     /// Puts `id` directly above `anchor`, or on top of the paint order.
@@ -793,35 +662,35 @@ mod tests {
             desk
         }
 
-        fn apply(&mut self, effects: &[FallbackEffect]) {
+        fn apply(&mut self, effects: &[WmEffect]) {
             for effect in effects {
                 match effect {
-                    FallbackEffect::Stack(order) => self.stack.clone_from(order),
-                    FallbackEffect::Focus(focus) => self.focus = *focus,
-                    FallbackEffect::Configure { .. } | FallbackEffect::Visible { .. } => {}
+                    WmEffect::Stack(order) => self.stack.clone_from(order),
+                    WmEffect::Focus(focus) => self.focus = *focus,
+                    WmEffect::Configure { .. } | WmEffect::Visible { .. } => {}
                 }
             }
         }
 
-        fn output(&mut self, raw: u64, rect: Rect) -> Vec<FallbackEffect> {
+        fn output(&mut self, raw: u64, rect: Rect) -> Vec<WmEffect> {
             let effects = self.fallback.output_added(OutputId::new(raw), rect, seat!(self));
             self.apply(&effects);
             effects
         }
 
-        fn unplug(&mut self, raw: u64) -> Vec<FallbackEffect> {
+        fn unplug(&mut self, raw: u64) -> Vec<WmEffect> {
             let effects = self.fallback.output_removed(OutputId::new(raw), seat!(self));
             self.apply(&effects);
             effects
         }
 
-        fn try_open(&mut self, open: Open) -> Result<Vec<FallbackEffect>, FallbackRefusal> {
+        fn try_open(&mut self, open: Open) -> Result<Vec<WmEffect>, WmRefusal> {
             let effects = self.fallback.open(open, seat!(self))?;
             self.apply(&effects);
             Ok(effects)
         }
 
-        fn open_with(&mut self, raw: u64, kind: WindowKind, parent: Option<u64>) -> Vec<FallbackEffect> {
+        fn open_with(&mut self, raw: u64, kind: WindowKind, parent: Option<u64>) -> Vec<WmEffect> {
             let open = Open {
                 id: id(raw),
                 kind,
@@ -831,29 +700,29 @@ mod tests {
             self.try_open(open).expect("the window opens")
         }
 
-        fn open(&mut self, raw: u64) -> Vec<FallbackEffect> {
+        fn open(&mut self, raw: u64) -> Vec<WmEffect> {
             self.open_with(raw, WindowKind::Normal, None)
         }
 
-        fn focus(&mut self, raw: u64) -> Vec<FallbackEffect> {
+        fn focus(&mut self, raw: u64) -> Vec<WmEffect> {
             let effects = self.fallback.activate(id(raw), true, seat!(self));
             self.apply(&effects);
             effects
         }
 
-        fn close(&mut self, raw: u64) -> Vec<FallbackEffect> {
+        fn close(&mut self, raw: u64) -> Vec<WmEffect> {
             let effects = self.fallback.close(id(raw), seat!(self));
             self.apply(&effects);
             effects
         }
 
-        fn minimise(&mut self, raw: u64, on: bool) -> Vec<FallbackEffect> {
+        fn minimise(&mut self, raw: u64, on: bool) -> Vec<WmEffect> {
             let effects = self.fallback.set_minimised(id(raw), on, seat!(self));
             self.apply(&effects);
             effects
         }
 
-        fn fullscreen(&mut self, raw: u64, on: bool) -> Vec<FallbackEffect> {
+        fn fullscreen(&mut self, raw: u64, on: bool) -> Vec<WmEffect> {
             let effects = self.fallback.set_fullscreen(id(raw), on, seat!(self));
             self.apply(&effects);
             effects
@@ -873,16 +742,16 @@ mod tests {
         }
     }
 
-    fn visibility(effects: &[FallbackEffect], window: WindowId) -> Option<bool> {
+    fn visibility(effects: &[WmEffect], window: WindowId) -> Option<bool> {
         effects.iter().find_map(|effect| match effect {
-            FallbackEffect::Visible { window: id, visible } if *id == window => Some(*visible),
+            WmEffect::Visible { window: id, visible } if *id == window => Some(*visible),
             _ => None,
         })
     }
 
-    fn configured(effects: &[FallbackEffect], window: WindowId) -> Option<Rect> {
+    fn configured(effects: &[WmEffect], window: WindowId) -> Option<Rect> {
         effects.iter().find_map(|effect| match effect {
-            FallbackEffect::Configure {
+            WmEffect::Configure {
                 window: id, geometry, ..
             } if *id == window => Some(*geometry),
             _ => None,
@@ -948,7 +817,7 @@ mod tests {
             "a dialog of the parent's size centres exactly over it"
         );
         assert!(
-            matches!(effects.last(), Some(FallbackEffect::Stack(order)) if order[..2] == [id(2), id(1)]),
+            matches!(effects.last(), Some(WmEffect::Stack(order)) if order[..2] == [id(2), id(1)]),
             "the dialog sits directly above its parent: {effects:?}"
         );
     }
@@ -964,14 +833,14 @@ mod tests {
             transient_for: None,
             requested: None,
         };
-        assert_eq!(desk.try_open(duplicate), Err(FallbackRefusal::Duplicate));
+        assert_eq!(desk.try_open(duplicate), Err(WmRefusal::Duplicate));
         let mut empty = Fallback::default();
         let lost = Open { id: id(2), ..duplicate };
         let seat = Standing {
             stack: &[],
             focus: None,
         };
-        assert_eq!(empty.open(lost, seat), Err(FallbackRefusal::NoOutput));
+        assert_eq!(empty.open(lost, seat), Err(WmRefusal::NoOutput));
         assert_eq!(empty.windows().count(), 0);
     }
 
@@ -988,7 +857,7 @@ mod tests {
             transient_for: None,
             requested: None,
         };
-        assert_eq!(desk.try_open(past), Err(FallbackRefusal::TooMany));
+        assert_eq!(desk.try_open(past), Err(WmRefusal::TooMany));
         assert_eq!(desk.fallback.windows().count(), MAX_WINDOWS);
     }
 
@@ -1018,7 +887,7 @@ mod tests {
         let effects = desk.close(2);
         assert_eq!(
             effects,
-            [FallbackEffect::Focus(Some(id(1)))],
+            [WmEffect::Focus(Some(id(1)))],
             "closing the focused window reports where focus went"
         );
         assert!(
@@ -1026,7 +895,7 @@ mod tests {
             "a closed window cannot be focused"
         );
 
-        assert_eq!(desk.close(1), [FallbackEffect::Focus(None)], "no window can hold focus");
+        assert_eq!(desk.close(1), [WmEffect::Focus(None)], "no window can hold focus");
         assert!(desk.close(1).is_empty(), "closing twice changes nothing");
     }
 
@@ -1110,7 +979,7 @@ mod tests {
         desk.open(1);
         desk.open(2);
         let effects = desk.fallback.activate(id(1), false, seat!(desk));
-        assert_eq!(effects, [FallbackEffect::Focus(Some(id(1)))]);
+        assert_eq!(effects, [WmEffect::Focus(Some(id(1)))]);
         desk.apply(&effects);
         assert_eq!(desk.stack, [id(2), id(1)]);
         assert!(
@@ -1125,7 +994,7 @@ mod tests {
         desk.open(1);
         desk.open_with(2, WindowKind::Modal, Some(1));
         let effects = desk.fallback.activate(id(1), true, seat!(desk));
-        assert!(effects.contains(&FallbackEffect::Focus(Some(id(2)))), "{effects:?}");
+        assert!(effects.contains(&WmEffect::Focus(Some(id(2)))), "{effects:?}");
     }
 
     // Failure mode 3: a window is placed off every output after hotplug.
@@ -1296,12 +1165,12 @@ mod tests {
         assert_eq!(configured(&effects, id(1)), Some(Rect::new(1320, 680, 600, 400)));
         assert_eq!(
             desk.fallback.move_resize(id(9), Rect::new(0, 0, 1, 1)),
-            Err(FallbackRefusal::Gone)
+            Err(WmRefusal::Gone)
         );
         desk.fallback.set_maximised(id(1), true);
         assert_eq!(
             desk.fallback.move_resize(id(1), Rect::new(0, 0, 10, 10)),
-            Err(FallbackRefusal::NotFloating)
+            Err(WmRefusal::NotFloating)
         );
     }
 
@@ -1319,11 +1188,11 @@ mod tests {
             "the position is kept as asked and the size does not change"
         );
         assert_eq!(desk.fallback.place(id(1), Point::new(1800, 1000)), Ok(Vec::new()));
-        assert_eq!(desk.fallback.place(id(9), Point::new(0, 0)), Err(FallbackRefusal::Gone));
+        assert_eq!(desk.fallback.place(id(9), Point::new(0, 0)), Err(WmRefusal::Gone));
         desk.fallback.set_maximised(id(1), true);
         assert_eq!(
             desk.fallback.place(id(1), Point::new(0, 0)),
-            Err(FallbackRefusal::NotFloating)
+            Err(WmRefusal::NotFloating)
         );
     }
 
@@ -1335,11 +1204,11 @@ mod tests {
         desk.open_with(2, WindowKind::Dialog, Some(1));
         assert_eq!(
             desk.fallback.move_to_output(id(2), OutputId::new(1)),
-            Err(FallbackRefusal::FollowsParent)
+            Err(WmRefusal::FollowsParent)
         );
         assert_eq!(
             desk.fallback.move_to_output(id(1), OutputId::new(7)),
-            Err(FallbackRefusal::UnknownOutput)
+            Err(WmRefusal::UnknownOutput)
         );
         desk.fallback
             .move_to_output(id(1), OutputId::new(1))

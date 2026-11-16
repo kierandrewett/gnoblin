@@ -92,8 +92,7 @@ use gnoblin_backend::x11::{
     self, Launch, NodeChange, Opened, Restart, Session, Start, WindowAsk, WindowEvent, WindowMeta, X11Request,
 };
 use gnoblin_types::{Rect, Scale, WindowId};
-
-use crate::fallback::{Open, WindowKind};
+use gnoblin_wm_api::{Open, WindowKind};
 
 use crate::selection_bridge::ToWayland;
 use crate::state::State;
@@ -599,7 +598,7 @@ impl State {
         for change in &outcome.changes {
             match change {
                 NodeChange::Opened(opened) => {
-                    let opened = self.with_seat(|fallback, seat| fallback.open(open_of(opened), seat));
+                    let opened = self.with_seat(|wm, seat| wm.open(open_of(opened), seat));
                     match opened {
                         Ok(opened) => effects.extend(opened),
                         Err(refusal) => log::debug!(area = "xwayland", ?refusal, "an X11 window is left unmanaged"),
@@ -607,7 +606,7 @@ impl State {
                 }
                 NodeChange::Closed { window } => self.window_closed(*window),
                 NodeChange::Geometry { window, geometry } => {
-                    if let Ok(moved) = self.fallback.move_resize(*window, *geometry) {
+                    if let Ok(moved) = self.wm.move_resize(*window, *geometry) {
                         effects.extend(moved);
                     }
                 }
@@ -622,10 +621,7 @@ impl State {
             if !self.windows.contains_key(&window) {
                 // A window the record refused has no geometry; it is inserted at the empty rectangle and stays
                 // unmanaged.
-                let geometry = self
-                    .fallback
-                    .window(window)
-                    .map_or(Rect::EMPTY, |managed| managed.geometry);
+                let geometry = self.wm.window(window).map_or(Rect::EMPTY, |managed| managed.geometry);
                 self.windows
                     .insert(window, crate::state::WindowEntry::x11(surface.clone()));
                 self.composer.insert_window(window, geometry);
@@ -659,7 +655,7 @@ impl State {
             self.release_window(window);
             running.surfaces.remove(&window);
         } else if let Some(window) = outcome.window
-            && self.fallback.window(window).is_none()
+            && self.wm.window(window).is_none()
         {
             self.windows.remove(&window);
             self.composer.unmap_window(window);
@@ -750,13 +746,13 @@ impl State {
     /// raises it; while a shell holds the tree the request is its to answer, and a window it has no node for yet
     /// is the shell's to focus when it is ready.
     fn x11_activated(&mut self, window: WindowId) {
-        if self.composer.shell_places() {
+        if self.composer.holder_attached() {
             if let Some(node) = self.composer.window_node(window) {
                 self.tree.event(node, crate::tree_frame::TreeRequest::Activate);
             }
             return;
         }
-        let effects = self.with_seat(|fallback, seat| fallback.activate(window, true, seat));
+        let effects = self.with_seat(|wm, seat| wm.activate(window, true, seat));
         self.apply(effects);
     }
 
@@ -1208,8 +1204,9 @@ mod tests {
     use super::*;
 
     use gnoblin_types::OutputId;
+    use gnoblin_wm_api::{Standing, WindowManager, WmEffect};
 
-    use crate::fallback::{Fallback, FallbackEffect, Standing};
+    use crate::fallback::Fallback;
 
     fn session() -> Fallback {
         let mut fallback = Fallback::default();
@@ -1236,9 +1233,9 @@ mod tests {
     }
 
     /// The rectangle the record told a window to use, if it told it anything.
-    fn configured(effects: &[FallbackEffect], window: WindowId) -> Option<Rect> {
+    fn configured(effects: &[WmEffect], window: WindowId) -> Option<Rect> {
         effects.iter().find_map(|effect| match effect {
-            FallbackEffect::Configure {
+            WmEffect::Configure {
                 window: configured,
                 geometry,
                 ..
@@ -1275,12 +1272,12 @@ mod tests {
             .expect("opens");
         let stack = [id(4)];
         let activate = fallback.activate(id(4), true, seat(&stack, None));
-        assert_eq!(activate, [FallbackEffect::Focus(Some(id(4)))], "the window takes focus");
+        assert_eq!(activate, [WmEffect::Focus(Some(id(4)))], "the window takes focus");
 
         let effects = fallback.close(id(4), seat(&stack, Some(id(4))));
 
         assert!(fallback.window(id(4)).is_none(), "the record holds no window");
-        assert_eq!(effects, [FallbackEffect::Focus(None)]);
+        assert_eq!(effects, [WmEffect::Focus(None)]);
     }
 
     /// A geometry change goes through the record, so the answer is the geometry the work area allows rather than

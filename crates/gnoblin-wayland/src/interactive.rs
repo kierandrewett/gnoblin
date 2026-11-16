@@ -375,7 +375,7 @@ impl State {
         serial: Serial,
         gesture: DragKind,
     ) {
-        if self.lock.state() != gnoblin_lock::State::Unlocked || self.composer.shell_places() {
+        if self.lock.state() != gnoblin_lock::State::Unlocked || self.composer.holder_attached() {
             return;
         }
         if !Seat::<Self>::from_resource(seat).is_some_and(|seat| seat == self.seat) {
@@ -386,7 +386,7 @@ impl State {
             return;
         };
         let Some(start) = self
-            .fallback
+            .wm
             .window(window)
             .filter(|managed| !managed.state.maximised && !managed.state.fullscreen)
             .map(|managed| managed.geometry)
@@ -446,7 +446,7 @@ impl State {
     /// The effects take the path every placement does, so the client is configured when its size changed, and a move
     /// sends it nothing: a configure goes out only when its state differs from the last one.
     fn drag_to(&mut self, window: WindowId, wanted: Rect) -> bool {
-        let Ok(effects) = self.fallback.set_rect(window, wanted) else {
+        let Ok(effects) = self.wm.set_rect(window, wanted) else {
             return false;
         };
         self.apply(effects);

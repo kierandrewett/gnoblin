@@ -20,10 +20,11 @@
 //!   performs, and asks `gnoblin_backend::x11` what each X11 event means. A restart after
 //!   a crash is the session's policy, and a server that never becomes ready is a failure
 //!   rather than a hang.
-//! - Window state is the compositor's own record ([`fallback`]): every map, unmap, configure, focus change and
-//!   close is a call on it and comes back as an effect. While a shell holds the tree the record is only kept
-//!   current and the shell decides. Output rectangles come from `gnoblin-output`'s layout engine, so the record
-//!   and the `wl_output` globals agree on where a monitor is.
+//! - Window state is the compositor's own record, kept by a window-manager provider (`gnoblin-wm-api`'s
+//!   `WindowManager`; [`Config::window_manager`] names it, the stock one by default, `NullWm` with none): every map,
+//!   unmap, configure, focus change and close is a call on it and comes back as an effect. While a shell holds the
+//!   tree the record is only kept current and the shell decides. Output rectangles come from `gnoblin-output`'s
+//!   layout engine, so the record and the `wl_output` globals agree on where a monitor is.
 //! - The frame path runs every iteration: the hook in `frame.rs` asks each output for its
 //!   damage, and a client's committed `wl_shm` buffer reaches the output's pixels
 //!   through the software renderer in `gnoblin-backend`. [`ControlHandle::screenshot`]
@@ -222,7 +223,6 @@ mod output_config;
 mod output_control;
 mod output_policy;
 mod pointer_chord;
-mod policy;
 mod popup;
 mod process;
 mod protocols;
@@ -247,6 +247,8 @@ pub use clock::{Clock, ManualClock, SystemClock};
 /// Frame counters, and the timeout a screenshot waits for before it gives up.
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT, ShotRefusal};
 pub use gnoblin_lock::State as LockState;
+/// The window management options a configuration carries, and the choices in them, which `gnoblin-wm-api` defines.
+pub use gnoblin_wm_api::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
 /// The memory budget: the bounds, the ledger that enforces them and what a reader sees of it.
 pub use gpu_memory::{
     ClientMemory, DEFAULT_BUDGET_BYTES, DEFAULT_CLIENT_BYTES, DEFAULT_CLIENT_SURFACES, Ledger, LedgerSnapshot,
@@ -267,13 +269,12 @@ pub use observation::{PresentAnswer, WindowChange, WindowChangeRefusal, WindowVi
 pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest};
 /// Output control: the trait a backend implements and the no-op default.
 pub use output_control::{NoOutputControl, OutputControl};
-/// The window management options a configuration carries, and the choices in them.
-pub use policy::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
 /// Server configuration, control handle, input sink, startup and loop errors.
 pub use server::{
     CAST_TIMEOUT, Config, ControlHandle, CursorSettings, DEFAULT_PRIVILEGED_SOCKET_NAME, DEFAULT_SOCKET_NAME,
     FOCUS_TIMEOUT, InputSink, LockCheck, LoopError, MonitorSettings, Server, StartupError, VisualAccessibilitySettings,
-    VisualBellScope, VisualBellSettings, default_privileged_socket_path, privileged_socket_path_in,
+    VisualBellScope, VisualBellSettings, WindowManagerFactory, default_privileged_socket_path,
+    privileged_socket_path_in,
 };
 /// The dispatch glue a redirect implements.
 ///

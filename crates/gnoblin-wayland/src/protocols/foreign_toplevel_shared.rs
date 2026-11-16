@@ -138,7 +138,7 @@ impl State {
     pub(crate) fn sync_foreign_toplevels(&mut self) {
         let focused = self.focus;
         let windows: Vec<ToplevelState> = self
-            .fallback
+            .wm
             .windows()
             .map(|window| {
                 let entry = self.windows.get(&window.id);

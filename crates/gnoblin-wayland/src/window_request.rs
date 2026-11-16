@@ -8,8 +8,8 @@
 //! the call ([`State::run_window_calls`]). A request the shell leaves alone changes nothing. A Wayland toplevel is
 //! told through its `xdg_toplevel` states and size, an X11 window through its `_NET_WM_STATE` and a configure.
 //!
-//! With no shell attached the fallback decides ([`crate::fallback`]): the request is applied directly. The protocol
-//! files name a [`WindowRequest`] and never reach the record themselves.
+//! With no shell attached the provider decides ([`gnoblin_wm_api::WindowManager`]): the request is applied directly.
+//! The protocol files name a [`WindowRequest`] and never reach the record themselves.
 
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::Size as SmithaySize;
@@ -19,8 +19,8 @@ use smithay::xwayland::xwm::X11Surface;
 use gnoblin_backend::x11::WindowAsk;
 use gnoblin_render::transaction::TreeCall;
 use gnoblin_types::{NodeId, OutputId, Rect, WindowId};
+use gnoblin_wm_api::WindowState;
 
-use crate::fallback::WindowState;
 use crate::observation::WindowChangeRefusal;
 use crate::state::{Managed, set_flag, x11_geometry};
 use crate::tree_frame::TreeRequest;
@@ -76,7 +76,7 @@ impl WindowRequest {
 impl State {
     /// Whether a window is one the compositor manages.
     pub(crate) fn is_managed(&self, window: WindowId) -> bool {
-        self.fallback.window(window).is_some()
+        self.wm.window(window).is_some()
     }
 
     /// Whether a window holds the seat's keyboard focus, which is the shell's to give while it holds the tree.
@@ -87,7 +87,7 @@ impl State {
     /// A window's state, as it stands now: the shell's node values while a shell holds the tree, the record's
     /// otherwise. `None` for a window that is gone.
     pub(crate) fn window_flags(&self, window: WindowId) -> Option<WindowState> {
-        let state = self.fallback.window(window)?.state;
+        let state = self.wm.window(window)?.state;
         Some(self.effective_state(window, state))
     }
 
@@ -104,26 +104,26 @@ impl State {
 
     /// Whether the window is drawn: it is on an output and not minimised, as the shell says while it holds the tree.
     pub(crate) fn window_shown(&self, window: WindowId) -> bool {
-        self.fallback
-            .window(window)
-            .is_some_and(|managed| managed.output.is_some())
+        self.wm.window(window).is_some_and(|managed| managed.output.is_some())
             && self.window_flags(window).is_some_and(|state| !state.minimised)
     }
 
-    /// Whether the shell decides this window's requests: it holds the tree, the session is not locked, and the
-    /// window has a node.
-    fn shell_decides(&self, window: WindowId) -> bool {
-        decider(
+    /// Who decides this window's requests, placement and focus: the shell while the session is unlocked, a holder is
+    /// attached to the tree and the window has a node, the window-manager provider otherwise. It is the one place
+    /// that asks the question for a window; a question about the holder alone (the lock card's lease, a control
+    /// request) reads the scene's `holder_attached`.
+    pub(crate) fn decider(&self, window: WindowId) -> Decider {
+        decide(
             self.lock.state() == gnoblin_lock::State::Unlocked,
-            self.composer.shell_places(),
+            self.composer.holder_attached(),
             self.composer.window_node(window).is_some(),
-        ) == Decider::Shell
+        )
     }
 
-    /// Hands a request to whoever decides it: the shell as an event on the window's node, or the record directly
-    /// when no shell holds the tree.
+    /// Hands a request to whoever decides it: the shell as an event on the window's node, or the provider directly
+    /// when no holder decides.
     pub(crate) fn window_request(&mut self, window: WindowId, request: WindowRequest) {
-        if self.shell_decides(window)
+        if self.decider(window) == Decider::Shell
             && let Some(node) = self.composer.window_node(window)
         {
             self.tree.event(node, request.tree());
@@ -135,22 +135,22 @@ impl State {
     /// Applies a request through the record, for a session with no shell. A request that changes nothing
     /// (maximising a maximised window) is dropped, and a window that is gone is a no-op.
     fn window_request_directly(&mut self, window: WindowId, request: WindowRequest) {
-        if self.fallback.window(window).is_none() {
+        if self.wm.window(window).is_none() {
             log::trace!(area = "toplevel", %window, ?request, "a request for a window that is gone");
             return;
         }
         let effects = match request {
-            WindowRequest::Maximise(on) => self.fallback.set_maximised(window, on),
-            WindowRequest::Fullscreen(on) => self.with_seat(|fallback, seat| fallback.set_fullscreen(window, on, seat)),
-            WindowRequest::Minimise(on) => self.with_seat(|fallback, seat| fallback.set_minimised(window, on, seat)),
+            WindowRequest::Maximise(on) => self.wm.set_maximised(window, on),
+            WindowRequest::Fullscreen(on) => self.with_seat(|wm, seat| wm.set_fullscreen(window, on, seat)),
+            WindowRequest::Minimise(on) => self.with_seat(|wm, seat| wm.set_minimised(window, on, seat)),
             WindowRequest::Activate => {
                 // The caller is privileged (a taskbar's click, or an earned token): the plan's rule against a
                 // client demanding focus is about a client, not about the user's own action.
                 log::debug!(area = "toplevel", %window, "activated");
-                self.with_seat(|fallback, seat| fallback.activate(window, true, seat))
+                self.with_seat(|wm, seat| wm.activate(window, true, seat))
             }
-            WindowRequest::Raise => self.with_seat(|fallback, seat| fallback.raise(window, seat)),
-            WindowRequest::Lower => self.with_seat(|fallback, seat| fallback.lower(window, seat)),
+            WindowRequest::Raise => self.with_seat(|wm, seat| wm.raise(window, seat)),
+            WindowRequest::Lower => self.with_seat(|wm, seat| wm.lower(window, seat)),
             WindowRequest::Close => {
                 self.close_window(window);
                 return;
@@ -163,10 +163,10 @@ impl State {
     /// Moves and resizes a window for a control request. Refused while a shell holds the tree: it places its own
     /// windows. Otherwise the record keeps the rectangle inside the work area, as a drag would.
     pub(crate) fn place_by_command(&mut self, window: WindowId, geometry: Rect) -> Result<(), WindowChangeRefusal> {
-        if self.composer.shell_places() {
+        if self.composer.holder_attached() {
             return Err(WindowChangeRefusal::Refused);
         }
-        let effects = self.fallback.move_resize(window, geometry).map_err(Self::refusal_of)?;
+        let effects = self.wm.move_resize(window, geometry).map_err(Self::refusal_of)?;
         self.apply(effects);
         self.publish();
         Ok(())
@@ -179,10 +179,10 @@ impl State {
         window: WindowId,
         output: OutputId,
     ) -> Result<(), WindowChangeRefusal> {
-        if self.composer.shell_places() {
+        if self.composer.holder_attached() {
             return Err(WindowChangeRefusal::Refused);
         }
-        let effects = self.fallback.move_to_output(window, output).map_err(Self::refusal_of)?;
+        let effects = self.wm.move_to_output(window, output).map_err(Self::refusal_of)?;
         self.apply(effects);
         self.publish();
         Ok(())
@@ -256,13 +256,13 @@ impl State {
 
     /// The work area of the output a window is on, or `None` when it has no output.
     pub(crate) fn work_area_of(&self, window: WindowId) -> Option<Rect> {
-        let output = self.fallback.window(window)?.output?;
-        self.fallback.work_area(output)
+        let output = self.wm.window(window)?.output?;
+        self.wm.work_area(output)
     }
 
     /// Brings one window's pending configure in line with its node.
     fn configure_from_node(&mut self, window: WindowId) {
-        let Some(managed) = self.fallback.window(window) else {
+        let Some(managed) = self.wm.window(window) else {
             return;
         };
         let state = self.effective_state(window, managed.state);
@@ -355,21 +355,21 @@ impl State {
     }
 }
 
-/// Who decides a window's requests.
+/// Who decides a window's requests, placement and focus ([`State::decider`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Decider {
+pub(crate) enum Decider {
     /// The shell, through an event on the window's node.
     Shell,
-    /// The compositor's record, applied directly.
-    Record,
+    /// The window-manager provider, applied directly. `NullWm` when the session has none.
+    Provider,
 }
 
-/// Whether the shell decides: the session is unlocked, a shell holds the tree and the window has a node.
-const fn decider(unlocked: bool, shell_places: bool, has_node: bool) -> Decider {
-    if unlocked && shell_places && has_node {
+/// Whether the shell decides: the session is unlocked, a holder is attached to the tree and the window has a node.
+const fn decide(unlocked: bool, holder_attached: bool, has_node: bool) -> Decider {
+    if unlocked && holder_attached && has_node {
         Decider::Shell
     } else {
-        Decider::Record
+        Decider::Provider
     }
 }
 
@@ -506,9 +506,9 @@ fn write_pending(
 mod tests {
     use gnoblin_backend::x11::WindowAsk;
     use gnoblin_types::Rect;
+    use gnoblin_wm_api::WindowState;
 
-    use super::{Decider, WindowRequest, X11Answer, X11Flags, X11Writes, decider, x11_answer};
-    use crate::fallback::WindowState;
+    use super::{Decider, WindowRequest, X11Answer, X11Flags, X11Writes, decide, x11_answer};
     use crate::tree_frame::TreeRequest;
 
     const FRAME: Rect = Rect::new(40, 50, 300, 200);
@@ -530,16 +530,16 @@ mod tests {
         assert_eq!(WindowRequest::Lower.tree(), TreeRequest::Lower);
     }
 
-    // With a shell attached the request is the shell's; with none, a locked session or a window with no node it is
-    // the record's, and the fallback applies it (`fallback.rs` holds those decisions).
+    // With a holder attached the request is the shell's; with none, a locked session or a window with no node it is
+    // the provider's, which applies it (`gnoblin-wm-api` holds the contract, `fallback.rs` the stock provider).
     #[test]
     fn a_request_goes_to_the_shell_only_while_it_holds_the_tree_unlocked_and_the_window_has_a_node() {
-        assert_eq!(decider(true, true, true), Decider::Shell);
-        assert_eq!(decider(true, false, true), Decider::Record, "no shell holds the tree");
-        assert_eq!(decider(false, true, true), Decider::Record, "the session is covered");
+        assert_eq!(decide(true, true, true), Decider::Shell);
+        assert_eq!(decide(true, false, true), Decider::Provider, "no holder is attached");
+        assert_eq!(decide(false, true, true), Decider::Provider, "the session is covered");
         assert_eq!(
-            decider(true, true, false),
-            Decider::Record,
+            decide(true, true, false),
+            Decider::Provider,
             "the window has no node yet"
         );
     }

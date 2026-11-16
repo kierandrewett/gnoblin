@@ -409,9 +409,9 @@ mod tests {
     fn state() -> crate::State {
         use smithay::reexports::wayland_server::Display;
 
-        use crate::policy::WmOptions;
         use gnoblin_backend::headless::Headless;
         use gnoblin_config::Protocols;
+        use gnoblin_wm_api::WmOptions;
 
         let backend = Headless::new();
         let outputs = gnoblin_backend::Backend::<crate::State>::outputs(&backend).to_vec();
@@ -431,6 +431,7 @@ mod tests {
             crate::server::VisualAccessibilitySettings::default(),
             &[],
             crate::lock_auth::LockAuth::new(std::sync::Arc::new(gnoblin_lock_auth::FakeAuthenticator::new()), None).0,
+            Box::new(crate::fallback::Fallback::default()),
         )
         .expect("a state for the default output")
     }

@@ -1,10 +1,11 @@
 //! The compositor state: the Smithay protocol state, the window record and the
 //! translation between them.
 //!
-//! Every protocol handler in [`crate::protocols`] turns a request into a call on the window record
-//! ([`crate::fallback::Fallback`]) or, while a shell holds the tree, into an event on the window's node. The
-//! decisions the record returns come back here, where they become client configures, seat focus and output
-//! enter/leave. The record decides nothing while a shell is attached: the shell does.
+//! Every protocol handler in [`crate::protocols`] turns a request into a call on the window-manager provider
+//! ([`WindowManager`], which holds the record of windows and outputs) or, while a shell holds the tree, into an event
+//! on the window's node. The decisions the provider returns come back here, where they become client configures, seat
+//! focus and output enter/leave. The provider decides nothing while a shell is attached: the shell does
+//! ([`State::decider`]).
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -73,9 +74,9 @@ use gnoblin_render::Mat4;
 use gnoblin_render::transaction::PointerInput;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
 use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
+use gnoblin_wm_api::{Open, Standing, WindowKind, WindowManager, WindowState, WmEffect, WmOptions, WmRefusal};
 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
-use crate::fallback::{Fallback, FallbackEffect, FallbackRefusal, Open, Standing, WindowKind, WindowState};
 use crate::frame_policy::{CallbackPacer, Pacing};
 use crate::keyboard::KeyboardTables;
 use crate::modal::{Modal, ModalEvent};
@@ -84,7 +85,6 @@ use crate::observation::{
     WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal,
 };
 use crate::output_control::OutputControlState;
-use crate::policy::WmOptions;
 use crate::protocols::capture_shared::CaptureTables;
 use crate::protocols::ext_idle_notify_v1::ExtIdleNotifyV1Tables;
 use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
@@ -100,7 +100,7 @@ use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use crate::protocols::zwp_pointer_constraints_v1::ZwpPointerConstraintsV1Tables;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
-use crate::window_request::{WindowRequest, X11Flags};
+use crate::window_request::{Decider, WindowRequest, X11Flags};
 
 use crate::log;
 
@@ -530,11 +530,12 @@ pub struct State {
     /// (`Config::window_process_override`). `None` in a real session.
     pub(crate) window_process_override: Option<crate::WindowProcess>,
 
-    /// The record of windows and outputs, and the minimal policy applied while no shell holds the tree.
+    /// The window-manager provider: the record of windows and outputs, and the decisions applied while no shell
+    /// holds the tree. `NullWm` when the session was started with no provider.
     ///
     /// Crate-visible because every protocol module turns a request into a call on it; while a shell holds
     /// the tree the record is kept current and its decisions are not applied.
-    pub(crate) fallback: Fallback,
+    pub(crate) wm: Box<dyn WindowManager>,
     /// The window management options, published on the main seat where the shell reads them.
     pub(crate) options: WmOptions,
     /// The window that holds focus: the keyboard's, or, while a layer surface or the lock holds the
@@ -663,6 +664,7 @@ impl State {
         visual_accessibility: crate::server::VisualAccessibilitySettings,
         extensions: &[Arc<dyn Extension>],
         lock_auth: crate::lock_auth::LockAuth,
+        wm: Box<dyn WindowManager>,
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
         let output_manager = ZwlrOutputManagementV1State::new(display_handle.clone());
@@ -900,7 +902,7 @@ impl State {
             activity: Activity::new(),
             liveness: crate::liveness::Liveness::new(std::time::Duration::from_secs(5)),
             window_process_override: None,
-            fallback: Fallback::default(),
+            wm,
             options,
             focus: None,
             windows: BTreeMap::new(),
@@ -977,7 +979,7 @@ impl State {
     /// the record's while no shell holds the tree, and refused while one does: a shell places
     /// its own windows.
     pub(crate) fn window_control(&mut self, window: WindowId, change: WindowChange) -> Result<(), WindowChangeRefusal> {
-        let Some(managed) = self.fallback.window(window) else {
+        let Some(managed) = self.wm.window(window) else {
             return Err(WindowChangeRefusal::Gone);
         };
         let current = self.geometry_of(window).unwrap_or(managed.geometry);
@@ -1024,7 +1026,7 @@ impl State {
     /// window keeps its drawing. The window's rule opacity and placement animation are separate
     /// and keep applying alongside these values.
     pub(crate) fn window_visual(&mut self, window: WindowId, change: WindowVisual) -> Result<(), WindowVisualRefusal> {
-        if self.fallback.window(window).is_none() {
+        if self.wm.window(window).is_none() {
             return Err(WindowVisualRefusal::Gone);
         }
         if self.lock.state() != LockState::Unlocked {
@@ -1047,15 +1049,13 @@ impl State {
     /// Maps the record's reason for refusing a control request to the reply a caller sees. A window or
     /// target that has gone is named apart from a state refusal, so a script can tell that it lost a
     /// race from a change it can never make.
-    pub(crate) const fn refusal_of(reason: FallbackRefusal) -> WindowChangeRefusal {
+    pub(crate) const fn refusal_of(reason: WmRefusal) -> WindowChangeRefusal {
         match reason {
-            FallbackRefusal::Gone => WindowChangeRefusal::Gone,
-            FallbackRefusal::UnknownOutput => WindowChangeRefusal::UnknownTarget,
-            FallbackRefusal::NotFloating => WindowChangeRefusal::NotFloating,
-            FallbackRefusal::FollowsParent => WindowChangeRefusal::TransientFollowsParent,
-            FallbackRefusal::Duplicate | FallbackRefusal::TooMany | FallbackRefusal::NoOutput => {
-                WindowChangeRefusal::Refused
-            }
+            WmRefusal::Gone => WindowChangeRefusal::Gone,
+            WmRefusal::UnknownOutput => WindowChangeRefusal::UnknownTarget,
+            WmRefusal::NotFloating => WindowChangeRefusal::NotFloating,
+            WmRefusal::FollowsParent => WindowChangeRefusal::TransientFollowsParent,
+            WmRefusal::Duplicate | WmRefusal::TooMany | WmRefusal::NoOutput => WindowChangeRefusal::Refused,
         }
     }
 
@@ -1156,7 +1156,7 @@ impl State {
     /// Puts the window whose surface a client names by its protocol object id at an exact position, keeping its size.
     ///
     /// The position is not clamped to the work area: the embedder places windows deliberately, which is what the
-    /// record's [`Fallback::place`] is for. `false` when the tag names no client, the id names no surface of it, the
+    /// provider's [`WindowManager::place`] is for. `false` when the tag names no client, the id names no surface of it, the
     /// surface is no managed window, or the record refuses (a maximised or fullscreen window is not placed).
     pub(crate) fn place_surface(&mut self, tag: u64, surface: u32, at: gnoblin_types::Point) -> bool {
         let Some(client) = self.adopted.get(&tag) else {
@@ -1168,7 +1168,7 @@ impl State {
         let Some(window) = self.window_of(&surface) else {
             return false;
         };
-        let Ok(effects) = self.fallback.place(window, at) else {
+        let Ok(effects) = self.wm.place(window, at) else {
             return false;
         };
         self.apply(effects);
@@ -1225,7 +1225,7 @@ impl State {
     pub(crate) fn surface_scale(&self, surface: &WlSurface) -> f64 {
         let output_id = self
             .window_of(surface)
-            .and_then(|window| self.fallback.window(window))
+            .and_then(|window| self.wm.window(window))
             .and_then(|window| window.output);
         let entry = output_id
             .and_then(|output| self.outputs.iter().find(|entry| entry.backend == output))
@@ -1472,12 +1472,12 @@ impl State {
             self.output_controls_removed(entry.backend);
             self.forget_capture_frame(entry.backend);
             log::debug!(area = "output", connector = %entry.output.name(), "disconnected");
-            let mut effects = self.with_seat(|fallback, seat| fallback.output_removed(entry.backend, seat));
-            if self.composer.shell_places() {
+            let mut effects = self.with_seat(|wm, seat| wm.output_removed(entry.backend, seat));
+            if self.composer.holder_attached() {
                 // A shell that holds the tree hides the windows of a desk with no output itself (its `visible`). The
                 // compositor hiding them as well would drop their nodes once the fade ended, and the window would come
                 // back as one the shell had never seen, with nothing of its workspace, its place or its snap.
-                effects.retain(|effect| !matches!(effect, FallbackEffect::Visible { visible: false, .. }));
+                effects.retain(|effect| !matches!(effect, WmEffect::Visible { visible: false, .. }));
             }
             self.apply_decided(effects);
         }
@@ -1539,7 +1539,7 @@ impl State {
             rect,
         });
         self.publish_screen(output.id);
-        let effects = self.with_seat(|fallback, seat| fallback.output_added(output.id, rect, seat));
+        let effects = self.with_seat(|wm, seat| wm.output_added(output.id, rect, seat));
         self.apply_decided(effects);
     }
 
@@ -1613,7 +1613,7 @@ impl State {
         self.update_xdg_outputs(backend, rect);
         output.change_current_state(None, None, None, Some(SmithayPoint::from((rect.x, rect.y))));
         self.composer.set_output(backend, rect);
-        let effects = self.fallback.output_moved(backend, rect);
+        let effects = self.wm.output_moved(backend, rect);
         self.apply_decided(effects);
     }
 
@@ -1621,10 +1621,10 @@ impl State {
     ///
     /// This is the only place a decision becomes observable behaviour, so every arm says what it means to a
     /// client.
-    pub(crate) fn apply(&mut self, effects: Vec<FallbackEffect>) {
+    pub(crate) fn apply(&mut self, effects: Vec<WmEffect>) {
         for effect in effects {
             match effect {
-                FallbackEffect::Configure {
+                WmEffect::Configure {
                     window,
                     geometry,
                     state,
@@ -1633,16 +1633,16 @@ impl State {
                     self.configure(window, geometry, state);
                     self.reposition_reactive_popups(window);
                 }
-                FallbackEffect::Visible { window, visible } => {
+                WmEffect::Visible { window, visible } => {
                     self.composer.set_window_visible(window, visible);
                     self.set_visible(window, visible);
                 }
-                FallbackEffect::Stack(order) => {
+                WmEffect::Stack(order) => {
                     // The record states the order topmost first; the scene keeps its paint order bottom first.
                     self.composer.set_stacking(&order);
                     log::debug!(log = ?order, "[stack]");
                 }
-                FallbackEffect::Focus(focused) => self.move_focus(focused),
+                WmEffect::Focus(focused) => self.move_focus(focused),
             }
         }
         self.refresh_pointer_focus();
@@ -1679,14 +1679,14 @@ impl State {
     /// Applies the decisions of the no-shell fallback. While a shell holds the tree it decides placement,
     /// stacking and focus, so only the window's presence on the outputs is kept: the record has otherwise only been
     /// kept current.
-    pub(crate) fn apply_decided(&mut self, effects: Vec<FallbackEffect>) {
-        self.apply_filtered(effects, |effect| matches!(effect, FallbackEffect::Visible { .. }));
+    pub(crate) fn apply_decided(&mut self, effects: Vec<WmEffect>) {
+        self.apply_filtered(effects, |effect| matches!(effect, WmEffect::Visible { .. }));
     }
 
     /// Applies `effects` in full when no shell holds the tree, and only those `shell_keeps` names while one does.
-    fn apply_filtered(&mut self, effects: Vec<FallbackEffect>, shell_keeps: impl Fn(&FallbackEffect) -> bool) {
-        if self.composer.shell_places() {
-            let (kept, dropped): (Vec<FallbackEffect>, Vec<FallbackEffect>) =
+    fn apply_filtered(&mut self, effects: Vec<WmEffect>, shell_keeps: impl Fn(&WmEffect) -> bool) {
+        if self.composer.holder_attached() {
+            let (kept, dropped): (Vec<WmEffect>, Vec<WmEffect>) =
                 effects.into_iter().partition(|effect| shell_keeps(effect));
             log::trace!(
                 area = "wm",
@@ -1702,8 +1702,8 @@ impl State {
     /// Forgets a closed window: the record drops it. Focus moves on when it held it, as
     /// the record decides without a shell, and is cleared while one holds the tree: the shell moves its own focus.
     pub(crate) fn window_closed(&mut self, window: WindowId) {
-        let effects = self.with_seat(|fallback, seat| fallback.close(window, seat));
-        if self.composer.shell_places() {
+        let effects = self.with_seat(|wm, seat| wm.close(window, seat));
+        if self.composer.holder_attached() {
             if self.focus == Some(window) {
                 self.focus = None;
             }
@@ -1714,13 +1714,13 @@ impl State {
 
     /// Runs a decision of the record with the paint order and the focus it starts from, which the scene and the
     /// keyboard own.
-    pub(crate) fn with_seat<R>(&mut self, decide: impl FnOnce(&mut Fallback, Standing<'_>) -> R) -> R {
+    pub(crate) fn with_seat<R>(&mut self, decide: impl FnOnce(&mut dyn WindowManager, Standing<'_>) -> R) -> R {
         let stack = self.composer.window_stack();
         let seat = Standing {
             stack: &stack,
             focus: self.focus,
         };
-        decide(&mut self.fallback, seat)
+        decide(self.wm.as_mut(), seat)
     }
 
     /// Applies a configure to a toplevel and sends it if the client is ready for it.
@@ -1926,7 +1926,7 @@ impl State {
         let client = target.as_ref().and_then(|surface| surface.client());
         self.move_keyboard_focus(target.clone(), serial);
         self.announce_activation(focused);
-        let windows: Vec<WindowId> = self.fallback.windows().map(|window| window.id).collect();
+        let windows: Vec<WindowId> = self.wm.windows().map(|window| window.id).collect();
         for window in windows {
             self.publish_window_state(window);
         }
@@ -2120,22 +2120,19 @@ impl State {
         );
         // The window is placed now and takes focus when it first maps; the activation is decided from
         // `toplevel_committed` for that reason.
-        let opened = self.with_seat(|fallback, seat| {
+        let opened = self.with_seat(|wm, seat| {
             let open = Open {
                 id: window,
                 kind: WindowKind::Normal,
                 transient_for: None,
                 requested: None,
             };
-            fallback.open(open, seat)
+            wm.open(open, seat)
         });
         // The scene learns the window before the decision is applied, so the initial configure's geometry has a
         // window to place. A window the record refused has no geometry: it is inserted at the empty rectangle and
         // stays unmanaged.
-        let geometry = self
-            .fallback
-            .window(window)
-            .map_or(Rect::EMPTY, |managed| managed.geometry);
+        let geometry = self.wm.window(window).map_or(Rect::EMPTY, |managed| managed.geometry);
         self.composer.insert_window(window, geometry);
         match opened {
             Ok(effects) => self.apply_decided(effects),
@@ -2254,9 +2251,9 @@ impl State {
             // A new window takes focus only as `window_management.focus_new_windows` allows. With no shell the
             // record decides; a shell decides in its own `Window:on_ready`.
             let policy = self.options.new_window_focus;
-            let effects = self.with_seat(|fallback, seat| {
-                if fallback.may_take_focus(window, policy, seat) {
-                    fallback.activate(window, true, seat)
+            let effects = self.with_seat(|wm, seat| {
+                if wm.may_take_focus(window, policy, seat) {
+                    wm.activate(window, true, seat)
                 } else {
                     Vec::new()
                 }
@@ -2301,7 +2298,7 @@ impl State {
         let extent = (tree.size.w > 0 && tree.size.h > 0)
             .then(|| Rect::new(tree.loc.x, tree.loc.y, tree.size.w as u32, tree.size.h as u32));
         self.composer.set_window_hit_extent(window, extent);
-        if self.composer.shell_places() || self.dragged == Some(window) || !has_buffer(surface) {
+        if self.composer.holder_attached() || self.dragged == Some(window) || !has_buffer(surface) {
             return;
         }
         let size = geometry
@@ -2314,10 +2311,8 @@ impl State {
         let Some((width, height)) = size else {
             return;
         };
-        if self
-            .fallback
-            .adopt_size(window, gnoblin_types::Size::new(width, height))
-            && let Some(managed) = self.fallback.window(window)
+        if self.wm.adopt_size(window, gnoblin_types::Size::new(width, height))
+            && let Some(managed) = self.wm.window(window)
         {
             self.composer.place_window(window, managed.geometry);
         }
@@ -2533,13 +2528,13 @@ impl State {
             (Some(_), _) => WindowKind::Dialog,
             (None, _) => WindowKind::Normal,
         };
-        let Some(current) = self.fallback.window(window) else {
+        let Some(current) = self.wm.window(window) else {
             return;
         };
         if current.kind == kind && current.transient_for == transient_for {
             return;
         }
-        let effects = self.with_seat(|fallback, seat| fallback.set_role(window, kind, transient_for, seat));
+        let effects = self.with_seat(|wm, seat| wm.set_role(window, kind, transient_for, seat));
         self.apply_decided(effects);
         self.publish();
     }
@@ -2575,10 +2570,10 @@ impl State {
         true
     }
 
-    /// The window's node, when the shell decides for the window: it holds the tree and the session is not locked.
-    /// `None` when the window manager acts instead.
+    /// The window's node, when the shell decides for the window ([`State::decider`]). `None` when the provider acts
+    /// instead.
     fn shell_decides_for(&self, window: WindowId) -> Option<NodeId> {
-        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
+        if self.decider(window) != Decider::Shell {
             return None;
         }
         self.composer.window_node(window)
@@ -2587,7 +2582,7 @@ impl State {
     /// Records a window's app id that changed from a path that is not the toplevel's own commit, and republishes
     /// the node's texts, so the shell's rules read the new one.
     pub(crate) fn window_app_id_set(&mut self, window: WindowId, app_id: &str) -> bool {
-        if self.fallback.window(window).is_none() {
+        if self.wm.window(window).is_none() {
             return false;
         }
         let Some(entry) = self.windows.get_mut(&window) else {
@@ -2654,8 +2649,8 @@ impl State {
     /// The rectangle a window is drawn at, for popup positioning and the observers: where the shell that holds the
     /// tree put it, otherwise the record's. `None` when the window closed.
     pub(crate) fn geometry_of(&self, window: WindowId) -> Option<Rect> {
-        let managed = self.fallback.window(window)?;
-        Some(if self.composer.shell_places() {
+        let managed = self.wm.window(window)?;
+        Some(if self.composer.holder_attached() {
             self.composer.window_frame(window).unwrap_or(managed.geometry)
         } else {
             managed.geometry
@@ -2668,7 +2663,7 @@ impl State {
     /// each request once can see it even after another arrives first. A window that
     /// has closed gets no request: there is no menu to open for it.
     pub(crate) fn request_window_menu(&mut self, window: WindowId, anchor: MenuAnchor, source: MenuSource) -> bool {
-        if self.fallback.window(window).is_none() {
+        if self.wm.window(window).is_none() {
             log::debug!(area = "menu", ?window, "a request for a closed window was dropped");
             return false;
         }
@@ -2699,8 +2694,8 @@ impl State {
 
     /// The monitor rectangle of the output the window is on.
     pub(crate) fn monitor_of(&self, window: WindowId) -> Option<Rect> {
-        let output = self.fallback.window(window)?.output?;
-        Some(self.fallback.output(output)?.rect)
+        let output = self.wm.window(window)?.output?;
+        Some(self.wm.output(output)?.rect)
     }
 
     /// Fires the frame callback every mapped window is waiting for.
@@ -2731,10 +2726,7 @@ impl State {
                 if !entry.mapped {
                     continue;
                 }
-                let on_monitor = self
-                    .fallback
-                    .window(*window)
-                    .is_some_and(|managed| managed.output.is_some());
+                let on_monitor = self.wm.window(*window).is_some_and(|managed| managed.output.is_some());
                 let in_view = self
                     .composer
                     .window_node(*window)
@@ -3014,7 +3006,7 @@ impl State {
     /// work-area constraint and the configure the client receives. It refuses nothing a shell could place: a
     /// shell holding the tree is the one that places windows, and the seam is not for it.
     pub(crate) fn move_window(&mut self, window: WindowId, geometry: Rect) {
-        if let Ok(effects) = self.fallback.move_resize(window, geometry) {
+        if let Ok(effects) = self.wm.move_resize(window, geometry) {
             self.apply(effects);
         }
         self.publish();
@@ -3139,7 +3131,7 @@ impl State {
             ..SessionSnapshot::default()
         };
         let mut liveness = Vec::new();
-        for window in self.fallback.windows() {
+        for window in self.wm.windows() {
             let entry = self.windows.get(&window.id);
             let mapped = entry.is_some_and(|entry| entry.mapped);
             let unresponsive = matches!(
@@ -3205,12 +3197,12 @@ impl State {
     /// It is an explicit command, not a client's request, so it moves the focus whether or not a shell holds the
     /// tree. Raising is the shell's, and the record leaves it alone while one does.
     pub(crate) fn focus_window(&mut self, window: WindowId) -> bool {
-        if self.fallback.window(window).is_none() {
+        if self.wm.window(window).is_none() {
             return false;
         }
-        let effects = self.with_seat(|fallback, seat| fallback.activate(window, true, seat));
+        let effects = self.with_seat(|wm, seat| wm.activate(window, true, seat));
         self.apply_filtered(effects, |effect| {
-            matches!(effect, FallbackEffect::Visible { .. } | FallbackEffect::Focus(_))
+            matches!(effect, WmEffect::Visible { .. } | WmEffect::Focus(_))
         });
         self.publish();
         self.focus == Some(window)
@@ -3224,7 +3216,7 @@ impl State {
     /// still decides. The quiet gate lives here because the input clock does; the caller
     /// retries `Typing` and `NotShown` until its deadline rather than stealing focus mid-keystroke.
     pub(crate) fn present_window(&mut self, window: WindowId) -> PresentAnswer {
-        if self.fallback.window(window).is_none() {
+        if self.wm.window(window).is_none() {
             return PresentAnswer::Gone;
         }
         if self.lock.state() != LockState::Unlocked {
@@ -3243,7 +3235,7 @@ impl State {
     /// unlocked session whose shell holds the tree has one: a locked session routes the ray to
     /// the lock surface, and a window topmost at the point takes it.
     fn shell_pick(&self, position: SmithayPoint<f64, Logical>) -> Option<(NodeId, PointF)> {
-        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
+        if self.lock.state() != LockState::Unlocked || !self.composer.holder_attached() {
             return None;
         }
         self.composer.shell_node_at(PointF::new(position.x, position.y))
@@ -3272,7 +3264,7 @@ impl State {
     /// The pointer's position in the local space of the shell node a press holds. `None` once the node has gone, and
     /// whenever the session is locked or no shell holds the tree: a grab is the shell's and ends with its tree.
     fn grab_local(&self, node: NodeId) -> Option<PointF> {
-        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
+        if self.lock.state() != LockState::Unlocked || !self.composer.holder_attached() {
             return None;
         }
         let position = self.pointer_position;
@@ -3299,7 +3291,7 @@ impl State {
     /// are the same request. While a shell holds the tree the press is an edge on the window's node instead
     /// (a touch is a left press and release there), and the shell decides.
     pub(crate) fn activate_at(&mut self, position: SmithayPoint<f64, Logical>) {
-        if self.composer.shell_places() {
+        if self.composer.holder_attached() {
             let on_window = self
                 .pointer_target(position)
                 .filter(|(node, _)| self.composer.window_of_node(*node).is_some());
@@ -3317,7 +3309,7 @@ impl State {
             return;
         };
         let raise = self.options.raise_on_click;
-        let effects = self.with_seat(|fallback, seat| fallback.activate(window, raise, seat));
+        let effects = self.with_seat(|wm, seat| wm.activate(window, raise, seat));
         self.apply(effects);
         self.publish();
     }
@@ -3472,7 +3464,7 @@ impl State {
 
     /// Whether a window may take the pointer: managed, shown, uncovered and holding a surface.
     pub(crate) fn window_is_pickable(&self, window: WindowId) -> bool {
-        self.fallback.window(window).is_some()
+        self.wm.window(window).is_some()
             && self.window_shown(window)
             && !self.window_is_covered(window)
             && self
@@ -3488,7 +3480,7 @@ impl State {
         if let Some(pick) = self.shell_pick(position) {
             return Some(pick);
         }
-        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
+        if self.lock.state() != LockState::Unlocked || !self.composer.holder_attached() {
             return None;
         }
         let (window, local) = self.window_pick(position)?;

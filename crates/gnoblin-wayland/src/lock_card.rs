@@ -127,7 +127,7 @@ impl State {
     /// and the card takes them after [`LOCK_UI_GRACE_MS`] whatever the shell is doing. The lease clock is the shell's
     /// own and does not restart when only the keyboard moves.
     fn lock_ui_held(&mut self) -> bool {
-        if !(self.composer.shell_places() && self.composer.lock_ui_engaged()) {
+        if !(self.composer.holder_attached() && self.composer.lock_ui_engaged()) {
             self.lock_card.beat = None;
             return false;
         }
@@ -138,7 +138,7 @@ impl State {
     /// Renews the shell's lease on the lock screen, as many times as it called `heartbeat` since the last frame. A
     /// heartbeat from a shell that has not engaged the lock renews nothing: its lease starts when it engages.
     pub(crate) fn renew_lock_ui_lease(&mut self, beats: usize) {
-        if beats > 0 && self.composer.shell_places() && self.composer.lock_ui_engaged() {
+        if beats > 0 && self.composer.holder_attached() && self.composer.lock_ui_engaged() {
             self.lock_card.beat = Some(self.clock);
         }
     }
@@ -149,7 +149,7 @@ impl State {
             self.lock_card.absent_since = None;
             return false;
         }
-        if !self.composer.shell_places() {
+        if !self.composer.holder_attached() {
             return true;
         }
         let since = *self.lock_card.absent_since.get_or_insert(self.clock);
@@ -237,7 +237,7 @@ impl State {
     /// A shell that no longer holds the tree no longer holds the lock screen: its `engaged` is released, so the card
     /// is wanted at once and the next shell starts from a lock nobody holds.
     pub(crate) fn release_dead_lock_screen(&mut self) {
-        if !self.composer.shell_places() && self.composer.lock_ui_engaged() {
+        if !self.composer.holder_attached() && self.composer.lock_ui_engaged() {
             self.composer.release_lock_engaged();
         }
     }

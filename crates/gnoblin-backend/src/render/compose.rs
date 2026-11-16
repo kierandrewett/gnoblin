@@ -1148,7 +1148,7 @@ impl Composer {
     /// While the shell holds the tree its placement stands, so the position is not published and
     /// the tree is treated as not knowing it: the next publish after the hold writes it.
     fn publish_geometry(&mut self, window: WindowId) {
-        let holds = self.scene.shell_places();
+        let holds = self.scene.holder_attached();
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
@@ -1192,7 +1192,7 @@ impl Composer {
     /// only `focused` is published: the other three are the shell's to write, and sending its own
     /// values back would only make its next transaction stale.
     pub fn set_window_state(&mut self, window: WindowId, state: [bool; 4]) {
-        let holds = self.scene.shell_places();
+        let holds = self.scene.holder_attached();
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
@@ -1365,7 +1365,7 @@ impl Composer {
     /// published over it.
     #[must_use]
     pub fn shell_window_flags(&self, window: WindowId) -> Option<[bool; 3]> {
-        if !self.scene.shell_places() {
+        if !self.scene.holder_attached() {
             return None;
         }
         let node = self.windows.get(&window)?.node?;
@@ -1377,7 +1377,7 @@ impl Composer {
     /// holds every window untiled.
     #[must_use]
     pub fn shell_window_tiled(&self, window: WindowId) -> bool {
-        if !self.scene.shell_places() {
+        if !self.scene.holder_attached() {
             return false;
         }
         let Some(node) = self.windows.get(&window).and_then(|entry| entry.node) else {
@@ -1438,7 +1438,7 @@ impl Composer {
     /// Follows the shell's hold on the tree. When the hold changed since the last check, every
     /// window is resynced: placed by the composer again, or left to the shell.
     pub fn follow_placement(&mut self) {
-        let holds = self.scene.shell_places();
+        let holds = self.scene.holder_attached();
         if holds == self.placing {
             return;
         }
@@ -1458,7 +1458,7 @@ impl Composer {
     /// would square the corners again at the next sync.
     fn placed_target(&self, entry: &WindowNode) -> VisualTransform {
         let mut transform = Self::target(entry);
-        if self.scene.shell_places() {
+        if self.scene.holder_attached() {
             let current = entry.node.and_then(|node| self.scene.transform(node));
             let (x, y) = current.map_or((0.0, 0.0), |current| (current.base.offset.x, current.base.offset.y));
             transform.base.offset.x = x;
@@ -2173,7 +2173,7 @@ impl Composer {
     /// client is never told the compositor draws its frame.
     #[must_use]
     pub fn decorations_available(&self) -> bool {
-        self.scene.shell_places() && self.decorations_declared()
+        self.scene.holder_attached() && self.decorations_declared()
     }
 
     /// Whether the main seat's `decorations_available` is true, whoever holds the tree.
@@ -2211,7 +2211,7 @@ impl Composer {
     /// compositor's own desktop animates as it always has.
     #[must_use]
     pub fn builtin_motion_off(&self) -> bool {
-        self.scene.shell_places()
+        self.scene.holder_attached()
             && self
                 .main_seat
                 .is_some_and(|seat| matches!(self.scene.value(seat, "builtin_motion"), Some(TreeValue::Bool(false))))
@@ -2229,7 +2229,7 @@ impl Composer {
     /// value never reaches the node, so the text is one of the three the schema names.
     #[must_use]
     pub fn window_frame_policy(&self, window: WindowId) -> FramePolicy {
-        if !self.scene.shell_places() {
+        if !self.scene.holder_attached() {
             return FramePolicy::Auto;
         }
         let Some(node) = self.windows.get(&window).and_then(|entry| entry.node) else {
@@ -2370,10 +2370,10 @@ impl Composer {
             .any(|change| matches!(change, TreeChange::Created { node: created, .. } if *created == node))
     }
 
-    /// Whether the shell holds the tree's placement, so window requests are the shell's to decide.
+    /// Whether a holder is attached to the tree's placement, so window requests are the shell's to decide.
     #[must_use]
-    pub fn shell_places(&self) -> bool {
-        self.scene.shell_places()
+    pub fn holder_attached(&self) -> bool {
+        self.scene.holder_attached()
     }
 
     /// Replaces a window's content, or clears it.
@@ -2775,7 +2775,7 @@ impl Composer {
     /// sibling after the one below it. A window that has no node yet is not drawn, and counts as the topmost.
     #[must_use]
     pub fn window_stack(&self) -> Vec<WindowId> {
-        if !self.scene.shell_places() {
+        if !self.scene.holder_attached() {
             return self.order.iter().rev().copied().collect();
         }
         let by_node: BTreeMap<NodeId, WindowId> = self

@@ -172,7 +172,7 @@ impl State {
     /// whether decorations are available is sent to every window, so a reload that turns them off or on never leaves
     /// a window that asked for server-side without a frame.
     pub(crate) fn follow_decorations_available(&mut self) {
-        if !self.composer.shell_places() && self.composer.decorations_declared() {
+        if !self.composer.holder_attached() && self.composer.decorations_declared() {
             self.composer.release_decorations_declared();
         }
         let available = self.composer.decorations_available();

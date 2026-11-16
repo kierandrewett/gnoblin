@@ -219,9 +219,10 @@ mod tests {
     use smithay::reexports::calloop::LoopHandle;
     use smithay::reexports::wayland_server::Display;
 
+    use gnoblin_wm_api::WmOptions;
+
     use super::ledger::test_support::clients;
     use super::*;
-    use crate::policy::WmOptions;
 
     #[test]
     fn the_first_publication_waits_a_period_and_later_ones_are_rate_limited() {
@@ -329,6 +330,7 @@ mod tests {
             crate::server::VisualAccessibilitySettings::default(),
             &[],
             crate::lock_auth::LockAuth::new(Arc::new(gnoblin_lock_auth::FakeAuthenticator::new()), None).0,
+            Box::new(crate::fallback::Fallback::default()),
         )
         .expect("a state for the default output");
         state.gpu_ledger = Arc::new(Ledger::new(MemoryLimits {

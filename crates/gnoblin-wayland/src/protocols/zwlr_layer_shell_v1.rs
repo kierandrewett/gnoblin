@@ -364,7 +364,7 @@ impl State {
             if previous == Some(reserved) {
                 continue;
             }
-            let effects = self.fallback.reserve(*output, reserved);
+            let effects = self.wm.reserve(*output, reserved);
             log::debug!(area = "layer", ?reserved, "reserved");
             self.apply_decided(effects);
         }

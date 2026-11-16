@@ -284,17 +284,36 @@ impl Session {
         tree: TreeHooks,
         limits: MemoryLimits,
     ) -> Self {
+        let config = Config {
+            protocols,
+            wm,
+            tree,
+            gpu_limits: limits,
+            ..Config::default()
+        };
+        Self::launch(backend, config)
+    }
+
+    /// Creates a session with no window-manager provider, as a core with nothing installed runs: `NullWm` places the
+    /// windows and has no focus policy. `tree` is the hooks a shell would hold the tree through.
+    pub fn start_core_only(tree: TreeHooks) -> Self {
+        let config = Config {
+            tree,
+            window_manager: None,
+            ..Config::default()
+        };
+        Self::launch(Box::new(Headless::new()), config)
+    }
+
+    /// Builds the session from `config`, on sockets of its own in a temporary directory.
+    fn launch(backend: Box<dyn gnoblin_backend::Backend<gnoblin_wayland::State>>, config: Config) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let privileged_socket = directory.path().join("wayland-0-privileged.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
             privileged_socket_path: Some(privileged_socket.clone()),
-            protocols,
-            wm,
-            tree,
-            gpu_limits: limits,
-            ..Config::default()
+            ..config
         };
         let server = Server::new(backend, config).expect("the session starts");
         let handle = Handle {

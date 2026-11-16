@@ -89,12 +89,12 @@ impl Shell {
 
     /// Takes the tree, as a connected shell does: from now on window requests are the shell's to decide.
     pub fn attach(&self) {
-        self.queue.read(|scene, _| scene.set_shell_places(true));
+        self.queue.read(|scene, _| scene.set_holder_attached(true));
     }
 
     /// Lets go of the tree: window requests go back to the window manager.
     pub fn detach(&self) {
-        self.queue.read(|scene, _| scene.set_shell_places(false));
+        self.queue.read(|scene, _| scene.set_holder_attached(false));
     }
 
     /// The first window node the compositor announced, once it has.

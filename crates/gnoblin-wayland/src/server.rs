@@ -53,6 +53,7 @@ use gnoblin_capture::{SessionId, Target};
 use gnoblin_config::Protocols;
 use gnoblin_output::LayoutError;
 use gnoblin_types::{ClientId, OutputId, Rect, WindowId};
+use gnoblin_wm_api::{NullWm, WindowManager, WmOptions};
 
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
@@ -60,7 +61,6 @@ use crate::observation::{
     MenuAnchor, MenuSource, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal, WindowVisual,
     WindowVisualRefusal,
 };
-use crate::policy::WmOptions;
 use crate::protocols::capture_shared::{CastRefusal, CastStream};
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
@@ -276,6 +276,10 @@ pub struct Config {
     /// What checks the lock's password, or [`None`] for PAM's `gnoblin-lock` service against the session user. A test
     /// names a scripted authenticator and the user it is asked about, so the lock is exercised without PAM.
     pub lock_check: Option<LockCheck>,
+    /// Builds the window-manager provider the session starts with, or [`None`] for a session with no provider, which
+    /// runs [`NullWm`]: windows at the origin and no focus policy. The default is the stock provider, which keeps the
+    /// default desktop's behaviour.
+    pub window_manager: Option<WindowManagerFactory>,
 }
 
 /// An authenticator and the user it checks the lock's password for.
@@ -293,6 +297,32 @@ impl std::fmt::Debug for LockCheck {
             .debug_struct("LockCheck")
             .field("user", &self.user)
             .finish_non_exhaustive()
+    }
+}
+
+/// Builds the window-manager provider a session starts with. A factory rather than a provider, so a [`Config`] stays
+/// `Clone` and the provider is made on the thread that runs the session.
+#[derive(Clone)]
+pub struct WindowManagerFactory(Arc<dyn Fn() -> Box<dyn WindowManager> + Send + Sync>);
+
+impl WindowManagerFactory {
+    /// A factory that calls `make` once for the session.
+    pub fn new(make: impl Fn() -> Box<dyn WindowManager> + Send + Sync + 'static) -> Self {
+        Self(Arc::new(make))
+    }
+
+    /// The provider a session starts with: the factory's, or [`NullWm`] without one.
+    fn start(factory: Option<Self>) -> Box<dyn WindowManager> {
+        match factory {
+            Some(factory) => (factory.0)(),
+            None => Box::<NullWm>::default(),
+        }
+    }
+}
+
+impl std::fmt::Debug for WindowManagerFactory {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("WindowManagerFactory").finish_non_exhaustive()
     }
 }
 
@@ -326,6 +356,9 @@ impl Default for Config {
             window_process_override: None,
             pipewire_socket: None,
             lock_check: None,
+            window_manager: Some(WindowManagerFactory::new(|| {
+                Box::new(crate::fallback::Fallback::default())
+            })),
         }
     }
 }
@@ -478,6 +511,7 @@ impl Server {
             config.visual_accessibility,
             &config.extensions,
             lock_auth,
+            WindowManagerFactory::start(config.window_manager),
         )?;
         // The host's per-output controls are learnt before any client connects, so an
         // unsupported control's global is removed before it is ever advertised.

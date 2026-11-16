@@ -2046,6 +2046,7 @@ dependencies = [
  "gnoblin-secret",
  "gnoblin-testkit",
  "gnoblin-types",
+ "gnoblin-wm-api",
  "png",
  "rustix 1.1.6",
  "smithay",
@@ -2069,6 +2070,13 @@ dependencies = [
  "tempfile",
  "wayland-client",
  "wayland-protocols",
+]
+
+[[package]]
+name = "gnoblin-wm-api"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
 ]
 
 [[package]]

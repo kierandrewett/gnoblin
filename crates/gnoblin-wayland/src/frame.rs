@@ -426,9 +426,9 @@ mod tests {
     use smithay::reexports::calloop::LoopHandle;
     use smithay::reexports::wayland_server::Display;
 
-    use crate::policy::WmOptions;
     use gnoblin_lock::{Event as LockEvent, State as LockState};
     use gnoblin_types::ClientId;
+    use gnoblin_wm_api::WmOptions;
 
     use super::*;
 
@@ -452,6 +452,7 @@ mod tests {
             crate::server::VisualAccessibilitySettings::default(),
             &[],
             crate::lock_auth::LockAuth::new(std::sync::Arc::new(gnoblin_lock_auth::FakeAuthenticator::new()), None).0,
+            Box::new(crate::fallback::Fallback::default()),
         )
         .expect("a state for the default output");
         (backend, state)
@@ -853,6 +854,7 @@ mod tests {
             crate::server::VisualAccessibilitySettings::default(),
             &[],
             crate::lock_auth::LockAuth::new(std::sync::Arc::new(gnoblin_lock_auth::FakeAuthenticator::new()), None).0,
+            Box::new(crate::fallback::Fallback::default()),
         )
         .expect("a state for the default output");
         let stats = Arc::new(Mutex::new(FrameStats::default()));

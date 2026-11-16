@@ -153,7 +153,7 @@ impl TreeHostHandle {
             };
             let outcome = granted.map(|attachment| {
                 if mode == AttachMode::Holder {
-                    scene.set_shell_places(true);
+                    scene.set_holder_attached(true);
                 }
                 (
                     TreeAttached {
@@ -195,7 +195,7 @@ impl TreeHostHandle {
             });
             // The frame clears the flag at its next read, so the wm places windows again.
             self.queue
-                .read(move |scene, _| scene.set_shell_places(lock(&shared).holder().is_some()));
+                .read(move |scene, _| scene.set_holder_attached(lock(&shared).holder().is_some()));
         }
         for node in made.into_iter().flatten() {
             // One transaction for each node, so one already gone does not keep the rest alive. It is admitted
