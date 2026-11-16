@@ -1215,6 +1215,98 @@ fn a_window_that_maps_with_reduced_motion_is_opaque_at_once() {
     );
 }
 
+#[test]
+fn the_default_motion_policy_is_the_historical_two_hundred_milliseconds() {
+    let (composer, _output) = screen();
+    assert_eq!(composer.motion_policy(), MotionPolicy::default());
+    assert_eq!(composer.motion_policy().map_fade_ms, 200);
+    assert_eq!(composer.motion_policy().unmap_fade_ms, 200);
+    assert_eq!(composer.motion_policy().retarget_ms, 200);
+}
+
+#[test]
+fn an_instant_motion_policy_maps_a_window_opaque_and_in_place_at_once() {
+    let (mut composer, _output) = screen();
+    composer.setting_set(Setting::Motion(MotionPolicy::INSTANT));
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    assert_eq!(
+        drawn_pose(&composer, window),
+        (Rect::new(20, 30, 40, 50), 1.0),
+        "a zero map fade writes the target at once, with motion not reduced"
+    );
+}
+
+#[test]
+fn an_instant_motion_policy_lands_a_placement_at_once() {
+    let (mut composer, _output) = screen();
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    composer.advance_motion(MOTION_MS);
+    composer.setting_set(Setting::Motion(MotionPolicy::INSTANT));
+    composer.place_window_animated(window, Rect::new(200, 120, 40, 50), gnoblin_types::Transform::IDENTITY);
+    assert_eq!(
+        drawn_pose(&composer, window),
+        (Rect::new(200, 120, 40, 50), 1.0),
+        "a zero retarget length moves the window to its target in the same frame"
+    );
+}
+
+#[test]
+fn a_placement_takes_the_policys_retarget_length() {
+    let (mut composer, _output) = screen();
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    composer.advance_motion(MOTION_MS);
+    composer.setting_set(Setting::Motion(MotionPolicy {
+        retarget_ms: 100,
+        ..MotionPolicy::default()
+    }));
+    composer.place_window_animated(window, Rect::new(220, 30, 40, 50), gnoblin_types::Transform::IDENTITY);
+    composer.advance_motion(50);
+    let (halfway, _) = drawn_pose(&composer, window);
+    assert!(
+        halfway.x > 20 && halfway.x < 220,
+        "part way after half the length: {halfway:?}"
+    );
+    composer.advance_motion(50);
+    assert_eq!(drawn_pose(&composer, window).0.x, 220, "landed after the whole 100 ms");
+}
+
+#[test]
+fn a_closing_window_fades_for_the_policys_unmap_length() {
+    let (mut composer, _) = screen();
+    composer.setting_set(Setting::Motion(MotionPolicy {
+        unmap_fade_ms: 400,
+        ..MotionPolicy::default()
+    }));
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    composer.advance_motion(MOTION_MS);
+    composer.close_with_snapshot(
+        window,
+        Some(Closing {
+            source: SurfaceSource::Snapshot(picture()),
+            content: content(),
+            on_end: CloseEnd::Remove,
+        }),
+    );
+    composer.advance_motion(MOTION_MS);
+    assert!(
+        composer.windows.contains_key(&window),
+        "still fading after the default length"
+    );
+    composer.advance_motion(MOTION_MS);
+    assert!(
+        !composer.windows.contains_key(&window),
+        "gone after the 400 ms it was given"
+    );
+}
+
 /// The opacity `window`'s surface is drawn at: the node's, which holds every factor the
 /// window draws with, so this is what the frame draws.
 fn drawn_opacity(composer: &Composer, window: WindowId) -> f32 {

@@ -360,8 +360,13 @@ impl Composer {
     /// Starts an animation towards each property's target that differs from the node's value, when `animate` is set
     /// and the compositor's own motion plays (motion is not reduced and the shell did not turn it off). A property
     /// starts from its current value, so a superseded animation continues from where it is. Otherwise the target is
-    /// written at once.
+    /// written at once. The animation takes the policy's `retarget_ms`.
     pub(super) fn retarget(&mut self, window: WindowId, animate: bool) {
+        self.retarget_over(window, animate, self.motion_policy.retarget_ms);
+    }
+
+    /// [`Composer::retarget`] over `duration_ms`; zero lands the target at once.
+    pub(super) fn retarget_over(&mut self, window: WindowId, animate: bool, duration_ms: u32) {
         let Some(entry) = self.windows.get(&window) else {
             return;
         };
@@ -369,7 +374,7 @@ impl Composer {
             return;
         };
 
-        let immediate = !animate || !self.builtin_motion_plays();
+        let immediate = !animate || !self.builtin_motion_plays() || duration_ms == 0;
         let mut landing = Vec::new();
         let target = self.placed_target(entry);
         for property in VisualProperty::ALL {
@@ -386,7 +391,7 @@ impl Composer {
             }
             let spec = TrackSpec {
                 from: TrackStart::Current,
-                duration_ms: MOTION_MS,
+                duration_ms,
                 easing: Easing::EaseOutCubic,
                 ..TrackSpec::new(node, property, value)
             };

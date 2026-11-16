@@ -165,6 +165,52 @@ pub enum FramePolicy {
 /// The rate a `throttle` window runs at while the shell wrote none: the schema's default `frame_rate`.
 const DEFAULT_FRAME_RATE: f64 = 30.0;
 
+/// How long the compositor's own window motion takes, in milliseconds. Zero is instant.
+///
+/// This is the length of the three animations the compositor plays by itself: a window fading in when it maps, fading
+/// out when it unmaps or closes, and a placement or other visual change travelling to its target. Whether they play at
+/// all is a separate gate: [`Composer::builtin_motion_off`] (the shell's `builtin_motion` switch) and reduced motion
+/// still stop every one of them, whatever the lengths are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MotionPolicy {
+    /// How long a mapping window takes to fade in.
+    pub map_fade_ms: u32,
+    /// How long an unmapping or closing window takes to fade out.
+    pub unmap_fade_ms: u32,
+    /// How long a placement, move or other visual change takes to reach its target.
+    pub retarget_ms: u32,
+}
+
+impl MotionPolicy {
+    /// Every window change lands at once.
+    pub const INSTANT: Self = Self {
+        map_fade_ms: 0,
+        unmap_fade_ms: 0,
+        retarget_ms: 0,
+    };
+}
+
+impl Default for MotionPolicy {
+    /// The compositor's historical look: [`MOTION_MS`] for each of the three.
+    fn default() -> Self {
+        Self {
+            map_fade_ms: MOTION_MS,
+            unmap_fade_ms: MOTION_MS,
+            retarget_ms: MOTION_MS,
+        }
+    }
+}
+
+/// A compositor policy knob that is not a tree member, set through [`Composer::setting_set`].
+///
+/// The one entry point the compositor's own configuration and, later, a provider registered through the C ABI write
+/// through, so a setting has a single owner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Setting {
+    /// How long the compositor's own window motion takes (`window.motion`).
+    Motion(MotionPolicy),
+}
+
 /// What a window's client asked of `xdg-decoration`, as the window node's `decoration_wanted` publishes it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DecorationWanted {
@@ -487,6 +533,8 @@ pub struct Composer {
     shell_ends: Vec<ShellTrackEnd>,
     /// When set, a change lands at once instead of being animated.
     reduced_motion: bool,
+    /// How long the compositor's own window motion takes, as the last [`Setting::Motion`] set it.
+    motion_policy: MotionPolicy,
     /// Where the cursor was last drawn, in global layout coordinates, or `None` when hidden.
     cursor: Option<Rect>,
     /// The visual bell's flash in progress, if any. Only one runs at a time: a bell rung
@@ -603,6 +651,7 @@ impl Composer {
             groups: BTreeMap::new(),
             shell_ends: Vec::new(),
             reduced_motion: false,
+            motion_policy: MotionPolicy::default(),
             cursor: None,
             flash: None,
             tree_changes: Vec::new(),
@@ -1502,7 +1551,7 @@ impl Composer {
     /// `None` when there is no picture to read, or when motion is reduced or the shell turned the compositor's own
     /// animations off, so the window is hidden or removed at once.
     fn snapshot(&self, window: WindowId, on_end: CloseEnd) -> Option<Closing> {
-        if !self.builtin_motion_plays() {
+        if !self.builtin_motion_plays() || self.motion_policy.unmap_fade_ms == 0 {
             return None;
         }
         let entry = self.windows.get(&window)?;
@@ -1582,7 +1631,7 @@ impl Composer {
         }
         let spec = TrackSpec {
             from: TrackStart::Current,
-            duration_ms: MOTION_MS,
+            duration_ms: self.motion_policy.unmap_fade_ms,
             easing: Easing::EaseOutCubic,
             ..TrackSpec::new(node, VisualProperty::Opacity, PropertyValue::number(0.0))
         };
@@ -2222,6 +2271,20 @@ impl Composer {
     /// motion is reduced.
     fn builtin_motion_plays(&self) -> bool {
         !self.reduced_motion && !self.builtin_motion_off()
+    }
+
+    /// Sets a compositor policy knob. A setting changes animations started after the call; one already running
+    /// finishes with the length it began with.
+    pub fn setting_set(&mut self, setting: Setting) {
+        match setting {
+            Setting::Motion(policy) => self.motion_policy = policy,
+        }
+    }
+
+    /// The length of the compositor's own window motion now.
+    #[must_use]
+    pub fn motion_policy(&self) -> MotionPolicy {
+        self.motion_policy
     }
 
     /// How the shell asked a window's client to be paced: its node's `frame_policy` and `frame_rate`. A window with no
@@ -3251,7 +3314,7 @@ impl Composer {
                     log::warn!(area = "render", %window, "no compositor node id is left; the window is not drawn");
                     return;
                 };
-                let fades_in = self.builtin_motion_plays();
+                let fades_in = self.builtin_motion_plays() && self.motion_policy.map_fade_ms > 0;
                 let mut spec_transform = transform;
                 if fades_in {
                     spec_transform.opacity = 0.0;
@@ -3299,7 +3362,7 @@ impl Composer {
                         self.apply_extents(window);
                         self.publish_geometry(window);
                         if fades_in {
-                            self.retarget(window, true);
+                            self.retarget_over(window, true, self.motion_policy.map_fade_ms);
                         }
                         self.sync_tree(window);
                         self.publish_relations(window);
