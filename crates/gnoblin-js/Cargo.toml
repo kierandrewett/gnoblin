@@ -30,8 +30,8 @@ oxc_semantic.workspace = true
 oxc_span.workspace = true
 oxc_sourcemap.workspace = true
 oxc_transformer.workspace = true
-# Config-directory watcher for hot reload.
-notify.workspace = true
+# What every shell language shares: the strike policy, the file watcher, the process table and the reload protocol.
+gnoblin-shell-host = { path = "../gnoblin-shell-host" }
 # Error types: each `Display` says what failed and the `source` chain is kept.
 thiserror.workspace = true
 # The tree protocol's client side: the mirror, the transaction builder and the link trait the shell runs over.

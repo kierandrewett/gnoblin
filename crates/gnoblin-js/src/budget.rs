@@ -2,7 +2,7 @@
 //!
 //! Each is a bound on a script that hangs the shell, and not a promise about latency: a call that runs past its limit
 //! is interrupted, reported and counted as a strike (`JsShell::strikes`), and three strikes in 30 seconds stop the
-//! generation (`JsSupervisor`).
+//! generation (`StrikeSupervisor`).
 //!
 //! The limit is on the call's own CPU time (the calling thread's `CLOCK_THREAD_CPUTIME_ID`), so a machine that does
 //! not schedule the thread, a build running beside the desktop or a loaded CI box, does not trip it: time the thread

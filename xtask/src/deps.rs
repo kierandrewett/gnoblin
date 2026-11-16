@@ -121,6 +121,13 @@ const HUB_FRAME: &str = "gnoblin-render-frame";
 /// The edge has to point this way for a mechanical reason: the compositor is
 /// what hosts these crates, and a crate that named it would make that edge a
 /// cycle.
+///
+/// `gnoblin-shell-host` is the language-neutral host of the shell: generations, the loader, the
+/// strike policy, the watcher and the reload protocol (`design/modular-framework.md` section 4.1).
+/// The core library (`gnoblin-core-impl`) and the JavaScript runtime both consume it, so it is
+/// below both: it may name the ABI types and the log facade and no compositor or engine crate.
+/// The edge from the compositor side to it is allowed, because clients are hosted by the
+/// compositor and not the reverse.
 const CLIENT_SIDE: &[&str] = &[
     "gnoblin-js",
     "gnoblin-services",
@@ -159,7 +166,9 @@ const STD_WM: &str = "gnoblin-std-wm";
 /// The crates that may omit `[lints] workspace = true` and restate the table with
 /// `unsafe_code = "deny"` (the pattern at the top of the workspace `Cargo.toml`): the existing FFI and
 /// generated-protocol crates, `gnoblin-core-abi` (the `repr(C)` types), `gnoblin-core` and `gnoblin-macros` of the SDK, the
-/// core's test-fixture launcher, and every [`IMPL`] crate. An addition here is a reviewed change.
+/// core's test-fixture launcher and the reload fixture shell (which exports `gnoshell_unload_safe`), the shell host (whose
+/// `native` module is the one loader and is the only module that opens libraries), and every [`IMPL`] crate. An addition here
+/// is a reviewed change.
 const LINT_OPT_OUT: &[&str] = &[
     "gnoblin-client",
     "gnoblin-compat-wayland-gtk-shell1",
@@ -167,12 +176,14 @@ const LINT_OPT_OUT: &[&str] = &[
     "gnoblin-core",
     "gnoblin-core-abi",
     "gnoblin-fixture-launcher",
+    "gnoblin-fixture-shell-hot",
     "gnoblin-js",
     "gnoblin-lock-auth",
     "gnoblin-macros",
     "gnoblin-render-frame",
     "gnoblin-render-gles",
     "gnoblin-render-vulkan",
+    "gnoblin-shell-host",
     "gnoblin-wayland",
     "gnoblin-wlcs",
     "pam-gnoblin-keyring",
@@ -1334,6 +1345,31 @@ mod tests {
     }
 
     #[test]
+    fn the_shell_host_may_not_link_the_compositor_or_the_engine() {
+        for forbidden in ["gnoblin-compositor", "gnoblin-wayland", "gnoblin-backend"] {
+            let found = violations(&[("gnoblin-shell-host", &[forbidden])]);
+            assert_eq!(found.len(), 1, "{forbidden}: {found:?}");
+            assert!(found[0].contains("[client-side-isolation]"), "{found:?}");
+        }
+        assert_eq!(
+            violations(&[("gnoblin-shell-host", &["gnoblin-core-abi", "gnoblin-log"])]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_core_library_and_the_javascript_runtime_may_depend_on_the_shell_host() {
+        assert_eq!(
+            violations(&[
+                ("gnoblin-core-impl", &["gnoblin-shell-host"]),
+                ("gnoblin-js", &["gnoblin-shell-host"]),
+                ("gnoblin-compositor", &["gnoblin-shell-host"]),
+            ]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
     fn the_logging_facade_may_not_depend_on_a_workspace_crate() {
         let found = violations(&[("gnoblin-log", &["gnoblin-types"])]);
         assert_eq!(found.len(), 1);
@@ -2102,6 +2138,8 @@ mod tests {
             "gnoblin-macros",
             "gnoblin-core-impl",
             "gnoblin-std-impl",
+            "gnoblin-shell-host",
+            "gnoblin-fixture-shell-hot",
         ] {
             assert_eq!(with_lints(name, restated("deny", true)), Vec::<String>::new(), "{name}");
             assert_eq!(with_lints(name, Lints::Inherited), Vec::<String>::new(), "{name}");

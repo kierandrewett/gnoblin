@@ -12,10 +12,11 @@ use std::path::Path;
 use std::sync::{Arc, Once};
 use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, JsManualClock, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};
+use gnoblin_js::{JsConfig, JsGeneration, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};
 use gnoblin_log::Level;
 use gnoblin_log::event::capture::logged_with_levels;
 use gnoblin_log::filter::{Spec, set_spec};
+use gnoblin_shell_host::supervisor::ManualClock;
 
 use common::rig_with;
 
@@ -51,7 +52,7 @@ fn site_of(line: &Line) -> &str {
 }
 
 /// Runs `shell.ts` with `source` in a bare generation whose clock is `clock`, and returns what it logged.
-fn run_init(source: &str, clock: &JsManualClock) -> Vec<Line> {
+fn run_init(source: &str, clock: &ManualClock) -> Vec<Line> {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
@@ -64,7 +65,7 @@ fn run_init(source: &str, clock: &JsManualClock) -> Vec<Line> {
 }
 
 fn run(source: &str) -> Vec<Line> {
-    run_init(source, &JsManualClock::default())
+    run_init(source, &ManualClock::default())
 }
 
 #[test]
@@ -233,7 +234,7 @@ fn one_call_logs_at_most_the_cap_and_says_how_much_it_cut() {
 
 #[test]
 fn a_loop_cannot_flood_the_log_and_the_next_second_reports_what_it_dropped() {
-    let clock = JsManualClock::default();
+    let clock = ManualClock::default();
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(

@@ -35,9 +35,9 @@ use gnoblin_tree_client::tree_mirror::{
 };
 use rquickjs::{Array, Ctx, Object};
 
-use self::claims::StagedClaim;
+pub(crate) use self::claims::StagedClaim;
 use crate::bindings::NodeHandles;
-use crate::supervisor::JsClock;
+use gnoblin_shell_host::supervisor::Clock;
 
 mod claims;
 mod install;
@@ -112,13 +112,13 @@ pub(crate) struct JsInput {
     /// The pointer edges on windows that arrived since the last frame's dispatch, oldest first.
     window_events: Vec<JsWindowPointer>,
     /// The clock `now` reads: the shell's own, or the one a test injected.
-    clock: Arc<dyn JsClock>,
+    clock: Arc<dyn Clock>,
     /// What the clock read when this was made, so `now` counts from the shell's start as it always has.
     origin: Duration,
 }
 
 impl JsInput {
-    pub(crate) fn new(clock: Arc<dyn JsClock>) -> Self {
+    pub(crate) fn new(clock: Arc<dyn Clock>) -> Self {
         Self {
             last_claim: 0,
             claims: HashMap::new(),

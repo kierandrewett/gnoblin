@@ -13,7 +13,8 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use gnoblin_js::{JsManualClock, JsShell};
+use gnoblin_js::JsShell;
+use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 mod common;
@@ -22,7 +23,7 @@ use common::{FakeCompositor, timed_config};
 struct Rig {
     shell: JsShell,
     comp: FakeCompositor,
-    clock: JsManualClock,
+    clock: ManualClock,
     _dir: tempfile::TempDir,
 }
 

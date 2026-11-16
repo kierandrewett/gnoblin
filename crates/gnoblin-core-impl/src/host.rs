@@ -7,14 +7,55 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
 
+use std::path::Path;
+
 use gnoblin_core_abi::{GnoblinApi, GnoblinCtx};
+use gnoblin_shell_host::native::NativeLoader;
+pub use gnoblin_shell_host::native::{Copying, LoadError, UnloadRefused};
+pub use gnoblin_shell_host::retire::{RetainedStats, RetirePolicy};
 
 use crate::catalog;
 use crate::registry;
 
-pub use crate::loader::{Copying, LoadError, Module, load, retired_libraries};
 pub use crate::memory::{lend_bytes, lend_text};
 pub use crate::registry::{GenerationState, OwnedValue, SignalDelivery};
+
+/// One loaded generation of a native shell, in this core's host.
+pub type Module = gnoblin_shell_host::native::NativeModule<SignalDelivery>;
+
+/// The one loader of the process: it loads native shell modules into the host this core owns, initialises them with this
+/// core's function table, and keeps what it cannot unmap on the bounded retire list.
+static LOADER: NativeLoader<SignalDelivery> = NativeLoader::new(&registry::HOST, &crate::table::API);
+
+/// Loads a native shell module into a staged generation and runs its `init`. See [`NativeLoader::load`].
+///
+/// # Errors
+///
+/// [`LoadError`]: the retire list is full, the copy or `dlopen` failed, the file is not a shell, or `init` failed.
+pub fn load(path: &Path, copying: Copying, reload_count: u32) -> Result<Module, LoadError> {
+    LOADER.load(path, copying, reload_count)
+}
+
+/// How many module libraries are kept mapped after retirement, abandonment or a failed load.
+pub fn retired_libraries() -> usize {
+    LOADER.retained_libraries()
+}
+
+/// The numbers `gnoblinctl status` shows about retention: the count, the mapped size and the limit.
+pub fn retained_stats() -> RetainedStats {
+    LOADER.retained_stats()
+}
+
+/// The retention policy in force (default: keep at most 32 libraries, never unload).
+pub fn retire_policy() -> RetirePolicy {
+    LOADER.retire_list().policy()
+}
+
+/// Replaces the retention policy. A reload is refused once `max_retained` libraries are kept; `allow_unload` lets a
+/// module that proves it is unreachable be unmapped (off by default).
+pub fn set_retire_policy(policy: RetirePolicy) {
+    LOADER.retire_list().set_policy(policy);
+}
 
 /// The function table this core hands to shells.
 pub fn api() -> &'static GnoblinApi {

@@ -47,6 +47,7 @@ members = [
     "crates/gnoblin-core-impl/fixtures/launcher",
     "crates/gnoblin-core-impl/fixtures/shell-hot",
     "crates/gnoblin-core-impl/fixtures/shell-min",
+    "crates/gnoblin-shell-host",
     "crates/gnoblin-macros",
     "crates/gnoblin-cursor",
     "crates/gnoblin-portal",

@@ -24,8 +24,9 @@ next-minor = ["gnoblin-core-abi/next-minor"]
 [dependencies]
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
 gnoblin-log = { path = "../gnoblin-log" }
-# The effective user, to check that the private directory module copies live in is ours.
-rustix.workspace = true
+# The host: generations and their registrations, the dispatch loop, the loader and its retire list, panic containment.
+# This crate adds the C handles and the function table over it.
+gnoblin-shell-host = { path = "../gnoblin-shell-host" }
 
 [build-dependencies]
 # The ABI crate names the SONAME and the value kinds the generated catalog uses; the schema is the catalog's source.

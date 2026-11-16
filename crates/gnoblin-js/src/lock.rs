@@ -66,13 +66,13 @@ pub(crate) struct JsLockState {
     checks: HashMap<u64, Duration>,
     answers: Vec<JsLockAnswer>,
     /// The clock the deadlines and the heartbeat count on: the shell's, or the one a test injected.
-    clock: Arc<dyn crate::supervisor::JsClock>,
+    clock: Arc<dyn gnoblin_shell_host::supervisor::Clock>,
     /// When the last `heartbeat` call was queued.
     last_beat: Option<Duration>,
 }
 
 impl JsLockState {
-    pub(crate) fn new(clock: Arc<dyn crate::supervisor::JsClock>) -> Self {
+    pub(crate) fn new(clock: Arc<dyn gnoblin_shell_host::supervisor::Clock>) -> Self {
         Self {
             checks: HashMap::new(),
             answers: Vec::new(),
@@ -310,10 +310,10 @@ mod tests {
     }
 
     fn state(lock_state: &str) -> HostState {
-        state_on(lock_state, Arc::new(crate::supervisor::JsSystemClock))
+        state_on(lock_state, Arc::new(gnoblin_shell_host::supervisor::SystemClock))
     }
 
-    fn state_on(lock_state: &str, clock: Arc<dyn crate::supervisor::JsClock>) -> HostState {
+    fn state_on(lock_state: &str, clock: Arc<dyn gnoblin_shell_host::supervisor::Clock>) -> HostState {
         let nodes = [
             node(1, 0, "node", Vec::new()),
             node(
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn a_heartbeat_is_a_call_on_the_lock_node_at_most_twice_a_second() {
-        let clock = crate::supervisor::JsManualClock::default();
+        let clock = gnoblin_shell_host::supervisor::ManualClock::default();
         let mut state = state_on("locked", Arc::new(clock.clone()));
         heartbeat(&mut state);
         heartbeat(&mut state);
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn a_check_nobody_answers_is_answered_failed_once_its_deadline_has_passed() {
-        let clock = crate::supervisor::JsManualClock::default();
+        let clock = gnoblin_shell_host::supervisor::ManualClock::default();
         let mut state = state_on("locked", Arc::new(clock.clone()));
         let token = authenticate(&mut state, "hunter2".to_owned()).expect("a token");
         clock.advance(CHECK_DEADLINE - Duration::from_millis(1));

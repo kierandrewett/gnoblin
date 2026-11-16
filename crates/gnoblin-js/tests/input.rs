@@ -13,7 +13,8 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, JsManualClock, JsRole, JsRoleLinks, JsShell, JsShellConfig, stock_modules};
+use gnoblin_js::{JsConfig, JsGeneration, JsRole, JsRoleLinks, JsShell, JsShellConfig, stock_modules};
+use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TreeGesture, TreeIncoming};
 use tempfile::TempDir;
 
@@ -395,7 +396,7 @@ fn world(second: bool) -> Comp {
 struct Rig {
     shell: JsShell,
     comp: Comp,
-    clock: JsManualClock,
+    clock: ManualClock,
     _dir: TempDir,
 }
 

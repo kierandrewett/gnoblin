@@ -5,16 +5,18 @@ the swap. Part of the [JS/TS runtime design](js-runtime.md).
 
 ## Hot reload
 
-Status of P5: the engine-side half is implemented in `crates/gnoblin-js` (`watch.rs`, `reload.rs`,
-`supervisor.rs`). It runs without a compositor. Process spawning, the Rust fallback shell and the real
+Status of P5: the engine-side half is implemented in `crates/gnoblin-js` (`reload/`) over the language-neutral shell host
+(`crates/gnoblin-shell-host`: `watch.rs`, `stage.rs`, `supervisor.rs`, `process/`), which every shell language shares (design/modular-framework.md,
+section 17). It runs without a compositor. Process spawning, the Rust fallback shell and the real
 compositor commit are not done: they belong to P3 and the process supervisor.
 
-- **Watcher.** `ConfigWatcher` uses `notify` (inotify, CC0-1.0, no default features) on the config directory and on the
+- **Watcher.** `ConfigWatcher` (`gnoblin-shell-host`) uses `notify` (inotify, CC0-1.0, no default features) on the config directory and on the
   directory of every module in the last generation's graph (`JsGeneration::module_paths`), non-recursively, because
   editors replace the inode.
 
-    It drops editor scratch files (`*~`, `*.swp`, `4913`, `.#x`, `#x#`) and anything that is not `.ts`, `.mts`, `.js` or
-    `.mjs`.
+    It drops editor scratch files (`*~`, `*.swp`, `4913`, `.#x`, `#x#`) and anything the caller's test does not call
+    relevant: the JavaScript runtime passes `.ts`, `.mts`, `.js` and `.mjs`, and another language passes its own
+    extensions (`with_extensions(&["py", "so", "toml"])`).
 
     After the first event it waits for 100 ms of quiet and returns one `ReloadRequest` with the changed paths; a burst
     that never goes quiet is cut off after 20 debounces. Any module file in a watched directory counts, imported or not: a
@@ -23,25 +25,26 @@ compositor commit are not done: they belong to P3 and the process supervisor.
     A backend error or an inotify queue overflow becomes a request with no paths, because "possibly changed" must reload.
     Not done: comparing content hashes to skip a save that changed nothing.
 
-- **Reloader.** `JsReloader` runs `JsHost::stage`, passes the staged generation to a caller-supplied `commit` closure
+- **Reloader.** The shell host's `Reloader` drives a language's `Stager`; `JsReloader` is the one over `JsHost`. It runs
+  `JsHost::stage`, passes the staged generation to a caller-supplied `commit` closure
   (the compositor transaction, step 5 of the pipeline above), and only when that returns `Ok` calls `JsHost::commit`.
 
     A parse error, a throw, an interrupted loop or a rejected commit leaves the running generation untouched and returns a
-    `ReloadReport { ok: false, errors }`. Each `JsDiagnostic` carries file, line and column in `.ts` coordinates (line and
+    `ReloadReport { ok: false, errors }`. Each `Diagnostic` (`JsDiagnostic` for this runtime) carries file, line and column in `.ts` coordinates (line and
     column are 0 when the engine reported no position, and `file` is then the entry).
 
     `reload_now()` is the manual trigger for `gnoblinctl reload`; `poll()` waits on the watcher, reloads and re-arms the
     watcher from the new graph. A module that failed to load is in no graph, so the file named by the last error stays in
     `watch_set()` until a stage succeeds.
 
-- **Supervisor.** `JsSupervisor` is pure policy over an injectable `JsClock`. A budget interrupt or a panic is a strike
-  (`JsFault`); other failures are not, because a thrown exception leaves the generation consistent. After a strike
+- **Supervisor.** `StrikeSupervisor` (`gnoblin-shell-host`) is pure policy over an injectable `Clock`. A budget interrupt or a
+  panic is a strike (`GenerationFault`); other failures are not, because a thrown exception leaves the generation consistent. After a strike
   `JsReloader::recover` stages a fresh generation from disk and replaces the suspect one; a restage that is itself
   interrupted is another strike.
 
-    Three strikes within 30 s latch `JsHealth::Degraded`: retrying stops and the last good generation, if one was ever
+    Three strikes within 30 s latch `Health::Degraded`: retrying stops and the last good generation, if one was ever
     committed, keeps running. A fault during the 5 minute cool-down is refused without staging. A deliberate reload (file
-    save or `gnoblinctl reload`) clears the strikes and the degraded state. The defaults are `JsStrikePolicy::default()`.
+    save or `gnoblinctl reload`) clears the strikes and the degraded state. The defaults are `StrikePolicy::default()`.
 
 - **Not in this package.** Spawning and restarting the `gnoblin-js` process, exponential backoff between process
   restarts, the heartbeat watchdog (L3), the Rust fallback when the runtime is down, and passing `gnoblin.hot.data`
@@ -91,7 +94,7 @@ How it is done (`crates/gnoblin-js/src/input.rs`, `shell.rs`):
 - The claims are not the only side effect of a stage. `HostState::begin_stage` (`bindings/stage.rs`) takes one mark of
   everything the staged entry touches in the shared state: the pending writes, the UI toolkit's canvases and measurements,
   the XR module's nodes, the output applies and the lock's password checks. `abandon_stage` gives them all back. A
-  `gnoblin.spawn` at the top level is held back, not started (`JsProcesses::begin_stage`): the staged generation starts
+  `gnoblin.spawn` at the top level is held back, not started (`Processes::begin_stage`, `gnoblin-shell-host`): the staged generation starts
   its programs when `swap_generation` takes over, and a program the running config started with the same command and
   options is taken over instead (same `id` and `pid`), so a reload does not double it. A program the running config
   started and the new one does not is sent SIGTERM; one a handler started is left alone. Each process records its owner,

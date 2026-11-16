@@ -13,6 +13,14 @@ fn say(line: &str) {
     let _ = writeln!(std::io::stdout().lock(), "{line}");
 }
 
+/// Whether it is safe to unload this library: the answer the host's opt-in `try_unload` asks for. Only the build labelled
+/// `safe` says yes; every other label answers no, which is how the tests show a module that does not prove itself is kept.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn gnoshell_unload_safe() -> u32 {
+    u32::from(LABEL == "safe")
+}
+
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> Result<(), String> {
     g.log(&format!("shell-hot {LABEL} init"));

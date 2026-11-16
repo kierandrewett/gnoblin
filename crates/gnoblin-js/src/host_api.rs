@@ -15,8 +15,8 @@ use rquickjs::{Ctx, Function, Object};
 use serde_json::{Map, Value as Json, json};
 
 use crate::bindings::SharedState;
-use crate::host_process::{JsExit, JsProcessError, JsProcesses, JsSpawnOptions};
 use crate::host_session::{JsSessionEvent, JsSessionLink, JsSessionVerb};
+use gnoblin_shell_host::process::{ProcessError, ProcessExit, Processes, SpawnOptions};
 
 /// The `gnoblin.version` field when the build sidecar does not supply it.
 const UNKNOWN: &str = "unknown";
@@ -37,7 +37,7 @@ pub(crate) struct JsTrackEnd {
 #[derive(Default)]
 pub(crate) struct JsHostApi {
     pub(crate) session: Option<Box<dyn JsSessionLink>>,
-    pub(crate) processes: JsProcesses,
+    pub(crate) processes: Processes,
     pub(crate) track_ends: Vec<JsTrackEnd>,
 }
 
@@ -45,7 +45,7 @@ fn refusal(code: &str, message: &str) -> String {
     json!({ "error": { "code": code, "message": message } }).to_string()
 }
 
-fn process_refusal(error: &JsProcessError) -> String {
+fn process_refusal(error: &ProcessError) -> String {
     refusal(error.code.as_str(), &error.message)
 }
 
@@ -92,7 +92,7 @@ impl JsHostApi {
             Ok(argv) => argv,
             Err(error) => return refusal("invalid_argument", &format!("argv is not a list of strings: {error}")),
         };
-        let options: JsSpawnOptions = match serde_json::from_str(options) {
+        let options: SpawnOptions = match serde_json::from_str(options) {
             Ok(options) => options,
             Err(error) => return refusal("invalid_argument", &format!("the options are not valid: {error}")),
         };
@@ -129,7 +129,7 @@ impl JsHostApi {
     }
 }
 
-fn exit_event(id: u64, exit: &JsExit) -> Json {
+fn exit_event(id: u64, exit: &ProcessExit) -> Json {
     json!({
         "kind": "exit",
         "id": id,

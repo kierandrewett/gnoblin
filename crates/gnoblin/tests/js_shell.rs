@@ -29,12 +29,13 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, PortalOutcome, PortalTicket};
 use gnoblin_compositor::{Compositor, InputTap, OutputTap, SessionConfig, StopHandle};
-use gnoblin_js::{FRAME_WAIT, JsHealth, JsManualClock, JsRole, JsRoleConfig};
+use gnoblin_js::{FRAME_WAIT, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
 use gnoblin_model::{Fields, Filter, Provider, RequestCompletion, TypeKey, Value};
 use gnoblin_proto::tree::op;
 use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, ReplyPayload, SnapshotPayload, TransactArgs};
 use gnoblin_proto::{Envelope, Kind, read_frame, write_frame};
+use gnoblin_shell_host::supervisor::{Health, ManualClock};
 use gnoblin_types::{DeviceId, OutputId, Point, RequestId, Version};
 
 mod support;
@@ -324,7 +325,7 @@ impl Shell {
                             let mut status = shared.lock().expect("the status lock");
                             status.frames += 1;
                             status.generation = role.generation_id();
-                            status.degraded = matches!(role.health(), JsHealth::Degraded { .. });
+                            status.degraded = matches!(role.health(), Health::Degraded { .. });
                             status.diagnostics = role.diagnostics().to_vec();
                             status.view = role
                                 .shell_mut()
@@ -2320,7 +2321,7 @@ fn a_layout_change_in_a_transition_commits_to_the_scene_and_the_transition_ends_
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(config.path().join("shell.ts"), TRANSITION_INIT).expect("shell.ts");
-    let clock = JsManualClock::default();
+    let clock = ManualClock::default();
     let held = clock.clone();
     let shell = Shell::start(&session, config.path(), move |config| {
         config.shell.clock = Arc::new(held)
@@ -2433,7 +2434,7 @@ fn a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(config.path().join("shell.ts"), SCRUB_INIT).expect("shell.ts");
-    let clock = JsManualClock::default();
+    let clock = ManualClock::default();
     let held = clock.clone();
     let shell = Shell::start(&session, config.path(), move |config| {
         config.shell.clock = Arc::new(held)
@@ -2454,13 +2455,12 @@ fn a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_
             )
     });
 
-    let step =
-        |clock: &JsManualClock, session: &Session, mapper: &mut Mapper, shell: &Shell, what: &str, last: &str| {
-            clock.advance(Duration::from_secs(1));
-            wait_for(what, session, mapper, shell, || {
-                transition_probe(shell).2.last().map(String::as_str) == Some(last)
-            });
-        };
+    let step = |clock: &ManualClock, session: &Session, mapper: &mut Mapper, shell: &Shell, what: &str, last: &str| {
+        clock.advance(Duration::from_secs(1));
+        wait_for(what, session, mapper, shell, || {
+            transition_probe(shell).2.last().map(String::as_str) == Some(last)
+        });
+    };
     step(&clock, &session, &mut mapper, &shell, "staged", "staged");
     wait_for("a held tween node", &session, &mut mapper, &shell, || {
         tween_state(&ipc) == Some((0.0, true))

@@ -5,7 +5,7 @@
 //! decision, so everything it touches that a failed stage must not keep is behind one mark, taken here: the pending
 //! writes, the canvases and measurements of the UI toolkit, the nodes of the XR module, the `apply` calls of the outputs
 //! module, the password checks of the lock screen and the seat claims. A process the entry spawns is held back, not
-//! started, until the generation takes over (`JsProcesses::begin_stage`).
+//! started, until the generation takes over (`Processes::begin_stage`).
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;

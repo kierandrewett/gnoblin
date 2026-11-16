@@ -1,0 +1,36 @@
+[package]
+name = "gnoblin-shell-host"
+description = "The language-neutral shell host: generation contexts and the registrations they own, the dispatch loop, the native module loader with its bounded retire list, the strike policy, the file watcher, spawn ownership and the stage, commit and swap protocol. The core library and the JavaScript runtime both consume it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The workspace's lint table with one difference: `unsafe_code` is `deny` rather than `forbid`. Only the `native` module
+# (`dlopen`, `dlsym`, `dlclose` and the calls into a shell's entry descriptor) opens with `#![allow(unsafe_code)]` and a
+# SAFETY note; nothing else in the crate may use it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[dependencies]
+# The ABI types a native shell is built against: the entry descriptor, the function table, the error codes.
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+# The log facade every crate logs through.
+gnoblin-log = { path = "../gnoblin-log" }
+# The file watcher behind hot reload: inotify on Linux.
+notify.workspace = true
+# Error types: each `Display` says what failed and the `source` chain is kept.
+thiserror.workspace = true
+# The effective user (the private directory module copies live in is ours), and signals to a spawned process group.
+rustix.workspace = true
+# The options of a spawn cross the module boundary as JSON.
+serde.workspace = true
+
+[dev-dependencies]
+tempfile = "3.23.0"
+# The tests of the process module read spawn options from JSON text, as a script host hands them over.
+serde_json.workspace = true

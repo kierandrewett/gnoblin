@@ -8,11 +8,11 @@ use std::time::Duration;
 
 use tempfile::TempDir;
 
-use super::JsReloader;
+use super::{JsReloader, SCRIPT_EXTENSIONS};
 use crate::error::JsErrorKind;
 use crate::generation::{JsConfig, JsGeneration};
-use crate::supervisor::{JsFault, JsHealth, JsManualClock, JsStrikePolicy, JsSupervisor};
-use crate::watch::ConfigWatcher;
+use gnoblin_shell_host::supervisor::{GenerationFault, Health, ManualClock, StrikePolicy, StrikeSupervisor};
+use gnoblin_shell_host::watch::{ConfigWatcher, with_extensions};
 
 /// The quiet time that ends a burst of saves. A test writes its burst in microseconds, but a loaded machine can
 /// stall the writing thread for far longer than a short debounce, and the stalled burst would split in two. The
@@ -30,7 +30,7 @@ const RUNAWAY_BUDGET: Duration = Duration::from_millis(500);
 
 type Commits = Rc<RefCell<Vec<u64>>>;
 type TestCommit = Box<dyn FnMut(&JsGeneration) -> Result<(), String>>;
-type TestReloader = JsReloader<TestCommit, JsManualClock>;
+type TestReloader = JsReloader<TestCommit, ManualClock>;
 
 /// A reloader over a temp root that records the id of every generation it was asked to commit.
 struct Fixture {
@@ -68,7 +68,7 @@ fn build(files: &[(&str, &str)], budget: Duration, accept: impl Fn(u64) -> Resul
     });
     let mut config = JsConfig::new(&root);
     config.stage_budget = budget;
-    let supervisor = JsSupervisor::new(JsStrikePolicy::default(), JsManualClock::default());
+    let supervisor = StrikeSupervisor::new(StrikePolicy::default(), ManualClock::default());
     let reloader = JsReloader::new(config, "shell.ts", commit, supervisor);
     Fixture {
         _dir: dir,
@@ -172,11 +172,7 @@ fn a_runaway_config_is_reported_as_a_budget_failure_and_is_not_a_strike() {
         let report = fx.reloader.reload_now();
         assert!(!report.ok);
         assert_eq!(report.errors[0].kind, Some(JsErrorKind::Budget));
-        assert_eq!(
-            report.health,
-            JsHealth::Healthy,
-            "a deliberate reload is never degraded"
-        );
+        assert_eq!(report.health, Health::Healthy, "a deliberate reload is never degraded");
     }
     assert_eq!(version(&fx.reloader), 1);
 }
@@ -195,7 +191,7 @@ fn a_save_of_an_imported_module_reloads_through_the_watcher() {
         fx.reloader.watch_set(),
         vec![fx.root.join("shell.ts"), fx.root.join("x.ts")]
     );
-    let mut watcher = ConfigWatcher::new(&fx.root, DEBOUNCE).expect("a watcher");
+    let mut watcher = ConfigWatcher::new(&fx.root, DEBOUNCE, with_extensions(SCRIPT_EXTENSIONS)).expect("a watcher");
     watcher
         .watch_modules(&fx.reloader.watch_set())
         .expect("modules register");
@@ -211,7 +207,7 @@ fn a_save_of_an_imported_module_reloads_through_the_watcher() {
 fn fifty_rapid_writes_cause_one_reload() {
     let mut fx = fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
-    let mut watcher = ConfigWatcher::new(&fx.root, DEBOUNCE).expect("a watcher");
+    let mut watcher = ConfigWatcher::new(&fx.root, DEBOUNCE, with_extensions(SCRIPT_EXTENSIONS)).expect("a watcher");
     watcher
         .watch_modules(&fx.reloader.watch_set())
         .expect("modules register");
@@ -234,7 +230,7 @@ fn fifty_rapid_writes_cause_one_reload() {
 fn a_broken_new_import_is_watched_so_fixing_it_reloads() {
     let mut fx = fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
-    let mut watcher = ConfigWatcher::new(&fx.root, DEBOUNCE).expect("a watcher");
+    let mut watcher = ConfigWatcher::new(&fx.root, DEBOUNCE, with_extensions(SCRIPT_EXTENSIONS)).expect("a watcher");
     watcher
         .watch_modules(&fx.reloader.watch_set())
         .expect("modules register");
@@ -264,7 +260,7 @@ fn a_broken_new_import_is_watched_so_fixing_it_reloads() {
 fn recovery_restages_from_disk_after_a_fault() {
     let mut fx = fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
-    let report = fx.reloader.recover(JsFault::Budget);
+    let report = fx.reloader.recover(GenerationFault::Budget);
     assert!(report.ok, "{report:?}");
     assert_eq!(
         report.generation,
@@ -281,23 +277,23 @@ fn three_interrupted_restages_degrade_and_keep_the_last_good_generation() {
     assert!(fx.reloader.reload_now().ok);
     // The file on disk now loops, so every restage is interrupted.
     write(&fx.root, "shell.ts", "while (true) {}\n");
-    let report = fx.reloader.recover(JsFault::Budget);
+    let report = fx.reloader.recover(GenerationFault::Budget);
     assert!(!report.ok);
-    assert!(matches!(report.health, JsHealth::Degraded { .. }), "{report:?}");
+    assert!(matches!(report.health, Health::Degraded { .. }), "{report:?}");
     assert_eq!(report.generation, Some(1), "the last good generation is kept");
     assert!(report.errors[0].message.contains("generation 1 stays"), "{report:?}");
     assert_eq!(version(&fx.reloader), 1);
     assert_eq!(*fx.commits.borrow(), vec![1]);
 
     // Still degraded: another fault is refused at once, without staging.
-    let again = fx.reloader.recover(JsFault::Panic);
+    let again = fx.reloader.recover(GenerationFault::Panic);
     assert!(!again.ok);
 
     // Fixing the file and reloading on purpose clears the state.
     write(&fx.root, "shell.ts", V2);
     let fixed = fx.reloader.reload_now();
     assert!(fixed.ok);
-    assert_eq!(fixed.health, JsHealth::Healthy);
+    assert_eq!(fixed.health, Health::Healthy);
     assert_eq!(version(&fx.reloader), 2);
 }
 
@@ -307,7 +303,7 @@ fn degraded_with_no_good_generation_runs_none() {
     let first = fx.reloader.reload_now();
     assert!(!first.ok);
     assert!(fx.reloader.current().is_none());
-    let report = fx.reloader.recover(JsFault::Budget);
+    let report = fx.reloader.recover(GenerationFault::Budget);
     assert!(!report.ok);
     assert_eq!(report.generation, None);
     assert!(
@@ -322,9 +318,9 @@ fn a_restage_that_fails_without_an_interrupt_is_not_retried() {
     let mut fx = fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
     write(&fx.root, "shell.ts", "throw new Error('nope');\n");
-    let report = fx.reloader.recover(JsFault::Budget);
+    let report = fx.reloader.recover(GenerationFault::Budget);
     assert!(!report.ok);
     assert_eq!(report.errors[0].kind, Some(JsErrorKind::Exception));
-    assert_eq!(report.health, JsHealth::Healthy, "one strike only");
+    assert_eq!(report.health, Health::Healthy, "one strike only");
     assert_eq!(version(&fx.reloader), 1);
 }

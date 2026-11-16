@@ -95,8 +95,8 @@ beside it passes. Both are the proof a change to these tests needs.
 - **Time is injected.** `JsShellConfig::clock` is the one clock the scripts read: `gnoblin.timers.now`, and through it
   every timer, `after`, fade, slide, alert arming window, launch deadline and focus delay.
 
-    It is a `JsClock`: `JsSystemClock` in the product, and in a test a `JsManualClock`, which stands at zero until the
-    test calls `advance`.
+    It is a `Clock` (`gnoblin-shell-host`): `SystemClock` in the product, and in a test a `ManualClock`, which stands at
+    zero until the test calls `advance`.
 
     The rigs of `tests/common` build one (`timed_config`, `Rig::advance`), so a test of a slide or an arming window says
     how much time passed, and no real time does.

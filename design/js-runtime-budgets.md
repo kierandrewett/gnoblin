@@ -7,7 +7,7 @@ design](js-runtime.md).
 
 Lane SmallSafety. The call budgets of `crates/gnoblin-js/src/budget.rs` bound a script that hangs the shell. They are
 wall-clock limits, so a machine that does not schedule the thread trips them as a loop does, and three strikes in 30 s
-stop the generation (`JsStrikePolicy`).
+stop the generation (`StrikePolicy` of `gnoblin-shell-host`).
 
 The product used to carry 5 s to load a module, 100 ms per listener call and 500 ms per frame; they are now named
 constants, `STAGE_BUDGET` (30 s), `ENTRY_BUDGET` (1 s) and `FRAME_BUDGET` (5 s), and `JsConfig::new` and

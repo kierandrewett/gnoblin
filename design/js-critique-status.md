@@ -61,7 +61,7 @@ config's program; a reload that dropped a spawn left its program; a reload that 
 now holds its `gnoblin.spawn` calls back and starts them when it takes over; a spawn of the same command and options as a
 process the running config started takes that process over (same `id`, same `pid`); a process the new file no longer
 starts receives SIGTERM; a process a handler started is left alone. Each process has an owner, the generation that started
-or took it over (`JsProcesses::owner`). The canvases, measurements, XR nodes, output applies and lock checks a failed stage
+or took it over (`Processes::owner` of `gnoblin-shell-host`). The canvases, measurements, XR nodes, output applies and lock checks a failed stage
 made are given back with the pending writes (`HostState::begin_stage` and `abandon_stage`, `bindings/stage.rs`). Not
 covered: a session verb (`gnoblin.session.lock()` and the like) called at the top level of a file runs at once, stage or not.
 A `Process` made at the top level has `pid` 0 until the generation has taken over, which is the one visible change.

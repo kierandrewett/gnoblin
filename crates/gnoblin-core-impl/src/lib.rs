@@ -6,12 +6,12 @@
 //!
 //! What it holds now, and what is still to come:
 //!
-//! - `registry`: generation contexts, registrations, the event queue and the dispatch loop, with the invariants of
-//!   `design/modular-framework.md` section 5.4 and 5.5 (`E_RETIRED` after retirement, `drop_user` exactly once, staged
-//!   registrations inactive, `E_THREAD` off the shell thread).
-//! - `guard`: panic containment for every exported function and every call into shell code.
+//! - `registry`: the C handles over `gnoblin-shell-host`'s generations, registrations, event queue and dispatch loop, which
+//!   keep the invariants of `design/modular-framework.md` section 5.4 and 5.5 (`E_RETIRED` after retirement, `drop_user`
+//!   exactly once, staged registrations inactive, `E_THREAD` off the shell thread).
+//! - panic containment for every exported function and every call into shell code, and the loader (unique-copy `dlopen`,
+//!   the entry check, `init`, and the bounded retire list): both are `gnoblin-shell-host`'s, used through `host`.
 //! - `catalog`: the schema catalog, generated at build time, behind the `catalog_*` functions.
-//! - `loader`: unique-copy `dlopen`, the entry check, `init`, and the retire list that never `dlclose`s.
 //! - `memory`: owned buffers lent to a shell and taken back.
 //! - `host`: the Rust interface the compositor edge and the tests use.
 //!
@@ -22,12 +22,13 @@
 
 gnoblin_log::logger!(pub(crate) log = "core");
 
+// Panic containment and the last-error text live in the shell host, which the loader needs as well; the core's own
+// modules reach them as `crate::guard`.
+use gnoblin_shell_host::guard;
+
 mod catalog;
 mod exports;
-mod guard;
-mod handle;
 pub mod host;
-mod loader;
 mod memory;
 mod registry;
 mod table;

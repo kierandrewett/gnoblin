@@ -26,7 +26,7 @@ use rquickjs::{Ctx, Function, Object};
 
 use crate::generation::{JsConfig, remap_stack, split_frame};
 use crate::loader::JsLoadState;
-use crate::supervisor::JsClock;
+use gnoblin_shell_host::supervisor::Clock;
 
 gnoblin_log::logger!(log = "js");
 
@@ -114,7 +114,7 @@ struct JsConsoleWindow {
 
 /// A generation's console: the limit, the call-site lookup and the sink.
 pub(crate) struct JsScriptConsole {
-    clock: Arc<dyn JsClock>,
+    clock: Arc<dyn Clock>,
     /// The canonical config root, so a file under it is shown relative to it.
     root: Option<PathBuf>,
     load: Rc<JsLoadState>,

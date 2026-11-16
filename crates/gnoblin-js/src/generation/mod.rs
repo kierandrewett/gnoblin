@@ -28,7 +28,7 @@ use crate::bytecode::JsBytecodeCache;
 use crate::error::{JsError, JsErrorKind, JsLoadError, JsLocation};
 use crate::loader::{JsLoadState, JsLoader, JsResolver, JsTypeScriptModule};
 use crate::script_console::{JsConsoleLine, JsScriptConsole};
-use crate::supervisor::{JsClock, JsSystemClock};
+use gnoblin_shell_host::supervisor::{Clock, SystemClock};
 
 /// What a generation is built from. Cheap to clone, so a host builds every generation from one value.
 #[derive(Debug, Clone)]
@@ -49,7 +49,7 @@ pub struct JsConfig {
     pub max_stack_size: usize,
     /// The clock the generation's `console` counts its rate limit on. The shell sets it to its own clock, so a test
     /// that moves that clock moves this one; the real clock otherwise.
-    pub clock: Arc<dyn JsClock>,
+    pub clock: Arc<dyn Clock>,
 }
 
 impl JsConfig {
@@ -63,7 +63,7 @@ impl JsConfig {
             stage_budget: STAGE_BUDGET,
             memory_limit: 64 << 20,
             max_stack_size: 512 << 10,
-            clock: Arc::new(JsSystemClock),
+            clock: Arc::new(SystemClock),
         }
     }
 

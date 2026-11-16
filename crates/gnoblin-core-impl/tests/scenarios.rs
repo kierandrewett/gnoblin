@@ -30,6 +30,8 @@ struct Stage {
     hot_v1: PathBuf,
     hot_v2: PathBuf,
     hot_bad: PathBuf,
+    /// The reload shell built so that it reports it is safe to unload (`gnoshell_unload_safe` answers yes).
+    hot_safe: PathBuf,
     rlib_control: PathBuf,
     /// A core built as ABI 1.1 and the shell built against it, next to the same launcher binary.
     next_dir: PathBuf,
@@ -116,7 +118,7 @@ fn build_stage() -> Result<Stage, String> {
 
     // The reload generations: one source, three labels.
     let mut hot = Vec::new();
-    for label in ["v1", "v2", "bad"] {
+    for label in ["v1", "v2", "bad", "safe"] {
         cargo_build(
             &main_target,
             &["-p", "gnoblin-fixture-shell-hot"],
@@ -158,6 +160,7 @@ fn build_stage() -> Result<Stage, String> {
         hot_v1: hot[0].clone(),
         hot_v2: hot[1].clone(),
         hot_bad: hot[2].clone(),
+        hot_safe: hot[3].clone(),
         rlib_control,
         next_dir,
         next_shell_min,
@@ -526,6 +529,94 @@ fn an_abandoned_reload_drops_its_registrations_without_calling_them() {
     );
     assert_eq!(num(&stdout, "old_still_serving", "calls"), 2);
     assert_eq!(num(&stdout, "new_after_more_events", "calls"), 0);
+}
+
+#[test]
+fn retired_generations_stay_mapped_but_the_count_is_bounded_visible_and_a_reload_past_the_limit_is_refused() {
+    let stage = stage();
+    // The limit is the last word of the command line, after the module.
+    let output = scenario(&stage.dir, &[Path::new("retain"), &stage.hot_v1, Path::new("3")]);
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert_eq!(output.status.code(), Some(0), "{stdout}\n{stderr}");
+    assert!(stdout.contains("policy max_retained=3 allow_unload=false"), "{stdout}");
+
+    // Each reload retires the previous generation and keeps its library: the count grows by one a round, and so does the
+    // size of what is mapped.
+    let mut previous_bytes = 0;
+    for (round, retained) in [(0, 0), (1, 1), (2, 2), (3, 3)] {
+        let prefix = format!("round={round} loaded");
+        assert_eq!(num(&stdout, &prefix, "retained"), retained, "{stdout}");
+        assert_eq!(num(&stdout, &prefix, "max"), 3);
+        let bytes = num(&stdout, &prefix, "mapped_bytes");
+        assert!(bytes >= previous_bytes, "the mapped size never shrinks: {stdout}");
+        if retained > 0 {
+            assert!(bytes > 0, "a retained library has a size: {stdout}");
+        }
+        previous_bytes = bytes;
+    }
+    assert!(
+        stdout.contains("status=3 of 3 retired shell libraries retained ("),
+        "the status line names the count and the limit: {stdout}"
+    );
+
+    // The next reload is refused with a text that tells the user what to do, and the running generation serves on.
+    let refused = stdout
+        .lines()
+        .find(|line| line.starts_with("round=4 refused"))
+        .unwrap_or_else(|| panic!("round 4 was not refused:\n{stdout}"));
+    assert!(
+        refused.contains("3 retired shell libraries are still mapped"),
+        "{refused}"
+    );
+    assert!(refused.contains("the limit is 3"), "{refused}");
+    assert!(refused.contains("restart gnoblin"), "{refused}");
+    assert_eq!(
+        num(&stdout, "serving_after_refusal", "calls"),
+        1,
+        "the running generation still gets its events: {stdout}"
+    );
+    assert!(stdout.contains("retained_after_refusal=3"), "{stdout}");
+    assert_eq!(
+        num(&stdout, "shell_mappings", "shell_mappings"),
+        4,
+        "the three retired copies and the running one are all still mapped: {stdout}"
+    );
+}
+
+#[test]
+fn unloading_a_retired_generation_is_opt_in_and_only_when_the_module_proves_it_is_unreachable() {
+    let stage = stage();
+    let output = scenario(
+        &stage.dir,
+        &[Path::new("unload"), &stage.hot_safe, &stage.hot_v1, &stage.shell_min],
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert_eq!(output.status.code(), Some(0), "{stdout}\n{stderr}");
+
+    // Off by default, even for a module that says it is safe.
+    assert!(stdout.contains("default_policy refused=NotAllowed"), "{stdout}");
+    assert_eq!(num(&stdout, "after_default", "retained"), 1, "{stdout}");
+    // A generation that has not retired is never unloaded.
+    assert!(stdout.contains("running refused=NotRetired"), "{stdout}");
+    // A module that answers no, and one with no such export, are kept.
+    assert!(stdout.contains("unsure refused=NotProven"), "{stdout}");
+    assert!(stdout.contains("plain refused=NotProven"), "{stdout}");
+    let before = num(&stdout, "before_unload", "mappings");
+    assert_eq!(num(&stdout, "before_unload", "retained"), 3, "{stdout}");
+
+    // The one that proved it is unmapped, and the list gave its entry back.
+    assert_eq!(num(&stdout, "unloaded", "retained"), 2, "{stdout}");
+    assert_eq!(num(&stdout, "unloaded", "unloaded_total"), 1, "{stdout}");
+    assert_eq!(
+        num(&stdout, "unloaded", "mappings"),
+        before - 1,
+        "the library really left the address space: {stdout}"
+    );
+    // The core and the running generation are untouched by it.
+    assert_eq!(num(&stdout, "running_after_unload", "calls"), 1, "{stdout}");
+    assert!(stdout.contains("core_after_unload rc=0"), "{stdout}");
 }
 
 #[test]

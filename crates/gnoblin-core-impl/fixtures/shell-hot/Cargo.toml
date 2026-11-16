@@ -15,5 +15,10 @@ crate-type = ["cdylib"]
 [dependencies]
 gnoblin-core = { path = "../../../gnoblin-core" }
 
-[lints]
-workspace = true
+# The workspace's lint table with `unsafe_code` at `deny`: the one export a module needs to say it can be unloaded
+# (`gnoshell_unload_safe`) is a `#[no_mangle]` item.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

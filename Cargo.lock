@@ -1079,6 +1079,7 @@ dependencies = [
  "gnoblin-proto",
  "gnoblin-services",
  "gnoblin-session",
+ "gnoblin-shell-host",
  "gnoblin-tree-client",
  "gnoblin-types",
  "gnoblin-wayland",
@@ -1486,7 +1487,7 @@ dependencies = [
  "gnoblin-core-abi",
  "gnoblin-log",
  "gnoblin-schema",
- "rustix 1.1.6",
+ "gnoblin-shell-host",
 ]
 
 [[package]]
@@ -1558,8 +1559,8 @@ dependencies = [
  "gnoblin-paint",
  "gnoblin-proto",
  "gnoblin-secret",
+ "gnoblin-shell-host",
  "gnoblin-tree-client",
- "notify",
  "oxc_allocator",
  "oxc_codegen",
  "oxc_diagnostics",
@@ -1996,6 +1997,20 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "gnoblin-shell-host"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+ "gnoblin-log",
+ "notify",
+ "rustix 1.1.6",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

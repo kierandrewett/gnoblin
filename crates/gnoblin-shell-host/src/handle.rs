@@ -1,14 +1,14 @@
 //! Handle encoding.
 //!
 //! A handle the shell holds (a context, a registration) is a `u64`: 24 bits of tag above 40 bits of index. The index is
-//! a sequence number the core never reuses; the tag is a hash of the index and the handle's kind. A value that is not a
-//! handle the core issued, or that is a registration passed where a context is wanted, fails the tag test and is
+//! a sequence number the host never reuses; the tag is a hash of the index and the handle's kind. A value that is not a
+//! handle the host issued, or that is a registration passed where a context is wanted, fails the tag test and is
 //! rejected as stale instead of being looked up, so a shell's arithmetic mistake cannot reach another object.
 
 /// The kind of a generation context handle.
-pub(crate) const KIND_CTX: u64 = 1;
+pub const KIND_CTX: u64 = 1;
 /// The kind of a registration handle.
-pub(crate) const KIND_REG: u64 = 2;
+pub const KIND_REG: u64 = 2;
 
 const INDEX_BITS: u32 = 40;
 const INDEX_MASK: u64 = (1 << INDEX_BITS) - 1;
@@ -20,13 +20,13 @@ fn tag(kind: u64, index: u64) -> u64 {
 }
 
 /// The handle for `index` (which must be non-zero and below 2^40) of `kind`.
-pub(crate) fn encode(kind: u64, index: u64) -> u64 {
+pub fn encode(kind: u64, index: u64) -> u64 {
     debug_assert!(index != 0 && index <= INDEX_MASK);
     (tag(kind, index) << INDEX_BITS) | index
 }
 
 /// The index inside `handle`, when it is a well-formed handle of `kind`.
-pub(crate) fn decode(kind: u64, handle: u64) -> Option<u64> {
+pub fn decode(kind: u64, handle: u64) -> Option<u64> {
     let index = handle & INDEX_MASK;
     (index != 0 && handle >> INDEX_BITS == tag(kind, index)).then_some(index)
 }

@@ -11,7 +11,7 @@
 //!   ([`JsShell::swap_generation`]). A syntax error, a throw or a runaway loop in the new file leaves the
 //!   running generation as it was, and the failure is logged once as `file:line:column: message` in the
 //!   author's `.ts` coordinates;
-//! - a [`JsSupervisor`], which decides what a budget trip means. A listener that runs past its wall-clock
+//! - a [`StrikeSupervisor`], which decides what a budget trip means. A listener that runs past its wall-clock
 //!   budget is interrupted (the compositor never waits for it: it is another process), counts a strike against
 //!   the generation, and the role restages the generation from disk. Three strikes in 30 s stop the restaging
 //!   and leave the last generation running until the file is edited or the user reloads.
@@ -41,10 +41,10 @@ use crate::diagnostics::{DIAGNOSTICS_KEPT, Diagnostics};
 use crate::generation::JsGeneration;
 use crate::host_idle::{JsClientIdleLink, JsIdleConnector, JsIdleLink};
 use crate::host_session::{JsClientSessionLink, JsSessionLink};
-use crate::reload::{JsReloader, ReloadReport};
+use crate::reload::{JsReloader, ReloadReport, SCRIPT_EXTENSIONS};
 use crate::shell::{JsShell, JsShellConfig, JsShellError};
-use crate::supervisor::{JsFault, JsHealth, JsStrikePolicy, JsSupervisor, JsSystemClock};
-use crate::watch::ConfigWatcher;
+use gnoblin_shell_host::supervisor::{GenerationFault, Health, StrikePolicy, StrikeSupervisor, SystemClock};
+use gnoblin_shell_host::watch::{ConfigWatcher, with_extensions};
 
 gnoblin_log::logger!(log = "js");
 
@@ -60,7 +60,7 @@ pub struct JsRoleConfig {
     /// The entry module, an absolute path under the config root.
     pub entry: PathBuf,
     /// How many budget trips in what time stop the restaging of a generation.
-    pub policy: JsStrikePolicy,
+    pub policy: StrikePolicy,
     /// The quiet time the watcher waits for after a change.
     pub debounce: Duration,
     /// Whether the config directory is watched and a save reloads. Off, a reload happens only when asked
@@ -91,7 +91,7 @@ impl JsRoleConfig {
         Self {
             shell,
             entry,
-            policy: JsStrikePolicy::default(),
+            policy: StrikePolicy::default(),
             debounce: RELOAD_DEBOUNCE,
             watch: true,
             console: JsConsoleSite::default(),
@@ -251,13 +251,13 @@ impl JsRole {
             staging.config().clone(),
             config.entry.clone(),
             commit,
-            JsSupervisor::new(config.policy, JsSystemClock),
+            StrikeSupervisor::new(config.policy, SystemClock),
         );
         reloader.set_prepare(Box::new(move |generation| staging.prepare(generation)));
 
         let root = &config.shell.js.root;
         let watcher = if config.watch {
-            match ConfigWatcher::new(root, config.debounce) {
+            match ConfigWatcher::new(root, config.debounce, with_extensions(SCRIPT_EXTENSIONS)) {
                 Ok(watcher) => Some(watcher),
                 Err(error) => {
                     log::warn!(area = "shell-vm", "the config directory is not watched: {error}");
@@ -352,7 +352,7 @@ impl JsRole {
             // The interrupted script skipped its cleanup, so the generation is suspect: the supervisor decides
             // whether a fresh one is staged from the files on disk.
             self.handled_strikes = strikes;
-            let report = self.staged(|reloader| reloader.recover(JsFault::Budget));
+            let report = self.staged(|reloader| reloader.recover(GenerationFault::Budget));
             if report.ok {
                 log::warn!(
                     area = "shell-vm",
@@ -494,7 +494,7 @@ impl JsRole {
     }
 
     /// Whether the supervisor still allows restaging after a budget trip.
-    pub fn health(&self) -> JsHealth {
+    pub fn health(&self) -> Health {
         self.reloader.health()
     }
 

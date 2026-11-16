@@ -10,7 +10,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use gnoblin_js::{JsManualClock, JsRoleConfig, JsShell, JsShellConfig};
+use gnoblin_js::{JsRoleConfig, JsShell, JsShellConfig};
+use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_tree_client::tree_mirror::{
     Attached, EventFields, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeEvent,
     TreeIncoming, TreeLink, TreeTx, TxOp, TxReply,
@@ -1161,8 +1162,8 @@ pub fn honest_config(root: impl Into<PathBuf>) -> JsShellConfig {
 }
 
 /// Like [`honest_config`], with a clock that stands at zero until the test advances it, and the handle to advance it.
-pub fn timed_config(root: impl Into<PathBuf>) -> (JsShellConfig, JsManualClock) {
-    let clock = JsManualClock::default();
+pub fn timed_config(root: impl Into<PathBuf>) -> (JsShellConfig, ManualClock) {
+    let clock = ManualClock::default();
     let mut config = honest_config(root);
     config.clock = Arc::new(clock.clone());
     (config, clock)
@@ -1204,7 +1205,7 @@ pub struct Rig {
     pub shell: JsShell,
     pub comp: FakeCompositor,
     pub load_diagnostics: Vec<String>,
-    pub clock: JsManualClock,
+    pub clock: ManualClock,
     pub _dir: TempDir,
 }
 

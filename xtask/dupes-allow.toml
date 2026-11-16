@@ -1457,3 +1457,27 @@ left = "gnoblin-wayland::Fallback"
 right = "gnoblin-wm-api::NullWm"
 kind = "same-shape"
 reason = "both keep the record of windows and outputs the compositor reads for every provider; the stock provider's decisions over it and the null provider's differ entirely, and Fallback leaves for gnoblin-std-wm in M1.5"
+
+[[allow]]
+left = "gnoblin-shell-host::ManualClock"
+right = "gnoblin-wayland::ManualClock"
+kind = "same-name"
+reason = "the host's clock reads a Duration from an origin and is shared by clones so a supervisor test moves one time; the Wayland session clock reads an Instant and belongs to the engine, which the host may not depend on"
+
+[[allow]]
+left = "gnoblin-shell-host::SystemClock"
+right = "gnoblin-wayland::SystemClock"
+kind = "same-name"
+reason = "the host's real clock is a Duration since the first read in the process, behind the host's own Clock trait; the Wayland one returns an Instant for the session clock, and the host may not depend on the engine"
+
+[[allow]]
+left = "gnoblin-core::CoreStats"
+right = "gnoblin-shell-host::HostStats"
+kind = "near-shape"
+reason = "CoreStats is the SDK's safe copy of the counters the ABI's `stats` call reports (it adds the panic count the guard keeps); HostStats is what the host counts. The SDK may not name the host (sdk-isolation), so the two are declared apart"
+
+[[allow]]
+left = "gnoblin-core::ModuleInfo"
+right = "gnoblin-shell-host::GenerationInfo"
+kind = "near-shape"
+reason = "ModuleInfo is the SDK's safe copy of what `ctx_info` reports to a shell; GenerationInfo is the host's record the report is made from. The SDK may not name the host (sdk-isolation), so the two are declared apart"

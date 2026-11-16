@@ -57,6 +57,8 @@ wayland-client = "0.31.14"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-proto = { path = "../gnoblin-proto" }
+# `tests/js_shell.rs` moves a manual clock under the shell and reads its health: the host's supervisor types.
+gnoblin-shell-host = { path = "../gnoblin-shell-host" }
 # `tests/js_lock.rs` runs the shell over a link it wraps, to make the real compositor refuse one transaction.
 gnoblin-tree-client.workspace = true
 # `tests/js_runtime_role.rs` runs the JavaScript runtime role over a configuration directory of its own, which is a

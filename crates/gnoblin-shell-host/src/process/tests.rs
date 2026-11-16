@@ -2,18 +2,18 @@
 
 use std::time::{Duration, Instant};
 
-use super::{JsProcessCode, JsProcessError, JsProcesses, JsSpawnOptions, JsStream};
+use super::{ProcessCode, ProcessError, Processes, SpawnOptions, StreamMode};
 
 fn argv(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).to_owned()).collect()
 }
 
-fn options(json: &str) -> JsSpawnOptions {
+fn options(json: &str) -> SpawnOptions {
     serde_json::from_str(json).expect("the options parse")
 }
 
 /// Waits for the end of process `id`, with a deadline and no sleeping beyond the poll.
-fn end_of(processes: &mut JsProcesses, id: u64) -> super::JsExit {
+fn end_of(processes: &mut Processes, id: u64) -> super::ProcessExit {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         if let Some((_, exit)) = processes.drain().into_iter().find(|(ended, _)| *ended == id) {
@@ -26,7 +26,7 @@ fn end_of(processes: &mut JsProcesses, id: u64) -> super::JsExit {
 
 #[test]
 fn a_program_ends_with_its_exit_code_and_its_captured_output() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     let started = processes
         .spawn(
             &argv(&["sh", "-c", "printf out; printf err >&2; exit 3"]),
@@ -44,7 +44,7 @@ fn a_program_ends_with_its_exit_code_and_its_captured_output() {
 
 #[test]
 fn env_cwd_and_stdin_reach_the_program() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     let started = processes
         .spawn(
             &argv(&["sh", "-c", "printf '%s|%s|' \"$GNOBLIN_TEST\" \"$(pwd)\"; cat"]),
@@ -56,7 +56,7 @@ fn env_cwd_and_stdin_reach_the_program() {
 
 #[test]
 fn output_past_the_limit_is_dropped_and_flagged() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     let started = processes
         .spawn(
             &argv(&["sh", "-c", "printf 0123456789"]),
@@ -71,9 +71,9 @@ fn output_past_the_limit_is_dropped_and_flagged() {
 
 #[test]
 fn kill_ends_the_process_group_and_names_the_signal() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     let started = processes
-        .spawn(&argv(&["sh", "-c", "sleep 60 & wait"]), &JsSpawnOptions::default())
+        .spawn(&argv(&["sh", "-c", "sleep 60 & wait"]), &SpawnOptions::default())
         .expect("sh starts");
     processes.kill(started.id, "kill").expect("a running process is killed");
     let exit = end_of(&mut processes, started.id);
@@ -82,12 +82,12 @@ fn kill_ends_the_process_group_and_names_the_signal() {
     let error = processes
         .kill(started.id, "term")
         .expect_err("an ended process has nothing to kill");
-    assert_eq!(error.code, JsProcessCode::NotFound);
+    assert_eq!(error.code, ProcessCode::NotFound);
 }
 
 #[test]
 fn a_timeout_terminates_the_program() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     let started = processes
         .spawn(&argv(&["sleep", "60"]), &options(r#"{"timeout":50}"#))
         .expect("sleep starts");
@@ -98,11 +98,11 @@ fn a_timeout_terminates_the_program() {
 
 #[test]
 fn a_missing_program_is_not_found_and_limits_are_refused_by_name() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     let error = processes
-        .spawn(&argv(&["/nonexistent/gnoblin-test"]), &JsSpawnOptions::default())
+        .spawn(&argv(&["/nonexistent/gnoblin-test"]), &SpawnOptions::default())
         .expect_err("no such program");
-    assert_eq!(error.code, JsProcessCode::NotFound);
+    assert_eq!(error.code, ProcessCode::NotFound);
     for (parts, json, needle) in [
         (argv(&[]), "{}", "argv holds"),
         (argv(&["true"]), r#"{"cwd":"relative"}"#, "cwd"),
@@ -110,18 +110,18 @@ fn a_missing_program_is_not_found_and_limits_are_refused_by_name() {
         (argv(&["true"]), r#"{"outputLimit":99999999}"#, "outputLimit"),
         (argv(&["true"]), r#"{"env":{"A=B":"x"}}"#, "env names"),
     ] {
-        let JsProcessError { code, message } = processes
+        let ProcessError { code, message } = processes
             .spawn(&parts, &options(json))
             .expect_err("the options are refused");
-        assert_eq!(code, JsProcessCode::InvalidArgument);
+        assert_eq!(code, ProcessCode::InvalidArgument);
         assert!(message.contains(needle), "{message} names {needle}");
     }
     assert!(processes.kill(99, "term").is_err());
     assert_eq!(
         processes.kill(1, "nope").expect_err("a bad signal").code,
-        JsProcessCode::InvalidArgument
+        ProcessCode::InvalidArgument
     );
-    assert_eq!(JsStream::default(), JsStream::Log);
+    assert_eq!(StreamMode::default(), StreamMode::Log);
 }
 
 // ---- stages -----------------------------------------------------------------------------------------------------------
@@ -138,10 +138,10 @@ fn sleeping(tag: &str) -> Vec<String> {
 
 #[test]
 fn a_staged_spawn_starts_nothing_until_the_generation_takes_over() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.begin_stage();
     let started = processes
-        .spawn(&sleeping("32.5001"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5001"), &SpawnOptions::default())
         .expect("a spawn is kept");
     assert_eq!((started.id, started.pid), (1, 0), "it has its id and no pid");
     assert_eq!(processes.running(), 0, "nothing runs");
@@ -163,17 +163,17 @@ fn a_staged_spawn_starts_nothing_until_the_generation_takes_over() {
 
 #[test]
 fn an_abandoned_stage_starts_nothing_and_a_handler_spawn_after_it_runs_at_once() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.begin_stage();
     processes
-        .spawn(&sleeping("32.5002"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5002"), &SpawnOptions::default())
         .expect("a spawn is kept");
     processes.abandon_stage();
     assert_eq!(processes.running(), 0);
     assert!(processes.end_stage(1).is_empty(), "there is no stage left to take over");
 
     let started = processes
-        .spawn(&sleeping("32.5003"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5003"), &SpawnOptions::default())
         .expect("a handler's spawn starts at once");
     assert!(started.pid > 0);
     processes.kill(started.id, "kill").expect("it is killed");
@@ -182,17 +182,17 @@ fn an_abandoned_stage_starts_nothing_and_a_handler_spawn_after_it_runs_at_once()
 
 #[test]
 fn a_stage_that_spawns_what_the_running_config_spawned_takes_that_process_over() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.begin_stage();
     let first = processes
-        .spawn(&sleeping("32.5004"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5004"), &SpawnOptions::default())
         .expect("kept");
     assert!(processes.end_stage(1).is_empty());
     let pid = processes.pid(first.id).expect("it runs");
 
     processes.begin_stage();
     let again = processes
-        .spawn(&sleeping("32.5004"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5004"), &SpawnOptions::default())
         .expect("kept");
     assert_eq!(
         (again.id, again.pid),
@@ -200,7 +200,7 @@ fn a_stage_that_spawns_what_the_running_config_spawned_takes_that_process_over()
         "the stage is given the process that runs"
     );
     let twice = processes
-        .spawn(&sleeping("32.5004"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5004"), &SpawnOptions::default())
         .expect("kept");
     assert_ne!(
         twice.id, first.id,
@@ -220,10 +220,10 @@ fn a_stage_that_spawns_what_the_running_config_spawned_takes_that_process_over()
 
 #[test]
 fn the_same_program_with_other_options_is_another_process() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.begin_stage();
     let first = processes
-        .spawn(&sleeping("32.5005"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5005"), &SpawnOptions::default())
         .expect("kept");
     assert!(processes.end_stage(1).is_empty());
 
@@ -246,14 +246,14 @@ fn the_same_program_with_other_options_is_another_process() {
 
 #[test]
 fn what_the_config_no_longer_starts_is_stopped_and_what_a_handler_started_is_left() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.begin_stage();
     let declared = processes
-        .spawn(&sleeping("32.5006"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5006"), &SpawnOptions::default())
         .expect("kept");
     assert!(processes.end_stage(1).is_empty());
     let handled = processes
-        .spawn(&sleeping("32.5007"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5007"), &SpawnOptions::default())
         .expect("a handler's spawn starts at once");
     let (declared_pid, handled_pid) = (processes.pid(declared.id).expect("runs"), handled.pid);
 
@@ -279,15 +279,15 @@ fn what_the_config_no_longer_starts_is_stopped_and_what_a_handler_started_is_lef
 
 #[test]
 fn a_program_that_cannot_start_when_the_generation_takes_over_ends_with_status_127_and_is_reported() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.begin_stage();
     let started = processes
-        .spawn(&argv(&["/nonexistent/program"]), &JsSpawnOptions::default())
+        .spawn(&argv(&["/nonexistent/program"]), &SpawnOptions::default())
         .expect("the stage cannot know");
     let failed = processes.end_stage(1);
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].0, started.id);
-    assert_eq!(failed[0].1.code, JsProcessCode::NotFound);
+    assert_eq!(failed[0].1.code, ProcessCode::NotFound);
     let exit = end_of(&mut processes, started.id);
     assert_eq!(exit.exit_code, Some(127), "the handle the script holds ends");
     assert!(exit.stderr.is_some_and(|text| text.contains("/nonexistent/program")));
@@ -295,10 +295,10 @@ fn a_program_that_cannot_start_when_the_generation_takes_over_ends_with_status_1
 
 #[test]
 fn a_program_killed_before_the_generation_takes_over_never_starts_and_ends_with_the_signal() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.begin_stage();
     let started = processes
-        .spawn(&sleeping("32.5008"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5008"), &SpawnOptions::default())
         .expect("kept");
     processes.kill(started.id, "term").expect("a kept spawn can be killed");
     assert!(processes.end_stage(1).is_empty());
@@ -309,31 +309,31 @@ fn a_program_killed_before_the_generation_takes_over_never_starts_and_ends_with_
 
 #[test]
 fn a_stage_counts_the_spawns_it_keeps_against_the_running_limit() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.begin_stage();
     for _ in 0..super::MAX_RUNNING {
         processes
-            .spawn(&sleeping("32.5009"), &JsSpawnOptions::default())
+            .spawn(&sleeping("32.5009"), &SpawnOptions::default())
             .expect("under the limit");
     }
     let refused = processes
-        .spawn(&sleeping("32.5009"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5009"), &SpawnOptions::default())
         .expect_err("past it");
-    assert_eq!(refused.code, JsProcessCode::Busy);
+    assert_eq!(refused.code, ProcessCode::Busy);
     processes.abandon_stage();
 }
 
 #[test]
 fn a_restage_inside_a_stage_starts_the_program_once_whatever_the_interrupted_generation_spawned() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.begin_stage();
     processes
-        .spawn(&sleeping("32.5010"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5010"), &SpawnOptions::default())
         .expect("kept");
     // The first generation was interrupted: the one that replaces it spawns the same program.
     processes.restage();
     let again = processes
-        .spawn(&sleeping("32.5010"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5010"), &SpawnOptions::default())
         .expect("kept");
     assert!(processes.end_stage(1).is_empty());
     assert_eq!(
@@ -348,10 +348,10 @@ fn a_restage_inside_a_stage_starts_the_program_once_whatever_the_interrupted_gen
 
 #[test]
 fn a_restage_with_no_stage_open_changes_nothing() {
-    let mut processes = JsProcesses::default();
+    let mut processes = Processes::default();
     processes.restage();
     let started = processes
-        .spawn(&sleeping("32.5011"), &JsSpawnOptions::default())
+        .spawn(&sleeping("32.5011"), &SpawnOptions::default())
         .expect("a spawn outside a stage starts at once");
     assert!(started.pid > 0);
     processes.kill(started.id, "kill").expect("it is killed");

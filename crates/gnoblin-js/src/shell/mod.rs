@@ -43,6 +43,9 @@ use rquickjs::convert::Coerced;
 use rquickjs::{FromJs, Function, Module, Object, Value};
 use thiserror::Error;
 
+use gnoblin_shell_host::stage::{RollbackSlot, StepError, SwapHost, swap};
+use gnoblin_shell_host::supervisor::{Clock, SystemClock};
+
 use self::txgate::Sent;
 use crate::bindings::{HostState, SharedState, StageMark};
 use crate::budget::{ENTRY_BUDGET, FRAME_BUDGET};
@@ -51,7 +54,6 @@ use crate::error::JsError;
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_idle::JsIdle;
 use crate::stock::{HOST_MODULE_NAME, PACKAGES, STARTER_MODULE_NAME, host_export, starter_module, stock_sources_in};
-use crate::supervisor::{JsClock, JsSystemClock};
 use crate::workspaces::JsWorkspaceSnapshot;
 use crate::{bindings, input};
 
@@ -103,8 +105,8 @@ pub struct JsShellConfig {
     pub xr_declared: bool,
     /// The monotonic clock the scripts read (`gnoblin.timers.now`, and so every timer, fade, delay and arming window).
     /// The real clock by default; a test that must not depend on how fast the machine is gives it a
-    /// [`JsManualClock`](crate::JsManualClock) and moves it.
-    pub clock: Arc<dyn JsClock>,
+    /// [`ManualClock`](crate::ManualClock) and moves it.
+    pub clock: Arc<dyn Clock>,
 }
 
 impl JsShellConfig {
@@ -117,7 +119,7 @@ impl JsShellConfig {
             frame_budget: FRAME_BUDGET,
             stock_dir: None,
             xr_declared: false,
-            clock: Arc::new(JsSystemClock),
+            clock: Arc::new(SystemClock),
         }
     }
 }
@@ -185,7 +187,7 @@ pub struct JsShell {
     state: SharedState,
     /// What the shell held when a stage began, kept until that stage is swapped in or abandoned so a stage that fails
     /// after writing, spawning or making a canvas leaves nothing behind.
-    stage_mark: Option<StageMark>,
+    stage: RollbackSlot<StageMark>,
     entry_budget: Duration,
     frame_budget: Duration,
     /// Messages that arrived with the boot snapshot, handled by the first frame.
@@ -261,7 +263,7 @@ impl JsShell {
             generation,
             js,
             state,
-            stage_mark: None,
+            stage: RollbackSlot::default(),
             entry_budget: config.entry_budget,
             frame_budget: config.frame_budget,
             incoming,
@@ -298,7 +300,7 @@ impl JsShell {
         // The staged generation's entry runs against the live tree, so it is script that runs between frames.
         self.note_script_ran();
         let mark = self.state.borrow_mut().begin_stage();
-        self.stage_mark = Some(mark);
+        self.stage.begin(mark);
     }
 
     /// Ends a stage that failed: the pending writes go back to what they were at [`begin_stage`](Self::begin_stage),
@@ -306,7 +308,7 @@ impl JsShell {
     /// touched.
     pub fn abandon_stage(&mut self) {
         self.note_script_ran();
-        if let Some(mark) = self.stage_mark.take() {
+        if let Some(mark) = self.stage.abandon() {
             self.state.borrow_mut().abandon_stage(mark);
         }
     }
@@ -328,7 +330,7 @@ impl JsShell {
     ///
     /// The programs the staged config spawned at its top level start now, unless the old config started the same
     /// program already, in which case the new generation takes that process over; what the old config started and
-    /// the new one does not is stopped (`JsProcesses::end_stage`).
+    /// the new one does not is stopped (`Processes::end_stage`).
     ///
     /// A script failure while the old generation ends or the new one finishes is a diagnostic in the result, not
     /// an error: the swap has happened.
@@ -338,68 +340,7 @@ impl JsShell {
     /// The link failed or the mirror refused a batch; the shell has ended.
     pub fn swap_generation(&mut self, generation: JsGeneration) -> Result<Vec<String>, JsShellError> {
         self.note_script_ran();
-        let mut diagnostics = Vec::new();
-        let previous = match self.workspace_snapshot() {
-            Ok(snapshot) => Some(snapshot),
-            Err(JsShellError::Js(error)) => {
-                self.count_strike(&error);
-                diagnostics.push(format!(
-                    "the old generation's workspaces could not be read, so windows rejoin a workspace by the stock \
-                     rule: {error}"
-                ));
-                None
-            }
-            Err(other) => return Err(other),
-        };
-        // The new generation's programs start now, before the old one ends: what the old one's end handlers spawn is
-        // then a handler's spawn, started at once, and not one that waits for a takeover that is already under way.
-        let unstarted = self.state.borrow_mut().api.processes.end_stage(generation.id());
-        for (id, error) in unstarted {
-            diagnostics.push(format!("the program of process {id} did not start: {error}"));
-        }
-        // The new generation's claims were kept while it was staged. They go out behind everything the old one
-        // gives up, in one transaction: the compositor applies a transaction's calls in order, so each chord is
-        // free when its new claim arrives. A claim the old generation did not release (its script threw first) is
-        // released here, or its chord would be refused to the new generation.
-        let staged = input::end_staging(&mut self.state.borrow_mut());
-        match self.end_generation(true) {
-            Ok(frame) => diagnostics.extend(frame.diagnostics),
-            Err(JsShellError::Js(error)) => {
-                self.count_strike(&error);
-                diagnostics.push(format!("the old generation did not end cleanly: {error}"));
-            }
-            Err(other) => return Err(other),
-        }
-        {
-            let mut state = self.state.borrow_mut();
-            input::release_all(&mut state);
-            input::send_staged(&mut state, staged);
-        }
-        self.send_transaction()?;
-
-        self.stage_mark = None;
-        self.generation = generation;
-        self.strikes = 0;
-        self.reported.clear();
-        self.boot_ready = Some(bindings::parents_first(&self.state.borrow().mirror));
-
-        let finished = self.finish_load().and_then(|()| match &previous {
-            Some(previous) => self.reconcile(previous),
-            None => Ok(()),
-        });
-        match finished {
-            Ok(()) => {}
-            Err(JsShellError::Js(error)) => {
-                self.count_strike(&error);
-                diagnostics.push(format!(
-                    "the new generation could not take over the workspaces: {error}"
-                ));
-            }
-            Err(other) => return Err(other),
-        }
-        self.apply_document(&mut diagnostics, true)?;
-        self.collect_reports(&mut diagnostics)?;
-        Ok(diagnostics)
+        swap(&mut ShellSwap { shell: self }, generation)
     }
 
     /// Finishes a loaded entry: a config that declared no workspace gets the stock one now, so
@@ -558,6 +499,104 @@ impl JsShell {
         self.collect_reports(&mut diagnostics)?;
         self.generation.flush_console();
         Ok(JsFrame { diagnostics })
+    }
+}
+
+/// The steps of a swap in this shell's terms. The order they run in, and what a failure of each one means, is the shell
+/// host's protocol (`gnoblin_shell_host::stage::swap`); this says what each step does to the JavaScript shell. A step that
+/// fails inside script counts a strike and becomes a diagnostic.
+struct ShellSwap<'a> {
+    shell: &'a mut JsShell,
+}
+
+impl SwapHost for ShellSwap<'_> {
+    type Generation = JsGeneration;
+    type Snapshot = JsWorkspaceSnapshot;
+    type Claims = Vec<input::StagedClaim>;
+    type Fatal = JsShellError;
+
+    fn snapshot(&mut self) -> Result<JsWorkspaceSnapshot, StepError<JsShellError>> {
+        match self.shell.workspace_snapshot() {
+            Ok(snapshot) => Ok(snapshot),
+            Err(JsShellError::Js(error)) => {
+                self.shell.count_strike(&error);
+                Err(StepError::Recovered(format!(
+                    "the old generation's workspaces could not be read, so windows rejoin a workspace by the stock \
+                     rule: {error}"
+                )))
+            }
+            Err(other) => Err(StepError::Fatal(other)),
+        }
+    }
+
+    fn start_programs(&mut self, generation: &JsGeneration) -> Vec<String> {
+        // The new generation's programs start now, before the old one ends: what the old one's end handlers spawn is
+        // then a handler's spawn, started at once, and not one that waits for a takeover that is already under way.
+        let unstarted = self.shell.state.borrow_mut().api.processes.end_stage(generation.id());
+        unstarted
+            .into_iter()
+            .map(|(id, error)| format!("the program of process {id} did not start: {error}"))
+            .collect()
+    }
+
+    fn take_claims(&mut self) -> Vec<input::StagedClaim> {
+        // The new generation's claims were kept while it was staged.
+        input::end_staging(&mut self.shell.state.borrow_mut())
+    }
+
+    fn end_old(&mut self) -> Result<Vec<String>, StepError<JsShellError>> {
+        match self.shell.end_generation(true) {
+            Ok(frame) => Ok(frame.diagnostics),
+            Err(JsShellError::Js(error)) => {
+                self.shell.count_strike(&error);
+                Err(StepError::Recovered(format!(
+                    "the old generation did not end cleanly: {error}"
+                )))
+            }
+            Err(other) => Err(StepError::Fatal(other)),
+        }
+    }
+
+    fn exchange_claims(&mut self, staged: Vec<input::StagedClaim>) -> Result<(), JsShellError> {
+        // The new claims go out behind everything the old one gives up, in one transaction: the compositor applies a
+        // transaction's calls in order, so each chord is free when its new claim arrives. A claim the old generation did
+        // not release (its script threw first) is released here, or its chord would be refused to the new generation.
+        {
+            let mut state = self.shell.state.borrow_mut();
+            input::release_all(&mut state);
+            input::send_staged(&mut state, staged);
+        }
+        self.shell.send_transaction()
+    }
+
+    fn install(&mut self, generation: JsGeneration) {
+        self.shell.stage.commit();
+        self.shell.generation = generation;
+        self.shell.strikes = 0;
+        self.shell.reported.clear();
+        self.shell.boot_ready = Some(bindings::parents_first(&self.shell.state.borrow().mirror));
+    }
+
+    fn take_over(&mut self, previous: Option<&JsWorkspaceSnapshot>) -> Result<(), StepError<JsShellError>> {
+        let finished = self.shell.finish_load().and_then(|()| match previous {
+            Some(previous) => self.shell.reconcile(previous),
+            None => Ok(()),
+        });
+        match finished {
+            Ok(()) => Ok(()),
+            Err(JsShellError::Js(error)) => {
+                self.shell.count_strike(&error);
+                Err(StepError::Recovered(format!(
+                    "the new generation could not take over the workspaces: {error}"
+                )))
+            }
+            Err(other) => Err(StepError::Fatal(other)),
+        }
+    }
+
+    fn finish(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        self.shell.apply_document(diagnostics, true)?;
+        self.shell.collect_reports(diagnostics)
     }
 }
 

@@ -20,7 +20,7 @@ use gnoblin_log::ProcessRole;
 use gnoblin_log::init::{Console, LogOptions, LogSettings, init};
 
 use crate::guard::{guard, last_error};
-use crate::host::{self, Copying, Module, OwnedValue};
+use crate::host::{self, Copying, Module, OwnedValue, RetirePolicy};
 use crate::table::API;
 
 macro_rules! out {
@@ -60,8 +60,12 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             (Some("upgrade"), Some(shell), _, _) => upgrade(&shell),
             (Some("thread"), Some(shell), _, _) => threads(&shell),
             (Some("load"), Some(shell), _, _) => load_only(&shell),
+            (Some("retain"), Some(shell), limit, _) => retain(&shell, limit.as_deref()),
+            (Some("unload"), Some(safe), Some(unsure), Some(plain)) => unload(&safe, &unsure, &plain),
             _ => {
-                out!("usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load> MODULE...");
+                out!(
+                    "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|retain|unload> MODULE..."
+                );
                 2
             }
         }
@@ -355,6 +359,168 @@ fn upgrade(shell: &std::path::Path) -> i32 {
     publish("lock", "requested", vec![]);
     pump(&module, 2);
     shell_stats_line("shell_stats", &module);
+    0
+}
+
+/// How many module copies of this process are mapped now (the loader's copies are named `gen-N-...`).
+fn shell_mappings() -> usize {
+    let maps = std::fs::read_to_string("/proc/self/maps").unwrap_or_default();
+    maps.lines()
+        .filter_map(|line| line.split_whitespace().nth(5))
+        .filter(|path| path.contains("/gen-"))
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+}
+
+/// Retention is bounded and visible: reload over and over under a small limit. Each reload retires the previous
+/// generation, which stays mapped and counted; the load past the limit is refused with the restart text, and the running
+/// generation keeps serving.
+fn retain(shell: &std::path::Path, limit: Option<&std::path::Path>) -> i32 {
+    let max = limit
+        .and_then(|limit| limit.to_str())
+        .and_then(|text| text.parse::<usize>().ok())
+        .unwrap_or(3);
+    host::set_retire_policy(RetirePolicy {
+        max_retained: max,
+        allow_unload: false,
+    });
+    let policy = host::retire_policy();
+    out!(
+        "policy max_retained={} allow_unload={}",
+        policy.max_retained,
+        policy.allow_unload
+    );
+    let mut running: Option<Module> = None;
+    let rounds = u32::try_from(max).unwrap_or(u32::MAX).saturating_add(3);
+    for round in 0..rounds {
+        match host::load(shell, Copying::Unique, round) {
+            Ok(module) => {
+                if let Err(message) = module.activate() {
+                    out!("activate_failed {message}");
+                    return 1;
+                }
+                if let Some(old) = running.take() {
+                    old.retire();
+                }
+                let stats = host::retained_stats();
+                out!(
+                    "round={round} loaded generation={} retained={} mapped_bytes={} max={} status={stats}",
+                    module.generation(),
+                    stats.count,
+                    stats.mapped_bytes,
+                    stats.max_retained
+                );
+                running = Some(module);
+            }
+            Err(error) => {
+                out!("round={round} refused {error}");
+                if let Some(module) = &running {
+                    publish("lock", "requested", vec![]);
+                    pump(module, 2);
+                    shell_stats_line("serving_after_refusal", module);
+                }
+                out!("retained_after_refusal={}", host::retired_libraries());
+                out!("shell_mappings={}", shell_mappings());
+                return 0;
+            }
+        }
+    }
+    out!("UNEXPECTED the limit was never reached");
+    1
+}
+
+/// Unloading is opt-in and proven: a retired generation that reports (`gnoshell_unload_safe`) it has nothing running is
+/// unmapped, and every other case keeps its library mapped with the reason.
+fn unload(safe: &std::path::Path, unsure: &std::path::Path, plain: &std::path::Path) -> i32 {
+    let load = |path: &std::path::Path, count: u32| match load_or_report(path, Copying::Unique, count) {
+        Ok(module) => {
+            if module.activate().is_err() {
+                return Err(1);
+            }
+            Ok(module)
+        }
+        Err(code) => Err(code),
+    };
+    // Off by default: a module that is safe and retired is still kept.
+    let first = match load(safe, 0) {
+        Ok(module) => module,
+        Err(code) => return code,
+    };
+    first.retire();
+    let first = match first.try_unload() {
+        Ok(_) => {
+            out!("UNEXPECTED unloaded with the default policy");
+            return 1;
+        }
+        Err((module, why)) => {
+            out!("default_policy refused={why:?}");
+            module
+        }
+    };
+    out!(
+        "after_default retained={} mappings={}",
+        host::retired_libraries(),
+        shell_mappings()
+    );
+
+    host::set_retire_policy(RetirePolicy {
+        allow_unload: true,
+        ..host::retire_policy()
+    });
+    // A generation that has not retired is never unloaded.
+    let running = match load(safe, 1) {
+        Ok(module) => module,
+        Err(code) => return code,
+    };
+    let running = match running.try_unload() {
+        Ok(_) => {
+            out!("UNEXPECTED unloaded a running generation");
+            return 1;
+        }
+        Err((module, why)) => {
+            out!("running refused={why:?}");
+            module
+        }
+    };
+    // A module that does not say it is safe is kept, whether it answers no or has no such export.
+    for (name, path) in [("unsure", unsure), ("plain", plain)] {
+        let module = match load(path, 2) {
+            Ok(module) => module,
+            Err(code) => return code,
+        };
+        module.retire();
+        match module.try_unload() {
+            Ok(_) => {
+                out!("UNEXPECTED unloaded {name}");
+                return 1;
+            }
+            Err((_module, why)) => out!("{name} refused={why:?}"),
+        }
+    }
+    out!(
+        "before_unload retained={} mappings={}",
+        host::retired_libraries(),
+        shell_mappings()
+    );
+
+    // The one that proves it is unmapped, and the list gives its entry back.
+    match first.try_unload() {
+        Ok(stats) => out!(
+            "unloaded retained={} unloaded_total={} mappings={}",
+            stats.count,
+            stats.unloaded,
+            shell_mappings()
+        ),
+        Err((_module, why)) => {
+            out!("UNEXPECTED refused {why:?}");
+            return 1;
+        }
+    }
+    // The core serves on: the running generation still gets its events.
+    publish("lock", "requested", vec![]);
+    pump(&running, 2);
+    shell_stats_line("running_after_unload", &running);
+    core_stats_line("core_after_unload", running.ctx());
     0
 }
 
