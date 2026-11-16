@@ -246,6 +246,8 @@ export class LockScreen {
     #accepted = false;
     /** The generation is going away: the screen is down for good and never comes back. */
     #released = false;
+    /** How many steps of the update pass of the screen's canvases had failed when the lease was last considered. */
+    #failuresSeen = 0;
 
     constructor(backend: LockBackend, style: LockStyle = defaultLockStyle) {
         this.#backend = backend;
@@ -274,10 +276,29 @@ export class LockScreen {
             this.#hide();
         } else if (this.#shown === null && !this.#accepted) {
             this.#show();
+        } else if (this.#shown !== null) {
+            this.#holdKeyboard(this.#shown);
         }
-        // Only a frame that got this far, with the screen up, says the screen is alive: one that threw above renews
-        // nothing, and the compositor's own card takes the password when the lease lapses.
-        if (this.#shown !== null) {
+    }
+
+    /**
+     * Renews the compositor's lease on the screen. The host calls it after the toolkit has drawn the frame, and only
+     * when `frame()` ran to its end. A turn is healthy, and renews, when the screen is up, every canvas of it is still
+     * in the tree, and no refresh, arrange or draw of one of them failed in the turn (a `draw()` that throws, a write
+     * the compositor refused). A screen that cannot draw is not one a password can be typed into, so a turn that
+     * failed renews nothing and the compositor's own card takes the password when the lease lapses; the first healthy
+     * turn after it renews again. A handler that throws on one key is that key's failure and is reported; it is not
+     * a turn that failed to draw.
+     */
+    renew(): void {
+        const shown = this.#shown;
+        if (shown === null || this.#released) {
+            return;
+        }
+        const failures = shown.scrim.failures;
+        const drew = shown.scrim.alive && failures <= this.#failuresSeen;
+        this.#failuresSeen = failures;
+        if (drew) {
             this.#backend.heartbeat();
         }
     }
@@ -286,6 +307,27 @@ export class LockScreen {
     release(): void {
         this.#released = true;
         this.#hide();
+    }
+
+    /**
+     * The screen is modal: while it is up the keyboard is on its entry. Something else may take it (a window that
+     * arrived under the lock and was given the focus by the stock policy, or a script), and the keys then go nowhere
+     * the screen can read. The screen takes the keyboard back, and a window that took it is the one that has it when
+     * the screen comes down, as it would have had it without the lock.
+     */
+    #holdKeyboard(shown: Shown): void {
+        const held = uiFocused();
+        if (held === shown.entry.node) {
+            return;
+        }
+        if (held !== null) {
+            shown.before = held;
+        }
+        try {
+            uiFocus(shown.entry.node);
+        } catch {
+            // The compositor refused the focus (the tree has no seat): the compositor's card takes the keys.
+        }
     }
 
     #show(): void {
@@ -320,6 +362,7 @@ export class LockScreen {
         const before = uiFocused();
         entry.onSubmit = (password) => this.#submit(password);
         this.#shown = { scrim, clock, entry, message, before };
+        this.#failuresSeen = scrim.failures;
         try {
             uiFocus(entry.node);
         } catch {
@@ -419,13 +462,24 @@ export function lockRelease(): void {
 /**
  * One frame of the lock screen and of the toolkit that draws it, then `after` (what the host runs once the toolkit has
  * drawn: the XR scene's frame). A failure of the screen is passed to `onError` and does not stop the toolkit's frame.
+ * The lease on the screen is renewed last, after the toolkit has drawn it: a frame that threw, or that drew the screen
+ * with a failure, renews nothing (see `LockScreen.renew`).
  */
 export function runLockFrame(onError: (site: string, error: unknown) => void, after: () => void = () => {}): void {
+    let ran = false;
     try {
         screen?.frame();
+        ran = true;
     } catch (error) {
         onError("LockScreen.frame", error);
     }
     runUiFrame();
+    if (ran) {
+        try {
+            screen?.renew();
+        } catch (error) {
+            onError("LockScreen.renew", error);
+        }
+    }
     after();
 }

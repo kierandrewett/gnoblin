@@ -96,6 +96,8 @@ export class Canvas {
     };
     // The bytes last written. A frame skips the paint when the new bytes are the same.
     #content: number[] | null = null;
+    // How many steps of the update pass of this canvas have failed.
+    #failures = 0;
 
     constructor(options: CanvasOptions = {}) {
         const node = host().create();
@@ -147,6 +149,20 @@ export class Canvas {
     /** Whether the canvas still exists in the compositor tree. */
     get alive(): boolean {
         return this.#alive;
+    }
+
+    /**
+     * How many steps of the update pass (refresh, arrange, draw) have failed for this canvas and for every canvas under
+     * it. A draw fails when `draw()` throws or when the host refuses what it writes. A screen that has to prove it is
+     * alive (the lock screen) reads this before and after a frame: a count that grew is a frame that did not draw.
+     * Handlers do not count: they act on one event and report their own failure.
+     */
+    get failures(): number {
+        let total = this.#failures;
+        for (const child of this.children) {
+            total += child.failures;
+        }
+        return total;
     }
 
     /** The natural width in logical pixels. Subclasses can override this when their content has a natural size. */
@@ -280,12 +296,22 @@ export class Canvas {
         if (!this.#alive) {
             return;
         }
-        guard(this, "refresh", () => this.refresh());
-        guard(this, "arrange", () => this.arrange());
+        this.#step("refresh", () => this.refresh());
+        this.#step("arrange", () => this.arrange());
         for (const child of [...this.children]) {
             child.update();
         }
-        guard(this, "draw", () => this.#flush());
+        this.#step("draw", () => this.#flush());
+    }
+
+    /** Runs one step of the update pass. A failure is reported and counted, and the pass goes on. */
+    #step(what: string, body: () => void): void {
+        try {
+            body();
+        } catch (error) {
+            this.#failures += 1;
+            reportError(`${this.constructor.name}.${what}`, error);
+        }
     }
 
     /** Writes changed node properties and sends the paint list only when its bytes differ. */

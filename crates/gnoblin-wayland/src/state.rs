@@ -3835,16 +3835,30 @@ impl Host for State {
         // A seat focus the shell wrote in the drain moves the keyboard to that window. The
         // compositor's own focus was published above, before the drain, so it never reads back.
         if self.composer.main_seat_focus_written_by_shell() {
-            self.focus = self.composer.main_seat_focus_window();
-            // A shell node holds the seat focus: the window keeps none, and the keys go to the shell.
-            if self.composer.main_seat_focus_window().is_none() {
-                self.composer.hold_seat_focus_for_shell();
+            let written = self.composer.main_seat_focus_window();
+            if self.lock.state() == LockState::Unlocked {
+                self.focus = written;
+                // A shell node holds the seat focus: the window keeps none, and the keys go to the shell.
+                if written.is_none() {
+                    self.composer.hold_seat_focus_for_shell();
+                }
+                let target = written.and_then(|window| self.surface_of(window));
+                self.set_keyboard_focus(target);
+            } else {
+                // A locked session's keyboard is the lock's (`refresh_lock_focus`): the shell's lock screen takes the
+                // keys through its own node, and an external locker's surface keeps the keyboard it was given. What
+                // the shell writes is the window focus the session comes back to. A window it names (a window that
+                // arrived under the lock and took the focus) is the one that has the keyboard at the unlock; a node
+                // of its own (the lock screen's entry) leaves the window that had the focus before the lock where it
+                // was, so an unlock through the shell's screen gives the keyboard back as the card's does.
+                match written {
+                    Some(window) => {
+                        self.focus = Some(window);
+                        self.composer.set_main_seat_focus(Some(window));
+                    }
+                    None => self.composer.hold_seat_focus_for_shell(),
+                }
             }
-            let target = self
-                .composer
-                .main_seat_focus_window()
-                .and_then(|window| self.surface_of(window));
-            self.set_keyboard_focus(target);
         }
         // The shell's answers to window requests: its `close` calls, then the state and size it wrote.
         let window_calls = self.tree.take_window_calls();

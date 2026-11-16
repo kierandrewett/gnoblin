@@ -14,7 +14,7 @@ use gnoblin_tree_client::tree_mirror::{MirrorChange, MirrorChangeKind, MirrorVal
 mod common;
 use common::*;
 
-const IMPORTS: &str = "import * as lib from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = lib;\nObject.assign(globalThis, exported);\n(globalThis as any).g = globalThis;\n";
+const IMPORTS: &str = "import * as lib from \"gnoblin\";\nimport { PasswordEntry } from \"gnoblin/lock\";\nconst { gnoblin: _runtime, ...exported } = lib;\nObject.assign(globalThis, exported);\n(globalThis as any).g = globalThis;\n(globalThis as any).PasswordEntry = PasswordEntry;\n";
 
 const SEAT: u64 = 21;
 const A: u64 = 20;
@@ -362,6 +362,118 @@ fn a_lock_frame_that_throws_renews_no_lease_and_the_lease_comes_back_when_it_run
     assert!(
         beats(&rig) > before,
         "the screen renews its lease once its frame runs again"
+    );
+}
+
+#[test]
+fn a_screen_with_a_canvas_that_fails_to_draw_renews_no_lease_and_the_lease_comes_back_when_it_draws_again() {
+    let mut rig = locked();
+    let before = beats(&rig);
+    assert!(before >= 1, "the screen is up and renews its lease");
+
+    // One canvas of the screen cannot draw from now on. The toolkit reports it and draws the rest, and the screen's own
+    // frame runs to its end: only the toolkit's pass over the screen failed. A turn that failed to draw is not a healthy
+    // one, so no lease is renewed while it goes on and the compositor's card takes the password.
+    exec(
+        &mut rig,
+        "globalThis.drawn = Text.prototype.draw; Text.prototype.draw = function () { throw new Error('cannot draw'); };",
+    );
+    let mut told = Vec::new();
+    for _ in 0..4 {
+        rig.advance(600);
+        told.extend(rig.settle());
+    }
+    assert_eq!(beats(&rig), before, "a screen that cannot draw renews nothing");
+    assert!(
+        told.iter().any(|line| line.contains("draw threw")),
+        "the failure is reported: {told:?}"
+    );
+
+    // It is mended: the first turn that draws every canvas renews the lease again.
+    exec(&mut rig, "Text.prototype.draw = globalThis.drawn;");
+    rig.advance(600);
+    rig.settle();
+    assert!(
+        beats(&rig) > before,
+        "the screen renews its lease once its canvases draw again"
+    );
+}
+
+#[test]
+fn a_screen_whose_canvases_the_compositor_destroyed_renews_no_lease() {
+    let mut rig = locked();
+    let before = beats(&rig);
+    assert!(before >= 1);
+    // The compositor destroyed the screen's nodes: what the shell holds is no screen, whatever its frame says.
+    let scrim = *rig.comp.children(LOCK).first().expect("the lock screen is up");
+    rig.comp.destroy(scrim);
+    for _ in 0..4 {
+        rig.advance(600);
+        rig.settle();
+    }
+    assert_eq!(
+        beats(&rig),
+        before,
+        "a screen that is no longer in the tree renews nothing"
+    );
+}
+
+#[test]
+fn a_key_handler_that_throws_is_reported_and_is_not_a_turn_that_failed_to_draw() {
+    let mut rig = locked();
+    let before = beats(&rig);
+    // A handler acts on one key and reports its own failure; the frame that drew the screen is a healthy one.
+    exec(
+        &mut rig,
+        "globalThis.keyed = PasswordEntry.prototype.onKey; PasswordEntry.prototype.onKey = function () { throw new Error('key handler'); };",
+    );
+    let (entry, _) = entry_and_message(&rig);
+    rig.comp.key(entry, "a", "a", true);
+    rig.comp.key(entry, "a", "", false);
+    rig.advance(600);
+    let told = rig.settle();
+    exec(&mut rig, "PasswordEntry.prototype.onKey = globalThis.keyed;");
+    assert!(
+        beats(&rig) > before,
+        "a handler's failure does not stop the lease: {told:?}"
+    );
+}
+
+/// The seat's focus, as the compositor holds it.
+fn focus(rig: &Rig) -> Option<u64> {
+    match rig.comp.value(SEAT, "focus") {
+        Some(MirrorValue::Node(id)) if id != 0 => Some(id),
+        _ => None,
+    }
+}
+
+const ARRIVAL: u64 = 6;
+
+#[test]
+fn a_window_that_takes_the_focus_while_the_screen_is_up_loses_it_to_the_screen_and_has_it_back_when_it_comes_down() {
+    let mut rig = locked();
+    let (entry, _) = entry_and_message(&rig);
+    assert_eq!(focus(&rig), Some(entry), "the entry holds the keyboard");
+
+    // A window arrives under the lock and the stock policy gives it the focus: the seat's focus names it. The screen is
+    // modal, so the next frame takes the keyboard back: a password typed now must have a node that reads it.
+    rig.comp.create_window(ARRIVAL, "Arrival", "foot");
+    rig.comp.external_set(SEAT, "focus", MirrorValue::Node(ARRIVAL));
+    settle(&mut rig);
+    assert_eq!(
+        focus(&rig),
+        Some(entry),
+        "the screen takes the keyboard back from a window that took it"
+    );
+
+    // The session unlocks: the window that was given the focus under the lock is the one that has it, as it would
+    // have had it without the lock, and not the one that had it before.
+    rig.comp.external_set(LOCK, "state", text("not-locked"));
+    settle(&mut rig);
+    assert_eq!(
+        focus(&rig),
+        Some(ARRIVAL),
+        "the window that took the focus under the lock has it when the screen comes down"
     );
 }
 

@@ -112,15 +112,23 @@ impl State {
         self.lock.state() == LockState::Locked && self.lock.locker() == Some(internal_locker())
     }
 
-    /// Whether a shell holds the lock screen: it holds the tree, has engaged the lock and its lease on it has not
-    /// lapsed. A lock first seen engaged starts the lease, so the shell has [`LOCK_UI_LEASE_MS`] to renew it.
+    /// Whether a shell holds the lock screen: it holds the tree, has engaged the lock, its lease on it has not lapsed,
+    /// and the keyboard is on the screen's entry. A lock first seen engaged starts the lease, so the shell has
+    /// [`LOCK_UI_LEASE_MS`] to renew it.
+    ///
+    /// The last condition is what makes a healthy shell no guarantee that somebody takes the password. A shell that
+    /// beats on time but has lost the keyboard (a window that arrived under the lock took the seat's focus, or a script
+    /// moved it) holds a screen that no key reaches, and the lease alone would keep the card away for as long as the
+    /// shell stayed healthy: a session nobody can unlock. With no node to give the keys to, the screen holds nothing,
+    /// and the card takes them after [`LOCK_UI_GRACE_MS`] whatever the shell is doing. The lease clock is the shell's
+    /// own and does not restart when only the keyboard moves.
     fn lock_ui_held(&mut self) -> bool {
         if !(self.composer.shell_places() && self.composer.lock_ui_engaged()) {
             self.lock_card.beat = None;
             return false;
         }
         let beat = *self.lock_card.beat.get_or_insert(self.clock);
-        self.clock.since(beat) < LOCK_UI_LEASE_MS
+        self.clock.since(beat) < LOCK_UI_LEASE_MS && self.composer.shell_lock_key_target().is_some()
     }
 
     /// Renews the shell's lease on the lock screen, as many times as it called `heartbeat` since the last frame. A

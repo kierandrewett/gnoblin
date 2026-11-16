@@ -3203,12 +3203,30 @@ impl Composer {
     }
 
     /// The shell's node that takes the keys while the compositor's own lock covers the session: the same node
-    /// [`Self::shell_key_target`] names, and only while the shell's lock screen is up (the `lock` node's `engaged` is
-    /// true). The shell is the compositor's own trusted peer and the lock screen is what it draws, so the typed
-    /// password reaches the screen that checks it; no client ever sees the keys.
+    /// [`Self::shell_key_target`] names, only while the shell's lock screen is up (the `lock` node's `engaged` is
+    /// true), and only when that node is part of the lock screen, under the `lock` node. The shell is the compositor's
+    /// own trusted peer and the lock screen is what it draws, so the typed password reaches the screen that checks
+    /// it; no client ever sees the keys, and no other node of the shell does either.
     #[must_use]
     pub fn shell_lock_key_target(&self) -> Option<NodeId> {
-        self.lock_ui_engaged().then(|| self.shell_key_target()).flatten()
+        if !self.lock_ui_engaged() {
+            return None;
+        }
+        self.shell_key_target().filter(|node| self.under_lock_node(*node))
+    }
+
+    /// Whether `node` is the `lock` node's descendant: a canvas of the shell's lock screen.
+    fn under_lock_node(&self, mut node: NodeId) -> bool {
+        let Some(lock) = self.lock_node else {
+            return false;
+        };
+        while let Some(parent) = self.scene.parent(node) {
+            if parent == lock {
+                return true;
+            }
+            node = parent;
+        }
+        false
     }
 
     /// Whether the shell has engaged the lock: its lock screen is up and holds the lock UI.
@@ -3276,26 +3294,19 @@ impl Composer {
     /// cover, so a shell that draws nothing leaves the bare cover, and nothing but those canvases ever shows: no window
     /// and no canvas outside the lock node's subtree. Returns whether anything was drawn.
     pub fn compose_lock_ui(&self, output: OutputId, frame: &mut OutputFrame) -> bool {
-        let (Some(lock), Some(rect)) = (self.lock_node, self.scene.outputs().get(&output).copied()) else {
+        let (Some(_), Some(rect)) = (self.lock_node, self.scene.outputs().get(&output).copied()) else {
             return false;
         };
         if !self.lock_ui_engaged() || !self.scene.shell_places() {
             return false;
         }
-        let under_lock = |mut node: NodeId| {
-            while let Some(parent) = self.scene.parent(node) {
-                if parent == lock {
-                    return true;
-                }
-                node = parent;
-            }
-            false
-        };
         let ranks = self.paint_ranks();
         let mut canvases: Vec<(u32, NodeId)> = self
             .canvases
             .iter()
-            .filter(|(node, picture)| picture.image.is_some() && self.scene.drawn(**node) && under_lock(**node))
+            .filter(|(node, picture)| {
+                picture.image.is_some() && self.scene.drawn(**node) && self.under_lock_node(**node)
+            })
             .filter_map(|(node, _)| Some((*ranks.get(node)?, *node)))
             .collect();
         canvases.sort_unstable();

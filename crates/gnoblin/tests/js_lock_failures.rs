@@ -17,9 +17,17 @@
 //! The failures are: a shell that hangs holding the screen, a frame of the screen that throws, a shell that crashes (its
 //! role ends with an engine error and its connection closes, which is what a killed process does to the compositor;
 //! `js_guardian.rs` kills the real process), a slow shell that renews in time and one that does not, a script that spins
-//! in a frame handler, and a script that spins in a reload. The spins run under budgets far longer than the product's
-//! (`FRAME_BUDGET` is 5 s and `STAGE_BUDGET` 30 s) on purpose: the bound is a property of the lease and not of the budget,
-//! so a test that cut the spin at the budget would prove less.
+//! in a frame handler, a script that spins in a reload, and one that spins when a window arrives. The spins run under
+//! budgets far longer than the product's (`FRAME_BUDGET` is 5 s and `STAGE_BUDGET` 30 s) on purpose: the bound is a
+//! property of the lease and not of the budget, so a test that cut the spin at the budget would prove less.
+//!
+//! A spin that does not happen proves nothing: the session unlocks through the shell's own screen all the same. So each
+//! spin test reads [`Shell::stuck_for`], the time the shell's thread has been inside one tick, when the card has taken
+//! the password, and fails unless the shell was still in the spin.
+//!
+//! The second half of the file is the windows: a window that arrives under the lock takes the keyboard with the stock
+//! focus policy, and a healthy shell, which renews its lease on time, must not leave the session with nobody to type a
+//! password to (`the_lock_screen_takes_the_keys`).
 //!
 //! What stays unproven here: the card's pixels (no test reads the output's picture) and a real process hung by a
 //! signal over a full socket buffer, which `js_guardian.rs` does with `SIGSTOP`. The password check is the scripted
@@ -32,9 +40,11 @@ mod support;
 use support::Mapper;
 use support::lock_session::*;
 
-/// What the scripts of these tests reach into: the lock screen, the frame hook and the runtime.
-const IMPORTS: &str = "import { gnoblin, lockScreen, onUiFrame } from \"gnoblin\";\n\
-                       Object.assign(globalThis, { gnoblin, lockScreen, onUiFrame });\n";
+/// What the scripts of these tests reach into: every export of the library on the global object (the lock screen, the
+/// frame hook, the toolkit) next to the runtime, which is already a global and read-only.
+const IMPORTS: &str = "import * as lib from \"gnoblin\";\n\
+                       const { gnoblin: _runtime, ...exported } = lib;\n\
+                       Object.assign(globalThis, exported);\n";
 
 /// How long a read of the tree may take while the shell is busy. It takes milliseconds when nothing is wrong; this is
 /// what a machine that other tests keep busy may take, and well under the seconds a compositor that waited for the shell
@@ -313,12 +323,17 @@ fn spinner(trigger: &str) -> String {
     )
 }
 
-/// What a spin in a frame handler must leave: the session served and unlocked within the bound, by the card, while the
-/// script was still spinning.
+/// What a spin must leave: the session served and unlocked within the bound, by the card, while the script was still
+/// spinning. The shell's thread was inside one tick for the length of the spin when the card took the password, which
+/// is read from outside ([`Shell::stuck_for`]): a script that never spun leaves the shell's own screen to take the
+/// password, which passes every other assertion here.
 #[track_caller]
-fn assert_served_during_the_spin(session: &Session, since: Instant, what: &str) {
+fn assert_served_during_the_spin(session: &Session, shell: &Shell, since: Instant, what: &str) {
     let (took, slowest) = serve_while_it_spins(session, since);
-    eprintln!("{what}: unlocked {took:?} after it began, the slowest read of the tree {slowest:?}");
+    let stuck = shell.stuck_for();
+    eprintln!(
+        "{what}: unlocked {took:?} after it began, the shell inside one tick for {stuck:?}, the slowest read of the tree {slowest:?}"
+    );
     assert!(
         took <= inside_the_spin(),
         "{what}: the session unlocked {took:?} after the spin began; the card should take the password within {:?}",
@@ -327,6 +342,11 @@ fn assert_served_during_the_spin(session: &Session, since: Instant, what: &str) 
     assert!(
         took < SPIN,
         "{what}: the session unlocked only after the spin ended, so the card did not take it"
+    );
+    assert!(
+        stuck >= Duration::from_secs(1) && stuck + Duration::from_secs(2) >= took,
+        "{what}: the shell had been inside one tick for only {stuck:?} when the session unlocked {took:?} after the spin \
+         should have begun: the script did not spin, and the shell's own screen took the password"
     );
 }
 
@@ -347,18 +367,16 @@ fn a_script_that_spins_in_a_frame_handler_cannot_hold_the_lock_screen_or_the_com
     while Instant::now() < spinning {
         std::thread::sleep(Duration::from_millis(50));
     }
-    assert_served_during_the_spin(&session, spinning, "a spin in a frame handler");
+    assert_served_during_the_spin(&session, &shell, spinning, "a spin in a frame handler");
     let problems = shell.finish();
     assert!(
         problems.iter().all(|line| !line.contains("hunter2")),
         "the shell reported: {problems:?}"
     );
+    assert!(problems.is_empty(), "the script loaded and ran clean: {problems:?}");
 }
 
 #[test]
-#[ignore = "reproduced open defect: with a window mapped under the lock, a shell that then spins holding the lock screen \
-            is not replaced by the card within the bound; the same hang with the window open before the lock and the \
-            same spin with no window pass (design/js-critique-status.md, 'Found on the way')"]
 fn a_script_that_spins_when_a_window_arrives_cannot_hold_the_lock_screen_or_the_compositor_past_the_bound() {
     let session = Session::start();
     lock(&session);
@@ -374,7 +392,34 @@ fn a_script_that_spins_when_a_window_arrives_cannot_hold_the_lock_screen_or_the_
     let mut mapper = Mapper::connect(&session.wayland());
     let spinning = Instant::now();
     mapper.map_window("org.example.trigger", "Trigger");
-    assert_served_during_the_spin(&session, spinning, "a spin when a window arrives");
+    assert_served_during_the_spin(&session, &shell, spinning, "a spin when a window arrives");
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the script loaded and ran clean: {problems:?}");
+}
+
+#[test]
+fn windows_that_arrive_and_go_while_the_shell_spins_do_not_move_the_card() {
+    let session = Session::start();
+    lock(&session);
+    wait_until("the session locked", &session, |seen| seen.state == "locked");
+    let config = config_with(&spinner("Date.now() - loaded > 2500"));
+    let mut shell = Shell::start_with(&session, config.path(), |config| {
+        config.watch = false;
+        config.shell.frame_budget = Duration::from_secs(60);
+    });
+    wait_for_the_screen(&session);
+    let spinning = Instant::now() + Duration::from_millis(2500);
+    while Instant::now() < spinning {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // The shell is in the spin; windows come and go beneath it, a client that never draws among them. None of them is
+    // heard by the shell, and none may postpone the card or leave the compositor waiting for the placement it asked for.
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.map_window("org.example.first", "First");
+    mapper.open_window_without_buffer("org.example.never", "Never");
+    mapper.map_window("org.example.second", "Second");
+    mapper.close_window(0);
+    assert_served_during_the_spin(&session, &shell, spinning, "windows arriving and going in a spin");
     let _ = shell.finish();
 }
 
@@ -426,16 +471,190 @@ fn a_script_that_spins_in_a_reload_cannot_hold_the_lock_screen_or_the_compositor
     )
     .expect("init.ts");
 
-    let (took, slowest) = serve_while_it_spins(&session, saved);
-    assert!(
-        took <= inside_the_spin(),
-        "the session unlocked {took:?} after the reload began; the card should take the password within {:?} of the last beat",
-        inside_the_spin()
-    );
-    assert!(
-        took < SPIN,
-        "the session unlocked only after the reload ended, so the card did not take it"
-    );
-    eprintln!("a spin in a reload: unlocked {took:?} after the save, the slowest read of the tree {slowest:?}");
+    assert_served_during_the_spin(&session, &shell, saved, "a spin in a reload");
     let _ = shell.finish();
+}
+
+// ---- a window that arrives under the lock ------------------------------------------------------------------------
+
+/// How long a healthy shell may leave the keys without a taker after a window arrived: the screen takes the keyboard
+/// back within a frame, and the card is the fallback after the compositor's grace. Nothing here waits for the grace.
+const KEYS_BACK_WITHIN: Duration = Duration::from_secs(4);
+
+/// The shell's own screen takes the keys: a wrong password is answered `Wrong password.` on it, in the tree, where only
+/// the shell's screen can write it (the compositor's card answers on the card), and the right one unlocks. Each is
+/// typed until it takes, as a user retries, within [`KEYS_BACK_WITHIN`].
+#[track_caller]
+fn the_lock_screen_takes_the_keys(session: &Session, what: &str) {
+    let began = Instant::now();
+    loop {
+        type_a_wrong_password(session);
+        std::thread::sleep(Duration::from_millis(300));
+        let seen = view(&session.ipc());
+        assert_eq!(seen.state, "locked", "{what}: a wrong password unlocked: {seen:?}");
+        if seen.texts.iter().any(|text| text == "Wrong password.") {
+            break;
+        }
+        assert!(
+            began.elapsed() < KEYS_BACK_WITHIN,
+            "{what}: no key typed in {KEYS_BACK_WITHIN:?} reached the shell's screen; the keyboard is with something else, \
+             and the shell kept the lock screen with nobody to type into: {seen:?}"
+        );
+    }
+    // Three wrong passwords in a row are rate limited, so the right one is typed until the limit has passed.
+    let right = Instant::now();
+    loop {
+        type_the_password(session);
+        std::thread::sleep(Duration::from_millis(400));
+        if view(&session.ipc()).state == "not-locked" {
+            return;
+        }
+        assert!(
+            right.elapsed() < KEYS_BACK_WITHIN + SLACK,
+            "{what}: the right password never unlocked the session: {:?}",
+            view(&session.ipc())
+        );
+    }
+}
+
+/// A locked session whose shell, run in a thread, holds the lock screen.
+fn locked_session_with_a_shell() -> (Session, tempfile::TempDir, Shell) {
+    let session = Session::start();
+    lock(&session);
+    wait_until("the session locked", &session, |seen| seen.state == "locked");
+    let config = config_with("");
+    let shell = Shell::start(&session, config.path());
+    wait_for_the_screen(&session);
+    // Long enough for the screen to have renewed its lease: the shell is healthy from here on.
+    std::thread::sleep(Duration::from_millis(700));
+    (session, config, shell)
+}
+
+#[test]
+fn a_window_that_arrives_under_the_lock_does_not_leave_the_session_with_nobody_to_type_a_password_to() {
+    let (session, _config, mut shell) = locked_session_with_a_shell();
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.map_window("org.example.arrival", "Arrival");
+    the_lock_screen_takes_the_keys(&session, "a window arrived under the lock");
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
+#[test]
+fn many_windows_arriving_one_after_another_under_the_lock_do_not_either() {
+    let (session, _config, mut shell) = locked_session_with_a_shell();
+    let mut mapper = Mapper::connect(&session.wayland());
+    for number in 0..5 {
+        mapper.map_window("org.example.many", &format!("Window {number}"));
+        std::thread::sleep(Duration::from_millis(120));
+    }
+    the_lock_screen_takes_the_keys(&session, "five windows arrived under the lock");
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
+#[test]
+fn a_window_that_arrives_and_is_closed_under_the_lock_leaves_the_keys_with_the_screen() {
+    let (session, _config, mut shell) = locked_session_with_a_shell();
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.map_window("org.example.gone", "Gone");
+    std::thread::sleep(Duration::from_millis(400));
+    // The window has had the focus, and the node that held it is destroyed: the seat's focus is left naming nothing.
+    mapper.close_window(0);
+    the_lock_screen_takes_the_keys(&session, "a window arrived under the lock and was closed");
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
+#[test]
+fn a_client_that_never_draws_does_not_take_the_keys_from_the_lock_screen() {
+    let (session, _config, mut shell) = locked_session_with_a_shell();
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.open_window_without_buffer("org.example.never", "Never");
+    std::thread::sleep(Duration::from_millis(400));
+    the_lock_screen_takes_the_keys(&session, "a client that never draws opened a window under the lock");
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
+#[test]
+fn a_window_that_maps_while_the_lock_is_being_taken_does_not_leave_the_session_with_nobody_to_type_a_password_to() {
+    let session = Session::start();
+    // The shell runs on an unlocked session, as it does when a user locks one.
+    let config = config_with("");
+    let mut shell = Shell::start(&session, config.path());
+    std::thread::sleep(Duration::from_millis(1500));
+    let mut mapper = Mapper::connect(&session.wayland());
+    // The lock and the window race: the window maps in the turns in which the cover goes up and the screen engages.
+    lock(&session);
+    mapper.map_window("org.example.racing", "Racing");
+    wait_until("the session locked", &session, |seen| seen.state == "locked");
+    wait_for_the_screen(&session);
+    the_lock_screen_takes_the_keys(&session, "a window mapped as the lock was taken");
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
+#[test]
+fn a_window_that_was_open_before_the_lock_leaves_the_keys_with_the_lock_screen() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.map_window("org.example.before", "Before");
+    let config = config_with("");
+    let mut shell = Shell::start(&session, config.path());
+    std::thread::sleep(Duration::from_millis(1500));
+    lock(&session);
+    wait_until("the session locked", &session, |seen| seen.state == "locked");
+    wait_for_the_screen(&session);
+    the_lock_screen_takes_the_keys(&session, "a window was open before the lock");
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
+}
+
+#[test]
+fn a_healthy_shell_that_keeps_the_keyboard_from_its_own_screen_still_gets_the_card() {
+    // The shell is well: it renews its lease on time and never stops running frames. A script of the user's gives the
+    // keyboard to a canvas outside the lock screen on every frame, after the screen has taken it back, so that the
+    // keyboard is never on the screen when a key arrives. Nothing is spinning and nothing is hung: only the keys have
+    // no taker, and the compositor's card takes them within its grace although the lease is fresh.
+    let session = Session::start();
+    lock(&session);
+    wait_until("the session locked", &session, |seen| seen.state == "locked");
+    let config = config_with(
+        "const thief = new Box({ width: 10, height: 10 });\n\
+         thief.mountTop();\n\
+         onUiFrame(() => thief.focus());",
+    );
+    let mut shell = Shell::start(&session, config.path());
+    wait_for_the_screen(&session);
+    let lost = Instant::now();
+    let (took, slowest) = {
+        let ipc = session.ipc();
+        let mut slowest = Duration::ZERO;
+        let took = the_password_is_still_needed(
+            &session,
+            lost,
+            Duration::from_millis(gnoblin_wayland::LOCK_UI_GRACE_MS),
+            |window| {
+                let started = Instant::now();
+                let _ = view(&ipc);
+                slowest = slowest.max(started.elapsed());
+                std::thread::sleep(window);
+            },
+        );
+        (took, slowest)
+    };
+    eprintln!(
+        "a healthy shell that keeps the keyboard away: unlocked {took:?} after the screen came up, slowest read {slowest:?}"
+    );
+    assert!(
+        took <= Duration::from_millis(gnoblin_wayland::LOCK_UI_GRACE_MS) + SLACK,
+        "the card took the password {took:?} after the screen came up with the keyboard away from it"
+    );
+    assert!(
+        shell.stuck_for() < Duration::from_secs(1),
+        "the shell was never stuck, so it was the keys and not a spin that the card answered"
+    );
+    let problems = shell.finish();
+    assert!(problems.is_empty(), "the shell reported: {problems:?}");
 }

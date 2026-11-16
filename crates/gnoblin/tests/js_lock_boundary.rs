@@ -100,10 +100,14 @@ fn a_window_that_had_the_keyboard_hears_nothing_while_the_shells_lock_screen_tak
     mapper.roundtrip();
     assert_eq!(keys.pressed(), [KEY_A], "the window heard the right password too");
 
-    // Not asserted: that the window has the keyboard again. The compositor's card gives the window the keyboard back at
-    // the unlock (the next test); the shell's screen did not in this run, and a window that had the keyboard has to be
-    // clicked after an unlock through it (design/js-critique-status.md, "Found on the way"). What this test pins is
-    // what the window heard while the session was locked, which is nothing.
+    // The window that had the keyboard has it again: the unlock through the shell's screen gives it back as the card's
+    // does (the next test). The shell's screen moved the seat's focus onto its own entry while it was up, and the
+    // compositor kept the window as the focus the session comes back to.
+    key(&session, KEY_B);
+    assert!(
+        heard(&mut mapper, &keys, KEY_B),
+        "the window never heard a key after the unlock through the shell's lock screen"
+    );
     let problems = shell.finish();
     assert!(problems.is_empty(), "the shell reported: {problems:?}");
 }

@@ -17,7 +17,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -133,6 +133,9 @@ impl Drop for Session {
 /// crashed: a link or engine error is the end of a role, as it is of the process).
 pub struct Shell {
     stop: Arc<AtomicBool>,
+    /// When the tick the shell is inside began, in milliseconds after `began` plus one; zero between ticks.
+    in_tick: Arc<AtomicU64>,
+    began: Instant,
     thread: Option<JoinHandle<Vec<String>>>,
 }
 
@@ -151,6 +154,9 @@ impl Shell {
         let dir = dir.to_path_buf();
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = Arc::clone(&stop);
+        let in_tick = Arc::new(AtomicU64::new(0));
+        let ticking = Arc::clone(&in_tick);
+        let began = Instant::now();
         let thread = std::thread::Builder::new()
             .name("js-shell".to_owned())
             .spawn(move || {
@@ -159,12 +165,20 @@ impl Shell {
                 configure(&mut config);
                 let mut role = JsRole::connect(&env, config).expect("the shell attaches");
                 let mut problems = Vec::new();
+                let mut taken = 0;
                 while !stopped.load(Ordering::Relaxed) {
-                    if let Err(error) = role.tick() {
+                    ticking.store(
+                        u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX - 1) + 1,
+                        Ordering::Relaxed,
+                    );
+                    let ticked = role.tick();
+                    ticking.store(0, Ordering::Relaxed);
+                    if let Err(error) = ticked {
                         problems.push(error.to_string());
                         break;
                     }
-                    problems.extend(role.diagnostics().iter().cloned());
+                    problems.extend(role.diagnostics_since(taken).iter().cloned());
+                    taken = role.diagnostics_reported();
                     std::thread::sleep(Duration::from_millis(5));
                 }
                 problems
@@ -172,7 +186,18 @@ impl Shell {
             .expect("the shell thread");
         Self {
             stop,
+            in_tick,
+            began,
             thread: Some(thread),
+        }
+    }
+
+    /// How long the shell has been inside the one tick it is in, which is zero between ticks. A tick that the script
+    /// spins in lasts as long as the spin, so this is the proof, read from outside, that the script is spinning.
+    pub fn stuck_for(&self) -> Duration {
+        match self.in_tick.load(Ordering::Relaxed) {
+            0 => Duration::ZERO,
+            at => self.began.elapsed().saturating_sub(Duration::from_millis(at - 1)),
         }
     }
 

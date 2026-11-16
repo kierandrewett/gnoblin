@@ -32,6 +32,16 @@ pub struct Node {
     pub props: BTreeMap<String, MirrorValue>,
 }
 
+/// A call the shell sent, with the secret text it carried.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SentCall {
+    pub node: u64,
+    pub method: String,
+    pub args: Vec<u8>,
+    pub token: u64,
+    pub text: String,
+}
+
 /// A `measure` call the shell sent.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Measure {
@@ -1181,6 +1191,48 @@ impl FakeCompositor {
             .nodes
             .get(&node)
             .and_then(|entry| entry.props.get(key).cloned())
+    }
+
+    /// What the fake holds, for a test that reads or changes it as the compositor would (the nodes, the queue of what
+    /// the shell has yet to be told, the transactions it sent).
+    pub fn borrow(&self) -> std::cell::Ref<'_, Compositor> {
+        self.0.borrow()
+    }
+
+    /// The same, for a test that changes it.
+    pub fn borrow_mut(&self) -> std::cell::RefMut<'_, Compositor> {
+        self.0.borrow_mut()
+    }
+
+    /// Whether `node` is in the compositor's tree.
+    pub fn exists(&self, node: u64) -> bool {
+        self.0.borrow().nodes.contains_key(&node)
+    }
+
+    /// Every `authenticate` call the shell sent, with its arguments and the secret text it carried, in order.
+    pub fn authentications(&self) -> Vec<SentCall> {
+        self.0
+            .borrow()
+            .sent
+            .iter()
+            .flatten()
+            .filter_map(|op| match op {
+                TxOp::Call {
+                    node,
+                    method,
+                    args,
+                    token,
+                    text,
+                } if method == "authenticate" => Some(SentCall {
+                    node: *node,
+                    method: method.clone(),
+                    args: args.clone(),
+                    token: *token,
+                    text: text.expose().to_owned(),
+                }),
+                _ => None,
+            })
+            .collect()
     }
 
     /// The text of every `text` op of the canvas `node`'s paint list.
