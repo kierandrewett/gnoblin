@@ -437,7 +437,9 @@ Code today:
   dmabuf window. A View of a window that shows a dmabuf draws the window's real pixels when the backend can read the
   buffer back (`Backend::read_dmabuf`: `Gles::read_dmabuf` on the headless GLES renderer and, through its probe context,
   on the DRM backend), and masks it grey (logging once) when it cannot; a secure window stays masked either way. A
-  window that shows a dmabuf leaves without a close fade (`gnoblin-fxp4`).
+  window that shows a dmabuf fades out on close and unmap like any other: the fade keeps the buffer's handle, which owns
+  the plane descriptors, and the renderer draws it again (`Closing.source`; proven with the stand-in GPU, not drawn on
+  a real one: `gnoblin-lubw`).
 - **Capture:** `ext-image-copy-capture` and `zwlr_screencopy` (v3, `linux_dmabuf`) offer a GPU buffer, and only when
   the backend can render into one: `Backend::dmabuf_capture_support(output)` for an output or a window and
   `dmabuf_picture_support()` for a View answer the render node and the formats, and the software and Vulkan renderers

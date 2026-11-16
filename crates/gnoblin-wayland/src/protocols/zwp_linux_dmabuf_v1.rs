@@ -45,8 +45,10 @@
 //! - **Readiness.** A client's GPU work may be unfinished when it commits. A commit that attaches a
 //!   dmabuf waits on a blocker for the buffer's fences ([`hold_commit_until_ready`]), so the
 //!   compositor shows the previous frame until the new one is complete.
-//! - **Close fade.** A window that closes fades out its last picture, read back from its buffer.
-//!   A dmabuf has no CPU picture, so a window that shows one leaves at once.
+//! - **Close fade.** A window that closes or unmaps fades out its last picture. A shared-memory window keeps a
+//!   copy of its pixels; a dmabuf window keeps the buffer's handle, which owns the plane descriptors and so the
+//!   memory, and the renderer draws it again for the fade. A client that rewrites the buffer while the fade runs
+//!   shows through it.
 //!
 //! # Failure modes
 //!

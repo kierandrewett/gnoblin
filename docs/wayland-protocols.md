@@ -68,6 +68,17 @@ It is served only on the privileged socket, never on the ordinary one. The
 session names that socket in `GNOBLIN_PRIVILEGED_DISPLAY`, so a capture tool
 runs as `WAYLAND_DISPLAY=$GNOBLIN_PRIVILEGED_DISPLAY grim`.
 
+A capture tool can ask for the frame in a buffer on the GPU as well as in shared
+memory (`zwlr_screencopy` `linux_dmabuf`, `ext_image_copy_capture` `dma_buf`).
+The frame is then copied on the GPU and never crosses to the CPU.
+
+A session offers this only when it draws with GLES on a render node. The
+software and Vulkan renderers, the hardware backend and a session with no GPU
+offer shared memory only.
+
+A GPU capture follows the same rules as a shared-memory one: the session lock,
+secure windows and the supersampled size. It has not run on a real GPU yet.
+
 The privileged socket is owner-only (mode `0600`). That limits connections to
 your user, not to capture tools. Any process running as your user that can
 find the socket gets every privileged global, including screencopy, data-control

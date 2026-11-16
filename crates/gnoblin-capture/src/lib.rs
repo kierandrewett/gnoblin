@@ -225,7 +225,38 @@
 //!     `the_capture_protocols_advertise_the_composed_size`,
 //!     `the_composed_frame_is_hi_res_and_the_display_frame_is_its_exact_box_average` (`tests/supersample.rs`),
 //!     `a_view_stream_follows_the_size_the_view_is_drawn_at`, `a_window_stream_follows_the_size_the_window_is_drawn_at` and
-//!     `an_output_stream_keeps_the_size_it_started_with` (`gnoblin-pipewire-export`).
+//!     `an_output_stream_keeps_the_size_it_started_with` (`gnoblin-pipewire-export`). Into a client's GPU buffer the same
+//!     size is offered by both protocols and a buffer of the mode's size is refused as too small:
+//!     `a_supersampled_output_is_captured_into_a_gpu_buffer_at_its_composed_size` (`tests/dmabuf_capture.rs`).
+//!
+//! ## Capture into a client's GPU buffer
+//!
+//! The paths above that name `tests/dmabuf_capture.rs` cover the lock, secure content and sizes. These entries are the
+//! failure modes only the GPU path has: the frame is copied where the renderer is, by the loop and not by the protocol
+//! handler, into memory the client allocated. Every test runs on the stand-in GPU (`tests/mock_gpu`) with the real
+//! protocol, queue, table and lock; what the stand-in is not (a GL blit) is entry 41.
+//!
+//! 37. **A GPU buffer is offered where nothing can render into one,** so the client allocates for a copy that cannot be
+//!     made. A session offers `dma_buf` (and screencopy `linux_dmabuf`) only when the backend says it can, and a buffer
+//!     nobody offered is refused: `a_session_offers_dma_buf_only_when_the_backend_can_render_into_a_client_buffer`,
+//!     `a_screencopy_offers_linux_dmabuf_only_when_capable_and_copies_into_one` and
+//!     `a_gpu_buffer_is_refused_when_none_was_offered` (`tests/dmabuf_capture.rs`).
+//! 38. **A copy is written into a buffer the offer did not name,** or one too small for the frame, and runs past what
+//!     the client made: `a_gpu_buffer_in_an_unoffered_format_is_refused` (a format and a modifier, the buffer left
+//!     untouched and the session still working) and `a_gpu_buffer_that_is_too_small_is_refused` (`tests/dmabuf_capture.rs`).
+//! 39. **A copy the driver refuses is reported as a frame.** The frame fails (no `ready`, so no stale picture is
+//!     announced as a new one) and the session recovers:
+//!     `a_gpu_capture_refused_by_the_driver_fails_the_frame_and_the_next_one_works` (`tests/dmabuf_capture.rs`).
+//! 40. **The cursor is in a frame that asked for none,** or missing from one that asked: `a_gpu_screencopy_respects_the_cursor_flag_and_an_image_copy_frame_carries_none`
+//!     (`tests/dmabuf_capture.rs`) and, for the pixels the cursor covers, `a_capture_without_the_cursor_puts_back_what_it_covers`
+//!     (`gnoblin-render-gles`, `tests.rs`).
+//! 41. **A frame lands upside down, at the wrong crop, or is read before the GPU has written it.** A GL blit's row
+//!     order, crop and clipping are stated on the renderer's own texture (`a_frame_copied_into_a_buffer_is_top_first`,
+//!     `a_frame_copied_into_an_inverted_buffer_is_bottom_first` and `a_region_is_copied_from_where_it_starts`,
+//!     `gnoblin-render-gles`) and on a real render node (`a_frame_is_blitted_into_a_real_gpu_buffer_the_right_way_up`,
+//!     `tests/dmabuf_capture_gpu.rs`, which skips where there is no `/dev/dri` and has therefore not run on the build
+//!     instances). The blit ends with `glFinish`, so `ready` is sent after the pixels are in the buffer; that is read
+//!     from the code and not proved by any test on a GPU.
 //!
 //! ## Not covered, and why
 //!

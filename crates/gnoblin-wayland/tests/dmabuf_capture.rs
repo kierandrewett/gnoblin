@@ -18,6 +18,8 @@
 //! - secure windows, with an unmarked window beside as the control: `a_secure_window_is_masked_in_a_gpu_capture`,
 //!   `a_secure_window_is_omitted_from_a_gpu_capture_when_the_treatment_says_so`
 //! - the cursor flag: `a_gpu_screencopy_respects_the_cursor_flag_and_an_image_copy_frame_carries_none`
+//! - supersampling, the composed size on both protocols: `a_supersampled_output_is_captured_into_a_gpu_buffer_at_its_composed_size`
+//! - a GPU window's close fade (`gnoblin-jsrn`): `a_window_that_shows_a_gpu_buffer_fades_out_when_it_closes`
 //!
 //! A View of a GPU-backed window is tested in `tests/view_capture_e2e.rs` (`a_view_of_a_gpu_window_shows_its_real_pixels_to_every_reader`,
 //! `a_secure_gpu_window_never_reaches_a_capture_of_a_view`, the two cast tests).
@@ -34,10 +36,10 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use gnoblin_backend::headless::Headless;
+use gnoblin_backend::headless::{DEFAULT_MODE, Headless};
 use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeOp, TreeTransaction, TreeValue, ValueType};
 use gnoblin_types::{NodeId, Rect};
-use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot, TreeHooks, TreeQueue};
+use gnoblin_wayland::{Config, ControlHandle, LoopError, ManualClock, Server, SessionSnapshot, TreeHooks, TreeQueue};
 use mock_gpu::{Controls, DEVICE, Mock};
 use smithay::backend::allocator::{Fourcc, Modifier};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
@@ -66,6 +68,18 @@ const RED_BYTES: [u8; 4] = [0, 0, 255, 255];
 /// The compositor's background: opaque black.
 const BLACK_BYTES: [u8; 4] = [0, 0, 0, 255];
 
+/// The node of the window with `app_id` in the shell's tree.
+fn find_window(scene: &gnoblin_render::Scene, app_id: &str) -> Option<NodeId> {
+    let mut stack: Vec<NodeId> = scene.root_ids().to_vec();
+    while let Some(node) = stack.pop() {
+        if scene.class(node) == Some("window") && scene.text(node, "app_id") == Some(app_id) {
+            return Some(node);
+        }
+        stack.extend(scene.children(node).unwrap_or(&[]));
+    }
+    None
+}
+
 #[derive(Clone)]
 struct Handle {
     socket: PathBuf,
@@ -90,6 +104,16 @@ impl Handle {
         }
     }
 
+    /// Whether the shell's tree holds a node for the window with `app_id`, as the last frame published it.
+    fn has_window_node(&self, app_id: &str) -> bool {
+        let (sender, receiver) = mpsc::channel();
+        let wanted = app_id.to_owned();
+        self.tree.read(move |scene, _| {
+            let _ = sender.send(find_window(scene, &wanted).is_some());
+        });
+        receiver.recv_timeout(TIMEOUT).expect("the frame loop ran the read")
+    }
+
     /// Marks the window with `app_id` secure, the way the stock shell does: it writes `secure` on the window's node.
     fn mark_secure(&self, app_id: &str, secure: bool) {
         let deadline = Instant::now() + TIMEOUT;
@@ -97,16 +121,7 @@ impl Handle {
             let (sender, receiver) = mpsc::channel();
             let wanted = app_id.to_owned();
             self.tree.read(move |scene, serial| {
-                let mut stack: Vec<NodeId> = scene.root_ids().to_vec();
-                let mut found = None;
-                while let Some(node) = stack.pop() {
-                    if scene.class(node) == Some("window") && scene.text(node, "app_id") == Some(wanted.as_str()) {
-                        found = Some(node);
-                        break;
-                    }
-                    stack.extend(scene.children(node).unwrap_or(&[]));
-                }
-                let _ = sender.send((found, serial));
+                let _ = sender.send((find_window(scene, &wanted), serial));
             });
             let (found, serial) = receiver.recv_timeout(TIMEOUT).expect("the frame loop ran the read");
             if let Some(node) = found {
@@ -147,13 +162,23 @@ impl Drop for StopOnDrop {
     }
 }
 
-/// Runs a session on `backend` and `body` on a worker.
+/// Runs a session on `backend` and `body` on a worker, with motion off.
 fn run(backend: Headless, gpu: Controls, body: impl FnOnce(&Handle) + Send + 'static) {
+    run_on(backend, gpu, None, body);
+}
+
+/// [`run`], with motion on and following `clock` when there is one, so a test chooses the instant of a fade.
+fn run_on(
+    backend: Headless,
+    gpu: Controls,
+    clock: Option<Arc<ManualClock>>,
+    body: impl FnOnce(&Handle) + Send + 'static,
+) {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let socket = directory.path().join("wayland-0.sock");
     let privileged = directory.path().join("wayland-0-privileged.sock");
     let tree = TreeQueue::default();
-    let config = Config {
+    let mut config = Config {
         tree: TreeHooks {
             queue: tree.clone(),
             classes: Arc::new(SecureClasses),
@@ -163,8 +188,11 @@ fn run(backend: Headless, gpu: Controls, body: impl FnOnce(&Handle) + Send + 'st
         privileged_socket_path: Some(privileged.clone()),
         ..Config::default()
     };
+    if let Some(clock) = &clock {
+        config.clock = clock.clone();
+    }
     let server = Server::new(Box::new(backend), config).expect("the session starts");
-    server.control().set_reduced_motion(true);
+    server.control().set_reduced_motion(clock.is_none());
     let handle = Handle {
         socket,
         privileged,
@@ -219,6 +247,15 @@ struct App {
     locked: usize,
     lock_configures: usize,
     lock_size: (u32, u32),
+}
+
+/// A mapped toplevel and everything a client holds of it.
+struct Mapped {
+    file: File,
+    buffer: wl_buffer::WlBuffer,
+    surface: wl_surface::WlSurface,
+    xdg: xdg_surface::XdgSurface,
+    toplevel: xdg_toplevel::XdgToplevel,
 }
 
 struct Client {
@@ -279,6 +316,13 @@ impl Client {
         height: i32,
         colour: [u8; 4],
     ) -> (File, wl_buffer::WlBuffer, wl_surface::WlSurface) {
+        let mapped = self.map_toplevel(app_id, width, height, colour, false);
+        (mapped.file, mapped.buffer, mapped.surface)
+    }
+
+    /// Maps a `width` x `height` window of `colour` whose app id is `app_id`, with a buffer on the GPU when `gpu` is
+    /// set and in shared memory otherwise. A GPU buffer's file holds `colour` too, so a read of it is of the window.
+    fn map_toplevel(&mut self, app_id: &str, width: i32, height: i32, colour: [u8; 4], gpu: bool) -> Mapped {
         let compositor: wl_compositor::WlCompositor = self.globals.bind(&self.qh, 1..=6, ()).expect("wl_compositor");
         let wm_base: xdg_wm_base::XdgWmBase = self.globals.bind(&self.qh, 1..=6, ()).expect("xdg_wm_base");
         let surface = compositor.create_surface(&self.qh, ());
@@ -288,12 +332,25 @@ impl Client {
         toplevel.set_app_id(app_id.to_owned());
         surface.commit();
         self.roundtrip();
-        let (file, buffer) = self.shm_buffer(width, height, colour);
+        let (file, buffer) = if gpu {
+            let (file, buffer) = self.gpu_buffer(width, height, Fourcc::Argb8888, Modifier::Linear);
+            file.write_all_at(&colour.repeat((width * height) as usize), 0)
+                .expect("pixels");
+            (file, buffer)
+        } else {
+            self.shm_buffer(width, height, colour)
+        };
         surface.attach(Some(&buffer), 0, 0);
         surface.damage(0, 0, width, height);
         surface.commit();
         self.roundtrip();
-        (file, buffer, surface)
+        Mapped {
+            file,
+            buffer,
+            surface,
+            xdg,
+            toplevel,
+        }
     }
 
     /// A `width` x `height` GPU buffer of `format` and `modifier`, with the plane file that backs it.
@@ -1170,4 +1227,171 @@ fn a_gpu_screencopy_respects_the_cursor_flag_and_an_image_copy_frame_carries_non
             "an image-copy frame into a GPU buffer carries no cursor"
         );
     });
+}
+
+/// A supersampled output is composed at `mode * s` and a capture is of that frame, so both capture protocols offer
+/// a GPU buffer of that size and a buffer of the mode's size is too small (design/supersample.md, "Captures").
+#[test]
+fn a_supersampled_output_is_captured_into_a_gpu_buffer_at_its_composed_size() {
+    let factor = 2;
+    let (mock, controls) = Mock::new(Some(mock_gpu::renderable()));
+    let mut backend = Headless::new().with_dmabuf_provider(Box::new(mock));
+    backend
+        .resize_supersampled(
+            gnoblin_types::OutputId::new(0),
+            DEFAULT_MODE,
+            gnoblin_types::Scale::integral(1),
+            gnoblin_types::Scale::integral(factor),
+        )
+        .expect("a factor of two gives a whole virtual size");
+    run(backend, controls, move |handle| {
+        let mut app = Client::connect(&handle.socket);
+        let (_pixels, _buffer, _surface) = app.map_window(100, 80);
+        let window = handle.window();
+        let mut capture = Client::connect(&handle.privileged);
+        let (session, _source) = open_session(&mut capture);
+        let composed = (DEFAULT_MODE.width * factor, DEFAULT_MODE.height * factor);
+        assert_eq!(
+            capture.state.buffer_size,
+            Some(composed),
+            "the session is the composed frame's size, not the mode's"
+        );
+        let (_small, at_mode) = capture.gpu_buffer(
+            DEFAULT_MODE.width as i32,
+            DEFAULT_MODE.height as i32,
+            Fourcc::Argb8888,
+            Modifier::Linear,
+        );
+        assert!(
+            !capture_into(&mut capture, &session, &at_mode),
+            "a buffer of the mode's size cannot hold the composed frame"
+        );
+        assert!(handle.gpu.written().is_empty(), "and nothing was written into it");
+
+        let width = composed.0 as i32;
+        let (plane, buffer) = capture.gpu_buffer(width, composed.1 as i32, Fourcc::Argb8888, Modifier::Linear);
+        let factor = factor as i32;
+        let centre = ((window.x + 50) * factor, (window.y + 40) * factor);
+        let seen = capture_until(
+            &mut capture,
+            &session,
+            &buffer,
+            &plane,
+            (width, centre.0, centre.1),
+            |found| found == RED_BYTES,
+        );
+        assert_eq!(seen, RED_BYTES, "the window is at its logical place times the factor");
+        assert_eq!(
+            pixel(&plane, width, (window.x + 90) * factor, (window.y + 70) * factor),
+            RED_BYTES,
+            "and covers its scaled rectangle, which reaches past where the unscaled one would end"
+        );
+        assert_eq!(
+            pixel(&plane, width, composed.0 as i32 - 1, composed.1 as i32 - 1),
+            BLACK_BYTES,
+            "the last pixel of the composed frame is in the buffer: nothing was cropped to the mode"
+        );
+        let written = handle.gpu.written();
+        let last = written.last().expect("the copy went through the GPU stand-in");
+        assert_eq!(
+            (last.source.width, last.source.height),
+            composed,
+            "the stand-in read the composed frame"
+        );
+        assert_eq!((last.buffer.width, last.buffer.height), composed);
+
+        // `zwlr_screencopy` announces the same size.
+        let output: wl_output::WlOutput = capture.globals.bind(&capture.qh, 1..=4, ()).expect("wl_output");
+        let manager: zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1 = capture.bind(3);
+        let (_plane, announced, high) = screencopy_gpu(&mut capture, &manager, &output, 0);
+        assert_eq!(
+            (announced, high),
+            composed,
+            "screencopy's linux_dmabuf is the composed size too"
+        );
+    });
+}
+
+/// How long the compositor fades a window out, which `docs/guides/animations.md` gives as 200 ms.
+const FADE: Duration = Duration::from_millis(200);
+
+/// A window that shows a GPU buffer fades out when it closes, as one in shared memory does: its node is still in the
+/// shell's tree part way through the fade, and gone when the fade has run out. Without the fade the composer has no
+/// picture to keep for a GPU buffer and drops the node in the frame that follows the close (`gnoblin-jsrn`). The
+/// shared-memory window is the control: it passes whatever the GPU path does.
+///
+/// The unmap that hides a window is not read here, because the shell's node goes at once for any buffer and only the
+/// composer keeps the fade (`an_unmapped_window_that_shows_a_dmabuf_fades_and_stays_known`, `gnoblin-backend`). What
+/// neither shows is the fade being *drawn*: the stand-in GPU has no renderer, so the pixels of a fading GPU window are
+/// the GLES renderer's and stay unproven without a GPU.
+#[test]
+fn a_window_that_shows_a_gpu_buffer_fades_out_when_it_closes() {
+    const APP: &str = "org.gnoblin.Fade";
+    for gpu in [false, true] {
+        let clock = Arc::new(ManualClock::new());
+        let (mock, controls) = Mock::new(Some(mock_gpu::renderable()));
+        run_on(
+            Headless::new().with_dmabuf_provider(Box::new(mock)),
+            controls,
+            Some(Arc::clone(&clock)),
+            move |handle| {
+                let what = if gpu { "a GPU window" } else { "a shared-memory window" };
+                // A few frames, so what the loop did is what the tree shows: a read runs at the start of a frame.
+                let settle = || {
+                    for _ in 0..4 {
+                        handle.has_window_node(APP);
+                    }
+                };
+                let advance = |by: Duration| {
+                    clock.advance(by);
+                    settle();
+                };
+                let mut client = Client::connect(&handle.socket);
+                let mapped = client.map_toplevel(APP, 100, 80, RED_BYTES, gpu);
+                let deadline = Instant::now() + TIMEOUT;
+                while !handle.has_window_node(APP) {
+                    assert!(Instant::now() < deadline, "{what}: the compositor never made a node");
+                    thread::sleep(Duration::from_millis(5));
+                }
+                // The window's open fade runs out first, so the only motion left is the one under test.
+                advance(FADE * 2);
+
+                // The client destroys its toplevel and then the buffer it showed, so only the compositor's own
+                // hold on the picture is left.
+                mapped.toplevel.destroy();
+                mapped.xdg.destroy();
+                mapped.surface.destroy();
+                mapped.buffer.destroy();
+                client.roundtrip();
+                // The loop has taken the close, and the clock has not moved: the window is mid-fade.
+                let deadline = Instant::now() + TIMEOUT;
+                while handle
+                    .observation
+                    .lock()
+                    .expect("the observation lock")
+                    .windows()
+                    .any(|window| window.mapped)
+                {
+                    assert!(
+                        Instant::now() < deadline,
+                        "{what}: the window never stopped being mapped"
+                    );
+                    thread::sleep(Duration::from_millis(5));
+                }
+                settle();
+                assert!(
+                    handle.has_window_node(APP),
+                    "{what}: the node is gone before the fade began"
+                );
+                advance(FADE / 2);
+                assert!(
+                    handle.has_window_node(APP),
+                    "{what}: the node is gone half way through the fade, so it did not fade"
+                );
+                advance(FADE * 2);
+                assert!(!handle.has_window_node(APP), "{what}: the node outlived the fade");
+                drop(mapped.file);
+            },
+        );
+    }
 }

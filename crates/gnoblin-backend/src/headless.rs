@@ -1513,6 +1513,26 @@ mod tests {
         assert_eq!(target.renderer(), RendererKind::Vulkan);
     }
 
+    /// The software and Vulkan renderers cannot render into a client's buffer, so a session that draws with either
+    /// offers no GPU capture and the capture protocols serve shared memory only.
+    #[test]
+    fn a_session_that_draws_with_the_software_or_vulkan_renderer_offers_no_gpu_capture() {
+        let mut software = Headless::new();
+        let output = software.outputs[0].id;
+        assert!(Backend::<Recorder>::dmabuf_capture_support(&mut software, output).is_none());
+        assert!(Backend::<Recorder>::dmabuf_picture_support(&mut software).is_none());
+        #[cfg(feature = "vulkan")]
+        {
+            let Ok(mut vulkan) = Headless::with_config(HeadlessConfig::vulkan()) else {
+                println!("skipping the Vulkan half: no Vulkan loader or device on this machine");
+                return;
+            };
+            let output = vulkan.outputs[0].id;
+            assert!(Backend::<Recorder>::dmabuf_capture_support(&mut vulkan, output).is_none());
+            assert!(Backend::<Recorder>::dmabuf_picture_support(&mut vulkan).is_none());
+        }
+    }
+
     /// The Vulkan renderer draws at any compositing scale into an image of any size the device allows, so a supersampled
     /// output needs nothing special of it: the hi-res capture is the virtual size, the displayed frame is its box
     /// average, and the device's image limit is what `max_virtual_edge` reports (a factor past it is refused naming the
