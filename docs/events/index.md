@@ -16,7 +16,7 @@ class Bell extends SessionListener {
 gnoblin.session.addListener(new Bell());
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. Ring a terminal bell and a message appears in the top right corner. A reload
+Put the file in `~/.config/gnoblin/shell.ts`. Ring a terminal bell and a message appears in the top right corner. A reload
 detaches every listener the old file attached, so the new file attaches its own.
 
 ## The listeners

@@ -225,7 +225,7 @@ fn restart(rig: &Rig) -> JsShell {
     let root = std::fs::canonicalize(rig._dir.path()).expect("the temp dir exists");
     let (config, _clock) = timed_config(&root);
     let mut shell = JsShell::new(Box::new(rig.comp.clone()), config).expect("the shell boots on the new link");
-    shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     shell
 }
 

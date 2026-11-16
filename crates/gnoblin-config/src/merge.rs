@@ -1,7 +1,7 @@
 //! Layered documents: how several files become one.
 //!
 //! Gnoblin loads the built-in defaults, then system drop-ins, then the user's own
-//! `init.ts` and everything it imports, and whatever loads later replaces what
+//! `shell.ts` and everything it imports, and whatever loads later replaces what
 //! loaded earlier. The rule is the one the reference documents: tables merge by
 //! key, lists and scalars are replaced whole. A list is replaced because its
 //! order and length are part of its meaning: appending a gesture from a drop-in

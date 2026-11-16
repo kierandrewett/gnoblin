@@ -1,4 +1,4 @@
-//! Converts a Lua `init.lua` to a TypeScript `init.ts`.
+//! Converts a Lua `init.lua` to a TypeScript `shell.ts`.
 //!
 //! `gnoblinctl config migrate` is the user of this crate. The conversion is a pure function of the text of the Lua
 //! files: nothing here reads a file, runs Lua or looks at the environment. A file that a `gnoblin.load` names is
@@ -7,7 +7,7 @@
 //!
 //! # What the output is
 //!
-//! Statements against the specification's objects, in the style of the owner's reference `init.js`, not a config
+//! Statements against the specification's objects, in the style of the owner's reference `shell.js`, not a config
 //! object: `new Workspace({ id, name, layout })` and `gnoblin.workspaces.add` for the `workspaces`,
 //! `gnoblin.input.primary.bind(trigger, () => gnoblin.spawn([...]))` for the `shortcuts` and `keybindings`, and for a
 //! window rule of a shell file a `gnoblin.clients.where({ appId }).style` (opacity on an exact match) or a
@@ -15,7 +15,7 @@
 //! becomes a comparison or a RegExp when it has an exact equivalent ([`translate_lua_pattern`]); a chord becomes a
 //! trigger ([`translate_chord`]). The seat's `alerts` switch decides whether the not-responding alert is started.
 //!
-//! An `init.ts` replaces the stock default instead of layering over it, so the output also writes the stock desktop
+//! A `shell.ts` replaces the stock default instead of layering over it, so the output also writes the stock desktop
 //! out, minus the keys and workspaces the Lua config set itself.
 //!
 //! # What is reported
@@ -115,7 +115,7 @@ pub struct MigrationReport {
 /// The TypeScript and the report.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MigrationOutput {
-    /// The text of `init.ts`.
+    /// The text of `shell.ts`.
     pub typescript: String,
     /// What was converted and what was not.
     pub report: MigrationReport,

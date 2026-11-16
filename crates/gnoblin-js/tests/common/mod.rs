@@ -1257,7 +1257,7 @@ pub fn titlebar(rig: &Rig, window: u64) -> u64 {
     rig.comp.children(outlet)[0]
 }
 
-/// A shell over a fresh fake compositor whose `init.ts` is `imports` followed by `init_body`.
+/// A shell over a fresh fake compositor whose `shell.ts` is `imports` followed by `init_body`.
 pub fn rig_with(imports: &str, init_body: &str) -> Rig {
     rig_setup(imports, init_body, |_| {})
 }
@@ -1279,11 +1279,11 @@ pub fn rig_configured(
     setup(&comp);
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), format!("{imports}{init_body}\n")).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), format!("{imports}{init_body}\n")).expect("shell.ts is written");
     let (mut config, clock) = timed_config(&root);
     configure(&mut config);
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
-    let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let load_diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     Rig {
         shell,
         comp,

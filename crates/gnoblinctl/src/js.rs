@@ -2,7 +2,7 @@
 //!
 //! `check FILE` runs the module in the dry-run host, the evaluation `gnoblin_js::evaluate_document` makes: the
 //! shell's own library and objects over an inert tree (the root and one seat, no windows, no
-//! outputs). A spec-style `init.ts` that builds workspaces, binds keys and attaches listeners loads as written, and
+//! outputs). A spec-style `shell.ts` that builds workspaces, binds keys and attaches listeners loads as written, and
 //! what a session refuses is refused here: a syntax error, an import that does not resolve, a name the `gnoblin`
 //! module does not export, a bad trigger, a refused value and a top-level throw, all at the line the author wrote, in
 //! `.ts` coordinates. It needs no session and no Node. A file that reads live state sees an empty world. `--types` then
@@ -18,11 +18,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use gnoblin_cli_style::{
     ColorChoice, ErrorReport, LineOutcome, OutputEnvironment, OutputTheme, error_block, status_line,
 };
-use gnoblin_config::SearchPaths;
+use gnoblin_config::Environment;
 use gnoblin_js::{JsError, JsErrorKind, STARTER_CONFIG, editor_library};
 use gnoblin_js_types::{
     GENERATED_DIR, GENERATED_TSCONFIG_FILE, JsWritten, TSCONFIG_FILE, TYPES_FILE, TsconfigOutcome, ensure_user_files,
 };
+use gnoblin_shell_discovery::{KNOWN_EXTENSIONS, SHELL_STEM};
 use serde_json::{Value as Json, json};
 
 /// The extensions the shell runtime loads as modules, and so the ones `check` sends down the
@@ -70,7 +71,7 @@ pub(crate) fn theme(is_terminal: bool) -> OutputTheme {
 }
 
 /// Runs `file` in the dry-run host: `gnoblin_js::evaluate_document`, the evaluation of an
-/// `init.ts` over an inert tree. The shell's own library and objects run over an inert tree (the
+/// `shell.ts` over an inert tree. The shell's own library and objects run over an inert tree (the
 /// root and one seat, no windows, no outputs), so a spec-style file loads as written and every check a session makes
 /// is made here: a syntax error, an import that does not resolve, a name the `gnoblin` module does not export, a bad
 /// trigger, a refused value, a throw. Nothing starts and nothing is bound.
@@ -81,7 +82,7 @@ fn evaluate(file: &Path) -> Result<(), JsError> {
     gnoblin_js::evaluate_document(file).map(drop)
 }
 
-/// Loads `source` as an `init.ts` in the dry-run host before a command writes it, so a file that would not load is said
+/// Loads `source` as a `shell.ts` in the dry-run host before a command writes it, so a file that would not load is said
 /// so and not found at the next login. Returns the first problem as `file:line:column: message`.
 pub(crate) fn validate_config(source: &str) -> Result<(), String> {
     let scratch = Scratch::new().map_err(|error| format!("cannot make a scratch directory: {error}"))?;
@@ -373,16 +374,6 @@ fn type_check(file: &Path, search: &TscSearch) -> TypeCheck {
     run().unwrap_or_else(TypeCheck::Failed)
 }
 
-/// The directory `types init` writes into when none is named: `$XDG_CONFIG_HOME/gnoblin`, else
-/// `$HOME/.config/gnoblin`, the same directory the runtime reads `init.ts` from.
-pub(crate) fn default_config_dir(paths: &SearchPaths) -> Option<PathBuf> {
-    match (&paths.config_home, &paths.home) {
-        (Some(config_home), _) => Some(config_home.join("gnoblin")),
-        (None, Some(home)) => Some(home.join(".config").join("gnoblin")),
-        (None, None) => None,
-    }
-}
-
 /// The name of the configuration `check --types` hands the compiler, in the scratch directory.
 const CHECK_TSCONFIG_FILE: &str = "check.tsconfig.json";
 
@@ -472,7 +463,7 @@ pub(crate) fn types_init(dir: Option<&Path>, json: bool, out: &mut dyn Write, er
     };
     let dir = match dir {
         Some(dir) => dir.to_path_buf(),
-        None => match default_config_dir(&SearchPaths::from_env()) {
+        None => match Environment::from_env().config_dir() {
             Some(dir) => dir,
             None => {
                 return fail(
@@ -505,14 +496,21 @@ pub(crate) fn types_init(dir: Option<&Path>, json: bool, out: &mut dyn Write, er
     u8::from(result.is_err())
 }
 
-/// The file `config init` writes: the one the shell reads first.
-const INIT_FILE: &str = "init.ts";
+/// The file `config init` writes: the conventional user shell, which discovery finds in the config directory.
+const INIT_FILE: &str = "shell.ts";
 
-/// The entry the shell falls back to when there is no `init.ts`. A starter written beside it would shadow it, so
-/// `config init` treats it like an existing config.
-const INIT_FILE_JS: &str = "init.js";
+/// A conventional shell file of `dir` other than `keep` that is there. Writing `keep` beside it would make the two
+/// equally preferred, which discovery refuses to guess between, so the session would not start.
+pub(crate) fn rival_shell_file(dir: &Path, keep: &str) -> Option<PathBuf> {
+    KNOWN_EXTENSIONS
+        .iter()
+        .map(|extension| format!("{SHELL_STEM}.{extension}"))
+        .filter(|name| name != keep)
+        .map(|name| dir.join(name))
+        .find(|file| file.exists())
+}
 
-/// Writes the starter `init.ts`, refusing to replace a file unless `force`.
+/// Writes the starter `shell.ts`, refusing to replace a file unless `force`.
 fn write_starter(dir: &Path, init: &Path, force: bool) -> io::Result<()> {
     std::fs::create_dir_all(dir)?;
     let mut options = std::fs::OpenOptions::new();
@@ -525,7 +523,7 @@ fn write_starter(dir: &Path, init: &Path, force: bool) -> io::Result<()> {
     options.open(init)?.write_all(STARTER_CONFIG.as_bytes())
 }
 
-/// `config init [DIR] [--force]`: write a short, commented `init.ts` and the editor files (`types init`), and say what
+/// `config init [DIR] [--force]`: write a short, commented `shell.ts` and the editor files (`types init`), and say what
 /// to do next. Nothing is replaced unless `--force` is given, so a config you have is never lost to a first-run
 /// command.
 pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
@@ -541,7 +539,7 @@ pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut
     };
     let Some(dir) = dir
         .map(Path::to_path_buf)
-        .or_else(|| default_config_dir(&SearchPaths::from_env()))
+        .or_else(|| Environment::from_env().config_dir())
     else {
         return fail(
             err,
@@ -553,21 +551,25 @@ pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut
     let init = dir.join(INIT_FILE);
     let replaced = init.exists();
     if !force {
-        for name in [INIT_FILE, INIT_FILE_JS] {
-            let existing = dir.join(name);
-            if existing.exists() {
-                let why = if name == INIT_FILE {
-                    "the shell already has a config to read".to_owned()
-                } else {
-                    format!("an {INIT_FILE} written here would be read instead of it")
-                };
-                return fail(
-                    err,
-                    format!("{} already exists, so nothing was written", existing.display()),
-                    Some(why),
-                    "edit that file, or run `gnoblinctl config init --force` to write the starter over it",
-                );
-            }
+        let found = if replaced {
+            Some((init.clone(), "the shell already has a config to read".to_owned()))
+        } else {
+            rival_shell_file(&dir, INIT_FILE).map(|rival| {
+                (
+                    rival,
+                    format!(
+                        "a {INIT_FILE} written here would make the two equally preferred, and no shell would start"
+                    ),
+                )
+            })
+        };
+        if let Some((existing, why)) = found {
+            return fail(
+                err,
+                format!("{} already exists, so nothing was written", existing.display()),
+                Some(why),
+                "edit that file, or run `gnoblinctl config init --force` to write the starter over it",
+            );
         }
     }
     if let Err(error) = write_starter(&dir, &init, force) {
@@ -595,11 +597,11 @@ pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut
         "Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request."
             .to_owned(),
     ];
-    // The new `init.ts` takes precedence over an `init.lua` beside it, so the next session stops reading the Lua file.
+    // The new `shell.ts` takes precedence over an `init.lua` beside it, so the next session stops reading the Lua file.
     let lua = dir.join("init.lua");
     if lua.is_file() {
         next.push(format!(
-            "{} is still there, and the TypeScript shell does not read it. Move what you need into init.ts (docs/migrating-from-lua.md).",
+            "{} is still there, and the TypeScript shell does not read it. Move what you need into shell.ts (docs/migrating-from-lua.md).",
             lua.display()
         ));
     }
@@ -637,31 +639,12 @@ mod tests {
 
     #[test]
     fn only_module_extensions_take_the_javascript_path() {
-        for name in ["init.ts", "a/b.mjs", "x.js", "y.mts"] {
+        for name in ["shell.ts", "a/b.mjs", "x.js", "y.mts"] {
             assert!(is_module(Path::new(name)), "{name}");
         }
         for name in ["init.lua", "config.json", "init", "init.tsx.bak"] {
             assert!(!is_module(Path::new(name)), "{name}");
         }
-    }
-
-    #[test]
-    fn the_config_directory_prefers_xdg_config_home() {
-        let both = SearchPaths {
-            home: Some(PathBuf::from("/home/u")),
-            config_home: Some(PathBuf::from("/cfg")),
-            override_path: None,
-        };
-        assert_eq!(default_config_dir(&both), Some(PathBuf::from("/cfg/gnoblin")));
-        let home = SearchPaths {
-            config_home: None,
-            ..both.clone()
-        };
-        assert_eq!(
-            default_config_dir(&home),
-            Some(PathBuf::from("/home/u/.config/gnoblin"))
-        );
-        assert_eq!(default_config_dir(&SearchPaths::default()), None);
     }
 
     /// A shell script that stands in for the type checker, so the step is tested without Node.
@@ -683,8 +666,8 @@ mod tests {
     #[test]
     fn with_no_compiler_the_step_is_skipped_and_passes() {
         let dir = scratch_dir("none");
-        let file = dir.join("init.ts");
-        std::fs::write(&file, "export {};\n").expect("write init.ts");
+        let file = dir.join("shell.ts");
+        std::fs::write(&file, "export {};\n").expect("write shell.ts");
         let result = type_check(&file, &TscSearch::default());
         assert!(matches!(result, TypeCheck::Skipped), "{result:?}");
         assert!(result.passed());
@@ -694,13 +677,13 @@ mod tests {
     #[test]
     fn the_compiler_is_given_the_library_and_the_declarations_and_its_output_is_kept_unchanged() {
         let dir = scratch_dir("tsc");
-        let file = dir.join("init.ts");
-        std::fs::write(&file, "export {};\n").expect("write init.ts");
+        let file = dir.join("shell.ts");
+        std::fs::write(&file, "export {};\n").expect("write shell.ts");
         // `$5` is the tsconfig, after `--noEmit --pretty false -p`. The script proves the declarations and the real
         // library sources exist beside it, echoes a diagnostic and fails.
         let tool = fake_tsc(
             &dir,
-            "d=\"$(dirname \"$5\")/.gnoblin\"\ntest -f \"$d/gnoblin.d.ts\" || exit 9\ntest -f \"$d/lib/gnoblin-std/scene/node.ts\" || exit 7\ngrep -q init.ts \"$5\" || exit 8\necho \"init.ts(1,1): error TS0000: fake\"\nexit 2",
+            "d=\"$(dirname \"$5\")/.gnoblin\"\ntest -f \"$d/gnoblin.d.ts\" || exit 9\ntest -f \"$d/lib/gnoblin-std/scene/node.ts\" || exit 7\ngrep -q shell.ts \"$5\" || exit 8\necho \"shell.ts(1,1): error TS0000: fake\"\nexit 2",
         );
         let search = TscSearch {
             explicit: Some(tool),
@@ -713,7 +696,7 @@ mod tests {
             panic!("the compiler runs");
         };
         assert!(!passed);
-        assert_eq!(String::from_utf8_lossy(&stdout), "init.ts(1,1): error TS0000: fake\n");
+        assert_eq!(String::from_utf8_lossy(&stdout), "shell.ts(1,1): error TS0000: fake\n");
         assert!(stderr.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }

@@ -21,7 +21,7 @@ const client = gnoblin.clients.focused;
 client?.properties.bind("opacity", () => (client.focused ? 1 : 0.7));
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. The windows of `desktop` sit on an arc, the scene holds a small picture of the
+Put the file in `~/.config/gnoblin/shell.ts`. The windows of `desktop` sit on an arc, the scene holds a small picture of the
 workspace, and the focused window is drawn at full opacity while the others are dimmed.
 
 ## The scene

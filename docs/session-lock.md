@@ -20,7 +20,7 @@ installed, run its command (for example, `hyprlock`) in your Gnoblin session.
 Your shell or idle daemon decides when to run that command; Gnoblin does not
 set a timeout or launch a locker for you.
 
-The protocol is enabled by default in Gnoblin, and `init.ts` cannot turn it off: see
+The protocol is enabled by default in Gnoblin, and `shell.ts` cannot turn it off: see
 [Settings with no object](/js-settings).
 
 ## Request a lock
@@ -33,7 +33,7 @@ that subscribed to it. The shell starts its locker, and the locker takes the loc
 These sources send the request:
 
 - `gnoblinctl session lock`
-- `gnoblin.session.lock()` in `init.ts`
+- `gnoblin.session.lock()` in `shell.ts`
 - `org.freedesktop.ScreenSaver.Lock`, or `SetActive(true)`, on the session bus
 - `loginctl lock-session` for your graphical session. Gnoblin locks when logind
   asks for the session lock, and locks before a suspend or hibernate: logind's
@@ -69,7 +69,7 @@ If the compositor connection is interrupted, Gnoblin sends no unlock signal.
 It reconnects and reports a changed boolean from the current state. After the
 idle service restarts, read `GetActive` again for its initial value.
 
-To lock with a key of your choice, bind a key in `init.ts`:
+To lock with a key of your choice, bind a key in `shell.ts`:
 
 ```ts
 gnoblin.input.primary.bind("Super+l", () => {
@@ -247,7 +247,7 @@ file. A zone the card cannot read shows UTC.
 ### What this protects, and what it cannot
 
 The lock stops other people at the keyboard. It does not protect the session from the shell. The shell is a process of
-your own: your session starts it, it runs your `init.ts`, and whatever can read its memory can already read your keyring,
+your own: your session starts it, it runs your `shell.ts`, and whatever can read its memory can already read your keyring,
 your agent sockets and every other password you type.
 
 Who can see what you type at a locked session:
@@ -259,11 +259,11 @@ Who can see what you type at a locked session:
   text and no property holds it.
 - The logs hold nothing. A failed check logs one warning without the password.
 - The compositor sees every key and runs the check, through the shell's screen or the card.
-- The shell, and the modules your `init.ts` imports, see every key and the password as one string for the check, when the
+- The shell, and the modules your `shell.ts` imports, see every key and the password as one string for the check, when the
   shell's screen is the entry. They see nothing when the card is.
 
 A module you import that wants the password can have it. Replace the stock screen only with code you trust, and keep
-modules you did not read out of an `init.ts` you use on a machine you lock.
+modules you did not read out of a `shell.ts` you use on a machine you lock.
 
 The compositor's card keeps the password in a wiped buffer from the first key. It is the entry whenever the shell's
 screen is absent, not alive or not answering.

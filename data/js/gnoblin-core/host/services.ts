@@ -61,7 +61,7 @@ function frameHooks(): FrameHooks {
 
 /**
  * Gives every window a frame, once: the stock titlebar with its buttons, the drag and the double click, or the frame
- * the options fill. Library code for an `init.ts` that wants frames; a config that does not call it has none. Calling
+ * the options fill. Library code for a `shell.ts` that wants frames; a config that does not call it has none. Calling
  * it again changes nothing. It declares to the compositor that this shell draws decorations.
  */
 export function startDecorations(options: DecorationsOptions = {}): void {

@@ -1,6 +1,6 @@
 # Window rules
 
-A window rule is code in your `init.ts` that runs for the windows it matches. Gnoblin has no rule table. You attach a
+A window rule is code in your `shell.ts` that runs for the windows it matches. Gnoblin has no rule table. You attach a
 listener to `gnoblin.clients` and decide in a function, or you style a selection of windows with
 `gnoblin.clients.where(...)`. The file runs top to bottom against live objects, and a save reloads it.
 
@@ -32,7 +32,7 @@ gnoblin.clients.addListener(
 ```
 
 `onAdded` runs when a window opens, and once for each window that is already open when the file loads, so a save
-applies the rule to the windows on screen too. Run `gnoblinctl check --types init.ts` before you save.
+applies the rule to the windows on screen too. Run `gnoblinctl check --types shell.ts` before you save.
 
 ## Choose what to match
 

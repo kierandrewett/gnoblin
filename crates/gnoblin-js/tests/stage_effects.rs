@@ -55,11 +55,11 @@ fn spawning(tag: &str, rest: &str) -> String {
     )
 }
 
-/// A role over the shared fake compositor, whose `init.ts` is `init`.
+/// A role over the shared fake compositor, whose `shell.ts` is `init`.
 fn role_of(init: &str) -> (JsRole, PathBuf, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init).expect("init.ts");
+    fs::write(root.join("shell.ts"), init).expect("shell.ts");
     let mut config = honest_role_config(&root);
     config.watch = false;
     let role = JsRole::over_link(Box::new(FakeCompositor::new()), JsRoleLinks::default(), config).expect("a role");
@@ -67,7 +67,7 @@ fn role_of(init: &str) -> (JsRole, PathBuf, tempfile::TempDir) {
 }
 
 fn rewrite(root: &Path, init: &str) {
-    fs::write(root.join("init.ts"), init).expect("init.ts");
+    fs::write(root.join("shell.ts"), init).expect("shell.ts");
 }
 
 #[test]

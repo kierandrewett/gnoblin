@@ -37,13 +37,15 @@ fn grammar(body: &str) -> String {
          const thrown = (fn: () => void) => {{ try {{ fn(); }} catch (e: any) {{ return `${{e.name}}: ${{e.message}} [${{e.token}}]`; }} return \"did not throw\"; }};\n\
          {body}\n"
     );
-    fs::write(root.join("init.ts"), source).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
     let mut config = JsConfig::new(&root).embed("harness", GRAMMAR_HARNESS);
     for (name, source) in stock_modules() {
         config = config.embed(name, source);
     }
     let generation = JsGeneration::new(&config, 1).expect("a generation");
-    generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
+    generation
+        .eval_module(Path::new("shell.ts"))
+        .expect("shell.ts evaluates");
     generation
         .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
         .expect("the case called emit")
@@ -425,11 +427,11 @@ impl Rig {
 fn rig_with(comp: &Comp, init: &str, tweak: impl FnOnce(&mut JsShellConfig)) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let (mut config, clock) = timed_config(&root);
     tweak(&mut config);
     let mut shell = JsShell::new(Box::new(comp.0.clone()), config).expect("the shell boots");
-    let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     let mut rig = Rig {
         shell,
@@ -1898,7 +1900,7 @@ fn a_short_swipe_slides_back_and_leaves_the_shown_workspace_alone() {
 fn role_over(comp: &Comp, init: &str) -> (JsRole, std::path::PathBuf, TempDir) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init).expect("init.ts");
+    fs::write(root.join("shell.ts"), init).expect("shell.ts");
     let mut config = honest_role_config(&root);
     config.watch = false;
     let role = JsRole::over_link(Box::new(comp.0.clone()), JsRoleLinks::default(), config).expect("a role");
@@ -1936,7 +1938,7 @@ fn sorted(items: &[&str]) -> Vec<String> {
 #[track_caller]
 fn reload_and_check(role: &mut JsRole, root: &Path, comp: &Comp, source: &str, expected: (Vec<String>, usize)) {
     let mark = comp.borrow().calls.len();
-    fs::write(root.join("init.ts"), source).expect("init.ts is rewritten");
+    fs::write(root.join("shell.ts"), source).expect("shell.ts is rewritten");
     let report = role.reload_now();
     assert!(report.ok, "{:?}", report.errors);
     assert_eq!(
@@ -2035,10 +2037,10 @@ fn a_reload_that_fails_after_it_claimed_leaves_the_claims_as_they_were_and_the_n
 
     // The entry claims `Super+9` and then throws: the stage is dropped, and so is the claim it made.
     fs::write(
-        root.join("init.ts"),
+        root.join("shell.ts"),
         hand_off_entry("input.bind(\"Super+9\", () => {});\nthrow new Error(\"late\");\n"),
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let report = role.reload_now();
     assert!(!report.ok);
     role.tick().expect("a frame");

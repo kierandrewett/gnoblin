@@ -13,7 +13,7 @@ gnoblin.input.primary.bind("Super+Shift+q", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. `Super+Shift+q` logs out, and shows a notification when the compositor
+Put the file in `~/.config/gnoblin/shell.ts`. `Super+Shift+q` logs out, and shows a notification when the compositor
 refuses.
 
 ## Operations
@@ -86,7 +86,7 @@ try {
 }
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. A second workspace with the id `main` shows a notification instead of
+Put the file in `~/.config/gnoblin/shell.ts`. A second workspace with the id `main` shows a notification instead of
 stopping the file.
 
 ## Timers
@@ -136,7 +136,7 @@ was:
 
 ```text
 the script used 1003 ms of CPU time (1010 ms of wall time) against its 1000 ms CPU budget and was interrupted;
-it was in at spin (init.ts:12:5), called from at onFocus (init.ts:20:3)
+it was in at spin (shell.ts:12:5), called from at onFocus (shell.ts:20:3)
 ```
 
 ## See also

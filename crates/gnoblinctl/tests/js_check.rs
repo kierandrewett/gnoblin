@@ -84,7 +84,7 @@ fn a_clean_init_with_an_enum_and_a_relative_import_checks_ok() {
     let dir = Dir::new();
     dir.write("x.ts", "export const limit: number = 3;\n");
     let init = dir.write(
-        "init.ts",
+        "shell.ts",
         "import { limit } from './x.ts';\nenum Mode {\n    Tile,\n    Float,\n}\nexport const mode: Mode = Mode.Tile;\nexport const n: number = limit;\n",
     );
     let (code, out, err) = check(&init, &[]);
@@ -96,10 +96,10 @@ fn a_clean_init_with_an_enum_and_a_relative_import_checks_ok() {
 #[test]
 fn a_syntax_error_reports_the_file_line_and_column_and_exits_1() {
     let dir = Dir::new();
-    let init = dir.write("init.ts", "const ok = 1;\nconst broken = ;\n");
+    let init = dir.write("shell.ts", "const ok = 1;\nconst broken = ;\n");
     let (code, out, err) = check(&init, &[]);
     assert_eq!(code, 1, "stdout: {out}\nstderr: {err}");
-    assert!(err.contains("init.ts:2:16"), "{err}");
+    assert!(err.contains("shell.ts:2:16"), "{err}");
     assert!(err.contains("error:"), "{err}");
     assert!(err.contains("hint:"), "{err}");
 }
@@ -112,7 +112,7 @@ fn a_missing_import_names_the_specifier_and_the_importing_file() {
         "import { gone } from './gone.ts';\nexport const helper = gone;\n",
     );
     let init = dir.write(
-        "init.ts",
+        "shell.ts",
         "import { helper } from './lib/helper.ts';\nexport const x = helper;\n",
     );
     let (code, _, err) = check(&init, &[]);
@@ -125,12 +125,12 @@ fn a_missing_import_names_the_specifier_and_the_importing_file() {
 fn a_top_level_throw_is_reported_at_the_line_that_threw() {
     let dir = Dir::new();
     let init = dir.write(
-        "init.ts",
+        "shell.ts",
         "enum Mode {\n    A,\n}\nconst mode: Mode = Mode.A;\nthrow new Error('boom ' + mode);\n",
     );
     let (code, _, err) = check(&init, &[]);
     assert_eq!(code, 1, "{err}");
-    assert!(err.contains("init.ts:5:"), "{err}");
+    assert!(err.contains("shell.ts:5:"), "{err}");
     assert!(err.contains("boom 0"), "{err}");
 }
 
@@ -142,7 +142,7 @@ fn an_import_cycle_that_reads_a_binding_before_it_exists_fails() {
         "import { b } from './b.ts';\nexport const a = 1;\nexport const sum = a + b;\n",
     );
     dir.write("b.ts", "import { a } from './a.ts';\nexport const b = a + 1;\n");
-    let init = dir.write("init.ts", "import './b.ts';\n");
+    let init = dir.write("shell.ts", "import './b.ts';\n");
     let (code, _, err) = check(&init, &[]);
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("a.ts:3:"), "{err}");
@@ -151,7 +151,7 @@ fn an_import_cycle_that_reads_a_binding_before_it_exists_fails() {
 #[test]
 fn an_endless_top_level_loop_is_stopped_by_the_budget() {
     let dir = Dir::new();
-    let init = dir.write("init.ts", "while (true) {}\n");
+    let init = dir.write("shell.ts", "while (true) {}\n");
     let (code, _, err) = check(&init, &[]);
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("budget"), "{err}");
@@ -161,7 +161,7 @@ fn an_endless_top_level_loop_is_stopped_by_the_budget() {
 fn a_spec_style_init_loads_in_the_dry_run_host() {
     let dir = Dir::new();
     let init = dir.write(
-        "init.ts",
+        "shell.ts",
         "import { FloatingLayout, MasterStackLayout, Workspace } from 'gnoblin-std';\n\nconst input = gnoblin.input.primary;\ngnoblin.workspaces.add(new Workspace({ id: 'web', name: 'Web', layout: new MasterStackLayout() }));\ngnoblin.workspaces.add(new Workspace({ id: 'main', layout: new FloatingLayout() }));\ngnoblin.clients.style.cornerRadius = 12;\ninput.bind('Super+Return', () => {\n    gnoblin.spawn(['foot']);\n});\n",
     );
     let (code, out, err) = check(&init, &[]);
@@ -175,7 +175,7 @@ fn a_binding_the_shell_would_refuse_is_refused_here() {
     // The stub host accepted anything; the dry-run host runs the shell's own checks.
     let dir = Dir::new();
     let init = dir.write(
-        "init.ts",
+        "shell.ts",
         "gnoblin.input.primary.bind('Super+k', () => {});\ngnoblin.input.primary.bind('Super+k', () => {});\n",
     );
     let (code, _, err) = check(&init, &[]);
@@ -186,7 +186,7 @@ fn a_binding_the_shell_would_refuse_is_refused_here() {
 #[test]
 fn an_import_the_shell_does_not_provide_is_still_refused() {
     let dir = Dir::new();
-    let init = dir.write("init.ts", "import _ from 'lodash';\nexport default _;\n");
+    let init = dir.write("shell.ts", "import _ from 'lodash';\nexport default _;\n");
     let (code, _, err) = check(&init, &[]);
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("lodash"), "{err}");
@@ -196,7 +196,7 @@ fn an_import_the_shell_does_not_provide_is_still_refused() {
 fn a_name_the_gnoblin_module_does_not_export_is_refused_with_the_name() {
     let dir = Dir::new();
     let init = dir.write(
-        "init.ts",
+        "shell.ts",
         "import { NoSuchLayout } from 'gnoblin-core'; import { Workspace } from 'gnoblin-std';\nexport const w = [Workspace, NoSuchLayout];\n",
     );
     let (code, _, err) = check(&init, &[]);
@@ -210,7 +210,7 @@ fn a_file_that_reads_live_state_sees_an_empty_world_and_loads() {
     // walking a collection and asking for the focused window all work, and answer that there is none.
     let dir = Dir::new();
     let init = dir.write(
-        "init.ts",
+        "shell.ts",
         "const seen: string[] = [];\nfor (const client of gnoblin.clients) {\n    seen.push(client.title);\n}\nconst focused = gnoblin.input.primary.focusedClient;\nif (focused === null && gnoblin.clients.length === 0 && seen.length === 0) {\n    gnoblin.input.primary.bind('Super+k', () => {\n        gnoblin.spawn(['foot']);\n    });\n}\n",
     );
     let (code, out, err) = check(&init, &[]);
@@ -228,7 +228,7 @@ fn a_file_that_does_not_exist_is_a_problem_not_a_usage_error() {
 #[test]
 fn json_output_carries_the_position_of_a_problem() {
     let dir = Dir::new();
-    let init = dir.write("init.ts", "const ok = 1;\nconst broken = ;\n");
+    let init = dir.write("shell.ts", "const ok = 1;\nconst broken = ;\n");
     let (code, out, _) = check(&init, &["--json"]);
     assert_eq!(code, 1);
     let document: serde_json::Value = serde_json::from_str(&out).expect("--json prints JSON");
@@ -253,7 +253,7 @@ fn config_validate_checks_a_typescript_config_as_check_does() {
     let dir = Dir::new();
     dir.write("x.ts", "export const limit: number = 3;\n");
     let init = dir.write(
-        "init.ts",
+        "shell.ts",
         "import { limit } from './x.ts';\nexport const n: number = limit;\n",
     );
     let (code, out, err) = validate(&init, &[]);
@@ -265,17 +265,17 @@ fn config_validate_checks_a_typescript_config_as_check_does() {
 #[test]
 fn config_validate_refuses_a_broken_typescript_config_with_its_position() {
     let dir = Dir::new();
-    let init = dir.write("init.ts", "const ok = 1;\nconst broken = ;\n");
+    let init = dir.write("shell.ts", "const ok = 1;\nconst broken = ;\n");
     let (code, out, err) = validate(&init, &[]);
     assert_eq!(code, 1, "stdout: {out}\nstderr: {err}");
-    assert!(err.contains("init.ts:2:16"), "{err}");
+    assert!(err.contains("shell.ts:2:16"), "{err}");
     assert_eq!(err, check(&init, &[]).2, "the same report as `check`");
 }
 
 #[test]
 fn config_validate_accepts_a_javascript_config_and_reports_a_throw_in_json() {
     let dir = Dir::new();
-    let good = dir.write("init.js", "export const n = 1;\n");
+    let good = dir.write("shell.js", "export const n = 1;\n");
     let (code, out, err) = validate(&good, &[]);
     assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
     let bad = dir.write("bad.js", "throw new Error('boom');\n");
@@ -288,7 +288,7 @@ fn config_validate_accepts_a_javascript_config_and_reports_a_throw_in_json() {
 #[test]
 fn config_validate_of_a_missing_typescript_file_is_a_problem() {
     let dir = Dir::new();
-    let (code, _, err) = validate(&dir.path().join("init.ts"), &[]);
+    let (code, _, err) = validate(&dir.path().join("shell.ts"), &[]);
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("cannot read"), "{err}");
 }
@@ -471,24 +471,24 @@ fn config_init_writes_the_starter_and_the_editor_files_and_prints_three_next_ste
     let target = dir.path().join("gnoblin");
     let (code, out, err) = config_init(&target, &[]);
     assert_eq!(code, 0, "{err}");
-    let init = target.join("init.ts");
+    let init = target.join("shell.ts");
     assert_eq!(
-        fs::read_to_string(&init).expect("init.ts is written"),
+        fs::read_to_string(&init).expect("shell.ts is written"),
         gnoblin_js::STARTER_CONFIG,
         "the starter is the one the runtime ships"
     );
     assert!(target.join(".gnoblin/gnoblin.d.ts").is_file(), "types init ran");
     assert!(target.join("tsconfig.json").is_file(), "types init ran");
-    assert!(out.contains("init.ts written"), "{out}");
+    assert!(out.contains("shell.ts written"), "{out}");
     assert!(out.contains("gnoblin.d.ts refreshed"), "{out}");
     let steps: Vec<&str> = out
         .lines()
         .filter(|line| line.starts_with("  ") && line.trim_start().starts_with(|c: char| c.is_ascii_digit()))
         .collect();
     assert_eq!(steps.len(), 3, "{out}");
-    assert!(steps[0].contains("1. Open") && steps[0].contains("init.ts"), "{out}");
+    assert!(steps[0].contains("1. Open") && steps[0].contains("shell.ts"), "{out}");
     assert!(
-        steps[1].contains("2. Check it with `gnoblinctl check --types") && steps[1].contains("init.ts"),
+        steps[1].contains("2. Check it with `gnoblinctl check --types") && steps[1].contains("shell.ts"),
         "{out}"
     );
     assert!(steps[2].contains("3. Save it") && steps[2].contains("reloads"), "{out}");
@@ -499,23 +499,23 @@ fn config_init_does_not_overwrite_a_config_unless_forced() {
     let dir = Dir::new();
     let target = dir.path().join("gnoblin");
     assert_eq!(config_init(&target, &[]).0, 0);
-    fs::write(target.join("init.ts"), "// mine\n").expect("the user edits init.ts");
+    fs::write(target.join("shell.ts"), "// mine\n").expect("the user edits shell.ts");
 
     let (code, out, err) = config_init(&target, &[]);
     assert_eq!(code, 1, "{out}");
-    assert!(err.contains("init.ts already exists"), "{err}");
+    assert!(err.contains("shell.ts already exists"), "{err}");
     assert!(err.contains("--force"), "the hint names the way out: {err}");
     assert_eq!(
-        fs::read_to_string(target.join("init.ts")).expect("init.ts"),
+        fs::read_to_string(target.join("shell.ts")).expect("shell.ts"),
         "// mine\n",
         "a refused run touched nothing"
     );
 
     let (code, out, err) = config_init(&target, &["--force"]);
     assert_eq!(code, 0, "{err}");
-    assert!(out.contains("init.ts replaced"), "{out}");
+    assert!(out.contains("shell.ts replaced"), "{out}");
     assert_eq!(
-        fs::read_to_string(target.join("init.ts")).expect("init.ts"),
+        fs::read_to_string(target.join("shell.ts")).expect("shell.ts"),
         gnoblin_js::STARTER_CONFIG
     );
 }
@@ -529,19 +529,57 @@ fn config_init_beside_an_init_lua_says_the_lua_file_is_no_longer_read() {
     assert_eq!(code, 0, "{err}");
     assert!(out.contains("init.lua is still there"), "{out}");
     assert!(out.contains("migrating-from-lua.md"), "{out}");
-    assert!(target.join("init.ts").exists(), "the starter is written");
+    assert!(target.join("shell.ts").exists(), "the starter is written");
     assert!(target.join("init.lua").exists(), "the Lua file is left alone");
 }
 
 #[test]
-fn config_init_leaves_an_init_js_alone_because_the_starter_would_shadow_it() {
+fn config_init_leaves_a_shell_js_alone_because_the_starter_would_be_equally_preferred_with_it() {
     let dir = Dir::new();
-    dir.write("gnoblin/init.js", "export default {};\n");
+    dir.write("gnoblin/shell.js", "export default {};\n");
     let target = dir.path().join("gnoblin");
     let (code, _, err) = config_init(&target, &[]);
     assert_eq!(code, 1, "{err}");
-    assert!(err.contains("init.js already exists"), "{err}");
-    assert!(!target.join("init.ts").exists(), "nothing was written");
+    assert!(err.contains("shell.js already exists"), "{err}");
+    assert!(!target.join("shell.ts").exists(), "nothing was written");
+}
+
+#[test]
+fn config_init_leaves_any_other_shell_file_alone() {
+    for name in ["shell.py", "shell.so", "shell.mts"] {
+        let dir = Dir::new();
+        dir.write(&format!("gnoblin/{name}"), "x\n");
+        let target = dir.path().join("gnoblin");
+        let (code, _, err) = config_init(&target, &[]);
+        assert_eq!(code, 1, "{name}: {err}");
+        assert!(err.contains(&format!("{name} already exists")), "{name}: {err}");
+        assert!(err.contains("equally preferred"), "{name}: {err}");
+        assert!(!target.join("shell.ts").exists(), "{name}: nothing was written");
+    }
+}
+
+#[test]
+fn config_init_then_check_round_trips_under_the_new_name_and_discovery_finds_it() {
+    let dir = Dir::new();
+    let target = dir.path().join("gnoblin");
+    let (code, _, err) = config_init(&target, &[]);
+    assert_eq!(code, 0, "{err}");
+    let written = target.join("shell.ts");
+    assert!(written.is_file(), "the starter is named shell.ts");
+    assert!(
+        !target.join("init.ts").exists(),
+        "nothing is written under the old name"
+    );
+    let (code, out, err) = check(&written, &[]);
+    assert_eq!(code, 0, "{out}{err}");
+    let environment = gnoblin_config::Environment {
+        xdg_config_home: Some(dir.path().to_path_buf()),
+        xdg_data_dirs: Some(OsString::from("/nonexistent/share")),
+        ..gnoblin_config::Environment::default()
+    };
+    let located = gnoblin_config::locate(&environment).expect("discovery finds the written starter");
+    assert_eq!(located.path(), written.as_path());
+    assert!(located.exists());
 }
 
 #[test]
@@ -551,7 +589,7 @@ fn config_init_reports_what_it_wrote_as_json() {
     let (code, out, err) = config_init(&target, &["--json"]);
     assert_eq!(code, 0, "{err}");
     let document: serde_json::Value = serde_json::from_str(&out).expect("--json prints JSON");
-    assert_eq!(document["init"], target.join("init.ts").to_str().expect("UTF-8"));
+    assert_eq!(document["init"], target.join("shell.ts").to_str().expect("UTF-8"));
     assert_eq!(document["replaced"], false);
     assert_eq!(document["tsconfig_created"], true);
     assert_eq!(document["next"].as_array().map(Vec::len), Some(3));
@@ -582,8 +620,8 @@ fn the_starter_passes_check_as_written_and_with_every_example_switched_on() {
     let dir = Dir::new();
     let target = dir.path().join("gnoblin");
     assert_eq!(config_init(&target, &[]).0, 0);
-    let written = target.join("init.ts");
-    let on = dir.write("on/init.ts", &switched_on(gnoblin_js::STARTER_CONFIG));
+    let written = target.join("shell.ts");
+    let on = dir.write("on/shell.ts", &switched_on(gnoblin_js::STARTER_CONFIG));
 
     for file in [&written, &on] {
         // The in-process check: the file runs in the dry-run host, with no TypeScript compiler involved.
@@ -606,9 +644,9 @@ fn the_starter_passes_check_as_written_and_with_every_example_switched_on() {
 #[test]
 fn a_wrong_property_or_a_wrong_value_is_a_type_error_when_a_compiler_is_installed() {
     let dir = Dir::new();
-    let wrong_key = dir.write("key/init.ts", "gnoblin.clients.style.cornerRadus = 12;\n");
+    let wrong_key = dir.write("key/shell.ts", "gnoblin.clients.style.cornerRadus = 12;\n");
     let wrong_value = dir.write(
-        "value/init.ts",
+        "value/shell.ts",
         "import { Workspace } from \"gnoblin-std\";\ngnoblin.workspaces.add(new Workspace({ id: \"a\", layout: \"spiral\" }));\n",
     );
     for (file, named) in [(&wrong_key, "cornerRadus"), (&wrong_value, "spiral")] {

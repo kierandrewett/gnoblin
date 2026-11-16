@@ -20,18 +20,18 @@ fn boot(root: &Path, cache: &JsBytecodeCache) -> Result<JsShell, JsShellError> {
     let mut config = honest_config(root);
     config.js.cache = cache.clone();
     let mut shell = JsShell::new(Box::new(FakeCompositor::new()), config)?;
-    shell.load_entry(Path::new("init.ts"))?;
+    shell.load_entry(Path::new("shell.ts"))?;
     Ok(shell)
 }
 
-/// A config root holding `init.ts`, and a cache directory beside it.
+/// A config root holding `shell.ts`, and a cache directory beside it.
 fn world(init: &str) -> (tempfile::TempDir, PathBuf, PathBuf) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let base = fs::canonicalize(dir.path()).expect("the temp dir exists");
     let root = base.join("config");
     let cache = base.join("cache");
     fs::create_dir_all(&root).expect("the config root");
-    fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     (dir, root, cache)
 }
 
@@ -58,7 +58,7 @@ fn the_second_start_loads_every_module_from_bytecode() {
     assert_eq!(cold.hits, 0, "nothing was cached yet");
     assert!(
         cold.writes >= 40,
-        "the stock library and init.ts were written: {cold:?}"
+        "the stock library and shell.ts were written: {cold:?}"
     );
     assert_eq!(cold.misses, cold.writes, "every module that missed was written");
     assert_eq!(files_in(&first).len() as u64, cold.writes);
@@ -92,14 +92,14 @@ fn a_cached_start_runs_the_same_script_as_a_compiled_one() {
 fn a_changed_config_is_compiled_and_the_stock_library_is_still_cached() {
     let (_dir, root, cache_dir) = world(IMPORTS);
     boot(&root, &JsBytecodeCache::in_dir(&cache_dir)).expect("the first start");
-    fs::write(root.join("init.ts"), format!("{IMPORTS}// an edit\n")).expect("init.ts is rewritten");
+    fs::write(root.join("shell.ts"), format!("{IMPORTS}// an edit\n")).expect("shell.ts is rewritten");
     let cache = JsBytecodeCache::in_dir(&cache_dir);
     boot(&root, &cache).expect("the start after the edit");
     let stats = cache.stats();
     assert_eq!(
         (stats.misses, stats.writes),
         (1, 1),
-        "only init.ts was compiled: {stats:?}"
+        "only shell.ts was compiled: {stats:?}"
     );
     assert!(
         stats.hits >= 40,
@@ -152,12 +152,12 @@ fn an_error_in_a_cached_config_is_reported_at_its_ts_line() {
     for start in ["cold", "cached"] {
         let error = match boot(&root, &JsBytecodeCache::in_dir(&cache_dir)) {
             Err(JsShellError::Js(error)) => error,
-            other => panic!("{start}: init.ts throws, so the start fails: {:?}", other.map(|_| ())),
+            other => panic!("{start}: shell.ts throws, so the start fails: {:?}", other.map(|_| ())),
         };
         assert_eq!(
             error.location.as_ref().map(|at| at.line),
             Some(3),
-            "{start}: the throw is on line 3 of init.ts: {error:?}"
+            "{start}: the throw is on line 3 of shell.ts: {error:?}"
         );
     }
 }

@@ -28,7 +28,7 @@ class Nudge extends PointerDragBinding<Grab> {
 gnoblin.input.primary.bind("Alt+MouseMiddle+Drag", new Nudge({ id: "nudge", trigger: "Alt+MouseMiddle+Drag" }));
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. Hold `Alt`, press the middle button on a window and drag: the window follows
+Put the file in `~/.config/gnoblin/shell.ts`. Hold `Alt`, press the middle button on a window and drag: the window follows
 the pointer.
 
 ## Drag bindings

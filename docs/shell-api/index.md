@@ -9,7 +9,7 @@ for (const client of gnoblin.clients) {
 }
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. It runs when the shell loads it, top to bottom, and the `gnoblin` object is a
+Put the file in `~/.config/gnoblin/shell.ts`. It runs when the shell loads it, top to bottom, and the `gnoblin` object is a
 global, so a listener or a key handler may use it too. To write your first config, start with the
 [TypeScript shell](/typescript-shell). Settings the API has no object for are listed in
 [Settings with no object](/js-settings).

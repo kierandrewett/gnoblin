@@ -18,7 +18,7 @@ import {
 
 const input = gnoblin.input.primary;
 
-// The stock desktop. An init.ts replaces the stock default instead of layering over it, so what the Lua shell
+// The stock desktop. A shell.ts replaces the stock default instead of layering over it, so what the Lua shell
 // kept on its own is written out here. Delete a statement and that part of the desktop is gone.
 
 // A titlebar on every window, the menu the compositor asks for, and the dialog for a window that stops answering.

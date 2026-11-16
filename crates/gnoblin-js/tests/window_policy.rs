@@ -11,7 +11,7 @@ mod common;
 use common::policy::*;
 use common::*;
 
-/// The stock three-finger workspace slide, which the shell binds by default and a bare `init.ts` has to ask for.
+/// The stock three-finger workspace slide, which the shell binds by default and a bare `shell.ts` has to ask for.
 const SLIDE: &str = "gnoblin.input.primary.bind('Swipe3', new WorkspaceSlideBinding());";
 
 fn active(rig: &mut Rig) -> String {

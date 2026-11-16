@@ -80,7 +80,7 @@ fn locked_with_a_driven_shell(init: &str) -> (Session, tempfile::TempDir, Driven
     lock(&session);
     wait_until("the session locked", &session, |seen| seen.state == "locked");
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("init.ts"), init).expect("init.ts");
+    fs::write(config.path().join("shell.ts"), init).expect("shell.ts");
     let mut shell = Driven::start(&session, config.path());
     shell.until("the shell's lock screen is up and engaged", |_| {
         let seen = view(&session.ipc());

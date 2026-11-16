@@ -1,6 +1,6 @@
 # Split a config into files
 
-Import functions from `init.ts` and call them in the order you want them applied. In `appearance.ts`:
+Import functions from `shell.ts` and call them in the order you want them applied. In `appearance.ts`:
 
 ```ts
 // appearance.ts
@@ -21,7 +21,7 @@ export function bindKeys(): void {
 }
 ```
 
-In `init.ts`:
+In `shell.ts`:
 
 ```ts
 import { styleWindows } from "./appearance.ts";

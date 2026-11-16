@@ -835,12 +835,12 @@ fn a_reload_puts_each_output_back_on_the_workspace_it_showed() {
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
     let init =
         format!("{IMPORTS}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id }}));\n");
-    std::fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    std::fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let mut second =
         gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), honest_config(&root)).expect("the shell boots");
     second
-        .load_entry(std::path::Path::new("init.ts"))
-        .expect("init.ts loads");
+        .load_entry(std::path::Path::new("shell.ts"))
+        .expect("shell.ts loads");
     second.reconcile(&snapshot).expect("reconciles");
     for _ in 0..4 {
         second.frame().expect("a frame");
@@ -855,7 +855,7 @@ fn a_reload_puts_each_output_back_on_the_workspace_it_showed() {
 // ---- Output.apply, Output.mirror, OutputProfile -------------------------------------------------------------------------
 
 /// A shell over two screens that name their connectors: `A` is `DP-1` (1000 by 800) and `B` is `HDMI-1` (600 by 400). Its
-/// `init.ts` is `body`.
+/// `shell.ts` is `body`.
 fn world_with_connectors(body: &str) -> Rig {
     let init = format!("{body}\n");
     let mut rig = rig_setup(IMPORTS, &init, |comp| {
@@ -1015,11 +1015,11 @@ fn a_profile_that_does_not_check_fails_the_config_naming_the_profile() {
     let init = "gnoblin.outputs.profiles.add(new OutputProfile({ match: { connector: 'DP-1' }, scale: 9 }));\n";
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
-    std::fs::write(root.join("init.ts"), format!("{IMPORTS}{init}")).expect("init.ts is written");
+    std::fs::write(root.join("shell.ts"), format!("{IMPORTS}{init}")).expect("shell.ts is written");
     let mut shell =
         gnoblin_js::JsShell::new(Box::new(FakeCompositor::new()), honest_config(&root)).expect("the shell boots");
     let error = shell
-        .load_entry(std::path::Path::new("init.ts"))
+        .load_entry(std::path::Path::new("shell.ts"))
         .expect_err("the config does not check");
     assert!(error.to_string().contains("OutputProfile \"DP-1\".scale"), "{error}");
 }

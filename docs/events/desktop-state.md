@@ -24,7 +24,7 @@ class Titles extends ClientListener {
 gnoblin.clients.addListener(new Titles());
 ```
 
-Save it as `init.ts`. Open a terminal and read the lines with `journalctl --user -t titles -f`.
+Save it as `shell.ts`. Open a terminal and read the lines with `journalctl --user -t titles -f`.
 
 | Method                                | Called when                                                                 |
 | ------------------------------------- | --------------------------------------------------------------------------- |

@@ -69,7 +69,7 @@ fn build(files: &[(&str, &str)], budget: Duration, accept: impl Fn(u64) -> Resul
     let mut config = JsConfig::new(&root);
     config.stage_budget = budget;
     let supervisor = JsSupervisor::new(JsStrikePolicy::default(), JsManualClock::default());
-    let reloader = JsReloader::new(config, "init.ts", commit, supervisor);
+    let reloader = JsReloader::new(config, "shell.ts", commit, supervisor);
     Fixture {
         _dir: dir,
         root,
@@ -95,12 +95,12 @@ const V2: &str = "globalThis.version = (): number => 2;\n";
 
 #[test]
 fn a_syntax_error_keeps_the_old_generation_and_names_file_line_and_column() {
-    let mut fx = fixture(&[("init.ts", V1)]);
+    let mut fx = fixture(&[("shell.ts", V1)]);
     let first = fx.reloader.reload_now();
     assert!(first.ok, "{first:?}");
     assert_eq!(first.generation, Some(1));
 
-    write(&fx.root, "init.ts", "const ok = 1;\nconst broken = ;\n");
+    write(&fx.root, "shell.ts", "const ok = 1;\nconst broken = ;\n");
     let report = fx.reloader.reload_now();
     assert!(!report.ok);
     assert_eq!(report.generation, Some(1), "the old generation is still current");
@@ -108,12 +108,12 @@ fn a_syntax_error_keeps_the_old_generation_and_names_file_line_and_column() {
     let [error] = report.errors.as_slice() else {
         panic!("one error expected: {report:?}");
     };
-    assert_eq!(error.file, fx.root.join("init.ts"));
+    assert_eq!(error.file, fx.root.join("shell.ts"));
     assert_eq!((error.line, error.column), (2, 16));
     assert_eq!(error.kind, Some(JsErrorKind::Ts));
     assert_eq!(*fx.commits.borrow(), vec![1], "the broken stage was not committed");
 
-    write(&fx.root, "init.ts", V2);
+    write(&fx.root, "shell.ts", V2);
     let fixed = fx.reloader.reload_now();
     assert!(fixed.ok, "{fixed:?}");
     assert_eq!(version(&fx.reloader), 2);
@@ -124,7 +124,7 @@ fn a_syntax_error_keeps_the_old_generation_and_names_file_line_and_column() {
 #[test]
 fn a_throw_in_an_imported_module_reports_that_module() {
     let mut fx = fixture(&[
-        ("init.ts", "import './x.ts';\nglobalThis.version = (): number => 1;\n"),
+        ("shell.ts", "import './x.ts';\nglobalThis.version = (): number => 1;\n"),
         ("x.ts", "export const a: number = 1;\n"),
     ]);
     assert!(fx.reloader.reload_now().ok);
@@ -146,7 +146,7 @@ fn a_throw_in_an_imported_module_reports_that_module() {
 
 #[test]
 fn a_rejected_commit_keeps_the_old_generation() {
-    let mut fx = fixture_with(&[("init.ts", V1)], |id| {
+    let mut fx = fixture_with(&[("shell.ts", V1)], |id| {
         if id == 1 {
             Ok(())
         } else {
@@ -154,7 +154,7 @@ fn a_rejected_commit_keeps_the_old_generation() {
         }
     });
     assert!(fx.reloader.reload_now().ok);
-    write(&fx.root, "init.ts", V2);
+    write(&fx.root, "shell.ts", V2);
     let report = fx.reloader.reload_now();
     assert!(!report.ok);
     assert_eq!(report.errors[0].kind, None);
@@ -165,9 +165,9 @@ fn a_rejected_commit_keeps_the_old_generation() {
 
 #[test]
 fn a_runaway_config_is_reported_as_a_budget_failure_and_is_not_a_strike() {
-    let mut fx = runaway_fixture(&[("init.ts", V1)]);
+    let mut fx = runaway_fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
-    write(&fx.root, "init.ts", "while (true) {}\n");
+    write(&fx.root, "shell.ts", "while (true) {}\n");
     for _ in 0..5 {
         let report = fx.reloader.reload_now();
         assert!(!report.ok);
@@ -185,7 +185,7 @@ fn a_runaway_config_is_reported_as_a_budget_failure_and_is_not_a_strike() {
 fn a_save_of_an_imported_module_reloads_through_the_watcher() {
     let mut fx = fixture(&[
         (
-            "init.ts",
+            "shell.ts",
             "import { n } from './x.ts';\nglobalThis.version = (): number => n;\n",
         ),
         ("x.ts", "export const n: number = 1;\n"),
@@ -193,7 +193,7 @@ fn a_save_of_an_imported_module_reloads_through_the_watcher() {
     assert!(fx.reloader.reload_now().ok);
     assert_eq!(
         fx.reloader.watch_set(),
-        vec![fx.root.join("init.ts"), fx.root.join("x.ts")]
+        vec![fx.root.join("shell.ts"), fx.root.join("x.ts")]
     );
     let mut watcher = ConfigWatcher::new(&fx.root, DEBOUNCE).expect("a watcher");
     watcher
@@ -209,7 +209,7 @@ fn a_save_of_an_imported_module_reloads_through_the_watcher() {
 
 #[test]
 fn fifty_rapid_writes_cause_one_reload() {
-    let mut fx = fixture(&[("init.ts", V1)]);
+    let mut fx = fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
     let mut watcher = ConfigWatcher::new(&fx.root, DEBOUNCE).expect("a watcher");
     watcher
@@ -219,7 +219,7 @@ fn fifty_rapid_writes_cause_one_reload() {
     for n in 0..50 {
         write(
             &fx.root,
-            "init.ts",
+            "shell.ts",
             &format!("globalThis.version = (): number => {};\n", 100 + n),
         );
     }
@@ -232,7 +232,7 @@ fn fifty_rapid_writes_cause_one_reload() {
 
 #[test]
 fn a_broken_new_import_is_watched_so_fixing_it_reloads() {
-    let mut fx = fixture(&[("init.ts", V1)]);
+    let mut fx = fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
     let mut watcher = ConfigWatcher::new(&fx.root, DEBOUNCE).expect("a watcher");
     watcher
@@ -243,10 +243,10 @@ fn a_broken_new_import_is_watched_so_fixing_it_reloads() {
     write(&fx.root.join("lib"), "y.ts", "export const ok = ;\n");
     write(
         &fx.root,
-        "init.ts",
+        "shell.ts",
         "import './lib/y.ts';\nglobalThis.version = (): number => 2;\n",
     );
-    let broken = fx.reloader.poll(&mut watcher, PATIENCE).expect("init.ts changed");
+    let broken = fx.reloader.poll(&mut watcher, PATIENCE).expect("shell.ts changed");
     assert!(!broken.ok);
     assert_eq!(broken.errors[0].file, fx.root.join("lib/y.ts"));
     assert!(
@@ -262,7 +262,7 @@ fn a_broken_new_import_is_watched_so_fixing_it_reloads() {
 
 #[test]
 fn recovery_restages_from_disk_after_a_fault() {
-    let mut fx = fixture(&[("init.ts", V1)]);
+    let mut fx = fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
     let report = fx.reloader.recover(JsFault::Budget);
     assert!(report.ok, "{report:?}");
@@ -277,10 +277,10 @@ fn recovery_restages_from_disk_after_a_fault() {
 
 #[test]
 fn three_interrupted_restages_degrade_and_keep_the_last_good_generation() {
-    let mut fx = runaway_fixture(&[("init.ts", V1)]);
+    let mut fx = runaway_fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
     // The file on disk now loops, so every restage is interrupted.
-    write(&fx.root, "init.ts", "while (true) {}\n");
+    write(&fx.root, "shell.ts", "while (true) {}\n");
     let report = fx.reloader.recover(JsFault::Budget);
     assert!(!report.ok);
     assert!(matches!(report.health, JsHealth::Degraded { .. }), "{report:?}");
@@ -294,7 +294,7 @@ fn three_interrupted_restages_degrade_and_keep_the_last_good_generation() {
     assert!(!again.ok);
 
     // Fixing the file and reloading on purpose clears the state.
-    write(&fx.root, "init.ts", V2);
+    write(&fx.root, "shell.ts", V2);
     let fixed = fx.reloader.reload_now();
     assert!(fixed.ok);
     assert_eq!(fixed.health, JsHealth::Healthy);
@@ -303,7 +303,7 @@ fn three_interrupted_restages_degrade_and_keep_the_last_good_generation() {
 
 #[test]
 fn degraded_with_no_good_generation_runs_none() {
-    let mut fx = runaway_fixture(&[("init.ts", "while (true) {}\n")]);
+    let mut fx = runaway_fixture(&[("shell.ts", "while (true) {}\n")]);
     let first = fx.reloader.reload_now();
     assert!(!first.ok);
     assert!(fx.reloader.current().is_none());
@@ -319,9 +319,9 @@ fn degraded_with_no_good_generation_runs_none() {
 
 #[test]
 fn a_restage_that_fails_without_an_interrupt_is_not_retried() {
-    let mut fx = fixture(&[("init.ts", V1)]);
+    let mut fx = fixture(&[("shell.ts", V1)]);
     assert!(fx.reloader.reload_now().ok);
-    write(&fx.root, "init.ts", "throw new Error('nope');\n");
+    write(&fx.root, "shell.ts", "throw new Error('nope');\n");
     let report = fx.reloader.recover(JsFault::Budget);
     assert!(!report.ok);
     assert_eq!(report.errors[0].kind, Some(JsErrorKind::Exception));

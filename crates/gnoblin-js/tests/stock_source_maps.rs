@@ -9,11 +9,11 @@ use std::path::Path;
 
 use gnoblin_js::{JsConfig, JsErrorKind, JsGeneration, stock_sources_in};
 
-/// A generation whose config root holds `init.ts` with `body`, over the stock library embedded as TypeScript.
+/// A generation whose config root holds `shell.ts` with `body`, over the stock library embedded as TypeScript.
 fn generation(body: &str) -> (tempfile::TempDir, JsGeneration) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), body).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), body).expect("shell.ts is written");
     let mut config = JsConfig::new(&root);
     for (name, module) in stock_sources_in(None) {
         config = config.embed_typescript(name, module);
@@ -40,7 +40,7 @@ fn a_throw_in_a_stock_layout_reports_the_stock_ts_line() {
          layout.place(10, 10, { x: 0, y: 0, width: 100, height: 100 }, []);\n",
     );
     let error = generation
-        .eval_module(Path::new("init.ts"))
+        .eval_module(Path::new("shell.ts"))
         .expect_err("a cascade step of 0 is refused");
     assert_eq!(error.kind, JsErrorKind::Exception, "{error}");
     assert!(error.message.contains("cascadeStep"), "{error}");
@@ -66,7 +66,7 @@ fn a_throw_in_a_stock_layout_reports_the_stock_ts_line() {
         "the stack frame is remapped: {stack}"
     );
     assert!(
-        stack.contains("init.ts:4:"),
+        stack.contains("shell.ts:4:"),
         "the caller frame is the user's line: {stack}"
     );
 }

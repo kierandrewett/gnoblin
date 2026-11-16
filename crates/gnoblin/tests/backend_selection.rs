@@ -269,7 +269,9 @@ fn the_document_names_the_backend_and_the_environment_beats_it() {
     // wrapper's.
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).expect("the directory mode");
-    let source = directory.path().join("init.ts");
+    let source = directory.path().join("shell.ts");
+    // `GNOBLIN_SHELL` names a shell that has to exist: a path that is not there is an error, not a first login.
+    std::fs::write(&source, "// the user's shell\n").expect("the shell file");
     let missing = directory.path().join("no-such-host.sock");
     let document = Value::from_json(&serde_json::json!({
         "compositor": {"backend": "nested", "nested-display": missing.to_str().expect("utf-8 path")}
@@ -284,7 +286,7 @@ fn the_document_names_the_backend_and_the_environment_beats_it() {
         .expect("the last accepted document is stored");
 
     let (config_path, state_home) = (source.clone().into_os_string(), state.clone().into_os_string());
-    let mut refused = Compositor::start(&[("GNOBLIN_CONFIG", &config_path), ("XDG_STATE_HOME", &state_home)]);
+    let mut refused = Compositor::start(&[("GNOBLIN_SHELL", &config_path), ("XDG_STATE_HOME", &state_home)]);
     assert_eq!(refused.wait().code(), Some(1), "{}", refused.log());
     assert!(
         refused.log().contains("no-such-host.sock"),
@@ -294,7 +296,7 @@ fn the_document_names_the_backend_and_the_environment_beats_it() {
 
     let backend = os("headless");
     let mut session = Compositor::start(&[
-        ("GNOBLIN_CONFIG", &config_path),
+        ("GNOBLIN_SHELL", &config_path),
         ("XDG_STATE_HOME", &state_home),
         ("GNOBLIN_BACKEND", &backend),
     ]);
@@ -328,7 +330,9 @@ fn the_hardware_backend_refuses_a_renderer_it_cannot_scan_out_with() {
     // The renderer is a document setting, so the document carries it; the refusal comes before the seat is touched.
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).expect("the directory mode");
-    let source = directory.path().join("init.ts");
+    let source = directory.path().join("shell.ts");
+    // `GNOBLIN_SHELL` names a shell that has to exist: a path that is not there is an error, not a first login.
+    std::fs::write(&source, "// the user's shell\n").expect("the shell file");
     let document = Value::from_json(&serde_json::json!({
         "compositor": {"backend": "drm", "renderer": "software"}
     }))
@@ -342,7 +346,7 @@ fn the_hardware_backend_refuses_a_renderer_it_cannot_scan_out_with() {
         .expect("the last accepted document is stored");
 
     let (config_path, state_home) = (source.into_os_string(), state.into_os_string());
-    let mut session = Compositor::start(&[("GNOBLIN_CONFIG", &config_path), ("XDG_STATE_HOME", &state_home)]);
+    let mut session = Compositor::start(&[("GNOBLIN_SHELL", &config_path), ("XDG_STATE_HOME", &state_home)]);
     assert_eq!(session.wait().code(), Some(1), "{}", session.log());
     let log = session.log();
     assert!(

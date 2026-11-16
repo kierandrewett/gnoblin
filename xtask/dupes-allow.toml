@@ -519,12 +519,6 @@ kind = "same-name"
 reason = "a capture stop ends one stream; a session stop ends the session's guardian"
 
 [[allow]]
-left = "gnoblin-config::Origin"
-right = "gnoblin-input-eis::Origin"
-kind = "same-name"
-reason = "a configuration origin says where a file was found; an input origin says how an event entered the session"
-
-[[allow]]
 left = "gnoblin-capture::Target"
 right = "gnoblin-input::Target"
 kind = "same-name"

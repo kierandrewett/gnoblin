@@ -74,7 +74,7 @@ pub struct JsWritten {
     pub tsconfig: TsconfigOutcome,
 }
 
-/// The first line of the `gnoblin.d.ts` that earlier releases wrote beside `init.ts`. A file that starts with it is
+/// The first line of the `gnoblin.d.ts` that earlier releases wrote beside `shell.ts`. A file that starts with it is
 /// ours and is removed once the declarations live in [`GENERATED_DIR`]; a file the user wrote there is not touched.
 const LEGACY_TYPES_HEADER: &str = "// gnoblin.d.ts: the types of the Gnoblin JavaScript and TypeScript API.";
 
@@ -245,7 +245,7 @@ fn prune(root: &Path, dir: &Path, wanted: &BTreeSet<PathBuf>) -> io::Result<()> 
     Ok(())
 }
 
-/// Remove the `gnoblin.d.ts` an earlier release wrote beside `init.ts`, when it is that file: it declares `gnoblin`
+/// Remove the `gnoblin.d.ts` an earlier release wrote beside `shell.ts`, when it is that file: it declares `gnoblin`
 /// again and would clash with the declarations in [`GENERATED_DIR`] for any `include` that reaches it.
 fn remove_legacy_types(path: &Path) -> io::Result<()> {
     match fs::read_to_string(path) {

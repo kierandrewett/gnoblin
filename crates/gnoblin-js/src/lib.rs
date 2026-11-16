@@ -1,7 +1,7 @@
 //! The JavaScript shell runtime: TypeScript stripping, the module loader, and one QuickJS generation.
 //!
 //! The design is `design/js-runtime.md`. This crate is the engine core of the JS shell: it runs a user's
-//! `init.ts` in a sandboxed QuickJS context, bounded in time and memory, and reports every failure at the
+//! `shell.ts` in a sandboxed QuickJS context, bounded in time and memory, and reports every failure at the
 //! line the author wrote.
 //!
 //! - [`strip_types`] turns a TypeScript module into JavaScript and a source map.
@@ -21,7 +21,7 @@
 //! - [`JsConsole`] is the live console: a Unix socket that evaluates what `gnoblinctl console` sends in the running
 //!   generation, between frames, and answers with the value rendered by `data/js/gnoblin-core/inspect.ts`.
 //! - [`JsRole`] is the runtime role's shell: it connects a [`JsShell`] to the owner socket, loads the user's
-//!   `init.ts`, and owns the watcher, reloader and supervisor that swap a new generation in or keep the old one.
+//!   `shell.ts`, and owns the watcher, reloader and supervisor that swap a new generation in or keep the old one.
 //!   It holds the shell's two other owner connections: one for slots (the dialog observation of `gnoblin.dialogs`)
 //!   and one for the configuration document (what the device objects write to it).
 //! - [`JsRoleRunner`] is the whole runtime role: it locates the config, boots a [`JsRole`] that owns the
@@ -83,7 +83,7 @@ pub use host_session::{
 };
 pub use loader::{JsLoadState, JsLoader, JsResolver, JsTypeScriptModule};
 pub use reload::{JsDiagnostic, JsReloader, ReloadReport};
-pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE, config_dir, entry_in};
+pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE};
 pub use rquickjs;
 pub use runner::{FRAME_WAIT, JsRoleError, JsRoleRunner, STOCK_DIR_VARIABLE, TEST_CRASH_VARIABLE, WATCH_VARIABLE};
 pub use script_console::{JsConsoleLevel, JsConsoleLine, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};

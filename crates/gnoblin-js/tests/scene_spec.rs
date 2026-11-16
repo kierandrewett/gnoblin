@@ -19,7 +19,7 @@ fn double(value: f64) -> MirrorValue {
 }
 
 /// A shell over a screen of 1000 by 800, a seat and one 800 by 600 window per entry of `count` (ids 3 on), whose
-/// `init.ts` is `body`.
+/// `shell.ts` is `body`.
 fn world(count: u64, body: &str) -> Rig {
     let (rig, diagnostics) = boot(count, body);
     assert!(diagnostics.is_empty(), "{diagnostics:?} {:?}", rig.load_diagnostics);

@@ -35,7 +35,7 @@ fn double(value: f64) -> MirrorValue {
     MirrorValue::Double(value)
 }
 
-/// A shell over a screen, a seat, a lock and one window per `(width, height)` (ids 3 on), whose `init.ts` is `body`.
+/// A shell over a screen, a seat, a lock and one window per `(width, height)` (ids 3 on), whose `shell.ts` is `body`.
 fn world(sizes: &[(f64, f64)], body: &str) -> Rig {
     let sizes = sizes.to_vec();
     let mut rig = rig_setup(IMPORTS, body, move |comp| {
@@ -191,18 +191,18 @@ fn with_no_xr_program_the_extension_is_null_and_the_desktop_works_untouched() {
     assert!(rig.comp.named("room").is_none(), "no room");
 }
 
-/// A shell over a fresh fake compositor with `setup` run first, whose `init.ts` is `body`; the entry's load result.
+/// A shell over a fresh fake compositor with `setup` run first, whose `shell.ts` is `body`; the entry's load result.
 fn load(declared: bool, body: &str, setup: impl FnOnce(&FakeCompositor)) -> Result<Vec<String>, String> {
     let comp = FakeCompositor::new();
     setup(&comp);
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), body).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), body).expect("shell.ts is written");
     let mut config = honest_config(&root);
     config.xr_declared = declared;
     let mut shell = JsShell::new(Box::new(comp), config).expect("the shell boots");
     shell
-        .load_entry(Path::new("init.ts"))
+        .load_entry(Path::new("shell.ts"))
         .map_err(|error| error.to_string())
 }
 

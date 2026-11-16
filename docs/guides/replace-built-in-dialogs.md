@@ -3,10 +3,10 @@
 Gnoblin draws its own consent dialog for portal requests, the keyring's passphrase dialog and the polkit password dialog.
 They are the default, and the first two are replaceable by a program of your own.
 
-Your `init.ts` has two smaller options, and neither draws a dialog:
+Your `shell.ts` has two smaller options, and neither draws a dialog:
 
 - Watch the requests and refuse one by policy: [Requests and dialogs](/shell-api/requests).
-- Restyle the dialogs: `init.ts` cannot set the dialog style, which [dialogs](/config/configure/dialogs) describes.
+- Restyle the dialogs: `shell.ts` cannot set the dialog style, which [dialogs](/config/configure/dialogs) describes.
 
 The built-in dialog stays in the compositor as the fallback, so a request is never left without a way to ask the user.
 

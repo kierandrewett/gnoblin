@@ -1,7 +1,7 @@
 # Console and inspector
 
 The console is a live prompt into the running [TypeScript shell](typescript-shell.md). You type an expression, the
-shell evaluates it in its own runtime and prints the value. It sees what `init.ts` sees: the `gnoblin` global, the
+shell evaluates it in its own runtime and prints the value. It sees what `shell.ts` sees: the `gnoblin` global, the
 clients and workspaces as they are right now, and the bindings the shell has registered.
 
 ```sh
@@ -76,12 +76,12 @@ gnoblinctl --json console --eval 'gnoblin.clients.at(0)'
 - **Define variables.** A `var`, a `let` or a `const` at the prompt, or an assignment to an undeclared name, is a global
   of the running generation and stays for the next expression, from any console connection. To redefine a `let` or a
   `const`, use `var` or assign to it.
-- **Use the helpers.** `inspect` is a global in the console; see below. In `init.ts` import it:
+- **Use the helpers.** `inspect` is a global in the console; see below. In `shell.ts` import it:
   `import { inspect } from "gnoblin-core"`.
 - **Return objects.** A value whose first character is `{` is read as an object literal: `{a: 1}` is the object.
   A promise that has already settled shows its result.
 
-Nothing the console defines is kept. A reload (`gnoblinctl config reload`, or a save of `init.ts`) starts a new
+Nothing the console defines is kept. A reload (`gnoblinctl config reload`, or a save of `shell.ts`) starts a new
 generation, so the variables are gone, and nothing is written to disk.
 
 ### Between frames, under a budget
@@ -105,7 +105,7 @@ generation, so the shell does not restart over it.
 
 ## Printing with `console`
 
-`console` is a global of every script, so `console.log("hi")` works in `init.ts`, in a listener and at the prompt. At
+`console` is a global of every script, so `console.log("hi")` works in `shell.ts`, in a listener and at the prompt. At
 the prompt the lines an expression prints come out before its value:
 
 - `log`, `info` and `debug` go to standard output.

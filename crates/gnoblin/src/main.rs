@@ -221,7 +221,7 @@ fn guardian() -> Result<(), Exit> {
 
 /// Runs the runtime, the JavaScript role, until the session ends.
 ///
-/// The role locates and evaluates `init.ts` (or `init.js`) itself, commits the configuration document and serves
+/// The role locates and evaluates `shell.ts` (or `shell.js`) itself, commits the configuration document and serves
 /// `config.reload`. Nothing selects it: there is no other runtime role.
 ///
 /// No signal handler: the guardian's `SIGTERM` ends this process, and a process that has

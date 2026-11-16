@@ -22,24 +22,24 @@ gnoblinctl config init [DIR] [--force]
 gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]
 ```
 
-`config validate`, `config init` and `config migrate` need no running session. `config init` writes a starter `init.ts`:
+`config validate`, `config init` and `config migrate` need no running session. `config init` writes a starter `shell.ts`:
 the stock desktop as statements against the shell's objects.
 
-`config migrate` converts an `init.lua` to an `init.ts` in the same style:
+`config migrate` converts an `init.lua` to a `shell.ts` in the same style:
 
 - It exits 0 when everything converted, 1 when something was left out and 2 when nothing was written.
 - A file with something left out starts with `// INCOMPLETE: N unmapped settings, see comments`.
 
 See [Convert an init.lua](../gnoblinctl.md#convert-an-initlua).
 
-`config reload` also reloads the `init.ts` of the [TypeScript shell](../typescript-shell.md), and exits 1 with
+`config reload` also reloads the `shell.ts` of the [TypeScript shell](../typescript-shell.md), and exits 1 with
 `file:line:column` when that file fails to load.
 
 ## TypeScript configuration
 
 ```sh
-gnoblinctl check init.ts
-gnoblinctl check init.ts --types
+gnoblinctl check shell.ts
+gnoblinctl check shell.ts --types
 gnoblinctl types init [DIR]
 ```
 

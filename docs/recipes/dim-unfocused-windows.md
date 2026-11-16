@@ -1,6 +1,6 @@
 # Dim unfocused windows
 
-Set the opacity of windows that are not focused. Put this in `~/.config/gnoblin/init.ts`:
+Set the opacity of windows that are not focused. Put this in `~/.config/gnoblin/shell.ts`:
 
 ```ts
 import { ClientListener } from "gnoblin-core";

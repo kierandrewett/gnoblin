@@ -45,7 +45,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use futures_channel::oneshot;
 use futures_lite::StreamExt;
-use gnoblin_config::{Inherit, LocationAccuracy, SearchPaths, Store};
+use gnoblin_config::{Environment, Inherit, LocationAccuracy, Store};
 
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use zbus::message::Header;
@@ -153,7 +153,7 @@ pub fn policy_from_environment() -> Policy {
         log::debug!(area = "services", "no state directory is set; location is denied");
         return Policy::DENY;
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => policy_from_store(&store, path.path()),
         Err(error) => {
             log::debug!(area = "services", %error, "no configuration file; location is denied");

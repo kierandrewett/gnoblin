@@ -51,10 +51,10 @@ const IMPORTS: &str = "import * as libCore from \"gnoblin-core\"; import * as li
 /// would take.
 const SERVE_WITHIN: Duration = Duration::from_secs(2);
 
-/// A config directory whose `init.ts` is `IMPORTS` and `body`.
+/// A config directory whose `shell.ts` is `IMPORTS` and `body`.
 fn config_with(body: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("a config directory");
-    fs::write(dir.path().join("init.ts"), format!("{IMPORTS}{body}\n")).expect("init.ts");
+    fs::write(dir.path().join("shell.ts"), format!("{IMPORTS}{body}\n")).expect("shell.ts");
     dir
 }
 
@@ -463,13 +463,13 @@ fn a_script_that_spins_in_a_reload_cannot_hold_the_lock_screen_or_the_compositor
     std::thread::sleep(Duration::from_millis(1200));
     let saved = Instant::now();
     fs::write(
-        config.path().join("init.ts"),
+        config.path().join("shell.ts"),
         format!(
             "{IMPORTS}const end = Date.now() + {}; while (Date.now() < end) {{}}\n",
             SPIN.as_millis()
         ),
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 
     assert_served_during_the_spin(&session, &shell, saved, "a spin in a reload");
     let _ = shell.finish();

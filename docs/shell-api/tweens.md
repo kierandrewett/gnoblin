@@ -10,7 +10,7 @@ gnoblin.input.primary.bind("Super+o", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. `Super+o` fades the focused window to half opacity over 300 ms, and back
+Put the file in `~/.config/gnoblin/shell.ts`. `Super+o` fades the focused window to half opacity over 300 ms, and back
 on the next press.
 
 ## Animate a window
@@ -92,7 +92,7 @@ client?.set({ opacity: 0 }, { duration: 200 }).finished.then(() => client.close(
 ## Turn animations off
 
 Reduced motion makes every one of these instant: a workspace switch lands at once and a window is hidden at once. A
-config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, but `init.ts` cannot set it. See [dropped settings](/js-settings#dropped-settings).
+config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, but `shell.ts` cannot set it. See [dropped settings](/js-settings#dropped-settings).
 
 ## Animate a window yourself
 

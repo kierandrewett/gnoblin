@@ -7,7 +7,7 @@ separate programs that you start with the session. It gives you two ways to open
 
 _Firefox is an ordinary window; Waybar runs as a separate desktop client._
 
-Add this to `~/.config/gnoblin/init.ts`. Replace any command with an application installed on your system.
+Add this to `~/.config/gnoblin/shell.ts`. Replace any command with an application installed on your system.
 
 ```ts
 const input = gnoblin.input.primary;
@@ -20,8 +20,8 @@ input.bind("Super+Return", () => {
 });
 ```
 
-Install the selected applications first. Start Waybar and Mako with the session, because `init.ts` has no autostart list:
-see [autostart](/guides/autostart). `init.ts` cannot set the cursor theme either: see
+Install the selected applications first. Start Waybar and Mako with the session, because `shell.ts` has no autostart list:
+see [autostart](/guides/autostart). `shell.ts` cannot set the cursor theme either: see
 [cursor themes](/guides/cursors).
 
 A trigger is bound once, so if the starter you wrote with `gnoblinctl config init` already binds one of these, edit that

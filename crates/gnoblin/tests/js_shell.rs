@@ -490,7 +490,7 @@ fn save(path: &Path, text: &str) {
 }
 
 /// A listener that puts a window of each listed app at its place and size when the shell learns of it: how a script
-/// places an app's windows. `places` is `(app id, x, y, width, height)`. The text goes into an `init.ts` after its
+/// places an app's windows. `places` is `(app id, x, y, width, height)`. The text goes into a `shell.ts` after its
 /// imports.
 fn placing_listener(places: &[(&str, i32, i32, i32, i32)]) -> String {
     let table: Vec<String> = places
@@ -511,7 +511,7 @@ fn placing_listener(places: &[(&str, i32, i32, i32, i32)]) -> String {
     )
 }
 
-/// The `init.ts` of the tests: a typed listener over the places `slots.ts` holds.
+/// The `shell.ts` of the tests: a typed listener over the places `slots.ts` holds.
 const PLACING_INIT: &str = r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 import { places } from "./slots.ts";
 
@@ -545,14 +545,14 @@ fn write_places(dir: &Path, places: &str) {
     );
 }
 
-/// The config directory of the tests: `slots.ts` holds the places, `init.ts` a typed listener over them.
+/// The config directory of the tests: `slots.ts` holds the places, `shell.ts` a typed listener over them.
 ///
-/// The places are saved first, since `init.ts` imports them. A save of two files is not one event for the watcher when
+/// The places are saved first, since `shell.ts` imports them. A save of two files is not one event for the watcher when
 /// the test is not scheduled between them for longer than its quiet time, and a reload that comes in the middle then
-/// reads the new places with the old `init.ts`, which is a working config, or none yet.
+/// reads the new places with the old `shell.ts`, which is a working config, or none yet.
 fn write_config(dir: &Path, places: &str) {
     write_places(dir, places);
-    save(&dir.join("init.ts"), PLACING_INIT);
+    save(&dir.join("shell.ts"), PLACING_INIT);
 }
 
 #[test]
@@ -569,7 +569,7 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
     );
     let shell = Shell::start(&session, config.path(), |_| {});
 
-    // Slice criterion 1: `init.ts` with annotations and an enum, importing `./slots.ts`, evaluates against the real
+    // Slice criterion 1: `shell.ts` with annotations and an enum, importing `./slots.ts`, evaluates against the real
     // tree, and its listener moves the two windows the compositor already holds.
     let ipc = session.ipc();
     wait_for(
@@ -613,11 +613,11 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
     // Slice criterion 4: a syntax error keeps the running generation and is reported with its `.ts` position. The
     // old generation still places a window that maps afterwards.
     save(
-        &config.path().join("init.ts"),
+        &config.path().join("shell.ts"),
         "import { gnoblin } from \"gnoblin-core\";\n\nconst broken: number = = 5;\n",
     );
     wait_for("the syntax error is reported", &session, &mut mapper, &shell, || {
-        shell.diagnostics().iter().any(|text| text.contains("init.ts:3:"))
+        shell.diagnostics().iter().any(|text| text.contains("shell.ts:3:"))
     });
     // Nothing swaps in after the failed reload: the generation the shell reports is still the one it reported when the
     // error was, and it is the one that places the window that maps now.
@@ -641,10 +641,10 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
         "the failed reload kept the window ids"
     );
 
-    // Fixing the file is seen even though the failed module was in no generation's graph. `init.ts` is saved before
+    // Fixing the file is seen even though the failed module was in no generation's graph. `shell.ts` is saved before
     // the places it imports: a reload that comes between the two reads the fixed file with the old places, and not the
     // broken file again, which would be reported a second time.
-    save(&config.path().join("init.ts"), PLACING_INIT);
+    save(&config.path().join("shell.ts"), PLACING_INIT);
     write_places(
         config.path(),
         r#"{ "org.example.first": [10, 20], "org.example.second": [30, 40], "*": [50, 60] }"#,
@@ -655,11 +655,14 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
 
     let warnings = shell.finish();
     assert!(
-        warnings.iter().any(|message| message.contains("init.ts:3:")),
+        warnings.iter().any(|message| message.contains("shell.ts:3:")),
         "the syntax error was logged with its position: {warnings:?}"
     );
     assert_eq!(
-        warnings.iter().filter(|message| message.contains("init.ts:3:")).count(),
+        warnings
+            .iter()
+            .filter(|message| message.contains("shell.ts:3:"))
+            .count(),
         1,
         "and once: {warnings:?}"
     );
@@ -673,7 +676,7 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
 const RUNAWAY_CALL: Duration = Duration::from_secs(1);
 const RUNAWAY_STAGE: Duration = Duration::from_secs(5);
 
-/// An `init.ts` whose handler for the window `org.example.spin` never returns, unless the window has been marked.
+/// A `shell.ts` whose handler for the window `org.example.spin` never returns, unless the window has been marked.
 ///
 /// A generation staged from this file runs `onAdded` for every window already there, so a handler that always
 /// spun would spin again in the restarted generation. This one marks the window first (a write to `y` that the
@@ -707,7 +710,7 @@ fn a_handler_that_never_returns_is_interrupted_the_compositor_keeps_answering_an
     mapper.map_window("org.example.second", "Second");
 
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("init.ts"), SPIN_ONCE).expect("init.ts");
+    fs::write(config.path().join("shell.ts"), SPIN_ONCE).expect("shell.ts");
     // The first generation's listener hangs once, and only that call is the runaway.
     let shell = Shell::start(&session, config.path(), |config| {
         config.shell.entry_budget = RUNAWAY_CALL;
@@ -768,7 +771,7 @@ fn a_handler_that_always_hangs_exhausts_the_restarts_and_the_last_generation_kee
 
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
-        config.path().join("init.ts"),
+        config.path().join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
@@ -785,7 +788,7 @@ gnoblin.clients.addListener({
 });
 "#,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let shell = Shell::start(&session, config.path(), |config| {
         config.shell.entry_budget = RUNAWAY_CALL;
         // The restaged generation replays the hanging window while it loads, so staging is what runs out.
@@ -826,7 +829,7 @@ gnoblin.clients.addListener({
     });
 }
 
-/// An `init.ts` that prints at load and from a listener, with every call on a line and a column the test knows.
+/// A `shell.ts` that prints at load and from a listener, with every call on a line and a column the test knows.
 const CONSOLE_INIT: &str = r#"import { gnoblin } from "gnoblin-core";
 console.log("init says hi", gnoblin.clients.length);
 let heard = 0;
@@ -844,7 +847,7 @@ fn a_scripts_console_calls_reach_the_session_log_with_their_ts_call_sites() {
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());
     let config = tempfile::tempdir().expect("a config directory");
-    save(&config.path().join("init.ts"), CONSOLE_INIT);
+    save(&config.path().join("shell.ts"), CONSOLE_INIT);
     let shell = Shell::start(&session, config.path(), |_| {});
 
     // A listener runs in a later frame than the load, so both kinds of call are proved.
@@ -855,12 +858,12 @@ fn a_scripts_console_calls_reach_the_session_log_with_their_ts_call_sites() {
     let log = shell.finish();
 
     assert!(
-        log.iter().any(|message| message == "init.ts:2:29: init says hi 0"),
-        "the load's call is in the log as `init.ts:LINE:COL`: {log:#?}"
+        log.iter().any(|message| message == "shell.ts:2:29: init says hi 0"),
+        "the load's call is in the log as `shell.ts:LINE:COL`: {log:#?}"
     );
     assert!(
         log.iter()
-            .any(|message| message == "init.ts:8:34: heard org.example.logger"),
+            .any(|message| message == "shell.ts:8:34: heard org.example.logger"),
         "the listener's call is too, from its own frame: {log:#?}"
     );
 }
@@ -909,7 +912,7 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_w
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
 
-    // No `init.ts`: the stock default config is a real runtime config. It declares the four floating workspaces `1` to `4`, and
+    // No `shell.ts`: the stock default config is a real runtime config. It declares the four floating workspaces `1` to `4`, and
     // its keys are bound on the seat (through the real compositor, which took the claims or the shell would have
     // reported a refusal).
     wait_for("the stock config runs", &session, &mut mapper, &shell, || {
@@ -925,7 +928,7 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_w
 
     // A user file replaces the default whole: nothing is merged under it, so it has its own two workspaces, its own
     // key and not one of the stock keys.
-    save(&config.path().join("init.ts"), REPLACING_CONFIG);
+    save(&config.path().join("shell.ts"), REPLACING_CONFIG);
     wait_for("the replacing config runs", &session, &mut mapper, &shell, || {
         section(&shell.view(), "workspaces [") == "a:MasterStackLayout,b:GridLayout"
     });
@@ -942,7 +945,7 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_w
     // The way to keep the stock default is to start from the starter file: its workspaces and keys are back, with the
     // user's key beside them.
     save(
-        &config.path().join("init.ts"),
+        &config.path().join("shell.ts"),
         &format!("{}{KEEPING_ADDITION}", gnoblin_js::STARTER_CONFIG),
     );
     wait_for(
@@ -960,7 +963,7 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_w
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 
-    // And an imperative `init.ts` is still a reload that places the window.
+    // And an imperative `shell.ts` is still a reload that places the window.
     write_config(config.path(), r#"{ "org.example.first": [21, 22] }"#);
     wait_for(
         "the imperative file places the window",
@@ -980,7 +983,7 @@ fn write_guarded_config(dir: &Path, places: &str) {
     )
     .expect("slots.ts");
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 import { places } from "./slots.ts";
 
@@ -1002,7 +1005,7 @@ gnoblin.clients.addListener({
 });
 "#,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 #[test]
@@ -1117,7 +1120,7 @@ fn a_script_draws_a_box_and_a_titlebar_and_the_compositor_holds_what_it_painted(
 
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
-        config.path().join("init.ts"),
+        config.path().join("shell.ts"),
         r##"import { gnoblin } from "gnoblin-core"; import { Box, startDecorations } from "gnoblin-std";
 
 startDecorations();
@@ -1134,7 +1137,7 @@ gnoblin.clients.addListener({
 export const swatch = new Box({ width: 120, height: 40, fill: "#336699" });
 "##,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
 
@@ -1393,11 +1396,11 @@ fn end_drag(session: &Session, mapper: &mut Mapper, app: &str, code: u32, expect
     );
 }
 
-/// A config directory whose `init.ts` creates a floating workspace with the default `FloatingLayout` and puts every
+/// A config directory whose `shell.ts` creates a floating workspace with the default `FloatingLayout` and puts every
 /// window at (300, 200), 200 by 150.
 fn write_drag_config(dir: &Path) {
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core"; import { FloatingLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new FloatingLayout() }));
@@ -1414,7 +1417,7 @@ gnoblin.clients.addListener({
 });
 "#,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 #[test]
@@ -1518,7 +1521,7 @@ fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() 
 /// (300, 200), 200 by 150.
 fn write_handles_config(dir: &Path) {
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core"; import { FloatingLayout, Workspace, defaultTitlebarStyle, startDecorations, titlebarFill } from "gnoblin-std";
 
 const stock = titlebarFill(defaultTitlebarStyle);
@@ -1546,7 +1549,7 @@ gnoblin.clients.addListener({
 });
 "#,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 /// A resize handle lies outside the window's geometry. The compositor hit-tests the shell's nodes outside the parent's
@@ -1628,12 +1631,12 @@ fn a_resize_handle_outside_the_geometry_of_a_real_window_takes_the_pointer_and_a
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
-/// An `init.ts` with a `MasterStackLayout` workspace whose two default drag bindings count the drags they take, so a test
+/// A `shell.ts` with a `MasterStackLayout` workspace whose two default drag bindings count the drags they take, so a test
 /// knows the shell's drag has begun (nothing moves on screen when a swap begins). `probe` reports the counts and the
 /// workspace's order of windows.
 fn write_tiling_drag_config(dir: &Path) {
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core"; import { MasterStackLayout, Workspace } from "gnoblin-std";
 
 const layout = new MasterStackLayout();
@@ -1655,7 +1658,7 @@ for (const id of ["swap", "resize"]) {
     JSON.stringify({ ...started, order: gnoblin.workspaces.get("desk")?.clients.map((client) => client.appId) });
 "#,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 /// How many drags of `binding` (`swap` or `resize`) the shell has begun, and the workspace's order of windows.
@@ -1777,16 +1780,16 @@ fn screen_size(ipc: &Path) -> (f64, f64) {
     (value("width"), value("height"))
 }
 
-/// An `init.ts` with one workspace whose layout is `layout`, a TypeScript expression.
+/// A `shell.ts` with one workspace whose layout is `layout`, a TypeScript expression.
 fn write_layout_config(dir: &Path, layout: &str) {
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         format!(
             "import {{ gnoblin }} from \"gnoblin-core\"; import {{ DwindleLayout, MasterStackLayout, StripLayout, Workspace }} from \"gnoblin-std\";\n\
              gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: {layout} }}));\n"
         ),
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 #[test]
@@ -2258,7 +2261,7 @@ fn a_fullscreen_window_with_a_shadow_margin_fills_the_screen_with_its_geometry()
     });
 }
 
-/// An `init.ts` whose workspace tiles by halves side by side and, one second after the shell's clock starts, changes to
+/// A `shell.ts` whose workspace tiles by halves side by side and, one second after the shell's clock starts, changes to
 /// rows inside a `requestTransition` of 500 ms. `probe()` says what the script knows: the shell's clock, whether the
 /// transition runs, and the log of its start and finish.
 const TRANSITION_INIT: &str = r#"
@@ -2316,7 +2319,7 @@ fn a_layout_change_in_a_transition_commits_to_the_scene_and_the_transition_ends_
     // (`a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_the_compositors_word`).
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("init.ts"), TRANSITION_INIT).expect("init.ts");
+    fs::write(config.path().join("shell.ts"), TRANSITION_INIT).expect("shell.ts");
     let clock = JsManualClock::default();
     let held = clock.clone();
     let shell = Shell::start(&session, config.path(), move |config| {
@@ -2429,7 +2432,7 @@ fn a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_
     // `crates/gnoblin-wayland/tests/tree_live.rs` (a tween's pose is not in the tree an observer reads).
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("init.ts"), SCRUB_INIT).expect("init.ts");
+    fs::write(config.path().join("shell.ts"), SCRUB_INIT).expect("shell.ts");
     let clock = JsManualClock::default();
     let held = clock.clone();
     let shell = Shell::start(&session, config.path(), move |config| {
@@ -2500,12 +2503,12 @@ fn a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
-/// A config directory whose `init.ts` declares one workspace that places nothing and one listener that places a window of
+/// A config directory whose `shell.ts` declares one workspace that places nothing and one listener that places a window of
 /// `org.example.placed` at (321, 123) and makes it 222 by 111.
 fn write_placing_config(dir: &Path) {
     let listener = placing_listener(&[("org.example.placed", 321, 123, 222, 111)]);
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         format!(
             "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
              \n\
@@ -2514,7 +2517,7 @@ fn write_placing_config(dir: &Path) {
              {listener}"
         ),
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 #[test]
@@ -2566,7 +2569,7 @@ fn write_click_config(dir: &Path) {
         ("org.example.over", 400, 260, 200, 150),
     ]);
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         format!(
             "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
              \n\
@@ -2581,7 +2584,7 @@ fn write_click_config(dir: &Path) {
              }});\n"
         ),
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 /// The app id of the window the seat's keyboard focus is on, as the shell reads the seat the compositor publishes. A
@@ -2678,7 +2681,7 @@ fn write_requests_config(dir: &Path) {
         ("org.example.third", 250, 200, 200, 150),
     ]);
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         format!(
             "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
              \n\
@@ -2692,7 +2695,7 @@ fn write_requests_config(dir: &Path) {
              }});\n"
         ),
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 /// A session with the requests config running and a client connected, before any window is mapped.
@@ -2869,7 +2872,7 @@ fn repeat_delay(ipc: &Path) -> Option<i64> {
     document(ipc)?.pointer("/input/keyboard/delay")?.as_i64()
 }
 
-/// An `init.ts` that runs `settings` once for each keyboard of the seat, with the keyboard as `device`.
+/// A `shell.ts` that runs `settings` once for each keyboard of the seat, with the keyboard as `device`.
 fn keyboard_init(settings: &str) -> String {
     format!(
         "import {{ Keyboard, gnoblin }} from \"gnoblin-core\";\n\
@@ -2888,7 +2891,7 @@ fn device_settings_reach_the_compositors_document_a_refused_value_is_reported_an
     support::plug_keyboard(&session.input, &session.ipc());
     let mut mapper = Mapper::connect(&session.wayland());
     let dir = tempfile::tempdir().expect("a config directory");
-    let init = dir.path().join("init.ts");
+    let init = dir.path().join("shell.ts");
     let write = |settings: &str| save(&init, &keyboard_init(settings));
     write("device.repeatRate = 40; device.repeatDelay = 250;");
     let shell = Shell::start(&session, dir.path(), |_| {});
@@ -3057,7 +3060,7 @@ fn a_dialog_listener_that_declines_a_consent_request_refuses_it_and_one_it_leave
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());
     let dir = tempfile::tempdir().expect("a config directory");
-    fs::write(dir.path().join("init.ts"), POLICY).expect("init.ts");
+    fs::write(dir.path().join("shell.ts"), POLICY).expect("shell.ts");
     let shell = Shell::start(&session, dir.path(), |_| {});
 
     refused_once_observing(&session, &mut mapper, &shell, STRICT);
@@ -3075,7 +3078,7 @@ fn a_dialog_listener_that_runs_out_its_budget_is_skipped_and_the_built_in_dialog
     let mut mapper = Mapper::connect(&session.wayland());
     let dir = tempfile::tempdir().expect("a config directory");
     fs::write(
-        dir.path().join("init.ts"),
+        dir.path().join("shell.ts"),
         r#"import { DialogListener, gnoblin } from "gnoblin-core";
 
 class Policy extends DialogListener {
@@ -3090,7 +3093,7 @@ class Policy extends DialogListener {
 gnoblin.dialogs.addListener(new Policy());
 "#,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let shell = Shell::start(&session, dir.path(), |config| {
         config.shell.entry_budget = RUNAWAY_CALL;
     });
@@ -3160,7 +3163,7 @@ fn decorations_declared(ipc: &Path) -> bool {
     })
 }
 
-/// An `init.ts` that frames every window and answers the compositor's window menu, with the one floating workspace
+/// A `shell.ts` that frames every window and answers the compositor's window menu, with the one floating workspace
 /// the shell gives a script that declares none.
 const UI_INIT: &str = r#"import { startDecorations, startWindowMenu } from "gnoblin-std";
 
@@ -3168,14 +3171,14 @@ startDecorations();
 startWindowMenu();
 "#;
 
-/// An `init.ts` that starts none of the stock UI: nothing frames a window.
+/// A `shell.ts` that starts none of the stock UI: nothing frames a window.
 const BARE_INIT: &str = r#"import { gnoblin } from "gnoblin-core"; import { FloatingLayout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new FloatingLayout() }));
 "#;
 
 fn write_ui_config(dir: &Path) {
-    fs::write(dir.join("init.ts"), UI_INIT).expect("init.ts");
+    fs::write(dir.join("shell.ts"), UI_INIT).expect("shell.ts");
 }
 
 /// A mapped window with decorations on has its content below the bar and the bar above it, and does not overlap it. A right
@@ -3291,7 +3294,7 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
     // A client that wants the shell's bar.
     let mut asks = Mapper::connect(&session.wayland()).requesting_server_side();
     let config = tempfile::tempdir().expect("a config directory");
-    let init = config.path().join("init.ts");
+    let init = config.path().join("shell.ts");
     write_ui_config(config.path());
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
@@ -3403,7 +3406,7 @@ fn a_window_mapped_before_the_shell_declared_decorations_ends_with_its_bar_on_sc
     let config = tempfile::tempdir().expect("a config directory");
     // The compositor gives a window no size until the shell does, and a titlebar is as wide as its window.
     fs::write(
-        config.path().join("init.ts"),
+        config.path().join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core"; import { startDecorations } from "gnoblin-std";
 
 startDecorations();
@@ -3415,7 +3418,7 @@ gnoblin.clients.addListener({
 });
 "#,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let shell = Shell::start(&session, config.path(), |_| {});
     wait_for(
         "the bar is mounted and the content lies below it",
@@ -3445,7 +3448,7 @@ gnoblin.clients.addListener({
 /// ping. `armed` is whether the Force quit of the window's open alert is armed, and `undefined` while no alert is open.
 fn write_alert_config(dir: &Path) {
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core"; import { notRespondingAlerts, startDecorations, startNotRespondingAlert } from "gnoblin-std";
 
 startDecorations();
@@ -3457,7 +3460,7 @@ startNotRespondingAlert();
         .join(",");
 "#,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 /// A client that leaves the compositor's liveness ping unanswered gets the not-responding alert, which names its window, and
@@ -3618,7 +3621,7 @@ impl ConsoleClient {
 #[test]
 fn the_console_reads_and_writes_the_live_shell_and_survives_errors_and_runaways() {
     let session = Session::start();
-    // No init.ts: the stock config runs, with its seat claims and its keys.
+    // No shell.ts: the stock config runs, with its seat claims and its keys.
     let config = tempfile::tempdir().expect("a config directory");
     let shell = Shell::start(&session, config.path(), |_| {});
     let mut mapper = Mapper::connect(&session.wayland());
@@ -3645,7 +3648,7 @@ fn the_console_reads_and_writes_the_live_shell_and_survives_errors_and_runaways(
         shell.view().starts_with("2 clients")
     });
 
-    // Reads: the object model of init.ts, live.
+    // Reads: the object model of shell.ts, live.
     assert_eq!(
         console.value("gnoblin.clients.length", &mut mapper),
         serde_json::json!(2)
@@ -3815,11 +3818,11 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
     let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();
     mapper.map_window("org.example.first", "First");
     let config = tempfile::tempdir().expect("a config directory");
-    let init = config.path().join("init.ts");
+    let init = config.path().join("shell.ts");
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
 
-    // No `init.ts`: the zero-config behaviour, which is what the starter must reproduce.
+    // No `shell.ts`: the zero-config behaviour, which is what the starter must reproduce.
     wait_for("the stock config runs", &session, &mut mapper, &shell, || {
         section(&shell.view(), "workspaces [") == STOCK_WORKSPACES
     });
@@ -3837,7 +3840,7 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
     let zero_generation = shell.generation();
     let window = ids(&scene(&ipc));
 
-    // The starter as written is the stock default written out as an `init.ts`, so it declares and binds what the
+    // The starter as written is the stock default written out as a `shell.ts`, so it declares and binds what the
     // default did.
     save(&init, gnoblin_js::STARTER_CONFIG);
     wait_for("the starter is loaded", &session, &mut mapper, &shell, || {
@@ -3919,7 +3922,7 @@ fn a_global_style_becomes_the_effect_list_and_opacity_of_a_mapped_windows_node_a
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
-        config.path().join("init.ts"),
+        config.path().join("shell.ts"),
         r##"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
@@ -3930,7 +3933,7 @@ gnoblin.clients.where({ appId: "org.example.dim" }).style.opacity = 0.5;
 gnoblin.clients.where({ appId: "org.example.glow" }).style.shadows = [{ blur: 30, color: "#38bdf855" }];
 "##,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let shell = Shell::start(&session, config.path(), |_| {});
     let mut mapper = Mapper::connect(&session.wayland());
     let ipc = session.ipc();
@@ -3954,7 +3957,7 @@ gnoblin.clients.where({ appId: "org.example.glow" }).style.shadows = [{ blur: 30
     // one styled.
     let generation = shell.generation();
     save(
-        &config.path().join("init.ts"),
+        &config.path().join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
@@ -4018,7 +4021,7 @@ gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];"##;
              {style}\n"
         )
     };
-    fs::write(config.path().join("init.ts"), init(false, style)).expect("init.ts");
+    fs::write(config.path().join("shell.ts"), init(false, style)).expect("shell.ts");
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
     wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
@@ -4043,7 +4046,7 @@ gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];"##;
 
     // The shell decorates the window: the style stays on its node, now with a titlebar under it.
     let generation = shell.generation();
-    save(&config.path().join("init.ts"), &init(true, style));
+    save(&config.path().join("shell.ts"), &init(true, style));
     wait_for(
         "the window is decorated and still styled",
         &session,
@@ -4058,7 +4061,7 @@ gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];"##;
 
     // A reload without the lines takes the radius and the effects off the node.
     let generation = shell.generation();
-    save(&config.path().join("init.ts"), &init(true, ""));
+    save(&config.path().join("shell.ts"), &init(true, ""));
     wait_for("the reload clears the style", &session, &mut mapper, &shell, || {
         shell.generation() > generation && frame_style_of(&ipc, app) == Some((0.0, Vec::new()))
     });
@@ -4266,7 +4269,7 @@ fn room_of(ipc: &Path) -> Option<gnoblin_proto::tree::snapshot_node::Properties>
 fn the_xr_programs_seat_makes_the_stock_shell_build_a_room_with_a_view_per_window_and_its_going_takes_it_down() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    // No `init.ts`: the stock default is what runs.
+    // No `shell.ts`: the stock default is what runs.
     let shell = Shell::start(&session, config.path(), |_| {});
     let mut mapper = Mapper::connect(&session.wayland());
     let ipc = session.ipc();
@@ -4378,7 +4381,7 @@ fn claims_of(ipc: &Path, controller: u64) -> Vec<String> {
 fn the_stock_grab_claims_the_grip_on_the_real_controller_and_the_claim_goes_with_the_drag_and_with_the_shell() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    // No `init.ts`: the stock default is what runs.
+    // No `shell.ts`: the stock default is what runs.
     let shell = Shell::start(&session, config.path(), |_| {});
     let mut mapper = Mapper::connect(&session.wayland());
     let ipc = session.ipc();
@@ -4459,11 +4462,11 @@ fn the_stock_grab_claims_the_grip_on_the_real_controller_and_the_claim_goes_with
 
 // ---- outputs -----------------------------------------------------------------------------------------------------
 
-/// An `init.ts` whose two workspaces fill the output that shows them, and whose listener sends the windows of
+/// A `shell.ts` whose two workspaces fill the output that shows them, and whose listener sends the windows of
 /// `org.example.second` to the second workspace.
 fn write_outputs_config(dir: &Path) {
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core"; import { Layout, Workspace } from "gnoblin-std";
 
 class Fill extends Layout {
@@ -4486,7 +4489,7 @@ gnoblin.clients.addListener({
 });
 "#,
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 /// The screens of the compositor's tree by place: each one's output number (from its `output-N` name) and rectangle.
@@ -4628,7 +4631,7 @@ fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged
 
 // ---- logical displays: profiles, span and mirror over two real virtual outputs -----------------------------------------
 
-/// An `init.ts` in the specification's style: a profile for each headless output, a display over both in `mode` that
+/// A `shell.ts` in the specification's style: a profile for each headless output, a display over both in `mode` that
 /// is added when the second output arrives, and removed when a window of `org.example.second` maps. The probe lists the
 /// displays as `[id, mode, outputs, workspace]`.
 fn displays_init(mode: &str) -> String {
@@ -4672,7 +4675,7 @@ gnoblin.clients.addListener(new Split());
 }
 
 fn write_displays_config(dir: &Path, mode: &str) {
-    fs::write(dir.join("init.ts"), displays_init(mode)).expect("init.ts");
+    fs::write(dir.join("shell.ts"), displays_init(mode)).expect("shell.ts");
 }
 
 /// The `mirror_of` the compositor publishes for each screen that has one, by place.
@@ -4837,7 +4840,7 @@ fn a_script_reads_the_sessions_status_runs_a_timer_and_a_process_and_is_told_of_
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());
     let config = tempfile::tempdir().expect("a config directory");
-    save(&config.path().join("init.ts"), HOST_API_INIT);
+    save(&config.path().join("shell.ts"), HOST_API_INIT);
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
     let probe = |shell: &Shell| -> serde_json::Value {
@@ -4895,7 +4898,7 @@ fn a_script_reads_the_sessions_status_runs_a_timer_and_a_process_and_is_told_of_
     );
     let generation = shell.generation();
     owner_client(&ipc)
-        .reject_config("init.ts:3:1: the test refuses this document")
+        .reject_config("shell.ts:3:1: the test refuses this document")
         .expect("the rejection is accepted");
     wait_for("the reload failed", &session, &mut mapper, &shell, || {
         probe(&shell)["reload"].is_array()
@@ -4936,10 +4939,10 @@ fn idle_object(ipc: &Path) -> (u64, u64) {
     (uint("idle_ms"), uint("inhibitors"))
 }
 
-/// An `init.ts` with an idle watch of 400 ms that records what it heard, and whatever else `extra` adds.
+/// A `shell.ts` with an idle watch of 400 ms that records what it heard, and whatever else `extra` adds.
 fn write_idle_config(dir: &Path, extra: &str) {
     save(
-        &dir.join("init.ts"),
+        &dir.join("shell.ts"),
         &format!(
             r#"import {{ gnoblin }} from "gnoblin-core";
 
@@ -5077,7 +5080,7 @@ fn a_launch_is_started_by_its_applications_window_and_timed_out_by_its_deadline(
     let mut mapper = Mapper::connect(&session.wayland());
     let config = tempfile::tempdir().expect("a config directory");
     save(
-        &config.path().join("init.ts"),
+        &config.path().join("shell.ts"),
         r#"import { gnoblin } from "gnoblin-core";
 
 const launches = [
@@ -5257,7 +5260,7 @@ fn an_authentication_listener_sees_a_request_without_its_cookie_and_can_only_ref
         .expect("the services role claims its slot");
     let mut mapper = Mapper::connect(&services.session.wayland());
     let config = tempfile::tempdir().expect("a config directory");
-    save(&config.path().join("init.ts"), AUTHENTICATION);
+    save(&config.path().join("shell.ts"), AUTHENTICATION);
     let shell = Shell::start(&services.session, config.path(), |_| {});
     until_observed(&services.session, &mut mapper, &shell, &mut offerer);
 
@@ -5308,7 +5311,7 @@ fn an_authentication_stays_the_dialogs_when_the_observing_shell_goes_away() {
         .expect("the services role claims its slot");
     let mut mapper = Mapper::connect(&services.session.wayland());
     let config = tempfile::tempdir().expect("a config directory");
-    save(&config.path().join("init.ts"), AUTHENTICATION);
+    save(&config.path().join("shell.ts"), AUTHENTICATION);
     let shell = Shell::start(&services.session, config.path(), |_| {});
     until_observed(&services.session, &mut mapper, &shell, &mut offerer);
 
@@ -5349,7 +5352,7 @@ const RESIZE_HINT: &str = "Resize: arrow keys, Return to keep it, Escape to canc
 fn write_reposition_config(dir: &Path) {
     let listener = placing_listener(&[("org.example.keys", 300, 200, 200, 150)]);
     fs::write(
-        dir.join("init.ts"),
+        dir.join("shell.ts"),
         format!(
             "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
              \n\
@@ -5364,7 +5367,7 @@ fn write_reposition_config(dir: &Path) {
              }});\n"
         ),
     )
-    .expect("init.ts");
+    .expect("shell.ts");
 }
 
 /// Presses `key` until the compositor shows `hint`: the shell's claim of the key reaches the compositor a few frames
@@ -5597,7 +5600,7 @@ fn swipe(session: &Session, fingers: u8) {
     }
 }
 
-/// The start of the `init.ts` of the claim test; the starter file and the user's keys follow it.
+/// The start of the `shell.ts` of the claim test; the starter file and the user's keys follow it.
 /// The prelude replaces every binding's action with a count, by trigger, and `probe()` reports the counts of the running
 /// generation. The actions themselves do not run: the media keys would start `wpctl` and `playerctl`, `Super+space` the
 /// launcher, and the workspace keys and the slide would move the window the test drags, so a binding that was reached is
@@ -5832,7 +5835,7 @@ fn a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_remove
     let mut mapper = Mapper::connect(&session.wayland());
     let heard = mapper.keyboard();
     let config = tempfile::tempdir().expect("a config directory");
-    let init = config.path().join("init.ts");
+    let init = config.path().join("shell.ts");
     save(&init, &counting_config(&round_chords(0, LAST)));
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
@@ -5936,7 +5939,7 @@ gnoblin.clients.addListener({
 fn a_script_sets_a_client_view_to_capture_and_sees_its_press_then_sets_forward_and_the_client_gets_it() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    save(&config.path().join("init.ts"), CAPTURE_VIEW_INIT);
+    save(&config.path().join("shell.ts"), CAPTURE_VIEW_INIT);
     let shell = Shell::start(&session, config.path(), |_| {});
     let mut mapper = Mapper::connect(&session.wayland());
     let ipc = session.ipc();
@@ -6090,7 +6093,7 @@ fn a_stock_shell_over_the_real_links_does_no_work_when_nothing_happens() {
     for number in 0..5 {
         mapper.map_window(&format!("org.example.window{number}"), &format!("Window {number}"));
     }
-    // No `init.ts`: the stock library and the stock config, with titlebars on every window.
+    // No `shell.ts`: the stock library and the stock config, with titlebars on every window.
     let config = tempfile::tempdir().expect("a config directory");
     let mut role = role_over(&session, config.path());
     tick_until_quiet(&mut role, REST);
@@ -6279,7 +6282,7 @@ fn idle_turn_cost_over_the_real_links() {
         if watching {
             // A watch is what opens the idle connection, and an open one is read on every turn.
             save(
-                &config.path().join("init.ts"),
+                &config.path().join("shell.ts"),
                 "import \"gnoblin-core\";\ngnoblin.idle.watch(3_600_000, { onIdle() {} });\n",
             );
         }

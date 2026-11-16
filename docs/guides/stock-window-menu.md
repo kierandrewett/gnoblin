@@ -2,7 +2,7 @@
 
 The stock shell draws two small dialogs that belong to a window: the window menu, and the alert for a window that has
 stopped answering. Both are the shell's own interface, so a config can change what they offer or draw its own. Each has a
-switch: leave `startWindowMenu()` or `startNotRespondingAlert()` out of your `init.ts`.
+switch: leave `startWindowMenu()` or `startNotRespondingAlert()` out of your `shell.ts`.
 
 ## The window menu
 
@@ -54,7 +54,7 @@ Return keeps the new place and Escape puts the window back. The window stays ins
 
 ## Change what the menu offers
 
-Assign `windowMenu.items` in your `init.ts`. It is a function that takes the window and returns a list of entries. Each
+Assign `windowMenu.items` in your `shell.ts`. It is a function that takes the window and returns a list of entries. Each
 entry is an object with a `label` and any of these:
 
 | Field       | Meaning                                                                                           |
@@ -81,7 +81,7 @@ windowMenu.items = (client) => {
 };
 ```
 
-Put this in `~/.config/gnoblin/init.ts`, after `startWindowMenu()` or in a module you import. Right-click a titlebar
+Put this in `~/.config/gnoblin/shell.ts`, after `startWindowMenu()` or in a module you import. Right-click a titlebar
 and Copy title sits above Close. The entry runs `wl-copy`, so install it first.
 
 ## Draw your own menu
@@ -126,5 +126,5 @@ The stock shell looks at the windows once a second and opens an alert for each o
 The alert takes the keyboard and gives it back when it closes. It is `secure` when the window is. It closes by itself when the
 window answers again or goes, and no alert opens while the session is locked.
 
-To turn it off, leave `startNotRespondingAlert()` out of your `init.ts`. To draw your own alert, turn it off and read `client.unresponsive`
+To turn it off, leave `startNotRespondingAlert()` out of your `shell.ts`. To draw your own alert, turn it off and read `client.unresponsive`
 yourself. `client.kill()` is the call behind Force quit.

@@ -81,7 +81,7 @@ export const NAV: NavSection[] = [
                     { label: "Dialogs", slug: "config/configure/dialogs" },
                 ],
             },
-            { label: "Settings in init.ts", slug: "js-settings" },
+            { label: "Settings in shell.ts", slug: "js-settings" },
             {
                 label: "Guides",
                 items: [

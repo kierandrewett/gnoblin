@@ -34,4 +34,4 @@ A setting you do not write keeps the session value. The settings are written to 
 document and applied when the compositor commits it.
 
 Keyboard layouts, XKB options and the other touchpad settings (tap and drag, disable while typing, two-finger scrolling)
-cannot be set from `init.ts`. See [dropped settings](/js-settings#dropped-settings).
+cannot be set from `shell.ts`. See [dropped settings](/js-settings#dropped-settings).

@@ -1,7 +1,7 @@
 # Set up a writing workspace
 
 Give a writing workspace a stable ID, send new editor windows there, and bind keys that show a workspace or move the
-focused window to one. Add this to `~/.config/gnoblin/init.ts`:
+focused window to one. Add this to `~/.config/gnoblin/shell.ts`:
 
 ```ts
 import { CollectionListener } from "gnoblin-core";

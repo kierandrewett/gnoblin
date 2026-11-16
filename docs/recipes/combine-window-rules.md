@@ -1,7 +1,7 @@
 # Combine window rules
 
 Set shared defaults first, then override them for selected windows. Later statements win, so put the general one first.
-Put this in `~/.config/gnoblin/init.ts`:
+Put this in `~/.config/gnoblin/shell.ts`:
 
 ```ts
 import { CollectionListener } from "gnoblin-core";

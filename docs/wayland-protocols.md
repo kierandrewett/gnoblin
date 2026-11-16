@@ -7,7 +7,7 @@ vendored XML alone does not mean a protocol is available.
 
 ## Availability
 
-Gnoblin enables the listed interfaces by default in its own session. `init.ts` cannot turn one off: no object of the
+Gnoblin enables the listed interfaces by default in its own session. `shell.ts` cannot turn one off: no object of the
 shell API carries the choice (see [Settings with no object](/js-settings)). Clients that already bound an interface keep
 their existing connection until they disconnect.
 

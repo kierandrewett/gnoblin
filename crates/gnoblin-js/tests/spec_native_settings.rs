@@ -1,5 +1,5 @@
 //! The settings that have a home in the owner's specification, set the way the specification sets them: property
-//! writes and method calls on live objects in an `init.ts`, with no config object.
+//! writes and method calls on live objects in a `shell.ts`, with no config object.
 //!
 //! One case for each setting that has a spec object: workspace gaps and a layout's gap, keys and gestures as
 //! `input.bind`, and the titlebar, window menu and not-responding alert as library helpers. The settings with a spec
@@ -13,7 +13,7 @@ use common::*;
 
 const IMPORTS: &str = "import * as gCore from \"gnoblin-core\"; import * as gStd from \"gnoblin-std\"; const g = { ...gCore, ...gStd };\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
 
-/// A shell over a screen of 1000 by 800, one seat, one lock and one server-decorated window (id 3) whose `init.ts` is
+/// A shell over a screen of 1000 by 800, one seat, one lock and one server-decorated window (id 3) whose `shell.ts` is
 /// `body`.
 fn world(body: &str) -> Rig {
     let mut rig = rig_setup(IMPORTS, body, |comp| {

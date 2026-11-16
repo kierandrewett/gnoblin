@@ -75,7 +75,7 @@ fn a_window_that_had_the_keyboard_hears_nothing_while_the_shells_lock_screen_tak
     // window that has the keyboard and gives the keyboard back to it. (A shell that starts under a lock finds no window
     // to give it back to; the compositor's card restores the focus itself.)
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("init.ts"), "export {};\n").expect("init.ts");
+    fs::write(config.path().join("shell.ts"), "export {};\n").expect("shell.ts");
     let mut shell = Shell::start(&session, config.path());
     std::thread::sleep(Duration::from_millis(1500));
     lock(&session);
@@ -152,7 +152,7 @@ fn a_window_that_arrived_under_the_lock_leaves_the_keyboard_with_the_one_that_ha
     let session = Session::start();
     let (mut mapper, keys) = client_with_the_keyboard(&session);
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("init.ts"), "export {};\n").expect("init.ts");
+    fs::write(config.path().join("shell.ts"), "export {};\n").expect("shell.ts");
     let mut shell = Shell::start(&session, config.path());
     std::thread::sleep(Duration::from_millis(1500));
     lock(&session);
@@ -218,7 +218,7 @@ fn a_window_that_arrived_under_the_lock_leaves_the_keyboard_with_the_one_that_ha
 fn a_window_that_arrived_under_the_lock_has_the_keyboard_after_the_unlock_when_no_window_had_it_before() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("init.ts"), "export {};\n").expect("init.ts");
+    fs::write(config.path().join("shell.ts"), "export {};\n").expect("shell.ts");
     let mut shell = Shell::start(&session, config.path());
     std::thread::sleep(Duration::from_millis(1500));
     lock(&session);
@@ -264,7 +264,7 @@ fn the_password_is_in_no_node_of_the_compositors_tree_typed_or_checked() {
     lock(&session);
     wait_until("the session locked", &session, |seen| seen.state == "locked");
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(config.path().join("init.ts"), "export {};\n").expect("init.ts");
+    fs::write(config.path().join("shell.ts"), "export {};\n").expect("shell.ts");
     let mut shell = Shell::start(&session, config.path());
     wait_until("the shell's lock screen is up and engaged", &session, |seen| {
         seen.engaged && seen.texts.iter().any(|text| text == "Enter your password.")

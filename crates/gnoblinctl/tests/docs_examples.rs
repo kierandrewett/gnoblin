@@ -370,7 +370,7 @@ fn ts_fences(source: &str) -> Vec<(usize, String)> {
     fences
 }
 
-/// The file a sample names on its first line, as `// keys.ts`: a companion that `init.ts` imports.
+/// The file a sample names on its first line, as `// keys.ts`: a companion that `shell.ts` imports.
 fn companion_name(sample: &str) -> Option<&str> {
     let first = sample.lines().next()?.strip_prefix("// ")?.trim();
     (first.ends_with(".ts") && !first.contains(char::is_whitespace)).then_some(first)
@@ -416,7 +416,7 @@ fn every_complete_typescript_sample_in_the_config_docs_checks() {
                 std::fs::create_dir_all(path.parent().expect("a parent")).expect("a companion directory");
                 std::fs::write(path, text).expect("a companion is written");
             }
-            let entry = dir.join("init.ts");
+            let entry = dir.join("shell.ts");
             std::fs::write(&entry, &sample).expect("the sample is written");
             let path = entry.to_string_lossy().into_owned();
             let (code, out, err) = run_without_session(&["check", &path]);

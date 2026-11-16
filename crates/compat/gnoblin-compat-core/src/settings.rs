@@ -251,7 +251,7 @@ pub fn settings_from_environment() -> DesktopSettings {
     let Some(store) = gnoblin_config::Store::from_env() else {
         return DesktopSettings::default();
     };
-    match gnoblin_config::locate(&gnoblin_config::SearchPaths::from_env()) {
+    match gnoblin_config::locate(&gnoblin_config::Environment::from_env()) {
         Ok(path) => match store.load(path.path()) {
             Ok(stored) => settings_from_config(&stored.config),
             Err(error) if error.is_absent() => {

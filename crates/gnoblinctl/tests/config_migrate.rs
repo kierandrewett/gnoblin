@@ -238,7 +238,7 @@ g.out = JSON.stringify(result);
 
 /// The world a config builds in the dry-run host: its workspaces, the keys it binds and what each key does when it is
 /// pressed (the programs it starts), the claimed bindings, and whether the window menu and the alert are started.
-/// `init` is the text of `init.ts`.
+/// `init` is the text of `shell.ts`.
 fn world(init: &str, extra: &str) -> Value {
     let dir = TempDir::new().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the directory exists");
@@ -249,12 +249,12 @@ fn world(init: &str, extra: &str) -> Value {
     config.entry_budget = Duration::from_secs(10);
     config.frame_budget = Duration::from_secs(10);
     let mut shell = JsShell::new(Box::<InertTree>::default(), config).expect("the shell boots");
-    fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     // One entry that runs the three in order: a second entry would be a second load, and a load that declares no
     // workspace gets the one floating `desktop` the shell keeps a script from being without.
     fs::write(
         root.join("entry.ts"),
-        "import \"./pre.ts\";\nimport \"./init.ts\";\nimport \"./probe.ts\";\n",
+        "import \"./pre.ts\";\nimport \"./shell.ts\";\nimport \"./probe.ts\";\n",
     )
     .expect("entry.ts is written");
     let diagnostics = shell.load_entry(Path::new("entry.ts")).expect("the config loads");
@@ -300,15 +300,15 @@ fn the_starter_converts_to_a_file_that_loads_and_reports_each_setting_it_has_no_
     // home for, so the file is written and the exit code says it is not complete.
     assert_eq!(code, 1, "stdout: {out}\nstderr: {err}");
     assert!(out.contains("Left out (19)"), "{out}");
-    let ts = dir.path().join("init.ts");
-    assert!(ts.is_file(), "init.ts is written beside init.lua");
-    let text = fs::read_to_string(&ts).expect("init.ts");
+    let ts = dir.path().join("shell.ts");
+    assert!(ts.is_file(), "shell.ts is written beside init.lua");
+    let text = fs::read_to_string(&ts).expect("shell.ts");
     assert_eq!(
         text.lines().next(),
         Some("// INCOMPLETE: 19 unmapped settings, see comments")
     );
 
-    // The source is never modified: the Lua files read back exactly as they were, and only init.ts and the editor
+    // The source is never modified: the Lua files read back exactly as they were, and only shell.ts and the editor
     // files are new.
     let after = tree(dir.path());
     for (name, original) in &before {
@@ -321,7 +321,7 @@ fn the_starter_converts_to_a_file_that_loads_and_reports_each_setting_it_has_no_
         .map(|name| name.as_str())
         .filter(|name| !name.starts_with(".gnoblin/"))
         .collect();
-    assert_eq!(beside, ["init.ts", "tsconfig.json"]);
+    assert_eq!(beside, ["shell.ts", "tsconfig.json"]);
     for generated in [
         ".gnoblin/gnoblin.d.ts",
         ".gnoblin/tsconfig.json",
@@ -344,7 +344,7 @@ fn the_starter_converts_to_a_file_that_loads_and_reports_each_setting_it_has_no_
 fn the_converted_starter_builds_the_world_the_stock_starter_builds() {
     let (dir, init) = copied_starter();
     assert_eq!(migrate(&init, &[]).0, 1);
-    let converted = fs::read_to_string(dir.path().join("init.ts")).expect("init.ts");
+    let converted = fs::read_to_string(dir.path().join("shell.ts")).expect("shell.ts");
 
     let starter = world(STARTER_CONFIG, "");
     let migrated = world(&converted, "");
@@ -369,10 +369,13 @@ fn the_converted_starter_is_the_converters_golden() {
     let (dir, init) = copied_starter();
     assert_eq!(migrate(&init, &[]).0, 1);
     let golden = fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../gnoblin-config-migrate/tests/fixtures/starter/init.ts.golden"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../gnoblin-config-migrate/tests/fixtures/starter/shell.ts.golden"),
     )
     .expect("the golden file");
-    assert_eq!(fs::read_to_string(dir.path().join("init.ts")).expect("init.ts"), golden);
+    assert_eq!(
+        fs::read_to_string(dir.path().join("shell.ts")).expect("shell.ts"),
+        golden
+    );
 }
 
 // --- Everything that converts -----------------------------------------------------------------------------------
@@ -448,9 +451,9 @@ fn a_config_of_every_construct_loads_and_means_what_the_lua_said() {
     write(dir.path(), "shell.lua", EVERYTHING_SHELL);
     let (code, out, err) = migrate(&init, &[]);
     assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
-    let ts = fs::read_to_string(dir.path().join("init.ts")).expect("init.ts");
+    let ts = fs::read_to_string(dir.path().join("shell.ts")).expect("shell.ts");
     assert!(!ts.contains("INCOMPLETE"), "{ts}");
-    let (check_code, check_out, check_err) = run(&["check", dir.path().join("init.ts").to_str().expect("UTF-8")]);
+    let (check_code, check_out, check_err) = run(&["check", dir.path().join("shell.ts").to_str().expect("UTF-8")]);
     assert_eq!(check_code, 0, "{check_out}{check_err}");
 
     let world = world(&ts, RULES_PROBE);
@@ -521,7 +524,7 @@ fn unmapped_constructs_exit_1_are_listed_with_their_lines_and_the_output_still_l
     let (code, out, err) = migrate(&init, &[]);
     assert_eq!(code, 1, "stdout: {out}\nstderr: {err}");
     for needle in [
-        "ok  init.ts written",
+        "ok  shell.ts written",
         "Converted",
         "Left out (6)",
         "init.lua:2  size = 24",
@@ -540,7 +543,7 @@ fn unmapped_constructs_exit_1_are_listed_with_their_lines_and_the_output_still_l
     ] {
         assert!(out.contains(needle), "{needle}\n{out}");
     }
-    let ts = fs::read_to_string(dir.path().join("init.ts")).expect("init.ts");
+    let ts = fs::read_to_string(dir.path().join("shell.ts")).expect("shell.ts");
     assert_eq!(
         ts.lines().next(),
         Some("// INCOMPLETE: 6 unmapped settings, see comments")
@@ -557,7 +560,7 @@ fn unmapped_constructs_exit_1_are_listed_with_their_lines_and_the_output_still_l
         }
     }
     // The file still loads and keeps what could convert: the one shortcut, over the stock desktop.
-    let (check_code, check_out, check_err) = run(&["check", dir.path().join("init.ts").to_str().expect("UTF-8")]);
+    let (check_code, check_out, check_err) = run(&["check", dir.path().join("shell.ts").to_str().expect("UTF-8")]);
     assert_eq!(check_code, 0, "{check_out}{check_err}");
     let world = world(&ts, "");
     assert_eq!(binding(&world, "Super+a")["spawned"], json!([["foot"]]));
@@ -588,9 +591,9 @@ fn it_writes_the_editor_files_and_prints_three_next_steps() {
         .filter(|line| line.starts_with("  ") && line.trim_start().starts_with(|c: char| c.is_ascii_digit()))
         .collect();
     assert_eq!(steps.len(), 3, "{out}");
-    assert!(steps[0].contains("1. Review") && steps[0].contains("init.ts"), "{out}");
+    assert!(steps[0].contains("1. Review") && steps[0].contains("shell.ts"), "{out}");
     assert!(
-        steps[1].contains("2. Check it with `gnoblinctl check --types") && steps[1].contains("init.ts"),
+        steps[1].contains("2. Check it with `gnoblinctl check --types") && steps[1].contains("shell.ts"),
         "{out}"
     );
     assert!(
@@ -608,21 +611,21 @@ fn it_writes_the_editor_files_and_prints_three_next_steps() {
 fn it_refuses_to_overwrite_unless_forced_and_force_touches_only_init_ts() {
     let (dir, init) = clean_dir();
     assert_eq!(migrate(&init, &[]).0, 0);
-    let ts = dir.path().join("init.ts");
-    fs::write(&ts, "// mine\n").expect("edit init.ts");
+    let ts = dir.path().join("shell.ts");
+    fs::write(&ts, "// mine\n").expect("edit shell.ts");
     let (code, out, err) = migrate(&init, &[]);
     assert_eq!(code, 2, "{out}{err}");
     assert!(err.contains("already exists, so nothing was written"), "{err}");
     assert!(err.contains("hint:") && err.contains("--force"), "{err}");
     assert_eq!(
-        fs::read_to_string(&ts).expect("init.ts"),
+        fs::read_to_string(&ts).expect("shell.ts"),
         "// mine\n",
         "nothing was written"
     );
     let lua = fs::read_to_string(&init).expect("init.lua");
     let (forced, out, err) = migrate(&init, &["--force"]);
     assert_eq!(forced, 0, "{out}{err}");
-    let written = fs::read_to_string(&ts).expect("init.ts");
+    let written = fs::read_to_string(&ts).expect("shell.ts");
     assert!(written.contains("gnoblin.workspaces.add(new Workspace("), "{written}");
     assert_eq!(
         fs::read_to_string(&init).expect("init.lua"),
@@ -634,11 +637,11 @@ fn it_refuses_to_overwrite_unless_forced_and_force_touches_only_init_ts() {
 #[test]
 fn it_does_not_write_an_init_ts_beside_an_init_js() {
     let (dir, init) = clean_dir();
-    write(dir.path(), "init.js", "export default {};\n");
+    write(dir.path(), "shell.js", "export default {};\n");
     let (code, _, err) = migrate(&init, &[]);
     assert_eq!(code, 2, "{err}");
-    assert!(err.contains("init.js") && err.contains("read instead of it"), "{err}");
-    assert!(!dir.path().join("init.ts").exists());
+    assert!(err.contains("shell.js") && err.contains("equally preferred"), "{err}");
+    assert!(!dir.path().join("shell.ts").exists());
     assert_eq!(migrate(&init, &["--force"]).0, 0);
 }
 
@@ -649,7 +652,7 @@ fn output_goes_where_dash_o_says() {
     let (code, out, err) = migrate(&init, &["-o", target.to_str().expect("UTF-8")]);
     assert_eq!(code, 0, "{out}{err}");
     assert!(target.is_file());
-    assert!(!dir.path().join("init.ts").exists(), "the default is not written");
+    assert!(!dir.path().join("shell.ts").exists(), "the default is not written");
     assert!(
         dir.path().join("out/.gnoblin/gnoblin.d.ts").is_file(),
         "the editor files go beside the output"
@@ -676,10 +679,10 @@ fn dry_run_prints_typescript_and_writes_nothing() {
         err.contains("dry run: nothing was written") && err.contains("Converted"),
         "{err}"
     );
-    assert!(!dir.path().join("init.ts").exists());
+    assert!(!dir.path().join("shell.ts").exists());
     assert!(!dir.path().join(".gnoblin").exists());
-    // `--dry-run` does not trip over an init.ts that is there.
-    fs::write(dir.path().join("init.ts"), "// mine\n").expect("write");
+    // `--dry-run` does not trip over a shell.ts that is there.
+    fs::write(dir.path().join("shell.ts"), "// mine\n").expect("write");
     assert_eq!(migrate(&init, &["--dry-run"]).0, 0);
 }
 
@@ -711,7 +714,7 @@ fn a_missing_file_and_a_syntax_error_exit_2_with_a_hint() {
         "{err}"
     );
     assert!(err.contains("hint:"), "{err}");
-    assert!(!dir.path().join("init.ts").exists());
+    assert!(!dir.path().join("shell.ts").exists());
 }
 
 #[test]
@@ -733,7 +736,7 @@ fn json_output_carries_the_report_and_the_three_steps() {
     assert_eq!(code, 1, "{err}");
     let document: Value = serde_json::from_str(&out).expect("--json prints JSON");
     assert_eq!(document["written"], true);
-    assert_eq!(document["init"], dir.path().join("init.ts").to_str().expect("UTF-8"));
+    assert_eq!(document["init"], dir.path().join("shell.ts").to_str().expect("UTF-8"));
     assert_eq!(document["unmapped"].as_array().map(Vec::len), Some(6));
     assert_eq!(document["unmapped"][0]["file"], "init.lua");
     assert_eq!(document["unmapped"][0]["line"], 2);
@@ -783,6 +786,6 @@ fn a_glob_load_is_sorted_and_relative_to_the_file_that_makes_it() {
     );
     // Load order decides: each file declares the workspaces again and the last list stands, so the file the second
     // file loads wins.
-    let ts = fs::read_to_string(dir.path().join("init.ts")).expect("init.ts");
+    let ts = fs::read_to_string(dir.path().join("shell.ts")).expect("shell.ts");
     assert_eq!(workspace_ids(&world(&ts, "")), ["deep"]);
 }

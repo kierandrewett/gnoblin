@@ -3,7 +3,7 @@
 //! The pure rules and the libinput calls are tested where they live; this drives the part between them with a real
 //! session: the runtime's privileged connection commits a document, the compositor's commit path hands the `input`
 //! section to the backend, and the headless backend records what each virtual device was given. A document that no
-//! longer names a setting puts the device back, which is what a reload after deleting a line of `init.ts` must do.
+//! longer names a setting puts the device back, which is what a reload after deleting a line of `shell.ts` must do.
 
 mod support;
 

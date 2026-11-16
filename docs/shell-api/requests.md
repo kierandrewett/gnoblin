@@ -19,7 +19,7 @@ class NoScreenCasts extends DialogListener {
 gnoblin.dialogs.addListener(new NoScreenCasts());
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. A program that asks for a screen cast is refused, and the dialog never opens.
+Put the file in `~/.config/gnoblin/shell.ts`. A program that asks for a screen cast is refused, and the dialog never opens.
 
 ## Watch and refuse
 

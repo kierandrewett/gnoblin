@@ -4,7 +4,7 @@
 //! with the configuration through the log. [`logging_from_environment`] therefore returns the
 //! problem as an error, and the caller reports it once logging is up.
 
-use crate::{Logging, SearchPaths, Store, locate};
+use crate::{Environment, Logging, Store, locate};
 
 /// The `logging` section of the last accepted configuration.
 ///
@@ -19,7 +19,7 @@ pub fn logging_from_environment() -> Result<Logging, String> {
     let Some(store) = Store::from_env() else {
         return Ok(Logging::default());
     };
-    let Ok(path) = locate(&SearchPaths::from_env()) else {
+    let Ok(path) = locate(&Environment::from_env()) else {
         return Ok(Logging::default());
     };
     match store.load(path.path()) {

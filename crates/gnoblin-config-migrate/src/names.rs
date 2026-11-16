@@ -51,7 +51,7 @@ pub(crate) const SNAPPING: &str = "the shell has no snapping policy on the seat 
 
 /// What `autostart` needs.
 pub(crate) const AUTOSTART: &str = "the shell has no session-scoped startup list, and `gnoblin.spawn` in \
-                                    init.ts runs again on every reload; start the command from your session by hand";
+                                    shell.ts runs again on every reload; start the command from your session by hand";
 
 /// What a drawn-path touchpad gesture needs.
 pub(crate) const TOUCHPAD_GESTURES: &str = "the shell has no path gesture trigger; a swipe or pinch with a fixed \

@@ -15,7 +15,7 @@ for (const output of gnoblin.outputs) {
 }
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. A message names each output, its mode and the workspace it shows.
+Put the file in `~/.config/gnoblin/shell.ts`. A message names each output, its mode and the workspace it shows.
 
 ## Read outputs
 

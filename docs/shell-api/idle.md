@@ -12,7 +12,7 @@ gnoblin.idle.watch(300_000, {
 });
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. After five minutes without input the session locks, and the first input
+Put the file in `~/.config/gnoblin/shell.ts`. After five minutes without input the session locks, and the first input
 afterwards shows a message.
 
 ## Watch for idleness

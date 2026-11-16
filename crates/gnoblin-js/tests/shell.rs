@@ -82,11 +82,11 @@ impl Rig {
 fn rig_with(comp: &Comp, init: &str, tweak: impl FnOnce(&mut JsShellConfig)) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let mut config = honest_config(&root);
     tweak(&mut config);
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
-    let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let load_diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     Rig {
         shell,
         load_diagnostics,
@@ -550,7 +550,7 @@ fn a_listener_that_throws_does_not_stop_its_siblings_and_is_reported_once_per_si
     assert_eq!(first.len(), 1, "one site, reported once: {first:?}");
     assert!(first[0].contains("Bad.onTitleChanged threw"), "{}", first[0]);
     assert!(
-        first[0].contains("init.ts:6:"),
+        first[0].contains("shell.ts:6:"),
         "the .ts line of the throw: {}",
         first[0]
     );
@@ -880,7 +880,7 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
     let comp = two_windows();
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), places_at(100)).expect("init.ts");
+    fs::write(root.join("shell.ts"), places_at(100)).expect("shell.ts");
     let mut role = JsRole::over_link(
         Box::new(comp.clone()),
         JsRoleLinks::default(),
@@ -897,7 +897,7 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
     );
 
     // A reload: a newer generation, the same window nodes, and its listener is told of the windows already there.
-    fs::write(root.join("init.ts"), places_at(200)).expect("init.ts");
+    fs::write(root.join("shell.ts"), places_at(200)).expect("shell.ts");
     let report = role.reload_now();
     assert!(report.ok, "{:?}", report.errors);
     assert_eq!(role.generation_id(), booted + 1);
@@ -914,26 +914,26 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
 
     // A syntax error keeps the running generation and reports the position in the author's file.
     fs::write(
-        root.join("init.ts"),
+        root.join("shell.ts"),
         "import { gnoblin } from \"gnoblin-core\";\n\nlet = = 5;\n",
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let report = role.reload_now();
     assert!(!report.ok);
     assert!(
-        report.errors[0].to_string().contains("init.ts:3:"),
+        report.errors[0].to_string().contains("shell.ts:3:"),
         "{}",
         report.errors[0]
     );
     assert_eq!(role.generation_id(), running, "the generation that ran still runs");
-    assert!(role.diagnostics().iter().any(|text| text.contains("init.ts:3:")));
+    assert!(role.diagnostics().iter().any(|text| text.contains("shell.ts:3:")));
 
     // A file that writes and then throws leaves no write behind: the failed stage's top-level write is dropped.
     fs::write(
-        root.join("init.ts"),
+        root.join("shell.ts"),
         "import { gnoblin } from \"gnoblin-core\";\ngnoblin.clients.at(0).x = 999;\nthrow new Error(\"late\");\n",
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let sent_before = x_writes(&comp).len();
     let report = role.reload_now();
     assert!(!report.ok);
@@ -1290,7 +1290,7 @@ fn the_role_serves_its_console_between_frames_and_a_reload_drops_what_the_prompt
     let comp = two_windows();
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), "export {};\n").expect("init.ts");
+    fs::write(root.join("shell.ts"), "export {};\n").expect("shell.ts");
     let site = root.join("js.sock");
     let mut config = honest_role_config(&root);
     config.watch = false;

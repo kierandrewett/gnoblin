@@ -23,7 +23,7 @@
 //!
 //! A setting that was applied and is no longer in the document (the key was removed, or became
 //! `inherit`, or the whole section went) is put back to the device's own default
-//! ([`Applier::reset`]). Without that, deleting a line from `init.ts` would leave the old value in the
+//! ([`Applier::reset`]). Without that, deleting a line from `shell.ts` would leave the old value in the
 //! device until the next login.
 //!
 //! # Failure modes first
@@ -525,7 +525,7 @@ pub struct DeviceRefusal {
 
 impl DeviceRefusal {
     /// Says it in the log, with the device and the setting named, so a person whose touchpad ignores a line of
-    /// `init.ts` can find out why. A [`DeviceBook`] hands each refusal out once per device.
+    /// `shell.ts` can find out why. A [`DeviceBook`] hands each refusal out once per device.
     pub fn report(&self) {
         log::warn!(area = "input", device = %self.name, id = %self.device, setting = self.setting.name(), reason = %self.refusal, "a device does not take a setting from the document");
     }

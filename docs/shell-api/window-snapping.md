@@ -22,7 +22,7 @@ input.bind("Super+Shift+Down", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. `Super+Shift+Left` tiles the focused window to the left half of the work area, and
+Put the file in `~/.config/gnoblin/shell.ts`. `Super+Shift+Left` tiles the focused window to the left half of the work area, and
 `Super+Shift+Down` puts it back where it floated.
 
 ## Zones

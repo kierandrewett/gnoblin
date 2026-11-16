@@ -3,7 +3,7 @@
 //! The session is the shipped binary: a guardian that starts the compositor, the services role and the runtime
 //! role. The runtime role is the JavaScript one (`gnoblin_js::JsRoleRunner`) and nothing selects it. Unless a test is
 //! about the watcher, it is switched off
-//! (`GNOBLIN_JS_WATCH=0`), so a change to `init.ts` takes effect only when the request comes through the
+//! (`GNOBLIN_JS_WATCH=0`), so a change to `shell.ts` takes effect only when the request comes through the
 //! compositor: `gnoblinctl config reload` is the real command line client, the compositor raises
 //! `session.reload_requested`, the runtime role reloads the shell and answers. Windows are mapped by a real
 //! Wayland client and the result is read back from the compositor's tree as an observer.
@@ -71,9 +71,9 @@ struct Session {
 
 impl Session {
     /// Starts a session over `$XDG_CONFIG_HOME/gnoblin` whose runtime role is the default one, with the config
-    /// watcher off. `init` is the `init.ts` the shell finds there at boot.
+    /// watcher off. `init` is the `shell.ts` the shell finds there at boot.
     fn start(init: &str) -> Self {
-        Self::start_with(&[("init.ts", init)], &[("GNOBLIN_JS_WATCH", "0")])
+        Self::start_with(&[("shell.ts", init)], &[("GNOBLIN_JS_WATCH", "0")])
     }
 
     /// Starts a session whose config directory holds `files`, with `env` added to the guardian's environment. The
@@ -105,7 +105,7 @@ impl Session {
             // The session must not inherit the machine's own choice of stock library.
             .env_remove("GNOBLIN_JS_STOCK_DIR")
             .env_remove("GNOBLIN_JS_WATCH")
-            .env_remove("GNOBLIN_CONFIG")
+            .env_remove("GNOBLIN_SHELL")
             // The compositor must run headless however the machine that runs the test is set up.
             .env_remove("WAYLAND_DISPLAY")
             .env_remove("DISPLAY")
@@ -229,7 +229,7 @@ fn wait_for(what: &str, session: &Session, mapper: &mut Mapper, mut check: impl 
     }
 }
 
-/// An `init.ts` that puts every window at (`x`, `y`) when the shell learns of it.
+/// A `shell.ts` that puts every window at (`x`, `y`) when the shell learns of it.
 fn init_at(x: i32, y: i32) -> String {
     format!(
         "import {{ gnoblin }} from \"gnoblin-core\"; import {{ Layout, Workspace }} from \"gnoblin-std\";\n\
@@ -245,7 +245,7 @@ fn init_at(x: i32, y: i32) -> String {
 }
 
 fn write_init(dir: &Path, source: &str) {
-    std::fs::write(dir.join("init.ts"), source).expect("init.ts");
+    std::fs::write(dir.join("shell.ts"), source).expect("shell.ts");
 }
 
 #[test]
@@ -287,7 +287,7 @@ fn config_reload_reloads_the_javascript_shell_in_the_runtime_role_and_reports_a_
     );
     let (code, out, err) = session.ctl(&["config", "reload"]);
     assert_eq!(code, 1, "a refused reload exits 1; stdout {out}, stderr {err}");
-    assert!(err.contains("init.ts:3:"), "the report names the position: {err}");
+    assert!(err.contains("shell.ts:3:"), "the report names the position: {err}");
     mapper.map_window("org.example.second", "Second");
     wait_for("the old generation places a new window", &session, &mut mapper, || {
         spots(&scene(&ipc)).get("org.example.second") == Some(&(333.0, 444.0))
@@ -484,7 +484,7 @@ fn wait_for_revision(session: &Session, revision: u64) -> serde_json::Value {
     committed(session).1
 }
 
-/// An `init.ts` that runs `setting` against a keyboard, whose settings the document carries in its `input.keyboard`
+/// A `shell.ts` that runs `setting` against a keyboard, whose settings the document carries in its `input.keyboard`
 /// section. The session is headless and has no input device, so the script makes the keyboard it writes the setting
 /// through: a keyboard setting is the kind's and not the device's.
 fn init_with(setting: &str) -> String {
@@ -496,7 +496,7 @@ fn init_with(setting: &str) -> String {
     )
 }
 
-/// An `init.ts` whose document is `input.keyboard.delay = delay`.
+/// A `shell.ts` whose document is `input.keyboard.delay = delay`.
 fn init_with_delay(delay: i64) -> String {
     init_with(&format!("keyboard.repeatDelay = {delay};"))
 }
@@ -508,8 +508,8 @@ fn delay_of(document: &serde_json::Value) -> &serde_json::Value {
 
 #[test]
 fn the_default_session_runs_the_javascript_role_and_commits_init_ts() {
-    // The JavaScript role read `init.ts`, validated the document and committed it.
-    let session = Session::start_with(&[("init.ts", &init_with_delay(32))], &[("GNOBLIN_JS_WATCH", "0")]);
+    // The JavaScript role read `shell.ts`, validated the document and committed it.
+    let session = Session::start_with(&[("shell.ts", &init_with_delay(32))], &[("GNOBLIN_JS_WATCH", "0")]);
     let document = wait_for_revision(&session, 1);
     assert_eq!(delay_of(&document), &serde_json::json!(32), "{document}");
     let log = session.log();
@@ -519,7 +519,7 @@ fn the_default_session_runs_the_javascript_role_and_commits_init_ts() {
 
 #[test]
 fn a_session_with_no_config_commits_the_stock_config_and_reports_ready() {
-    // First login: no `init.ts` yet. The role runs the stock config and commits its (empty) document, so the guardian
+    // First login: no `shell.ts` yet. The role runs the stock config and commits its (empty) document, so the guardian
     // has a revision and the session comes up.
     let session = Session::start_with(&[], &[("GNOBLIN_JS_WATCH", "0")]);
     let document = wait_for_revision(&session, 1);
@@ -559,7 +559,7 @@ fn config_reload_commits_the_new_document_and_a_refused_file_leaves_the_accepted
 #[test]
 fn saving_init_ts_reloads_it_with_the_watcher_on_and_commits_a_new_revision() {
     // The watcher is on (the default): nothing asks for the reload, a save is the request.
-    let session = Session::start_with(&[("init.ts", &init_with_delay(32))], &[]);
+    let session = Session::start_with(&[("shell.ts", &init_with_delay(32))], &[]);
     wait_for_revision(&session, 1);
     write_init(&session.config_dir(), &init_with_delay(40));
     let document = wait_for_revision(&session, 2);
@@ -569,7 +569,7 @@ fn saving_init_ts_reloads_it_with_the_watcher_on_and_commits_a_new_revision() {
 #[test]
 fn a_restarted_runtime_commits_what_the_file_says_and_not_what_its_predecessor_left() {
     // The compositor keeps the last accepted document across a runtime restart. A role that laid its settings over
-    // it would carry a key the user has since deleted from `init.ts` into the new session.
+    // it would carry a key the user has since deleted from `shell.ts` into the new session.
     let session = Session::start(&init_with_delay(32));
     let document = wait_for_revision(&session, 1);
     assert_eq!(delay_of(&document), &serde_json::json!(32));
@@ -610,21 +610,21 @@ fn an_init_lua_with_no_init_ts_runs_the_stock_config_and_says_once_how_to_migrat
 }
 
 #[test]
-fn an_init_ts_beside_an_init_lua_wins_and_the_lua_file_is_named_as_ignored() {
+fn a_shell_ts_beside_an_init_lua_wins_and_the_lua_file_is_not_read() {
     let session = Session::start_with(
         &[
-            ("init.ts", &init_with_delay(32)),
+            ("shell.ts", &init_with_delay(32)),
             ("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n"),
         ],
         &[("GNOBLIN_JS_WATCH", "0")],
     );
     let document = wait_for_revision(&session, 1);
-    assert_eq!(delay_of(&document), &serde_json::json!(32), "init.ts won: {document}");
+    assert_eq!(delay_of(&document), &serde_json::json!(32), "shell.ts won: {document}");
     let log = session.log();
     assert!(log.contains("runtime role: JavaScript"), "{log}");
     assert!(
-        log.contains("init.lua is not read"),
-        "the ignored file is named:\n{log}"
+        !log.contains("init.lua is a Lua config"),
+        "no Lua notice when a shell runs:\n{log}"
     );
     assert!(!log.contains("gnoblinctl config migrate"), "{log}");
 }
@@ -633,7 +633,7 @@ fn an_init_ts_beside_an_init_lua_wins_and_the_lua_file_is_named_as_ignored() {
 fn gnoblin_shell_vm_selects_nothing_any_more() {
     // The variable that used to pick the Lua role is not read: a session that still sets it runs the JavaScript role.
     let session = Session::start_with(
-        &[("init.ts", &init_with_delay(32))],
+        &[("shell.ts", &init_with_delay(32))],
         &[("GNOBLIN_SHELL_VM", "lua"), ("GNOBLIN_JS_WATCH", "0")],
     );
     let document = wait_for_revision(&session, 1);

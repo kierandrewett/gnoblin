@@ -30,13 +30,16 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # `config validate` parses a file with the runtime's own parser, so a document
 # that validates here is one the compositor accepts.
 gnoblin-config = { path = "../gnoblin-config" }
-# `check` on an `init.ts` loads the module graph through the runtime's own loader, so a
+# `check` on a `shell.ts` loads the module graph through the runtime's own loader, so a
 # file that checks here is one the shell runtime loads; `types init` writes the editor files.
 gnoblin-js = { path = "../gnoblin-js" }
 gnoblin-js-types = { path = "../gnoblin-js-types" }
-# `config migrate` converts an `init.lua` to `init.ts`. The converter is a pure function of the Lua text and
+# `config migrate` converts an `init.lua` to `shell.ts`. The converter is a pure function of the Lua text and
 # links no script host.
 gnoblin-config-migrate = { path = "../gnoblin-config-migrate" }
+# `config init` and `config migrate` refuse to write a shell file beside another shell of the conventional names, which
+# discovery would then call equally preferred.
+gnoblin-shell-discovery = { path = "../gnoblin-shell-discovery" }
 serde_json.workspace = true
 
 [build-dependencies]

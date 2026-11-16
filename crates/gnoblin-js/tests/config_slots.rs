@@ -256,7 +256,7 @@ fn shell_config(root: &Path) -> JsShellConfig {
 fn rig_with(init: &str, document: Option<&str>, tune: impl FnOnce(&mut JsShellConfig)) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let comp = compositor();
     let link = Script(comp);
     let doc = document.map_or_else(FakeDoc::default, FakeDoc::with);
@@ -266,7 +266,7 @@ fn rig_with(init: &str, document: Option<&str>, tune: impl FnOnce(&mut JsShellCo
     let mut shell = JsShell::new(Box::new(link.0.clone()), config).expect("the shell boots");
     shell.set_config_link(Box::new(doc.clone()));
     shell.set_slot_link(Box::new(slots.clone()));
-    let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     Rig {
         shell,
@@ -334,7 +334,7 @@ fn a_script_that_writes_no_document_setting_commits_nothing() {
 fn a_refused_value_fails_the_entry_with_the_device_and_the_setting_and_commits_nothing() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init("mouse().sensitivity = 5000;")).expect("init.ts");
+    fs::write(root.join("shell.ts"), init("mouse().sensitivity = 5000;")).expect("shell.ts");
     let doc = FakeDoc::default();
     let role = JsRole::over_link(
         Box::new(compositor()),
@@ -360,7 +360,7 @@ fn a_refused_value_fails_the_entry_with_the_device_and_the_setting_and_commits_n
     );
 }
 
-/// A role over the fakes with `first` as the entry file. Its `init.ts` is rewritten by `rewrite`.
+/// A role over the fakes with `first` as the entry file. Its `shell.ts` is rewritten by `rewrite`.
 struct RoleRig {
     role: JsRole,
     doc: FakeDoc,
@@ -371,7 +371,7 @@ struct RoleRig {
 fn role_rig(first: &str, document: Option<&str>) -> RoleRig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), first).expect("init.ts");
+    fs::write(root.join("shell.ts"), first).expect("shell.ts");
     let doc = document.map_or_else(FakeDoc::default, FakeDoc::with);
     let mut config = honest_role_config(&root);
     config.watch = false;
@@ -395,7 +395,7 @@ fn role_rig(first: &str, document: Option<&str>) -> RoleRig {
 
 impl RoleRig {
     fn rewrite(&mut self, source: &str) -> gnoblin_js::ReloadReport {
-        fs::write(self.root.join("init.ts"), source).expect("init.ts is rewritten");
+        fs::write(self.root.join("shell.ts"), source).expect("shell.ts is rewritten");
         self.role.reload_now()
     }
 }
@@ -474,7 +474,7 @@ fn a_document_the_compositor_refuses_is_a_diagnostic_and_the_shell_keeps_running
     let rig = {
         let dir = tempfile::tempdir().expect("a temp dir");
         let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-        fs::write(root.join("init.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
+        fs::write(root.join("shell.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
         let doc = FakeDoc::default();
         doc.0.borrow_mut().refuse = Some("config-rejected: no".to_owned());
         let mut config = honest_role_config(&root);
@@ -506,12 +506,12 @@ fn a_document_the_compositor_refuses_is_a_diagnostic_and_the_shell_keeps_running
 fn compositor_notices_are_reported_as_not_applied() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
+    fs::write(root.join("shell.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
     let doc = FakeDoc::default();
     doc.0.borrow_mut().notices = vec!["compositor.renderer: restart required".to_owned()];
     let mut shell = JsShell::new(Box::new(compositor()), shell_config(&root)).expect("the shell boots");
     shell.set_config_link(Box::new(doc.clone()));
-    let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert_eq!(
         diagnostics,
         vec!["not applied: compositor.renderer: restart required".to_owned()]
@@ -522,9 +522,9 @@ fn compositor_notices_are_reported_as_not_applied() {
 fn without_a_configuration_connection_document_settings_are_reported_not_committed() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
+    fs::write(root.join("shell.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
     let mut shell = JsShell::new(Box::new(compositor()), shell_config(&root)).expect("the shell boots");
-    let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
     assert!(
         diagnostics[0].contains("no configuration connection"),
@@ -593,11 +593,11 @@ fn a_client_listener_that_throws_is_reported_once_and_the_next_still_runs() {
 fn an_entry_that_throws_fails_the_load_naming_the_file() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init("throw new Error('nope');")).expect("init");
+    fs::write(root.join("shell.ts"), init("throw new Error('nope');")).expect("init");
     let mut shell = JsShell::new(Box::new(compositor()), shell_config(&root)).expect("the shell boots");
-    let error = shell.load_entry(Path::new("init.ts")).expect_err("the entry threw");
+    let error = shell.load_entry(Path::new("shell.ts")).expect_err("the entry threw");
     assert!(error.to_string().contains("nope"), "{error}");
-    assert!(error.to_string().contains("init.ts"), "{error}");
+    assert!(error.to_string().contains("shell.ts"), "{error}");
 }
 
 // --- gnoblin.dialogs -------------------------------------------------------------------------------------------
@@ -853,12 +853,12 @@ fn without_a_slot_connection_a_listener_is_reported_once() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(
-        root.join("init.ts"),
+        root.join("shell.ts"),
         init("gnoblin.dialogs.addListener(new DialogListener());"),
     )
     .expect("init");
     let mut shell = JsShell::new(Box::new(compositor()), shell_config(&root)).expect("the shell boots");
-    shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     let first = shell.frame().expect("a frame").diagnostics;
     let second = shell.frame().expect("a frame").diagnostics;
     assert_eq!(first.len(), 1, "{first:?}");
@@ -874,7 +874,7 @@ fn a_reload_keeps_the_dialog_slot_for_a_generation_with_a_listener_and_releases_
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     let listening = init("gnoblin.dialogs.addListener(new DialogListener());");
-    fs::write(root.join("init.ts"), &listening).expect("init.ts");
+    fs::write(root.join("shell.ts"), &listening).expect("shell.ts");
     let mut config = honest_role_config(&root);
     config.watch = false;
     let mut role = JsRole::over_link(
@@ -891,7 +891,7 @@ fn a_reload_keeps_the_dialog_slot_for_a_generation_with_a_listener_and_releases_
     assert_eq!(slots.calls(), vec!["claim_slot dialogs.observe"]);
 
     // The same listener in the next generation: the claim stays, and nothing is sent.
-    fs::write(root.join("init.ts"), format!("{listening}// touched\n")).expect("init.ts");
+    fs::write(root.join("shell.ts"), format!("{listening}// touched\n")).expect("shell.ts");
     assert!(role.reload_now().ok);
     role.tick().expect("a frame");
     role.tick().expect("a frame");
@@ -902,7 +902,7 @@ fn a_reload_keeps_the_dialog_slot_for_a_generation_with_a_listener_and_releases_
     );
 
     // A generation with no listener gives the slot up in its first frame.
-    fs::write(root.join("init.ts"), init("")).expect("init.ts");
+    fs::write(root.join("shell.ts"), init("")).expect("shell.ts");
     assert!(role.reload_now().ok);
     role.tick().expect("a frame");
     assert_eq!(
@@ -911,7 +911,7 @@ fn a_reload_keeps_the_dialog_slot_for_a_generation_with_a_listener_and_releases_
     );
 
     // And a later one with a listener claims it afresh.
-    fs::write(root.join("init.ts"), &listening).expect("init.ts");
+    fs::write(root.join("shell.ts"), &listening).expect("shell.ts");
     assert!(role.reload_now().ok);
     role.tick().expect("a frame");
     assert_eq!(

@@ -21,7 +21,7 @@ A client that reuses a GPU buffer for its next frame while a fade runs can show 
 ## Turn animations off
 
 Reduced motion makes every one of these instant: a workspace switch lands at once and a window is hidden at once. A
-config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, but `init.ts` cannot set it. See [dropped settings](/js-settings#dropped-settings).
+config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, but `shell.ts` cannot set it. See [dropped settings](/js-settings#dropped-settings).
 
 ## Animate a window yourself
 

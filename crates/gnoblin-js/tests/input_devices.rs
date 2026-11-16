@@ -115,12 +115,12 @@ fn boot(body: &str, xr: bool) -> (World, Vec<String>) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     let imports = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nconst { gnoblin, ...rest } = lib;\nconst g = globalThis as any;\ng.g = g;\nObject.assign(g, rest);\n";
-    fs::write(root.join("init.ts"), format!("{imports}{body}\n")).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), format!("{imports}{body}\n")).expect("shell.ts is written");
     let (config, _clock) = timed_config(&root);
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let doc = Doc::default();
     shell.set_config_link(Box::new(doc.clone()));
-    let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     (
         World {
             shell,

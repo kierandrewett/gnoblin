@@ -1,6 +1,6 @@
 [package]
 name = "gnoblin-config-migrate"
-description = "Converts a Lua init.lua (and the files it loads) to a TypeScript init.ts: the data subset exactly, everything else reported with its line. Pure functions, no I/O, no Lua interpreter."
+description = "Converts a Lua init.lua (and the files it loads) to a TypeScript shell.ts: the data subset exactly, everything else reported with its line. Pure functions, no I/O, no Lua interpreter."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,7 +1,7 @@
 # Configuration reference
 
-A setting is a property of an object that `init.ts` reaches from the `gnoblin` global: a device, an output profile,
-the clients' style, a workspace, a binding. [Settings in init.ts](/js-settings) lists them all with an example for
+A setting is a property of an object that `shell.ts` reaches from the `gnoblin` global: a device, an output profile,
+the clients' style, a workspace, a binding. [Settings in shell.ts](/js-settings) lists them all with an example for
 each.
 
 A setting you do not write keeps the shell's default, and an out-of-range value throws an error that names the

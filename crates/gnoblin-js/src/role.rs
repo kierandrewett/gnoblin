@@ -1,7 +1,7 @@
 //! The JavaScript shell as the runtime role runs it: the counterpart of `the retired retired host`'s `ShellRole`.
 //!
-//! [`JsRole`] connects a [`JsShell`] to the compositor's owner socket, loads the user's `init.ts` (or
-//! `init.js`) from the config directory, and runs one [`JsShell::frame`] per turn of the role's loop. It owns
+//! [`JsRole`] connects a [`JsShell`] to the compositor's owner socket, loads the user's `shell.ts` (or
+//! `shell.js`) from the config directory, and runs one [`JsShell::frame`] per turn of the role's loop. It owns
 //! the three pieces of hot reload and puts them to work:
 //!
 //! - a [`ConfigWatcher`] on the config directory and on every module the running generation imported; a save
@@ -24,7 +24,7 @@
 //! that they are ready.
 
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -50,28 +50,6 @@ gnoblin_log::logger!(log = "js");
 
 /// How long the config watcher waits for a quiet moment after a change before it asks for a reload.
 pub const RELOAD_DEBOUNCE: Duration = Duration::from_millis(100);
-
-/// The config directory: `$XDG_CONFIG_HOME/gnoblin`, else `$HOME/.config/gnoblin`. `None` when neither
-/// variable is set.
-pub fn config_dir(env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    let set = |name: &str| env(name).filter(|value| !value.is_empty());
-    let base = match set("XDG_CONFIG_HOME") {
-        Some(dir) => PathBuf::from(dir),
-        None => Path::new(&set("HOME")?).join(".config"),
-    };
-    Some(base.join("gnoblin"))
-}
-
-/// The user's entry module in `dir`: `init.ts`, else `init.js`. When neither is there it is `init.ts`, the
-/// file whose creation the watcher then reloads.
-pub fn entry_in(dir: &Path) -> PathBuf {
-    let ts = dir.join("init.ts");
-    if ts.is_file() {
-        return ts;
-    }
-    let js = dir.join("init.js");
-    if js.is_file() { js } else { ts }
-}
 
 /// What a [`JsRole`] is built from.
 #[derive(Debug, Clone)]
@@ -105,7 +83,9 @@ impl JsRoleConfig {
     /// The config for the user's directory `dir`, with the stock library compiled in unless `stock_dir` names one.
     pub fn new(dir: impl Into<PathBuf>, stock_dir: Option<PathBuf>) -> Self {
         let dir = dir.into();
-        let entry = entry_in(&dir);
+        // The file a new user creates, and the one the watcher then reloads. The runner replaces it with the file
+        // discovery selected when there is one.
+        let entry = dir.join("shell.ts");
         let mut shell = JsShellConfig::new(dir);
         shell.stock_dir = stock_dir;
         Self {
@@ -521,43 +501,5 @@ impl JsRole {
     /// The shell, for a caller that evaluates a probe in it.
     pub fn shell_mut(&mut self) -> &mut JsShell {
         &mut self.shell
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-
-    use super::{config_dir, entry_in};
-
-    fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |name| {
-            pairs
-                .iter()
-                .find(|(key, _)| *key == name)
-                .map(|(_, value)| (*value).to_owned())
-        }
-    }
-
-    #[test]
-    fn the_config_directory_is_xdg_config_home_then_home_dot_config() {
-        let both = env(&[("XDG_CONFIG_HOME", "/x"), ("HOME", "/h")]);
-        assert_eq!(config_dir(&both).as_deref(), Some(std::path::Path::new("/x/gnoblin")));
-        let home = env(&[("XDG_CONFIG_HOME", ""), ("HOME", "/h")]);
-        assert_eq!(
-            config_dir(&home).as_deref(),
-            Some(std::path::Path::new("/h/.config/gnoblin"))
-        );
-        assert_eq!(config_dir(&env(&[])), None);
-    }
-
-    #[test]
-    fn the_entry_is_init_ts_then_init_js_and_init_ts_when_neither_exists() {
-        let dir = tempfile::tempdir().expect("a temp dir");
-        assert_eq!(entry_in(dir.path()), dir.path().join("init.ts"));
-        fs::write(dir.path().join("init.js"), "").expect("init.js");
-        assert_eq!(entry_in(dir.path()), dir.path().join("init.js"));
-        fs::write(dir.path().join("init.ts"), "").expect("init.ts");
-        assert_eq!(entry_in(dir.path()), dir.path().join("init.ts"));
     }
 }

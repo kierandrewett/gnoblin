@@ -27,7 +27,7 @@ class OwnMenu extends ClientListener {
 gnoblin.clients.addListener(new OwnMenu());
 ```
 
-Put the code in `~/.config/gnoblin/init.ts`. Right-click a titlebar: the stock menu does not open, and a notification says where
+Put the code in `~/.config/gnoblin/shell.ts`. Right-click a titlebar: the stock menu does not open, and a notification says where
 the menu would have been. `request.handle()` takes the request, so the stock menu does not run. To change what the stock
 menu offers or draw another one, assign `windowMenu.items` or `windowMenu.show` instead.
 

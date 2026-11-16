@@ -1,6 +1,6 @@
 # JavaScript window style
 
-A window's look is a style: plain objects you set from `init.ts` or from any listener.
+A window's look is a style: plain objects you set from `shell.ts` or from any listener.
 Import the classes from `gnoblin`:
 
 ```ts

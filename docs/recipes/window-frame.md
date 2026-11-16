@@ -1,6 +1,6 @@
 # Fill a window frame with your own parts
 
-Each example is a whole `startDecorations` call for `~/.config/gnoblin/init.ts`. The
+Each example is a whole `startDecorations` call for `~/.config/gnoblin/shell.ts`. The
 [window frame reference](/js-window-frame) names every outlet and part. A save reloads the shell and frames every window
 again, so a change shows at once.
 

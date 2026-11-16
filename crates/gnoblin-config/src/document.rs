@@ -153,7 +153,7 @@ impl Config {
                         key,
                         &root,
                         &mut out,
-                        "window rules and workspace sets are not configuration keys: window rules are listeners and `gnoblin.clients.where(...).style` in init.ts, and the shell has no workspace sets (see docs/js-settings.md)",
+                        "window rules and workspace sets are not configuration keys: window rules are listeners and `gnoblin.clients.where(...).style` in shell.ts, and the shell has no workspace sets (see docs/js-settings.md)",
                     );
                 }
                 for key in ["extensions", "extension-dirs", "extension_dirs"] {
@@ -162,7 +162,7 @@ impl Config {
                         key,
                         &root,
                         &mut out,
-                        "the extension tier was removed: delete the setting, import extra modules from init.ts (see docs/typescript-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
+                        "the extension tier was removed: delete the setting, import extra modules from shell.ts (see docs/typescript-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
                     );
                 }
                 removed(

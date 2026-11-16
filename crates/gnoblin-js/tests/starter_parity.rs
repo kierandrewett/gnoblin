@@ -1,8 +1,8 @@
 //! The stock default is the starter file, run twice.
 //!
-//! A shell with no `init.ts` runs the embedded `data/js/starter/init.ts` as its entry (`load_default_config`), and
+//! A shell with no `shell.ts` runs the embedded `data/js/starter/shell.ts` as its entry (`load_default_config`), and
 //! `gnoblinctl config init` writes the same text. Two boots over the same fake compositor, the default and a user's
-//! `init.ts` equal to the starter, are digested into the workspaces, the claimed keys and gestures, the titlebars, the
+//! `shell.ts` equal to the starter, are digested into the workspaces, the claimed keys and gestures, the titlebars, the
 //! window menu, the not-responding alert and what each stock key does when it is pressed. The digests must be equal.
 
 use std::fs;
@@ -20,7 +20,7 @@ fn populate(comp: &FakeCompositor) {
     comp.add_window(4, "two", "foot");
 }
 
-/// A shell over the populated compositor that has loaded `init` as `init.ts`, or the stock default when `init` is
+/// A shell over the populated compositor that has loaded `init` as `shell.ts`, or the stock default when `init` is
 /// `None`, and then the library globals.
 fn boot(init: Option<&str>) -> Rig {
     let comp = FakeCompositor::new();
@@ -32,8 +32,8 @@ fn boot(init: Option<&str>) -> Rig {
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let load_diagnostics = match init {
         Some(source) => {
-            fs::write(root.join("init.ts"), source).expect("init.ts is written");
-            shell.load_entry(Path::new("init.ts")).expect("init.ts loads")
+            fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
+            shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads")
         }
         None => shell.load_default_config().expect("the stock default loads"),
     };
@@ -235,6 +235,6 @@ fn the_recipe_page_shows_the_starter_file_as_it_is() {
     let shown = &body[..body.find("\n```\n").expect("the block closes") + 1];
     assert_eq!(
         shown, STARTER_CONFIG,
-        "paste data/js/starter/init.ts into the first ts block of docs/recipes/complete-starter-config.md"
+        "paste data/js/starter/shell.ts into the first ts block of docs/recipes/complete-starter-config.md"
     );
 }

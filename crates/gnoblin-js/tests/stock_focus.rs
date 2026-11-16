@@ -44,13 +44,15 @@ import {
 fn run(body: &str) -> String {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), format!("{IMPORTS}\n{body}\n")).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), format!("{IMPORTS}\n{body}\n")).expect("shell.ts is written");
     let mut config = JsConfig::new(&root).embed("harness", HARNESS);
     for (name, source) in stock_modules() {
         config = config.embed(name, source);
     }
     let generation = JsGeneration::new(&config, 1).expect("a generation");
-    generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
+    generation
+        .eval_module(Path::new("shell.ts"))
+        .expect("shell.ts evaluates");
     generation
         .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
         .expect("the case called emit")
@@ -533,10 +535,10 @@ import { Workspace, Layout, FloatingLayout, ClientMoveBinding, ClientResizeBindi
 fn boot(comp: &Comp, init: &str) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), format!("{PRELUDE}{init}")).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), format!("{PRELUDE}{init}")).expect("shell.ts is written");
     let (config, clock) = timed_config(&root);
     let mut shell = JsShell::new(Box::new(comp.0.clone()), config).expect("the shell boots");
-    let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     let mut rig = Rig {
         shell,
@@ -550,13 +552,13 @@ fn boot(comp: &Comp, init: &str) -> Rig {
 }
 
 /// One workspace whose layout places nothing, so a window stays wherever the compositor put it. The shell has no stock
-/// workspaces here: an `init.ts` declares what it wants.
+/// workspaces here: a `shell.ts` declares what it wants.
 const BASE: &str = "gnoblin.workspaces.add(new Workspace({ id: \"main\", layout: new Layout() }));\n";
 
 /// One floating workspace: a window can be dragged and snapped on it.
 const FLOATING: &str = "gnoblin.workspaces.add(new Workspace({ id: \"main\", layout: new FloatingLayout() }));\n";
 
-/// The `init.ts` of a case: the one workspace of [`BASE`], then `statements`.
+/// The `shell.ts` of a case: the one workspace of [`BASE`], then `statements`.
 fn config(statements: &str) -> String {
     format!("{BASE}{statements}")
 }

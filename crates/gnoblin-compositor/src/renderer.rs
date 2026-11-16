@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use gnoblin_config::{Compositor, RendererChoice, SearchPaths, Store};
+use gnoblin_config::{Compositor, Environment, RendererChoice, Store};
 use gnoblin_wayland::MemoryLimits;
 
 use crate::SessionConfig;
@@ -67,7 +67,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
         log::debug!(area = "renderer", "no state directory is set; the default is used");
         return;
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => log::debug!(area = "renderer", %error, "no configuration file; the default is used"),
     }

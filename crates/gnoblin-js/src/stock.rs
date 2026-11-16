@@ -14,10 +14,10 @@ use crate::error::JsTsError;
 use crate::loader::JsTypeScriptModule;
 use crate::ts::strip_shared;
 
-/// The stock desktop, and the only description of it: `data/js/starter/init.ts`. `gnoblinctl config init` writes this
+/// The stock desktop, and the only description of it: `data/js/starter/shell.ts`. `gnoblinctl config init` writes this
 /// text byte for byte, and the shell runs the same text, as the embedded module [`STARTER_MODULE_NAME`], when there is
-/// no `init.ts` (or it could not load). The examples in it are comments to switch on.
-pub const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/init.ts");
+/// no `shell.ts` (or it could not load). The examples in it are comments to switch on.
+pub const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
 
 /// The import name the shell runs [`STARTER_CONFIG`] under as the entry of a generation that has no user entry.
 pub(crate) const STARTER_MODULE_NAME: &str = "gnoblin-std/starter";
@@ -25,7 +25,7 @@ pub(crate) const STARTER_MODULE_NAME: &str = "gnoblin-std/starter";
 /// [`STARTER_CONFIG`] as the embedded TypeScript module [`STARTER_MODULE_NAME`], named by its path in the repository.
 pub(crate) fn starter_module() -> JsTypeScriptModule {
     JsTypeScriptModule {
-        path: Path::new("data/js/starter/init.ts").to_path_buf(),
+        path: Path::new("data/js/starter/shell.ts").to_path_buf(),
         source: Cow::Borrowed(STARTER_CONFIG),
     }
 }

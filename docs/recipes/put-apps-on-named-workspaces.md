@@ -1,6 +1,6 @@
 # Route new app windows to named workspaces
 
-Give workspaces stable IDs in `init.ts`, then place each matching new window on its workspace when it opens. Replace
+Give workspaces stable IDs in `shell.ts`, then place each matching new window on its workspace when it opens. Replace
 the example app IDs with the values reported by `gnoblinctl window list --json`.
 
 ```ts

@@ -1,7 +1,7 @@
 # Window management settings
 
 The focus, raise, tiling and titlebar-click policy of the compositor has no TypeScript home yet: see
-[settings with no TypeScript home yet](/js-settings#dropped-settings). The runtime keeps these values and `init.ts`
+[settings with no TypeScript home yet](/js-settings#dropped-settings). The runtime keeps these values and `shell.ts`
 cannot change them:
 
 - Focus follows a click. Moving the pointer does not change focus.

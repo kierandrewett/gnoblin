@@ -444,8 +444,8 @@ impl JsShell {
     }
 
     /// Runs the stock desktop as the generation's whole config, for a shell with no user entry (or whose entry could
-    /// not load): the embedded starter file (`data/js/starter/init.ts`, the text `gnoblinctl config init` writes) is
-    /// the entry, so the default is a user's `init.ts` that nobody wrote. Returns the failures of calls that ran
+    /// not load): the embedded starter file (`data/js/starter/shell.ts`, the text `gnoblinctl config init` writes) is
+    /// the entry, so the default is a user's `shell.ts` that nobody wrote. Returns the failures of calls that ran
     /// while it loaded.
     ///
     /// # Errors

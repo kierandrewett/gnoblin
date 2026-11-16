@@ -42,7 +42,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use gnoblin_backend::nested::{NestedConfig, OutputSpec};
-use gnoblin_config::{BackendChoice, Compositor, NestedDecorations, SearchPaths, Store};
+use gnoblin_config::{BackendChoice, Compositor, Environment, NestedDecorations, Store};
 use gnoblin_types::Size;
 
 use crate::{Backend, SessionConfig};
@@ -334,7 +334,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) -> Result<(), Sele
         log::debug!(area = "backend", "no state directory is set; the defaults are used");
         return apply(config, &BackendSettings::default(), requested.as_deref(), &host);
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path(), requested.as_deref(), &host),
         Err(error) => {
             log::debug!(area = "backend", %error, "no configuration file; the defaults are used");

@@ -20,7 +20,7 @@ class NoRoot extends AuthenticationListener {
 gnoblin.authentication.addListener(new NoRoot());
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. Run `pkexec true` to see the dialog open. A request for root from any other
+Put the file in `~/.config/gnoblin/shell.ts`. Run `pkexec true` to see the dialog open. A request for root from any other
 program is refused and its dialog never opens.
 
 ## How a request is handled

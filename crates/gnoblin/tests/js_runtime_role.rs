@@ -2,7 +2,7 @@
 //! the compositor.
 //!
 //! The role is the shipped one, [`JsRoleRunner`]: it adopts the privileged end of a socket pair the compositor serves,
-//! locates and evaluates `init.ts`, commits the document, reports to the guardian on a pipe and then serves. Nothing
+//! locates and evaluates `shell.ts`, commits the document, reports to the guardian on a pipe and then serves. Nothing
 //! is faked: the session is [`Compositor::run`] on a headless backend, the windows are mapped by a real
 //! `wayland-client` connection, and what the compositor holds is read back through a second connection.
 //!
@@ -24,7 +24,6 @@ use std::time::{Duration, Instant};
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError};
 use gnoblin_compositor::{Compositor, InputTap, Privileged, SessionConfig, StopHandle};
-use gnoblin_config::SearchPaths;
 use gnoblin_js::{JsRoleError, JsRoleRunner, STARTER_CONFIG};
 use gnoblin_proto::report::{self, Line};
 use gnoblin_proto::{Version, privilege};
@@ -145,7 +144,7 @@ struct Role {
 }
 
 impl Role {
-    /// Runs the shipped role over the session's privileged connection, reading `init` (`GNOBLIN_CONFIG`), with the
+    /// Runs the shipped role over the session's privileged connection, reading `init` (`GNOBLIN_SHELL`), with the
     /// config watcher off so only a request reloads.
     fn start(session: &mut Session, init: &Path) -> Role {
         let descriptor = session
@@ -165,10 +164,9 @@ impl Role {
                 gnoblin_js::WATCH_VARIABLE => Some("0".to_owned()),
                 _ => None,
             }),
-            paths: SearchPaths {
-                home: None,
-                config_home: None,
-                override_path: Some(init.to_path_buf()),
+            paths: gnoblin_config::Environment {
+                gnoblin_shell: Some(init.as_os_str().to_owned()),
+                ..gnoblin_config::Environment::default()
             },
         };
         let reports: Arc<Mutex<Vec<Line>>> = Arc::default();
@@ -248,7 +246,7 @@ fn write(path: &Path, source: &str) {
     std::fs::write(path, source).expect("a config file");
 }
 
-/// An `init.ts` that sets the repeat delay of the seat's keyboard, which the document carries as `input.keyboard.delay`.
+/// A `shell.ts` that sets the repeat delay of the seat's keyboard, which the document carries as `input.keyboard.delay`.
 fn config_with_delay(delay: i64) -> String {
     format!(
         "import {{ Keyboard, gnoblin }} from \"gnoblin-core\";\n\
@@ -277,11 +275,11 @@ gnoblin.clients.addListener({
 });
 "#;
 
-/// A started session and role over a config directory holding `init` as `init.ts`.
+/// A started session and role over a config directory holding `init` as `shell.ts`.
 fn start(init: &str) -> (Session, Role, tempfile::TempDir, PathBuf) {
     let mut session = Session::start();
     let directory = tempfile::tempdir().expect("a config directory");
-    let init_path = directory.path().join("init.ts");
+    let init_path = directory.path().join("shell.ts");
     write(&init_path, init);
     let role = Role::start(&mut session, &init_path);
     (session, role, directory, init_path)

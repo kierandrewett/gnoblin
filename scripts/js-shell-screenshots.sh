@@ -90,22 +90,22 @@ cleanup() {
 trap cleanup EXIT
 
 # seed_renderer RENDERER: names the renderer the compositor starts with. The compositor reads `compositor.renderer` from
-# the last accepted document when it starts, and no object of an init.ts carries that setting, so the session's state
-# directory is given the document a first run would have kept, tagged with the init.ts
+# the last accepted document when it starts, and no object of a shell.ts carries that setting, so the session's state
+# directory is given the document a first run would have kept, tagged with the shell.ts
 # it belongs to. The runtime then commits its own document over it, and the compositor keeps the renderer it started with.
 seed_renderer() {
     local state="$session_home/state/gnoblin"
     mkdir -p "$state"
     chmod 700 "$state"
-    printf '{"format":1,"source":"%s","document":{"compositor":{"renderer":"%s"}}}\n' "$config_dir/init.ts" "$1" \
+    printf '{"format":1,"source":"%s","document":{"compositor":{"renderer":"%s"}}}\n' "$config_dir/shell.ts" "$1" \
         >"$state/last-good-config.json"
     chmod 600 "$state/last-good-config.json"
 }
 
-# starter_with LINES: the text of the stock desktop (the starter `init.ts`, which a shell with no init runs) followed by
+# starter_with LINES: the text of the stock desktop (the starter `shell.ts`, which a shell with no init runs) followed by
 # LINES, for a scenario that wants the stock default plus a setting.
 starter_with() {
-    cat "$repo_root/data/js/starter/init.ts"
+    cat "$repo_root/data/js/starter/shell.ts"
     printf '\n%s\n' "$1"
 }
 
@@ -121,7 +121,7 @@ start_session() {
     mkdir -p "$run_dir" "$config_dir" "$session_home/state" "$session_home/data" "$session_home/cache"
     chmod 700 "$run_dir"
     if [ $# -gt 0 ]; then
-        printf '%s\n' "$1" >"$config_dir/init.ts"
+        printf '%s\n' "$1" >"$config_dir/shell.ts"
     fi
     if [ $# -gt 1 ]; then
         seed_renderer "$2"
@@ -135,7 +135,7 @@ start_session() {
 # boot_guardian: starts the session in a process group of its own and waits until the shell has committed a config.
 boot_guardian() {
     : >"$session_home/session.log"
-    setsid env -u WAYLAND_DISPLAY -u DISPLAY -u GNOBLIN_JS_STOCK_DIR -u GNOBLIN_CONFIG \
+    setsid env -u WAYLAND_DISPLAY -u DISPLAY -u GNOBLIN_JS_STOCK_DIR -u GNOBLIN_SHELL \
         XDG_RUNTIME_DIR="$run_dir" \
         XDG_CONFIG_HOME="$session_home/config" \
         XDG_STATE_HOME="$session_home/state" \
@@ -222,9 +222,9 @@ three() {
     wait_windows 3
 }
 
-# set_config SOURCE: writes init.ts into the running session's config directory and reloads it.
+# set_config SOURCE: writes shell.ts into the running session's config directory and reloads it.
 set_config() {
-    printf '%s\n' "$1" >"$config_dir/init.ts"
+    printf '%s\n' "$1" >"$config_dir/shell.ts"
     ctl config reload
     sleep 1
 }
@@ -424,7 +424,7 @@ recipe_source() {
         "$repo_root/docs/recipes/window-frame.md"
 }
 
-# window_frame NAME HEADING: two windows under the `init.ts` of one example of the window frame recipe, the second placed
+# window_frame NAME HEADING: two windows under the `shell.ts` of one example of the window frame recipe, the second placed
 # over the first so the layers behind the window and the edges round it show.
 window_frame() {
     local source

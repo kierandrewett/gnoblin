@@ -1,6 +1,6 @@
 //! The `console` global of a generation: `console.log`, `info`, `warn`, `error`, `debug`, `assert` and `table`.
 //!
-//! Every generation has one, from `init.ts` to a listener to a console expression, because [`JsGeneration::new`]
+//! Every generation has one, from `shell.ts` to a listener to a console expression, because [`JsGeneration::new`]
 //! installs it before anything runs. The formatting (Node's `%s %d %j`, errors with their stack, JSON-like objects with
 //! a `[Circular]` marker) is `js/console.js`; this module is what it calls: the rate limit, the call site and the log.
 //!

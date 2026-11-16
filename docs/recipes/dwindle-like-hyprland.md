@@ -2,7 +2,7 @@
 
 `DwindleLayout` places windows the way Hyprland's dwindle layout does: each new window splits the cell of the focused
 window, and a split goes side by side or top to bottom by the shape of its cell. This page lists its options under their
-Hyprland names, the actions you bind to keys, and where Gnoblin differs. Put the code in `~/.config/gnoblin/init.ts`.
+Hyprland names, the actions you bind to keys, and where Gnoblin differs. Put the code in `~/.config/gnoblin/shell.ts`.
 
 ## The setup
 

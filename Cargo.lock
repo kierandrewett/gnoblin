@@ -1443,6 +1443,7 @@ name = "gnoblin-config"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-config-codegen",
+ "gnoblin-shell-discovery",
  "gnoblin-testkit",
  "rustix 1.1.6",
  "serde_json",
@@ -2100,6 +2101,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-shell-discovery",
  "gnoblin-testkit",
  "gnoblin-tree-client",
  "prost",

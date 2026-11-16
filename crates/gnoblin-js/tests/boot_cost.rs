@@ -1,4 +1,4 @@
-//! What starting the shell costs: attach, load the stock library, evaluate an `init.ts` that imports it.
+//! What starting the shell costs: attach, load the stock library, evaluate a `shell.ts` that imports it.
 //!
 //! Every start of the runtime role and every reload pays this. `boot_cost` prints the milliseconds of ten boots with no
 //! bytecode cache, with an empty one (the first start after an install or an upgrade) and with a filled one (every
@@ -21,7 +21,7 @@ fn boot(root: &Path, cache: &JsBytecodeCache) -> f64 {
     let mut config = honest_config(root);
     config.js.cache = cache.clone();
     let mut shell = JsShell::new(Box::new(FakeCompositor::new()), config).expect("the shell boots");
-    shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     let took = started.elapsed().as_secs_f64() * 1e3;
     drop(shell);
     took
@@ -44,7 +44,7 @@ fn boot_cost() {
     let base = fs::canonicalize(dir.path()).expect("the temp dir exists");
     let root = base.join("config");
     fs::create_dir_all(&root).expect("the config root");
-    fs::write(root.join("init.ts"), "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nvoid lib;\n").expect("init.ts");
+    fs::write(root.join("shell.ts"), "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nvoid lib;\n").expect("shell.ts");
 
     println!("boot ms ({BOOTS} boots each)");
     report("rig (no cache)", {

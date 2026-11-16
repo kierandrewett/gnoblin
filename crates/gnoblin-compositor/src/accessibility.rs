@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use gnoblin_a11y::ColourFilter;
-use gnoblin_config::{ColourFilter as ConfigColourFilter, SearchPaths, Store, VisualAccessibility};
+use gnoblin_config::{ColourFilter as ConfigColourFilter, Environment, Store, VisualAccessibility};
 use gnoblin_render_frame::frame::{MAX_ZOOM, MIN_ZOOM};
 use gnoblin_wayland::VisualAccessibilitySettings;
 
@@ -56,7 +56,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
         );
         return;
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
             log::debug!(area = "accessibility", %error, "no configuration file; the visual accessibility stays off")

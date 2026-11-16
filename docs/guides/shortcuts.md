@@ -2,7 +2,7 @@
 
 [Configuration reference](/config/configure)
 
-Bind a key with `gnoblin.input.primary.bind(trigger, function)` in `~/.config/gnoblin/init.ts`. A key starts a program
+Bind a key with `gnoblin.input.primary.bind(trigger, function)` in `~/.config/gnoblin/shell.ts`. A key starts a program
 or runs a function of yours, and a save reloads the file. The calls are in [keyboard shortcuts](/shell-api/keyboard-shortcuts).
 
 ## Launch a command
@@ -113,7 +113,7 @@ Gnoblin handles shortcuts inside the compositor and does not need systemd or the
 ## Avoid conflicts
 
 - A trigger is bound once. Binding a trigger that is already bound is refused, and the load reports it.
-- Your `init.ts` replaces the stock file as a whole. The stock keys are lines of `gnoblinctl config init`'s starter, so to
+- Your `shell.ts` replaces the stock file as a whole. The stock keys are lines of `gnoblinctl config init`'s starter, so to
   change one, edit that line in your copy: for a smaller volume step, change `5%+` to `2%+` on the
   `XF86AudioRaiseVolume` line.
 - To drop a stock key, delete its line.

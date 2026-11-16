@@ -17,7 +17,7 @@ Install [Waybar](https://github.com/Alexays/Waybar),
 [Fuzzel](https://codeberg.org/dnkl/fuzzel) and
 [Mako](https://github.com/emersion/mako) with your distribution's package manager.
 
-Add this to `~/.config/gnoblin/init.ts`:
+Add this to `~/.config/gnoblin/shell.ts`:
 
 ```ts
 gnoblin.spawn(["waybar"]);
@@ -96,7 +96,7 @@ not.
 
 If none appears while the session is unlocked, the recovery panel offers:
 
-- Open `~/.config/gnoblin/init.ts`.
+- Open `~/.config/gnoblin/shell.ts`.
 - Launch a terminal, if one is installed.
 - Read this shell setup guide.
 

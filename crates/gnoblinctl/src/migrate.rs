@@ -1,7 +1,7 @@
-//! `config migrate`: an `init.lua` becomes an `init.ts`.
+//! `config migrate`: an `init.lua` becomes a `shell.ts`.
 //!
 //! The conversion is `gnoblin-config-migrate`, a pure function of the Lua text. This module is the I/O around it: it
-//! finds the file, reads it and the files it loads, refuses to overwrite, writes `init.ts` and the editor files, runs
+//! finds the file, reads it and the files it loads, refuses to overwrite, writes `shell.ts` and the editor files, runs
 //! the result once in the dry-run host (the evaluation `check` makes) so a file that would not load is said so, and
 //! prints the report. It links no Lua host: the converter reads Lua as text and never runs it, so the command keeps
 //! working when the Lua shell is gone.
@@ -15,7 +15,7 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 use gnoblin_cli_style::{ErrorReport, LineOutcome, OutputTheme, error_block, kv_list, section, status_line};
-use gnoblin_config::SearchPaths;
+use gnoblin_config::Environment;
 use gnoblin_config_migrate::{
     ConfigSourceLoader, MigrateSource, MigrationOutput, glob_matches, is_glob, migrate, resolve_load_path,
 };
@@ -30,10 +30,7 @@ const LUA_INIT: &str = "init.lua";
 const LUA_SHELL: &str = "shell.lua";
 
 /// The file it writes unless told otherwise.
-const TS_INIT: &str = "init.ts";
-
-/// The entry the TypeScript shell falls back to when there is no `init.ts`; a written `init.ts` would shadow it.
-const JS_INIT: &str = "init.js";
+const TS_INIT: &str = "shell.ts";
 
 /// How deep a `**` glob looks.
 const MAX_GLOB_DEPTH: usize = 16;
@@ -48,20 +45,20 @@ pub(crate) struct MigrateRequest {
     pub json: bool,
 }
 
-/// The `init.lua` the Lua shell would read: `GNOBLIN_CONFIG` when it is a Lua file, else `init.lua` in the config
-/// directory.
-fn located_init_lua(paths: &SearchPaths) -> Result<PathBuf, String> {
-    if let Some(path) = &paths.override_path {
-        return if path.extension().is_some_and(|extension| extension == "lua") {
-            Ok(path.clone())
-        } else {
-            Err(format!(
-                "GNOBLIN_CONFIG names {}, which is not a Lua file",
-                path.display()
-            ))
-        };
+/// The `init.lua` the Lua shell would read: `GNOBLIN_SHELL` when it names a Lua file, else `init.lua` in the config
+/// directory. A `GNOBLIN_SHELL` that names anything else is about the shell that runs, not about this command, and is
+/// not consulted.
+fn located_init_lua(environment: &Environment) -> Result<PathBuf, String> {
+    let named = environment
+        .gnoblin_shell
+        .as_ref()
+        .map(PathBuf::from)
+        .filter(|path| path.extension().is_some_and(|extension| extension == "lua"));
+    if let Some(path) = named {
+        return Ok(path);
     }
-    js::default_config_dir(paths)
+    environment
+        .config_dir()
         .map(|dir| dir.join(LUA_INIT))
         .ok_or_else(|| "neither XDG_CONFIG_HOME nor HOME is set, so there is no config directory".to_owned())
 }
@@ -165,7 +162,7 @@ fn fail(err: &mut dyn Write, summary: String, why: Option<String>, hint: &str) -
 pub(crate) fn run(request: &MigrateRequest, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let file = match &request.file {
         Some(file) => file.clone(),
-        None => match located_init_lua(&SearchPaths::from_env()) {
+        None => match located_init_lua(&Environment::from_env()) {
             Ok(file) => file,
             Err(message) => return fail(err, message, None, "name the file: `gnoblinctl config migrate FILE`"),
         },
@@ -270,12 +267,18 @@ fn overwrite_refusal(target: &Path) -> Option<WriteRefusal> {
             why: "the shell would keep reading it".to_owned(),
         });
     }
-    // A `init.ts` written beside an `init.js` is read instead of it, as `config init` also refuses.
-    let sibling = target.with_file_name(JS_INIT);
-    if target.file_name().is_some_and(|name| name == TS_INIT) && sibling.exists() {
+    // A `shell.ts` written beside another conventional shell makes the two equally preferred, as `config init` also
+    // refuses.
+    let directory = target
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    if target.file_name().is_some_and(|name| name == TS_INIT)
+        && let Some(rival) = js::rival_shell_file(directory, TS_INIT)
+    {
         return Some(WriteRefusal {
-            path: sibling,
-            why: format!("an {TS_INIT} written here would be read instead of it"),
+            path: rival,
+            why: format!("a {TS_INIT} written here would make the two equally preferred, and no shell would start"),
         });
     }
     None
@@ -420,7 +423,7 @@ fn report_dry_run(
         out.write_all(output.typescript.as_bytes()).and_then(|()| {
             writeln!(
                 err,
-                "{}\n\n{report}\nRun again without --dry-run to write init.ts.",
+                "{}\n\n{report}\nRun again without --dry-run to write shell.ts.",
                 status_line(&theme, LineOutcome::Info, "dry run: nothing was written"),
             )
         })
@@ -431,7 +434,7 @@ fn report_dry_run(
     code
 }
 
-/// The report after `init.ts` and the editor files are written.
+/// The report after `shell.ts` and the editor files are written.
 fn report_written(
     request: &MigrateRequest,
     output: &MigrationOutput,
@@ -488,29 +491,34 @@ fn report_written(
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
+
     use super::*;
 
     #[test]
-    fn the_located_file_is_init_lua_in_the_config_directory_or_the_override() {
-        let paths = SearchPaths {
+    fn the_located_file_is_init_lua_in_the_config_directory_or_a_lua_shell_variable() {
+        let environment = Environment {
             home: Some(PathBuf::from("/home/u")),
-            config_home: None,
-            override_path: None,
+            ..Environment::default()
         };
         assert_eq!(
-            located_init_lua(&paths),
+            located_init_lua(&environment),
             Ok(PathBuf::from("/home/u/.config/gnoblin/init.lua"))
         );
-        let configured = SearchPaths {
-            override_path: Some(PathBuf::from("/x/my.lua")),
-            ..paths.clone()
+        let configured = Environment {
+            gnoblin_shell: Some(OsString::from("/x/my.lua")),
+            ..environment.clone()
         };
         assert_eq!(located_init_lua(&configured), Ok(PathBuf::from("/x/my.lua")));
-        let not_lua = SearchPaths {
-            override_path: Some(PathBuf::from("/x/init.ts")),
-            ..paths
+        // A variable that names a shell of another kind is about the running shell, not about this command.
+        let not_lua = Environment {
+            gnoblin_shell: Some(OsString::from("/x/shell.ts")),
+            ..environment
         };
-        assert!(located_init_lua(&not_lua).is_err());
-        assert!(located_init_lua(&SearchPaths::default()).is_err());
+        assert_eq!(
+            located_init_lua(&not_lua),
+            Ok(PathBuf::from("/home/u/.config/gnoblin/init.lua"))
+        );
+        assert!(located_init_lua(&Environment::default()).is_err());
     }
 }

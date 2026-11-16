@@ -6,7 +6,7 @@
 
 use gnoblin_client::{Client, UnixTransport, socket_path};
 use gnoblin_compat_core::Mode;
-use gnoblin_config::{SearchPaths, Store};
+use gnoblin_config::{Environment, Store};
 
 use gnoblin_proto::Version;
 
@@ -30,7 +30,7 @@ pub fn mode_from_environment() -> Mode {
     let Some(store) = Store::from_env() else {
         return Mode::default();
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => match store.load(path.path()) {
             Ok(stored) => mode(stored.config.compat.as_ref()),
             Err(error) if error.is_absent() => {

@@ -19,12 +19,12 @@ use common::{FakeCompositor, honest_role_config};
 /// How many lines the role of these tests keeps.
 const KEPT: usize = 4;
 
-/// A role over the shared fake compositor, and the directory of its `init.ts`. A reload of a file that throws reports why
+/// A role over the shared fake compositor, and the directory of its `shell.ts`. A reload of a file that throws reports why
 /// it was refused, and the role keeps the running generation.
 fn role_keeping_four() -> (JsRole, std::path::PathBuf, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), "export {};\n").expect("init.ts");
+    fs::write(root.join("shell.ts"), "export {};\n").expect("shell.ts");
     let mut config = honest_role_config(&root);
     config.watch = false;
     config.diagnostics_kept = KEPT;
@@ -32,9 +32,9 @@ fn role_keeping_four() -> (JsRole, std::path::PathBuf, tempfile::TempDir) {
     (role, root, dir)
 }
 
-/// Rewrites `init.ts` to throw `what` and reloads it: the role keeps the running generation and reports why.
+/// Rewrites `shell.ts` to throw `what` and reloads it: the role keeps the running generation and reports why.
 fn refuse_a_reload(role: &mut JsRole, root: &std::path::Path, what: &str) {
-    fs::write(root.join("init.ts"), format!("throw new Error(\"{what}\");\n")).expect("init.ts");
+    fs::write(root.join("shell.ts"), format!("throw new Error(\"{what}\");\n")).expect("shell.ts");
     let report = role.reload_now();
     assert!(!report.ok, "a file that throws is refused: {report:?}");
 }

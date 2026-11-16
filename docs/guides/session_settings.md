@@ -1,6 +1,6 @@
 # Session settings
 
-Layer-shell focus, the window drag boundary and the Wayland protocol list are compositor settings that `init.ts`
+Layer-shell focus, the window drag boundary and the Wayland protocol list are compositor settings that `shell.ts`
 cannot set.
 
 What each one controls, and where it is documented:

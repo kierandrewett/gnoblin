@@ -11,7 +11,7 @@
 
 use std::path::Path;
 
-use gnoblin_config::{Inherit, Monitors, SearchPaths, Store};
+use gnoblin_config::{Environment, Inherit, Monitors, Store};
 
 use gnoblin_wayland::MonitorSettings;
 
@@ -43,7 +43,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
         log::debug!(area = "monitors", "no state directory is set; the defaults are used");
         return;
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => log::debug!(area = "monitors", %error, "no configuration file; the defaults are used"),
     }

@@ -42,7 +42,7 @@ fn the_budgets_are_the_documented_constants() {
 
 #[test]
 fn the_stock_default_config_is_a_load_and_runs_under_the_stage_budget() {
-    // Loading the default config evaluates the whole starter, as loading a user's `init.ts` does, and under load it
+    // Loading the default config evaluates the whole starter, as loading a user's `shell.ts` does, and under load it
     // took as long (about 1.8 s with two busy threads per CPU, against 10 ms idle). It is a load, so it has the
     // stage budget, and not the 100-millisecond-class budget of one listener call. A stage budget too short for it
     // must therefore be what interrupts it.
@@ -125,7 +125,7 @@ fn measure(label: &str, load_factor: usize) {
     populate(&comp, 40);
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), STARTER_CONFIG).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), STARTER_CONFIG).expect("shell.ts is written");
 
     // The budgets are the product's: `JsShellConfig::new`, the real clock, nothing loosened.
     let config = JsShellConfig::new(&root);
@@ -135,7 +135,7 @@ fn measure(label: &str, load_factor: usize) {
 
     let started = Instant::now();
     let diagnostics = shell
-        .load_entry(Path::new("init.ts"))
+        .load_entry(Path::new("shell.ts"))
         .expect("the starter config loads under the stage budget");
     let load = started.elapsed();
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
@@ -167,7 +167,7 @@ fn measure(label: &str, load_factor: usize) {
     }
     frames.sort();
     eprintln!(
-        "[{label}] boot (library install) {boot:?}; load init.ts (stage budget) {load:?}; \
+        "[{label}] boot (library install) {boot:?}; load shell.ts (stage budget) {load:?}; \
          load the stock default (stage budget) {default:?}; \
          frame p50 {:?} p99 {:?} max {:?} (frame budget {FRAME_BUDGET:?}, listener call {ENTRY_BUDGET:?}); \
          strikes {}, budget diagnostics {}: {:?}",

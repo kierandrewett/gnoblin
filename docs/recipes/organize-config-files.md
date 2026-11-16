@@ -1,6 +1,6 @@
 # Organize a growing config
 
-Keep the entry point short and group statements by the kind of change you make. For example, let `init.ts` import a module
+Keep the entry point short and group statements by the kind of change you make. For example, let `shell.ts` import a module
 that styles windows and one that binds your shortcuts, and call them in the order you want.
 
 In `windows.ts`:
@@ -34,7 +34,7 @@ export function bindKeys(): void {
 }
 ```
 
-In `init.ts`:
+In `shell.ts`:
 
 ```ts
 import { bindKeys } from "./bindings.ts";
@@ -44,9 +44,9 @@ placeWindows();
 bindKeys();
 ```
 
-Imported files share the same `gnoblin` object and need no registration. Keep the calls in one place, `init.ts`, so you
+Imported files share the same `gnoblin` object and need no registration. Keep the calls in one place, `shell.ts`, so you
 can see which file supplies each part, and in the order they run. A trigger is bound once, so bind each key from one file
 only. `gnoblin.workspaces.add` and `gnoblin.clients.addListener` accumulate across files.
 
-Check the files with `gnoblinctl check init.ts`, and read [file loading and order](/guides/files_and_load_order) before
+Check the files with `gnoblinctl check shell.ts`, and read [file loading and order](/guides/files_and_load_order) before
 adding overlapping files.

@@ -1,7 +1,7 @@
 # Recipes
 
 Short TypeScript examples for common desktop configuration tasks. Each recipe is a statement or two you add to your
-`~/.config/gnoblin/init.ts`, or a set of files that `init.ts` imports. The file runs top to bottom against live objects,
+`~/.config/gnoblin/shell.ts`, or a set of files that `shell.ts` imports. The file runs top to bottom against live objects,
 such as `gnoblin.input`, `gnoblin.workspaces` and `gnoblin.clients`, and nothing is layered under it: see the
 [complete starter](/recipes/complete-starter-config) for the stock file.
 
@@ -25,5 +25,5 @@ A save reloads the running shell, and `gnoblinctl config reload` does it on requ
   opens, rotate and swap splits, pseudotile a window, and bind each to a key.
 
 See the [shell API](/shell-api) for the objects and the [configuration guides](/guides/window_rules) for behaviour and
-tradeoffs. The cursor theme, pointer feedback and tablet settings cannot be set from `init.ts`, so they have no recipe.
+tradeoffs. The cursor theme, pointer feedback and tablet settings cannot be set from `shell.ts`, so they have no recipe.
 For fades, see [animations](/guides/animations).

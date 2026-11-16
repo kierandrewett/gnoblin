@@ -1,13 +1,13 @@
 # TypeScript shell
 
-Configure the shell with one TypeScript file, `init.ts`. You install nothing and run no build step: the shell reads the
+Configure the shell with one TypeScript file, `shell.ts`. You install nothing and run no build step: the shell reads the
 file as it is, and reloads it when you save.
 
-The session runs this shell. Nothing selects it: `gnoblin` starts it unless you still have only an `init.lua` (see [Which shell runs](#which-shell-runs)).
+The session runs this shell unless you pick another: see [Where the config lives](#where-the-config-lives). A directory with only an `init.lua` runs the stock config (see [Which shell runs](#which-shell-runs)).
 
 ## Write your first config
 
-An `init.ts` is a program. It runs top to bottom, and each line reads or changes an object of the shell. This one is
+A `shell.ts` is a program. It runs top to bottom, and each line reads or changes an object of the shell. This one is
 short:
 
 ```ts
@@ -37,25 +37,28 @@ workspace, no volume keys and no launcher. Run this once to start from the full 
 gnoblinctl config init
 ```
 
-It writes a commented `init.ts` to `~/.config/gnoblin` (`$XDG_CONFIG_HOME/gnoblin` when that is set) and the files your
+It writes a commented `shell.ts` to `~/.config/gnoblin` (`$XDG_CONFIG_HOME/gnoblin` when that is set) and the files your
 editor needs for completion:
 
 ```text
-ok  init.ts written: /home/me/.config/gnoblin/init.ts
+ok  shell.ts written: /home/me/.config/gnoblin/shell.ts
 ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib/gnoblin (200 files, the real sources of `gnoblin`)
 ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 
 Next:
-  1. Open /home/me/.config/gnoblin/init.ts in your editor.
-  2. Check it with `gnoblinctl check --types /home/me/.config/gnoblin/init.ts`.
+  1. Open /home/me/.config/gnoblin/shell.ts in your editor.
+  2. Check it with `gnoblinctl check --types /home/me/.config/gnoblin/shell.ts`.
   3. Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request.
 ```
 
-`config init` never replaces a config. If `init.ts` or `init.js` is already there it stops and says so. Add `--force`
-to write the starter over it. An `init.lua` does not stop it: the new `init.ts` takes precedence over it.
+`config init` never replaces a config. It stops and says so when a shell file is already there, because two shell
+files in one directory leave Gnoblin with no way to choose.
 
-Open the file. As written it does exactly what the shell does when there is no `init.ts`, so nothing changes until you
+- A `shell.ts`, `shell.js` or any other `shell.*` file stops it. Add `--force` to write the starter over `shell.ts`.
+- An `init.lua` does not stop it: the new `shell.ts` runs, and nothing reads the old file.
+
+Open the file. As written it does exactly what the shell does when there is no `shell.ts`, so nothing changes until you
 edit it. The lines that start with `// ` are examples. Remove the `// ` to switch one on:
 
 ```ts
@@ -66,28 +69,59 @@ input.bind("Super+Return", () => {
 ```
 
 Save the file. The shell reloads it after a short pause, and the windows you have open stay where they are. Press
-`Super+2` and you are on the next workspace. `gnoblinctl check --types init.ts` checks the file before you save it, and
+`Super+2` and you are on the next workspace. `gnoblinctl check --types shell.ts` checks the file before you save it, and
 `gnoblinctl console` opens a live prompt where you can try any line first.
 
 ## Where the config lives
 
-The shell reads one file from one directory: `$XDG_CONFIG_HOME/gnoblin` when that is an absolute path, else
-`~/.config/gnoblin`. In that directory it takes the first of these that exists:
+The shell reads one file. Gnoblin looks in these places in order and takes the first that names a shell:
 
-1. `init.ts`
-2. `init.js`
-3. `init.lua`, which the TypeScript shell does not read (see [Which shell runs](#which-shell-runs))
+1. `GNOBLIN_SHELL`, when it is set and not empty. A value with a `/` is a path, relative to the directory you start
+   Gnoblin from. Any other value is the name of an installed shell.
+2. The `[shell]` table of `config.toml` in the config directory: `default = "name"` names an installed shell, and
+   `path = "..."` names a file, as an absolute path, one that starts with `~/`, or one relative to the directory that
+   holds `config.toml`. Set one of them, not both.
+3. `shell.ts`, `shell.mts`, `shell.js` or `shell.mjs` in the config directory.
+4. An installed shell, from the first of these places that has any:
+    - `$XDG_DATA_HOME/gnoblin/shells`, or `~/.local/share/gnoblin/shells` without the variable.
+    - `gnoblin/shells` under each directory of `XDG_DATA_DIRS`, in order.
 
-When two exist, the first wins and the log says which others it ignored, for example
-`init.lua is not read: init.ts takes precedence in the same directory`.
+    An installed shell is a file such as `tiler.ts`, a directory that holds a `shell.ts`, or a launcher file `tiler.toml`
+    that points at one. In one place a shell named `default` wins; with several others, you have to say which.
 
-`GNOBLIN_CONFIG` names one file instead:
+5. The stock config, when nothing else names a shell.
 
-- Its extension says the language: `.ts`, `.mts`, `.js` or `.mjs`.
-- A `.lua` file is refused with the migrate command.
+The config directory is `$XDG_CONFIG_HOME/gnoblin` when that is an absolute path, else `~/.config/gnoblin`. A relative
+`XDG_CONFIG_HOME`, `XDG_DATA_HOME` or `XDG_DATA_DIRS` entry is ignored, as the XDG specification says.
+
+Gnoblin never picks between equals. Two shells in one place (`shell.ts` and `shell.js` together, or `tiler.ts` and
+`tiler.js`) stop the start with a message that lists them, where it looked, and how to say which one you mean. A
+path or a name you gave that does not exist stops it too, rather than falling back to another shell.
+
+A `config.toml` has one table:
+
+```toml
+[shell]
+default = "tiler"   # the name of an installed shell, or
+# path = "~/dev/tiler/shell.ts"
+```
+
+A key it does not know is a warning, and a value of the wrong type is an error that names the file.
+
+A launcher file is a few lines that point at a shell without copying it. `path` is absolute, starts with `~/`, or is
+relative to the launcher file:
+
+```toml
+# ~/.local/share/gnoblin/shells/tiler.toml
+path = "~/dev/tiler/shell.ts"
+description = "A tiling shell"
+```
+
+`GNOBLIN_SHELL` with a `.lua` file is refused with the migrate command, and a Python or native shell is refused
+with a sentence that says this build runs only TypeScript and JavaScript.
 
 The shell runs the file from top to bottom against the live objects. What the file does not say, the session does not
-do: an `init.ts` replaces the starter entirely. A statement you delete from `init.ts` is gone after the next reload or
+do: a `shell.ts` replaces the starter entirely. A statement you delete from `shell.ts` is gone after the next reload or
 restart.
 
 Programs you start with `gnoblin.spawn` at the top level of the file start when the file loads, once: a reload keeps the
@@ -101,7 +135,7 @@ reloads.
 ## The bytecode cache
 
 The shell keeps what the stock library and your config compile to, so a start loads bytecode instead of compiling it
-again: about 6 ms in place of about 40 ms for the stock library and a small `init.ts`.
+again: about 6 ms in place of about 40 ms for the stock library and a small `shell.ts`.
 
 - **Where.** `$XDG_CACHE_HOME/gnoblin/js/`, or `~/.cache/gnoblin/js/` without the variable. The files are private to
   you.
@@ -111,27 +145,28 @@ again: about 6 ms in place of about 40 ms for the stock library and a small `ini
 
 ## Which shell runs
 
-Gnoblin runs the TypeScript shell. Nothing selects it, and `GNOBLIN_SHELL_VM` is not read. To work on the stock
-library, point `GNOBLIN_JS_STOCK_DIR` at a directory to read it from instead of the copy built into the binary.
+This build runs TypeScript and JavaScript shells, and [Where the config lives](#where-the-config-lives) says which
+one. `GNOBLIN_SHELL_VM` is not read. To work on the stock library, point `GNOBLIN_JS_STOCK_DIR` at a directory to
+read it from instead of the copy built into the binary.
 
 ### If you still have an `init.lua`
 
-Gnoblin does not read Lua. When the config directory has an `init.lua` but no `init.ts` or `init.js`, the session
+Gnoblin does not read Lua. When the config directory has an `init.lua` and nothing selects a shell, the session
 starts on the stock config and logs one warning:
 
 ```text
 init.lua is a Lua config and Gnoblin no longer runs Lua, so the stock config runs instead; run `gnoblinctl config
-migrate` to convert it to init.ts (see docs/migrating-from-lua.md)
+migrate` to convert it to shell.ts (see docs/migrating-from-lua.md)
 ```
 
 [Migrating from Lua](migrating-from-lua.md) maps each Lua construct to its TypeScript equivalent. Run
-`gnoblinctl config migrate` to convert your `init.lua` to an `init.ts`, or `gnoblinctl config init` to write a starter.
-When an `init.ts` exists, the `init.lua` beside it is ignored and the log says so.
+`gnoblinctl config migrate` to convert your `init.lua` to a `shell.ts`, or `gnoblinctl config init` to write a starter.
+When a `shell.ts` exists, nothing reads the `init.lua` beside it.
 
 ## Check a file
 
 ```sh
-gnoblinctl check --types ~/.config/gnoblin/init.ts
+gnoblinctl check --types ~/.config/gnoblin/shell.ts
 ```
 
 `check` loads the file the way the shell does. `gnoblinctl config validate FILE` runs the same check for a `.ts` or `.js` file. It reports a syntax error, an import that does not resolve or a throw at
@@ -144,13 +179,13 @@ of the wrong type. Without a compiler it says so and exits 0. See [Check and typ
 
 `gnoblinctl config init` runs `gnoblinctl types init`. It writes:
 
-- the library's own TypeScript source and the generated declarations, into a `.gnoblin` directory beside `init.ts`,
+- the library's own TypeScript source and the generated declarations, into a `.gnoblin` directory beside `shell.ts`,
 - a `tsconfig.json` that extends the one inside `.gnoblin`.
 
 An editor that understands TypeScript then completes every key and underlines a wrong one. Go-to-definition on an import
 such as `gnoblin-std/scene` opens the file the shell runs.
 
-- Commit `init.ts` and `tsconfig.json`. Do not commit `.gnoblin`: it holds a copy of the library that the command writes
+- Commit `shell.ts` and `tsconfig.json`. Do not commit `.gnoblin`: it holds a copy of the library that the command writes
   again, and it ignores itself in a Git repository.
 - Run `gnoblinctl types init` again after an upgrade. It rewrites `.gnoblin` to the release you run and never replaces a
   `tsconfig.json` you have.
@@ -174,9 +209,9 @@ leaves the running file in place.
 Some settings of the older configuration have no object in the API, so a file cannot set them. [Settings with no
 object](js-settings.md) lists them.
 
-## With no `init.ts`
+## With no `shell.ts`
 
-A session with no `init.ts` is not a bare shell. It runs the starter, the same file `gnoblinctl config init`
+A session with no `shell.ts` is not a bare shell. It runs the starter, the same file `gnoblinctl config init`
 writes:
 
 - four floating workspaces, `1` to `4` (named `Workspace 1` to `Workspace 4`);
@@ -189,12 +224,12 @@ writes:
 - an alert with Wait and Force quit for a window that stops answering;
 - `Super+space` opens a launcher entry that starts what you type.
 
-Creating `init.ts` later loads it at once. An `init.ts` that fails to load when the shell starts is reported in the log,
+Creating `shell.ts` later loads it at once. A `shell.ts` that fails to load when the shell starts is reported in the log,
 and the starter runs until the file is fixed.
 
 ## What it looks like
 
-A session with no `init.ts` shows each window under its titlebar on an empty screen. The stock config has no wallpaper
+A session with no `shell.ts` shows each window under its titlebar on an empty screen. The stock config has no wallpaper
 and no bar.
 
 ![A terminal under the shell's titlebar on an empty screen](images/js-shell/default-desktop.png)
@@ -300,7 +335,7 @@ A dialog stays centred in its parent and goes wherever the parent goes. The page
 
 ## Reloading
 
-Saving `init.ts`, or any module it imports, reloads the shell after a short pause. `gnoblinctl config reload` reloads it on
+Saving `shell.ts`, or any module it imports, reloads the shell after a short pause. `gnoblinctl config reload` reloads it on
 request: see [`gnoblinctl config reload`](/gnoblinctl#config). Windows keep their identity through a reload, and the new
 config is told about every window that exists.
 
@@ -335,10 +370,10 @@ gnoblin.clients.addListener(new Trace());
 ```
 
 Each call is one record in the log, component `js` and field `area=script`, and its message starts with where the call
-was, as `init.ts:6:53` (the file relative to your config directory, the line and column in your `.ts`):
+was, as `shell.ts:6:53` (the file relative to your config directory, the line and column in your `.ts`):
 
 ```text
-INFO  runtime/js  init.ts:6:53: foot focus is true  area=script
+INFO  runtime/js  shell.ts:6:53: foot focus is true  area=script
 ```
 
 Read it with `gnoblinctl log --follow` (see [Logging](/guides/logging)). The console prints what an expression printed

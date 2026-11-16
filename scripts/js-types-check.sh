@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Proves the editor files `gnoblinctl types init` writes: that the real library is the types.
 #
-# It writes a configuration directory with the built `gnoblinctl`, puts the starter `init.ts` and the programs of
+# It writes a configuration directory with the built `gnoblinctl`, puts the starter `shell.ts` and the programs of
 # tests/js-types in it (the ones that must compile, and the wrong ones that must fail with a named error), runs the
 # native compiler over the directory's own tsconfig.json, and then asks the compiler API what an editor asks:
 # where `gnoblin-std/scene` resolves, what go-to-definition opens, which class a class extends, what hover shows
@@ -24,9 +24,9 @@ else
     cargo run --quiet -p gnoblinctl -- types init "$config"
 fi
 
-# A user's directory: init.ts and a few files beside it. The wrong programs sit in a directory of their own so that
+# A user's directory: shell.ts and a few files beside it. The wrong programs sit in a directory of their own so that
 # the checker can tell which file a line belongs to.
-cp data/js/starter/init.ts "$config/init.ts"
+cp data/js/starter/shell.ts "$config/shell.ts"
 cp tests/js-types/ok/*.ts "$config/"
 mkdir "$config/bad"
 cp tests/js-types/bad/*.ts "$config/bad/"

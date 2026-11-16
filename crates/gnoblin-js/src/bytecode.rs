@@ -4,7 +4,7 @@
 //! oxc and compile the result with QuickJS before the first line of the user's config ran. Both steps are pure
 //! functions of the source text, so the result is kept: a module's QuickJS bytecode is written once under the user's
 //! cache directory and loaded instead of compiled on every later start. The stock modules and the user's own files
-//! (`init.ts` and what it imports) are cached the same way.
+//! (`shell.ts` and what it imports) are cached the same way.
 //!
 //! # Where and under what key
 //!

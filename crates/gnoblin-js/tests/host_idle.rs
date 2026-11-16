@@ -114,16 +114,16 @@ impl Rig {
     }
 }
 
-/// A shell over a fake compositor and a fake idle connection, with `body` as its `init.ts`. `connected` says whether the
+/// A shell over a fake compositor and a fake idle connection, with `body` as its `shell.ts`. `connected` says whether the
 /// shell has a way to open the connection at all.
 fn rig_with(body: &str, connected: bool) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(
-        root.join("init.ts"),
+        root.join("shell.ts"),
         format!("const g = globalThis as any;\ng.g = g;\ng.log = [];\n{body}\n"),
     )
-    .expect("init.ts is written");
+    .expect("shell.ts is written");
     let idle = FakeIdle::default();
     let mut shell = JsShell::new(Box::new(FakeCompositor::new()), honest_config(&root)).expect("the shell boots");
     if connected {
@@ -133,7 +133,7 @@ fn rig_with(body: &str, connected: bool) -> Rig {
             Ok(Box::new(FakeIdleLink(state.clone())) as Box<dyn JsIdleLink>)
         }));
     }
-    let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     Rig { shell, idle, _dir: dir }
 }

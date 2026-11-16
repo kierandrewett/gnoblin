@@ -22,7 +22,7 @@ const DECORATED: &str = "startDecorations();";
 const MENU: &str = "startDecorations(); startWindowMenu();";
 
 /// A shell over a screen of 1000 by 800, one seat, one lock and `windows` windows (ids 3 on, titled `win1`...), whose
-/// `init.ts` is `body`.
+/// `shell.ts` is `body`.
 fn world(windows: u64, body: &str) -> Rig {
     let mut rig = rig_setup(LIBRARY_GLOBALS, body, move |comp| {
         comp.add_desktop(1000.0, 800.0);

@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use gnoblin_config::{SearchPaths, Store};
+use gnoblin_config::{Environment, Store};
 
 use crate::SessionConfig;
 
@@ -45,7 +45,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
         log::debug!("[session tables] no state directory is set; the defaults are used");
         return;
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
             log::debug!(%error, "[session tables] no configuration file; the defaults are used");

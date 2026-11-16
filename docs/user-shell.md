@@ -3,11 +3,11 @@
 The stock shell places, focuses and arranges windows, draws the titlebars and the window menu, and binds the keys. It is
 TypeScript, and it is the same library you import.
 
-Your `init.ts` replaces the default: it is the whole configuration, and what it does not say the shell does not do. Run
+Your `shell.ts` replaces the default: it is the whole configuration, and what it does not say the shell does not do. Run
 `gnoblinctl config init` to start from the full default as code you can read and cut down. This page shows how to grow an
-`init.ts` from a few lines into your own shell.
+`shell.ts` from a few lines into your own shell.
 
-New to the file? Start with the [TypeScript shell](typescript-shell.md), which writes a first `init.ts`.
+New to the file? Start with the [TypeScript shell](typescript-shell.md), which writes a first `shell.ts`.
 
 ## The two packages
 
@@ -41,7 +41,7 @@ class FocusLog extends ClientListener {
 gnoblin.clients.addListener(new FocusLog());
 ```
 
-Save it as `~/.config/gnoblin/init.ts`. Focus a window, then read the line with `journalctl --user -t focus -n 1`.
+Save it as `~/.config/gnoblin/shell.ts`. Focus a window, then read the line with `journalctl --user -t focus -n 1`.
 
 A listener is a class whose methods the shell calls when something happens: [Events](/events/desktop-state) lists them. The
 objects you read and change are in the [runtime API](/shell-api/).
@@ -65,7 +65,7 @@ export class FocusLog extends ClientListener {
 ```
 
 ```ts
-// ~/.config/gnoblin/init.ts
+// ~/.config/gnoblin/shell.ts
 import { FocusLog } from "./focus-log.ts";
 
 gnoblin.clients.addListener(new FocusLog());
@@ -82,7 +82,7 @@ gnoblin.clients.addListener(new FocusLog());
 
 ## Save and see it
 
-Saving `init.ts`, or any file it imports, reloads the shell after a short pause. The windows you have open stay where they
+Saving `shell.ts`, or any file it imports, reloads the shell after a short pause. The windows you have open stay where they
 are, and the new code is told about each of them. `gnoblinctl config reload` reloads on request and prints the revision it
 committed, or the error with its file, line and column.
 
@@ -92,7 +92,7 @@ a script that runs away are each reported once as `file:line:column: message`, i
 Check a file before you save it:
 
 ```sh
-gnoblinctl check --types ~/.config/gnoblin/init.ts
+gnoblinctl check --types ~/.config/gnoblin/shell.ts
 ```
 
 ## Try things live

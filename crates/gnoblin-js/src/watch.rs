@@ -1,7 +1,7 @@
 //! Watches the config directory and turns bursts of file events into one [`ReloadRequest`].
 //!
 //! An editor save is several events: vim writes `4913` to test the directory, writes a `~` backup,
-//! renames, then writes `init.ts`; an atomic save replaces the inode. So the watcher
+//! renames, then writes `shell.ts`; an atomic save replaces the inode. So the watcher
 //!
 //! - watches parent *directories*, non-recursively, because a watch on a file dies with its inode;
 //! - drops editor temp files and anything that is not a module file (`.ts`, `.mts`, `.js`, `.mjs`);
@@ -251,10 +251,10 @@ pub(crate) fn is_module_file(path: &Path) -> bool {
 
 /// Editor temp, backup and lock file names.
 ///
-/// - `init.ts~`: backup (vim, emacs, gedit).
-/// - `.init.ts.swp`, `.swo`, `.swx`: vim swap files.
+/// - `shell.ts~`: backup (vim, emacs, gedit).
+/// - `.shell.ts.swp`, `.swo`, `.swx`: vim swap files.
 /// - `4913` and its successors: vim's "can I write here" probe, only digits.
-/// - `.#init.ts`: emacs lock link. `#init.ts#`: emacs auto-save.
+/// - `.#shell.ts`: emacs lock link. `#shell.ts#`: emacs auto-save.
 fn is_editor_junk(name: &str) -> bool {
     name.ends_with('~')
         || name.ends_with(".swp")
@@ -298,30 +298,30 @@ mod tests {
     #[test]
     fn junk_names_are_recognised() {
         for junk in [
-            "init.ts~",
-            ".init.ts.swp",
-            ".init.ts.swx",
+            "shell.ts~",
+            ".shell.ts.swp",
+            ".shell.ts.swx",
             "4913",
             "5036",
-            ".#init.ts",
-            "#init.ts#",
+            ".#shell.ts",
+            "#shell.ts#",
         ] {
             assert!(is_editor_junk(junk), "{junk}");
         }
-        for real in ["init.ts", "x.mts", "a.js", "4913.ts", ".hidden.ts"] {
+        for real in ["shell.ts", "x.mts", "a.js", "4913.ts", ".hidden.ts"] {
             assert!(!is_editor_junk(real), "{real}");
         }
     }
 
     #[test]
     fn only_module_files_are_relevant() {
-        for yes in ["/c/init.ts", "/c/lib/x.mts", "/c/a.js", "/c/b.mjs"] {
+        for yes in ["/c/shell.ts", "/c/lib/x.mts", "/c/a.js", "/c/b.mjs"] {
             assert!(is_module_file(Path::new(yes)), "{yes}");
         }
         for no in [
             "/c/notes.txt",
-            "/c/init.ts~",
-            "/c/.init.ts.swp",
+            "/c/shell.ts~",
+            "/c/.shell.ts.swp",
             "/c/4913",
             "/c/dir",
             "/c/x.d.ts.bak",
@@ -333,28 +333,28 @@ mod tests {
     #[test]
     fn a_write_to_init_ts_is_one_request_with_its_path() {
         let (_dir, root) = config_dir();
-        fs::write(root.join("init.ts"), "1;\n").expect("init.ts");
+        fs::write(root.join("shell.ts"), "1;\n").expect("shell.ts");
         let watcher = watcher(&root);
-        fs::write(root.join("init.ts"), "2;\n").expect("init.ts is rewritten");
+        fs::write(root.join("shell.ts"), "2;\n").expect("shell.ts is rewritten");
         let request = watcher.next_request(PATIENCE).expect("a request");
-        assert_eq!(request.paths, vec![root.join("init.ts")]);
+        assert_eq!(request.paths, vec![root.join("shell.ts")]);
         assert_eq!(watcher.next_request(QUIET), None, "one burst, one request");
     }
 
     #[test]
     fn a_vim_style_save_is_one_request_and_names_only_the_module() {
         let (_dir, root) = config_dir();
-        fs::write(root.join("init.ts"), "1;\n").expect("init.ts");
+        fs::write(root.join("shell.ts"), "1;\n").expect("shell.ts");
         let watcher = watcher(&root);
         // The sequence vim produces: probe file, backup, swap file, then the real write.
         fs::write(root.join("4913"), "").expect("probe");
         fs::remove_file(root.join("4913")).expect("probe removed");
-        fs::write(root.join(".init.ts.swp"), "swap").expect("swap");
-        fs::rename(root.join("init.ts"), root.join("init.ts~")).expect("backup");
-        fs::write(root.join("init.ts"), "2;\n").expect("new init.ts");
-        fs::remove_file(root.join(".init.ts.swp")).expect("swap removed");
+        fs::write(root.join(".shell.ts.swp"), "swap").expect("swap");
+        fs::rename(root.join("shell.ts"), root.join("shell.ts~")).expect("backup");
+        fs::write(root.join("shell.ts"), "2;\n").expect("new shell.ts");
+        fs::remove_file(root.join(".shell.ts.swp")).expect("swap removed");
         let request = watcher.next_request(PATIENCE).expect("a request");
-        assert_eq!(request.paths, vec![root.join("init.ts")]);
+        assert_eq!(request.paths, vec![root.join("shell.ts")]);
         assert_eq!(watcher.next_request(QUIET), None);
     }
 
@@ -362,7 +362,7 @@ mod tests {
     fn junk_and_non_module_files_alone_do_not_fire() {
         let (_dir, root) = config_dir();
         let watcher = watcher(&root);
-        for junk in ["4913", ".init.ts.swp", "init.ts~", ".#init.ts", "notes.txt"] {
+        for junk in ["4913", ".shell.ts.swp", "shell.ts~", ".#shell.ts", "notes.txt"] {
             fs::write(root.join(junk), "x").expect("junk file");
         }
         assert_eq!(watcher.next_request(QUIET), None);
@@ -373,10 +373,10 @@ mod tests {
         let (_dir, root) = config_dir();
         let watcher = watcher(&root);
         for n in 0..50 {
-            fs::write(root.join("init.ts"), format!("{n};\n")).expect("init.ts");
+            fs::write(root.join("shell.ts"), format!("{n};\n")).expect("shell.ts");
         }
         let request = watcher.next_request(PATIENCE).expect("a request");
-        assert_eq!(request.paths, vec![root.join("init.ts")]);
+        assert_eq!(request.paths, vec![root.join("shell.ts")]);
         assert_eq!(watcher.next_request(QUIET), None, "no second request");
     }
 
@@ -384,7 +384,7 @@ mod tests {
     fn an_imported_module_in_a_subdirectory_is_watched_once_registered() {
         let (_dir, root) = config_dir();
         fs::create_dir(root.join("lib")).expect("lib");
-        fs::write(root.join("init.ts"), "import './lib/x.ts';\n").expect("init.ts");
+        fs::write(root.join("shell.ts"), "import './lib/x.ts';\n").expect("shell.ts");
         fs::write(root.join("lib/x.ts"), "export {};\n").expect("x.ts");
         let mut watcher = watcher(&root);
 
@@ -393,7 +393,7 @@ mod tests {
         assert_eq!(watcher.next_request(QUIET), None);
 
         watcher
-            .watch_modules(&[root.join("init.ts"), root.join("lib/x.ts")])
+            .watch_modules(&[root.join("shell.ts"), root.join("lib/x.ts")])
             .expect("modules register");
         assert_eq!(watcher.watched_dirs(), vec![root.clone(), root.join("lib")]);
         fs::write(root.join("lib/x.ts"), "export const a = 2;\n").expect("x.ts");
@@ -402,7 +402,7 @@ mod tests {
 
         // Dropping the import releases the directory.
         watcher
-            .watch_modules(&[root.join("init.ts")])
+            .watch_modules(&[root.join("shell.ts")])
             .expect("modules re-register");
         assert_eq!(watcher.watched_dirs(), vec![root.clone()]);
         fs::write(root.join("lib/x.ts"), "export const a = 3;\n").expect("x.ts");

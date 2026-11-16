@@ -521,7 +521,7 @@ impl<'a> Engine<'a> {
                     format!("`{key}` is carried in the document and read by nothing, so there is nothing to set");
                 self.field_left_out(file, field, &reason);
             }
-            "shell" => self.field_left_out(file, field, "`shell` is not a setting: the shell is `init.ts` now"),
+            "shell" => self.field_left_out(file, field, "`shell` is not a setting: the shell is `shell.ts` now"),
             _ => {
                 let reason = format!("`{key}` is not a section of the config document");
                 self.field_left_out(file, field, &reason);

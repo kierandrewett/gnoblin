@@ -31,7 +31,7 @@
 
 use std::time::Duration;
 
-/// Loading a module and everything it imports (`JsConfig::stage_budget`): the user's `init.ts`, and the stock library
+/// Loading a module and everything it imports (`JsConfig::stage_budget`): the user's `shell.ts`, and the stock library
 /// when a shell builds one. Compiling and evaluating a tree of modules is the one place a call's work grows with what
 /// the user wrote, so it has the most room. Measured at four busy threads per CPU: 2.7 s to load the starter.
 pub const STAGE_BUDGET: Duration = Duration::from_secs(30);

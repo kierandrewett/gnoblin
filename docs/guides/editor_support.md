@@ -2,7 +2,7 @@
 
 Get completion, argument hints and type checking for `gnoblin` in your editor.
 
-The types are the library's own TypeScript. `gnoblinctl types init` writes that source next to your `init.ts`, with a
+The types are the library's own TypeScript. `gnoblinctl types init` writes that source next to your `shell.ts`, with a
 `tsconfig.json` that finds it.
 
 Any editor that runs the TypeScript language service, such as VS Code, Neovim, Helix or Zed, then:
@@ -13,18 +13,18 @@ Any editor that runs the TypeScript language service, such as VS Code, Neovim, H
 
 ## Set it up
 
-1. Run `gnoblinctl types init`. It writes a `.gnoblin` directory and a `tsconfig.json` beside your `init.ts`.
+1. Run `gnoblinctl types init`. It writes a `.gnoblin` directory and a `tsconfig.json` beside your `shell.ts`.
    `gnoblinctl config init` runs it for you.
-2. Open `init.ts`. Typing `gnoblin.workspaces.` now lists the members with their signatures, and hovering a call shows its
+2. Open `shell.ts`. Typing `gnoblin.workspaces.` now lists the members with their signatures, and hovering a call shows its
    description.
-3. Check a file from the command line with `gnoblinctl check --types ~/.config/gnoblin/init.ts`. It runs a TypeScript
+3. Check a file from the command line with `gnoblinctl check --types ~/.config/gnoblin/shell.ts`. It runs a TypeScript
    compiler when one is installed.
 
 ## What is written where
 
 ```text
 ~/.config/gnoblin/
-  init.ts
+  shell.ts
   tsconfig.json         yours: it extends .gnoblin/tsconfig.json
   .gnoblin/             generated: do not edit it, do not commit it
     tsconfig.json

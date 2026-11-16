@@ -1486,7 +1486,7 @@ impl Dispatcher {
         let Some(store) = gnoblin_config::Store::from_env() else {
             return;
         };
-        let path = match gnoblin_config::locate(&gnoblin_config::SearchPaths::from_env()) {
+        let path = match gnoblin_config::locate(&gnoblin_config::Environment::from_env()) {
             Ok(path) => path,
             Err(error) => {
                 log::debug!(area = "ipc", %error, "no configuration file to record as last good");

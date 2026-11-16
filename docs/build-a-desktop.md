@@ -27,7 +27,7 @@ clients, and [event handlers](user-scripts.md) react to compositor events.
 Install a bar, launcher, notification daemon and terminal. This example uses
 Waybar, Fuzzel, Mako and Foot. They are independent applications; replace any
 of them with a component you prefer. Put this in a **new**
-`~/.config/gnoblin/init.ts`:
+`~/.config/gnoblin/shell.ts`:
 
 ```ts
 gnoblin.spawn(["waybar"]);
@@ -52,10 +52,10 @@ Capture this example from the checkout with
 `scripts/capture-doc-examples.sh waybar-settings`. It uses a disposable config and
 profile; see the [capture script](devkit.md#documentation-captures) for setup.
 
-A shell or package ships its settings as a TypeScript module that your `init.ts` imports; there are no system
+A shell or package ships its settings as a TypeScript module that your `shell.ts` imports; there are no system
 drop-in directories.
 
-Log in to Gnoblin. The active file is `~/.config/gnoblin/init.ts`. Run
+Log in to Gnoblin. The active file is `~/.config/gnoblin/shell.ts`. Run
 `gnoblinctl config reload` to apply edits; Gnoblin reports any
 configuration errors.
 
@@ -79,14 +79,14 @@ several languages.
 
 ## Choose the right interface
 
-| Task                                 | Interface                                                        |
-| ------------------------------------ | ---------------------------------------------------------------- |
-| Change a window from a script        | `gnoblinctl window ...`                                          |
-| Maintain a live switcher or dock     | Compositor bridge `windows` subscription                         |
-| Place a bar or dock                  | `zwlr_layer_shell_v1`                                            |
-| Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate       |
-| Apply per-app styling                | `gnoblin.clients.where({ ... }).style` in [`init.ts`](/js-style) |
-| React to a window or workspace event | A listener in `init.ts` (see [event handlers](/user-scripts))    |
+| Task                                 | Interface                                                         |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| Change a window from a script        | `gnoblinctl window ...`                                           |
+| Maintain a live switcher or dock     | Compositor bridge `windows` subscription                          |
+| Place a bar or dock                  | `zwlr_layer_shell_v1`                                             |
+| Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate        |
+| Apply per-app styling                | `gnoblin.clients.where({ ... }).style` in [`shell.ts`](/js-style) |
+| React to a window or workspace event | A listener in `shell.ts` (see [event handlers](/user-scripts))    |
 
 The desktop portal backend decides what each app may do. Disabling a Wayland
 protocol does not change what a portal backend allows for screen sharing or

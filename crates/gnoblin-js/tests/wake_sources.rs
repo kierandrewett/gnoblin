@@ -117,7 +117,7 @@ const MODULES: &[&str] = &[
     "clock widgets",
 ];
 
-/// The stock library as a user's `init.ts` starts it, with the widgets that are loaded on demand and the two modules the
+/// The stock library as a user's `shell.ts` starts it, with the widgets that are loaded on demand and the two modules the
 /// test reads.
 const STOCK: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\n\
     import { ctx } from \"gnoblin-core/host/context\";\n\

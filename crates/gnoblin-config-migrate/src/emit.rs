@@ -1,12 +1,12 @@
 //! The TypeScript the converter writes.
 //!
-//! Statements against the specification's own objects, in the style of the owner's reference `init.js`: workspaces are
+//! Statements against the specification's own objects, in the style of the owner's reference `shell.js`: workspaces are
 //! `new Workspace({ id, name, layout })` and `gnoblin.workspaces.add`, a shortcut is `input.bind(trigger, () =>
 //! gnoblin.spawn([...]))`, a rule that only styles windows of an exact app id is `gnoblin.clients.where({ appId
 //! }).style`, and every other simple rule is a `CollectionListener`. Nothing here reads Lua: the engine hands over what
 //! it found, and this module prints it.
 //!
-//! An `init.ts` replaces the stock default instead of layering over it, so [`stock`] writes the stock desktop out in
+//! A `shell.ts` replaces the stock default instead of layering over it, so [`stock`] writes the stock desktop out in
 //! full, minus what the Lua config set itself. That is what keeps a migrated config the desktop the Lua shell was.
 
 use std::collections::BTreeSet;
@@ -317,7 +317,7 @@ const MEDIA_KEYS: &[(&str, &[&str])] = &[
     ("XF86AudioPrev", &["playerctl", "previous"]),
 ];
 
-/// The stock desktop: what `data/js/starter/init.ts` does, written out for a config that replaces it.
+/// The stock desktop: what `data/js/starter/shell.ts` does, written out for a config that replaces it.
 ///
 /// `own_workspaces` says the Lua config declared workspaces, which then stand where the stock four would. `alerts` is
 /// whether the not-responding alert is on. `taken` holds the canonical triggers the Lua config binds itself: a stock
@@ -329,7 +329,7 @@ pub(crate) fn stock(needs: &mut Needs, own_workspaces: bool, alerts: bool, taken
     let free = |trigger: &str| !taken.contains(&canonical_trigger(trigger));
     let mut blocks: Vec<Vec<String>> = Vec::new();
     blocks.push(comment(&[
-        "The stock desktop. An init.ts replaces the stock default instead of layering over it, so what the Lua shell"
+        "The stock desktop. A shell.ts replaces the stock default instead of layering over it, so what the Lua shell"
             .to_owned(),
         "kept on its own is written out here. Delete a statement and that part of the desktop is gone.".to_owned(),
     ]));

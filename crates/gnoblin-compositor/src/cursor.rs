@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use gnoblin_config::{CursorProvider, SearchPaths, Store};
+use gnoblin_config::{CursorProvider, Environment, Store};
 use gnoblin_cursor::{DEFAULT_CURSOR_SIZE, ProviderKind};
 use gnoblin_wayland::CursorSettings;
 
@@ -40,7 +40,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
         log::debug!(area = "cursor", "no state directory is set; the default cursor is used");
         return;
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => log::debug!(area = "cursor", %error, "no configuration file; the default cursor is used"),
     }

@@ -42,13 +42,15 @@ fn global_number(generation: &JsGeneration, name: &'static str) -> Option<i32> {
 fn evaluates_a_module_and_imports_a_ts_sibling() {
     let root = root_with(&[
         (
-            "init.ts",
+            "shell.ts",
             "import { answer } from './x.ts';\nconst n: number = answer;\n(globalThis as any).result = n;\n",
         ),
         ("x.ts", "export const answer: number = 42;\n"),
     ]);
     let generation = generation(&root);
-    generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
+    generation
+        .eval_module(Path::new("shell.ts"))
+        .expect("shell.ts evaluates");
     assert_eq!(global_number(&generation, "result"), Some(42));
 }
 
@@ -56,7 +58,7 @@ fn evaluates_a_module_and_imports_a_ts_sibling() {
 fn module_paths_lists_the_entry_and_its_transitive_imports() {
     let root = root_with(&[
         (
-            "init.ts",
+            "shell.ts",
             "import './lib/a.ts';\nimport { gnoblin } from 'gnoblin-core';\n",
         ),
         ("lib/a.ts", "import '../b.js';\n"),
@@ -66,13 +68,15 @@ fn module_paths_lists_the_entry_and_its_transitive_imports() {
     let config = JsConfig::new(&root.path).embed("gnoblin-core", "export const gnoblin = 1;\n");
     let generation = JsGeneration::new(&config, 1).expect("a generation");
     assert!(generation.module_paths().is_empty(), "nothing is loaded before eval");
-    generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
+    generation
+        .eval_module(Path::new("shell.ts"))
+        .expect("shell.ts evaluates");
     assert_eq!(
         generation.module_paths(),
         vec![
             root.path.join("b.js"),
-            root.path.join("init.ts"),
             root.path.join("lib/a.ts"),
+            root.path.join("shell.ts"),
         ]
     );
 }
@@ -81,28 +85,32 @@ fn module_paths_lists_the_entry_and_its_transitive_imports() {
 fn js_import_falls_back_to_the_ts_file_and_js_files_pass_through() {
     let root = root_with(&[
         (
-            "init.js",
+            "shell.js",
             "import { a } from './a.js';\nimport { b } from './b.js';\nglobalThis.sum = a + b;\n",
         ),
         ("a.ts", "export const a: number = 1;\n"),
         ("b.js", "export const b = 2;\n"),
     ]);
     let generation = generation(&root);
-    generation.eval_module(Path::new("init.js")).expect("init.js evaluates");
+    generation
+        .eval_module(Path::new("shell.js"))
+        .expect("shell.js evaluates");
     assert_eq!(global_number(&generation, "sum"), Some(3));
 }
 
 #[test]
 fn embedded_modules_resolve_by_name() {
     let root = root_with(&[(
-        "init.ts",
+        "shell.ts",
         "import { shell } from 'gnoblin-core';\nimport { grid } from 'gnoblin-std/layouts';\n(globalThis as any).out = shell + grid;\n",
     )]);
     let config = JsConfig::new(&root.path)
         .embed("gnoblin-core", "export const shell = 10;")
         .embed("gnoblin-std/layouts", "export const grid = 5;");
     let generation = JsGeneration::new(&config, 1).expect("a generation");
-    generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
+    generation
+        .eval_module(Path::new("shell.ts"))
+        .expect("shell.ts evaluates");
     assert_eq!(global_number(&generation, "out"), Some(15));
 }
 
@@ -126,14 +134,14 @@ fn a_missing_import_is_reported_at_the_importing_line() {
     let root = root_with(&[
         // The imports are used: the stripper drops an import nothing refers to, as TypeScript does.
         (
-            "init.ts",
+            "shell.ts",
             "const a = 1;\nimport { b } from './sub/b.ts';\nexport const x = a + b;\n",
         ),
         ("sub/b.ts", "import { c } from './absent.ts';\nexport const b = c;\n"),
     ]);
     let generation = generation(&root);
     let error = generation
-        .eval_module(Path::new("init.ts"))
+        .eval_module(Path::new("shell.ts"))
         .expect_err("./absent.ts does not exist");
     assert_eq!(error.kind, JsErrorKind::Load, "{error}");
     assert!(error.message.contains("./absent.ts"), "{error}");
@@ -148,10 +156,10 @@ fn import_that_climbs_out_of_the_root_is_refused() {
     let base = fs::canonicalize(dir.path()).expect("exists");
     fs::create_dir_all(base.join("root")).expect("root");
     fs::write(base.join("secret.ts"), "globalThis.leaked = 1;\n").expect("secret");
-    fs::write(base.join("root/init.ts"), "import '../secret.ts';\n").expect("init");
+    fs::write(base.join("root/shell.ts"), "import '../secret.ts';\n").expect("init");
     let generation = JsGeneration::new(&JsConfig::new(base.join("root")), 1).expect("a generation");
     let error = generation
-        .eval_module(Path::new("init.ts"))
+        .eval_module(Path::new("shell.ts"))
         .expect_err("the import leaves the root");
     assert_eq!(error.kind, JsErrorKind::Load, "{error}");
     assert!(error.message.contains("outside the config root"), "{error}");
@@ -161,12 +169,12 @@ fn import_that_climbs_out_of_the_root_is_refused() {
 #[test]
 fn syntax_error_in_an_imported_ts_file_is_reported_in_ts_coordinates() {
     let root = root_with(&[
-        ("init.ts", "import './bad.ts';\n"),
+        ("shell.ts", "import './bad.ts';\n"),
         ("bad.ts", "const ok = 1;\nconst broken = ;\n"),
     ]);
     let generation = generation(&root);
     let error = generation
-        .eval_module(Path::new("init.ts"))
+        .eval_module(Path::new("shell.ts"))
         .expect_err("bad.ts does not parse");
     assert_eq!(error.kind, JsErrorKind::Ts, "{error}");
     let at = error.location.expect("a location");
@@ -179,20 +187,20 @@ fn throw_is_remapped_to_the_ts_line() {
     // The enum and interface change the line numbers of the stripped JavaScript, so a frame that
     // is not remapped would name the wrong line.
     let source = "interface Shape {\n    sides: number;\n}\nenum Mode {\n    A,\n    B,\n}\nexport function explode(shape: Shape): never {\n    throw new Error('boom ' + Mode.B + shape.sides);\n}\nexplode({ sides: 3 });\n";
-    let root = root_with(&[("init.ts", source)]);
+    let root = root_with(&[("shell.ts", source)]);
     let generation = generation(&root);
     let error = generation
-        .eval_module(Path::new("init.ts"))
+        .eval_module(Path::new("shell.ts"))
         .expect_err("the module throws");
     assert_eq!(error.kind, JsErrorKind::Exception, "{error}");
     assert_eq!(error.message, "boom 13");
     let at = error.location.as_ref().expect("a location");
-    assert_eq!(at.file, root.path.join("init.ts"));
+    assert_eq!(at.file, root.path.join("shell.ts"));
     assert_eq!(at.line, 9, "{error:?}");
     let stack = error.stack.as_deref().expect("a stack");
-    assert!(stack.contains("init.ts:9:"), "{stack}");
+    assert!(stack.contains("shell.ts:9:"), "{stack}");
     assert!(
-        stack.contains("init.ts:11:"),
+        stack.contains("shell.ts:11:"),
         "the caller frame is remapped too: {stack}"
     );
 }
@@ -200,14 +208,16 @@ fn throw_is_remapped_to_the_ts_line() {
 #[test]
 fn throw_in_an_imported_module_names_that_module() {
     let root = root_with(&[
-        ("init.ts", "import { fail } from './lib.ts';\nfail();\n"),
+        ("shell.ts", "import { fail } from './lib.ts';\nfail();\n"),
         (
             "lib.ts",
             "type Unused = string;\n\nexport function fail(): void {\n    throw new TypeError('nope');\n}\n",
         ),
     ]);
     let generation = generation(&root);
-    let error = generation.eval_module(Path::new("init.ts")).expect_err("fail() throws");
+    let error = generation
+        .eval_module(Path::new("shell.ts"))
+        .expect_err("fail() throws");
     let at = error.location.as_ref().expect("a location");
     assert_eq!(at.file, root.path.join("lib.ts"));
     assert_eq!(at.line, 4);
@@ -215,13 +225,13 @@ fn throw_in_an_imported_module_names_that_module() {
 
 #[test]
 fn throw_in_plain_javascript_keeps_its_own_coordinates() {
-    let root = root_with(&[("init.js", "\n\nthrow new Error('plain');\n")]);
+    let root = root_with(&[("shell.js", "\n\nthrow new Error('plain');\n")]);
     let generation = generation(&root);
     let error = generation
-        .eval_module(Path::new("init.js"))
+        .eval_module(Path::new("shell.js"))
         .expect_err("the module throws");
     let at = error.location.as_ref().expect("a location");
-    assert_eq!((at.file.as_path(), at.line), (root.path.join("init.js").as_path(), 3));
+    assert_eq!((at.file.as_path(), at.line), (root.path.join("shell.js").as_path(), 3));
 }
 
 #[test]
@@ -230,26 +240,26 @@ fn column_is_one_based_in_ts_and_in_js_coordinates() {
     // back to the two-space-indented source line.
     let root = root_with(&[
         (
-            "init.ts",
+            "shell.ts",
             "interface Unused {}\nenum E { A }\nconst gone: any = null;\n  gone.x;\n",
         ),
-        ("init.js", "const a = null;\n  a.x;\n"),
+        ("shell.js", "const a = null;\n  a.x;\n"),
     ]);
     let generation = generation(&root);
-    let ts = generation.eval_module(Path::new("init.ts")).expect_err("gone is null");
+    let ts = generation.eval_module(Path::new("shell.ts")).expect_err("gone is null");
     let at = ts.location.expect("a location");
     assert_eq!((at.line, at.column), (4, 3));
-    let js = generation.eval_module(Path::new("init.js")).expect_err("a is null");
+    let js = generation.eval_module(Path::new("shell.js")).expect_err("a is null");
     let at = js.location.expect("a location");
     assert_eq!((at.line, at.column), (2, 3));
 }
 
 #[test]
 fn non_error_throw_is_reported_by_its_text() {
-    let root = root_with(&[("init.js", "throw 'just a string';\n")]);
+    let root = root_with(&[("shell.js", "throw 'just a string';\n")]);
     let generation = generation(&root);
     let error = generation
-        .eval_module(Path::new("init.js"))
+        .eval_module(Path::new("shell.js"))
         .expect_err("the module throws");
     assert_eq!(error.kind, JsErrorKind::Exception);
     assert_eq!(error.message, "just a string");
@@ -346,12 +356,12 @@ fn a_trip_reports_the_limit_the_time_used_and_where_the_script_was() {
 
 #[test]
 fn infinite_loop_in_a_module_is_a_budget_error_and_the_generation_stays_usable() {
-    let root = root_with(&[("init.ts", "export const n: number = 1;\nwhile (true) {}\n")]);
+    let root = root_with(&[("shell.ts", "export const n: number = 1;\nwhile (true) {}\n")]);
     let mut config = JsConfig::new(&root.path);
     config.stage_budget = Duration::from_millis(100);
     let generation = JsGeneration::new(&config, 1).expect("a generation");
     let error = generation
-        .eval_module(Path::new("init.ts"))
+        .eval_module(Path::new("shell.ts"))
         .expect_err("the module loops");
     assert_eq!(error.kind, JsErrorKind::Budget, "{error}");
     // The next call gets a fresh budget.
@@ -364,24 +374,24 @@ fn infinite_loop_in_a_module_is_a_budget_error_and_the_generation_stays_usable()
 #[test]
 fn promise_job_chain_that_never_ends_is_a_budget_error() {
     let root = root_with(&[(
-        "init.js",
+        "shell.js",
         "const spin = () => Promise.resolve().then(spin);\nspin();\nawait new Promise(() => {});\n",
     )]);
     let mut config = JsConfig::new(&root.path);
     config.stage_budget = Duration::from_millis(100);
     let generation = JsGeneration::new(&config, 1).expect("a generation");
     let error = generation
-        .eval_module(Path::new("init.js"))
+        .eval_module(Path::new("shell.js"))
         .expect_err("the jobs never end");
     assert_eq!(error.kind, JsErrorKind::Budget, "{error}");
 }
 
 #[test]
 fn top_level_await_that_nothing_resolves_is_an_error() {
-    let root = root_with(&[("init.js", "await new Promise(() => {});\n")]);
+    let root = root_with(&[("shell.js", "await new Promise(() => {});\n")]);
     let generation = generation(&root);
     let error = generation
-        .eval_module(Path::new("init.js"))
+        .eval_module(Path::new("shell.js"))
         .expect_err("the await never settles");
     assert_eq!(error.kind, JsErrorKind::Exception, "{error}");
     assert!(error.message.contains("never settled"), "{error}");
@@ -390,11 +400,13 @@ fn top_level_await_that_nothing_resolves_is_an_error() {
 #[test]
 fn top_level_await_that_a_job_resolves_completes() {
     let root = root_with(&[(
-        "init.js",
+        "shell.js",
         "const v = await Promise.resolve(7);\nglobalThis.awaited = v;\n",
     )]);
     let generation = generation(&root);
-    generation.eval_module(Path::new("init.js")).expect("the await settles");
+    generation
+        .eval_module(Path::new("shell.js"))
+        .expect("the await settles");
     assert_eq!(global_number(&generation, "awaited"), Some(7));
 }
 
@@ -414,10 +426,10 @@ fn memory_limit_trips() {
 
 #[test]
 fn generations_share_no_state() {
-    let root = root_with(&[("init.js", "globalThis.marker = 1;\n")]);
+    let root = root_with(&[("shell.js", "globalThis.marker = 1;\n")]);
     let first = generation(&root);
     let second = generation(&root);
-    first.eval_module(Path::new("init.js")).expect("init.js evaluates");
+    first.eval_module(Path::new("shell.js")).expect("shell.js evaluates");
     assert_eq!(global_number(&first, "marker"), Some(1));
     assert_eq!(global_number(&second, "marker"), None);
 }
@@ -435,15 +447,15 @@ fn call_budgeted_returns_a_thrown_value_with_a_message() {
 
 #[test]
 fn frames_are_split_around_their_position() {
-    let frame = split_frame("    at explode (/r/init.ts:9:11)").expect("a frame");
+    let frame = split_frame("    at explode (/r/shell.ts:9:11)").expect("a frame");
     assert_eq!(
         (frame.before, frame.file, frame.line, frame.column, frame.after),
-        ("    at explode (", "/r/init.ts", 9, 11, ")")
+        ("    at explode (", "/r/shell.ts", 9, 11, ")")
     );
-    let frame = split_frame("    at /r/init.ts:11:1").expect("a bare frame");
+    let frame = split_frame("    at /r/shell.ts:11:1").expect("a bare frame");
     assert_eq!(
         (frame.before, frame.file, frame.line, frame.column, frame.after),
-        ("    at ", "/r/init.ts", 11, 1, "")
+        ("    at ", "/r/shell.ts", 11, 1, "")
     );
     assert!(split_frame("    at parseInt (native)").is_none());
     assert!(split_frame("no frame here").is_none());

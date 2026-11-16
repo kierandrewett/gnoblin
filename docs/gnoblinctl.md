@@ -190,12 +190,12 @@ gnoblinctl output call 6 apply supersample=2
 
 - `gnoblinctl config get` prints the configuration the compositor last accepted.
 - `gnoblinctl config reload` asks the runtime to re-read its configuration. When the runtime runs the
-  [TypeScript shell](typescript-shell.md), the request reloads its `init.ts` as well.
+  [TypeScript shell](typescript-shell.md), the request reloads its `shell.ts` as well.
 - `gnoblinctl config validate FILE` checks a file with the runtime's parser. It
   needs no session.
-- `gnoblinctl config init [DIR] [--force]` writes a starter `init.ts` for the
+- `gnoblinctl config init [DIR] [--force]` writes a starter `shell.ts` for the
   [TypeScript shell](typescript-shell.md). It needs no session.
-- `gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]` converts an `init.lua` to an `init.ts`. It needs
+- `gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]` converts an `init.lua` to a `shell.ts`. It needs
   no session. See [Convert an init.lua](#convert-an-initlua).
 
 ```sh
@@ -221,25 +221,25 @@ gnoblinctl config reload
 reloaded: revision 3
 ```
 
-A `init.ts` that fails to load refuses the whole request before the document is touched. The running shell keeps
+A `shell.ts` that fails to load refuses the whole request before the document is touched. The running shell keeps
 its config, the command exits 1, and the message names the file, line and column in the `.ts` source:
 
 ```text
-gnoblinctl: config-rejected: the shell's configuration was not reloaded, and the running one stays: init.ts:3:22: Unexpected token
+gnoblinctl: config-rejected: the shell's configuration was not reloaded, and the running one stays: shell.ts:3:22: Unexpected token
 ```
 
 A document that is refused after the shell reloaded leaves the new shell config running: the two are separate files
-and the shell cannot take its swap back. A session with no `init.ts` has nothing to reload on the shell side, and the
+and the shell cannot take its swap back. A session with no `shell.ts` has nothing to reload on the shell side, and the
 request reloads the document alone.
 
 ### Write a starter config
 
-`gnoblinctl config init` writes a short, commented `init.ts` into the config directory. That is `$XDG_CONFIG_HOME/gnoblin`
+`gnoblinctl config init` writes a short, commented `shell.ts` into the config directory. That is `$XDG_CONFIG_HOME/gnoblin`
 or `~/.config/gnoblin`, and `DIR` names another.
 
 The file is the stock desktop written as statements against the shell's objects: four floating workspaces added with
 `gnoblin.workspaces.add`, the titlebar, window menu and alert, and the stock keys bound with `input.bind`. It is the
-statements the shell runs when there is no `init.ts`, so deleting one removes that part of the desktop.
+statements the shell runs when there is no `shell.ts`, so deleting one removes that part of the desktop.
 
 It also runs `gnoblinctl types init`, so an editor completes the names. Then it prints three steps: open the file, check
 it, and save it to reload.
@@ -249,35 +249,37 @@ gnoblinctl config init
 ```
 
 ```text
-ok  init.ts written: /home/me/.config/gnoblin/init.ts
+ok  shell.ts written: /home/me/.config/gnoblin/shell.ts
 ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib (200 files, the real sources of `gnoblin-core` and `gnoblin-std`)
 ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 
 Next:
-  1. Open /home/me/.config/gnoblin/init.ts in your editor.
-  2. Check it with `gnoblinctl check --types /home/me/.config/gnoblin/init.ts`.
+  1. Open /home/me/.config/gnoblin/shell.ts in your editor.
+  2. Check it with `gnoblinctl check --types /home/me/.config/gnoblin/shell.ts`.
   3. Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request.
 ```
 
-A directory that already has an `init.ts` or an `init.js` is left as it is, and the command exits 1 with an error block
-that names the file. An `init.js` counts because the shell reads `init.ts` first, so a new `init.ts` would hide it. Add
-`--force` to write the starter over `init.ts`. The first line of the output says `replaced` when it did.
+A directory that already has a `shell.ts`, a `shell.js` or any other `shell.*` file is left as it is, and the command
+exits 1 with an error block that names the file. A second shell file would leave two equally preferred shells, and
+Gnoblin does not choose between them.
+
+Add `--force` to write the starter over `shell.ts`. The first line of the output says `replaced` when it did.
 
 With `--json` it prints `init`, `replaced`, `next` and the fields of [`types init`](#editor-files).
 
 ### Convert an init.lua
 
 `gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]` converts a Lua config to TypeScript. `FILE` is the
-`init.lua` to convert, and the command writes `init.ts` beside it, or to `OUT`. It reads the Lua as text and
+`init.lua` to convert, and the command writes `shell.ts` beside it, or to `OUT`. It reads the Lua as text and
 never runs it, so it needs no session.
 
-The `shell.lua` beside an `init.lua`, and every file a `gnoblin.load` names, are read too and become one `init.ts`, with
+The `shell.lua` beside an `init.lua`, and every file a `gnoblin.load` names, are read too and become one `shell.ts`, with
 a comment for each file. The output is statements against the shell's objects, not a config object:
 
 - Workspaces are `gnoblin.workspaces.add(new Workspace(...))` and shortcuts are `input.bind(...)`.
 - A window rule is a style on a selection or a listener.
-- The stock desktop is written out too, because an `init.ts` replaces the stock default.
+- The stock desktop is written out too, because a `shell.ts` replaces the stock default.
 
 See [the converter](migrating-from-lua.md#the-converter) for what it converts, and
 [the settings with no TypeScript home yet](migrating-from-lua.md#settings-with-no-typescript-home-yet) for what it
@@ -291,7 +293,7 @@ gnoblinctl config migrate
 ```
 
 ```text
-ok  init.ts written: /home/me/.config/gnoblin/init.ts
+ok  shell.ts written: /home/me/.config/gnoblin/shell.ts
 ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib (200 files, the real sources of `gnoblin-core` and `gnoblin-std`)
 ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
@@ -311,9 +313,9 @@ warn  config/10-windows.lua:5  ["focus-mode"] = "click"
       see docs/migrating-from-lua.md#settings-with-no-typescript-home-yet
 
 Next:
-  1. Review /home/me/.config/gnoblin/init.ts: each UNMAPPED comment is something to port by hand.
-  2. Check it with `gnoblinctl check --types /home/me/.config/gnoblin/init.ts`.
-  3. Log out and back in. From the next session the TypeScript shell runs and /home/me/.config/gnoblin/init.ts takes precedence over /home/me/.config/gnoblin/init.lua.
+  1. Review /home/me/.config/gnoblin/shell.ts: each UNMAPPED comment is something to port by hand.
+  2. Check it with `gnoblinctl check --types /home/me/.config/gnoblin/shell.ts`.
+  3. Log out and back in. From the next session the TypeScript shell runs and /home/me/.config/gnoblin/shell.ts takes precedence over /home/me/.config/gnoblin/init.lua.
 ```
 
 The exit code says how it went:
@@ -322,8 +324,8 @@ The exit code says how it went:
 - 1: the file was written and something was left out, or the converted file did not load. A file with something left out
   starts with `// INCOMPLETE: N unmapped settings, see comments`, and each setting is an `UNMAPPED` comment.
 - 2: nothing was written. The command line was wrong, a file could not be read, the Lua does not parse, or a file is in
-  the way. The command stops instead of replacing an existing `OUT`, and instead of writing an `init.ts` beside an
-  `init.js`, unless you add `--force`. `--force` replaces that file and nothing else: the Lua files are only read.
+  the way. The command stops instead of replacing an existing `OUT`, and instead of writing a `shell.ts` beside another
+  `shell.*` file, unless you add `--force`. `--force` replaces that file and nothing else: the Lua files are only read.
 
 Three options change what it does:
 
@@ -347,11 +349,11 @@ The exit code is 0 when the file is fine, 1 when it found a problem and 2 for a
 wrong command line.
 
 ```sh
-gnoblinctl check init.ts
+gnoblinctl check shell.ts
 ```
 
 ```text
-ok  init.ts  loads in the dry-run shell
+ok  shell.ts  loads in the dry-run shell
 ```
 
 ### What a module check finds
@@ -368,7 +370,7 @@ Each is `file:line:column` in the `.ts` text you wrote, in an error block on
 standard error:
 
 ```text
-error: init.ts:2:16: Unexpected token
+error: shell.ts:2:16: Unexpected token
 hint:  fix the syntax at that position; types are stripped here, not checked
        (see `--types`)
 ```
@@ -398,7 +400,7 @@ hint:  the module threw while loading, before any handler could run
 ### The dry-run shell
 
 `check` runs the file in the dry-run shell: the same evaluation the services
-role makes of an `init.ts` before the runtime has committed anything. It is the
+role makes of a `shell.ts` before the runtime has committed anything. It is the
 shell's own library and objects over a tree with a root and one seat, and no
 windows, outputs or devices.
 
@@ -428,7 +430,7 @@ The compiler gets the real library and the generated `gnoblin.d.ts`, written int
 unchanged, and a compiler that reports errors makes the command exit 1.
 
 ```sh
-gnoblinctl check init.ts --types
+gnoblinctl check shell.ts --types
 ```
 
 When no compiler is found, the step prints one line and exits 0:
@@ -455,7 +457,7 @@ shows the comment written above the class, and a class extends the class it real
 
 ```text
 ~/.config/gnoblin/
-  init.ts
+  shell.ts
   tsconfig.json              yours: extends .gnoblin/tsconfig.json
   .gnoblin/                  generated, rewritten on every run
     tsconfig.json            the compiler options and the two `paths` that find the library
@@ -499,7 +501,7 @@ With `--json` it prints `types`, `library`, `library_files`, `tsconfig`, `tsconf
 
 `gnoblinctl console` opens a live prompt into the running JavaScript shell. Each
 line is evaluated in the shell's own runtime, between frames, with the same
-`gnoblin` global as `init.ts`, and its value is printed. `.exit` or Ctrl-D
+`gnoblin` global as `shell.ts`, and its value is printed. `.exit` or Ctrl-D
 leaves. It needs the JavaScript shell, the default (see
 [Which shell runs](typescript-shell.md#which-shell-runs)); the guide is
 [Console and inspector](js-console.md).

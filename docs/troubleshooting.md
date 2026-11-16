@@ -60,18 +60,18 @@ Check which case applies:
   If the message still appears, include the output of `journalctl -b -u gdm` in
   your bug report.
 
-If no configuration exists, the session runs the stock TypeScript config. `gnoblinctl config init` writes a starter `~/.config/gnoblin/init.ts`
+If no configuration exists, the session runs the stock TypeScript config. `gnoblinctl config init` writes a starter `~/.config/gnoblin/shell.ts`
 and never replaces an existing file.
 
 Gnoblin starts with its embedded configuration before applying the user
-configuration. If loading `init.ts` or the native settings fail, it tries the last
+configuration. If loading `shell.ts` or the native settings fail, it tries the last
 accepted settings, then keeps embedded defaults if those also fail.
 
 The top-left ImGui recovery panel appears above application and shell layers
 and shows the error. Choose **Open config** to open its folder, fix the config
 in an editor, then choose **Reload** or run
 `gnoblinctl config reload` from a terminal. Gnoblin keeps failed files unchanged. See
-[the TypeScript shell](/typescript-shell#with-no-init-ts).
+[the TypeScript shell](/typescript-shell#with-no-shell-ts).
 
 The panel requires a running compositor. A missing library or a native
 compositor crash prevents it from displaying; inspect the login logs above
@@ -108,16 +108,16 @@ Open the network's sign-in page in a browser. The NetworkManager secret agent ha
 gnoblinctl config reload
 ```
 
-Edit `~/.config/gnoblin/init.ts` and read the reload error. Then check:
+Edit `~/.config/gnoblin/shell.ts` and read the reload error. Then check:
 
 - Does this setting restart a child service, and does that affect its clients?
   See [reload behavior](/guides/files_and_load_order#reload).
-- Did an `import` in `init.ts` name a file that is not there?
+- Did an `import` in `shell.ts` name a file that is not there?
 - Did the file bind a trigger twice? A second binding of one trigger at one priority is refused.
 
 ## My component's shortcuts disappeared
 
-An `init.ts` replaces the default entirely, so the keys, workspaces and titlebars the default made are gone unless your
+A `shell.ts` replaces the default entirely, so the keys, workspaces and titlebars the default made are gone unless your
 file makes them. Run `gnoblinctl config init` to write the default as code, then keep the lines you want.
 
 ## A shortcut fails
@@ -263,7 +263,7 @@ Check the value an X11 app sees:
 xrdb -query | rg Xft.dpi
 ```
 
-The X11 scale is the `xwayland` section of the compositor's configuration, and `init.ts` cannot set it: no object of the
+The X11 scale is the `xwayland` section of the compositor's configuration, and `shell.ts` cannot set it: no object of the
 shell API carries it. See [Settings with no object](/js-settings).
 
 ## A window opens behind the focused window
@@ -272,7 +272,7 @@ A window from an app that is not the focused app can open behind the focused
 window, and the compositor sets an attention flag on it. The flag does not
 produce a notification by itself.
 
-The focus policy that decides this is not something `init.ts` can set: no object of the shell API carries it (see
+The focus policy that decides this is not something `shell.ts` can set: no object of the shell API carries it (see
 [Settings with no object](/js-settings)). Check the windows with `gnoblinctl window list --json`; a hidden window has
 `"focused": false`. To bring one forward from a script, call `client.focus()` and `client.raise()` on it.
 

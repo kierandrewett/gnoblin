@@ -1,8 +1,8 @@
-// The shell reloads `~/.config/gnoblin/init.ts` when you save it.
+// The shell reloads `~/.config/gnoblin/shell.ts` when you save it.
 // It runs top to bottom against live objects such as `gnoblin.workspaces`, `gnoblin.input` and `gnoblin.clients`.
 // Nothing is layered under it, so these statements define the desktop; uncomment examples to enable them.
-// A shell with no `init.ts` runs this same file, so a copy you leave unchanged behaves like the default.
-// Check changes with `gnoblinctl check --types init.ts`; see the shell API pages for each object's details.
+// A shell with no `shell.ts` runs this same file, so a copy you leave unchanged behaves like the default.
+// Check changes with `gnoblinctl check --types shell.ts`; see the shell API pages for each object's details.
 
 import {
     FloatingLayout,

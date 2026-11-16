@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use gnoblin_config::{SearchPaths, Store, VisualBellType};
+use gnoblin_config::{Environment, Store, VisualBellType};
 use gnoblin_wayland::{VisualBellScope, VisualBellSettings};
 
 use crate::SessionConfig;
@@ -38,7 +38,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
         log::debug!(area = "bell", "no state directory is set; the visual bell stays off");
         return;
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => log::debug!(area = "bell", %error, "no configuration file; the visual bell stays off"),
     }

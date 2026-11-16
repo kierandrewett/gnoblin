@@ -50,16 +50,16 @@ fn site_of(line: &Line) -> &str {
     line.1.split_once(": ").map_or("", |(site, _)| site)
 }
 
-/// Runs `init.ts` with `source` in a bare generation whose clock is `clock`, and returns what it logged.
+/// Runs `shell.ts` with `source` in a bare generation whose clock is `clock`, and returns what it logged.
 fn run_init(source: &str, clock: &JsManualClock) -> Vec<Line> {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), source).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
     let mut config = JsConfig::new(&root);
     config.clock = Arc::new(clock.clone());
     script_lines(|| {
         let generation = JsGeneration::new(&config, 1).expect("a generation");
-        generation.eval_module(Path::new("init.ts")).expect("init.ts runs");
+        generation.eval_module(Path::new("shell.ts")).expect("shell.ts runs");
     })
 }
 
@@ -94,10 +94,10 @@ fn the_call_site_is_the_ts_file_line_and_column_the_author_wrote() {
     assert_eq!(text_of(&lines[0]), "hi 1");
     assert_eq!(
         site_of(&lines[0]),
-        "init.ts:1:40",
+        "shell.ts:1:40",
         "the file is shown relative to the config root"
     );
-    assert_eq!(site_of(&lines[1]), "init.ts:3:11");
+    assert_eq!(site_of(&lines[1]), "shell.ts:3:11");
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn the_example_of_the_debugging_page_logs_where_the_page_says() {
          new Trace().onFocusChanged({ appId: 'foot' }, true);\n",
     );
     assert_eq!(lines.len(), 1, "{lines:?}");
-    assert_eq!(site_of(&lines[0]), "init.ts:3:53");
+    assert_eq!(site_of(&lines[0]), "shell.ts:3:53");
     assert_eq!(text_of(&lines[0]), "foot focus is true");
 }
 
@@ -168,8 +168,8 @@ fn an_error_prints_its_message_and_a_stack_in_ts_coordinates() {
     let text = text_of(&lines[0]);
     assert!(text.starts_with("caught Error: boom\n"), "{text}");
     // Frame lines name the `.ts` coordinates: the throw is on line 2 and the call on line 4.
-    assert!(text.contains("at fail (") && text.contains("init.ts:2:"), "{text}");
-    assert!(text.contains("init.ts:4:"), "{text}");
+    assert!(text.contains("at fail (") && text.contains("shell.ts:2:"), "{text}");
+    assert!(text.contains("shell.ts:4:"), "{text}");
 }
 
 #[test]
@@ -237,15 +237,15 @@ fn a_loop_cannot_flood_the_log_and_the_next_second_reports_what_it_dropped() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(
-        root.join("init.ts"),
+        root.join("shell.ts"),
         "for (let i = 0; i < 1000; i += 1) console.log('line', i);\n(globalThis as any).again = () => console.log('again');\n",
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let mut config = JsConfig::new(&root);
     config.clock = Arc::new(clock.clone());
     let generation = JsGeneration::new(&config, 1).expect("a generation");
 
-    let first = script_lines(|| generation.eval_module(Path::new("init.ts")).expect("init.ts runs"));
+    let first = script_lines(|| generation.eval_module(Path::new("shell.ts")).expect("shell.ts runs"));
     assert_eq!(first.len(), MAX_LINES_PER_SECOND, "the rest of the loop was dropped");
     assert_eq!(
         text_of(&first[MAX_LINES_PER_SECOND - 1]),
@@ -300,7 +300,7 @@ fn a_shell_logs_what_init_ts_prints_and_the_notice_arrives_without_another_call(
         "the boot printed 200 of its 301 lines"
     );
     assert_eq!(text_of(&lines[0]), "booting 0");
-    assert_eq!(site_of(&lines[0]), "init.ts:2:24");
+    assert_eq!(site_of(&lines[0]), "shell.ts:2:24");
 
     // The clock the scripts read is the one the limit counts on: moving it past the second is enough, and the frame
     // that follows reports the 101 dropped lines without the script calling `console` again.
@@ -320,7 +320,7 @@ fn a_shell_logs_what_init_ts_prints_and_the_notice_arrives_without_another_call(
     assert_eq!(text_of(&later[0]), "late");
     assert_eq!(
         site_of(&later[0]),
-        "init.ts:4:50",
+        "shell.ts:4:50",
         "the token of `log` in `console.log`"
     );
 }

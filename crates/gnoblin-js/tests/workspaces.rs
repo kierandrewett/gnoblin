@@ -119,10 +119,10 @@ impl Rig {
 fn rig(comp: &Comp, init: &str) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let (config, clock) = timed_config(&root);
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
-    let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     Rig {
         shell,
@@ -736,13 +736,15 @@ fn pure(body: &str) -> String {
          import {{ Layout, MasterStackLayout }} from \"gnoblin-std\";\n\
          const emit = (value: unknown) => {{ (globalThis as any).out = String(value); }};\n{body}\n"
     );
-    fs::write(root.join("init.ts"), source).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
     let mut config = JsConfig::new(&root);
     for (name, source) in stock_modules() {
         config = config.embed(name, source);
     }
     let generation = JsGeneration::new(&config, 1).expect("a generation");
-    generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
+    generation
+        .eval_module(Path::new("shell.ts"))
+        .expect("shell.ts evaluates");
     generation
         .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
         .expect("the case called emit")

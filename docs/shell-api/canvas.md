@@ -22,7 +22,7 @@ const label = new Label({ x: 20, y: 20, width: 120, height: 32 });
 label.mountTop();
 ```
 
-Put the code in `~/.config/gnoblin/init.ts`. A rounded label that says Hello appears over every window.
+Put the code in `~/.config/gnoblin/shell.ts`. A rounded label that says Hello appears over every window.
 
 ## `draw` and the content
 

@@ -9,7 +9,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use gnoblin_config::{FocusMode as ConfiguredFocusMode, FocusNewWindows, SearchPaths, Store, WindowManagement};
+use gnoblin_config::{Environment, FocusMode as ConfiguredFocusMode, FocusNewWindows, Store, WindowManagement};
 
 use gnoblin_wayland::{DragConstraint, FocusMode, NewWindowFocus, TitlebarActions, WmOptions};
 
@@ -64,7 +64,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
         );
         return;
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
             log::debug!(area = "window-management", %error, "no configuration file; the defaults are used")

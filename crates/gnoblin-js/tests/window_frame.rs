@@ -23,7 +23,7 @@ const FOUR: &str = "startDecorations({ frame(client, frame) {\n\
     frame.top.size = 30; frame.right.size = 20; frame.bottom.size = 40; frame.left.size = 10;\n\
 } });";
 
-/// A shell over a screen of 1000 by 800, one seat, one lock and `windows` windows (ids 3 on), whose `init.ts` is `body`.
+/// A shell over a screen of 1000 by 800, one seat, one lock and `windows` windows (ids 3 on), whose `shell.ts` is `body`.
 fn world(windows: u64, body: &str) -> Rig {
     let mut rig = rig_setup(IMPORTS, body, move |comp| {
         comp.add_node(
@@ -892,8 +892,8 @@ fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
     comp.add_node(22, ROOT, "lock", Vec::new());
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
-    let entry = root.join("init.ts");
-    std::fs::write(&entry, format!("{IMPORTS}startDecorations({{ resizeHandles: 6 }});\n")).expect("init.ts");
+    let entry = root.join("shell.ts");
+    std::fs::write(&entry, format!("{IMPORTS}startDecorations({{ resizeHandles: 6 }});\n")).expect("shell.ts");
     let mut config = honest_role_config(&root);
     config.watch = false;
     let mut role = JsRole::over_link(Box::new(comp.clone()), JsRoleLinks::default(), config).expect("the role boots");
@@ -915,7 +915,7 @@ fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
 
     // The next generation has a frame of another shape: none of the first one's nodes may be left, and the window's
     // content moves to where the new frame wants it with the frame itself kept in place.
-    std::fs::write(&entry, format!("{IMPORTS}{FOUR}\n")).expect("init.ts");
+    std::fs::write(&entry, format!("{IMPORTS}{FOUR}\n")).expect("shell.ts");
     let report = role.reload_now();
     assert!(report.ok, "{:?}", report.errors);
     settle(&mut role);
@@ -932,7 +932,7 @@ fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
     );
 
     // A generation that never frames a window takes the last frame away and gives the window its room back.
-    std::fs::write(&entry, format!("{IMPORTS}\n")).expect("init.ts");
+    std::fs::write(&entry, format!("{IMPORTS}\n")).expect("shell.ts");
     assert!(role.reload_now().ok);
     settle(&mut role);
     assert!(

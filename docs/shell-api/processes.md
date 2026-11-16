@@ -23,7 +23,7 @@ gnoblin.input.primary.bind("Super+d", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. `Super+d` runs `date`, shows the time in a notification, and the listener
+Put the file in `~/.config/gnoblin/shell.ts`. `Super+d` runs `date`, shows the time in a notification, and the listener
 reports that the program ended.
 
 ## Start a program
@@ -57,7 +57,7 @@ The stream modes:
 
 ## Programs the file starts
 
-A `gnoblin.spawn` at the top level of `init.ts`, outside any handler, starts a program for the configuration, and a reload
+A `gnoblin.spawn` at the top level of `shell.ts`, outside any handler, starts a program for the configuration, and a reload
 looks after it:
 
 - The program starts when the new configuration takes over. A file that fails to load starts nothing, and the programs of

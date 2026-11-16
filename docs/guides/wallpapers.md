@@ -4,7 +4,7 @@ Gnoblin paints a solid black background behind desktop surfaces. It is not a wal
 wallpaper surfaces and decides how to display them above Gnoblin's background. Configure its wallpaper client using
 that project's instructions.
 
-To start a separate wallpaper client with the session, start it from outside `init.ts`, as [autostart](/guides/autostart)
+To start a separate wallpaper client with the session, start it from outside `shell.ts`, as [autostart](/guides/autostart)
 describes. A systemd user unit whose `ExecStart` is `swaybg -c "#242424"` starts `swaybg` with a solid colour.
 
 Install the command first, and use your shell's configuration if it already manages wallpaper. Run one wallpaper

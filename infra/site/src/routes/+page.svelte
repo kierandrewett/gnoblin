@@ -8,7 +8,7 @@
 
     const REFERENCE = [
         {
-            title: "Settings in init.ts",
+            title: "Settings in shell.ts",
             href: docsHref("js-settings"),
             text: "What you can set on devices, outputs, windows, workspaces and keys, with an example each.",
         },
@@ -77,7 +77,7 @@
         <li>
             <p class="t">One TypeScript file sets it up</p>
             <p>
-                Settings live in <code class="inline">~/.config/gnoblin/init.ts</code> and apply without logging out.
+                Settings live in <code class="inline">~/.config/gnoblin/shell.ts</code> and apply without logging out.
             </p>
         </li>
     </ul>

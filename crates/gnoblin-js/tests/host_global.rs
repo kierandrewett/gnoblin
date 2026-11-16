@@ -46,13 +46,13 @@ fn a_module_that_assigns_the_host_bridge_fails_to_load_and_the_bridge_stays() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(
-        root.join("init.ts"),
+        root.join("shell.ts"),
         "globalThis.__gnoblinHost = { entry: { ui: () => {} } };\n",
     )
-    .expect("init.ts");
+    .expect("shell.ts");
     let mut shell = JsShell::new(Box::new(FakeCompositor::new()), honest_config(&root)).expect("the shell boots");
     let refused = shell
-        .load_entry(Path::new("init.ts"))
+        .load_entry(Path::new("shell.ts"))
         .expect_err("an entry that overwrites the bridge does not load");
     assert!(
         refused.to_string().contains("read-only"),

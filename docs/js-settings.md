@@ -1,6 +1,6 @@
-# Settings in init.ts
+# Settings in shell.ts
 
-`init.ts` has no config object. It is a program that runs against live objects, and a setting is a property you set
+`shell.ts` has no config object. It is a program that runs against live objects, and a setting is a property you set
 on one of them. This page lists what you can set, one example for each kind of object, and the settings that have no
 object to set them on yet.
 
@@ -119,14 +119,14 @@ gnoblin.dialogs.addListener(
 
 ## Settings with no TypeScript home yet {#dropped-settings}
 
-No object of the shell carries these settings, so `init.ts` cannot set them. The shell keeps its default for each. The
+No object of the shell carries these settings, so `shell.ts` cannot set them. The shell keeps its default for each. The
 table says what stays in each case.
 
 | Setting                                                                                                                                                            | What stays                                       |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
 | Window rules (`rules`)                                                                                                                                             | Listeners and `where(...).style`: see above      |
 | Focus mode, new-window focus, raise, auto raise, `edgeTiling`, `dragConstraint`                                                                                    | Click focus, raise on click, edge snapping on    |
-| `autostart`                                                                                                                                                        | `gnoblin.spawn` at the top of `init.ts`          |
+| `autostart`                                                                                                                                                        | `gnoblin.spawn` at the top of `shell.ts`         |
 | `protocols`, `keyring`, `compositor`, `appearance`, `accessibility`, `layerShell`, `auth`, `location`, `xwayland`, `cursor`, `monitors`, `dialogs.style`           | The default of each                              |
 | `touchpadGestures` (drawn paths), `workspaceSets`, `launcher`, `inputSources`, tablets, styluses, trackballs, pointing sticks, `orientationLock`, keyboard options | A swipe or pinch is `input.bind`; the rest: none |
 

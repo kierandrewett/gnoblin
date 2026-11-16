@@ -61,7 +61,7 @@ host_xdisplay="${DISPLAY:-:0}"
 host_display="${WAYLAND_DISPLAY:-}"
 case "$host_display" in /* | "") ;; *) host_display="$host_runtime/$host_display" ;; esac
 
-unset GNOBLIN_CONFIG
+unset GNOBLIN_SHELL
 export HOME="$profile/home"
 export XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data"
 export XDG_CACHE_HOME="$profile/cache" XDG_STATE_HOME="$profile/state"

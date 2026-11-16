@@ -53,13 +53,13 @@ pub(crate) enum Invocation {
     Check { file: PathBuf, types: bool, json: bool },
     /// Write the editor files for a TypeScript configuration.
     TypesInit { dir: Option<PathBuf>, json: bool },
-    /// Write a starter `init.ts` and the editor files, for `config init`.
+    /// Write a starter `shell.ts` and the editor files, for `config init`.
     ConfigInit {
         dir: Option<PathBuf>,
         force: bool,
         json: bool,
     },
-    /// Convert an `init.lua` to an `init.ts`, for `config migrate`.
+    /// Convert an `init.lua` to a `shell.ts`, for `config migrate`.
     ConfigMigrate { request: migrate::MigrateRequest },
     /// A live prompt into the running JavaScript shell, or one expression of it.
     Console { eval: Option<String>, json: bool },
@@ -362,7 +362,7 @@ fn console_command() -> Command {
         .about("Open a live console into the running JavaScript shell.")
         .long_about(
             "Open a live console into the running JavaScript shell. Each line you type is evaluated in the shell's \
-             own runtime, between frames, with the same `gnoblin` global as init.ts, and its value is printed. \
+             own runtime, between frames, with the same `gnoblin` global as shell.ts, and its value is printed. \
              `.exit` or Ctrl-D leaves. With --eval the expression is evaluated once and its value is printed as JSON. \
              It needs a running JavaScript shell and does not use the compositor's socket.",
         )
@@ -491,7 +491,7 @@ fn verb_commands() -> Vec<Command> {
             )
             .subcommand(
                 Command::new("init")
-                    .about("Write a starter init.ts and the editor files, so the shell has a config to edit.")
+                    .about("Write a starter shell.ts and the editor files, so the shell has a config to edit.")
                     .arg(
                         Arg::new("dir")
                             .value_name("DIR")
@@ -502,14 +502,14 @@ fn verb_commands() -> Vec<Command> {
                         Arg::new("force")
                             .long("force")
                             .action(ArgAction::SetTrue)
-                            .help("Overwrite an existing init.ts."),
+                            .help("Overwrite an existing shell.ts."),
                     ),
             )
             .subcommand(
                 Command::new("migrate")
-                    .about("Convert an init.lua, and the files it loads, to an init.ts.")
+                    .about("Convert an init.lua, and the files it loads, to a shell.ts.")
                     .long_about(
-                        "Convert an init.lua, and the files it loads, to an init.ts. The converter reads the Lua as \
+                        "Convert an init.lua, and the files it loads, to a shell.ts. The converter reads the Lua as \
                          text and never runs it: settings, shortcuts, workspaces, autostart entries and window rules \
                          convert exactly, and everything else is left out of the file as an UNMAPPED comment and \
                          listed with its line. Exit 0 when everything converted, 1 when something was left out, 2 \
@@ -527,7 +527,7 @@ fn verb_commands() -> Vec<Command> {
                             .long("out")
                             .value_name("OUT")
                             .value_parser(value_parser!(PathBuf))
-                            .help("Where to write the TypeScript; defaults to init.ts beside FILE."),
+                            .help("Where to write the TypeScript; defaults to shell.ts beside FILE."),
                     )
                     .arg(
                         Arg::new("force")

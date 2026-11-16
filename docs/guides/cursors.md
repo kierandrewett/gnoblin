@@ -3,7 +3,7 @@
 Gnoblin draws the pointer with an installed Xcursor theme. Source builds made with `./build.sh --with-vector-cursors` also
 read Hyprcursor themes.
 
-`init.ts` cannot set the cursor theme or size. See [dropped settings](/js-settings#dropped-settings).
+`shell.ts` cannot set the cursor theme or size. See [dropped settings](/js-settings#dropped-settings).
 
 - `theme` accepts an installed Xcursor or Hyprcursor theme name. Its default is `default`, the system cursor theme. If the
   named theme is not installed, Gnoblin shows the default cursor instead.

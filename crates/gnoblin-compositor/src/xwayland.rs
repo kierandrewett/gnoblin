@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::x11::{Restart, Start};
 use gnoblin_client::{Reporter, report};
-use gnoblin_config::{Config, SearchPaths, Store, Xwayland};
+use gnoblin_config::{Config, Environment, Store, Xwayland};
 
 use gnoblin_wayland::{ControlHandle, XwaylandSession};
 use gnoblin_xwayland::xsettings::{Setting, XSettings};
@@ -48,7 +48,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
         apply(config, None, std::env::var_os("PATH").as_deref());
         return;
     };
-    match gnoblin_config::locate(&SearchPaths::from_env()) {
+    match gnoblin_config::locate(&Environment::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
             log::debug!(area = "xwayland", %error, "no configuration file; the defaults are used");

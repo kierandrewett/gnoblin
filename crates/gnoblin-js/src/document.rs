@@ -5,9 +5,9 @@
 //! devices), runs the entry in it with a short budget and reads the document the entry's objects wrote
 //! ([`JsShell::declared_document`]). `gnoblinctl check` uses it as its dry run.
 //!
-//! **What it reads.** The shell is the real one, so a spec-style `init.ts` (workspaces, bindings, listeners)
+//! **What it reads.** The shell is the real one, so a spec-style `shell.ts` (workspaces, bindings, listeners)
 //! loads as written and writes the same document it would in a session. Nothing starts: no program is spawned, no
-//! claim is made, no transaction is answered. `keyring` and `autostart` have no source in an `init.ts`, so a
+//! claim is made, no transaction is answered. `keyring` and `autostart` have no source in a `shell.ts`, so a
 //! config's document holds only what the device objects wrote.
 //!
 //! **What it cannot read.** The tree is empty, so a config that decides a setting from live state (`gnoblin.outputs`,
@@ -128,11 +128,11 @@ pub fn evaluate_document(entry: &Path) -> Result<Vec<u8>, JsError> {
 mod tests {
     use super::*;
 
-    /// The document of a config whose source is `source`, written to `init.ts` in a directory of its own.
+    /// The document of a config whose source is `source`, written to `shell.ts` in a directory of its own.
     fn document(source: &str) -> Result<serde_json::Value, JsError> {
         let dir = tempfile::tempdir().expect("a temp dir");
-        let entry = dir.path().join("init.ts");
-        std::fs::write(&entry, source).expect("init.ts is written");
+        let entry = dir.path().join("shell.ts");
+        std::fs::write(&entry, source).expect("shell.ts is written");
         evaluate_document(&entry).map(|bytes| serde_json::from_slice(&bytes).expect("the document is JSON"))
     }
 
@@ -149,13 +149,13 @@ mod tests {
         let dir = tempfile::tempdir().expect("a temp dir");
         std::fs::write(dir.path().join("keys.ts"), "export const radius = 8;\n").expect("keys.ts");
         std::fs::write(
-            dir.path().join("init.ts"),
+            dir.path().join("shell.ts"),
             r#"import { radius } from "./keys.ts";
             if (radius !== 8) throw new Error("the import did not run");
             gnoblin.clients.style.cornerRadius = radius;"#,
         )
-        .expect("init.ts");
-        let bytes = evaluate_document(&dir.path().join("init.ts")).expect("the config evaluates");
+        .expect("shell.ts");
+        let bytes = evaluate_document(&dir.path().join("shell.ts")).expect("the config evaluates");
         let document: serde_json::Value = serde_json::from_slice(&bytes).expect("JSON");
         assert_eq!(document, serde_json::json!({}));
     }
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn a_missing_entry_is_a_load_error() {
         let dir = tempfile::tempdir().expect("a temp dir");
-        let error = evaluate_document(&dir.path().join("init.ts")).expect_err("no such file");
+        let error = evaluate_document(&dir.path().join("shell.ts")).expect_err("no such file");
         assert!(error.to_string().contains("cannot read"), "{error}");
     }
 

@@ -85,13 +85,15 @@ import {
 fn run(body: &str) -> String {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), format!("{IMPORTS}\n{body}\n")).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), format!("{IMPORTS}\n{body}\n")).expect("shell.ts is written");
     let mut config = JsConfig::new(&root).embed("harness", HARNESS);
     for (name, source) in stock_modules() {
         config = config.embed(name, source);
     }
     let generation = JsGeneration::new(&config, 1).expect("a generation");
-    generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
+    generation
+        .eval_module(Path::new("shell.ts"))
+        .expect("shell.ts evaluates");
     generation
         .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
         .expect("the case called emit")

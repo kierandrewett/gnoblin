@@ -1,6 +1,6 @@
 # Event handlers
 
-Put live compositor behaviour in TypeScript modules that your `init.ts` imports. A handler reacts to something that
+Put live compositor behaviour in TypeScript modules that your `shell.ts` imports. A handler reacts to something that
 happens, such as a window opening, and runs your code.
 
 Create `~/.config/gnoblin/scripts/window-log.ts`:
@@ -18,13 +18,13 @@ class WindowLog extends CollectionListener<Client> {
 gnoblin.clients.addListener(new WindowLog());
 ```
 
-Import the module from `~/.config/gnoblin/init.ts`:
+Import the module from `~/.config/gnoblin/shell.ts`:
 
 ```ts
 import "./scripts/window-log.ts";
 ```
 
-Save `init.ts`. The shell reloads on save, or run `gnoblinctl config reload`. Open a window and read the line with
+Save `shell.ts`. The shell reloads on save, or run `gnoblinctl config reload`. Open a window and read the line with
 `journalctl --user -t windows -n 1`.
 
 A reload detaches the handlers of the old configuration and attaches the ones your files attach again. A failed reload

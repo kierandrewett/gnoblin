@@ -11,7 +11,7 @@ choose their light or dark appearance.
 
 ## Set the preference
 
-`init.ts` cannot set the preference. See [dropped settings](/js-settings#dropped-settings).
+`shell.ts` cannot set the preference. See [dropped settings](/js-settings#dropped-settings).
 
 The preference reaches applications through the Settings portal and the dconf layer, and a change is announced to apps
 that are already running. The GNOME setting is the same one under the hood.

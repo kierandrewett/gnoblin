@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use crate::{Config, SearchPaths, Store, locate};
+use crate::{Config, Environment, Store, locate};
 
 impl Config {
     /// Whether `keyring.enabled` is true. An absent section or field leaves the built-in keyring
@@ -60,7 +60,7 @@ pub fn last_good_keyring_enabled_from_environment() -> Result<Option<bool>, Stri
     let Some(store) = Store::from_env() else {
         return Ok(None);
     };
-    let Ok(path) = locate(&SearchPaths::from_env()) else {
+    let Ok(path) = locate(&Environment::from_env()) else {
         return Ok(None);
     };
     last_good_keyring_enabled_from_store(&store, path.path())

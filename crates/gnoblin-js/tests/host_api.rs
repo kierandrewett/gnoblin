@@ -107,12 +107,12 @@ fn rig(init_body: &str) -> (Rig, FakeSession) {
     comp.add_window(5, "two", "org.gnome.Nautilus");
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), format!("{PRELUDE}{init_body}\n")).expect("init.ts is written");
+    fs::write(root.join("shell.ts"), format!("{PRELUDE}{init_body}\n")).expect("shell.ts is written");
     let (config, clock) = timed_config(&root);
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let session = FakeSession::default();
     shell.set_session_link(Box::new(session.clone()));
-    let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
+    let load_diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(load_diagnostics.is_empty(), "{load_diagnostics:?}");
     let mut rig = Rig {
         shell,
@@ -318,11 +318,11 @@ fn reload_config_begins_the_reload_verb_and_is_refused_while_the_configuration_l
         1,
         Ok(serde_json::json!({"ok": true, "action": "config reload", "settingsRevision": 4, "warnings": [], "notApplied": ["a: restart required"]})),
     );
-    session.finish(2, Err(("config_rejected", "init.ts:3:1: unexpected token")));
+    session.finish(2, Err(("config_rejected", "shell.ts:3:1: unexpected token")));
     rig.settle();
     assert_eq!(
         rig.ts("g.log.join('|')"),
-        "rev 4 a: restart required|config_rejected init.ts:3:1: unexpected token"
+        "rev 4 a: restart required|config_rejected shell.ts:3:1: unexpected token"
     );
 
     let mut loading = rig_setup(
@@ -603,17 +603,17 @@ fn each_signal_reaches_its_method_with_its_fields_in_order() {
     session.signal(
         "gnoblin.config.reloaded",
         1,
-        serde_json::json!({ "path": "/c/init.ts", "revision": 7, "warnings": [], "not_applied": ["a", "b"], "sequence": 2, "time": 5.0 }),
+        serde_json::json!({ "path": "/c/shell.ts", "revision": 7, "warnings": [], "not_applied": ["a", "b"], "sequence": 2, "time": 5.0 }),
     );
     session.signal(
         "gnoblin.config.reload_failed",
         1,
-        serde_json::json!({ "path": "/c/init.ts", "error": "bad", "sequence": 1, "time": 6.0 }),
+        serde_json::json!({ "path": "/c/shell.ts", "error": "bad", "sequence": 1, "time": 6.0 }),
     );
     rig.settle();
     assert_eq!(
         rig.ts("g.log.join('|')"),
-        "ready:true|reload:3|lock:locked:4|reloaded:true:/c/init.ts:7:a+b:2|failed:bad:1"
+        "ready:true|reload:3|lock:locked:4|reloaded:true:/c/shell.ts:7:a+b:2|failed:bad:1"
     );
 }
 

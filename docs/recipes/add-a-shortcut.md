@@ -1,6 +1,6 @@
 # Add a shortcut
 
-Add a key that starts a program. Put this in `~/.config/gnoblin/init.ts`:
+Add a key that starts a program. Put this in `~/.config/gnoblin/shell.ts`:
 
 ```ts
 gnoblin.input.primary.bind("Super+Return", () => {

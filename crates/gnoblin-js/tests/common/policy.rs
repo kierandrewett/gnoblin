@@ -15,7 +15,7 @@ pub const FILL: &str = "class Fill extends Layout {\n\
 }\n";
 
 /// A shell over the screens, a seat, a lock and `n` windows (ids 3 on). `layout` is the TypeScript expression of every
-/// workspace's layout; `config` is more statements of the `init.ts`, run after the three workspaces `1` to `3` are
+/// workspace's layout; `config` is more statements of the `shell.ts`, run after the three workspaces `1` to `3` are
 /// added. There are no titlebars, menus, keys or other stock parts unless `config` starts them.
 pub fn world(n: u64, second: bool, layout: &str, config: &str) -> Rig {
     let init = format!(
@@ -142,7 +142,7 @@ pub fn close_window(rig: &mut Rig, node: u64) {
     settle(rig);
 }
 
-/// A second shell on the compositor of `rig`, as a reload starts one, whose `init.ts` adds the same three workspaces and
+/// A second shell on the compositor of `rig`, as a reload starts one, whose `shell.ts` adds the same three workspaces and
 /// then runs `config`. The caller `reconcile`s it against the first one's snapshot.
 pub fn next_generation(rig: &Rig, config: &str) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
@@ -150,12 +150,12 @@ pub fn next_generation(rig: &Rig, config: &str) -> Rig {
     let init = format!(
         "{IMPORTS}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id }}));\n{config}\n"
     );
-    std::fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    std::fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let (config, clock) = timed_config(&root);
     let mut shell = gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), config).expect("the shell boots");
     let load_diagnostics = shell
-        .load_entry(std::path::Path::new("init.ts"))
-        .expect("init.ts loads");
+        .load_entry(std::path::Path::new("shell.ts"))
+        .expect("shell.ts loads");
     Rig {
         shell,
         comp: rig.comp.clone(),

@@ -1,6 +1,6 @@
 # Autostart
 
-A `gnoblin.spawn` at the top level of `init.ts` starts its program when the shell loads the file. A reload does not start
+A `gnoblin.spawn` at the top level of `shell.ts` starts its program when the shell loads the file. A reload does not start
 a second copy: the program that is running stays, and one you take out of the file is stopped (see
 [processes](/shell-api/processes#programs-the-file-starts)).
 

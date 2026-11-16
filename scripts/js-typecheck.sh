@@ -31,5 +31,5 @@ EOF
 
 npx --yes --package=typescript@7.0.2 tsc --project "$temporary_config"
 
-# What a user sees is checked on the files `gnoblinctl types init` writes, with the starter as the user's `init.ts`.
+# What a user sees is checked on the files `gnoblinctl types init` writes, with the starter as the user's `shell.ts`.
 "$repo_root/scripts/js-types-check.sh"

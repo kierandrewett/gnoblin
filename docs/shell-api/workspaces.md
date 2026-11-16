@@ -18,7 +18,7 @@ gnoblin.input.primary.bind("Super+Tab", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. `Super+Tab` slides to the next workspace, and back to the first after the
+Put the file in `~/.config/gnoblin/shell.ts`. `Super+Tab` slides to the next workspace, and back to the first after the
 last. A `Workspace` takes `id`, `name`, `layout` and `gaps`.
 
 ## Read workspaces

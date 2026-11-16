@@ -8,9 +8,9 @@ use gnoblin_config_migrate::{
     ConfigSourceLoader, MigrateError, MigrateSource, MigrationOutput, glob_matches, is_glob, migrate, resolve_load_path,
 };
 
-/// The stock starter, `data/js/starter/init.ts`: what `gnoblinctl config init` writes and what a shell with no
-/// `init.ts` runs.
-const STARTER_TS: &str = include_str!("../../../data/js/starter/init.ts");
+/// The stock starter, `data/js/starter/shell.ts`: what `gnoblinctl config init` writes and what a shell with no
+/// `shell.ts` runs.
+const STARTER_TS: &str = include_str!("../../../data/js/starter/shell.ts");
 
 /// The Lua starter as it shipped, `data/default-config` at the time the converter was written.
 const STARTER_INIT: &str = include_str!("fixtures/starter/init.lua");
@@ -165,7 +165,7 @@ fn the_starter_converts_its_workspaces_and_keys_and_reports_each_setting_of_a_se
 #[test]
 fn the_starter_is_this_typescript() {
     let output = convert_with(STARTER_INIT, STARTER_FILES, None);
-    assert_eq!(output.typescript, include_str!("fixtures/starter/init.ts.golden"));
+    assert_eq!(output.typescript, include_str!("fixtures/starter/shell.ts.golden"));
 }
 
 #[test]
@@ -502,7 +502,7 @@ fn an_unknown_or_carried_section_is_left_out_with_a_reason() {
     assert!(output.report.unmapped[0].reason.contains("no TypeScript home yet"));
     assert!(output.report.unmapped[1].reason.contains("read by nothing"));
     assert!(output.report.unmapped[2].reason.contains("not a section"));
-    assert!(output.report.unmapped[3].reason.contains("init.ts"));
+    assert!(output.report.unmapped[3].reason.contains("shell.ts"));
 }
 
 #[test]

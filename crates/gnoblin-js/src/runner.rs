@@ -6,10 +6,10 @@
 //! 1. adopts the privileged connection, subscribes to the object graph, and watches the `session` object for
 //!    `reload_requested`, the signal the compositor raises when `gnoblinctl config reload` (or a script's
 //!    `gnoblin.runtime.reloadConfig()`) asks for a reload;
-//! 2. locates the user's config ([`gnoblin_config::locate`]: `init.ts`, `init.js`, then `init.lua`), warns about
+//! 2. locates the user's config ([`gnoblin_config::locate`]: `shell.ts`, `shell.js`, then `init.lua`), warns about
 //!    the files that lost to it, and boots a [`JsRole`] that evaluates it. The role owns the whole document
 //!    ([`JsRoleConfig::owns_document`]): the settings the config's objects write (the device settings) are
-//!    validated and committed to the compositor as one revision. With no `init.ts` the stock default runs and the
+//!    validated and committed to the compositor as one revision. With no `shell.ts` the stock default runs and the
 //!    document is empty;
 //! 3. tells the guardian each revision the compositor accepted: one `autostart` line for every enabled entry, then
 //!    `config-accepted`, and after the first commit `ready` with `GNOBLIN_CONFIG_REVISION`;
@@ -44,7 +44,7 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Event, Inherited, Reporter, inherited_stream, privilege, report,
 };
-use gnoblin_config::{Config, ConfigPath, SearchPaths, enabled_autostart, locate};
+use gnoblin_config::{Config, ConfigPath, enabled_autostart, locate};
 use gnoblin_model::{Filter, ObjectId, ObjectView, Observation};
 use gnoblin_proto::Version;
 use thiserror::Error;
@@ -103,7 +103,7 @@ fn lua_config_notice(located: &ConfigPath) -> Option<String> {
     located.lua().map(|lua| {
         format!(
             "{} is a Lua config and Gnoblin no longer runs Lua, so the stock config runs instead; run `gnoblinctl \
-             config migrate` to convert it to init.ts (see {MIGRATION_DOC})",
+             config migrate` to convert it to shell.ts (see {MIGRATION_DOC})",
             lua.display()
         )
     })
@@ -136,8 +136,8 @@ pub enum JsRoleError {
 pub struct JsRoleRunner {
     /// The environment to read the inherited descriptors, the socket and the switches from.
     pub env: Environment,
-    /// Where the configuration lives.
-    pub paths: SearchPaths,
+    /// Where the configuration lives: the XDG directories and the shell variable the lookup reads.
+    pub paths: gnoblin_config::Environment,
 }
 
 impl JsRoleRunner {
@@ -145,7 +145,7 @@ impl JsRoleRunner {
     pub fn from_environment() -> Self {
         Self {
             env: Box::new(|name| std::env::var(name).ok()),
-            paths: SearchPaths::from_env(),
+            paths: gnoblin_config::Environment::from_env(),
         }
     }
 
@@ -268,13 +268,8 @@ impl JsRoleRunner {
     fn role_config(&self, commits: &JsCommitLog) -> Result<JsRoleConfig, JsRoleError> {
         let env = &self.env;
         let located = locate(&self.paths).map_err(|error| JsRoleError::Config(error.to_string()))?;
-        for ignored in located.ignored() {
-            log::warn!(
-                area = "config",
-                "{} is not read: {} takes precedence in the same directory",
-                ignored.display(),
-                located.path().display()
-            );
+        for warning in located.warnings() {
+            log::warn!(area = "config", "{warning}");
         }
         let dir = located
             .path()
@@ -283,7 +278,7 @@ impl JsRoleRunner {
             .to_path_buf();
         let stock = env(STOCK_DIR_VARIABLE).filter(|dir| !dir.is_empty()).map(PathBuf::from);
         // The loader confines every import to the config directory, so the directory has to exist. A first login has
-        // none: it is made here, which is also what lets the watcher see `init.ts` the day it is written.
+        // none: it is made here, which is also what lets the watcher see `shell.ts` the day it is written.
         if !dir.is_dir() {
             std::fs::create_dir_all(&dir).map_err(|error| {
                 JsRoleError::Config(format!("cannot create the config directory {}: {error}", dir.display()))
@@ -404,6 +399,7 @@ fn last_diagnostics(role: &JsRole, seen: u64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
     use std::path::Path;
 
     use super::*;
@@ -421,17 +417,19 @@ mod tests {
         }
     }
 
-    /// Search paths whose config directory holds `files`, and the directory that owns them.
-    fn config_with(files: &[&str]) -> (tempfile::TempDir, SearchPaths) {
+    /// An environment whose config directory holds `files`, and the directory that owns them. The data
+    /// directories hold nothing, so the host's own `/usr/share` is not consulted.
+    fn config_with(files: &[&str]) -> (tempfile::TempDir, gnoblin_config::Environment) {
         let root = tempfile::tempdir().expect("a temp dir");
         let directory = root.path().join("config").join("gnoblin");
         std::fs::create_dir_all(&directory).expect("the config directory");
         for name in files {
             std::fs::write(directory.join(name), "// a config\n").expect("the config file");
         }
-        let paths = SearchPaths {
-            config_home: Some(root.path().join("config")),
-            ..SearchPaths::default()
+        let paths = gnoblin_config::Environment {
+            xdg_config_home: Some(root.path().join("config")),
+            xdg_data_dirs: Some(OsString::from("/nonexistent/share")),
+            ..gnoblin_config::Environment::default()
         };
         (root, paths)
     }
@@ -441,7 +439,7 @@ mod tests {
         // The guardian's log has to say what is wrong, so the error names the variable.
         let runner = JsRoleRunner {
             env: Box::new(|_| None),
-            paths: SearchPaths::default(),
+            paths: gnoblin_config::Environment::default(),
         };
         let error = runner.run(|| false).expect_err("no descriptor, no role");
         assert!(matches!(error, JsRoleError::Connection(Inherited::Absent)), "{error:?}");
@@ -452,7 +450,7 @@ mod tests {
     fn the_crash_hook_exits_at_once() {
         let runner = JsRoleRunner {
             env: Box::new(env_of(&[(TEST_CRASH_VARIABLE, "1")])),
-            paths: SearchPaths::default(),
+            paths: gnoblin_config::Environment::default(),
         };
         let error = runner.run(|| false).expect_err("the hook ends the role");
         assert!(error.to_string().contains(TEST_CRASH_VARIABLE), "{error}");
@@ -480,7 +478,7 @@ mod tests {
         let directory = root.path().join("config").join("gnoblin");
         assert_eq!(
             config.entry,
-            directory.join("init.ts"),
+            directory.join("shell.ts"),
             "the Lua file is not the entry: {:?}",
             config.entry
         );
@@ -488,7 +486,7 @@ mod tests {
 
     #[test]
     fn a_typescript_or_javascript_config_is_not_reported_as_lua() {
-        for files in [&["init.ts"][..], &["init.js"], &["init.lua", "init.ts"], &[]] {
+        for files in [&["shell.ts"][..], &["shell.js"], &["init.lua", "shell.ts"], &[]] {
             let (_root, paths) = config_with(files);
             let located = locate(&paths).expect("a path");
             assert_eq!(lua_config_notice(&located), None, "{files:?}");
@@ -519,9 +517,10 @@ mod tests {
         let root = tempfile::tempdir().expect("a temp dir");
         let runner = JsRoleRunner {
             env: Box::new(env_of(&[])),
-            paths: SearchPaths {
-                config_home: Some(root.path().join("config")),
-                ..SearchPaths::default()
+            paths: gnoblin_config::Environment {
+                xdg_config_home: Some(root.path().join("config")),
+                xdg_data_dirs: Some(OsString::from("/nonexistent/share")),
+                ..gnoblin_config::Environment::default()
             },
         };
         let config = runner
@@ -531,7 +530,7 @@ mod tests {
         assert!(directory.is_dir(), "the directory was made");
         assert_eq!(
             config.entry,
-            directory.join("init.ts"),
+            directory.join("shell.ts"),
             "the entry is the file a new user creates"
         );
         assert!(config.owns_document && config.commits.is_some());
@@ -539,14 +538,70 @@ mod tests {
 
     #[test]
     fn the_config_names_the_located_file_and_turns_the_watcher_off_on_request() {
-        let (_root, paths) = config_with(&["init.js"]);
+        let (_root, paths) = config_with(&["shell.js"]);
         let runner = JsRoleRunner {
             env: Box::new(env_of(&[(WATCH_VARIABLE, "0"), ("GNOBLIN_XR", "1")])),
             paths,
         };
         let config = runner.role_config(&JsCommitLog::default()).expect("a config");
-        assert!(config.entry.ends_with("init.js"), "{:?}", config.entry);
+        assert!(config.entry.ends_with("shell.js"), "{:?}", config.entry);
         assert!(!config.watch);
         assert!(config.shell.xr_declared);
+    }
+
+    /// The error text of a role over `paths`, which must refuse to start.
+    fn refusal(paths: gnoblin_config::Environment) -> String {
+        let runner = JsRoleRunner {
+            env: Box::new(env_of(&[])),
+            paths,
+        };
+        match runner.role_config(&JsCommitLog::default()) {
+            Err(JsRoleError::Config(text)) => text,
+            Err(other) => panic!("expected a config error, got {other:?}"),
+            Ok(config) => panic!("expected a refusal, got an entry {:?}", config.entry),
+        }
+    }
+
+    #[test]
+    fn two_shell_files_in_the_config_directory_stop_the_role_with_the_discovery_text() {
+        let (_root, paths) = config_with(&["shell.ts", "shell.js"]);
+        let text = refusal(paths);
+        assert!(text.starts_with("several shells are equally preferred:"), "{text}");
+        assert!(text.contains("shell.ts") && text.contains("shell.js"), "{text}");
+        assert!(text.contains("Run a shell directly:"), "{text}");
+    }
+
+    #[test]
+    fn the_shell_variable_names_the_entry_and_is_never_second_guessed() {
+        let (root, paths) = config_with(&["shell.ts"]);
+        let chosen = root.path().join("elsewhere.ts");
+        std::fs::write(&chosen, "// a config\n").expect("the shell file");
+        let runner = JsRoleRunner {
+            env: Box::new(env_of(&[])),
+            paths: gnoblin_config::Environment {
+                gnoblin_shell: Some(chosen.clone().into_os_string()),
+                ..paths.clone()
+            },
+        };
+        let config = runner.role_config(&JsCommitLog::default()).expect("a config");
+        assert_eq!(config.entry, chosen);
+
+        let text = refusal(gnoblin_config::Environment {
+            gnoblin_shell: Some(root.path().join("missing.ts").into_os_string()),
+            ..paths
+        });
+        assert!(text.contains("no such file (from GNOBLIN_SHELL)"), "{text}");
+    }
+
+    #[test]
+    fn a_shell_in_another_language_is_refused_with_a_sentence() {
+        let (root, paths) = config_with(&[]);
+        let python = root.path().join("mine.py");
+        std::fs::write(&python, "# a shell\n").expect("the shell file");
+        let text = refusal(gnoblin_config::Environment {
+            gnoblin_shell: Some(python.into_os_string()),
+            ..paths
+        });
+        assert!(text.contains("this is a python shell"), "{text}");
     }
 }

@@ -13,7 +13,7 @@
 //! 2. An accepted configuration, waited for at most [`CONFIGURATION_WAIT`].
 //! 3. The last accepted file, then the schema default.
 //!
-//! The user's `init.ts` is not evaluated here: no object of the specification carries `keyring.enabled`, so a config
+//! The user's `shell.ts` is not evaluated here: no object of the specification carries `keyring.enabled`, so a config
 //! has no say and the flag is on unless a configuration the compositor accepted, or the last accepted file, says off.
 //!
 //! [`decide`] is that rule. The agent runs it on its own thread, so starting the role never blocks

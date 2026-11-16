@@ -15,7 +15,7 @@ pad?.bind(
 );
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`, and use the name your device reports. Its key `F13` starts a terminal, and
+Put the file in `~/.config/gnoblin/shell.ts`, and use the name your device reports. Its key `F13` starts a terminal, and
 the device types nothing into a window.
 
 ## Seats

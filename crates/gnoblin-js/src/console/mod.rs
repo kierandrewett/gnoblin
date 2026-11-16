@@ -2,7 +2,7 @@
 //!
 //! [`JsConsole`] listens on a Unix socket beside the owner socket (`js.sock` in the same directory, see
 //! [`console_socket_path`]) and evaluates what a connection sends in the shell's own generation, with the same
-//! `gnoblin` global as `init.ts`. It is what `gnoblinctl console` talks to.
+//! `gnoblin` global as `shell.ts`. It is what `gnoblinctl console` talks to.
 //!
 //! # Protocol
 //!

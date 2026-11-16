@@ -1,8 +1,13 @@
 # Configuration files
 
-Your configuration is one TypeScript file, `init.ts`, in `$XDG_CONFIG_HOME/gnoblin`, or in `~/.config/gnoblin` when
-`XDG_CONFIG_HOME` is unset. `GNOBLIN_CONFIG` names a different file instead. The shell takes the first of `init.ts` and
-`init.js` that exists in that directory.
+Your configuration is one TypeScript file, `shell.ts`, in `$XDG_CONFIG_HOME/gnoblin`, or in `~/.config/gnoblin` when
+`XDG_CONFIG_HOME` is unset.
+
+- `GNOBLIN_SHELL` names a different file, or an installed shell, instead.
+- `[shell]` in `config.toml` picks one by name or path.
+- Two shell files in one directory are an error, not a choice.
+
+The order is in [TypeScript shell](/typescript-shell#where-the-config-lives).
 
 Write a commented starter, with the editor files that give you completion, once:
 
@@ -10,12 +15,12 @@ Write a commented starter, with the editor files that give you completion, once:
 gnoblinctl config init
 ```
 
-`config init` never replaces a config. Add `--force` to write the starter over an existing `init.ts`.
+`config init` never replaces a config. Add `--force` to write the starter over an existing `shell.ts`.
 
 Check a file without a running session, and print what the compositor last accepted:
 
 ```sh
-gnoblinctl check init.ts
+gnoblinctl check shell.ts
 gnoblinctl config get
 ```
 

@@ -13,7 +13,7 @@ input.bind("Super+Shift+r", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. `Super+l` locks the session. `Super+Shift+r` reloads the configuration, as
+Put the file in `~/.config/gnoblin/shell.ts`. `Super+l` locks the session. `Super+Shift+r` reloads the configuration, as
 `gnoblinctl config reload` does.
 
 ## Session

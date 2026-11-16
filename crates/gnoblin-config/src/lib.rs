@@ -42,7 +42,7 @@
 //! 10. **The stored document is readable by another user.** `0700` directory,
 //!     `0600` file, owned by this user, or the load refuses.
 //! 11. **The config path depends on who asked.** One [`locate`] answers with one
-//!     order and one file name.
+//!     order and one file name, which is the shell that discovery selects.
 //! 12. **A removed setting reads as a typo.** A key that used to exist is refused
 //!     with what replaced it, before the unknown-key pass.
 //! 13. **Generated and hand-written validators disagree.** `tests/generated.rs`
@@ -114,8 +114,8 @@ pub use keyring::{
 };
 /// The last-good store, its on-disk format version and its load result.
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
-/// Config path lookup: the located path, its origin and the search order.
-pub use locate::{ConfigPath, Language, LocateError, Origin, SearchPaths, locate};
+/// Config path lookup: the located path, the tier that chose it, and the environment the lookup reads.
+pub use locate::{ConfigPath, Environment, Language, LocateError, Tier, locate};
 /// Reads the `logging` section from the environment before the subscriber exists.
 pub use logging::logging_from_environment;
 /// Merges layered documents into one, last layer wins.

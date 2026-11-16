@@ -16,7 +16,7 @@ input.bind("Super+x", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. `Super+Return` starts a terminal, `Super+Shift+q` closes the focused window and
+Put the file in `~/.config/gnoblin/shell.ts`. `Super+Return` starts a terminal, `Super+Shift+q` closes the focused window and
 `Super+x` shows a notification. A trigger that is already bound at the same priority is refused, so a file that starts from the
 starter deletes the line it replaces.
 

@@ -10,7 +10,7 @@ gnoblin.input.primary.bind("Super+t", () => {
 });
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. `Super+t` focuses the first terminal window it finds and does nothing when
+Put the file in `~/.config/gnoblin/shell.ts`. `Super+t` focuses the first terminal window it finds and does nothing when
 there is none.
 
 ## Read windows
