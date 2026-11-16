@@ -29,6 +29,8 @@
 //!   `a_keyboard_repeat_committed_after_start_reaches_the_client`,
 //!   `a_layout_committed_after_start_reaches_the_client` — `keyboard`
 
+mod stock;
+
 use gnoblin_secret::SecretText;
 use std::io::{Read, Seek};
 use std::os::fd::AsFd;
@@ -224,7 +226,7 @@ struct Session {
 impl Session {
     /// Creates a session on a socket of its own.
     fn start() -> Self {
-        Self::with_config(Config::default())
+        Self::with_config(crate::stock::config())
     }
 
     /// Creates a session with a configuration of the test's choosing.
@@ -1313,6 +1315,8 @@ fn a_confined_pointer_stays_inside_its_region() {
 /// A lock that started when the pointer merely passed over a window would freeze it for a user who types into another
 /// one, so a constraint waits for its window to have the keyboard, ends when another window takes it and starts again
 /// when its window is chosen again.
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn a_pointer_constraint_waits_until_its_window_has_the_keyboard() {
     let session = Session::start();
@@ -1646,6 +1650,8 @@ impl TouchPair {
 
 /// Two clients touch their own windows at the same time: each gets the down, motion, up and frame of its own point
 /// and nothing of the other's, with the slot as the id, and a frame that closes only its own batch.
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn two_clients_touching_at_once_each_get_only_their_own_point() {
     let session = Session::start();
@@ -1705,6 +1711,8 @@ fn two_clients_touching_at_once_each_get_only_their_own_point() {
 
 /// A window destroyed under a finger ends that finger alone: its client gets the up and a frame, the other client's
 /// point stays down and ends normally.
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn destroying_one_clients_window_ends_only_its_point() {
     let session = Session::start();
@@ -1750,6 +1758,8 @@ fn destroying_one_clients_window_ends_only_its_point() {
 }
 
 /// A client that disconnects with a finger down on its window takes only its own point with it.
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn one_client_disconnecting_does_not_disturb_anothers_touch() {
     let session = Session::start();
@@ -1797,6 +1807,8 @@ fn one_client_disconnecting_does_not_disturb_anothers_touch() {
 
 /// The same holds for two windows of one client: a second finger on the second window reports the position on that
 /// window, not on the window the first finger went down on.
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn two_windows_of_one_client_each_get_the_point_on_them() {
     let session = Session::start();
@@ -2141,7 +2153,7 @@ fn a_keymap_change_under_a_held_key_keeps_its_target() {
             ]),
             per_window: Some(false),
         }),
-        ..Config::default()
+        ..crate::stock::config()
     };
     let session = Session::with_config(config);
     session.run(|session| {
@@ -2198,7 +2210,7 @@ fn point_only_in(target: gnoblin_types::Rect, others: &[gnoblin_types::Rect]) ->
 fn a_keyboard_repeat_committed_after_start_reaches_the_client() {
     // The runtime commits its document after the session started: a repeat rate and delay
     // committed then must reach the keyboards clients already hold, not wait for a restart.
-    let session = Session::with_config(Config::default());
+    let session = Session::with_config(crate::stock::config());
     session.run(|session| {
         let mut client = Client::app(session.socket());
         let _window = client.map_window("org.gnoblin.Repeat");
@@ -2233,7 +2245,7 @@ fn a_layout_committed_after_start_reaches_the_client() {
             sources: Some(vec![source("us")]),
             per_window: Some(false),
         }),
-        ..Config::default()
+        ..crate::stock::config()
     };
     let session = Session::with_config(config);
     session.run(move |session| {
@@ -2259,6 +2271,8 @@ fn a_layout_committed_after_start_reaches_the_client() {
     });
 }
 
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn a_window_remembers_its_layout() {
     let config = Config {
@@ -2279,7 +2293,7 @@ fn a_window_remembers_its_layout() {
             new_window_focus: NewWindowFocus::Allow,
             ..WmOptions::default()
         },
-        ..Config::default()
+        ..crate::stock::config()
     };
     let session = Session::with_config(config);
     session.run(|session| {
@@ -2707,7 +2721,7 @@ fn a_claimed_chord_reaches_the_shell_and_never_the_client() {
     };
     let session = Session::with_config(Config {
         tree,
-        ..Config::default()
+        ..crate::stock::config()
     });
     session.run(move |session| {
         let mut client = Client::app(session.socket());
@@ -2799,7 +2813,7 @@ fn a_chord_claimed_for_one_keyboard_is_never_taken_from_the_other() {
     };
     let session = Session::with_config(Config {
         tree,
-        ..Config::default()
+        ..crate::stock::config()
     });
     session.run(move |session| {
         let mut client = Client::app(session.socket());
@@ -2980,7 +2994,7 @@ fn edges_of(state: &App, keycode: u32) -> Vec<bool> {
 
 #[test]
 fn two_keyboards_holding_one_keycode_are_one_held_key_to_the_client() {
-    let session = Session::with_config(Config::default());
+    let session = Session::with_config(crate::stock::config());
     session.run(move |session| {
         let mut client = Client::app(session.socket());
         let _window = client.map_window("org.gnoblin.Claims");
@@ -3040,7 +3054,7 @@ fn two_keyboards_holding_one_keycode_are_one_held_key_to_the_client() {
 
 #[test]
 fn a_keyboard_that_leaves_lets_go_of_the_keys_it_held() {
-    let session = Session::with_config(Config::default());
+    let session = Session::with_config(crate::stock::config());
     session.run(move |session| {
         let mut client = Client::app(session.socket());
         let _window = client.map_window("org.gnoblin.Claims");
@@ -3401,7 +3415,7 @@ fn unclaiming_a_binding_only_device_gives_its_keys_back_to_the_seat() {
 fn a_device_tagged_for_a_seat_this_session_does_not_have_attaches_to_the_default_seat() {
     use gnoblin_backend::{DeviceInfo, DeviceKind};
 
-    let session = Session::with_config(Config::default());
+    let session = Session::with_config(crate::stock::config());
     session.run(move |session| {
         let mut client = Client::app(session.socket());
         let _window = client.map_window("org.gnoblin.Claims");
@@ -3450,7 +3464,7 @@ fn claim_session() -> (
     };
     let config = Config {
         tree,
-        ..Config::default()
+        ..crate::stock::config()
     };
     (queue, batches, config)
 }

@@ -7,6 +7,7 @@
 //! client on a real socket and asks what the registry answered.
 
 mod session;
+mod stock;
 
 use std::os::fd::AsFd;
 use std::os::unix::fs::PermissionsExt;

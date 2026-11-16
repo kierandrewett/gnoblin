@@ -72,6 +72,7 @@ impl Session {
         let eis = directory.path().join("eis.sock");
         let config = Config {
             socket_path: Some(wayland.clone()),
+            window_manager: Some(gnoblin_std_wm::factory()),
             ..Config::default()
         };
         let server = Server::new(Box::new(Headless::new()), config).expect("the session starts");

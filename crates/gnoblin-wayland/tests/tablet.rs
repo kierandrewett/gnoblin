@@ -9,6 +9,7 @@
 //! The tests are the failure-mode list of `src/protocols/zwp_tablet_v2.rs`, in its order.
 
 mod session;
+mod stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

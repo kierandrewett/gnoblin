@@ -563,6 +563,8 @@ fn set_workspace_and_set_output_refuse_objects_that_are_not_declared_targets() {
     session.stop().expect("the session stops cleanly");
 }
 
+// A window takes the keyboard when it maps and on a click under the stock window manager; a core with no provider has no focus policy.
+#[cfg(feature = "std-providers")]
 #[test]
 fn focus_completes_after_the_diff_it_caused() {
     let session = Session::start();

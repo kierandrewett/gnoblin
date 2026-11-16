@@ -190,6 +190,7 @@ impl Session {
         let config = Config {
             socket_path: Some(socket),
             tree,
+            window_manager: Some(gnoblin_std_wm::factory()),
             ..Config::default()
         };
         let xwayland = Xwayland::new(settings, path);

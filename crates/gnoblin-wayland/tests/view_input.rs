@@ -6,6 +6,7 @@
 //! client nothing. With `input` unset (`none`) the View is a miss and the pointer reaches what lies under it.
 
 mod session;
+mod stock;
 
 use gnoblin_backend::InputEvent;
 use gnoblin_render::transaction::TreeValue;

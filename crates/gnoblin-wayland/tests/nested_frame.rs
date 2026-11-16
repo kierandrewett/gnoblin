@@ -27,6 +27,7 @@ use gnoblin_render::transaction::TreeValue;
 use gnoblin_types::{DeviceId, OutputId, Point, Size};
 
 mod nested_host;
+mod stock;
 use nested_host::*;
 
 mod session;

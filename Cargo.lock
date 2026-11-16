@@ -1421,6 +1421,7 @@ dependencies = [
  "gnoblin-service-core",
  "gnoblin-service-screensaver",
  "gnoblin-services",
+ "gnoblin-std-wm",
  "gnoblin-tree-client",
  "gnoblin-types",
  "gnoblin-wayland",
@@ -1564,6 +1565,7 @@ dependencies = [
  "gnoblin-authority",
  "gnoblin-backend",
  "gnoblin-log",
+ "gnoblin-std-wm",
  "gnoblin-types",
  "gnoblin-wayland",
  "reis",
@@ -2040,6 +2042,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-std-wm"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+ "gnoblin-wm-api",
+]
+
+[[package]]
 name = "gnoblin-testkit"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -2086,6 +2096,7 @@ dependencies = [
  "gnoblin-render",
  "gnoblin-render-frame",
  "gnoblin-secret",
+ "gnoblin-std-wm",
  "gnoblin-testkit",
  "gnoblin-types",
  "gnoblin-wm-api",
@@ -2107,6 +2118,7 @@ name = "gnoblin-wlcs"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-backend",
+ "gnoblin-std-wm",
  "gnoblin-types",
  "gnoblin-wayland",
  "tempfile",
@@ -2129,6 +2141,7 @@ dependencies = [
  "gnoblin-config",
  "gnoblin-render",
  "gnoblin-secret",
+ "gnoblin-std-wm",
  "gnoblin-types",
  "gnoblin-wayland",
  "tempfile",

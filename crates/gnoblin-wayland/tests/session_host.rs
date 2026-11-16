@@ -6,6 +6,7 @@
 //! tests are the failure-mode list in `src/protocols/gnoblin_session_host_v1.rs`, in order.
 
 mod owned;
+mod stock;
 
 use gnoblin_types::DeviceId;
 use std::thread;

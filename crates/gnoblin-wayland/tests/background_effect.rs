@@ -5,6 +5,7 @@
 //! the unset that clears it, and a region that never reaches another surface.
 
 mod owned;
+mod stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

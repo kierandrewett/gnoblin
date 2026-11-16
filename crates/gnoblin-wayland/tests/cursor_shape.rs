@@ -10,6 +10,8 @@
 //! The last tests put a shell on the session's tree and have it choose the cursor (`Seat.cursor_*`): what is drawn is
 //! read back the same way, through the screencopy overlay.
 
+mod stock;
+
 use std::fs::File;
 use std::io::Write;
 use std::os::fd::AsFd;
@@ -175,7 +177,7 @@ fn run_session_with(theme: &str, tree: TreeHooks, body: impl FnOnce(&Handle) + S
             providers: vec![ProviderKind::Xcursor],
         },
         tree,
-        ..Config::default()
+        ..crate::stock::config()
     };
     let server = Server::new(Box::new(gnoblin_backend::headless::Headless::new()), config).expect("the session starts");
     let handle = Handle {

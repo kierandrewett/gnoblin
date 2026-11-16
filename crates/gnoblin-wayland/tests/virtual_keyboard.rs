@@ -6,6 +6,7 @@
 //! server accepts, refuses, or ends the connection over.
 
 mod owned;
+mod stock;
 
 use std::io::{Seek, SeekFrom, Write};
 use std::os::fd::{AsFd, BorrowedFd};

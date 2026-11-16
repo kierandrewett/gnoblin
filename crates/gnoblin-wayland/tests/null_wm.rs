@@ -6,6 +6,7 @@
 //! the stock provider.
 
 mod session;
+mod stock;
 
 use std::thread;
 use std::time::Duration;
@@ -51,6 +52,8 @@ fn a_session_with_no_provider_places_every_window_at_the_origin_at_the_size_it_d
     });
 }
 
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn the_stock_provider_cascades_the_same_two_windows() {
     // The control for the test above: the placement it asserts is NullWm's, not the headless backend's.

@@ -452,7 +452,7 @@ mod tests {
             crate::server::VisualAccessibilitySettings::default(),
             &[],
             crate::lock_auth::LockAuth::new(std::sync::Arc::new(gnoblin_lock_auth::FakeAuthenticator::new()), None).0,
-            Box::new(crate::fallback::Fallback::default()),
+            Box::<gnoblin_wm_api::NullWm>::default(),
         )
         .expect("a state for the default output");
         (backend, state)
@@ -854,7 +854,7 @@ mod tests {
             crate::server::VisualAccessibilitySettings::default(),
             &[],
             crate::lock_auth::LockAuth::new(std::sync::Arc::new(gnoblin_lock_auth::FakeAuthenticator::new()), None).0,
-            Box::new(crate::fallback::Fallback::default()),
+            Box::<gnoblin_wm_api::NullWm>::default(),
         )
         .expect("a state for the default output");
         let stats = Arc::new(Mutex::new(FrameStats::default()));

@@ -6,6 +6,8 @@
 //! that arrive afterwards, and a device that goes away is forgotten. The headless backend records what each
 //! virtual device was given, so the test reads back what reached it and does not trust what was sent.
 
+mod stock;
+
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -102,7 +104,7 @@ fn a_section_given_at_start_configures_the_devices_that_arrive() {
     let keyboard = DeviceInfo::new(DeviceId::new(2), "keyboard", DeviceKind::Keyboard);
     let config = Config {
         input: Some(mouse_section(0.5)),
-        ..Config::default()
+        ..crate::stock::config()
     };
     run(config, vec![mouse, keyboard], |_control, backend| {
         wait_for_settings(backend, DeviceId::new(1), &[Setting::Speed(0.5)]);
@@ -113,7 +115,7 @@ fn a_section_given_at_start_configures_the_devices_that_arrive() {
 #[test]
 fn a_committed_section_reaches_the_devices_the_session_has_and_the_ones_that_arrive() {
     let first = DeviceInfo::new(DeviceId::new(1), "mouse", DeviceKind::Mouse);
-    run(Config::default(), vec![first], |control, backend| {
+    run(crate::stock::config(), vec![first], |control, backend| {
         // Nothing was given at start, so the device holds nothing.
         wait_for_settings(backend, DeviceId::new(1), &[]);
 
@@ -157,7 +159,7 @@ fn a_setting_removed_from_the_document_is_put_back_and_a_removed_device_is_forgo
             }),
             ..Input::default()
         }),
-        ..Config::default()
+        ..crate::stock::config()
     };
     run(config, vec![mouse, pad], |control, backend| {
         wait_for_settings(backend, DeviceId::new(1), &[Setting::Speed(0.5)]);

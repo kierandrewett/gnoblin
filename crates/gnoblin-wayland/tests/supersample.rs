@@ -6,6 +6,7 @@
 //! does not prove: scan-out on a DRM device and the GLES downscale pass (`gnoblin-render-gles`'s own tests do).
 
 mod session;
+mod stock;
 
 use std::os::unix::net::UnixStream;
 use std::path::Path;

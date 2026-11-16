@@ -7,6 +7,7 @@
 //! what the client was configured to.
 
 mod session;
+mod stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

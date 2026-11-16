@@ -4,6 +4,7 @@
 //! does, and reads what the client was answered and what the shell was told.
 
 mod session;
+mod stock;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};

@@ -531,7 +531,7 @@ mod tests {
     }
 
     // With a holder attached the request is the shell's; with none, a locked session or a window with no node it is
-    // the provider's, which applies it (`gnoblin-wm-api` holds the contract, `fallback.rs` the stock provider).
+    // the provider's, which applies it (`gnoblin-wm-api` holds the contract, `gnoblin-std-wm` the stock provider).
     #[test]
     fn a_request_goes_to_the_shell_only_while_it_holds_the_tree_unlocked_and_the_window_has_a_node() {
         assert_eq!(decide(true, true, true), Decider::Shell);

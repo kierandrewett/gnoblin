@@ -3,9 +3,9 @@
 //! Until a shell publishes a position, a new window cascades from `(32, 32)` of its work area, moving
 //! 32 px further for each window already visible on that output and workspace. The positions wrap after
 //! 32 steps, and every position is clamped so the window sits inside the work area. The function is pure
-//! so the window manager and the compositor can both call it without depending on each other.
+//! so the stock window manager and a test can both call it.
 
-use crate::{Rect, Size};
+use gnoblin_types::{Rect, Size};
 
 /// Diagonal step, in logical pixels, of the cascade.
 const CASCADE_OFFSET: i32 = 32;
@@ -20,7 +20,7 @@ const CASCADE_STEPS: usize = 32;
 /// then moved as little as possible to sit inside `work_area`; a window larger than the work area is aligned
 /// to its origin.
 #[must_use]
-pub fn cascade_position(index: usize, work_area: Rect, window_size: Size) -> (i32, i32) {
+pub(crate) fn cascade_position(index: usize, work_area: Rect, window_size: Size) -> (i32, i32) {
     let step = i32::try_from(index % CASCADE_STEPS).unwrap_or(0) + 1;
     let offset = CASCADE_OFFSET.saturating_mul(step);
     let geometry = Rect::from_size(window_size)

@@ -243,7 +243,7 @@ impl Session {
         let socket = directory.path().join("wayland-0.sock");
         let config = adjust(Config {
             socket_path: Some(socket.clone()),
-            ..Config::default()
+            ..crate::stock::config()
         });
         let server = Server::new(Box::new(backend), config).expect("the host starts");
         let handle = Handle {

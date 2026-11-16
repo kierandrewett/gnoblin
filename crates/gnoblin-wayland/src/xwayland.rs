@@ -1199,14 +1199,130 @@ impl XWaylandKeyboardGrabHandler for State {
     }
 }
 
+/// What an X11 window's open, close and role do to the record, over the provider a core with none runs.
 #[cfg(test)]
-mod tests {
+mod core_tests {
     use super::*;
 
     use gnoblin_types::OutputId;
-    use gnoblin_wm_api::{Standing, WindowManager, WmEffect};
+    use gnoblin_wm_api::{NullWm, Standing, WindowManager, WmEffect};
 
-    use crate::fallback::Fallback;
+    fn session() -> NullWm {
+        let mut record = NullWm::default();
+        let seat = Standing {
+            stack: &[],
+            focus: None,
+        };
+        record.output_added(OutputId::new(1), Rect::new(0, 0, 1920, 1080), seat);
+        record
+    }
+
+    fn id(x11: u64) -> WindowId {
+        WindowId::new((1 << 63) | x11)
+    }
+
+    fn open(x11: u64, title: &str, transient_for: Option<WindowId>) -> Opened {
+        Opened {
+            window: id(x11),
+            app_id: "XTerm".to_owned(),
+            title: title.to_owned(),
+            transient_for,
+            requested: Rect::new(0, 0, 300, 200),
+        }
+    }
+
+    /// Opening is what takes an X11 window into management, and the record's answer is the geometry the client is
+    /// told to adopt: with no placement policy, the origin at the size the client asked for.
+    #[test]
+    fn an_opened_window_is_managed_and_told_where_to_sit() {
+        let mut record = session();
+        let seat = Standing {
+            stack: &[],
+            focus: None,
+        };
+
+        let effects = record
+            .open(open_of(&open(3, "kieran@fsociety", None)), seat)
+            .expect("the window opens");
+
+        let managed = record.window(id(3)).expect("the window is managed");
+        assert_eq!(managed.geometry, Rect::new(0, 0, 300, 200));
+        assert!(effects.contains(&WmEffect::Configure {
+            window: id(3),
+            geometry: managed.geometry,
+            state: managed.state,
+        }));
+    }
+
+    /// A closed window leaves the record, and the focus it held is dropped rather than left pointing at it.
+    #[test]
+    fn a_closed_window_leaves_the_record() {
+        let mut record = session();
+        record
+            .open(
+                open_of(&open(4, "t", None)),
+                Standing {
+                    stack: &[],
+                    focus: None,
+                },
+            )
+            .expect("opens");
+        let stack = [id(4)];
+
+        let effects = record.close(
+            id(4),
+            Standing {
+                stack: &stack,
+                focus: Some(id(4)),
+            },
+        );
+
+        assert!(record.window(id(4)).is_none(), "the record holds no window");
+        assert_eq!(effects, [WmEffect::Focus(None)]);
+    }
+
+    /// A dialog is a dialog of the window it is transient for, on the same output.
+    #[test]
+    fn a_transient_window_follows_its_parent() {
+        let mut record = session();
+        record
+            .open(
+                open_of(&open(6, "main", None)),
+                Standing {
+                    stack: &[],
+                    focus: None,
+                },
+            )
+            .expect("opens");
+
+        record
+            .open(
+                open_of(&open(7, "open file", Some(id(6)))),
+                Standing {
+                    stack: &[id(6)],
+                    focus: None,
+                },
+            )
+            .expect("opens");
+
+        let child = record.window(id(7)).expect("the dialog is managed");
+        assert_eq!(child.transient_for, Some(id(6)));
+        assert_eq!(child.kind, WindowKind::Dialog);
+        assert_eq!(
+            child.output,
+            record.window(id(6)).expect("the parent is managed").output
+        );
+    }
+}
+
+/// The same paths over the stock provider (`gnoblin-std-wm`), whose placement and focus policy the assertions name.
+#[cfg(all(test, feature = "std-providers"))]
+mod tests {
+    use super::*;
+
+    use gnoblin_std_wm::Fallback;
+    use gnoblin_types::OutputId;
+    use gnoblin_wm_api::{Standing, WindowManager, WmEffect};
 
     fn session() -> Fallback {
         let mut fallback = Fallback::default();

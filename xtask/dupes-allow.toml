@@ -1453,10 +1453,10 @@ kind = "same-shape"
 reason = "the compat matrix's Kind names the three kinds of schema member a compat adapter supports; the SDK's MemberKind names the three kinds of catalog member a shell can look up through the ABI; the variant names coincide because both mirror the schema's property, method and signal"
 
 [[allow]]
-left = "gnoblin-wayland::Fallback"
+left = "gnoblin-std-wm::Fallback"
 right = "gnoblin-wm-api::NullWm"
 kind = "same-shape"
-reason = "both keep the record of windows and outputs the compositor reads for every provider; the stock provider's decisions over it and the null provider's differ entirely, and Fallback leaves for gnoblin-std-wm in M1.5"
+reason = "both keep the record of windows and outputs the compositor reads for every provider; the stock provider's decisions over it and the null provider's differ entirely"
 
 [[allow]]
 left = "gnoblin-shell-host::ManualClock"

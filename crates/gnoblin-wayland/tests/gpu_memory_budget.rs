@@ -22,6 +22,7 @@
 //! the `gnoblin` crate's `a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens`.
 
 mod session;
+mod stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

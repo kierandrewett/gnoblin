@@ -16,6 +16,8 @@
 //! protocol finished, which is why every pixel test crops the region it cares about
 //! instead of trusting the protocol's `ready`.
 
+mod stock;
+
 use std::fs::File;
 use std::io::Write;
 use std::os::fd::AsFd;
@@ -363,7 +365,7 @@ impl Session {
             privileged_socket_path: Some(privileged_socket.clone()),
             protocols,
             gpu_limits: limits,
-            ..Config::default()
+            ..crate::stock::config()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
         let handle = Handle {

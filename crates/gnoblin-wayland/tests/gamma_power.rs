@@ -7,6 +7,7 @@
 //! rather than trusting what the client was told.
 
 mod owned;
+mod stock;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};

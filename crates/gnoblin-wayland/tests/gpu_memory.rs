@@ -17,6 +17,7 @@
 //! the `gnoblin` crate for the series), and a real GPU's dmabuf import.
 
 mod session;
+mod stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

@@ -1524,6 +1524,8 @@ fn keyboard_changes_until(
     }
 }
 
+// A window takes the keyboard when it maps and on a click under the stock window manager; a core with no provider has no focus policy.
+#[cfg(feature = "std-providers")]
 #[test]
 fn a_shell_write_of_the_seat_focus_moves_the_keyboard_to_that_window() {
     use support::KeyboardFocus::{Enter, Leave};

@@ -18,6 +18,8 @@
 //! The behaviour that does not need a device (the protocol, the offer, every refusal, the surface
 //! life of a dmabuf window) is in `tests/dmabuf.rs` and runs everywhere.
 
+mod stock;
+
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
@@ -175,7 +177,7 @@ fn a_gpu_buffer_is_drawn_from_the_texture_the_compositor_imports() {
     let socket = directory.path().join("wayland-0.sock");
     let config = Config {
         socket_path: Some(socket.clone()),
-        ..Config::default()
+        ..crate::stock::config()
     };
     let server = Server::new(Box::new(backend), config).expect("the session starts");
     if !server.state().serves_dmabuf() {

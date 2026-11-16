@@ -5,6 +5,8 @@
 //! output and can never have one, so the loop returns a failure instead of serving nothing for ever. The headless
 //! backend states both through its handle, the same events a nested session's parent produces.
 
+mod stock;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -29,7 +31,7 @@ fn run_with(act: impl FnOnce(&HeadlessHandle) + Send + 'static) -> Ended {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let config = Config {
         socket_path: Some(directory.path().join("wayland-0.sock")),
-        ..Config::default()
+        ..crate::stock::config()
     };
     let backend = Headless::new();
     let handle = backend.handle();

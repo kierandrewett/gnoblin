@@ -15,6 +15,7 @@
 
 mod mock_gpu;
 mod owned;
+mod stock;
 
 use std::fs::File;
 use std::io::Write;

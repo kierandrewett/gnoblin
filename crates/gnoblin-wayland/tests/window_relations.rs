@@ -4,6 +4,7 @@
 //! launched window from stealing focus.
 
 mod session;
+mod stock;
 
 use gnoblin_render::transaction::TreeValue;
 use session::shell::Shell;

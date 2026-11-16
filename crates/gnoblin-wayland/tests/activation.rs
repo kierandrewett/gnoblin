@@ -5,6 +5,7 @@
 //! focused window is, and what the session recorded about the request.
 
 mod session;
+mod stock;
 
 use std::thread;
 use std::time::Duration;

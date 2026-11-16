@@ -21,7 +21,8 @@
 //!   a crash is the session's policy, and a server that never becomes ready is a failure
 //!   rather than a hang.
 //! - Window state is the compositor's own record, kept by a window-manager provider (`gnoblin-wm-api`'s
-//!   `WindowManager`; [`Config::window_manager`] names it, the stock one by default, `NullWm` with none): every map,
+//!   `WindowManager`; [`Config::window_manager`] names it, `NullWm` with none). The stock provider is `gnoblin-std-wm`'s
+//!   and the composition root registers it): every map,
 //!   unmap, configure, focus change and close is a call on it and comes back as an effect. While a shell holds the
 //!   tree the record is only kept current and the shell decides. Output rectangles come from `gnoblin-output`'s
 //!   layout engine, so the record and the `wl_output` globals agree on where a monitor is.
@@ -208,7 +209,6 @@ mod access;
 mod clock;
 mod devices;
 mod dispatch;
-mod fallback;
 mod frame;
 mod frame_policy;
 mod gpu_memory;
@@ -249,7 +249,7 @@ pub use clock::{Clock, ManualClock, SystemClock};
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT, ShotRefusal};
 pub use gnoblin_lock::State as LockState;
 /// The window management options a configuration carries, and the choices in them, which `gnoblin-wm-api` defines.
-pub use gnoblin_wm_api::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
+pub use gnoblin_wm_api::{DragConstraint, FocusMode, NewWindowFocus, WindowManagerFactory, WmOptions};
 /// The memory budget: the bounds, the ledger that enforces them and what a reader sees of it.
 pub use gpu_memory::{
     ClientMemory, DEFAULT_BUDGET_BYTES, DEFAULT_CLIENT_BYTES, DEFAULT_CLIENT_SURFACES, Ledger, LedgerSnapshot,
@@ -274,8 +274,7 @@ pub use output_control::{NoOutputControl, OutputControl};
 pub use server::{
     CAST_TIMEOUT, Config, ControlHandle, CursorSettings, DEFAULT_PRIVILEGED_SOCKET_NAME, DEFAULT_SOCKET_NAME,
     FOCUS_TIMEOUT, InputSink, LockCheck, LoopError, MonitorSettings, Server, StartupError, VisualAccessibilitySettings,
-    VisualBellScope, VisualBellSettings, WindowManagerFactory, default_privileged_socket_path,
-    privileged_socket_path_in,
+    VisualBellScope, VisualBellSettings, default_privileged_socket_path, privileged_socket_path_in,
 };
 /// The dispatch glue a redirect implements.
 ///

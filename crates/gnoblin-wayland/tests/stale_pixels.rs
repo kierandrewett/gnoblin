@@ -11,6 +11,7 @@
 //! session: window management and a scale change. The lock's reveal is in `session_lock.rs`.
 
 mod session;
+mod stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

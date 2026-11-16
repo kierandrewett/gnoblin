@@ -32,6 +32,8 @@
 //! talks to the session through the control handle, which is `Send`, exactly as a
 //! test kit would.
 
+mod stock;
+
 use std::io::Write;
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
@@ -181,7 +183,7 @@ impl Session {
             backend,
             Config {
                 visual_accessibility,
-                ..Config::default()
+                ..crate::stock::config()
             },
         )
     }
@@ -193,7 +195,7 @@ impl Session {
             backend,
             Config {
                 clock,
-                ..Config::default()
+                ..crate::stock::config()
             },
         )
     }

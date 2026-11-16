@@ -23,6 +23,8 @@ all = { level = "deny", priority = -1 }
 [dependencies]
 # The session the conformance suite runs against: the same engine the compositor serves clients with.
 gnoblin-wayland = { path = "../gnoblin-wayland" }
+# The window manager the suite's session runs: the stock one, as on the desktop (a conformance run is the default desktop).
+gnoblin-std-wm = { path = "../gnoblin-std-wm" }
 # The headless backend (one virtual output, the software renderer) and the input events a device injects.
 gnoblin-backend = { path = "../gnoblin-backend" }
 # Positions and output identities in the shared primitives.

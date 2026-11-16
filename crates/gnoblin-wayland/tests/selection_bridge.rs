@@ -12,6 +12,8 @@
 //! module). The host here is a second implementation of the data-device protocols only in the sense that it is not the
 //! nested backend; a different host (Sway, Weston) is run against the same scenarios by `scripts/real-host-conformance.sh`.
 
+mod stock;
+
 mod nested_host;
 mod session;
 
@@ -136,7 +138,7 @@ fn start_session(host: &nested_host::Handle) -> Hosted {
                 new_window_focus: NewWindowFocus::Allow,
                 ..WmOptions::default()
             },
-            ..Config::default()
+            ..crate::stock::config()
         };
         let server = Server::new(Box::new(nested), config).expect("the session starts");
         up.send(Hosted {

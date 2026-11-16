@@ -27,6 +27,8 @@
 //!   `a_refused_import_releases_nothing_it_did_not_take`,
 //!   `a_gpu_buffer_past_the_clients_limit_is_refused_before_the_importer_sees_it`
 
+mod stock;
+
 use std::io::Read;
 use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
@@ -208,7 +210,7 @@ impl Session {
         let config = Config {
             socket_path: Some(socket.clone()),
             gpu_limits: limits,
-            ..Config::default()
+            ..crate::stock::config()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
         let handle = Handle {

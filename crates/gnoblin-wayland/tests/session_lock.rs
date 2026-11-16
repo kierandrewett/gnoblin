@@ -10,6 +10,8 @@
 //! The tests are the crate's failure-mode list for this protocol, in the order
 //! `crates/gnoblin-wayland/src/protocols/ext_session_lock_v1.rs` states them.
 
+mod stock;
+
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -194,7 +196,7 @@ impl Session {
         let config = Config {
             socket_path: Some(socket.clone()),
             gpu_limits: limits,
-            ..Config::default()
+            ..crate::stock::config()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
         let handle = Handle {

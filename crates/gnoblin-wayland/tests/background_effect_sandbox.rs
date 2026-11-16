@@ -5,6 +5,7 @@
 //! client.
 
 mod owned;
+mod stock;
 
 use std::os::unix::net::UnixStream;
 

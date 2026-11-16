@@ -40,6 +40,7 @@ use gnoblin_render_frame::frame::Solid;
 use gnoblin_types::{DeviceId, OutputId, Point, Rect, Scale, Size};
 
 mod nested_host;
+mod stock;
 use nested_host::*;
 
 #[test]

@@ -9,6 +9,7 @@
 //! pixels a real client draws are `tests/surface_tree.rs`.
 
 mod session;
+mod stock;
 
 use std::time::{Duration, Instant};
 

@@ -40,6 +40,8 @@ fn the_socket_exists_with_mode_0600() {
     drop(session);
 }
 
+// A window takes the keyboard when it maps and on a click under the stock window manager; a core with no provider has no focus policy.
+#[cfg(feature = "std-providers")]
 #[test]
 fn an_ungranted_key_does_not_reach_a_wayland_client_and_a_granted_one_does() {
     let session = Session::start();
@@ -129,6 +131,8 @@ fn connect_session(portal: &mut IpcClient<UnixTransport>, session: &str) -> EiCl
     EiClient::connect(Path::new(&socket))
 }
 
+// A window takes the keyboard when it maps and on a click under the stock window manager; a core with no provider has no focus policy.
+#[cfg(feature = "std-providers")]
 #[test]
 fn an_approved_session_gets_its_own_socket_and_its_client_moves_the_pointer_and_types() {
     let session = Session::start();
@@ -270,6 +274,8 @@ fn one_sessions_approval_reaches_neither_another_session_nor_the_endpoints_clien
     });
 }
 
+// A window takes the keyboard when it maps and on a click under the stock window manager; a core with no provider has no focus policy.
+#[cfg(feature = "std-providers")]
 #[test]
 fn ending_a_session_releases_what_it_held_and_stops_its_events() {
     let session = Session::start();

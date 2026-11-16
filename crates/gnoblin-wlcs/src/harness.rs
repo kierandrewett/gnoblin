@@ -183,6 +183,8 @@ fn run_session(socket: PathBuf, ready: &mpsc::Sender<Started>) {
         },
         // A client that does not answer a ping would have its windows marked unresponsive in the middle of a test.
         check_alive_timeout: Duration::ZERO,
+        // The conformance suite runs against the stock desktop: the window manager that places and focuses windows.
+        window_manager: Some(gnoblin_std_wm::factory()),
         ..Config::default()
     };
     let server = match Server::new(Box::new(Headless::new()), config) {

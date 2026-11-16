@@ -99,6 +99,9 @@ pub mod portal;
 mod renderer;
 mod schema;
 mod session_tables;
+/// The stock providers, registered when the `std-providers` feature is on.
+#[cfg(feature = "std-providers")]
+mod std_providers;
 mod window_management;
 mod xwayland;
 
@@ -436,6 +439,13 @@ impl Compositor {
         let wayland = gnoblin_wayland::Config {
             observer: Some(observer),
             tree: tree.hooks(),
+            // The stock window manager is the provider of a session that names none, with the feature on; without
+            // it the session has no provider and runs `NullWm`.
+            #[cfg(feature = "std-providers")]
+            window_manager: config
+                .wayland
+                .window_manager
+                .or_else(|| Some(std_providers::window_manager())),
             ..config.wayland
         };
         // The guardian's report goes out once the server is ready, and the X11 factory reports the

@@ -6,6 +6,7 @@
 //! connection arrived on, which is the only thing that decides their visibility.
 
 mod session;
+mod stock;
 
 use std::io::Read;
 use std::os::fd::AsFd;

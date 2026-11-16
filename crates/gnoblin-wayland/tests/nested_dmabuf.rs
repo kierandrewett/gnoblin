@@ -19,6 +19,7 @@
 
 mod mock_gpu;
 mod nested_host;
+mod stock;
 
 use std::fs::File;
 use std::os::unix::fs::FileExt;

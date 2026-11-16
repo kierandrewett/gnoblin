@@ -10,6 +10,15 @@ publish.workspace = true
 [lints]
 workspace = true
 
+# The std tier (design/modular-framework.md, 9.1 and 9.4) that is compiled into the compositor until the C ABI carries
+# it (M2.11). With the feature on, the compositor registers the stock providers of its `std_providers` module; with it off
+# (`--no-default-features`) it is the core: a session with no provider, whose window manager is `NullWm`. This is
+# the one edge from core to a std crate that `xtask deps` (`std-below-core`) allows, and each std dependency below is
+# optional and named by this feature.
+[features]
+default = ["std-providers"]
+std-providers = ["dep:gnoblin-std-wm", "gnoblin-wayland/std-providers"]
+
 [dependencies]
 # Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
 gnoblin-secret.workspace = true
@@ -30,6 +39,8 @@ gnoblin-paint.workspace = true
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # The colour transform rows each named colour filter draws with.
 gnoblin-a11y = { path = "../gnoblin-a11y" }
+# The stock window manager, registered as the session's provider behind `std-providers`.
+gnoblin-std-wm = { path = "../gnoblin-std-wm", optional = true }
 # The cursor providers and theme lookup the compositor reads its cursor settings from.
 gnoblin-cursor = { path = "../gnoblin-cursor" }
 # The X11 supervisor and window policy. A session with X11 starts Xwayland under it;

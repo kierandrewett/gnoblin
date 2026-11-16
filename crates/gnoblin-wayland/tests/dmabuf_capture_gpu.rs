@@ -11,6 +11,8 @@
 //! (gVisor, no `/dev/dri`), so there it prints what was missing and returns; it is compiled and linked on every gate and
 //! only *run* on a machine with a GPU or a virtual one (`vkms`, `virtio-gpu`). A skip is deliberate and loud.
 
+mod stock;
+
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
@@ -86,7 +88,7 @@ fn a_frame_is_blitted_into_a_real_gpu_buffer_the_right_way_up() {
     let config = Config {
         socket_path: Some(socket.clone()),
         privileged_socket_path: Some(privileged.clone()),
-        ..Config::default()
+        ..crate::stock::config()
     };
     let server = Server::new(Box::new(backend), config).expect("the session starts");
     if !server.state().serves_dmabuf() {

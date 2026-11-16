@@ -20,6 +20,8 @@
 //! Smithay posts a protocol error by closing the offending connection. The refusal test
 //! reads the error code the client receives and checks a second client still connects.
 
+mod stock;
+
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -119,7 +121,7 @@ impl Session {
         let config = Config {
             socket_path: Some(socket.clone()),
             wm,
-            ..Config::default()
+            ..crate::stock::config()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
         let handle = Handle {
@@ -593,6 +595,8 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for App {
     }
 }
 
+// The stock window manager's focus policy (rotation, modal handover, raise, refusal of a window with no output) decides this.
+#[cfg(feature = "std-providers")]
 #[test]
 fn a_modal_dialog_takes_focus_from_its_parent_and_is_reported_modal() {
     Session::start_allowing_focus().run(|session| {

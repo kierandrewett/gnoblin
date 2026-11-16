@@ -53,7 +53,7 @@ use gnoblin_capture::{SessionId, Target};
 use gnoblin_config::Protocols;
 use gnoblin_output::LayoutError;
 use gnoblin_types::{ClientId, OutputId, Rect, WindowId};
-use gnoblin_wm_api::{NullWm, WindowManager, WmOptions};
+use gnoblin_wm_api::{WindowManagerFactory, WmOptions};
 
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
@@ -277,8 +277,8 @@ pub struct Config {
     /// names a scripted authenticator and the user it is asked about, so the lock is exercised without PAM.
     pub lock_check: Option<LockCheck>,
     /// Builds the window-manager provider the session starts with, or [`None`] for a session with no provider, which
-    /// runs [`NullWm`]: windows at the origin and no focus policy. The default is the stock provider, which keeps the
-    /// default desktop's behaviour.
+    /// runs `NullWm`: windows at the origin and no focus policy. The default is [`None`]: this crate holds no
+    /// stock provider, and the composition root registers one (`gnoblin-compositor`'s `std-providers` feature).
     pub window_manager: Option<WindowManagerFactory>,
 }
 
@@ -297,32 +297,6 @@ impl std::fmt::Debug for LockCheck {
             .debug_struct("LockCheck")
             .field("user", &self.user)
             .finish_non_exhaustive()
-    }
-}
-
-/// Builds the window-manager provider a session starts with. A factory rather than a provider, so a [`Config`] stays
-/// `Clone` and the provider is made on the thread that runs the session.
-#[derive(Clone)]
-pub struct WindowManagerFactory(Arc<dyn Fn() -> Box<dyn WindowManager> + Send + Sync>);
-
-impl WindowManagerFactory {
-    /// A factory that calls `make` once for the session.
-    pub fn new(make: impl Fn() -> Box<dyn WindowManager> + Send + Sync + 'static) -> Self {
-        Self(Arc::new(make))
-    }
-
-    /// The provider a session starts with: the factory's, or [`NullWm`] without one.
-    fn start(factory: Option<Self>) -> Box<dyn WindowManager> {
-        match factory {
-            Some(factory) => (factory.0)(),
-            None => Box::<NullWm>::default(),
-        }
-    }
-}
-
-impl std::fmt::Debug for WindowManagerFactory {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_struct("WindowManagerFactory").finish_non_exhaustive()
     }
 }
 
@@ -356,9 +330,7 @@ impl Default for Config {
             window_process_override: None,
             pipewire_socket: None,
             lock_check: None,
-            window_manager: Some(WindowManagerFactory::new(|| {
-                Box::new(crate::fallback::Fallback::default())
-            })),
+            window_manager: None,
         }
     }
 }

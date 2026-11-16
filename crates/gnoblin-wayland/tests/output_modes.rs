@@ -7,6 +7,7 @@
 //! windows. What it does not prove: a DRM modeset on hardware, or the GLES renderer's readback of a mirror.
 
 mod session;
+mod stock;
 
 use std::time::{Duration, Instant};
 

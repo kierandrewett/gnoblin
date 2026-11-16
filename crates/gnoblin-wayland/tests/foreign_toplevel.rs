@@ -8,6 +8,7 @@
 //! merely acknowledged look identical from the protocol.
 
 mod session;
+mod stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

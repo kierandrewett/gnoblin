@@ -5,7 +5,7 @@
 //! output its rectangle and the insets layer surfaces reserved. The policy is a handful of pure decisions over it:
 //!
 //! - a new window cascades from (32, 32) by 32 px per visible window on its output
-//!   ([`gnoblin_types::cascade_position`]), or is centred over its parent;
+//!   (`cascade_position`), or is centred over its parent;
 //! - maximise fills the work area, fullscreen covers the output, and leaving either returns the floating rectangle;
 //! - minimise hides the window and hands focus on; closing the focused window does the same;
 //! - activating a window focuses it and, when asked, raises it. A raised window stays under every fullscreen one;
@@ -21,15 +21,17 @@
 
 use std::collections::BTreeMap;
 
-use gnoblin_types::{Insets, OutputId, Point, Rect, Size, WindowId, cascade_position};
+use gnoblin_types::{Insets, OutputId, Point, Rect, Size, WindowId};
 use gnoblin_wm_api::{
     DEFAULT_SIZE, MAX_WINDOWS, NewWindowFocus, Open, OutputRecord, Standing, Window, WindowKind, WindowManager,
     WindowState, WmEffect, WmRefusal,
 };
 
+use crate::cascade::cascade_position;
+
 /// The record of windows and outputs, and the decisions over it.
 #[derive(Debug, Default)]
-pub(crate) struct Fallback {
+pub struct Fallback {
     windows: BTreeMap<WindowId, Window>,
     outputs: Vec<OutputRecord>,
 }

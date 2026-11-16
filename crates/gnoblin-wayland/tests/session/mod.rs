@@ -289,7 +289,7 @@ impl Session {
             wm,
             tree,
             gpu_limits: limits,
-            ..Config::default()
+            ..crate::stock::config()
         };
         Self::launch(backend, config)
     }

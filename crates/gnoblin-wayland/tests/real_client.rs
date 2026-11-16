@@ -17,6 +17,8 @@
 //! The tests below are the crate's "failure modes first" list, one to an item; the
 //! crate documentation names which test covers which mode.
 
+mod stock;
+
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -115,7 +117,7 @@ impl Session {
             backend,
             Config {
                 check_alive_timeout: timeout,
-                ..Config::default()
+                ..crate::stock::config()
             },
         )
     }
@@ -130,7 +132,7 @@ impl Session {
                     new_window_focus: NewWindowFocus::Allow,
                     ..WmOptions::default()
                 },
-                ..Config::default()
+                ..crate::stock::config()
             },
         )
     }
@@ -575,7 +577,7 @@ fn session_on(wm: WmOptions, clock: Arc<dyn Clock>) -> Session {
         Config {
             wm,
             clock,
-            ..Config::default()
+            ..crate::stock::config()
         },
     )
 }
@@ -672,6 +674,8 @@ fn a_new_window_does_not_take_focus_under_the_default_policy() {
     });
 }
 
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn a_second_client_takes_focus_and_a_click_switches_it_back() {
     let session = Session::start_allowing_focus(Headless::new());
@@ -798,6 +802,8 @@ fn a_configure_that_is_never_acknowledged_does_not_stall_the_session() {
     });
 }
 
+// The stock window manager's focus policy (rotation, modal handover, raise, refusal of a window with no output) decides this.
+#[cfg(feature = "std-providers")]
 #[test]
 fn a_window_with_no_output_to_land_on_is_not_managed() {
     let session = Session::start(Headless::empty());
@@ -931,7 +937,7 @@ fn a_socket_left_by_a_crashed_session_is_replaced() {
     std::fs::write(&socket, b"stale").expect("a stale file");
     let config = Config {
         socket_path: Some(socket.clone()),
-        ..Config::default()
+        ..crate::stock::config()
     };
     let server = Server::new(Box::new(Headless::new()), config).expect("the stale socket is replaced");
     let control = server.control();
@@ -1354,6 +1360,8 @@ fn assert_pointer_at(got: Option<(f64, f64)>, want: (f64, f64), what: &str) {
     );
 }
 
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn overlapping_windows_at_equal_depth_go_to_the_last_drawn_and_a_raise_moves_the_winner() {
     let session = session_on(WmOptions::default(), Arc::new(ManualClock::new()));
@@ -1516,6 +1524,8 @@ fn topmost(observation: &SessionSnapshot) -> Option<&str> {
         .map(|window| window.title.as_str())
 }
 
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn raise_on_click_raises_the_window_pressed_in_its_exposed_part() {
     let session = session_on(WmOptions::default(), Arc::new(ManualClock::new()));
@@ -1760,11 +1770,15 @@ fn the_keyboard_changes_windows(with_input_method: bool) {
     });
 }
 
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn a_text_input_hears_one_leave_and_one_enter_when_the_keyboard_changes_windows() {
     the_keyboard_changes_windows(true);
 }
 
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn a_text_input_hears_one_leave_and_one_enter_when_the_keyboard_changes_windows_without_an_input_method() {
     the_keyboard_changes_windows(false);

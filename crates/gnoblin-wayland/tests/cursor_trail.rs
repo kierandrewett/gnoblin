@@ -13,6 +13,8 @@
 //! The nested scenarios hold the parent's frame callbacks, which is the only way to make "the parent is behind" a
 //! fact of the test rather than a race: a session pointer moves faster than a parent answers frame callbacks.
 
+mod stock;
+
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -590,7 +592,7 @@ fn a_real_nested_session_leaves_one_cursor_under_a_busy_pointer() {
             let nested = Nested::connect(&NestedConfig::new(&host_socket)).expect("the session connects to the host");
             let config = Config {
                 socket_path: Some(directory.path().join("session-0.sock")),
-                ..Config::default()
+                ..crate::stock::config()
             };
             let server = Server::new(Box::new(nested), config).expect("the session starts");
             let control = server.control();

@@ -7,6 +7,7 @@
 //! leave alone: an acknowledged surface, a surface whose `xdg_surface` is gone, and the null attach that unmaps.
 
 mod session;
+mod stock;
 
 use session::{Client, Session};
 use wayland_client::backend::WaylandError;

@@ -91,6 +91,7 @@ members = [
     "crates/gnoblin-services",
     "crates/gnoblin-session",
     "crates/gnoblin-shell-discovery",
+    "crates/gnoblin-std-wm",
     "crates/gnoblin-testkit",
     "crates/gnoblin-tree-client",
     "crates/gnoblin-types",

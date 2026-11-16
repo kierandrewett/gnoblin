@@ -282,7 +282,7 @@ impl Session {
                 .clock
                 .unwrap_or_else(|| std::sync::Arc::new(gnoblin_wayland::SystemClock)),
             pipewire_socket: extras.pipewire_socket,
-            ..Config::default()
+            ..crate::stock::config()
         };
         let mut headless = if extras.gles {
             Headless::with_config(gnoblin_backend::headless::HeadlessConfig::gles()).expect("a GLES headless session")

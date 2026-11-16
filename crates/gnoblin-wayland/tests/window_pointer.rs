@@ -6,6 +6,7 @@
 //! its client hears `wl_surface.enter` and, when the shell hides it, `wl_surface.leave`.
 
 mod session;
+mod stock;
 
 use gnoblin_backend::InputEvent;
 use gnoblin_render::transaction::TreeValue;

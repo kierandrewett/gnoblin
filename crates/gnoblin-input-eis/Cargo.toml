@@ -26,6 +26,8 @@ gnoblin-log = { path = "../gnoblin-log" }
 [dev-dependencies]
 # The headless compositor the real-client suite drives.
 gnoblin-wayland = { path = "../gnoblin-wayland" }
+# The stock window manager the test session runs.
+gnoblin-std-wm = { path = "../gnoblin-std-wm" }
 # The client half of the protocols those tests exercise.
 wayland-client = "0.31.14"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }

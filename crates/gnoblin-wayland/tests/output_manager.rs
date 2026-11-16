@@ -4,6 +4,7 @@
 //! a fresh manager announces them under the serial its first publish set.
 
 mod owned;
+mod stock;
 
 use std::collections::HashMap;
 use std::sync::Arc;

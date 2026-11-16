@@ -1,0 +1,20 @@
+[package]
+name = "gnoblin-std-wm"
+description = "The stock window manager: the Fallback provider a desktop runs while no shell holds the tree, and the cascade it places windows with."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Std tier (design/modular-framework.md, 9.1): this crate decides what the desktop does by convention. It implements the
+# provider contract of `gnoblin-wm-api` and names the shared primitives and nothing else of the workspace, so it never
+# reaches the compositor or the engine (`std-below-core` in `xtask deps` enforces both).
+[dependencies]
+# The trait, the records and the effects the provider speaks in.
+gnoblin-wm-api = { path = "../gnoblin-wm-api" }
+# Rectangles, insets and identities.
+gnoblin-types.workspace = true
+
+[lints]
+workspace = true

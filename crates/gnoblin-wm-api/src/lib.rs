@@ -12,13 +12,15 @@
 //! - the records and vocabulary it speaks in: [`Window`], [`OutputRecord`], [`Open`], [`Standing`], [`WmEffect`] and
 //!   [`WmRefusal`];
 //! - the window management options a configuration document carries, [`WmOptions`] and its three choices;
-//! - [`NullWm`].
+//! - [`NullWm`], and the [`WindowManagerFactory`] a configuration names a provider with.
 
+mod factory;
 mod manager;
 mod null;
 mod policy;
 mod window;
 
+pub use factory::WindowManagerFactory;
 pub use manager::WindowManager;
 pub use null::NullWm;
 pub use policy::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};

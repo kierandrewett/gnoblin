@@ -47,6 +47,8 @@ impl Watcher {
     }
 }
 
+// A window takes the keyboard when it maps and on a click under the stock window manager; a core with no provider has no focus policy.
+#[cfg(feature = "std-providers")]
 #[test]
 fn a_shell_lists_watches_and_focuses_through_gnoblinctl() {
     let session = Session::start();
