@@ -1,7 +1,7 @@
 // Shared host connection, error reporting and canvas state for the UI toolkit.
 
 import { GnoblinError, errorCodeOfRefusal } from "gnoblin-core/errors";
-import type { UiBackend } from "gnoblin-std/ui/backend";
+import type { UiBackend } from "gnoblin-core/host/ui_backend";
 import type { Canvas } from "gnoblin-std/ui/canvas";
 import type { Text } from "gnoblin-std/ui/text";
 

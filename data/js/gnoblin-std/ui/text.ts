@@ -2,7 +2,7 @@
 
 import { Box } from "gnoblin-std/ui/box";
 import type { BoxOptions } from "gnoblin-std/ui/box";
-import type { UiAnswer } from "gnoblin-std/ui/backend";
+import type { UiAnswer } from "gnoblin-core/host/ui_backend";
 import { DEFAULT_FONT, DEFAULT_TEXT_COLOUR, DEFAULT_TEXT_SIZE } from "gnoblin-std/ui/paint";
 import type { Color, PaintOp } from "gnoblin-std/ui/paint";
 import { host, measuring, reportError } from "gnoblin-std/ui/state";

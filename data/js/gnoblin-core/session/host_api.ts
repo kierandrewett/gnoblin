@@ -9,8 +9,7 @@ import { find } from "gnoblin-core/session/find";
 import type { FindSource, Scalar } from "gnoblin-core/session/find";
 import { FocusHistory } from "gnoblin-core/session/focus_history";
 import type { HistoryClient } from "gnoblin-core/session/focus_history";
-import type { Host, HostEvent, Version } from "gnoblin-core/session/types";
-import type { TrackEndedEvent } from "gnoblin-std/transition/types";
+import type { Host, HostEvent, TrackEndedEvent, Version } from "gnoblin-core/session/types";
 
 /** Object lists and focus state supplied by the shell. */
 export interface ApiSources extends FindSource {

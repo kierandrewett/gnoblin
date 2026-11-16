@@ -1,7 +1,7 @@
 // The script-facing import path for Gnoblin's UI toolkit: Canvas, Box, Text, Icon and Grid.
 // The toolkit draws shell UI using the canvas and compositor paint operations.
 
-export type { UiBackend, UiAnswer, UiRawEvent } from "gnoblin-std/ui/backend";
+export type { UiBackend, UiAnswer, UiRawEvent } from "gnoblin-core/host/ui_backend";
 export { attachUi } from "gnoblin-std/ui/state";
 export { utf8, encodePaintList } from "gnoblin-std/ui/paint";
 export type { Color, PaintOp } from "gnoblin-std/ui/paint";

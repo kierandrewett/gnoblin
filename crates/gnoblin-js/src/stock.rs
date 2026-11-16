@@ -321,7 +321,6 @@ mod tests {
         ("gnoblin-core/host/adoption", "gnoblin-std/host/workspace"),
         ("gnoblin-core/host/adoption", "gnoblin-std/host/workspace_state"),
         ("gnoblin-core/host/adoption", "gnoblin-std/host/workspaces"),
-        ("gnoblin-core/host/client", "gnoblin-std/host/client_animation"),
         ("gnoblin-core/host/client", "gnoblin-std/host/desks"),
         ("gnoblin-core/host/client", "gnoblin-std/host/membership"),
         ("gnoblin-core/host/client", "gnoblin-std/host/style_scopes"),
@@ -330,7 +329,6 @@ mod tests {
         ("gnoblin-core/host/client", "gnoblin-std/reposition"),
         ("gnoblin-core/host/client", "gnoblin-std/style/resolve"),
         ("gnoblin-core/host/client", "gnoblin-std/style/style"),
-        ("gnoblin-core/host/client", "gnoblin-std/transition/easing"),
         ("gnoblin-core/host/client", "gnoblin-std/transition/engine"),
         ("gnoblin-core/host/client", "gnoblin-std/transition/transition"),
         ("gnoblin-core/host/client", "gnoblin-std/transition/types"),
@@ -361,7 +359,6 @@ mod tests {
         ("gnoblin-core/host/context", "gnoblin-std/host/workspace_state"),
         ("gnoblin-core/host/context", "gnoblin-std/transition/engine"),
         ("gnoblin-core/host/context", "gnoblin-std/transition/staging"),
-        ("gnoblin-core/host/contract", "gnoblin-std/ui/backend"),
         ("gnoblin-core/host/entry", "gnoblin-std/host/layout_driver"),
         ("gnoblin-core/host/entry", "gnoblin-std/host/snapshot"),
         ("gnoblin-core/host/entry", "gnoblin-std/host/workspaces"),
@@ -414,8 +411,6 @@ mod tests {
         ("gnoblin-core/host/services", "gnoblin-std/snap"),
         ("gnoblin-core/host/services", "gnoblin-std/window_state"),
         ("gnoblin-core/input/context", "gnoblin-std/display/display"),
-        ("gnoblin-core/session/host_api", "gnoblin-std/transition/types"),
-        ("gnoblin-core/session/types", "gnoblin-std/transition/types"),
     ];
 
     /// `gnoblin-std` depends on `gnoblin-core`, never the reverse: a shell that only needs the machinery runs on

@@ -1,5 +1,6 @@
 // The options and results of `gnoblin.requestTransition`, plus the host interface used by the transition engine.
 
+import type { TrackEndedEvent } from "gnoblin-core/session/types";
 import type { Easing } from "gnoblin-std/transition/easing";
 import type { MakeError, Staging } from "gnoblin-std/transition/staging";
 
@@ -65,14 +66,4 @@ export interface TransitionHost {
     error: MakeError;
 }
 
-/** The compositor's word that a timed write ended (`track_ended`), as the host hands it over. */
-export interface TrackEndedEvent {
-    /** The node the write was to. */
-    node: number;
-    /** The property's tree key: `x`, `opacity`, `rotation`. */
-    property: string;
-    /** True when the track reached its target; false for every other end. */
-    completed: boolean;
-    /** The `tween` node the write joined; 0 for none. */
-    tween: number;
-}
+export type { TrackEndedEvent };

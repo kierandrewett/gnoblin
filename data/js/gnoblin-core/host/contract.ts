@@ -7,7 +7,7 @@ import type { InputHost } from "gnoblin-core/input/host";
 import type { InputMessage } from "gnoblin-core/input/messages";
 import type { LockBackend } from "gnoblin-core/lock";
 import type { HostValue, NodeId } from "gnoblin-core/types";
-import type { UiBackend } from "gnoblin-std/ui/backend";
+import type { UiBackend } from "gnoblin-core/host/ui_backend";
 
 /** A listener or task failure saved until the shell retrieves frame errors. */
 export interface ErrorReport {

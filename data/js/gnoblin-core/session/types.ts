@@ -3,7 +3,6 @@
 import type { ErrorCode } from "gnoblin-core/errors";
 import type { ClockHost } from "gnoblin-core/operation";
 import type { ExitEvent } from "gnoblin-core/process";
-import type { TrackEndedEvent } from "gnoblin-std/transition/types";
 
 /** Lock states reported by the compositor. */
 export type LockState = "unlocked" | "covering" | "locked" | "failsafe";
@@ -140,3 +139,15 @@ interface TrackEndedMessage extends TrackEndedEvent {
 
 /** Events delivered to `HostApi.frame`. */
 export type HostEvent = OperationEvent | SignalMessage | LostMessage | ExitEvent | TrackEndedMessage;
+
+/** The compositor's word that a timed write ended (`track_ended`), as the host hands it over. */
+export interface TrackEndedEvent {
+    /** The node the write was to. */
+    node: number;
+    /** The property's tree key: `x`, `opacity`, `rotation`. */
+    property: string;
+    /** True when the track reached its target; false for every other end. */
+    completed: boolean;
+    /** The `tween` node the write joined; 0 for none. */
+    tween: number;
+}

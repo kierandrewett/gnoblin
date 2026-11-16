@@ -1,7 +1,7 @@
 // Pointer and keyboard events delivered to canvas handlers.
 
 import type { Canvas } from "gnoblin-std/ui/canvas";
-import type { UiRawEvent } from "gnoblin-std/ui/backend";
+import type { UiRawEvent } from "gnoblin-core/host/ui_backend";
 
 /**
  * The compositor sends this event to the canvas it hits, then to its parents until a handler calls `stop()`.
