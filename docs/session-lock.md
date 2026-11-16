@@ -224,23 +224,51 @@ file. A zone the card cannot read shows UTC.
 
 ### What this protects, and what it cannot
 
-The compositor's card keeps the password in a wiped buffer from the first key, and the check runs on a worker the shell
-never sees.
+The lock stops other people at the keyboard. It does not protect the session from the shell. The shell is a process of
+your own: your session starts it, it runs your `init.ts`, and whatever can read its memory can already read your keyring,
+your agent sockets and every other password you type.
 
-The shell's screen cannot do as much, because the password passes through the script. Decision J8 says Rust draws the
-lock password entry, and the stock screen departs from it. The compositor's card is the entry whenever the screen is
-absent, not alive or not answering.
+Who can see what you type at a locked session:
 
-The entry keeps what is typed as an array of code points, not as a string.
+- Someone at the keyboard sees a mask. A wrong password and an empty one never unlock the session, through the shell's
+  screen or the card: the check and its rate limit are the compositor's.
+- A window of your session hears nothing. No key reaches a window while the session is locked.
+- A program that reads the tree, such as `gnoblinctl`, sees nothing. The password is the `authenticate` call's secret
+  text and no property holds it.
+- The logs hold nothing. A failed check logs one warning without the password.
+- The compositor sees every key and runs the check, through the shell's screen or the card.
+- The shell, and the modules your `init.ts` imports, see every key and the password as one string for the check, when the
+  shell's screen is the entry. They see nothing when the card is.
 
-It overwrites the array when the call is made. The one string the password is built into lives for the call to
-`authenticate`.
+A module you import that wants the password can have it. Replace the stock screen only with code you trust, and keep
+modules you did not read out of an `init.ts` you use on a machine you lock.
+
+The compositor's card keeps the password in a wiped buffer from the first key. It is the entry whenever the shell's
+screen is absent, not alive or not answering.
+
+The entry keeps what is typed as an array of code points, not as a string, and overwrites the array when the call is
+made. The one string the password is built into lives for the call to `authenticate`.
 
 A JavaScript string cannot be wiped. That copy, and the one in each key event, stay in the script engine's heap until the
 collector frees them, and the engine may have copied them again.
 
-The shell is the compositor's own trusted peer for the lock, but a script that wants to keep a password can. Replace the
-stock screen only with code you trust.
+### When the shell fails
+
+The cover and the unlock check are the compositor's, so the session stays locked whatever the shell does, and a wrong
+or an empty password never unlocks it. What the shell's failure changes is who takes the password:
+
+- The shell hangs, is frozen, spins in a handler or a reload, or throws in its lock frame: the card takes the password
+  3 seconds after the last beat (a 2 second lease and 1 second of grace).
+- The shell crashes or is killed: the card takes it at once, and the restarted shell takes the screen back.
+- The shell is slow but renews inside 2 seconds: the shell's screen takes it, and the card never appears.
+- The shell is slower than that for a stretch and then recovers: the card takes it for the stretch, and the screen takes
+  it back.
+
+The three seconds do not depend on the shell's budgets. A frame may use 5 seconds and a module load 30. The tests spin a
+script for 10 seconds, longer than the bound, and the card unlocks the session inside the spin.
+
+The compositor does not wait for the shell. Its tree answers a second connection within milliseconds while the shell is
+inside a call, and while a frozen shell's socket is not read.
 
 ### Tests
 
@@ -253,23 +281,46 @@ stock screen only with code you trust.
     - the password is in no node of the tree.
 - `crates/gnoblin-js/tests/write_refusals.rs` runs the same screen over the shared fake compositor, which can refuse a
   transaction as the real one does: a check lost to a `stale-base` refusal is answered `failed` and the next Enter is an
-  attempt, a check nobody answers fails after 30 s, and the screen renews its lease twice a second while it is up and not
-  after it comes down.
+  attempt, a check nobody answers fails after 30 s, the screen renews its lease twice a second while it is up and not after
+  it comes down, and a lock frame that throws renews nothing.
 - `crates/gnoblin-compositor/tests/lock_card.rs` runs against the real compositor with a scripted check in place of PAM:
     - with no shell the right password unlocks the session;
     - a wrong one does not, and the card still takes the right one after it;
     - a shell that holds the lock screen keeps the card away, and one that dies brings it back;
     - a shell that attaches while the card is up takes over;
     - a shell that stays attached and `engaged` but stops renewing its lease loses the lock UI to the card.
-- `crates/gnoblin/tests/js_lock.rs` runs the JavaScript shell against the real compositor:
-    - no shell and the card, the shell's screen painted under the `lock` node and engaged;
-    - a wrong password answered on it, and the right one unlocking and the screen coming down;
-    - a password check the compositor refused `stale-base` (forged on the way out, because the harness has no other way
-      to make the real compositor's base stale) answered `failed` on the screen, which takes the next attempt;
-    - a shell that stops ticking while engaged losing the lock UI to the card.
+- `crates/gnoblin/tests/js_lock.rs` runs the JavaScript shell against the real compositor: no shell and the card, the
+  shell's screen painted under the `lock` node, a wrong password answered on it, the right one unlocking, and a check the
+  compositor refused `stale-base` answered `failed` on the screen.
+- `crates/gnoblin/tests/js_lock_failures.rs` fails the shell against the real compositor. For each failure it asserts that
+  the session stays locked, that a wrong and an empty password never unlock it, that the right one does, and how long
+  the card took. The failures:
+    - a shell that hangs;
+    - one whose lock frame throws every frame;
+    - one that crashes;
+    - a slow shell that renews in time, and one that does not;
+    - a script that spins in a frame handler, and one that spins in a reload (10 seconds each, every read of the tree
+      timed).
+- `crates/gnoblin/tests/js_lock_boundary.rs` pins what the lock keeps back: a window that had the keyboard hears nothing
+  typed at the shell's screen or at the card, and the password is in no node of the tree, typed or checked.
+- `crates/gnoblin/tests/js_guardian.rs` kills the real runtime process while the session is locked (the session stays
+  locked and the restarted shell holds the screen again) and freezes it with `SIGSTOP` while a window floods the tree with
+  1.4 MB of title changes (the compositor's tree answers within 150 ms and the session stays locked).
 
-No test reads the output's pixels. That the card and the shell's screen are drawn over the cover is shown by the tree's
-paint lists and the compositor's frame path, not by a screenshot.
+The capture embargo, the input gate and the log are pinned where they live: `a_covered_client_receives_no_input` and
+`a_scroll_while_locked_reaches_only_the_lock_surface` (`crates/gnoblin-wayland/tests/session_lock.rs`),
+`the_lock_cuts_every_reader_of_a_view_and_none_is_served_a_picture_from_before_it`
+(`crates/gnoblin-wayland/tests/view_capture_e2e.rs`), `a_capture_while_the_lock_is_being_established_is_refused_by_name`
+(`crates/gnoblin-compositor/tests/capture_screen.rs`) and `a_failed_check_logs_one_warning_without_the_password`
+(`crates/gnoblin-wayland/src/lock_auth.rs`).
+
+Not proven:
+
+- No test reads the output's pixels. That the card and the shell's screen are drawn over the cover is shown by the
+  tree's paint lists and the compositor's frame path, not by a screenshot.
+- The password check is a scripted double, not PAM. `GNOBLIN_PAM_TEST=1` runs the real one by hand.
+- The real runtime process is killed and frozen, but no test types at it, because the real session has no key
+  injection. The card taking a password after a kill is proved in-process.
 
 ## Portal and remote access while locked
 

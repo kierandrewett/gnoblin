@@ -261,7 +261,7 @@ gnoblin.outputs.profiles.add(side);
 | `transform` | `"normal"`: the others are refused, as for `output.apply`.                                              |
 | `position`  | `{ x, y }`, or one of `rightOf`, `leftOf`, `above` and `below` naming another profile, with `align`.    |
 | `enabled`   | `false` switches the output off.                                                                        |
-| `vrr`       | Accepted and reported as not applied: the output request has no variable refresh rate key yet.          |
+| `vrr`       | Not applied yet: accepted and reported, because the output request has no variable refresh rate key.    |
 
 - **By hardware.** `match: { make: "BOE", model: "Panel", serial: "SN42" }` finds a monitor whatever port it is on.
   `output.make`, `output.model` and `output.identity` show what a connected display reports.
@@ -361,11 +361,12 @@ gnoblin.input.primary.bind("Super+Tab", () => {
 **What is drawn.** Windows sit directly under the tree root and keep their own positions, so the shell has no
 per-display root to transform. A camera on a viewport is kept and reads back, and nothing more is applied:
 
-- A `Camera2D` that is not the identity (`zoom` 1, `position` 0, `rotation` 0) is reported once per reload as not
-  applied.
-- A `Camera3D` is reported once per reload as `not applied: camera3d (needs a projected workspace)`. A flat-workspace
-  perspective projection is renderer work.
-- `viewport.clearColor` is kept; the compositor has no background colour behind a workspace to apply it to.
+- A `Camera2D` that is not the identity (`zoom` 1, `position` 0, `rotation` 0) is not applied yet: it is reported once
+  per reload as not applied.
+- A `Camera3D` is not applied yet: it is reported once per reload as `not applied: camera3d (needs a projected
+workspace)`. A flat-workspace perspective projection is renderer work.
+- `viewport.clearColor` is not applied yet: it is kept, and the compositor has no background colour behind a workspace
+  to apply it to.
 
 A layout can place windows in depth with `z`, `rotation` and `scale`; the camera does not add to that.
 

@@ -27,6 +27,8 @@ use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xd
 use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
+pub mod lock_session;
+
 // ---- the scene, read as an observer ------------------------------------------------------------------------------
 
 fn version() -> Version {
@@ -536,6 +538,14 @@ impl Mapper {
     /// Creates a toplevel and maps it with a buffer of 200 by 150.
     pub fn map_window(&mut self, app_id: &str, title: &str) {
         self.map_window_sized(app_id, title, 200, 150);
+    }
+
+    /// Sets the title of window number `window` (in the order they were mapped) and waits for the round trip. A title
+    /// is a change the compositor publishes to every subscriber of the tree, so a client that sets a long one over and
+    /// over is the cheapest way to make the compositor talk.
+    pub fn set_title(&mut self, window: usize, title: &str) {
+        self.windows[window].2.set_title(title.to_owned());
+        self.roundtrip();
     }
 
     /// Creates a toplevel and maps it with a buffer of `width` by `height`.

@@ -69,6 +69,24 @@ Inputs (all in `design/js-research/`):
     Why: A crashed or reloading runtime must never leave the keyring, polkit or the lock without a UI. See
     `popups-portals.md`.
 
+    Recorded exception (lane LockCritique, 2026-11-16). The lock password entry is the one place J8 is not followed: the
+    stock lock screen (`data/js/gnoblin/lock.ts`) draws the entry and collects the password in the script engine, and
+    Rust checks it (`authenticate`, PAM) and is the only thing that unlocks. The compositor's own card
+    (`gnoblin-wayland/src/lock_card.rs`) is the Rust-owned entry, and it is the entry whenever the shell's screen is
+    absent, not alive or not answering: the screen holds a lease (`heartbeat`, 2 s) and the card takes the password 1 s
+    after it lapses, or at once when the shell is gone.
+
+    Why the screen stays the shell's. The lock exists to stop other people at the keyboard, and the shell is the user's
+    own process (same uid, their `init.ts`): whoever can read its memory can already read the keyring, the agent sockets
+    and every other password typed in the session. A Rust-owned entry that the shell could only style needs a tree
+    class for the entry and a second paint path inside a script-drawn card, and it protects against nothing the shell
+    process's own privileges leave open. It becomes the right design the day the shell runs with fewer privileges than
+    the user (another uid, a sandbox); until then the boundary is pinned by tests and written down in `docs/session-lock.md`,
+    "What this protects, and what it cannot". The tests: `crates/gnoblin/tests/js_lock_failures.rs` (hang, throw, crash, slow,
+    a script that spins in a frame handler or a reload), `js_lock_boundary.rs` (no window hears the password; it is in no
+    node of the tree), `js_guardian.rs` (a killed and a frozen runtime process under a lock) and
+    `crates/gnoblin-js/tests/write_refusals.rs` (a lost check is answered; a lock frame that throws renews no lease).
+
 - **J9.** The Lua shell stays as the reference until the JS shell passes the same golden geometry corpus. Then delete
   `gnoblin-lua`, `gnoblin-lua-sandbox`, `data/lua/**` and the Lua docs.
 

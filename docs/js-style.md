@@ -187,8 +187,8 @@ What the active renderer does not draw stays on the node, and the node's `skippe
 (`border: unsupported-by-renderer`). A client reads it as `client.styleWarnings`; `seat.effect_kinds` lists the kinds
 the renderer draws. The style itself reports only what no renderer could draw.
 
-`background`, `filter` and inset shadows have no effect kind. They stay in `computedStyle`, and each one a style sets is
-reported once per reload as `not applied: style.<property>: <reason>`.
+`background`, `filter` and inset shadows have no effect kind and are not applied yet. They stay in `computedStyle`, and
+each one a style sets is reported once per reload as `not applied: style.<property>: <reason>`.
 
 A window holds at most 16 effects (at most 8 shadows and 8 borders, and the blur).
 

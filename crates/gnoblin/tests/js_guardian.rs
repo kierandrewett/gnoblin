@@ -358,6 +358,112 @@ fn killing_the_runtime_process_hands_the_windows_to_the_fallback_policy_until_th
     );
 }
 
+// ---- the runtime process fails while the session is locked ---------------------------------------------------------
+
+/// The lock the compositor's tree holds, read as an observer.
+fn lock_view(session: &Session) -> support::lock_session::LockView {
+    support::lock_session::view(&session.ipc())
+}
+
+/// Whether the shell's lock screen is up: the session is locked, the shell has engaged the lock and its screen is
+/// painted in the tree.
+fn lock_screen_is_up(seen: &support::lock_session::LockView) -> bool {
+    seen.state == "locked" && seen.engaged && seen.texts.iter().any(|text| text == "Enter your password.")
+}
+
+/// Waits until the shell's lock screen is up, reading the lock at every step and failing on a session that is not locked.
+#[track_caller]
+fn wait_for_the_lock_screen(session: &Session, what: &str) {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        let seen = lock_view(session);
+        assert_eq!(seen.state, "locked", "{what}: the session is not locked: {seen:?}");
+        if lock_screen_is_up(&seen) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "never reached: {what}; the lock is {seen:?}; the session said:\n{}",
+            session.log()
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn killing_the_runtime_process_while_the_session_is_locked_leaves_it_locked_and_the_restarted_shell_holds_the_screen_again()
+ {
+    let session = Session::start(&init_at(111, 222));
+    session.wait_for_log("configuration revision 1 accepted");
+    support::take_lock(&session.ipc());
+    wait_for_the_lock_screen(&session, "the shell's lock screen comes up under the lock");
+
+    // The process dies as a crash does. The cover is the compositor's: the session is locked at every look from here until
+    // the guardian has started the runtime again and its shell holds the lock screen again.
+    let pid = runtime_pid(&session.log());
+    rustix::process::kill_process(Pid::from_raw(pid).expect("a pid"), Signal::KILL).expect("the runtime is killed");
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        let seen = lock_view(&session);
+        assert_eq!(
+            seen.state, "locked",
+            "the session is not locked after the shell was killed: {seen:?}"
+        );
+        if session.log().contains("started runtime (generation 2") && lock_screen_is_up(&seen) {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the restarted shell never held the lock screen; the lock is {seen:?}; the session said:\n{}",
+            session.log()
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_runtime_process_frozen_while_the_session_is_locked_leaves_it_locked_and_the_compositor_answering_with_its_socket_full()
+ {
+    let session = Session::start(&init_at(111, 222));
+    session.wait_for_log("configuration revision 1 accepted");
+    let mut mapper = session.mapper();
+    mapper.map_window("org.example.noisy", "Noisy");
+    support::take_lock(&session.ipc());
+    wait_for_the_lock_screen(&session, "the shell's lock screen comes up under the lock");
+
+    // The process is stopped, not killed: its sockets stay open and nothing reads them. The window's title is set to a
+    // long one over and over, and every change is published to the shell that holds the tree, so what the compositor
+    // writes to it fills the socket's buffer (about 200 KB) in a second or two. The compositor must not wait for the
+    // shell to read: a second connection is answered all the while, and the session stays locked.
+    let pid = Pid::from_raw(runtime_pid(&session.log())).expect("a pid");
+    rustix::process::kill_process(pid, Signal::STOP).expect("the runtime is stopped");
+    let frozen = Instant::now();
+    let mut slowest = Duration::ZERO;
+    let mut round = 0_u32;
+    while frozen.elapsed() < Duration::from_secs(9) {
+        round += 1;
+        mapper.set_title(0, &format!("{round:>06} {}", "x".repeat(3500)));
+        let asked = Instant::now();
+        let seen = lock_view(&session);
+        slowest = slowest.max(asked.elapsed());
+        assert_eq!(
+            seen.state, "locked",
+            "the session is not locked while the shell is frozen: {seen:?}"
+        );
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    eprintln!("a frozen shell: {round} titles of 3.5 KB set, the slowest read of the tree {slowest:?}");
+    assert!(
+        slowest < Duration::from_secs(2),
+        "a read of the tree took {slowest:?} while the shell was frozen: the compositor waited for it"
+    );
+
+    // The process is let go. Either it resumes and holds the screen, or the compositor dropped the connection that never
+    // read, and the guardian has started a shell that does. Either way the session was locked throughout.
+    rustix::process::kill_process(pid, Signal::CONT).expect("the runtime continues");
+    wait_for_the_lock_screen(&session, "a shell holds the lock screen after the freeze");
+}
+
 // ---- the JavaScript role owns the configuration -------------------------------------------------------------------
 
 /// The `document` of the configuration the compositor holds, and its revision, read through `gnoblinctl`.
