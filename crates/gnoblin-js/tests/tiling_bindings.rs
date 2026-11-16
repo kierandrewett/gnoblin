@@ -400,6 +400,42 @@ fn a_cancelled_dwindle_drag_gives_the_split_back_to_the_layouts_ratio() {
     assert_eq!(rect(&rig, 5), "300,240,700,560");
 }
 
+#[test]
+fn dwindle_with_smart_resizing_off_moves_both_dividers_that_bound_the_tile() {
+    // Hyprland's `smart_resizing = false` resizes by the window's tiling position: the split above the window and the
+    // nearest one of the other direction above that both follow the pointer, each along its own axis. Window 3 sits left
+    // of 4 over 5; a press in 5 has the inner divider (y = 400) and the outer one (x = 500) to move.
+    let mut rig = world(3, "new DwindleLayout({ smartResizing: false })");
+    let drag = Drag::press(&mut rig, RESIZE, (900.0, 700.0));
+    drag.to(&mut rig, (800.0, 780.0));
+    assert_eq!(rect(&rig, 3), "0,0,400,800", "the outer divider moved 100 left");
+    assert_eq!(rect(&rig, 4), "400,0,600,480", "and the inner one 80 down");
+    assert_eq!(rect(&rig, 5), "400,480,600,320");
+    drag.cancel(&mut rig, (800.0, 780.0));
+    assert_eq!(rect(&rig, 3), "0,0,500,800", "a cancel puts both back");
+    assert_eq!(rect(&rig, 4), "500,0,500,400");
+    // Pressed in 3 only the outer split is above it: one axis, as for every layout.
+    let drag = Drag::press(&mut rig, RESIZE, (100.0, 300.0));
+    drag.to(&mut rig, (150.0, 380.0));
+    assert_eq!(rect(&rig, 3), "0,0,550,800");
+    assert_eq!(rect(&rig, 4), "550,0,450,400", "the vertical travel moved nothing");
+    drag.release(&mut rig, (150.0, 380.0));
+}
+
+#[test]
+fn dwindle_with_smart_resizing_on_moves_the_divider_nearest_the_press_alone() {
+    let mut rig = world(3, "new DwindleLayout({ smartResizing: true })");
+    let drag = Drag::press(&mut rig, RESIZE, (900.0, 700.0));
+    drag.to(&mut rig, (800.0, 780.0));
+    assert_eq!(rect(&rig, 3), "0,0,500,800", "the outer divider stayed");
+    assert_eq!(
+        rect(&rig, 4),
+        "500,0,500,480",
+        "the inner one, 300 from the press, followed the pointer down"
+    );
+    drag.release(&mut rig, (800.0, 780.0));
+}
+
 // ---- configuration --------------------------------------------------------------------------------------------------
 
 #[test]

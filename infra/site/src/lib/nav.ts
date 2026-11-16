@@ -119,6 +119,7 @@ export const NAV: NavSection[] = [
                     { label: "Organise config files", slug: "recipes/organize-config-files" },
                     { label: "Named workspaces", slug: "recipes/put-apps-on-named-workspaces" },
                     { label: "Window frame parts", slug: "recipes/window-frame" },
+                    { label: "Dwindle like Hyprland", slug: "recipes/dwindle-like-hyprland" },
                 ],
             },
         ],

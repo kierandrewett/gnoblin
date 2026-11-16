@@ -113,6 +113,8 @@ export interface SplitState {
     start: Point;
     /** Divider ratio when the drag started. */
     startRatio: number;
+    /** The second divider the same drag moves along the other axis (`LayoutSplit.cross`), or null. */
+    cross: { split: LayoutSplit; startRatio: number } | null;
 }
 
 /**
@@ -131,6 +133,12 @@ export interface LayoutSplit {
     readonly min: number;
     /** Highest ratio the layout allows. */
     readonly max: number;
+    /**
+     * A second divider, on the other axis, that the same drag moves: the pointer's travel along `cross.axis` moves it as
+     * the travel along `axis` moves this one. A layout offers one when a drag is to resize a tile by both of the
+     * dividers that bound it (Hyprland's dwindle with `smart_resizing` off). Absent or null: one divider.
+     */
+    readonly cross?: LayoutSplit | null;
     /** Current divider position as a ratio. */
     ratio: number;
     /** Puts the split back as it was when `findSplit` returned it: a drag cancelled. */
@@ -147,7 +155,8 @@ interface SplitSource {
  * the tiles on both sides follow it while the pointer is down. The layout decides which divider that is and how its
  * ratio is held (`Layout.findSplit`); a layout with no divider (a grid, a monocle) has none, and this declines. The
  * ratio is live, so a release keeps it and a cancel puts it back. A window that is not tiled, or is fullscreen or
- * maximised, declines.
+ * maximised, declines. A layout may hand back a second divider on the other axis (`LayoutSplit.cross`); the same
+ * drag then moves both, each by the pointer's travel along its own axis.
  */
 export class SplitResizeBinding extends PointerDragBinding {
     constructor(options: Partial<PointerDragBindingOptions> = {}) {
@@ -166,22 +175,39 @@ export class SplitResizeBinding extends PointerDragBinding {
         if (split === null || split === undefined || !(split.span > 0)) {
             return false;
         }
-        return { split, start: { ...position }, startRatio: split.ratio };
+        const { cross } = split;
+        const second = cross !== null && cross !== undefined && cross.span > 0;
+        return {
+            split,
+            start: { ...position },
+            startRatio: split.ratio,
+            cross: second ? { split: cross, startRatio: cross.ratio } : null,
+        };
     }
 
-    /** Updates the divider ratio from pointer travel. */
+    /** Updates the divider ratios from pointer travel. */
     onUpdate(event: DragEvent, state: object): void {
-        const { split, start, startRatio } = state as SplitState;
+        const { split, start, startRatio, cross } = state as SplitState;
         if (!event.position) {
             return;
         }
-        const travel = split.axis === "x" ? event.position.x - start.x : event.position.y - start.y;
-        const ratio = startRatio + (split.direction * travel) / split.span;
-        split.ratio = Math.max(split.min, Math.min(split.max, ratio));
+        follow(split, startRatio, start, event.position);
+        if (cross !== null) {
+            follow(cross.split, cross.startRatio, start, event.position);
+        }
     }
 
     /** Restores the divider position from before the drag. */
     onCancel(_event: DragEvent, state: object): void {
-        (state as SplitState).split.reset();
+        const { split, cross } = state as SplitState;
+        split.reset();
+        cross?.split.reset();
     }
+}
+
+/** Sets `split` to where the pointer's travel since `start` carries it from `startRatio`. */
+function follow(split: LayoutSplit, startRatio: number, start: Point, at: Point): void {
+    const travel = split.axis === "x" ? at.x - start.x : at.y - start.y;
+    const ratio = startRatio + (split.direction * travel) / split.span;
+    split.ratio = Math.max(split.min, Math.min(split.max, ratio));
 }

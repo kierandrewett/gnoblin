@@ -111,7 +111,9 @@ you drag. A release keeps the ratio, and a cancel puts it back. What a divider i
 
 - `MasterStackLayout` has one, between the master and the stack. Its `ratio` changes, held to 0.1 to 0.9.
 - `DwindleLayout` has one for each split. The drag changes the ratio of the split it took and leaves the others.
-  `layout.ratio` is still what every split that nobody dragged uses.
+  `layout.ratio` is still what every split that nobody dragged uses. With `smartResizing: false` the drag moves two
+  dividers, the split above the tile and the nearest one of the other direction above that, each by the pointer's
+  travel along its own axis: its `LayoutSplit` has a `cross`.
 - A layout with no divider declines. That is a grid, or a master stack with a single window.
 
 To drag a divider of your own layout, return a `LayoutSplit` from `findSplit`:
@@ -170,8 +172,12 @@ class Halves extends Layout {
 ```
 
 `span` is the pixels of pointer travel that change the ratio by 1, and `direction` is -1 when moving the pointer right or
-down shrinks the ratio. A layout that keeps its own record of who sits where can also define `onClientsSwapped(a, b)`, which
-runs when a swap trades two windows. `DwindleLayout` uses it to trade two leaves of its tree.
+down shrinks the ratio. Two more members are optional:
+
+- `cross` is a second `LayoutSplit` on the other axis. The same drag moves both, each by the pointer's travel along its own
+  axis, and a cancel resets both.
+- `onClientsSwapped(a, b)` is defined on the layout, not the divider. It runs when a swap trades two windows, for a layout
+  that keeps its own record of who sits where. `DwindleLayout` uses it to trade two leaves of its tree.
 
 To trade two windows from a script, call `workspace.clients.swap(a, b)`. Both must be in the workspace.
 

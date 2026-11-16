@@ -21,6 +21,8 @@ A save reloads the running shell, and `gnoblinctl config reload` does it on requ
   windows to stable workspace IDs.
 - [Fill a window frame with your own parts](/recipes/window-frame): put the buttons on the left, draw a border and a
   glow with no titlebar, or add a status strip and a resize handle.
+- [Dwindle like Hyprland](/recipes/dwindle-like-hyprland): keep a split's direction, preselect where the next window
+  opens, rotate and swap splits, pseudotile a window, and bind each to a key.
 
 See the [shell API](/shell-api) for the objects and the [configuration guides](/guides/window_rules) for behaviour and
 tradeoffs. The cursor theme, pointer feedback and tablet settings cannot be set from `init.ts`, so they have no recipe.

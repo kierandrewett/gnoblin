@@ -215,6 +215,9 @@ gnoblin.workspaces.add(new Workspace({ id: "dev", layout: new MasterStackLayout(
 
 ![Three terminals tiled by a dwindle layout](images/js-shell/dwindle.png)
 
+A split goes side by side or top to bottom by the shape of its cell, as in Hyprland's dwindle layout; the options and the
+actions that bind to keys are in [Dwindle like Hyprland](/recipes/dwindle-like-hyprland).
+
 A client that draws its own title bar, as `foot` does when decorations are off, keeps it. The window is its window
 geometry, the bar included, so a window the shell places at the top-left corner has its bar on the screen and is the
 size the shell asked for:

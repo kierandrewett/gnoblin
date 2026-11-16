@@ -75,14 +75,14 @@ A slide takes no time while the seat asks for reduced motion. See [Tweens and ea
 `workspace.layout` decides where the windows of a workspace go. Give it a layout object, and its options in the
 constructor:
 
-| Layout              | Places windows                                                  | Options                                                               |
-| ------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `FloatingLayout`    | Where they are put.                                             | `placement` (`smart`, `center`, `cascade`), `cascadeStep`, `triggers` |
-| `MasterStackLayout` | A master column and a stack.                                    | `masterCount`, `ratio`, `gap`, `orientation`, `triggers`              |
-| `GridLayout`        | In equal cells.                                                 | `columns` (a number or `"auto"`), `gap`, `triggers`                   |
-| `MonocleLayout`     | One at a time, filling the area. `KioskLayout` places the same. | none                                                                  |
-| `DwindleLayout`     | By halving the space of the last window for each new one.       | `split`, `ratio`, `gap`                                               |
-| `StripLayout`       | In a scrolling strip of columns, the view following the focus.  | `column`                                                              |
+| Layout              | Places windows                                                                          | Options                                                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `FloatingLayout`    | Where they are put.                                                                     | `placement` (`smart`, `center`, `cascade`), `cascadeStep`, `triggers`                                               |
+| `MasterStackLayout` | A master column and a stack.                                                            | `masterCount`, `ratio`, `gap`, `orientation`, `triggers`                                                            |
+| `GridLayout`        | In equal cells.                                                                         | `columns` (a number or `"auto"`), `gap`, `triggers`                                                                 |
+| `MonocleLayout`     | One at a time, filling the area. `KioskLayout` places the same.                         | none                                                                                                                |
+| `DwindleLayout`     | By halving the cell of the focused window for each new one, as Hyprland's dwindle does. | `split`, `ratio`, `gap`, `triggers` and Hyprland's options: [Dwindle like Hyprland](/recipes/dwindle-like-hyprland) |
+| `StripLayout`       | In a scrolling strip of columns, the view following the focus.                          | `column`                                                                                                            |
 
 To place windows your own way, extend `Layout` and return one placement for each window from `compute`. It runs when the
 workspace changes, not on every frame, and a throw leaves the last placement in place.
