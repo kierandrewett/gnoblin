@@ -9,8 +9,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::error::JsTsError;
 use crate::loader::JsTypeScriptModule;
-use crate::ts::strip_types;
+use crate::ts::strip_shared;
 
 /// The stock desktop, and the only description of it: `data/js/starter/init.ts`. `gnoblinctl config init` writes this
 /// text byte for byte, and the shell runs the same text, as the embedded module [`STARTER_MODULE_NAME`], when there is
@@ -101,17 +102,21 @@ pub fn stock_sources_in(dir: Option<&Path>) -> HashMap<String, JsTypeScriptModul
         .collect()
 }
 
-/// The JavaScript of the stock module `name`, whose TypeScript is `source` (read from `path`). A source that does not
-/// strip becomes a module that throws the reason when it is imported, because a panic or a missing module in a
-/// compositor-side process is worse than an error where the module is used.
+/// The JavaScript of the stock module `name`, whose TypeScript is `source` (read from `path`). The types are stripped
+/// once per process ([`strip_shared`]), so every generation and every test that imports the library shares the result.
+/// A source that does not strip becomes a module that throws the reason when it is imported, because a panic or a
+/// missing module in a compositor-side process is worse than an error where the module is used.
 pub(crate) fn javascript_of(name: &str, path: &Path, source: &str) -> String {
-    match strip_types(path, source) {
-        Ok(stripped) => stripped.code,
-        Err(error) => {
-            let reason = error.to_string().replace(['\\', '"', '\n'], " ");
-            format!("throw new Error(\"stock module {name} does not compile: {reason}\");\n")
-        }
+    match strip_shared(path, source) {
+        Ok(stripped) => stripped.code.clone(),
+        Err(error) => failing_module(name, &error),
     }
+}
+
+/// The module that stands in for stock module `name` when its source did not strip: it throws `error`'s text.
+pub(crate) fn failing_module(name: &str, error: &JsTsError) -> String {
+    let reason = error.to_string().replace(['\\', '"', '\n'], " ");
+    format!("throw new Error(\"stock module {name} does not compile: {reason}\");\n")
 }
 
 #[cfg(test)]

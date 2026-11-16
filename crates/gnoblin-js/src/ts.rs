@@ -6,7 +6,9 @@
 //! (`generation` does the remap). Syntax errors are reported against the original text, because
 //! the parser never sees the stripped form.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use oxc_allocator::Allocator;
 use oxc_codegen::{Codegen, CodegenOptions};
@@ -65,6 +67,35 @@ pub fn strip_types(path: &Path, source: &str) -> Result<JsStripped, JsTsError> {
         code: generated.code,
         map: generated.map.map(SourceMap::into_owned),
     })
+}
+
+/// The stripped form of a stock module this process already made: path, the source it was made from, and the result.
+type SharedStrips = Mutex<HashMap<PathBuf, (String, Arc<JsStripped>)>>;
+
+static SHARED_STRIPS: LazyLock<SharedStrips> = LazyLock::new(SharedStrips::default);
+
+/// [`strip_types`] for a module whose text does not change while the process runs (the stock library): the types of
+/// one `path` and `source` are stripped once per process, and every generation, loader and test reads the same
+/// result, code and source map. A different `source` at the same `path` (a stock directory that was edited) is
+/// stripped again and replaces the entry. A failure is not kept, so it is reported each time it is asked for.
+pub(crate) fn strip_shared(path: &Path, source: &str) -> Result<Arc<JsStripped>, JsTsError> {
+    let table = &*SHARED_STRIPS;
+    {
+        let held = table.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((text, stripped)) = held.get(path)
+            && text == source
+        {
+            return Ok(Arc::clone(stripped));
+        }
+    }
+    // Stripped outside the lock: two threads that ask for a module at the same moment may both strip it, and the
+    // second result replaces the first, which is the same text.
+    let stripped = Arc::new(strip_types(path, source)?);
+    table
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(path.to_path_buf(), (source.to_owned(), Arc::clone(&stripped)));
+    Ok(stripped)
 }
 
 /// Builds the error for `diagnostic`, located at its first label in `source`.
@@ -149,6 +180,24 @@ mod tests {
     fn source_map_is_produced() {
         let stripped = strip_types(Path::new("/src/m.ts"), "const n: number = 1;\n").expect("valid TypeScript");
         assert!(stripped.map.is_some());
+    }
+
+    #[test]
+    fn shared_strip_is_made_once_per_path_and_source() {
+        let path = Path::new("/src/shared-once.ts");
+        let first = super::strip_shared(path, "export const n: number = 1;\n").expect("valid TypeScript");
+        let again = super::strip_shared(path, "export const n: number = 1;\n").expect("valid TypeScript");
+        assert!(
+            std::sync::Arc::ptr_eq(&first, &again),
+            "the same source is not stripped twice"
+        );
+        assert!(first.map.is_some(), "the shared result keeps the source map");
+        let edited = super::strip_shared(path, "export const n: number = 2;\n").expect("valid TypeScript");
+        assert!(
+            !std::sync::Arc::ptr_eq(&first, &edited),
+            "an edited source is stripped again"
+        );
+        assert!(edited.code.contains("= 2"), "{}", edited.code);
     }
 
     #[test]

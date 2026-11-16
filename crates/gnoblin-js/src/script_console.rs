@@ -204,15 +204,15 @@ impl JsScriptConsole {
             .lines()
             .filter_map(split_frame)
             .find(|frame| frame.file != PRELUDE_FILE)?;
-        let (line, column) = self
-            .load
-            .remap(frame.file, frame.line, frame.column)
-            .unwrap_or((frame.line, frame.column));
+        let (file, line, column) = match self.load.remap(frame.file, frame.line, frame.column) {
+            Some(at) => (at.file, at.line, at.column),
+            None => (frame.file.to_owned(), frame.line, frame.column),
+        };
         let file = self
             .root
             .as_deref()
-            .and_then(|root| std::path::Path::new(frame.file).strip_prefix(root).ok())
-            .map_or_else(|| frame.file.to_owned(), |relative| relative.display().to_string());
+            .and_then(|root| std::path::Path::new(&file).strip_prefix(root).ok())
+            .map_or_else(|| file.clone(), |relative| relative.display().to_string());
         Some(format!("{file}:{line}:{column}"))
     }
 

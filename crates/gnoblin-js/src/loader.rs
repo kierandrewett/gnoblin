@@ -23,13 +23,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gnoblin_config::Language;
-use oxc_sourcemap::SourceMap;
 use rquickjs::loader::{ImportAttributes, Loader, Resolver};
 use rquickjs::{Ctx, Error, Module, Result};
 
 use crate::bytecode::{Digest, JsBytecodeCache};
 use crate::error::{JsError, JsLoadError, JsLocation};
-use crate::ts::{position, strip_types};
+use crate::ts::{JsStripped, position, strip_shared, strip_types};
 
 mod files;
 use files::resolve_file;
@@ -37,12 +36,25 @@ use files::resolve_file;
 /// The source map of a `.ts` module: made when it was stripped, or still to be made from its source.
 #[derive(Debug)]
 enum MapSlot {
-    Ready(SourceMap<'static>),
-    /// The module's bytecode came from the cache, so the types were never stripped in this process.
-    Pending {
-        path: PathBuf,
-        text: String,
+    /// Stripped in this process: `path` is the source file a stack frame names, and `stripped` holds the map.
+    Ready { path: PathBuf, stripped: Arc<JsStripped> },
+    /// A user's module whose bytecode came from the cache, so the types were never stripped in this process.
+    Pending { path: PathBuf, text: String },
+    /// A stock module whose bytecode came from the cache: its text is in the table the loader was given.
+    PendingStock {
+        typescript: Arc<HashMap<String, JsTypeScriptModule>>,
     },
+}
+
+/// Where a position in stripped JavaScript is in the author's source.
+#[derive(Debug)]
+pub(crate) struct Remapped {
+    /// The source file.
+    pub(crate) file: String,
+    /// The 1-based line in it.
+    pub(crate) line: u32,
+    /// The 1-based column in it.
+    pub(crate) column: u32,
 }
 
 /// What the resolver and loader of one generation share with it: the source maps of the `.ts` files
@@ -103,31 +115,53 @@ impl JsLoadState {
         self.failure.borrow_mut().take();
     }
 
-    /// Maps a 1-based `line` and `column` in the stripped JavaScript of module `file` to the 1-based
-    /// position in the `.ts` source, or `None` when `file` has no source map (plain JavaScript).
+    /// Maps a 1-based `line` and `column` in the stripped JavaScript of module `file` to the file and 1-based
+    /// position in the `.ts` source, or `None` when `file` has no source map (plain JavaScript). The file is the
+    /// module's own name for a file module and the path of the stock source for a stock module.
     ///
     /// A module whose bytecode came from the cache was never stripped in this process, so its map is made here, from
-    /// the source, the first time a stack names it. The stripper is deterministic, so it is the map the compiled
-    /// code was made with.
-    pub(crate) fn remap(&self, file: &str, line: u32, column: u32) -> Option<(u32, u32)> {
+    /// the source, the first time a stack names it (a stock module's through the shared strip). The stripper is
+    /// deterministic, so it is the map the compiled code was made with.
+    pub(crate) fn remap(&self, file: &str, line: u32, column: u32) -> Option<Remapped> {
         let mut maps = self.maps.borrow_mut();
-        let slot = maps.get_mut(file)?;
-        if let MapSlot::Pending { path, text } = slot {
-            match strip_types(path, text).ok().and_then(|stripped| stripped.map) {
-                Some(map) => *slot = MapSlot::Ready(map),
+        let made = match maps.get(file)? {
+            MapSlot::Ready { .. } => None,
+            MapSlot::Pending { path, text } => Some(strip_types(path, text).ok().map(|stripped| MapSlot::Ready {
+                path: path.clone(),
+                stripped: Arc::new(stripped),
+            })),
+            MapSlot::PendingStock { typescript } => Some(typescript.get(file).and_then(|module| {
+                strip_shared(&module.path, &module.source)
+                    .ok()
+                    .map(|stripped| MapSlot::Ready {
+                        path: module.path.clone(),
+                        stripped,
+                    })
+            })),
+        };
+        if let Some(made) = made {
+            match made {
+                Some(slot) => {
+                    maps.insert(file.to_owned(), slot);
+                }
                 None => {
                     maps.remove(file);
                     return None;
                 }
             }
         }
-        let MapSlot::Ready(map) = maps.get(file)? else {
+        let MapSlot::Ready { path, stripped } = maps.get(file)? else {
             return None;
         };
+        let map = stripped.map.as_ref()?;
         let table = map.generate_lookup_table();
         // QuickJS counts from 1, the source map from 0.
         let token = map.lookup_token_approx(&table, line.saturating_sub(1), column.saturating_sub(1))?;
-        Some((token.get_src_line() + 1, token.get_src_col() + 1))
+        Some(Remapped {
+            file: path.display().to_string(),
+            line: token.get_src_line() + 1,
+            column: token.get_src_col() + 1,
+        })
     }
 }
 
@@ -242,9 +276,12 @@ struct ModuleText<'a> {
     text: Cow<'a, str>,
     /// The path the stripper reports diagnostics against, and the path of a `.ts` file whose map is kept.
     path: PathBuf,
-    /// Whether a stack frame in this module is remapped through a source map: a user's `.ts` file. The stock
-    /// library has none (its stack frames name the stripped text).
+    /// Whether a stack frame in this module is remapped through a source map: a `.ts` file, the stock library
+    /// included (its frames name the stock `.ts` file and line).
     mapped: bool,
+    /// Whether the module is stock: its text does not change while the process runs, so the types are stripped once
+    /// per process and the result, source map included, is shared by every generation.
+    shared: bool,
     /// Whether the bytecode cache may hold this module. Test modules embedded as JavaScript are not worth a file.
     cacheable: bool,
 }
@@ -288,6 +325,7 @@ impl JsLoader {
                 text: Cow::Borrowed(source),
                 path: PathBuf::from(name),
                 mapped: false,
+                shared: false,
                 cacheable: false,
             });
         }
@@ -296,7 +334,8 @@ impl JsLoader {
                 kind: Language::TypeScript,
                 text: Cow::Borrowed(&module.source),
                 path: module.path.clone(),
-                mapped: false,
+                mapped: true,
+                shared: true,
                 cacheable: true,
             });
         }
@@ -326,6 +365,7 @@ impl JsLoader {
             text: Cow::Owned(text),
             path: canonical,
             mapped: kind == Language::TypeScript,
+            shared: false,
             cacheable: true,
         })
     }
@@ -334,17 +374,32 @@ impl JsLoader {
     fn javascript(&self, name: &str, origin: ModuleText<'_>) -> std::result::Result<String, JsError> {
         match origin.kind {
             Language::JavaScript => Ok(origin.text.into_owned()),
-            Language::TypeScript if origin.mapped => {
-                let stripped = strip_types(&origin.path, &origin.text)?;
-                if let Some(map) = stripped.map {
-                    self.state
-                        .maps
-                        .borrow_mut()
-                        .insert(name.to_owned(), MapSlot::Ready(map));
+            Language::TypeScript if origin.shared => match strip_shared(&origin.path, &origin.text) {
+                Ok(stripped) => {
+                    let code = stripped.code.clone();
+                    self.state.maps.borrow_mut().insert(
+                        name.to_owned(),
+                        MapSlot::Ready {
+                            path: origin.path,
+                            stripped,
+                        },
+                    );
+                    Ok(code)
                 }
-                Ok(stripped.code)
+                Err(error) => Ok(crate::stock::failing_module(name, &error)),
+            },
+            Language::TypeScript => {
+                let mut stripped = strip_types(&origin.path, &origin.text)?;
+                let code = std::mem::take(&mut stripped.code);
+                self.state.maps.borrow_mut().insert(
+                    name.to_owned(),
+                    MapSlot::Ready {
+                        path: origin.path,
+                        stripped: Arc::new(stripped),
+                    },
+                );
+                Ok(code)
             }
-            Language::TypeScript => Ok(crate::stock::javascript_of(name, &origin.path, &origin.text)),
         }
     }
 
@@ -370,7 +425,14 @@ impl Loader for JsLoader {
         if let Some(digest) = &digest
             && let Some(module) = self.cache.declare(ctx, digest, name)
         {
-            if origin.mapped {
+            if origin.shared {
+                self.state.maps.borrow_mut().insert(
+                    name.to_owned(),
+                    MapSlot::PendingStock {
+                        typescript: Arc::clone(&self.typescript),
+                    },
+                );
+            } else if origin.mapped {
                 self.state.maps.borrow_mut().insert(
                     name.to_owned(),
                     MapSlot::Pending {

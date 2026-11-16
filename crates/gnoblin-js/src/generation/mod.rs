@@ -517,23 +517,25 @@ impl JsGeneration {
     }
 }
 
-/// Rewrites every frame of `stack` whose file has a source map, and returns the location of the first
-/// frame that has a file and a line.
+/// Rewrites every frame of `stack` whose file has a source map (a user's `.ts` file or a stock module) to the `.ts`
+/// file and position that wrote it, and returns the location of the first frame that has a file and a line.
 pub(crate) fn remap_stack(load: &JsLoadState, stack: &str) -> (String, Option<JsLocation>) {
     let mut out = String::with_capacity(stack.len());
     let mut first = None;
     for line in stack.lines() {
         let rewritten = match split_frame(line) {
             Some(frame) => {
-                let (line_no, column) = load
-                    .remap(frame.file, frame.line, frame.column)
-                    .unwrap_or((frame.line, frame.column));
+                let (file, line_no, column) = match load.remap(frame.file, frame.line, frame.column) {
+                    Some(at) => (at.file, at.line, at.column),
+                    None => (frame.file.to_owned(), frame.line, frame.column),
+                };
+                let text = format!("{}{file}:{line_no}:{column}{}", frame.before, frame.after);
                 first.get_or_insert_with(|| JsLocation {
-                    file: PathBuf::from(frame.file),
+                    file: PathBuf::from(file),
                     line: line_no,
                     column,
                 });
-                format!("{}{}:{line_no}:{column}{}", frame.before, frame.file, frame.after)
+                text
             }
             None => line.to_owned(),
         };
