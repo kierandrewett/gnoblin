@@ -131,8 +131,9 @@ fn rig(comp: &Comp, init: &str) -> Rig {
     }
 }
 
-const PRELUDE: &str = "import { Workspace, Layout, FloatingLayout, MasterStackLayout, GridLayout, CollectionListener } \
-                       from \"gnoblin\";\n\
+const PRELUDE: &str = "import { CollectionListener } from \"gnoblin-core\";\n\
+                       import { Workspace, Layout, FloatingLayout, MasterStackLayout, GridLayout } \
+                       from \"gnoblin-std\";\n\
                        const g = globalThis as any;\n\
                        g.g = g;\n\
                        g.computes = 0;\n";

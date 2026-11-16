@@ -1069,7 +1069,7 @@ fn the_owners_reference_init_js_runs_unchanged() {
         expected_hash,
         "owner init.js must remain byte-for-byte unchanged"
     );
-    let source = String::from_utf8(input).expect("owner init.js is UTF-8");
+    let source = spec_imports(&String::from_utf8(input).expect("owner init.js is UTF-8"));
     let probe = "JSON.stringify({workspaces:[...gnoblin.workspaces].map(x=>x.id),displays:[...gnoblin.displays].map(x=>x.id),profiles:[...gnoblin.outputs.profiles].map(x=>x.match.connector),bindings:[...gnoblin.input.primary.bindings].map(x=>x.trigger)})";
     let state = boot(&[("init.js", source)], Some(probe), false)
         .expect("the owner's reference init.js evaluates without the snippet prelude")
