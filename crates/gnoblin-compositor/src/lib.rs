@@ -81,11 +81,9 @@
 //!   dispatcher owns: a privileged connection offers one, the slot registry routes it to
 //!   the connection that provides the slot, and both sides learn its one completion.
 
-mod accessibility;
 mod backend;
 /// Which backend a started session drives: the setting, the environment override and the host.
 pub mod backend_select;
-mod bell;
 mod compat;
 mod cursor;
 mod eis;
@@ -102,7 +100,6 @@ mod session_tables;
 /// The stock providers, registered when the `std-providers` feature is on.
 #[cfg(feature = "std-providers")]
 mod std_providers;
-mod window_management;
 mod xwayland;
 
 use std::os::unix::net::UnixStream;
@@ -112,17 +109,10 @@ use std::thread::JoinHandle;
 
 use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
 
-pub use accessibility::{
-    configure_from_environment as configure_accessibility_from_environment,
-    configure_from_store as configure_accessibility_from_store,
-};
 pub use backend::{Backend, OutputTap, drm_hint};
 pub use backend_select::{
     SelectError as BackendSelectError, configure_from_environment as configure_backend_from_environment,
     configure_from_store as configure_backend_from_store,
-};
-pub use bell::{
-    configure_from_environment as configure_bell_from_environment, configure_from_store as configure_bell_from_store,
 };
 pub use compat::configure_compat_extensions;
 pub use cursor::{
@@ -150,9 +140,20 @@ pub use session_tables::{
     configure_from_environment as configure_session_tables_from_environment,
     configure_from_store as configure_session_tables_from_store,
 };
-pub use window_management::{
-    configure_from_environment as configure_window_management_from_environment,
-    configure_from_store as configure_window_management_from_store,
+#[cfg(feature = "std-providers")]
+pub use std_providers::{
+    a11y::{
+        configure_from_environment as configure_accessibility_from_environment,
+        configure_from_store as configure_accessibility_from_store,
+    },
+    bell::{
+        configure_from_environment as configure_bell_from_environment,
+        configure_from_store as configure_bell_from_store,
+    },
+    wm::{
+        configure_from_environment as configure_window_management_from_environment,
+        configure_from_store as configure_window_management_from_store,
+    },
 };
 pub use xwayland::{
     configure_from_environment as configure_xwayland_from_environment,

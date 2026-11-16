@@ -45,6 +45,7 @@ use smithay::reexports::wayland_server::backend::InitError;
 use crate::clock::{Clock, SystemClock};
 use crate::lock_card::LockCardInput;
 use crate::modal::{Modal, ModalEvent};
+use gnoblin_backend::render::compose::Setting;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
 use gnoblin_cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
 use gnoblin_render_frame::image::Image;
@@ -139,39 +140,18 @@ pub struct MonitorSettings {
     pub global_scale: Option<u32>,
 }
 
-/// Where a visual bell flashes: the whole screen, or the focused window alone.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum VisualBellScope {
-    /// Flash every output the session draws.
-    #[default]
-    Fullscreen,
-    /// Flash the window the window manager has focused.
-    Frame,
-}
-
-/// The visual bell the document declares: whether a bell flashes the screen, and where.
+/// The visual accessibility a frame applies to an output, as the composer's `a11y.zoom` and `a11y.filter` settings hold
+/// it.
 ///
-/// The default is off, so a session flashes nothing until the document asks for it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct VisualBellSettings {
-    /// Whether a rung bell flashes at all.
-    pub enabled: bool,
-    /// The part of the screen a flash covers.
-    pub scope: VisualBellScope,
-}
-
-/// The visual accessibility a session applies to every output.
-///
-/// The default is off: no magnification and no colour transform, so a frame is drawn as
-/// the clients painted it. Each output takes its own view, so a magnifier centred on one
-/// output never moves another.
+/// The default is off: no magnification and no colour transform, so a frame is drawn as the clients painted it. Each
+/// output takes its own view, so a magnifier centred on one output never moves another.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct VisualAccessibilitySettings {
-    /// The magnification factor, from 1 to 32, or `None` for no magnifier. A factor of 1
-    /// is the identity and is treated as no magnifier.
-    pub magnifier_zoom: Option<f32>,
+pub(crate) struct VisualAccessibilitySettings {
+    /// The magnification factor, or `None` for no magnifier. A factor of 1 is the identity and is treated as no
+    /// magnifier.
+    pub(crate) magnifier_zoom: Option<f32>,
     /// The colour transform rows, or `None` for colours left unchanged.
-    pub colour_matrix: Option<[[f32; 5]; 4]>,
+    pub(crate) colour_matrix: Option<[[f32; 5]; 4]>,
 }
 
 /// How a session is configured.
@@ -257,12 +237,11 @@ pub struct Config {
     pub cursor: CursorSettings,
     /// The `monitors` table: the privacy-screen request and the global integer scale.
     pub monitors: MonitorSettings,
-    /// The visual bell the document declares: whether a bell flashes the screen, and where.
-    /// Off unless the document asks for it.
-    pub visual_bell: VisualBellSettings,
-    /// The visual accessibility the document declares: a magnifier and a colour filter,
-    /// both applied to every output. Off unless the document asks for it.
-    pub visual_accessibility: VisualAccessibilitySettings,
+    /// The compositor settings applied before the session serves, in order: the window motion, the magnifier and
+    /// colour filter, the visual bell. Empty is every setting at the default, which is the motion the compositor
+    /// always had and no magnifier, no colour filter and no flash. The providers that read them from a document
+    /// (`gnoblin-compositor`'s `std_providers`) fill it; [`ControlHandle::setting_set`] changes one live.
+    pub settings: Vec<Setting>,
     /// The redirect adapters this session serves.
     ///
     /// Each one registers its globals before the loop runs. An empty list is a session
@@ -325,8 +304,7 @@ impl Default for Config {
             cursor: CursorSettings::default(),
             monitors: MonitorSettings::default(),
             extensions: Vec::new(),
-            visual_bell: VisualBellSettings::default(),
-            visual_accessibility: VisualAccessibilitySettings::default(),
+            settings: Vec::new(),
             window_process_override: None,
             pipewire_socket: None,
             lock_check: None,
@@ -479,8 +457,6 @@ impl Server {
             &config.protocols,
             config.titlebar_actions,
             config.cursor,
-            config.visual_bell,
-            config.visual_accessibility,
             &config.extensions,
             lock_auth,
             WindowManagerFactory::start(config.window_manager),
@@ -534,6 +510,9 @@ impl Server {
             state.apply_shortcuts(shortcuts);
         }
         state.workspace_names = workspace_names;
+        for setting in config.settings {
+            state.setting_set(setting);
+        }
         state.use_pipewire_socket(config.pipewire_socket);
         state.publish_seat_policy();
         match crate::touchpad::TouchpadGestures::from_config(&config.touchpad_gestures) {
@@ -651,10 +630,7 @@ impl Server {
                                 let _ = reply.send(state.drawn_node(window));
                             }
                             Command::ReducedMotion(reduced) => state.set_reduced_motion(reduced),
-                            Command::VisualBell(settings) => state.apply_visual_bell_settings(settings),
-                            Command::VisualAccessibility(settings) => {
-                                state.apply_visual_accessibility_settings(*settings)
-                            }
+                            Command::Setting(setting) => state.setting_set(setting),
                             Command::WindowManagement {
                                 options,
                                 titlebar,
@@ -1318,16 +1294,11 @@ impl ControlHandle {
         self.control.request_input_settings(input);
     }
 
-    /// Replaces the magnifier and colour filter from the next loop turn, as a committed
-    /// document does. Every output is repainted, so the next frame shows the new filter.
-    pub fn set_visual_accessibility(&self, settings: VisualAccessibilitySettings) {
-        self.control.push(Command::VisualAccessibility(Box::new(settings)));
-    }
-
-    /// Replaces the visual bell from the next loop turn, as a committed document does. A
-    /// ring after this call flashes, or does not, by the new settings.
-    pub fn set_visual_bell(&self, settings: VisualBellSettings) {
-        self.control.push(Command::VisualBell(settings));
+    /// Sets a compositor setting from the next loop turn, as a committed document does ([`Setting`]). A change to
+    /// the magnifier or the colour filter repaints every output, so the next frame shows it; a ring after a bell
+    /// change flashes, or does not, by the new setting.
+    pub fn setting_set(&self, setting: Setting) {
+        self.control.push(Command::Setting(setting));
     }
 
     /// The committed blur region a window's surface has, as the renderer's blur pass
@@ -1666,10 +1637,8 @@ enum Command {
     KeyboardSettings(Box<gnoblin_config::Keyboard>),
     /// The cursor theme, size and providers the configuration accepted, applied in place.
     CursorSettings(Box<CursorSettings>),
-    /// The visual bell the configuration accepted, replacing the one in force.
-    VisualBell(VisualBellSettings),
-    /// The magnifier and colour filter the configuration accepted, replacing those in force.
-    VisualAccessibility(Box<VisualAccessibilitySettings>),
+    /// A compositor setting a provider or the configuration set.
+    Setting(Setting),
     /// The switchable layouts the configuration accepted, applied in place.
     InputSources(Box<gnoblin_config::InputSources>),
     /// The shortcuts the configuration accepted, replacing the table in force.

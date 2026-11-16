@@ -17,7 +17,7 @@ workspace = true
 # optional and named by this feature.
 [features]
 default = ["std-providers"]
-std-providers = ["dep:gnoblin-std-wm", "gnoblin-wayland/std-providers"]
+std-providers = ["dep:gnoblin-a11y", "dep:gnoblin-std-wm", "gnoblin-wayland/std-providers"]
 
 [dependencies]
 # Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
@@ -37,8 +37,9 @@ gnoblin-render = { path = "../gnoblin-render" }
 # The Canvas painter: system fonts for text measurement and for drawing `Canvas` nodes.
 gnoblin-paint.workspace = true
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
-# The colour transform rows each named colour filter draws with.
-gnoblin-a11y = { path = "../gnoblin-a11y" }
+# The colour transform rows each named colour filter draws with, for the visual accessibility provider behind
+# `std-providers`.
+gnoblin-a11y = { path = "../gnoblin-a11y", optional = true }
 # The stock window manager, registered as the session's provider behind `std-providers`.
 gnoblin-std-wm = { path = "../gnoblin-std-wm", optional = true }
 # The cursor providers and theme lookup the compositor reads its cursor settings from.

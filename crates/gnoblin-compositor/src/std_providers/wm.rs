@@ -1,5 +1,8 @@
-//! The stacking, placement, drag, focus and liveness policy, from the `window-management`
-//! configuration section.
+//! The window-manager provider's configuration: the stacking, placement, drag, focus and liveness policy, from the
+//! `window-management` configuration section.
+//!
+//! The options feed `gnoblin-std-wm`'s provider and the compositor's pass-through of them (design/modular-framework.md,
+//! G11); core reads no `window-management` key itself.
 //!
 //! A document with no `window-management` section keeps the built-in defaults. A section
 //! with a field missing keeps that field's default. The values are checked by the schema

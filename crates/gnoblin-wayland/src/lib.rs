@@ -22,10 +22,10 @@
 //!   rather than a hang.
 //! - Window state is the compositor's own record, kept by a window-manager provider (`gnoblin-wm-api`'s
 //!   `WindowManager`; [`Config::window_manager`] names it, `NullWm` with none). The stock provider is `gnoblin-std-wm`'s
-//!   and the composition root registers it): every map,
-//!   unmap, configure, focus change and close is a call on it and comes back as an effect. While a shell holds the
-//!   tree the record is only kept current and the shell decides. Output rectangles come from `gnoblin-output`'s
-//!   layout engine, so the record and the `wl_output` globals agree on where a monitor is.
+//!   and the composition root registers it. Every map, unmap, configure, focus change and close is a call on the
+//!   provider and comes back as an effect. While a shell holds the tree the record is only kept current and the shell
+//!   decides. Output rectangles come from `gnoblin-output`'s layout engine, so the record and the `wl_output` globals
+//!   agree on where a monitor is.
 //! - The frame path runs every iteration: the hook in `frame.rs` asks each output for its
 //!   damage, and a client's committed `wl_shm` buffer reaches the output's pixels
 //!   through the software renderer in `gnoblin-backend`. [`ControlHandle::screenshot`]
@@ -247,6 +247,9 @@ mod xwayland;
 pub use clock::{Clock, ManualClock, SystemClock};
 /// Frame counters, and the timeout a screenshot waits for before it gives up.
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT, ShotRefusal};
+/// The compositor settings a provider sets: the composer's own knobs, entered through [`Config::settings`] and
+/// [`ControlHandle::setting_set`].
+pub use gnoblin_backend::render::compose::{BellFlash, MotionPolicy, Setting};
 pub use gnoblin_lock::State as LockState;
 /// The window management options a configuration carries, and the choices in them, which `gnoblin-wm-api` defines.
 pub use gnoblin_wm_api::{DragConstraint, FocusMode, NewWindowFocus, WindowManagerFactory, WmOptions};
@@ -273,8 +276,8 @@ pub use output_control::{NoOutputControl, OutputControl};
 /// Server configuration, control handle, input sink, startup and loop errors.
 pub use server::{
     CAST_TIMEOUT, Config, ControlHandle, CursorSettings, DEFAULT_PRIVILEGED_SOCKET_NAME, DEFAULT_SOCKET_NAME,
-    FOCUS_TIMEOUT, InputSink, LockCheck, LoopError, MonitorSettings, Server, StartupError, VisualAccessibilitySettings,
-    VisualBellScope, VisualBellSettings, default_privileged_socket_path, privileged_socket_path_in,
+    FOCUS_TIMEOUT, InputSink, LockCheck, LoopError, MonitorSettings, Server, StartupError,
+    default_privileged_socket_path, privileged_socket_path_in,
 };
 /// The dispatch glue a redirect implements.
 ///

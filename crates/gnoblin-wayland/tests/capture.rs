@@ -2213,10 +2213,9 @@ fn a_committed_visual_bell_flashes_the_next_ring_without_a_restart() {
         assert_eq!(unflashed, RED, "with no visual bell configured, a ring flashes nothing");
 
         // The document now asks for a fullscreen flash; the next ring flashes without a restart.
-        session.control.set_visual_bell(gnoblin_wayland::VisualBellSettings {
-            enabled: true,
-            scope: gnoblin_wayland::VisualBellScope::Fullscreen,
-        });
+        session.control.setting_set(gnoblin_wayland::Setting::BellFlash(
+            gnoblin_wayland::BellFlash::Fullscreen,
+        ));
         bell.ring(None);
         app.roundtrip();
         session.wait_for(|snapshot| snapshot.bells() == 2);
@@ -2261,10 +2260,7 @@ fn a_committed_colour_filter_applies_to_the_next_frame_without_a_restart() {
         ];
         session
             .control
-            .set_visual_accessibility(gnoblin_wayland::VisualAccessibilitySettings {
-                magnifier_zoom: None,
-                colour_matrix: Some(invert),
-            });
+            .setting_set(gnoblin_wayland::Setting::ColourFilter(Some(invert)));
         let after = screencopy_window_pixel_until(&mut capture, geometry, CYAN);
         assert_eq!(after, CYAN, "the committed invert filter reaches the next frame");
     });

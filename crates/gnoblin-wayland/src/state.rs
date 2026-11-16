@@ -65,7 +65,9 @@ use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
-use gnoblin_backend::render::compose::{Composer, Content, DecorationWanted, MainSeatPolicy, ScreenInfo};
+use gnoblin_backend::render::compose::{
+    BellFlash, Composer, Content, DecorationWanted, MainSeatPolicy, ScreenInfo, Setting,
+};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocol, Protocols, TitlebarAction};
 use gnoblin_input::Activity;
@@ -458,11 +460,6 @@ pub struct State {
     /// see that it happened; the visual bell is `gnoblin-a11y`'s and the audible one
     /// is the shell's.
     bells: u64,
-    /// The visual bell the document declares, read each time a bell rings. A session that
-    /// declares none flashes nothing.
-    pub(crate) visual_bell: crate::server::VisualBellSettings,
-    /// The visual accessibility applied to every output's frame, set at start-up.
-    pub(crate) visual_accessibility: crate::server::VisualAccessibilitySettings,
     /// The window menu requests made recently, oldest first. Bounded by
     /// `MENU_REQUESTS_KEPT`; the sequence number is what a reader publishes by.
     menu_requests: VecDeque<MenuRequest>,
@@ -662,8 +659,6 @@ impl State {
         protocols: &Protocols,
         titlebar_actions: TitlebarActions,
         cursor: crate::server::CursorSettings,
-        visual_bell: crate::server::VisualBellSettings,
-        visual_accessibility: crate::server::VisualAccessibilitySettings,
         extensions: &[Arc<dyn Extension>],
         lock_auth: crate::lock_auth::LockAuth,
         wm: Box<dyn WindowManager>,
@@ -877,8 +872,6 @@ impl State {
             titlebar_actions,
             workspace_names: Vec::new(),
             bells: 0,
-            visual_bell,
-            visual_accessibility,
             menu_requests: VecDeque::new(),
             menu_seq: 0,
             seat_name: seat_name.to_owned(),
@@ -1946,7 +1939,7 @@ impl State {
         self.pointer_position = position;
         // The magnifier centres on the pointer, so a moved pointer changes every magnified
         // output. Each output is repainted rather than waiting for other damage to reach it.
-        if self.visual_accessibility.magnifier_zoom.is_some() {
+        if self.composer.zoom().is_some() {
             self.damage_outputs();
         }
         self.composer.set_main_seat_pointer(position.x, position.y);
@@ -2879,18 +2872,14 @@ impl State {
         }
     }
 
-    /// Replaces the magnifier and colour filter in force and repaints every output, so the
-    /// next frame shows the change. A settings value the frame rejects is drawn unfiltered, as
-    /// at startup.
-    pub(crate) fn apply_visual_accessibility_settings(&mut self, settings: crate::server::VisualAccessibilitySettings) {
-        self.visual_accessibility = settings;
-        self.damage_outputs();
-    }
-
-    /// Replaces the visual bell. The next rung bell flashes by these settings, so no
-    /// restart is needed.
-    pub(crate) fn apply_visual_bell_settings(&mut self, settings: crate::server::VisualBellSettings) {
-        self.visual_bell = settings;
+    /// Sets a compositor setting. The magnifier and the colour filter repaint every output, so the next frame shows
+    /// the change (a value the frame rejects is drawn unfiltered, as at startup); the bell flashes by the new setting
+    /// from the next ring, so no restart is needed.
+    pub(crate) fn setting_set(&mut self, setting: Setting) {
+        self.composer.setting_set(setting);
+        if matches!(setting, Setting::Zoom(_) | Setting::ColourFilter(_)) {
+            self.damage_outputs();
+        }
     }
 
     /// Queues the modal events an input edge becomes while a modal is set. Returns
@@ -3039,12 +3028,13 @@ impl State {
     /// A locked session shows nothing, so a bell cannot reveal what the lock hides. A frame
     /// flash covers the focused window; with no focused window there is nothing to flash.
     fn flash_bell(&mut self) {
-        if !self.visual_bell.enabled || self.lock.state() != LockState::Unlocked {
+        if self.lock.state() != LockState::Unlocked {
             return;
         }
-        let target = match self.visual_bell.scope {
-            crate::server::VisualBellScope::Fullscreen => None,
-            crate::server::VisualBellScope::Frame => match self.focus {
+        let target = match self.composer.bell_flash() {
+            BellFlash::Off => return,
+            BellFlash::Fullscreen => None,
+            BellFlash::Frame => match self.focus {
                 Some(window) => Some(window),
                 None => return,
             },
@@ -4033,7 +4023,10 @@ impl Host for State {
         // and colour transform, so the settings are applied after them. A locked session
         // draws no accessibility, so the lock cover reads the same whatever the user has set.
         let settings = if self.lock.state() == LockState::Unlocked {
-            self.visual_accessibility
+            crate::server::VisualAccessibilitySettings {
+                magnifier_zoom: self.composer.zoom(),
+                colour_matrix: self.composer.colour_filter(),
+            }
         } else {
             crate::server::VisualAccessibilitySettings::default()
         };

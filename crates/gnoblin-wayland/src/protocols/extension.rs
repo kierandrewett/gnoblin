@@ -427,8 +427,6 @@ mod tests {
             &Protocols::default(),
             TitlebarActions::default(),
             crate::server::CursorSettings::default(),
-            crate::server::VisualBellSettings::default(),
-            crate::server::VisualAccessibilitySettings::default(),
             &[],
             crate::lock_auth::LockAuth::new(std::sync::Arc::new(gnoblin_lock_auth::FakeAuthenticator::new()), None).0,
             Box::<gnoblin_wm_api::NullWm>::default(),

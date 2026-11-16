@@ -45,8 +45,7 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::headless::{Headless, HeadlessConfig};
 use gnoblin_types::{DeviceId, OutputId, Rect, WindowId};
 use gnoblin_wayland::{
-    Config, ControlHandle, FrameStats, LoopError, ManualClock, ObservedWindow, Server, SessionSnapshot,
-    VisualAccessibilitySettings,
+    Config, ControlHandle, FrameStats, LoopError, ManualClock, ObservedWindow, Server, SessionSnapshot, Setting,
 };
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
@@ -174,15 +173,15 @@ impl Session {
     /// Creates a session whose motion runs on real elapsed time, so a window whose content
     /// arrives fades in over the open duration as it does on screen.
     fn start_live(backend: Headless) -> Self {
-        Self::start_with(backend, VisualAccessibilitySettings::default())
+        Self::start_with(backend, Vec::new())
     }
 
-    /// Creates a live session with the given visual accessibility settings.
-    fn start_with(backend: Headless, visual_accessibility: VisualAccessibilitySettings) -> Self {
+    /// Creates a live session with the given compositor settings (the magnifier and the colour filter).
+    fn start_with(backend: Headless, settings: Vec<Setting>) -> Self {
         Self::start_configured(
             backend,
             Config {
-                visual_accessibility,
+                settings,
                 ..crate::stock::config()
             },
         )
@@ -556,13 +555,7 @@ fn red_window_centre(session: &Handle) -> gnoblin_types::Point {
 #[test]
 fn the_magnifier_is_drawn_into_the_frame_the_output_shows() {
     for_each_renderer(|backend| {
-        let session = Session::start_with(
-            backend,
-            VisualAccessibilitySettings {
-                magnifier_zoom: Some(2.0),
-                colour_matrix: None,
-            },
-        );
+        let session = Session::start_with(backend, vec![Setting::Zoom(Some(2.0))]);
         session.handle.control.set_reduced_motion(true);
         session.run(|session| {
             let mut client = Client::connect(session.socket());
@@ -594,13 +587,7 @@ fn the_colour_matrix_is_drawn_into_the_frame_the_output_shows() {
         [0.0, 0.0, 0.0, 1.0, 0.0],
     ];
     for_each_renderer(|backend| {
-        let session = Session::start_with(
-            backend,
-            VisualAccessibilitySettings {
-                magnifier_zoom: None,
-                colour_matrix: Some(INVERT),
-            },
-        );
+        let session = Session::start_with(backend, vec![Setting::ColourFilter(Some(INVERT))]);
         session.handle.control.set_reduced_motion(true);
         session.run(|session| {
             let mut client = Client::connect(session.socket());
@@ -785,6 +772,8 @@ fn a_surface_alpha_factor_blends_with_the_background() {
     });
 }
 
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
+#[cfg(feature = "std-providers")]
 #[test]
 fn overlapping_windows_are_drawn_in_stacking_order() {
     for_each_renderer(|backend| {

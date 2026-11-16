@@ -1370,14 +1370,10 @@ impl Dispatcher {
                 // init.retired shell after the session started takes effect on this commit.
                 self.control
                     .set_global_scale(crate::monitors::settings_of(&config).global_scale);
-                // The window management policy and titlebar gestures follow the accepted document, so a reload
-                // applies them without a restart.
-                let section = config.window_management.clone().unwrap_or_default();
-                self.control.set_window_management(
-                    crate::window_management::wm_options_of(&section),
-                    gnoblin_wayland::TitlebarActions::of(&section),
-                    crate::window_management::check_alive_timeout_of(&section),
-                );
+                // The stock providers read their own sections (window management, accessibility, the visual bell)
+                // from the accepted document, so a reload applies them without a restart.
+                #[cfg(feature = "std-providers")]
+                crate::std_providers::commit(&self.control, &config);
                 // The shortcuts and touchpad gestures are re-derived from the accepted document
                 // too: a document with no such section drops the ones the previous one declared.
                 self.control.set_shortcuts(config.shortcuts.clone().unwrap_or_default());
@@ -1411,16 +1407,6 @@ impl Dispatcher {
                 // `cursor` section gets the defaults, so removing the section restores them.
                 self.control.set_cursor_settings(crate::cursor::cursor_settings(
                     config.cursor.clone().unwrap_or_default(),
-                ));
-                // The magnifier and colour filter are re-derived the same way, so removing the
-                // `accessibility` section turns them off on this commit.
-                let accessibility = config.accessibility.unwrap_or_default();
-                self.control
-                    .set_visual_accessibility(crate::accessibility::visual_accessibility_settings(&accessibility));
-                // The visual bell is re-derived the same way, so removing the `compositor` section
-                // turns the flash off on this commit.
-                self.control.set_visual_bell(crate::bell::visual_bell_settings(
-                    &config.compositor.unwrap_or_default(),
                 ));
             }
             Err(reason) => {

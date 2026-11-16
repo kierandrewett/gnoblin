@@ -204,14 +204,35 @@ impl Default for MotionPolicy {
     }
 }
 
+/// Where a visual bell's flash is drawn, or that it is not drawn at all.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BellFlash {
+    /// A rung bell flashes nothing. The default: a session flashes only when a provider asks.
+    #[default]
+    Off,
+    /// A rung bell flashes every output the session draws.
+    Fullscreen,
+    /// A rung bell flashes the window that has the focus; with no focused window there is nothing to flash.
+    Frame,
+}
+
 /// A compositor policy knob that is not a tree member, set through [`Composer::setting_set`].
 ///
 /// The one entry point the compositor's own configuration and, later, a provider registered through the C ABI write
-/// through, so a setting has a single owner.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// through, so a setting has a single owner. Each variant names its key: the mechanism is in core and the policy that
+/// turns a configuration document into a value is a provider's (`gnoblin-compositor`'s `std_providers`).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Setting {
     /// How long the compositor's own window motion takes (`window.motion`).
     Motion(MotionPolicy),
+    /// The magnifier's factor, between the frame's `MIN_ZOOM` and `MAX_ZOOM`, or `None` for no magnifier
+    /// (`a11y.zoom`). A factor of 1 is the identity and draws as no magnifier.
+    Zoom(Option<f32>),
+    /// The colour transform rows every output is drawn through, or `None` for colours left unchanged
+    /// (`a11y.filter`).
+    ColourFilter(Option<[[f32; 5]; 4]>),
+    /// Whether a rung bell flashes the screen, and where (`bell.flash`).
+    BellFlash(BellFlash),
 }
 
 /// What a window's client asked of `xdg-decoration`, as the window node's `decoration_wanted` publishes it.
@@ -540,6 +561,12 @@ pub struct Composer {
     reduced_motion: bool,
     /// How long the compositor's own window motion takes, as the last [`Setting::Motion`] set it.
     motion_policy: MotionPolicy,
+    /// The magnifier's factor, as the last [`Setting::Zoom`] set it.
+    zoom: Option<f32>,
+    /// The colour transform rows, as the last [`Setting::ColourFilter`] set them.
+    colour_filter: Option<[[f32; 5]; 4]>,
+    /// Where a rung bell flashes, as the last [`Setting::BellFlash`] set it.
+    bell_flash: BellFlash,
     /// Where the cursor was last drawn, in global layout coordinates, or `None` when hidden.
     cursor: Option<Rect>,
     /// The visual bell's flash in progress, if any. Only one runs at a time: a bell rung
@@ -659,6 +686,9 @@ impl Composer {
             shell_ends: Vec::new(),
             reduced_motion: false,
             motion_policy: MotionPolicy::default(),
+            zoom: None,
+            colour_filter: None,
+            bell_flash: BellFlash::Off,
             cursor: None,
             flash: None,
             tree_changes: Vec::new(),
@@ -2292,7 +2322,28 @@ impl Composer {
     pub fn setting_set(&mut self, setting: Setting) {
         match setting {
             Setting::Motion(policy) => self.motion_policy = policy,
+            Setting::Zoom(zoom) => self.zoom = zoom,
+            Setting::ColourFilter(rows) => self.colour_filter = rows,
+            Setting::BellFlash(flash) => self.bell_flash = flash,
         }
+    }
+
+    /// The magnifier's factor now, or `None` for no magnifier.
+    #[must_use]
+    pub fn zoom(&self) -> Option<f32> {
+        self.zoom
+    }
+
+    /// The colour transform rows now, or `None` for colours left unchanged.
+    #[must_use]
+    pub fn colour_filter(&self) -> Option<[[f32; 5]; 4]> {
+        self.colour_filter
+    }
+
+    /// Where a rung bell flashes now.
+    #[must_use]
+    pub fn bell_flash(&self) -> BellFlash {
+        self.bell_flash
     }
 
     /// The length of the compositor's own window motion now.
