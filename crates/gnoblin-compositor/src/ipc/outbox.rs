@@ -25,7 +25,7 @@ use rustix::net::{self, SendFlags};
 use zeroize::Zeroizing;
 
 /// How long a client may take nothing of what waits for it before the connection is dropped.
-pub(super) const STALL_LIMIT: Duration = Duration::from_secs(5);
+pub(crate) const STALL_LIMIT: Duration = Duration::from_secs(5);
 
 /// The most bytes held for one client that is not taking them: two frames of the largest size. A client that is
 /// reading one such frame is not behind for being sent the next; a client over this is not reading.

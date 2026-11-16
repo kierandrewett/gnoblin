@@ -47,6 +47,9 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # sides use one description of them.
 gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-client = { path = "../gnoblin-client" }
+# The in-process shell's link: the compositor serves a shell on its own thread through the same `TreeLink` a socket shell uses,
+# so both read one translation of the wire (`inproc_shell`).
+gnoblin-tree-client = { path = "../gnoblin-tree-client" }
 # The portal's built-in dialog screens (D19). The negotiation core names their models;
 # the screens draw them, and nothing else in the compositor depends on the dialog crates.
 gnoblin-portal = { path = "../gnoblin-portal" }
@@ -57,7 +60,7 @@ gnoblin-input = { path = "../gnoblin-input" }
 gnoblin-capture = { path = "../gnoblin-capture" }
 gnoblin-input-eis = { path = "../gnoblin-input-eis" }
 # Who this process is, for the IPC socket directory's ownership check.
-rustix = { workspace = true, features = ["net"] }
+rustix = { workspace = true, features = ["net", "event"] }
 # Wipes a secret answer the request layer forwards or refuses, so it does not outlive the frame.
 zeroize.workspace = true
 # The accepted configuration document and its last-good store: the compositor reads the

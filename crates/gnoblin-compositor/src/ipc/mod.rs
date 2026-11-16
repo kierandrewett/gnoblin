@@ -51,9 +51,13 @@ pub use privileged::{Privileged, guardian_from_environment};
 pub(crate) use server::IpcServer;
 pub use session::SessionSync;
 
+#[cfg(test)]
+pub(crate) use server::IpcEvent;
 pub(crate) use server::{events, wake};
 
-pub(crate) use tree_host::TreeHostHandle;
+pub(crate) use outbox::STALL_LIMIT;
+pub(crate) use tree::AttachMode;
+pub(crate) use tree_host::{LocalSink, TreeDelivery, TreeHostHandle, TreeMessage, VERSION as TREE_VERSION};
 
 /// Why the IPC socket could not be prepared, bound or served.
 #[derive(Debug)]

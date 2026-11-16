@@ -372,6 +372,10 @@ inside a call, and while a frozen shell's socket is not read.
     - a shell that stays attached and `engaged` but stops renewing its lease loses the lock UI to the card;
     - a shell that renews its lease on time but whose keyboard is outside its lock screen loses it to the card, and the
       card gives the keys back when the shell takes the keyboard again.
+- `crates/gnoblin-compositor/tests/inproc_shell.rs` runs a shell that lives in the compositor process, on a thread of its
+  own, against the same card: a shell thread that builds its lock screen, renews its lease once and then hangs holds up
+  no frame (the session locks, the lease lapses and the card takes the password), and the hung shell is then detached
+  because it never reads its mailbox (see `design/modular-framework.md`, section 18).
 - `crates/gnoblin/tests/js_lock.rs` runs the JavaScript shell against the real compositor: no shell and the card, the
   shell's screen painted under the `lock` node, a wrong password answered on it, the right one unlocking, and a check the
   compositor refused `stale-base` answered `failed` on the screen.

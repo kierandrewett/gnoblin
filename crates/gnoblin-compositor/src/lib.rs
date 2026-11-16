@@ -89,6 +89,8 @@ mod bell;
 mod compat;
 mod cursor;
 mod eis;
+/// A shell that runs in the compositor process on its own thread, through the tree link and the mailbox the host serves.
+pub mod inproc_shell;
 mod ipc;
 mod log_store;
 mod monitors;
@@ -245,6 +247,10 @@ pub struct SessionConfig {
     /// A tap a test hotplugs virtual outputs of a headless session with, or [`None`] for the usual session. The
     /// session fills it when it builds its backend.
     pub output_tap: Option<OutputTap>,
+    /// A shell to run in this process, on a thread of its own, or [`None`] for the usual session, whose shell is a
+    /// process that connects to the IPC socket. The shell holds the tree through an in-process link
+    /// ([`inproc_shell`]); the loop never runs its code.
+    pub shell: Option<inproc_shell::InProcShellSpec>,
 }
 
 /// Where a test sends input a device would, into a running session.
@@ -394,6 +400,8 @@ impl Compositor {
         // The tree is built before the Wayland session starts, because its frame runs the tree's
         // hooks, and its events go to the same channel the dispatcher reads.
         let tree = ipc::TreeHostHandle::new(events.clone()).map_err(|error| Error::Ipc(ipc::IpcError::Tree(error)))?;
+        // The in-process shell, when the session has one, is served by the same tree host as a socket shell.
+        let shell_host = tree.clone();
         let (observer, pending) = ipc::wake(events.clone());
 
         // The display name a client puts in `WAYLAND_DISPLAY` is the Wayland socket's file
@@ -506,6 +514,20 @@ impl Compositor {
             backend = backend_name,
             "serving"
         );
+        // The in-process shell starts last, when the tree it attaches to is served. Its thread is the only place it runs;
+        // the loop below never runs shell code.
+        let shell = match config.shell.take() {
+            Some(spec) => match inproc_shell::InProcShell::spawn(&shell_host, spec) {
+                Ok(shell) => Some(shell),
+                Err(error) => {
+                    eis_gate.stop();
+                    ipc.shutdown();
+                    let _ = std::fs::remove_file(&path);
+                    return Err(Error::Shell(error));
+                }
+            },
+            None => None,
+        };
         // The watcher is joined below, and it only returns once a stop is requested. The stop
         // is therefore requested after the loop ends, even when the loop stopped on its own.
         let stop = config.stop.clone();
@@ -514,6 +536,11 @@ impl Compositor {
         // The loop's result is kept and returned after cleanup, so a loop error still stops the
         // EIS gate and shuts the IPC server down first.
         let loop_result = server.run();
+        // The shell goes first: it talks to the tree and to the guardian, and neither is torn down yet.
+        if let Some(shell) = shell {
+            let end = shell.stop();
+            log::info!(%end, "the in-process shell is stopped");
+        }
         eis_gate.stop();
         ipc.shutdown();
         if let Some(watcher) = watcher {
@@ -542,6 +569,8 @@ pub enum Error {
     Schema(SchemaError),
     /// The EIS socket could not be bound.
     Eis(std::io::Error),
+    /// The in-process shell's thread or mailbox could not be created.
+    Shell(std::io::Error),
     /// No IPC socket path could be resolved from the environment.
     IpcPath(String),
     /// The IPC socket could not be prepared or bound.
@@ -585,6 +614,7 @@ impl std::fmt::Display for Error {
             Error::IpcPath(reason) => write!(formatter, "{reason}"),
             Error::Ipc(error) => write!(formatter, "{error}"),
             Error::Eis(error) => write!(formatter, "the EIS socket cannot be served: {error}"),
+            Error::Shell(error) => write!(formatter, "the in-process shell cannot be started: {error}"),
             Error::Wayland(error) => write!(formatter, "the Wayland session cannot start: {error}"),
             Error::Loop(error) => write!(formatter, "the Wayland session stopped: {error}"),
             Error::Model(error) => write!(formatter, "the object graph refused the session: {error}"),

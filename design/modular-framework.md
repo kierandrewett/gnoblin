@@ -1152,3 +1152,60 @@ to reload the shell again`. The running generation is untouched and keeps servin
   failed `init` keeping the old generation, an abandoned stage leaving no registration and running no hook, a contained panic,
   thread affinity, the mailbox bound), the unit tests of `stage.rs` and `retire.rs`, and in `gnoblin-core-impl`'s scenarios the
   retention limit and `try_unload` against real libraries.
+
+## 18. Implementation notes, M2.8
+
+What the InProc lane built (`gnoblin-compositor/src/inproc_shell.rs`), where it differs from the text above, and why. Nothing in the
+`gnoblin` binary uses it yet; the Flip lane wires it.
+
+- **One attach, one transaction path, one set of messages.** `ipc/tree_host.rs` no longer sends `IpcEvent`s itself. It hands each
+  answer of the frame to a _route_ as a `TreeDelivery` (a published batch, the outcome of an attach with its snapshot, the answer
+  to a transaction). A socket connection's deliveries go to the dispatcher, as before; a connection served in process registers a
+  `LocalSink` and gets them there. `attach`, `detach` and `transact` are the same functions for both, so the single holder, the
+  epoch, the snapshot, the refusals, the transaction rules, the reaping of a detached shell's nodes and `holder_attached` are the
+  socket's by construction. `TreeDelivery::into_messages` decides which messages a delivery is and in which order (changes, answers,
+  timed-`set` ends, events; attach answer then snapshot chunks); the dispatcher writes each as a frame (`TreeMessage::into_envelope`)
+  and the in-process link reads each as a `TreeIncoming`, through the same `incoming_*` functions the socket link uses
+  (`gnoblin-tree-client::tree_link`, now public). `IpcEvent`'s three tree variants became one, `IpcEvent::Tree`. The 4 ms
+  `TREE_FRAME_BUDGET` and the transaction rules are untouched.
+- **The link goes through the wire form.** `InProcLink::transact` converts a `TreeTx` to the wire ops (`tree_link::to_op`) and calls
+  `TreeHostHandle::transact`, which converts them to a `TreeTransaction`. That is a conversion more than a direct one needs, and it is
+  what keeps a refusal (`bad-value`, `not-privileged`) identical. The protobuf messages are built and not encoded.
+- **The mailbox, not `TreeQueue::on_submit`.** The design text had the shell thread hold a `TreeQueue`. The queue is the compositor
+  side's (transactions and reads _into_ the frame); the shell's side of the exchange is the mailbox. `InProcLink` calls the host,
+  which submits to the queue, and reads a `Mailbox`: a locked deque the frame pushes into and an eventfd (`TreeLink::wait_fd`) the
+  shell thread sleeps on. The frame thread only pushes: a short lock and an eventfd write, never a wait.
+- **A hung shell is bounded, not just tolerated.** A mailbox that holds more than `MailboxLimits::items` (default 65 536 values:
+  a batch counts its changes, events, answers and track ends, a snapshot its nodes) or that has had nothing taken for
+  `MailboxLimits::stall` (the socket's own `STALL_LIMIT`, 5 s) closes, and the shell is detached exactly as the dispatcher drops a
+  socket client that does not read. The count is of values and not bytes because the mailbox holds values, not frames. The check
+  runs when something is pushed, so a quiet session with a hung shell holds nothing.
+- **A locked session does not depend on that.** The lock lease (`LOCK_UI_LEASE_MS`) and the card are decided on the compositor thread
+  and are unchanged: a shell thread that stops sending heartbeats loses the lock UI after the lease, hung or not. Tested with a shell
+  thread that hangs after engaging the lock (`tests/inproc_shell.rs`).
+- **The shell ends in one of four ways, and the compositor continues in all of them.** The entry returns, returns an error, panics
+  (`catch_unwind` on the shell thread) or is abandoned at the compositor's exit. The thread closes the mailbox, detaches the shell
+  (the hold is released, its nodes are reaped, `holder_attached` is cleared and the standard window manager, or `NullWm`, acts on
+  window requests again), logs an error unless the end was a requested stop, and calls `ShellReports::ended`. A segfault or an abort
+  is still not containable (section 5.7).
+- **Stopping.** `Compositor::run` stops the shell when the loop returns, before the IPC server and the EIS gate: it sets
+  `ShellStop`, closes the mailbox (the shell's descriptor turns readable and its `poll` fails, so a shell asleep on its link wakes),
+  waits up to the stop grace (2 s, `InProcShellSpec::with_stop_grace`) and joins. A thread that does not end in the grace is
+  abandoned, logged, reported as `ShellEnd::Abandoned` and its tree detached: it cannot be killed, and waiting for it would let the
+  shell hold the compositor's exit hostage. The process's exit ends it.
+- **API as built.** The host crate supplies an `InProcShellSpec::new(name, entry)` in `SessionConfig::shell`; the compositor owns the
+  tree host (it is built inside `Compositor::run`, before the Wayland session whose frame runs its hooks), so `InProcShell::spawn`
+  is crate-private and the spec is the edge. `entry` is `FnOnce(Box<dyn TreeLink>, InProcContext) -> Result<(), ShellError>`; it runs
+  on the shell thread and builds whatever it likes around the link (`JsRole::over_link` takes it as is). `InProcContext` carries
+  `ShellStop` and the `ShellReports` hook.
+- **The guardian hook.** `ShellReports` is the interface the Startup lane fills: `autostart`, `config_accepted`, `config_rejected`
+  and `ready` mirror the four reports `gnoblin-js`'s runner writes on its descriptor (`gnoblin_proto::report`), and `ended` is the
+  new one. Every method defaults to nothing (`NoReports`), as a child with no report descriptor reports into the void. Which
+  descriptor the compositor writes them on, and what the guardian does with them, is the Startup lane's decision.
+- **In-process identities.** A shell served in process is the owner by construction and is numbered from `1 << 63`, above any
+  connection the socket hands out, so one session can hold an in-process shell and socket observers at once.
+- **Tests.** Unit tests in `inproc_shell.rs` drive a real shell thread against a `TreeFrame` the test thread pumps (attach,
+  transaction, refusal order, return/error/panic, mailbox limit and stall detach, stop and abandon). `tests/inproc_shell.rs` runs a
+  fake shell against the real compositor over both transports with one script (`tests/support/shell.rs`: a `Shell` is a socket link
+  on the test thread or an in-process link on the shell thread, driven by jobs) and compares what each saw; and the hung-shell
+  lock, panic, guardian-hook and shutdown tests. The lock helpers `lock_card.rs` used moved to `tests/support/lock.rs`.

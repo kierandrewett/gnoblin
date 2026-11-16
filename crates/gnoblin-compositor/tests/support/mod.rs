@@ -18,7 +18,9 @@
 #![allow(dead_code)]
 
 pub mod ei;
+pub mod lock;
 pub mod pipewire;
+pub mod shell;
 pub mod tree;
 
 use std::io::Write as _;

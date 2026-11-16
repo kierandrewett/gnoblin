@@ -85,8 +85,8 @@ use gnoblin_proto::tree::tree::{AttachArgs, TransactArgs};
 use gnoblin_proto::{Envelope, Handshake, HandshakeKind, Kind, privilege, read_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WindowId};
 use gnoblin_wayland::{
-    ControlHandle, KillRefusal, Observer, PresentAnswer, SessionSnapshot, TreeBatch, TreeFrameInput, WindowChange,
-    WindowChangeRefusal, WindowProcess, WindowVisual, WindowVisualRefusal,
+    ControlHandle, KillRefusal, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal,
+    WindowProcess, WindowVisual, WindowVisualRefusal,
 };
 
 use super::applied::StartedDocuments;
@@ -98,13 +98,9 @@ use super::portal::{MALFORMED, PortalScope, PortalService, UNKNOWN_KEY, parse_ke
 use super::reload::{Reload, ReloadVerdict};
 use super::requests::{BuiltinKind, FrameDelivery, OBSERVE_MS, Requests};
 use super::secret::{SecretAction, SecretService};
-use super::tree::{AttachMode, TreeAttached, TreeReply, TreeSnapshot};
-use super::tree_host::{
-    self, TreeHostHandle, attached_payload, changes_payload, chord_payload, event_payload, gesture_payload,
-    pointer_button_payload, pointer_chord_payload, reply_payload, snapshot_payloads,
-};
+use super::tree::{AttachMode, TreeReply};
+use super::tree_host::{self, TreeDelivery, TreeHostHandle, TreeMessage};
 use super::{IpcError, Privileged, SessionSync, SocketPath};
-use gnoblin_render::transaction::TreeRefusal;
 
 use crate::log;
 
@@ -146,31 +142,13 @@ pub(crate) enum IpcEvent {
     Closed { client: ClientId },
     /// The session's snapshot may have changed.
     Changed,
-    /// The frame applied a batch the shell's tree holder must hear about.
-    TreeChanged {
-        /// The holder that receives the batch.
+    /// The frame has something to tell a socket connection about the tree: a batch it applied, the outcome of a queued
+    /// attach, or the answer to a queued transaction.
+    Tree {
+        /// The connection it is for.
         client: ClientId,
-        /// What the frame published.
-        batch: gnoblin_wayland::TreeBatch,
-    },
-    /// The frame decided a queued attach.
-    TreeAttached {
-        /// Which connection asked.
-        client: ClientId,
-        /// The request the answer belongs to.
-        request_id: u64,
-        /// The snapshot to send with the attach answer, or the refusal.
-        outcome:
-            Result<(super::tree::TreeAttached, super::tree::TreeSnapshot), gnoblin_render::transaction::TreeRefusal>,
-    },
-    /// The frame applied a queued transaction.
-    TreeReply {
-        /// Which connection asked.
-        client: ClientId,
-        /// The request the answer belongs to.
-        request_id: u64,
-        /// The answer.
-        reply: super::tree::TreeReply,
+        /// What the frame says.
+        delivery: TreeDelivery,
     },
     /// Stop serving.
     Shutdown,
@@ -810,17 +788,7 @@ impl Dispatcher {
                 }
                 IpcEvent::Lost { client } => self.lost(client),
                 IpcEvent::Closed { client } => self.close(client, false),
-                IpcEvent::TreeChanged { client, batch } => self.tree_changed(client, &batch),
-                IpcEvent::TreeAttached {
-                    client,
-                    request_id,
-                    outcome,
-                } => self.tree_attached(client, request_id, outcome),
-                IpcEvent::TreeReply {
-                    client,
-                    request_id,
-                    reply,
-                } => self.answer_transact(client, request_id, &reply),
+                IpcEvent::Tree { client, delivery } => self.tree_delivered(client, delivery),
                 IpcEvent::Changed => {
                     self.pending.store(false, Ordering::Release);
                     self.sync();
@@ -1595,7 +1563,7 @@ impl Dispatcher {
             self.refuse(client, envelope, MALFORMED, "the attach arguments do not decode");
             return;
         };
-        if args.version != 1 {
+        if args.version != tree_host::VERSION {
             let message = format!("tree version {} is not served", args.version);
             self.refuse(client, envelope, MALFORMED, &message);
             return;
@@ -1626,105 +1594,18 @@ impl Dispatcher {
         let Some(connection) = self.connections.get_mut(&client) else {
             return;
         };
-        connection.send(&Envelope::reply_message(
-            tree_host::NAMESPACE,
-            tree_host::member::TRANSACT,
-            request_id,
-            &reply_payload(reply),
-        ));
+        connection.send(&TreeMessage::replied(request_id, reply).into_envelope());
     }
 
-    /// The frame applied a batch: the holder hears its changes in the order they were applied,
-    /// then each answer the frame settled, then each event the frame delivered, one signal apiece.
-    fn tree_changed(&mut self, client: ClientId, batch: &TreeBatch) {
+    /// The frame told the connection something about the tree: a batch it applied, the outcome of a queued attach or the
+    /// answer to a queued transaction. Its messages go out in the order the tree host puts them
+    /// ([`TreeDelivery::into_messages`]), which is the order an in-process shell hears them in.
+    fn tree_delivered(&mut self, client: ClientId, delivery: TreeDelivery) {
         let Some(connection) = self.connections.get_mut(&client) else {
             return;
         };
-        if !batch.changes.is_empty() {
-            connection.send(&Envelope::event_message(
-                tree_host::NAMESPACE,
-                tree_host::member::CHANGES,
-                &changes_payload(batch.serial, &batch.changes),
-            ));
-        }
-        for answer in &batch.answers {
-            connection.send(&Envelope::event_message(
-                tree_host::NAMESPACE,
-                tree_host::member::ANSWER,
-                &tree_host::answer_payload(answer),
-            ));
-        }
-        for end in &batch.tracks {
-            connection.send(&Envelope::event_message(
-                tree_host::NAMESPACE,
-                tree_host::member::TRACK_ENDED,
-                &tree_host::track_ended_payload(end),
-            ));
-        }
-        for event in &batch.events {
-            match &event.event {
-                TreeFrameInput::Chord(chord) => connection.send(&Envelope::event_message(
-                    tree_host::NAMESPACE,
-                    tree_host::member::CHORD,
-                    &chord_payload(chord),
-                )),
-                TreeFrameInput::Gesture(delivery) => connection.send(&Envelope::event_message(
-                    tree_host::NAMESPACE,
-                    tree_host::member::GESTURE,
-                    &gesture_payload(delivery),
-                )),
-                TreeFrameInput::PointerChord(event) => connection.send(&Envelope::event_message(
-                    tree_host::NAMESPACE,
-                    tree_host::member::POINTER_CHORD,
-                    &pointer_chord_payload(event),
-                )),
-                TreeFrameInput::PointerButton(event) => connection.send(&Envelope::event_message(
-                    tree_host::NAMESPACE,
-                    tree_host::member::POINTER_BUTTON,
-                    &pointer_button_payload(event),
-                )),
-                _ => connection.send(&Envelope::event_message(
-                    tree_host::NAMESPACE,
-                    tree_host::member::EVENT,
-                    &event_payload(event),
-                )),
-            }
-        }
-    }
-
-    /// The frame decided a queued attach: the answer, then the whole snapshot.
-    fn tree_attached(
-        &mut self,
-        client: ClientId,
-        request_id: u64,
-        outcome: Result<(TreeAttached, TreeSnapshot), TreeRefusal>,
-    ) {
-        let Some(connection) = self.connections.get_mut(&client) else {
-            return;
-        };
-        match outcome {
-            Ok((attached, snapshot)) => {
-                connection.send(&Envelope::reply_message(
-                    tree_host::NAMESPACE,
-                    tree_host::member::ATTACH,
-                    request_id,
-                    &attached_payload(attached),
-                ));
-                for payload in snapshot_payloads(&snapshot) {
-                    connection.send(&Envelope::event_message(
-                        tree_host::NAMESPACE,
-                        tree_host::member::SNAPSHOT,
-                        &payload,
-                    ));
-                }
-            }
-            Err(refusal) => connection.send(&Envelope::error(
-                tree_host::NAMESPACE,
-                tree_host::member::ATTACH,
-                request_id,
-                refusal.code.as_str(),
-                "the tree refused the attach",
-            )),
+        for message in delivery.into_messages() {
+            connection.send(&message.into_envelope());
         }
     }
 

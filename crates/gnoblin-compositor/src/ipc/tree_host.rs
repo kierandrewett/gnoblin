@@ -7,6 +7,7 @@
 //! after `attach`, before the attach reply, is refused `not-privileged`: the shell waits for
 //! the attach reply before it transacts.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -14,6 +15,7 @@ use std::time::Instant;
 
 use gnoblin_input::GestureDelivery;
 use gnoblin_paint::SharedPainter;
+use gnoblin_proto::Envelope;
 use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload, PointerButtonPayload, PointerChordPayload};
 use gnoblin_proto::tree::tree::{
     AnswerPayload, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TrackEndedPayload,
@@ -40,6 +42,9 @@ use super::tree_effects::{pass_from_wire, wire_from_pass};
 /// The namespace the tree answers on.
 pub const NAMESPACE: &str = "tree";
 
+/// The one version of the tree protocol this build serves. `attach` names it, over the socket and in process alike.
+pub const VERSION: u64 = 1;
+
 /// The members the tree answers on: `attach` and `transact` are requests, `answer` is the
 /// shell's reply to an `authenticate` change, and `snapshot`, `changes`, `event` and `chord`
 /// are the events that follow them.
@@ -57,13 +62,52 @@ pub mod member {
     pub const TRACK_ENDED: &str = "track_ended";
 }
 
+/// What the frame tells one connection of the tree, whichever transport carries it. A socket connection hears it as the
+/// frames of the `tree` namespace, which the dispatcher writes; an in-process shell hears it through its mailbox
+/// (`inproc_shell`). It is the one thing the two differ in: the attach, the detach and the transaction are this file's,
+/// for both.
+#[derive(Debug)]
+pub(crate) enum TreeDelivery {
+    /// The frame applied a batch the connection must hear about.
+    Changed(TreeBatch),
+    /// The frame decided a queued attach: the snapshot to send with the answer, or the refusal.
+    Attached {
+        /// The request the answer belongs to.
+        request_id: u64,
+        /// The outcome.
+        outcome: Result<(TreeAttached, TreeSnapshot), TreeRefusal>,
+    },
+    /// The frame answered a queued transaction.
+    Reply {
+        /// The request the answer belongs to.
+        request_id: u64,
+        /// The answer.
+        reply: TreeReply,
+    },
+}
+
+/// A connection that is served in this process instead of over a socket.
+pub(crate) trait LocalSink: Send + Sync {
+    /// Takes one delivery, on the frame's thread, so it never waits for the connection. `false` says the connection
+    /// cannot be served any longer (it took nothing for too long): the host detaches it, as it drops a socket client
+    /// that does not read.
+    fn deliver(&self, delivery: TreeDelivery) -> bool;
+}
+
+/// Where deliveries go: the dispatcher, for a socket connection, or the sink a connection registered, for one served in
+/// this process.
+struct TreeRoute {
+    events: Sender<IpcEvent>,
+    local: Mutex<BTreeMap<ClientId, Arc<dyn LocalSink>>>,
+}
+
 /// The shell's tree as the dispatcher sees it. Clones share one queue, one session and one
 /// serial.
 #[derive(Clone)]
 pub struct TreeHostHandle {
     queue: TreeQueue,
     classes: Arc<TreeClasses>,
-    events: Sender<IpcEvent>,
+    route: Arc<TreeRoute>,
     session: Arc<Mutex<TreeSession>>,
     /// The serial of the last batch the frame published, read when a refusal answers.
     serial: Arc<AtomicU64>,
@@ -89,20 +133,63 @@ impl TreeHostHandle {
         Ok(Self {
             queue: TreeQueue::default(),
             classes,
-            events,
+            route: Arc::new(TreeRoute {
+                events,
+                local: Mutex::new(BTreeMap::new()),
+            }),
             session: Arc::new(Mutex::new(TreeSession::default())),
             serial: Arc::new(AtomicU64::new(0)),
             painter: SharedPainter::system(),
         })
     }
 
+    /// Serves `client` in this process: what the frame tells it goes to `sink` and not to the dispatcher. The attach, the
+    /// transaction and the detach are the same calls a socket connection makes.
+    pub(crate) fn serve_locally(&self, client: ClientId, sink: Arc<dyn LocalSink>) {
+        self.route
+            .local
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(client, sink);
+    }
+
+    /// Ends the local service of `client` and detaches it, so its hold, its nodes and its observation go as a closed
+    /// socket's do.
+    pub(crate) fn detach_locally(&self, client: ClientId) {
+        self.route
+            .local
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&client);
+        self.detach(client);
+    }
+
+    /// Hands `delivery` to the connection it is for.
+    pub(crate) fn deliver(&self, client: ClientId, delivery: TreeDelivery) {
+        let sink = self
+            .route
+            .local
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&client)
+            .cloned();
+        match sink {
+            Some(sink) => {
+                if !sink.deliver(delivery) {
+                    self.detach_locally(client);
+                }
+            }
+            None => {
+                let _ = self.route.events.send(IpcEvent::Tree { client, delivery });
+            }
+        }
+    }
+
     /// The hooks the Wayland session's frame runs the tree with. The frame publishes each batch
     /// it applies; a batch goes to the shell's connection when one holds the tree.
     #[must_use]
     pub fn hooks(&self) -> TreeHooks {
-        let session = Arc::clone(&self.session);
-        let serial = Arc::clone(&self.serial);
-        let events = self.events.clone();
+        let host = self.clone();
         let attached_session = Arc::clone(&self.session);
         TreeHooks {
             queue: self.queue.clone(),
@@ -110,46 +197,41 @@ impl TreeHostHandle {
             attached: Arc::new(move || lock(&attached_session).has_attachments()),
             painter: self.painter.clone(),
             publish: Arc::new(move |batch: TreeBatch| {
-                serial.store(batch.serial, Ordering::Release);
+                host.serial.store(batch.serial, Ordering::Release);
                 let (holder, observers) = {
-                    let session = lock(&session);
+                    let session = lock(&host.session);
                     (session.holder(), session.observers())
                 };
                 // An observer hears the changes in serial order and nothing else: the answers, events and
                 // chords of a batch are the shell's.
                 if !batch.changes.is_empty() {
                     for observer in observers {
-                        let _ = events.send(IpcEvent::TreeChanged {
-                            client: ClientId::new(observer.get()),
-                            batch: TreeBatch {
+                        host.deliver(
+                            ClientId::new(observer.get()),
+                            TreeDelivery::Changed(TreeBatch {
                                 serial: batch.serial,
                                 changes: batch.changes.clone(),
                                 ..TreeBatch::default()
-                            },
-                        });
+                            }),
+                        );
                     }
                 }
                 if let Some(holder) = holder {
-                    let _ = events.send(IpcEvent::TreeChanged {
-                        client: ClientId::new(holder.get()),
-                        batch,
-                    });
+                    host.deliver(ClientId::new(holder.get()), TreeDelivery::Changed(batch));
                 }
             }),
         }
     }
 
-    /// Queues the attach of `client`. The frame decides it at the current serial and sends
-    /// `IpcEvent::TreeAttached` with the outcome and, on success, the snapshot to send. A holder
-    /// takes the tree; an observer only reads it and never moves where the shell places windows.
+    /// Queues the attach of `client`. The frame decides it at the current serial and delivers the outcome and, on
+    /// success, the snapshot to send. A holder takes the tree; an observer only reads it and never moves where the shell
+    /// places windows.
     pub fn attach(&self, client: ClientId, request_id: u64, is_owner: bool, mode: AttachMode) {
-        let session = Arc::clone(&self.session);
-        let classes = Arc::clone(&self.classes);
-        let events = self.events.clone();
+        let host = self.clone();
         self.queue.read(move |scene, serial| {
             let granted = match mode {
-                AttachMode::Holder => lock(&session).attach(holder(client), is_owner),
-                AttachMode::Observer => lock(&session).attach_observer(holder(client), is_owner),
+                AttachMode::Holder => lock(&host.session).attach(holder(client), is_owner),
+                AttachMode::Observer => lock(&host.session).attach_observer(holder(client), is_owner),
             };
             let outcome = granted.map(|attachment| {
                 if mode == AttachMode::Holder {
@@ -161,14 +243,10 @@ impl TreeHostHandle {
                         root: scene.root(),
                         serial,
                     },
-                    snapshot_of(scene, &classes, serial),
+                    snapshot_of(scene, &host.classes, serial),
                 )
             });
-            let _ = events.send(IpcEvent::TreeAttached {
-                client,
-                request_id,
-                outcome,
-            });
+            host.deliver(client, TreeDelivery::Attached { request_id, outcome });
         });
     }
 
@@ -253,27 +331,28 @@ impl TreeHostHandle {
             }
             tx = tx.from_observer();
         }
-        let events = self.events.clone();
+        let host = self.clone();
         // Asked again when the frame applies: a holder that detached while the transaction
         // waited for the frame has lost the tree, and the frame refuses it. An observer that
         // detached has lost its place the same way.
-        let session = Arc::clone(&self.session);
         let admitted = {
-            let session = Arc::clone(&session);
+            let host = self.clone();
             move || {
-                let session = lock(&session);
+                let session = lock(&host.session);
                 session.holder() == Some(me) || session.is_observer(me)
             }
         };
         self.queue.submit(base_serial, tx, admitted, move |serial, result| {
             if let (Some((made, destroyed)), Ok(_)) = (&made, &result) {
-                lock(&session).record_made(me, made, destroyed);
+                lock(&host.session).record_made(me, made, destroyed);
             }
-            let _ = events.send(IpcEvent::TreeReply {
+            host.deliver(
                 client,
-                request_id,
-                reply: TreeReply { serial, result },
-            });
+                TreeDelivery::Reply {
+                    request_id,
+                    reply: TreeReply { serial, result },
+                },
+            );
         });
         None
     }
@@ -625,6 +704,130 @@ pub fn snapshot_payloads(snapshot: &TreeSnapshot) -> Vec<SnapshotPayload> {
                 .collect(),
         })
         .collect()
+}
+
+/// One message of the `tree` namespace that a delivery becomes. The socket writes each as a frame
+/// ([`TreeMessage::into_envelope`]); an in-process shell reads each as a `TreeIncoming` (`inproc_shell`). The messages a
+/// delivery is, and the order they come in, are decided here once, for both.
+#[derive(Debug)]
+pub(crate) enum TreeMessage {
+    /// The attach answer.
+    Attached { request_id: u64, payload: AttachedPayload },
+    /// The attach refusal, with its code.
+    AttachRefused { request_id: u64, code: String },
+    /// One chunk of the snapshot.
+    Snapshot(SnapshotPayload),
+    /// The transact answer.
+    Replied { request_id: u64, payload: ReplyPayload },
+    /// The changes a frame applied.
+    Changes(ChangesPayload),
+    /// The answer to a call the compositor settled.
+    Answer(AnswerPayload),
+    /// The end of a timed `set`.
+    TrackEnded(TrackEndedPayload),
+    /// A claimed chord that changed state.
+    Chord(ChordPayload),
+    /// A claimed gesture that advanced.
+    Gesture(GesturePayload),
+    /// A claimed pointer chord's drag that advanced.
+    PointerChord(PointerChordPayload),
+    /// A button of a claimed pointer that changed state.
+    PointerButton(PointerButtonPayload),
+    /// An input or request event of a node.
+    Event(EventPayload),
+}
+
+impl TreeMessage {
+    /// The transact answer for `request_id`.
+    pub(crate) fn replied(request_id: u64, reply: &TreeReply) -> Self {
+        Self::Replied {
+            request_id,
+            payload: reply_payload(reply),
+        }
+    }
+
+    /// The frame the socket writes for this message.
+    pub(crate) fn into_envelope(self) -> Envelope {
+        match self {
+            Self::Attached { request_id, payload } => {
+                Envelope::reply_message(NAMESPACE, member::ATTACH, request_id, &payload)
+            }
+            Self::AttachRefused { request_id, code } => Envelope::error(
+                NAMESPACE,
+                member::ATTACH,
+                request_id,
+                &code,
+                "the tree refused the attach",
+            ),
+            Self::Snapshot(payload) => Envelope::event_message(NAMESPACE, member::SNAPSHOT, &payload),
+            Self::Replied { request_id, payload } => {
+                Envelope::reply_message(NAMESPACE, member::TRANSACT, request_id, &payload)
+            }
+            Self::Changes(payload) => Envelope::event_message(NAMESPACE, member::CHANGES, &payload),
+            Self::Answer(payload) => Envelope::event_message(NAMESPACE, member::ANSWER, &payload),
+            Self::TrackEnded(payload) => Envelope::event_message(NAMESPACE, member::TRACK_ENDED, &payload),
+            Self::Chord(payload) => Envelope::event_message(NAMESPACE, member::CHORD, &payload),
+            Self::Gesture(payload) => Envelope::event_message(NAMESPACE, member::GESTURE, &payload),
+            Self::PointerChord(payload) => Envelope::event_message(NAMESPACE, member::POINTER_CHORD, &payload),
+            Self::PointerButton(payload) => Envelope::event_message(NAMESPACE, member::POINTER_BUTTON, &payload),
+            Self::Event(payload) => Envelope::event_message(NAMESPACE, member::EVENT, &payload),
+        }
+    }
+}
+
+impl TreeDelivery {
+    /// What the connection is told, in the order it is told: a batch is its changes in the order they were applied, then
+    /// each answer the frame settled, then each timed `set` that ended, then each event the frame delivered, one message
+    /// apiece; an attach is its answer and then the whole snapshot, so the shell has a whole tree before any change.
+    pub(crate) fn into_messages(self) -> Vec<TreeMessage> {
+        match self {
+            Self::Changed(batch) => {
+                let mut messages = Vec::new();
+                if !batch.changes.is_empty() {
+                    messages.push(TreeMessage::Changes(changes_payload(batch.serial, &batch.changes)));
+                }
+                messages.extend(
+                    batch
+                        .answers
+                        .iter()
+                        .map(|answer| TreeMessage::Answer(answer_payload(answer))),
+                );
+                messages.extend(
+                    batch
+                        .tracks
+                        .iter()
+                        .map(|end| TreeMessage::TrackEnded(track_ended_payload(end))),
+                );
+                messages.extend(batch.events.iter().map(|event| match &event.event {
+                    TreeFrameInput::Chord(chord) => TreeMessage::Chord(chord_payload(chord)),
+                    TreeFrameInput::Gesture(delivery) => TreeMessage::Gesture(gesture_payload(delivery)),
+                    TreeFrameInput::PointerChord(event) => TreeMessage::PointerChord(pointer_chord_payload(event)),
+                    TreeFrameInput::PointerButton(event) => TreeMessage::PointerButton(pointer_button_payload(event)),
+                    _ => TreeMessage::Event(event_payload(event)),
+                }));
+                messages
+            }
+            Self::Attached {
+                request_id,
+                outcome: Ok((attached, snapshot)),
+            } => {
+                let mut messages = vec![TreeMessage::Attached {
+                    request_id,
+                    payload: attached_payload(attached),
+                }];
+                messages.extend(snapshot_payloads(&snapshot).into_iter().map(TreeMessage::Snapshot));
+                messages
+            }
+            Self::Attached {
+                request_id,
+                outcome: Err(refusal),
+            } => vec![TreeMessage::AttachRefused {
+                request_id,
+                code: refusal.code.as_str().to_owned(),
+            }],
+            Self::Reply { request_id, reply } => vec![TreeMessage::replied(request_id, &reply)],
+        }
+    }
 }
 
 /// A transaction from its wire ops. The first op that does not convert refuses the batch,
