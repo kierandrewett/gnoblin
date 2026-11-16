@@ -1,8 +1,8 @@
 # Gnoblin JS/TS runtime (D36)
 
-Status: proposed by the agent on 2026-11-13, after the owner replaced the Lua shell language with
-JavaScript on QuickJS. The owner's API spec is `design/js-research/owner-spec.md` and wins on API
-shape. This file records the engineering decisions around it. Each decision can be overruled.
+The JavaScript shell runs on QuickJS in the `gnoblin-js` process. The owner's API spec is
+`design/js-research/owner-spec.md` and wins on API shape. This file records the engineering decisions around it.
+The per-lane history of the work is in [`archive/js-runtime-changelog.md`](archive/js-runtime-changelog.md).
 
 Inputs (all in `design/js-research/`):
 
@@ -21,7 +21,6 @@ Inputs (all in `design/js-research/`):
 - [Performance](js-runtime-performance.md): the bytecode cache and change gating.
 - [Live verification](js-runtime-live-verification.md): pictures of the shipped shell and the defects they showed.
 - [Time units and error codes](js-runtime-time-errors.md): milliseconds, easings and `ErrorCode`.
-- [Change log of finished work](js-runtime-changelog.md): what each lane landed, by topic.
 
 ## Decisions
 
@@ -44,7 +43,7 @@ Inputs (all in `design/js-research/`):
   bottom against live objects. The first design's plain-data tier was removed.
 
     Why: The owner never asked for a second tier. A setting with no spec object gets no invented home
-    (design/js-spec-native.md, 3.11).
+    (design/archive/js-spec-native.md, 3.11).
 
 - **J5.** Hot reload swaps a whole generation. New Runtime and Context per generation, stage, validate, commit at one
   compositor boundary, then drop the old one. A failed reload keeps the old generation and reports file, line and column
@@ -69,7 +68,7 @@ Inputs (all in `design/js-research/`):
     Why: A crashed or reloading runtime must never leave the keyring, polkit or the lock without a UI. See
     `popups-portals.md`.
 
-    Recorded exception (lane LockCritique, 2026-11-16). The lock password entry is the one place J8 is not followed: the
+    Recorded exception . The lock password entry is the one place J8 is not followed: the
     stock lock screen (`data/js/gnoblin/lock.ts`) draws the entry and collects the password in the script engine, and
     Rust checks it (`authenticate`, PAM) and is the only thing that unlocks. The compositor's own card
     (`gnoblin-wayland/src/lock_card.rs`) is the Rust-owned entry, and it is the entry whenever the shell's screen is
@@ -162,10 +161,10 @@ Done criteria (headless, on Agent37):
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the
    pointer.
-2. Inherited style lists: copy on write when an element is mutated. Default: yes. Done: ["P8a style status"](js-runtime-log-ui.md#p8a-style-status).
+2. Inherited style lists: copy on write when an element is mutated. Default: yes. Done: ["P8a style status"](archive/js-runtime-log-ui.md#p8a-style-status).
 3. `where()` queries are data only, so Rust can evaluate them. Default: yes.
 4. Trigger grammar. Default: the existing Lua shortcut grammar, typed as template literal types.
 5. Port `prompts.lua`? Default: no. Rust draws consent. See `popups-portals.md` section 8 for the
    other eleven questions.
 6. Window-rule patterns: `gnoblin-config` depends on `gnoblin-lua-pattern` today. Default: plain
-   globs and regular expressions in `rules`. Done: see ["Focus, rules and snapping status"](js-runtime-log-policy.md#focus-rules-and-snapping-status).
+   globs and regular expressions in `rules`. Done: see ["Focus, rules and snapping status"](archive/js-runtime-log-policy.md#focus-rules-and-snapping-status).

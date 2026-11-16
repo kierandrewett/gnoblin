@@ -111,7 +111,7 @@ again: about 6 ms in place of about 40 ms for the stock library and a small `ini
 
 ## Which shell runs
 
-The TypeScript shell is the only shell. Nothing selects it, and `GNOBLIN_SHELL_VM` is not read. To work on the stock
+Gnoblin runs the TypeScript shell. Nothing selects it, and `GNOBLIN_SHELL_VM` is not read. To work on the stock
 library, point `GNOBLIN_JS_STOCK_DIR` at a directory to read it from instead of the copy built into the binary.
 
 ### If you still have an `init.lua`

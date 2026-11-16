@@ -131,7 +131,7 @@ was refused` at WARN. The new generation claimed each stock key while the old on
     refused the duplicate, and the old generation's release then freed the chord: after the reload nobody held it and the
     key did nothing.
 
-    State: Fixed (lane JsReloadClaims). A staged generation's claims wait for the swap and go out behind the old
+    State: Fixed . A staged generation's claims wait for the swap and go out behind the old
     generation's releases, in one transaction (["Hot reload"](js-runtime-reload.md#hot-reload), ["Seat claims across a
     reload"](js-runtime-reload.md#seat-claims-across-a-reload)). Tests: `crates/gnoblin-js/tests/input.rs`, real:
     `a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_removed_one_is_released`.
@@ -142,10 +142,10 @@ was refused` at WARN. The new generation claimed each stock key while the old on
     start was a page of warnings: `is_structured` looked for the bracketed form `INFO  [role] ...`, and the console prints
     `INFO   role/component  message`.
 
-    State: Fixed (lane JsReloadClaims) in `crates/gnoblin-session/src/raw.rs`: a line the child formatted itself is passed
+    State: Fixed in `crates/gnoblin-session/src/raw.rs`: a line the child formatted itself is passed
     on with its own level. Tests in the same file.
 
-**Defect 4 (double title bars) is fixed** (lane SsdNegotiation; `docs/js-ui.md`, "Who draws the frame").
+**Defect 4 (double title bars) is fixed** (`docs/js-ui.md`, "Who draws the frame").
 
 The compositor now negotiates `xdg-decoration`: a client that asks for server-side is told so only while a shell that
 holds the tree has written the main seat's `decorations_available` (the stock shell does when `decorations` is on, after
@@ -161,7 +161,7 @@ shell, shell without declaration, declared, client-side ask, no preference, no m
 connection drop), `crates/gnoblin/tests/js_shell.rs` (a client that draws its own bar gets none, a reload toggling
 decorations) and `crates/gnoblin-js/tests/stock_ui.rs`. It is re-taken on pixels below.
 
-**The late bar is fixed** (lane LateBar; `docs/js-ui.md`, "The room above the client"). The bar can arrive after the
+**The late bar is fixed** (`docs/js-ui.md`, "The room above the client"). The bar can arrive after the
 window was placed: the window mapped before the shell declared decorations, a reload that turned them on, or a client
 that changes its `decoration` later.
 

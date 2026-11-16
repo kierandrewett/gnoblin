@@ -28,7 +28,7 @@ test it says so. Measurements are a debug build on one 4-CPU Agent37 box, one ru
 | `JsRole.diagnostics` grows without bound (5.1)                                                                                                    | fixed (lane LockFix)                                                                                                            | `diagnostics.rs` keeps the newest 256 lines, each cut at 4096 bytes, counts the dropped ones and puts one summary line at the head                                                                                                                                                                                                                                                                                                                                                                                                               | `role_diagnostics.rs`: `a_flood_of_diagnostics_keeps_the_newest_lines_and_counts_the_rest`, `what_arrived_since_a_look_is_asked_for_by_count_and_does_not_shift_with_the_drops`; unit tests in `diagnostics.rs`                                                                                                                                                                                   |
 | `evaluate_document` runs user code in the keyring service (2.6)                                                                                   | fixed (`0689f4b6a`)                                                                                                             | the services role no longer depends on `gnoblin-js`. `gnoblinctl check` was not examined                                                                                                                                                                                                                                                                                                                                                                                                                                                         | none here                                                                                                                                                                                                                                                                                                                                                                                         |
 
-## The write-loss class, staging and the frame's order (lane WriteLoss)
+## The write-loss class, staging and the frame's order
 
 Critique plan items 1, 9 and 12, each checked against the tip before anything was changed. Red means the test failed on the
 tip (`a890416fa`) with the tests of this lane added and nothing else.
@@ -92,7 +92,7 @@ now say "Not applied yet" for each. The mouse and touchpad settings are accepted
 lands (`gnoblin-v09s`, the InputSettings lane); this lane did not touch them. Configuration settings nothing reads are the
 `unused` rows of `design/config-reload.md`, held to the code by `crates/gnoblin-config/tests/apply.rs`.
 
-## Found on the way, and closed by lane LockFix
+## Found on the way, and closed
 
 - **A window that arrives under the lock defeated the card (fixed).** Root cause, read from a timeline of the compositor's
   lock path on the unmodified test: the shell never spun. The window mapped, and 13 ms later the stock focus policy

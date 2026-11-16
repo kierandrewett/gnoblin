@@ -17,4 +17,5 @@ site and should not be used as current instructions or evidence for a new build.
 Each record states its tested environment and limits. Current instructions are
 in [`docs/index.md`](../../docs/index.md) where available.
 
+- The `defineConfig` removal plan (`js-spec-native.md`), the JS runtime lane logs (`js-runtime-changelog.md`, `js-runtime-log-*.md`) and the Lua-to-JS gap audit (`js-parity.md`), finished work kept for history, superseded by [js-runtime.md](../js-runtime.md).
 - Lua API design records, superseded by [js-runtime.md](../js-runtime.md): `lua-api.md`, `lua-api-goal.md`, `lua-control.md`, `lua-input-policy.md`, `shell-api-redesign.md`, `window-rules.md`, `node-api-refactor.md`, `constants/lua.md` and `docs-parity/`.

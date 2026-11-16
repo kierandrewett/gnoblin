@@ -1,6 +1,6 @@
 # Supersampling: compose at `mode * s`, show the real mode
 
-Lane Supersample. This is an owner-requested addition beyond `design/js-spec-native.md` part 2: the spec's
+This is an owner-requested addition beyond `design/archive/js-spec-native.md` part 2: the spec's
 `OutputProfile` has `scale` and no `supersample`. User page: `docs/shell-api/outputs.md`.
 
 ## What was verified before building

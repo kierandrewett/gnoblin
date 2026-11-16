@@ -24,7 +24,7 @@ gnoblin-session = { path = "../gnoblin-session" }
 # The logging composition: the console and the log file sinks, for every role.
 gnoblin-log = { path = "../gnoblin-log", features = ["init"] }
 # The JavaScript runtime role: it locates and evaluates `init.ts`, commits the document, runs the shell and serves
-# `config.reload` itself. A role entry point and an IPC client: it links no engine.
+# `config.reload` itself. A role entry point and an IPC client; `gnoblin-js` brings in the JavaScript engine.
 gnoblin-js = { path = "../gnoblin-js" }
 # The services role: the D-Bus agents as their own process.
 gnoblin-services = { path = "../gnoblin-services" }

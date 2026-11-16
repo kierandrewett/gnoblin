@@ -3,7 +3,7 @@
 Milliseconds everywhere, one easing vocabulary and one set of error codes for the JavaScript API. Part of the [JS/TS
 runtime design](js-runtime.md).
 
-## Time units and error codes status
+## Decisions
 
 The owner's specification says "milliseconds (the JS API uses ms consistently)" and names its easings the CSS way
 (`design/js-research/owner-spec.md`, "TransitionOptions"). The specification gives no error codes, so the one scheme is

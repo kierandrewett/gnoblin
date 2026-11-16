@@ -1,6 +1,6 @@
 # Migrating from Lua
 
-The TypeScript shell is the only shell. It reads `init.ts` (or `init.js`) and does not read `init.lua`. The Lua shell,
+Gnoblin runs the TypeScript shell. It reads `init.ts` (or `init.js`) and does not read `init.lua`. The Lua shell,
 the Lua API and `GNOBLIN_SHELL_VM=lua` are gone.
 
 ## What happens to an init.lua today

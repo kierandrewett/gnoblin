@@ -6,7 +6,7 @@ claimed input, and the hold that gives the shell time to claim before the window
 fake runtime only. No headset, no OpenXR runtime and no `gnoblin-xr` binary ran for it.
 
 Owner-spec section 13 asks for a native `.so` extension. J7 replaces that with the out-of-process program of D34 and
-D35, so this document says what each spec class becomes in that model. See `design/js-runtime-log-console-xr.md` (J7, "P9 XR status"),
+D35, so this document says what each spec class becomes in that model. See `design/archive/js-runtime-log-console-xr.md` (J7, "P9 XR status"),
 `design/xr-extension.md` and `docs/xr.md`.
 
 ## The model in four lines
@@ -51,7 +51,7 @@ D35, so this document says what each spec class becomes in that model. See `desi
 | `ViewRotateBinding`, `ViewScaleBinding` | JS over `controller`               | `rotate` (`Trigger+Thumbstick+Drag`, in the layout by default) turns the View about its own centre by the hand's turn; `scale` (`Grip+Thumbstick+Drag`, added by a script) adds the metres the hand moved along its aim to the View's scale, kept in 0.2 to 3. |
 | `ControllerDragBinding`                 | JS                                 | `xr.ControllerDragBinding` is `XRControllerDragBinding`: the base of the four above and of a script's own drag (spec 067, 069 to 071). The runtime pins the View under the ray for each drag; a cancel gives it back to the ring.                              |
 | `ThrowViewBinding`                      | Not built, by the spec             | Spec snippet 071 is a user class with an author-written `runThrowSimulation`; the library has no stepper.                                                                                                                                                      |
-| `VirtualOutput`                         | Class built, compositor missing    | A checked description. `gnoblin.outputs.add` throws `GnoblinError` `unsupported` ("virtual outputs are not supported by this backend"): the compositor cannot create an output on request (design/js-spec-native.md 2.7).                                      |
+| `VirtualOutput`                         | Class built, compositor missing    | A checked description. `gnoblin.outputs.add` throws `GnoblinError` `unsupported` ("virtual outputs are not supported by this backend"): the compositor cannot create an output on request (design/archive/js-spec-native.md 2.7).                              |
 
 ## Frames and units
 
@@ -63,7 +63,7 @@ D35, so this document says what each spec class becomes in that model. See `desi
 
 ## Native work
 
-Built (lane XrControllers). No headset was used; it is proven against the fake runtime and fake owners only.
+Built . No headset was used; it is proven against the fake runtime and fake owners only.
 
 1. **`controller` class** (`schema/tree/controller.toml`), base `node`. The aim ray's pose is `x y z rotation`, in the
    placement frame (the one `xr_scene::pick` casts in) and in the room's node units, y up, as a View's pose is. Read-only
@@ -75,7 +75,7 @@ Built (lane XrControllers). No headset was used; it is proven against the fake r
 3. **Arbitration.** The shell-writable `controller.claimed` list names inputs (`trigger`, `grip`, `thumbstick`,
    `primary`, `secondary`); the program withholds a claimed trigger, grip or thumbstick from the window under the ray, and
    holds each press for `CLAIM_HOLD` first so that a claim still reaches a press in time (item 6).
-   The shell side (lane JsXrClaims): a script writes the list through `XRController.claim(owner, names)`. The shell keeps
+   The shell side : a script writes the list through `XRController.claim(owner, names)`. The shell keeps
    one claim for each owner and each controller and writes the union, in the schema's order, only when it changes, so
    two owners do not clobber each other. The host converts a JS array of strings to the tree's `list<string>` value and
    refuses anything but the five lowercase names as `invalid-value`, which the module turns into a `TypeError` naming
@@ -88,7 +88,7 @@ Built (lane XrControllers). No headset was used; it is proven against the fake r
    about 90 a second, under the compositor's allowance of 120, which controllers have apart from the head's. Another
    observer may write a controller's pose (as any may write the head's) but not its other values.
 5. **Not built: per-axis scale.** With it a resize preview could change the aspect; today it grows evenly.
-6. **The claim comes before the press (lane XrGrip).** A drag claims after `chordSettleMs`, so the window used to get the
+6. **The claim comes before the press .** A drag claims after `chordSettleMs`, so the window used to get the
    grip's `BTN_RIGHT` for about 50 ms first. **Decision: option A, a hold in the program.** `xr_input::Arbiter` holds
    every press of the trigger, the grip, the face button and the stick for `CLAIM_HOLD` (150 ms of frame display time)
    and forwards it only if no claim came. A claim in that time discards the press and the window hears nothing of it, not
