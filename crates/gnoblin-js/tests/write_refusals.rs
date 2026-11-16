@@ -496,3 +496,69 @@ fn a_refusal_at_a_serial_the_mirror_has_already_reached_does_not_hold_the_resend
         "the write went again and landed: {told:?}"
     );
 }
+
+// ---- a password check beside other writes ------------------------------------------------------------------------
+
+fn is_check(op: &TxOp) -> bool {
+    matches!(op, TxOp::Call { method, .. } if method == "authenticate")
+}
+
+#[test]
+fn a_password_check_goes_in_a_transaction_of_its_own_and_the_frames_other_writes_follow_it() {
+    let mut rig = locked();
+    let mark = rig.comp.sent_count();
+    // The frame that carries the check also carries a write of the script's, and the lock screen's own repaint.
+    exec(&mut rig, "gnoblin.clients.get('5').x = 7;");
+    type_and_enter(&mut rig, "hunter2");
+    rig.frame();
+    let sent = rig.comp.sent_since(mark);
+    let at = sent
+        .iter()
+        .position(|ops| ops.iter().any(is_check))
+        .expect("the check was sent");
+    assert!(
+        sent[at].iter().all(is_check),
+        "the check is alone in its transaction, so a refusal of what the frame wrote cannot cost it: {:?}",
+        sent[at]
+    );
+    assert_eq!(
+        at, 0,
+        "and it goes first, without waiting behind the frame's other writes"
+    );
+
+    rig.settle();
+    assert_eq!(
+        rig.comp.number(WINDOW, "x"),
+        7.0,
+        "the frame's other writes landed behind the check"
+    );
+    assert_eq!(rig.comp.checks().len(), 1, "the check was sent once");
+}
+
+#[test]
+fn a_stale_refusal_of_the_writes_beside_a_password_check_does_not_cost_the_check() {
+    let mut rig = locked();
+    exec(&mut rig, "gnoblin.clients.get('5').x = 7;");
+    type_and_enter(&mut rig, "hunter2");
+    rig.frame();
+    // The compositor writes the window just before the shell's next transaction lands: that one, which carries only
+    // what the frame wrote beside the check, is refused and goes again.
+    rig.comp.stale(1, None, WINDOW, "title");
+    rig.settle();
+    assert_eq!(
+        rig.comp.refused(),
+        1,
+        "the transaction beside the check was refused once"
+    );
+    assert_eq!(
+        rig.comp.number(WINDOW, "x"),
+        7.0,
+        "and its writes landed on the second try"
+    );
+    assert_eq!(rig.comp.checks().len(), 1, "the check went out once");
+    assert_eq!(
+        message_of(&rig),
+        "Checking...",
+        "the check is waiting for the compositor's answer, not failed"
+    );
+}

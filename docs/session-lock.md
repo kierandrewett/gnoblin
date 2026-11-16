@@ -177,6 +177,8 @@ masked password entry over the cover, under the `lock` node:
   password is wiped once sent, so it cannot go again) the screen is answered `The password could not be checked.` at
   once, and a check the compositor does not answer within 30 seconds is answered the same, so the next Enter is an
   attempt.
+- The check goes in a transaction of its own, ahead of whatever else the shell wrote in that frame, so a refusal that a
+  window write caused cannot cost it.
 
 ### The lock card
 
@@ -329,6 +331,7 @@ inside a call, and while a frozen shell's socket is not read.
 - `crates/gnoblin-js/tests/write_refusals.rs` runs the same screen over the shared fake compositor, which can refuse a
   transaction as the real one does:
     - a check lost to a `stale-base` refusal is answered `failed` and the next Enter is an attempt;
+    - a check goes first and alone, and a refusal of the writes beside it leaves it waiting for its answer;
     - a check nobody answers fails after 30 s;
     - the screen renews its lease twice a second while it is up and not after it comes down;
     - a lock frame that throws renews nothing, and neither does a canvas of the screen that fails to draw every frame or

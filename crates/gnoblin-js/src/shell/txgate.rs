@@ -56,6 +56,33 @@ fn sent_ops(ops: &[TxOp], mirror: &TreeMirror) -> Vec<SentOp> {
         .collect()
 }
 
+/// Splits a transaction's ops into those to send now and those to send behind them. When the transaction holds a call
+/// whose text is secret beside other ops, the secret calls are sent alone; every op is sent now otherwise, and when a
+/// secret call is on a node this transaction makes (so that it cannot go without the `new`) too.
+fn split_secret(ops: Vec<TxOp>, mirror: &TreeMirror) -> (Vec<TxOp>, Vec<TxOp>) {
+    let kept = sent_ops(&ops, mirror);
+    let secret = |index: usize| matches!(kept[index], SentOp::Secret { .. });
+    let on_a_node_that_is_there = |op: &TxOp| matches!(op, TxOp::Call { node, .. } if mirror.node(*node).is_some());
+    let alone = ops
+        .iter()
+        .enumerate()
+        .all(|(index, op)| !secret(index) || on_a_node_that_is_there(op));
+    let any_secret = (0..ops.len()).any(secret);
+    let all_secret = (0..ops.len()).all(secret);
+    if !alone || !any_secret || all_secret {
+        return (ops, Vec::new());
+    }
+    let (mut apart, mut rest) = (Vec::new(), Vec::new());
+    for (index, op) in ops.into_iter().enumerate() {
+        if secret(index) {
+            apart.push(op);
+        } else {
+            rest.push(op);
+        }
+    }
+    (apart, rest)
+}
+
 /// Names one op for a refusal: its index, class, property and value kind, so a refused write is traceable
 /// to the script call that made it.
 fn describe_op(index: usize, op: &TxOp, mirror: &TreeMirror) -> String {
@@ -379,6 +406,12 @@ impl JsShell {
             }
             // One write per property, the last: a handler's write and the layout's are one intent.
             tx.ops = coalesce_sets(std::mem::take(&mut tx.ops));
+            // A call that carries a secret goes in a transaction of its own, so that a refusal the frame's other writes
+            // cause does not cost it (its text cannot be sent again) and a refusal of it does not cost them. The rest
+            // goes behind it, first on the next base, as an op refused stale-base does.
+            let (now, later) = split_secret(std::mem::take(&mut tx.ops), &state.mirror);
+            tx.ops = now;
+            self.retry = later;
             tx
         };
         if !tx.ops.is_empty() {
@@ -499,5 +532,66 @@ mod tests {
         assert_eq!(refused.dropped, ops(vec![set(3, "x")]));
         assert!(refused.kept.is_empty());
         assert_eq!(refused.secret, [("authenticate".to_owned(), 4)]);
+    }
+
+    fn mirror() -> TreeMirror {
+        let node = |id, parent, class: &str| gnoblin_tree_client::tree_mirror::SnapshotNode {
+            id,
+            parent,
+            index: 0,
+            class: class.to_owned(),
+            title: String::new(),
+            app_id: String::new(),
+            props: Vec::new(),
+        };
+        TreeMirror::from_snapshot(1, 1, 1, &[node(1, 0, "node"), node(3, 1, "lock"), node(4, 1, "window")])
+            .expect("a mirror")
+    }
+
+    fn check(node: NodeId) -> TxOp {
+        TxOp::Call {
+            node,
+            method: "authenticate".to_owned(),
+            args: Vec::new(),
+            token: 9,
+            text: SecretText::new("hunter2".to_owned()),
+        }
+    }
+
+    fn plain(op: SentOp) -> TxOp {
+        match op {
+            SentOp::Keep(op) => op,
+            SentOp::Secret { .. } => panic!("not a plain op"),
+        }
+    }
+
+    #[test]
+    fn a_password_check_goes_alone_and_the_ops_beside_it_go_behind_it_in_order() {
+        let (x, y) = (plain(set(4, "x")), plain(set(4, "y")));
+        let (now, later) = split_secret(vec![x.clone(), check(3), y.clone()], &mirror());
+        assert_eq!(now, [check(3)]);
+        assert_eq!(later, [x, y]);
+    }
+
+    #[test]
+    fn a_transaction_with_no_secret_or_only_secrets_is_sent_as_it_is() {
+        let x = plain(set(4, "x"));
+        assert_eq!(split_secret(vec![x.clone()], &mirror()), (vec![x], Vec::new()));
+        assert_eq!(split_secret(vec![check(3)], &mirror()), (vec![check(3)], Vec::new()));
+    }
+
+    #[test]
+    fn a_secret_call_on_a_node_the_transaction_makes_cannot_go_without_it() {
+        let ops = vec![
+            TxOp::New {
+                id: 9,
+                class: "lock".to_owned(),
+            },
+            check(9),
+            plain(set(4, "x")),
+        ];
+        // The call is secret by the schema, and its node is in no mirror yet: it cannot be separated from the `new` it
+        // depends on, so the transaction is sent as it is.
+        assert_eq!(split_secret(ops.clone(), &mirror()), (ops, Vec::new()));
     }
 }
