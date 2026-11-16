@@ -228,8 +228,11 @@ the answer to one question: a program in the session must not be able to read or
 without you having it in front of you.
 
 - **Only while the window has the host's keyboard.** The host offers its clipboard to the window it is typing into, so
-  the session sees it from the moment you click into the window until you leave. Leaving takes it away. A program in the
-  session that sets the clipboard while you are elsewhere does not touch the host's.
+  the session sees it from the moment you click into the window until you leave. Leaving takes it away.
+- **A copy belongs to the moment it was made.** A program in the session that sets the clipboard while you are elsewhere
+  does not touch the host's, not when it sets it and not later, when you come back to the window.
+- **A copy made as you leave can be lost.** A copy reaches the host a moment after the program makes it, and a host may
+  refuse one that arrives after the keyboard has gone elsewhere. This repository's compositor does.
 - **Nothing is read until somebody pastes.** The host's clipboard is a list of types until a program asks for one, so a
   gigabyte copy that nobody pastes costs nothing.
 - **Only these types cross:** `text/plain` (with or without a charset), `UTF8_STRING`, `STRING`, `TEXT`, `text/html`,

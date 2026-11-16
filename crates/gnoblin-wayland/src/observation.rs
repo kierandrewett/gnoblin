@@ -403,6 +403,8 @@ pub struct SessionSnapshot {
     pub(crate) activation_denied: Option<ActivationDenial>,
     /// The mime types of the current clipboard selection, when there is one.
     pub(crate) selection: Option<Vec<String>>,
+    /// The mime types of the current primary selection, when there is one.
+    pub(crate) primary_selection: Option<Vec<String>>,
     /// How many times a client rang the session bell.
     ///
     /// A bell is an event and not a property: nothing reads "the bell is now at
@@ -576,6 +578,12 @@ impl SessionSnapshot {
     pub fn selection(&self) -> Option<&[String]> {
         self.selection.as_deref()
     }
+
+    /// The mime types of the current primary selection, when there is one.
+    #[must_use]
+    pub fn primary_selection(&self) -> Option<&[String]> {
+        self.primary_selection.as_deref()
+    }
 }
 
 /// A reader outside the loop that wants to know when the session's state changed.
@@ -661,6 +669,7 @@ impl SessionSnapshot {
             layers: Vec::new(),
             activation_denied: None,
             selection: None,
+            primary_selection: None,
             bells: 0,
             menu_requests: Vec::new(),
             capture_sessions: 0,

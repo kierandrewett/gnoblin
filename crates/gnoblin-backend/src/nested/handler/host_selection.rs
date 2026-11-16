@@ -9,13 +9,14 @@
 //! - **An offer is described before it is the selection.** `data_offer` creates the object and `offer` events name
 //!   its types; only the `selection` event after them says it is the selection. Offers that never become one (a
 //!   drag's) are destroyed when the drag leaves.
-//! - **Our own copy comes back.** When this session sets the host's selection the host tells its focused client about
-//!   the new selection, which is the session itself. The echo is recognised by its types and ignored once, so a copy
-//!   in the session does not become a host copy that is offered back to the session.
+//! - **Our own copies come back.** When this session sets the host's selection the host tells its focused client about
+//!   the new selection, which is the session itself, once for every copy and in the order they were made. Each echo is
+//!   recognised by its types and ignored once, however many copies are still on their way, so a copy in the session
+//!   does not become a host copy that is offered back to the session.
 //! - **Focus is the gate both ways.** A selection set by the session while the window is not focused is not offered to
 //!   the host, and leaving the window withdraws the host's selection from the session.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::os::fd::{AsFd, OwnedFd};
 
 use wayland_client::backend::ObjectId;
@@ -97,8 +98,8 @@ struct SelectionChannel {
     host: Option<(HostSelectionOffer, Vec<String>)>,
     /// What the session offered the host, with the types it named.
     session: Option<(SessionSource, Vec<String>)>,
-    /// Whether the host's next selection event is the echo of the session's own set.
-    echo: bool,
+    /// The types of every copy the session offered the host whose echo has not come back, oldest first.
+    echoes: VecDeque<Vec<String>>,
 }
 
 impl SelectionChannel {
@@ -173,8 +174,8 @@ impl Bridge {
         self.serial = serial;
         self.focused = true;
         // An echo is only owed while the focus it was set under lasts.
-        self.clipboard.echo = false;
-        self.primary.echo = false;
+        self.clipboard.echoes.clear();
+        self.primary.echoes.clear();
     }
 
     /// The window lost the parent's keyboard: the host's selections are withdrawn from the session.
@@ -184,7 +185,7 @@ impl Bridge {
             (SelectionTarget::Clipboard, &mut self.clipboard),
             (SelectionTarget::Primary, &mut self.primary),
         ] {
-            channel.echo = false;
+            channel.echoes.clear();
             if channel.drop_host() {
                 self.notes.push(SelectionNote::HostChanged {
                     target,
@@ -216,17 +217,15 @@ impl Bridge {
         }
         let mime_types = id.and_then(|id| self.offers.remove(&id)).unwrap_or_default();
         let channel = self.channel(target);
-        let echo = std::mem::take(&mut channel.echo);
-        let ours = channel
-            .session
-            .as_ref()
-            .is_some_and(|(_, offered)| *offered == mime_types);
-        if echo && ours && offer.is_some() {
-            // The session's own copy, coming back. Nothing changed for the session.
-            if let Some(offer) = offer {
+        if let Some(offer) = &offer {
+            // The host answers each copy of the session's in the order it got them, so an echo is the oldest one with
+            // these types: any older one that has not come back never will.
+            if let Some(position) = channel.echoes.iter().position(|offered| *offered == mime_types) {
+                channel.echoes.drain(..=position);
+                // The session's own copy, coming back. Nothing changed for the session.
                 offer.destroy();
+                return;
             }
-            return;
         }
         let had = channel.drop_host();
         let Some(offer) = offer else {
@@ -327,10 +326,10 @@ impl Bridge {
                         SessionSource::Primary(source)
                     }
                 };
+                channel.echoes.push_back(types.clone());
                 if let Some((old, _)) = channel.session.replace((source, types)) {
                     old.destroy();
                 }
-                channel.echo = true;
             }
             None => {
                 let Some((old, _)) = channel.session.take() else {
@@ -342,7 +341,7 @@ impl Bridge {
                     _ => {}
                 }
                 old.destroy();
-                channel.echo = false;
+                // A clear has no echo to wait for, and the echoes of the copies before it are still owed.
             }
         }
     }
@@ -353,13 +352,12 @@ impl Bridge {
     }
 
     /// The host replaced a source this session offered.
+    ///
+    /// The echoes of the copies stay as they are: what the host sent before it replaced the source is still on its way.
     fn source_cancelled(&mut self, id: &ObjectId) {
         for channel in [&mut self.clipboard, &mut self.primary] {
-            if channel.session.as_ref().is_some_and(|(source, _)| source.id() == *id) {
-                if let Some((source, _)) = channel.session.take() {
-                    source.destroy();
-                }
-                channel.echo = false;
+            if let Some((source, _)) = channel.session.take_if(|(source, _)| source.id() == *id) {
+                source.destroy();
             }
         }
     }

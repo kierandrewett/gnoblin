@@ -3030,6 +3030,7 @@ impl State {
             bells: self.bells,
             menu_requests: self.menu_requests.iter().cloned().collect(),
             selection: self.clipboard_mime_types(),
+            primary_selection: self.primary_mime_types(),
             ..SessionSnapshot::default()
         };
         let mut liveness = Vec::new();

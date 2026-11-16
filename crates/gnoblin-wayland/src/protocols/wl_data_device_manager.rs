@@ -325,6 +325,11 @@ impl State {
         self.selections.mime_types(WlDataDeviceManagerSelectionKind::Clipboard)
     }
 
+    /// The mime types of the current primary selection, for a diagnostics reader.
+    pub(crate) fn primary_mime_types(&self) -> Option<Vec<String>> {
+        self.selections.mime_types(WlDataDeviceManagerSelectionKind::Primary)
+    }
+
     /// Records a selection's mime types for the observation, and publishes the change.
     ///
     /// Both the Wayland side and the X11 bridge go through here, so the observation

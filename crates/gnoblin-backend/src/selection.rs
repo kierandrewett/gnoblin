@@ -19,9 +19,11 @@
 //! - **Only while the window has the host's keyboard.** The host sends its selection to the client that has keyboard
 //!   focus, so the session sees the host's clipboard from the moment its window is focused until the moment it is
 //!   not: leaving withdraws it. A selection a client of the session sets while the window is not focused is not offered
-//!   to the host, so a background program cannot overwrite the person's clipboard. A selection offered to the host
-//!   while focused stays the host's until something replaces it, which is what copying in the window and pasting
-//!   elsewhere is.
+//!   to the host, now or when the window is focused later, so a background program cannot overwrite the person's
+//!   clipboard. A selection offered to the host while focused stays the host's until something replaces it, which is
+//!   what copying in the window and pasting elsewhere is. A copy reaches the host a moment after the program makes it,
+//!   and a host may refuse one that arrives after the keyboard has moved (this repository's compositor does): it is
+//!   then lost.
 //! - **Only the types in [`bridged_mimes`].** Text and common images. File lists, application types and anything with
 //!   a path or an identity in it do not cross.
 //! - **Never a selection that carries [`PRIVATE_MIME`].** A password manager marks a copy as secret by offering that
