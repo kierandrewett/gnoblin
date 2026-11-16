@@ -74,7 +74,7 @@ something can have changed what it does:
 Release, 4-CPU Agent37 instance, `tests/frame_cost.rs`, 120 idle frames and 60 frames with a title change, over the fake
 link, which answers a poll at once. The compositor side already drew nothing when idle
 (`an_unchanged_scene_draws_nothing`); its whole iteration of a 300-window scene costs 13 us idle (`idle_cost_tests.rs`),
-so it is not gated further. A frame that does work costs what it did, plus one frame after it.
+so it is not gated further. `idle_frame_cost` asserts the idle frame at 300 windows stays under 300 us. The bytecode cache is on in the role (`JsBytecodeCache::from_environment`, `GNOBLIN_JS_CACHE=0` turns it off). A frame that does work costs what it did, plus one frame after it.
 
 #### What proves it
 

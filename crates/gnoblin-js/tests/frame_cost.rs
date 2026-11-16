@@ -3,7 +3,7 @@
 //! The runtime role runs a frame every turn, so an idle frame is paid sixty times a second all day. Before change
 //! gating it was proportional to the windows; with it, a frame that has nothing to do stops at a few comparisons.
 //! `idle_frame_cost` prints the table (`cargo test --release -p gnoblin-js --test frame_cost -- --ignored
-//! --nocapture`); it is ignored because a timing is not a pass or fail. What gating promises without a clock is
+//! --nocapture`); it is ignored because a timing needs a release build, and it asserts that an idle frame at 300 windows stays under 300 us. What gating promises without a clock is
 //! asserted by `frame_gating.rs` through the shell's frame counters.
 //!
 //! The link here is the fake of `tests/common`, which answers a poll at once. What a turn costs when it reads the real
@@ -17,6 +17,9 @@ use common::*;
 
 const IDLE_FRAMES: u32 = 120;
 const CHANGED_FRAMES: u32 = 60;
+
+/// The most an idle frame at 300 windows may cost in a release build. Before change gating it was 3,400 us.
+const IDLE_CEILING_US: f64 = 300.0;
 
 /// The mean cost of one frame in microseconds over `frames` runs of `step`.
 fn mean_us(frames: u32, mut step: impl FnMut(u32)) -> f64 {
@@ -49,5 +52,11 @@ fn idle_frame_cost() {
             })
         };
         println!("{windows:7} | {idle:13.1} | {changed:13.1}");
+        if windows == 300 {
+            assert!(
+                idle < IDLE_CEILING_US,
+                "an idle frame at 300 windows costs {idle:.1} us, over the {IDLE_CEILING_US} us ceiling"
+            );
+        }
     }
 }
