@@ -7,6 +7,7 @@ import { host } from "gnoblin-core/host/bridge";
 import { emitMember, holders } from "gnoblin-core/host/collection_events";
 import { ctx } from "gnoblin-core/host/context";
 import { say } from "gnoblin-core/host/dispatch";
+import { hooks } from "gnoblin-core/host/hooks";
 import { isOutput, stateOf } from "gnoblin-core/host/node_state";
 import type { Output } from "gnoblin-core/host/output";
 
@@ -72,7 +73,7 @@ export function settleApplications(): void {
             continue;
         }
         ctx.applications.delete(answer.token);
-        ctx.displayManager.changed();
+        hooks.outputChange(pending.output, null);
         pending.result.done = true;
         pending.result.error = answer.error === "" ? null : answer.error;
         if (pending.result.error !== null && pending.path !== null) {

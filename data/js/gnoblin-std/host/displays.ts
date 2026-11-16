@@ -12,6 +12,7 @@ import { holders, recompute } from "gnoblin-core/host/collection_events";
 import { collectionState, rootState } from "gnoblin-core/host/collection_state";
 import { Collection } from "gnoblin-core/host/collections";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { effectiveDesk, fillDesks, liveOutputs, primaryOutput, setShown } from "gnoblin-std/host/desks";
 import { queueFor, say } from "gnoblin-core/host/dispatch";
 import { Output } from "gnoblin-core/host/output";
@@ -30,23 +31,23 @@ function sameOutputs(a: readonly Output[], b: readonly Output[]): boolean {
  * and cover the same workspace), or ends the span with null. Asking for the span that holds changes nothing.
  */
 function spanDesks(lead: Output, members: readonly Output[] | null): void {
-    const desk = ctx.deskByOutput.get(lead);
+    const desk = std.deskByOutput.get(lead);
     if (desk === undefined) {
         return;
     }
-    const covered = (members ?? []).filter((output) => ctx.deskByOutput.has(output));
+    const covered = (members ?? []).filter((output) => std.deskByOutput.has(output));
     const next = covered.length > 1 ? covered : null;
     if (next === null ? desk.spans === null : desk.spans !== null && sameOutputs(desk.spans, next)) {
         return;
     }
-    for (const other of ctx.desks) {
+    for (const other of std.desks) {
         if (other.spannedBy === desk) {
             other.spannedBy = null;
         }
     }
     desk.spans = next;
     for (const output of next ?? []) {
-        const under = ctx.deskByOutput.get(output);
+        const under = std.deskByOutput.get(output);
         if (under !== undefined && under !== desk) {
             under.spannedBy = desk;
             setShown(under, null);
@@ -101,7 +102,7 @@ function makeOutputSet(): OutputSet {
 
 /** Tells the collection that holds `member` that it joined (`onAdded`) or left (`onRemoved`). */
 function announceMember(member: Display | OutputProfile, joined: boolean): void {
-    const root = member instanceof Display ? ctx.displayRoot : ctx.profileRoot;
+    const root = member instanceof Display ? std.displayRoot : std.profileRoot;
     if (joined) {
         queueFor(root, "onAdded", [member, root.self]);
         recompute(root, member);
@@ -118,9 +119,9 @@ export function installDisplays(): void {
     const displayBackend: DisplayBackend = {
         outputs: () => liveOutputs(),
         primary: () => primaryOutput(),
-        hasDesk: (output) => ctx.deskByOutput.has(output as Output),
+        hasDesk: (output) => std.deskByOutput.has(output as Output),
         shownOn: (output) => {
-            const desk = ctx.deskByOutput.get(output as Output);
+            const desk = std.deskByOutput.get(output as Output);
             return desk === undefined ? null : effectiveDesk(desk).shown;
         },
         attached: (workspace) => wsState(workspace as Workspace).attached,
@@ -138,19 +139,19 @@ export function installDisplays(): void {
     };
 
     // Reconciles the script's profiles and displays with the connected outputs.
-    ctx.displayManager = new DisplayManager(
+    std.displayManager = new DisplayManager(
         displayBackend,
-        ctx.profileRoot.list as OutputProfile[],
-        ctx.displayRoot.list as Display[],
+        std.profileRoot.list as OutputProfile[],
+        std.displayRoot.list as Display[],
     );
 
     attachDisplays({
-        changed: () => ctx.displayManager.changed(),
+        changed: () => std.displayManager.changed(),
         isWorkspace: (value) => value instanceof Workspace,
         isOutput: (value) => value instanceof Output,
         error: (code, target, message) => new GnoblinError(code, target, message),
-        shown: (display) => ctx.displayManager.shown(display),
-        show: (display, workspace) => ctx.displayManager.assignContent(display, workspace),
-        outputs: (display) => ctx.displayManager.outputsOf(display),
+        shown: (display) => std.displayManager.shown(display),
+        show: (display, workspace) => std.displayManager.assignContent(display, workspace),
+        outputs: (display) => std.displayManager.outputsOf(display),
     });
 }

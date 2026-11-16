@@ -14,7 +14,6 @@ import type { DeviceHome } from "gnoblin-core/devices";
 import { errorCodeOfRefusal } from "gnoblin-core/errors";
 import { NativeObject } from "gnoblin-core/native_object";
 import type { Client } from "gnoblin-core/host/client";
-import type { Display } from "gnoblin-std/display/display";
 import { BindingCollection } from "gnoblin-core/bindings/binding";
 import { bindIn, checkDeviceName, splitDevice } from "gnoblin-core/input/bind";
 import { ClaimTable } from "gnoblin-core/input/claims";
@@ -185,11 +184,29 @@ export class InputContext extends NativeObject implements DeviceHome {
     }
 
     /**
-     * The display under the pointer, or the primary display when the pointer is outside every output. Returns null
-     * when no display has an output. Assigning `viewport.content` switches that display's workspace.
+     * Whether the compositor plays its own animations on window nodes: the fade in when a window maps, the fade out
+     * when it closes, unmaps or hides, and the tween of a window's placement towards its value. True until a shell
+     * turns it off, which a shell does once, at startup, when it animates windows itself: a window then appears, moves
+     * and leaves with no compositor motion. It affects only the changes that start after the write. The compositor
+     * turns it on again when the shell lets go of the tree. Reduced motion still turns every animation off.
      */
-    get activeDisplay(): Display | null {
-        return this.#world.displayAt(this.pointer) as Display | null;
+    get builtinMotion(): boolean {
+        return this.settings.builtinMotion;
+    }
+
+    set builtinMotion(enabled: boolean) {
+        this.#live("builtinMotion");
+        if (typeof enabled !== "boolean") {
+            throw new TypeError(`InputContext "${this.name}".builtinMotion: must be true or false`);
+        }
+        const code = this.#host.setBuiltinMotion(this.#seat, enabled);
+        if (code != null) {
+            throw this.#world.error(
+                errorCodeOfRefusal(code),
+                `InputContext "${this.name}".builtinMotion`,
+                `the host refused (${code})`,
+            );
+        }
     }
 
     /** The pointer in the compositor's logical space. */

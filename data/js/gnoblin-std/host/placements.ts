@@ -3,6 +3,7 @@
 import type { Client } from "gnoblin-core/host/client";
 import { growRect } from "gnoblin-core/inset";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { isShown } from "gnoblin-std/host/desks";
 import { stateOf, writeProperty } from "gnoblin-core/host/node_state";
 import { framed, workAreaOfWorkspace } from "gnoblin-std/host/work_area";
@@ -29,7 +30,7 @@ function sameVector(a: Triple, b: Triple): boolean {
 
 /** Records the intended visibility and writes it only when the value changes. */
 function writeShown(client: Client, shown: boolean): void {
-    ctx.writtenVisible.set(client, shown);
+    std.writtenVisible.set(client, shown);
     if (client.visible !== shown) {
         client.visible = shown;
     }
@@ -78,10 +79,10 @@ export function applyPlacements(
             client.tiled = tiled;
         }
         const wanted = placement?.visible ?? true;
-        if ((ctx.shownByLayout.get(client) ?? true) !== wanted) {
+        if ((std.shownByLayout.get(client) ?? true) !== wanted) {
             raiseSignal(client, "shown");
         }
-        ctx.shownByLayout.set(client, wanted);
+        std.shownByLayout.set(client, wanted);
         const z = placement?.z ?? 0;
         if (client.z !== z) {
             client.z = z;
@@ -102,11 +103,11 @@ export function applyPlacements(
  * the rest. A window is written only when what it should be differs from what this module last wrote.
  */
 export function syncVisibility(): void {
-    for (const workspace of ctx.workspaceRoot.list as Workspace[]) {
-        const shown = isShown(workspace) || ctx.holding.has(workspace);
+    for (const workspace of std.workspaceRoot.list as Workspace[]) {
+        const shown = isShown(workspace) || std.holding.has(workspace);
         for (const client of wsState(workspace).clientsState.list as Client[]) {
-            const want = shown && (ctx.shownByLayout.get(client) ?? true);
-            if (client.alive && (ctx.writtenVisible.get(client) ?? true) !== want) {
+            const want = shown && (std.shownByLayout.get(client) ?? true);
+            if (client.alive && (std.writtenVisible.get(client) ?? true) !== want) {
                 writeShown(client, want);
             }
         }
@@ -120,7 +121,7 @@ export function syncVisibility(): void {
  * the slide ends, then go back to where they rest, hidden.
  */
 export function startSlides(): void {
-    for (const slide of ctx.slides.splice(0)) {
+    for (const slide of std.slides.splice(0)) {
         const { from, to, direction, duration, progress } = slide;
         // The slide is as long as the output the incoming workspace is on is wide.
         const area = workAreaOfWorkspace(to);
@@ -143,17 +144,17 @@ export function startSlides(): void {
             }
             moves.push({ node: stateOf(client).node, key: "x", value: rest - travel });
         }
-        ctx.transitions.play(moves, { duration, easing: "ease-out" });
-        ctx.holding.set(from, (ctx.holding.get(from) ?? 0) + 1);
+        std.transitions.play(moves, { duration, easing: "ease-out" });
+        std.holding.set(from, (std.holding.get(from) ?? 0) + 1);
         ctx.hostApi.timers.after(duration, () => {
-            const left = (ctx.holding.get(from) ?? 1) - 1;
+            const left = (std.holding.get(from) ?? 1) - 1;
             if (left > 0) {
-                ctx.holding.set(from, left);
+                std.holding.set(from, left);
                 return;
             }
-            ctx.holding.delete(from);
+            std.holding.delete(from);
             for (const [client, rest] of resting) {
-                if (client.alive && ctx.membership.get(client) === from && !isShown(from)) {
+                if (client.alive && std.membership.get(client) === from && !isShown(from)) {
                     writeShown(client, false);
                     client.x = rest;
                 }

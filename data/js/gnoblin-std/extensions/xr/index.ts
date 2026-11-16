@@ -5,6 +5,8 @@
 // The check lives here alone: the host's XR glue and the sibling files import each other directly, so loading the
 // runtime never trips it.
 
+// A shell that imports this module alone still gets `gnoblin-std` installed, which is what `gnoblin.extensions` is.
+import "gnoblin-std/host";
 import "gnoblin-std/extensions/xr/exports";
 
 (globalThis as unknown as { gnoblin: { extensions: { require(name: "xr"): void } } }).gnoblin.extensions.require("xr");

@@ -1,8 +1,6 @@
-// Reads focus settings and reduced-motion preferences from the desktop's first seat.
-// The stock focus policy uses the seat's `focus` property, which the shell writes.
+// Reads the focus and the reduced-motion preference from the desktop's first seat.
+// A shell gives the keyboard focus by writing the seat's `focus` property.
 
-import { FOCUS_DEFAULTS, seatFocusSettings } from "gnoblin-std/focus";
-import type { FocusSettings } from "gnoblin-std/focus";
 import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
 import type { Member } from "gnoblin-core/host/collection_state";
@@ -47,13 +45,6 @@ export function focusedAmong(list: readonly Member[]): Member | null {
     }
     const held = ctx.clientsByNode.get(host.input.focus(seat));
     return list.find((member) => member === held) ?? null;
-}
-
-/** Resolves the effective focus policy from the first seat's published settings. */
-export function currentFocusSettings(): FocusSettings {
-    const seat = host.input.seats()[0];
-    const published = seat === undefined ? undefined : host.input.settings(seat);
-    return published === undefined ? FOCUS_DEFAULTS : seatFocusSettings(published);
 }
 
 /** The seat that is not the XR program's: the keyboard and pointer of the desktop. */

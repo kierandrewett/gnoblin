@@ -5,6 +5,7 @@ use rquickjs::{Ctx, Function, Object};
 use super::claims::{JsClaimOutcome, claim, claim_device, claim_gesture, unclaim};
 use super::seats::{
     JsSeatSettings, clear_focus, declare_decorations, devices, drag_constraint, focus, pointer, seat_name, seats,
+    set_builtin_motion,
 };
 use crate::bindings::SharedState;
 
@@ -93,6 +94,18 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
                 return Some("unknown-node");
             };
             declare_decorations(&mut state, seat, available)
+        })?,
+    )?;
+
+    let shared = state.clone();
+    input.set(
+        "setBuiltinMotion",
+        Function::new(ctx.clone(), move |seat: f64, enabled: bool| -> Option<&'static str> {
+            let mut state = shared.borrow_mut();
+            let Some(seat) = state.handles.resolve(seat) else {
+                return Some("unknown-node");
+            };
+            set_builtin_motion(&mut state, seat, enabled)
         })?,
     )?;
 

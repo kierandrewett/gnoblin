@@ -63,8 +63,6 @@ export interface NodeState {
     readied: boolean;
     /** Last client values reported to listeners, or null before they are recorded. */
     seen: Seen | null;
-    /** The script's own flag: a floating client is left out of its workspace's tiling. */
-    floating: boolean;
 }
 
 /** Returns native state for a managed object. Throws when the value is not a shell-created object. */
@@ -132,7 +130,7 @@ export function isOutput(value: unknown): value is Output {
 }
 
 /** The kind of value a client property takes. */
-type PropertyKind = "number" | "flag" | "vector";
+type PropertyKind = "number" | "flag" | "vector" | "text";
 
 /**
  * Writes one property of a client: the queued write, or the error that names the member. Throws for a dead client, a
@@ -153,6 +151,11 @@ export function writeProperty(client: Client, key: string, value: unknown, kind:
     } else if (kind === "flag") {
         if (typeof value !== "boolean") {
             throw new TypeError(`${target}: must be true or false`);
+        }
+        sent = value;
+    } else if (kind === "text") {
+        if (typeof value !== "string") {
+            throw new TypeError(`${target}: must be text`);
         }
         sent = value;
     } else {

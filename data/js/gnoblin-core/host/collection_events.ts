@@ -7,7 +7,7 @@ import { ctx } from "gnoblin-core/host/context";
 import { queueFor } from "gnoblin-core/host/dispatch";
 import { stateOf } from "gnoblin-core/host/node_state";
 import type { Output } from "gnoblin-core/host/output";
-import { wsOf } from "gnoblin-std/host/workspace_state";
+import { hooks } from "gnoblin-core/host/hooks";
 
 /** The collections that hold `member` now: its root and every tracked view with it as a member. */
 export function holders(top: CollectionState, member: Member): CollectionState[] {
@@ -40,11 +40,10 @@ export function emitMember(client: Client | Output, held: CollectionState[], met
     }
 }
 
-/** Every collection that holds `client` now: `gnoblin.clients`, its workspace's `clients`, and its live
- * selections.
+/**
+ * Every collection that holds `client` now: `gnoblin.clients`, the other roots a package keeps it in (a workspace's
+ * `clients`), and their live selections.
  */
 export function clientHolders(client: Client): CollectionState[] {
-    const own = wsOf(client);
-    const all = holders(ctx.clientRoot, client);
-    return own ? [...all, ...holders(own.clientsState, client)] : all;
+    return [ctx.clientRoot, ...hooks.clientRoots(client)].flatMap((root) => holders(root, client));
 }

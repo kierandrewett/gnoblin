@@ -24,6 +24,11 @@ export interface SeatSettings {
     readonly focusChangeOnPointerRest: boolean;
     /** The user asked for reduced motion: the shell's animations take no time. */
     readonly reducedMotion: boolean;
+    /**
+     * Whether the compositor plays its own animations on window nodes (the fade in and out and the tween of a placement).
+     * True until a shell turns it off; see `InputContext.builtinMotion`.
+     */
+    readonly builtinMotion: boolean;
 }
 
 /** What a seat says and does, as plain functions over node ids. The shell's Rust host implements it. */
@@ -50,6 +55,11 @@ export interface InputHost {
      * when queued.
      */
     declareDecorations(seat: number, available: boolean): string | undefined;
+    /**
+     * Switches the compositor's own window animations on or off for the seat's session. A refusal code, or undefined
+     * when queued.
+     */
+    setBuiltinMotion(seat: number, enabled: boolean): string | undefined;
     /** A claim id, or a refusal code. */
     claim(seat: number, chord: string, grab: boolean, device: string): number | string;
     /** Requests a compositor claim for a touchpad gesture. */
@@ -72,8 +82,6 @@ export interface InputWorld {
      * The rectangle a dragged window stays in (the work area of its output), or null when the tree has no screen yet.
      */
     workArea(client?: BindingClient): Rect | null;
-    /** The display under `point` (the primary output's when none is), or null when no display has an output. */
-    displayAt(point: Point): unknown;
     /** The layouts the workspaces use now. Their bindings go live in every context while they are in use. */
     layouts(): InputLayout[];
     /** Runs `run` later, under the call budget. A throw is reported against `site`. */
@@ -94,6 +102,7 @@ export const SEAT_DEFAULTS: SeatSettings = Object.freeze({
     autoRaiseDelay: 500,
     focusChangeOnPointerRest: false,
     reducedMotion: false,
+    builtinMotion: true,
 });
 
 /** The layout side of a registration: the input module reads its bindings. */

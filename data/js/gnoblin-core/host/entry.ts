@@ -5,14 +5,8 @@ import { ctx } from "gnoblin-core/host/context";
 import type { Entry } from "gnoblin-core/host/contract";
 import { next, pending, takeErrors } from "gnoblin-core/host/dispatch";
 import { plan, pointer, ready } from "gnoblin-core/host/frame";
-import { layout } from "gnoblin-std/host/layout_driver";
-import { declareDecorations } from "gnoblin-core/host/services";
-import { reconcileWorkspaces, snapshotWorkspaces } from "gnoblin-std/host/snapshot";
-import { ensureDefaultWorkspace } from "gnoblin-std/host/workspaces";
+import { hooks } from "gnoblin-core/host/hooks";
 import { inspect } from "gnoblin-core/inspect";
-import { lockRelease, runLockFrame } from "gnoblin-std/lock";
-import { sceneReleaseAll } from "gnoblin-std/scene/registry";
-import { uiReleaseAll } from "gnoblin-std/ui/frame";
 import { NEVER, NOW, nextWake, onWake } from "gnoblin-core/wake";
 
 /** What the shell calls each frame, over the object model of `gnoblin`. */
@@ -22,17 +16,7 @@ export function makeEntry(): Entry {
     return {
         render: (value, maxBytes) => inspect.render(value, { maxBytes }),
         wake: () => nextWake((owner, error) => ctx.reports.push({ site: `wake source ${owner}`, error })),
-        ui: () =>
-            runLockFrame(
-                (site, error) => ctx.reports.push({ site, error }),
-                () => {
-                    try {
-                        ctx.xrRuntime.frame();
-                    } catch (error) {
-                        ctx.reports.push({ site: "XRRuntime.frame", error });
-                    }
-                },
-            ),
+        ui: () => hooks.ui(),
         plan,
         next,
         pending,
@@ -63,18 +47,14 @@ export function makeEntry(): Entry {
         takeIdleCommands: () => ctx.idleMonitor.takeCommands(),
         idleHolders: () => ctx.idleMonitor.holders(),
         idleFailed: (holder) => ctx.idleMonitor.failed(holder),
-        layout,
-        finishLoad: ensureDefaultWorkspace,
-        snapshot: snapshotWorkspaces,
-        reconcile: reconcileWorkspaces,
+        layout: () => hooks.layout(),
+        finishLoad: () => hooks.finishLoad(),
+        snapshot: () => hooks.snapshot(),
+        reconcile: (previous) => hooks.reconcile(previous),
         pointer,
         input: (messages) => {
             ctx.input.deliver(messages);
-            try {
-                ctx.focusPolicy?.frame();
-            } catch (error) {
-                ctx.reports.push({ site: "FocusPolicy.frame", error });
-            }
+            hooks.inputDelivered();
             return ctx.queue.length;
         },
         apiFrame: (batch) => {
@@ -85,15 +65,8 @@ export function makeEntry(): Entry {
         },
         cancelAll: () => {
             ctx.input.cancelAll();
-            ctx.xrRuntime.release();
-            sceneReleaseAll();
-            ctx.transitions.release();
-            lockRelease();
-            uiReleaseAll();
+            hooks.release();
             ctx.hostApi.retire();
-            if (ctx.decorations !== null) {
-                declareDecorations(false);
-            }
             return ctx.queue.length;
         },
     };

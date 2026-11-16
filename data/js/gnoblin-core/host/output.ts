@@ -1,18 +1,13 @@
-// `Output`: a connected display, the compositor's `screen` node, with the workspace it shows.
+// `Output`: a connected display, the compositor's `screen` node.
 
 import type { OutputConfig } from "gnoblin-core/output_config";
 import { CREATE, host } from "gnoblin-core/host/bridge";
 import { ctx } from "gnoblin-core/host/context";
-import { effectiveDesk, liveOutputs } from "gnoblin-std/host/desks";
 import { assertListener } from "gnoblin-core/host/listeners";
 import type { OutputListener } from "gnoblin-core/host/listeners";
 import { read, stateOf } from "gnoblin-core/host/node_state";
 import { applyOutput } from "gnoblin-core/host/output_apply";
 import type { OutputApplication } from "gnoblin-core/host/output_apply";
-import { showWorkspace } from "gnoblin-std/host/show";
-import type { ShowOptions } from "gnoblin-std/host/show";
-import { areaOf } from "gnoblin-std/host/work_area";
-import type { Workspace } from "gnoblin-std/host/workspace";
 import { NativeObject } from "gnoblin-core/native_object";
 import type { NodeId, Rect } from "gnoblin-core/types";
 
@@ -87,7 +82,6 @@ export class Output extends NativeObject {
             listeners: [],
             readied: false,
             seen: null,
-            floating: false,
         });
         ctx.outputSeen.set(this, publishedOutput(node));
     }
@@ -135,7 +129,9 @@ export class Output extends NativeObject {
     /** The output this one shows an exact copy of, or null when it shows its own picture. */
     get mirrorOf(): Output | null {
         const source = read<string>(this, "mirror_of");
-        return source === "" ? null : (liveOutputs().find((one) => one.connector === source) ?? null);
+        return source === ""
+            ? null
+            : ((ctx.outputRoot.list as Output[]).find((one) => one.connector === source) ?? null);
     }
 
     /** The mode being driven, `WxH@Hz`. */
@@ -263,28 +259,6 @@ export class Output extends NativeObject {
     /** The whole output in the compositor's coordinates. */
     get bounds(): Rect {
         return { x: this.x, y: this.y, width: this.width, height: this.height };
-    }
-
-    /**
-     * What a layout tiles in on this output: the output less the bars on it. Null for a gone output or one with no
-     * size.
-     */
-    get area(): Rect | null {
-        return stateOf(this).alive ? areaOf(this) : null;
-    }
-
-    /** The workspace the output shows, or null when it shows none or is gone. */
-    get workspace(): Workspace | null {
-        const desk = ctx.deskByOutput.get(this);
-        return desk !== undefined && stateOf(this).alive ? effectiveDesk(desk).shown : null;
-    }
-
-    /**
-     * Shows `workspace` (itself or its id) on this output. A workspace another output shows moves here and that output
-     * takes the workspace this one showed, so no workspace is on two outputs. `options.duration` slides the windows.
-     */
-    show(workspace: Workspace | string, options: ShowOptions = {}): void {
-        showWorkspace(workspace, { ...options, output: this });
     }
 
     /** Attaches a listener to this output. Adding the same listener twice has no effect. */

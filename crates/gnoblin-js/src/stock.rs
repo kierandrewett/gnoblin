@@ -311,110 +311,9 @@ mod tests {
         found
     }
 
-    /// The core imports of std modules that still exist: each is a place `gnoblin-core` reaches into `gnoblin-std`
-    /// and is being removed. The list only ever shrinks; the test fails on an entry whose import is gone.
-    const CORE_TO_STD: &[(&str, &str)] = &[
-        ("gnoblin-core/host/adoption", "gnoblin-std/host/desks"),
-        ("gnoblin-core/host/adoption", "gnoblin-std/host/fitting"),
-        ("gnoblin-core/host/adoption", "gnoblin-std/host/membership"),
-        ("gnoblin-core/host/adoption", "gnoblin-std/host/work_area"),
-        ("gnoblin-core/host/adoption", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/adoption", "gnoblin-std/host/workspace_state"),
-        ("gnoblin-core/host/adoption", "gnoblin-std/host/workspaces"),
-        ("gnoblin-core/host/client", "gnoblin-std/host/desks"),
-        ("gnoblin-core/host/client", "gnoblin-std/host/membership"),
-        ("gnoblin-core/host/client", "gnoblin-std/host/style_scopes"),
-        ("gnoblin-core/host/client", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/client", "gnoblin-std/host/workspace_state"),
-        ("gnoblin-core/host/client", "gnoblin-std/reposition"),
-        ("gnoblin-core/host/client", "gnoblin-std/style/resolve"),
-        ("gnoblin-core/host/client", "gnoblin-std/style/style"),
-        ("gnoblin-core/host/client", "gnoblin-std/transition/engine"),
-        ("gnoblin-core/host/client", "gnoblin-std/transition/transition"),
-        ("gnoblin-core/host/client", "gnoblin-std/transition/types"),
-        (
-            "gnoblin-core/host/collection_events",
-            "gnoblin-std/host/workspace_state",
-        ),
-        ("gnoblin-core/host/collection_state", "gnoblin-std/display/display"),
-        (
-            "gnoblin-core/host/collection_state",
-            "gnoblin-std/display/output_profile",
-        ),
-        ("gnoblin-core/host/collection_state", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/collections", "gnoblin-std/host/style_scopes"),
-        ("gnoblin-core/host/collections", "gnoblin-std/style/style"),
-        ("gnoblin-core/host/console", "gnoblin-std/display/display"),
-        ("gnoblin-core/host/console", "gnoblin-std/display/output_profile"),
-        ("gnoblin-core/host/console", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/context", "gnoblin-std/display_manager/manager"),
-        ("gnoblin-core/host/context", "gnoblin-std/extensions/xr/runtime"),
-        ("gnoblin-core/host/context", "gnoblin-std/focus"),
-        ("gnoblin-core/host/context", "gnoblin-std/frame/decorations"),
-        ("gnoblin-core/host/context", "gnoblin-std/gesture_actions"),
-        ("gnoblin-core/host/context", "gnoblin-std/host/desks"),
-        ("gnoblin-core/host/context", "gnoblin-std/host/show"),
-        ("gnoblin-core/host/context", "gnoblin-std/host/style_scopes"),
-        ("gnoblin-core/host/context", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/context", "gnoblin-std/host/workspace_state"),
-        ("gnoblin-core/host/context", "gnoblin-std/transition/engine"),
-        ("gnoblin-core/host/context", "gnoblin-std/transition/staging"),
-        ("gnoblin-core/host/entry", "gnoblin-std/host/layout_driver"),
-        ("gnoblin-core/host/entry", "gnoblin-std/host/snapshot"),
-        ("gnoblin-core/host/entry", "gnoblin-std/host/workspaces"),
-        ("gnoblin-core/host/entry", "gnoblin-std/lock"),
-        ("gnoblin-core/host/entry", "gnoblin-std/scene/registry"),
-        ("gnoblin-core/host/entry", "gnoblin-std/ui/frame"),
-        ("gnoblin-core/host/facade", "gnoblin-std/host/displays"),
-        ("gnoblin-core/host/facade", "gnoblin-std/host/policy"),
-        ("gnoblin-core/host/facade", "gnoblin-std/host/rollback"),
-        ("gnoblin-core/host/facade", "gnoblin-std/host/staging"),
-        ("gnoblin-core/host/facade", "gnoblin-std/host/xr_bridge"),
-        ("gnoblin-core/host/frame", "gnoblin-std/host/desks"),
-        ("gnoblin-core/host/frame", "gnoblin-std/host/membership"),
-        ("gnoblin-core/host/frame", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/frame", "gnoblin-std/host/workspace_state"),
-        ("gnoblin-core/host/frame", "gnoblin-std/host/workspaces"),
-        ("gnoblin-core/host/frame", "gnoblin-std/scene/registry"),
-        ("gnoblin-core/host/frame", "gnoblin-std/ui/frame"),
-        ("gnoblin-core/host/frame", "gnoblin-std/window_state"),
-        ("gnoblin-core/host/gnoblin", "gnoblin-std/extensions/xr/availability"),
-        ("gnoblin-core/host/gnoblin", "gnoblin-std/host/show"),
-        ("gnoblin-core/host/gnoblin", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/gnoblin", "gnoblin-std/scene/scene"),
-        ("gnoblin-core/host/gnoblin", "gnoblin-std/transition/transition"),
-        ("gnoblin-core/host/gnoblin", "gnoblin-std/transition/types"),
-        ("gnoblin-core/host/input_bridge", "gnoblin-std/host/work_area"),
-        ("gnoblin-core/host/input_bridge", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/input_bridge", "gnoblin-std/host/workspace_state"),
-        ("gnoblin-core/host/input_bridge", "gnoblin-std/ui/state"),
-        ("gnoblin-core/host/listeners", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/listeners", "gnoblin-std/window_state"),
-        ("gnoblin-core/host/output", "gnoblin-std/host/desks"),
-        ("gnoblin-core/host/output", "gnoblin-std/host/show"),
-        ("gnoblin-core/host/output", "gnoblin-std/host/work_area"),
-        ("gnoblin-core/host/output", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/roots", "gnoblin-std/display/display"),
-        ("gnoblin-core/host/roots", "gnoblin-std/display/output_profile"),
-        ("gnoblin-core/host/roots", "gnoblin-std/host/show"),
-        ("gnoblin-core/host/roots", "gnoblin-std/host/work_area"),
-        ("gnoblin-core/host/roots", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/roots", "gnoblin-std/host/workspaces"),
-        ("gnoblin-core/host/seat", "gnoblin-std/focus"),
-        ("gnoblin-core/host/services", "gnoblin-std/alerts"),
-        ("gnoblin-core/host/services", "gnoblin-std/frame/client"),
-        ("gnoblin-core/host/services", "gnoblin-std/frame/decorations"),
-        ("gnoblin-core/host/services", "gnoblin-std/host/membership"),
-        ("gnoblin-core/host/services", "gnoblin-std/host/workspace"),
-        ("gnoblin-core/host/services", "gnoblin-std/lock"),
-        ("gnoblin-core/host/services", "gnoblin-std/menus/windows"),
-        ("gnoblin-core/host/services", "gnoblin-std/snap"),
-        ("gnoblin-core/host/services", "gnoblin-std/window_state"),
-        ("gnoblin-core/input/context", "gnoblin-std/display/display"),
-    ];
-
     /// `gnoblin-std` depends on `gnoblin-core`, never the reverse: a shell that only needs the machinery runs on
-    /// `gnoblin-core` and loads no std module, so no core module may import one.
+    /// `gnoblin-core` and loads no std module, so no core module may import one. What std adds to the object model it
+    /// adds itself, when it is imported (`data/js/gnoblin-core/host/hooks.ts` and `data/js/gnoblin-std/host/install.ts`).
     #[test]
     fn no_core_module_imports_a_std_module() {
         let mut found: Vec<(String, String)> = Vec::new();
@@ -430,16 +329,6 @@ mod tests {
         }
         found.sort();
         found.dedup();
-        let allowed: Vec<(String, String)> = CORE_TO_STD
-            .iter()
-            .map(|(from, to)| ((*from).to_owned(), (*to).to_owned()))
-            .collect();
-        let new: Vec<_> = found.iter().filter(|pair| !allowed.contains(pair)).collect();
-        let stale: Vec<_> = allowed.iter().filter(|pair| !found.contains(pair)).collect();
-        assert!(new.is_empty(), "core modules import std modules: {new:#?}");
-        assert!(
-            stale.is_empty(),
-            "CORE_TO_STD lists imports that no longer exist: {stale:#?}"
-        );
+        assert!(found.is_empty(), "core modules import std modules: {found:#?}");
     }
 }

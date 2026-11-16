@@ -5,6 +5,7 @@ import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
 import type { Collection } from "gnoblin-core/host/collections";
 import { ctx } from "gnoblin-core/host/context";
+import { hooks } from "gnoblin-core/host/hooks";
 import { HostApi } from "gnoblin-core/session/host_api";
 
 /** Connects the public session APIs to the host. */
@@ -29,7 +30,7 @@ export function installHostApi(): void {
         },
         {
             windows: () => [...ctx.clientRoot.list],
-            workspaces: () => [...ctx.workspaceRoot.list],
+            workspaces: () => hooks.workspaces(),
             outputs: () => [...(ctx.outputRoot.self as Iterable<object>)],
             focusedWindow: () => (ctx.clientRoot.self as Collection<Client>).focused,
         },

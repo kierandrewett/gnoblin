@@ -1,7 +1,7 @@
 // Shows workspaces on outputs and records the slide for the next layout pass.
 
 import { GnoblinError } from "gnoblin-core/errors";
-import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { currentDesk, effectiveDesk, ensureDesk, setShown } from "gnoblin-std/host/desks";
 import { isOutput } from "gnoblin-core/host/node_state";
 import type { Output } from "gnoblin-core/host/output";
@@ -38,7 +38,7 @@ export interface Slide {
 
 /** Shows a workspace by object or id, optionally sliding from the current workspace. */
 export function showWorkspace(workspace: Workspace | string, options: ShowOptions = {}): void {
-    const target = typeof workspace === "string" ? ctx.workspaceRoot.list.find((w) => w.id === workspace) : workspace;
+    const target = typeof workspace === "string" ? std.workspaceRoot.list.find((w) => w.id === workspace) : workspace;
     if (target === undefined) {
         throw new GnoblinError("not_found", "gnoblin.workspaces.show", `there is no workspace "${workspace}"`);
     }
@@ -61,23 +61,23 @@ export function showWorkspace(workspace: Workspace | string, options: ShowOption
     }
     const duration = motion(asked);
     ensureDesk();
-    const own = options.output === undefined ? currentDesk() : (ctx.deskByOutput.get(options.output) ?? null);
+    const own = options.output === undefined ? currentDesk() : (std.deskByOutput.get(options.output) ?? null);
     const desk = own === null ? null : effectiveDesk(own);
     if (desk === null) {
         throw new GnoblinError("unavailable", `${target}.show`, "there is no output to show a workspace on");
     }
     const from = desk.shown;
     // A workspace can appear on only one desk, so swap the two desks' shown workspaces.
-    const other = ctx.desks.find((candidate) => candidate !== desk && candidate.shown === target);
+    const other = std.desks.find((candidate) => candidate !== desk && candidate.shown === target);
     setShown(desk, target as Workspace);
     if (other !== undefined) {
         setShown(other, from);
     }
     if (from !== null && from !== target && duration > 0) {
-        ctx.slides.push({
+        std.slides.push({
             from,
             to: target as Workspace,
-            direction: ctx.workspaceRoot.list.indexOf(target) > ctx.workspaceRoot.list.indexOf(from) ? 1 : -1,
+            direction: std.workspaceRoot.list.indexOf(target) > std.workspaceRoot.list.indexOf(from) ? 1 : -1,
             duration,
             progress,
         });

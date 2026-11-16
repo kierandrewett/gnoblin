@@ -712,7 +712,7 @@ fn the_string_named_bus_is_gone_and_a_bad_listener_is_refused() {
 #[test]
 fn find_filters_windows_by_fields_and_by_predicate_in_list_order() {
     // Before: `find_returns_only_live_windows_and_alive_turns_false_on_close`; `app_id` and `appId` are one field.
-    let (mut rig, _session) = rig("export {};");
+    let (mut rig, _session) = rig("import \"gnoblin-std\";\nexport {};");
     assert_eq!(rig.ts("gnoblin.find('Window').map((w: any) => w.id).join()"), "3,5");
     assert_eq!(
         rig.ts("gnoblin.find('Window', { appId: 'foot' }).map((w: any) => w.title).join()"),
@@ -745,7 +745,7 @@ fn find_filters_windows_by_fields_and_by_predicate_in_list_order() {
 fn find_refuses_an_unknown_field_kind_or_value_and_names_what_works() {
     // Before: `find_refuses_a_table_field_the_kind_does_not_declare_by_name`,
     // `find_refuses_an_unknown_kind_and_names_the_kinds_that_work`, `a_predicate_error_is_an_error_of_the_find_call`.
-    let (mut rig, _session) = rig("export {};");
+    let (mut rig, _session) = rig("import \"gnoblin-std\";\nexport {};");
     let field = thrown(&mut rig, "gnoblin.find('Window', { colour: 'red' })");
     assert!(
         field.starts_with("TypeError: gnoblin.find: Window has no scalar field \"colour\"; the fields are id, appId"),
@@ -772,7 +772,7 @@ fn find_refuses_an_unknown_field_kind_or_value_and_names_what_works() {
 
 #[test]
 fn focus_history_lists_windows_by_recent_focus_and_filters_by_workspace_and_limit() {
-    let (mut rig, _session) = rig("export {};");
+    let (mut rig, _session) = rig("import \"gnoblin-std\";\nexport {};");
     assert_eq!(
         rig.ts("gnoblin.focus.history().map((w: any) => w.id).join()"),
         "3,5",

@@ -21,6 +21,18 @@ The library is two packages:
 `gnoblin-std` imports `gnoblin-core`, never the reverse. Import from the package a name lives in, or from a submodule
 such as `gnoblin-std/layouts/dwindle`. There is no bare `gnoblin` import.
 
+`gnoblin-core` runs on its own. A config that imports only it loads no `gnoblin-std` module. Such a shell can:
+
+- watch windows and outputs, and place windows itself by writing their geometry;
+- claim keys, gestures and devices through `gnoblin.input`;
+- turn the compositor's own window motion off (`gnoblin.input.primary.builtinMotion`);
+- control each window's frame callbacks (`framePolicy`, `frameRate`, `reportPresented`, `presented`);
+- start programs.
+
+It has no workspaces, layouts, styles, transitions or window frame, and no lock screen of its own: the compositor's card
+stays in charge. Importing `gnoblin-std` adds all of those, and members such as `client.workspace` and
+`gnoblin.workspaces`, to the same objects. A config that imports neither is a core-only shell with no workspace.
+
 ## Run your own code
 
 The file is a program, and it runs when the shell loads it. The `gnoblin` object is a global, and every statement reads or

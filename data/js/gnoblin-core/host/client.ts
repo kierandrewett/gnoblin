@@ -1,34 +1,23 @@
 // Live wrappers for compositor-managed toplevel windows.
 
 import { GnoblinError } from "gnoblin-core/errors";
-import { NO_INSET } from "gnoblin-core/inset";
-import type { FrameInset } from "gnoblin-core/inset";
 import { CREATE, host } from "gnoblin-core/host/bridge";
 import { ctx } from "gnoblin-core/host/context";
-import { deskOfClient } from "gnoblin-std/host/desks";
+import { hooks } from "gnoblin-core/host/hooks";
 import { assertListener } from "gnoblin-core/host/listeners";
 import type { ClientListener } from "gnoblin-core/host/listeners";
-import { moveClientTo } from "gnoblin-std/host/membership";
-import { callMethod, isOutput, publishedValues, read, refuse, stateOf, writeProperty } from "gnoblin-core/host/node_state";
-import type { Output } from "gnoblin-core/host/output";
-import { clientStyle, computedStyleOf, styleWarningsOf } from "gnoblin-std/host/style_scopes";
-import type { Workspace } from "gnoblin-std/host/workspace";
-import { wsOf } from "gnoblin-std/host/workspace_state";
+import { callMethod, publishedValues, read, refuse, stateOf, writeProperty } from "gnoblin-core/host/node_state";
 import { NativeObject } from "gnoblin-core/native_object";
 import { noteHostRead, propertiesOf } from "gnoblin-core/properties";
 import type { PropertyBinding, PropertyBindings } from "gnoblin-core/properties";
-import { repositioning } from "gnoblin-std/reposition";
-import type { RepositionClient } from "gnoblin-std/reposition";
 import { Transform3D } from "gnoblin-core/math/transform";
 import { Vector3 as Position } from "gnoblin-core/math/vector";
 import { transformFrom, vectorFrom, withAxes } from "gnoblin-core/math/spatial";
 import type { AxisTriple, ScaleInit, TransformInit, Triple, Vec3Like } from "gnoblin-core/math/spatial";
-import type { ComputedStyle } from "gnoblin-std/style/resolve";
-import type { ClientStyle } from "gnoblin-std/style/style";
-import { setProperties } from "gnoblin-std/transition/engine";
-import type { Transition } from "gnoblin-std/transition/transition";
-import type { TransitionOptions } from "gnoblin-std/transition/types";
 import type { NodeId, Rect } from "gnoblin-core/types";
+
+/** How the compositor answers a window's frame callbacks: see `Client.framePolicy`. */
+export type FramePolicy = "auto" | "hold" | "throttle";
 
 /** The host properties frozen when a client leaves, so the object keeps its final readable state. */
 export const CLIENT_KEYS = [
@@ -53,6 +42,10 @@ export const CLIENT_KEYS = [
     "from_launcher",
     "decoration",
     "decoration_wanted",
+    "frame_policy",
+    "frame_rate",
+    "report_presented",
+    "presented",
 ];
 
 /** A toplevel window the compositor manages. */
@@ -70,7 +63,6 @@ export class Client extends NativeObject {
             listeners: [],
             readied: false,
             seen: publishedValues(node),
-            floating: false,
         });
     }
 
@@ -145,54 +137,55 @@ export class Client extends NativeObject {
     }
 
     /**
-     * The overrides this client has, and only those: a property that was never set here is `undefined` and comes from
-     * the scopes above (`gnoblin.clients.style`, the workspace's, a `where()` selection's). Reading a list this client
-     * does not override gives a copy of the inherited one; the first write to the copy makes it this client's own.
+     * How the compositor answers this window's client when it asks to be told it may draw its next frame: `auto` after
+     * every frame the compositor draws that shows the window, `hold` never (the client waits and draws nothing new,
+     * which is what a shell wants for a window it does not show), `throttle` at most `frameRate` times a second. A held
+     * or throttled window keeps its last picture and is drawn as before. It takes effect only while a shell holds the
+     * tree, and the compositor sets every window back to `auto` when the shell lets go of it.
      */
-    get style(): ClientStyle {
-        return clientStyle(this);
+    get framePolicy(): FramePolicy {
+        return read<FramePolicy>(this, "frame_policy");
     }
 
-    /** The style this client resolves to now: frozen, with the layer each value came from in `origin`. */
-    get computedStyle(): ComputedStyle {
-        return computedStyleOf(this);
-    }
-
-    /** What of the client's style is not drawn and why, and the effects the compositor skipped. */
-    get styleWarnings(): readonly string[] {
-        return styleWarningsOf(this);
+    /** Sets how the window's client is answered; any other text than `auto`, `hold` or `throttle` is refused. */
+    set framePolicy(value: FramePolicy) {
+        writeProperty(this, "frame_policy", value, "text");
     }
 
     /**
-     * The room the window's frame takes on each side of its content, in pixels: 0 on every side for a window with no
-     * frame or a fullscreen one. `bounds` is the content's rectangle; the frame a layout places is the content with
-     * this much added on each side (see docs/js-window-frame.md).
+     * The most frame callbacks a second a `throttle` window's client is answered, in hertz: above 0 and at most 1000.
+     * It is read only while `framePolicy` is `throttle`.
      */
-    get frameInset(): FrameInset {
-        return ctx.decorations?.insetOf(this) ?? NO_INSET;
+    get frameRate(): number {
+        return read<number>(this, "frame_rate");
+    }
+
+    /** Sets the rate a `throttle` window's client is answered at, in hertz. */
+    set frameRate(value: number) {
+        writeProperty(this, "frame_rate", value, "number");
     }
 
     /**
-     * Whether the window floats on a workspace whose layout tiles: a floating client is not given to the layout's
-     * `compute`, so it keeps the place it has. Only the script knows this; the compositor does not.
+     * Whether the compositor tells the shell when the window's pixels reach the screen: while it is true each frame
+     * that draws the window writes `presented`. It is false by default, because a window written every frame is a
+     * change in every batch.
      */
-    get floating(): boolean {
-        return stateOf(this).floating;
+    get reportPresented(): boolean {
+        return read<boolean>(this, "report_presented");
     }
 
-    /** Marks the client as floating or returns it to layout placement. */
-    set floating(value: boolean) {
-        if (typeof value !== "boolean") {
-            throw new TypeError(`Client#${host.label(stateOf(this).node)}.floating: must be true or false`);
-        }
-        const state = stateOf(this);
-        if (state.floating !== value) {
-            state.floating = value;
-            const own = wsOf(this);
-            if (own) {
-                own.dirty = true;
-            }
-        }
+    /** Asks the compositor to report, or stop reporting, when the window's pixels reach the screen. */
+    set reportPresented(value: boolean) {
+        writeProperty(this, "report_presented", value, "flag");
+    }
+
+    /**
+     * When the last frame that showed the window reached the screen, in milliseconds on the compositor's monotonic
+     * clock (`CLOCK_MONOTONIC`, which `wp_presentation` names), or 0 until a frame was presented with
+     * `reportPresented` true. The compositor writes it.
+     */
+    get presented(): number {
+        return read<number>(this, "presented");
     }
 
     /** Horizontal position in logical pixels. */
@@ -390,11 +383,6 @@ export class Client extends NativeObject {
         return size;
     }
 
-    /** The workspace the client is on, or null. */
-    get workspace(): Workspace | null {
-        return ctx.membership.get(this) ?? null;
-    }
-
     /**
      * The window this one is a dialog of (`xdg_toplevel.set_parent`), or null. A dialog is centred in its parent when
      * it opens, moves with it, stays on its workspace and output, and is left out of the layout's tiling.
@@ -411,32 +399,6 @@ export class Client extends NativeObject {
      */
     get fromLauncher(): boolean {
         return read<boolean>(this, "from_launcher");
-    }
-
-    /** The output that shows the client's workspace, or null while no output shows it (or the output is gone). */
-    get output(): Output | null {
-        const desk = deskOfClient(this);
-        return desk?.parked === false ? desk.output : null;
-    }
-
-    /**
-     * Moves the window to `workspace` and fits it to that workspace's work area: a maximised window fills it, a snapped
-     * one re-snaps, a floating one is shrunk to fit and moved inside it. A window that leaves the shown workspace hands
-     * its focus to a window that stays. Its dialogs go with it. Refused (false, and nothing moves) for a fullscreen
-     * window, a dialog (it moves only with its parent), a dead window, a workspace that is not in
-     * `gnoblin.workspaces`, or the workspace it is on already.
-     */
-    moveToWorkspace(workspace: Workspace): boolean {
-        return moveClientTo(this, workspace);
-    }
-
-    /** `moveToWorkspace` to the workspace `output` shows. False when the output is gone or shows none. */
-    moveToOutput(output: Output): boolean {
-        if (!isOutput(output)) {
-            throw new TypeError(`${this}.moveToOutput: needs an Output`);
-        }
-        const shown = output.alive ? output.workspace : null;
-        return shown !== null && moveClientTo(this, shown);
     }
 
     /** Attaches a listener to this client; adding the same listener twice has no effect. */
@@ -468,29 +430,6 @@ export class Client extends NativeObject {
     }
 
     /**
-     * Starts moving the window with the arrow keys, 16 pixels a press, inside the work area: Return keeps the place,
-     * Escape puts the window back. Refused (false) for a window that is fullscreen, maximised, tiled or not showing; a
-     * snapped window is unsnapped first. See `gnoblin-std/reposition`.
-     */
-    moveWithKeys(): boolean {
-        return repositioning.begin(this as unknown as RepositionClient, "move");
-    }
-
-    /** Starts resizing the window with the arrow keys: Right and Down grow it, Left and Up shrink it. */
-    resizeWithKeys(): boolean {
-        return repositioning.begin(this as unknown as RepositionClient, "resize");
-    }
-
-    /**
-     * Assigns `props` as one `requestTransition`: the same as
-     * `gnoblin.requestTransition(() => { client.opacity = ... })` for this client. Without `options` the change is
-     * atomic and immediate. `options.duration` is in milliseconds.
-     */
-    set(props: Record<string, unknown>, options?: TransitionOptions): Transition {
-        return setProperties(ctx.transitions, this, `${this}`, props, options);
-    }
-
-    /**
      * The reactive properties of the window: `client.properties.bind("opacity", () => ...)` sets `opacity` now and
      * again whenever a property the function read changes. See `gnoblin-core/properties`.
      */
@@ -516,15 +455,9 @@ export class Client extends NativeObject {
         }
         // A fullscreen sibling keeps the top: raising puts each fullscreen window back over the window it raised.
         if (!this.fullscreen) {
-            const own = ctx.membership.get(this) ?? null;
             for (const node of host.windows()) {
                 const other = ctx.clientsByNode.get(node);
-                if (
-                    other !== undefined &&
-                    other !== this &&
-                    (ctx.membership.get(other) ?? null) === own &&
-                    other.fullscreen
-                ) {
+                if (other !== undefined && other !== this && other.fullscreen && hooks.sharesStack(this, other)) {
                     host.raise(node);
                 }
             }

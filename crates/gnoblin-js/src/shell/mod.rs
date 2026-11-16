@@ -415,6 +415,12 @@ impl JsShell {
         self.generation.id()
     }
 
+    /// The name of every embedded module the running generation loaded, sorted: the import log of the stock library.
+    /// A shell whose entry imports only `gnoblin-core` has no `gnoblin-std` module in it.
+    pub fn embedded_modules(&self) -> Vec<String> {
+        self.generation.embedded_modules()
+    }
+
     /// The running generation and the budget one call of it has, for the console: a console expression runs in the
     /// shell's own generation under the listeners' budget, and a trip of it is not a strike (see `console`).
     pub(crate) fn console_target(&self) -> (&JsGeneration, Duration) {

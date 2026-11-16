@@ -3,6 +3,7 @@
 import { insetFromNumbers, insetToNumbers } from "gnoblin-core/inset";
 import type { Client } from "gnoblin-core/host/client";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import type { KeptWindow, WorkspaceSnapshot } from "gnoblin-core/host/contract";
 import { deskOutputs, primaryDesk, setShown } from "gnoblin-std/host/desks";
 import type { Desk } from "gnoblin-std/host/desks";
@@ -31,7 +32,7 @@ function keptWindows(): KeptWindow[] {
         const snap = snapRecord(client);
         const leftAt = (client as unknown as { floatingBounds?: Rect | null }).floatingBounds ?? null;
         // Keep a known zero too: a later generation must detect a frame appearing after one without a frame.
-        const inset = ctx.fittedInset.get(client) ?? null;
+        const inset = std.fittedInset.get(client) ?? null;
         if (rects.floating === null && rects.windowed === null && snap === null && leftAt === null && inset === null) {
             continue;
         }
@@ -58,7 +59,7 @@ function restoreKept(kept: readonly KeptWindow[]): void {
         windowState.keep(client, { floating: asRect(entry.floating), windowed: asRect(entry.windowed) });
         const inset = insetFromNumbers(entry.inset);
         if (inset !== null) {
-            ctx.fittedInset.set(client, inset);
+            std.fittedInset.set(client, inset);
         }
         const leftAt = asRect(entry.leftAt);
         if (leftAt !== null) {
@@ -75,12 +76,12 @@ function restoreKept(kept: readonly KeptWindow[]): void {
 export function snapshotWorkspaces(): WorkspaceSnapshot {
     return {
         active: primaryDesk()?.shown?.id ?? null,
-        workspaces: (ctx.workspaceRoot.list as Workspace[]).map((workspace) => ({
+        workspaces: (std.workspaceRoot.list as Workspace[]).map((workspace) => ({
             id: workspace.id,
             clients: (wsState(workspace).clientsState.list as Client[]).map((client) => stateOf(client).node),
         })),
         outputs: deskOutputs().flatMap((output) => {
-            const shown = ctx.deskByOutput.get(output)?.shown;
+            const shown = std.deskByOutput.get(output)?.shown;
             return shown === null || shown === undefined ? [] : [{ output: output.name, workspace: shown.id }];
         }),
         kept: keptWindows(),
@@ -94,8 +95,8 @@ export function snapshotWorkspaces(): WorkspaceSnapshot {
 export function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
     restoreKept(previous.kept ?? []);
     for (const entry of previous.workspaces) {
-        const kept = (ctx.workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === entry.id) ?? null;
-        const target = kept ?? (ctx.workspaceRoot.list[0] as Workspace | undefined) ?? null;
+        const kept = (std.workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === entry.id) ?? null;
+        const target = kept ?? (std.workspaceRoot.list[0] as Workspace | undefined) ?? null;
         for (const node of entry.clients) {
             const client = ctx.clientsByNode.get(node);
             if (client) {
@@ -107,19 +108,19 @@ export function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
     const wanted: [Desk, Workspace][] = [];
     for (const entry of previous.outputs ?? []) {
         const output = deskOutputs().find((one) => one.name === entry.output);
-        const workspace = (ctx.workspaceRoot.list as Workspace[]).find((one) => one.id === entry.workspace);
-        const desk = output === undefined ? undefined : ctx.deskByOutput.get(output);
+        const workspace = (std.workspaceRoot.list as Workspace[]).find((one) => one.id === entry.workspace);
+        const desk = output === undefined ? undefined : std.deskByOutput.get(output);
         if (desk !== undefined && workspace !== undefined) {
             wanted.push([desk, workspace]);
         }
     }
     const primary = primaryDesk();
-    const shown = (ctx.workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === previous.active);
+    const shown = (std.workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === previous.active);
     if (primary !== null && shown !== undefined && !wanted.some(([desk]) => desk === primary)) {
         wanted.push([primary, shown]);
     }
     for (const [desk, workspace] of wanted) {
-        const other = ctx.desks.find((candidate) => candidate !== desk && candidate.shown === workspace);
+        const other = std.desks.find((candidate) => candidate !== desk && candidate.shown === workspace);
         if (other !== undefined) {
             setShown(other, desk.shown);
         }

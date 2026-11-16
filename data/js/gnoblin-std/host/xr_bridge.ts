@@ -3,16 +3,17 @@
 import { host } from "gnoblin-core/host/bridge";
 import { Client } from "gnoblin-core/host/client";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { stateOf } from "gnoblin-core/host/node_state";
 import { mainSeat } from "gnoblin-core/host/seat";
 import { Workspace } from "gnoblin-std/host/workspace";
-import { attachBindings, noteSignal } from "gnoblin-core/properties";
+import { noteSignal } from "gnoblin-core/properties";
 import { attachScene } from "gnoblin-std/scene/backend";
 import type { SceneBackend } from "gnoblin-std/scene/backend";
 import { XRRuntime } from "gnoblin-std/extensions/xr/runtime";
 import type { XRWorld } from "gnoblin-std/extensions/xr/types";
 
-/** Attaches the scene and the property bindings, and makes the XR runtime. */
+/** Attaches the scene and makes the XR runtime. */
 export function installScene(): void {
     const sceneBackend: SceneBackend = {
         create: (cls) => host.xr.create(cls),
@@ -37,7 +38,7 @@ export function installScene(): void {
                                   y: client.y,
                                   width: client.width,
                                   height: client.height,
-                                  visible: !client.minimised && (ctx.shownByLayout.get(client) ?? true),
+                                  visible: !client.minimised && (std.shownByLayout.get(client) ?? true),
                               };
                           }),
                       area: () => {
@@ -51,14 +52,6 @@ export function installScene(): void {
     };
 
     attachScene(sceneBackend);
-
-    attachBindings({
-        read: (node, key) =>
-            key.startsWith("published:") ? host.published(node, key.slice("published:".length)) : host.get(node, key),
-        report: (site, error) => {
-            ctx.reports.push({ site, error });
-        },
-    });
 
     // XR view into host nodes, seats, clients, and input contexts.
     const xrWorld: XRWorld = {
@@ -87,5 +80,5 @@ export function installScene(): void {
     };
 
     // Runtime for the optional XR extension, attached to the scene and host adapters.
-    ctx.xrRuntime = new XRRuntime(xrWorld);
+    std.xrRuntime = new XRRuntime(xrWorld);
 }

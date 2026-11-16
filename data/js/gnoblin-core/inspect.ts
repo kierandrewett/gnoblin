@@ -421,12 +421,14 @@ interface LiveClient {
     readonly appId: string;
     readonly title: string;
     readonly fullscreen: boolean;
-    readonly floating: boolean;
+    /** Only a shell with a workspace package gives a client this. */
+    readonly floating?: boolean;
     readonly x: number;
     readonly y: number;
     readonly width: number;
     readonly height: number;
-    readonly workspace: { readonly id: string } | null;
+    /** Only a shell with a workspace package gives a client this. */
+    readonly workspace?: { readonly id: string } | null;
 }
 
 interface LiveWorkspace {
@@ -445,7 +447,8 @@ interface LiveContext {
 
 interface LiveGnoblin {
     readonly clients: Iterable<LiveClient> & { readonly focused: LiveClient | null };
-    readonly workspaces: Iterable<LiveWorkspace>;
+    /** Only a shell with a workspace package has them. */
+    readonly workspaces?: Iterable<LiveWorkspace>;
     readonly input: { readonly contexts: readonly LiveContext[] };
 }
 
@@ -468,7 +471,7 @@ function clients(): ClientInfo[] {
         title: client.title,
         focused: client === focused,
         fullscreen: client.fullscreen,
-        floating: client.floating,
+        floating: client.floating === true,
         x: client.x,
         y: client.y,
         width: client.width,
@@ -479,7 +482,7 @@ function clients(): ClientInfo[] {
 
 /** Every workspace as plain data, with the ids of the clients on it. */
 function workspaces(): WorkspaceInfo[] {
-    return [...live().workspaces].map((workspace) => ({
+    return [...(live().workspaces ?? [])].map((workspace) => ({
         id: workspace.id,
         name: workspace.name,
         index: workspace.index,

@@ -5,6 +5,7 @@ import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
 import { recompute } from "gnoblin-core/host/collection_events";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { isShown } from "gnoblin-std/host/desks";
 import { guard, queueFor } from "gnoblin-core/host/dispatch";
 import { refitClient } from "gnoblin-std/host/fitting";
@@ -28,13 +29,13 @@ export function swapClients(workspace: Workspace, a: Client, b: Client): void {
 /** Puts `client` in `workspace`, which it is not in. */
 function link(workspace: Workspace, client: Client, arrived: boolean): void {
     const state = wsState(workspace);
-    ctx.membership.set(client, workspace);
+    std.membership.set(client, workspace);
     state.clientsState.list.push(client);
     raiseSignal(state.clientsState, "items");
     state.dirty = true;
     if (arrived) {
         state.arrived.push(client);
-        ctx.offered.add(client);
+        std.offered.add(client);
     }
     queueFor(state.clientsState, "onAdded", [client, state.clientsState.self]);
     recompute(state.clientsState, client);
@@ -43,7 +44,7 @@ function link(workspace: Workspace, client: Client, arrived: boolean): void {
 /** Takes `client`, which is alive, out of `workspace`. */
 function unlink(workspace: Workspace, client: Client): void {
     const state = wsState(workspace);
-    ctx.membership.delete(client);
+    std.membership.delete(client);
     state.clientsState.list.splice(state.clientsState.list.indexOf(client), 1);
     raiseSignal(state.clientsState, "items");
     state.dirty = true;
@@ -57,14 +58,14 @@ export function forgetArrival(state: WorkspaceState, client: Client): void {
     const at = state.arrived.indexOf(client);
     if (at >= 0) {
         state.arrived.splice(at, 1);
-    } else if (ctx.offered.has(client) || ctx.preexisting.has(client)) {
+    } else if (std.offered.has(client) || ctx.preexisting.has(client)) {
         state.departed.push(client);
     }
 }
 
 /** Moves `client` to `target` (or out of every workspace when it is null). `arrived` says a layout may place it. */
 export function moveClient(client: Client, target: Workspace | null, arrived: boolean): void {
-    const from = ctx.membership.get(client) ?? null;
+    const from = std.membership.get(client) ?? null;
     if (from === target) {
         return;
     }
@@ -91,15 +92,15 @@ export function dialogsOf(parent: Client): Client[] {
  */
 export function placeDialog(client: Client): boolean {
     const parent = client.parentWindow;
-    const workspace = parent === null ? undefined : ctx.membership.get(parent);
+    const workspace = parent === null ? undefined : std.membership.get(parent);
     if (parent === null || workspace === undefined) {
         return false;
     }
-    if (ctx.membership.get(client) !== workspace) {
+    if (std.membership.get(client) !== workspace) {
         moveClient(client, workspace, false);
     }
-    if (!ctx.centred.has(client)) {
-        ctx.centred.add(client);
+    if (!std.centred.has(client)) {
+        std.centred.add(client);
         client.x = parent.x + Math.floor((parent.width - client.width) / 2);
         client.y = parent.y + Math.floor((parent.height - client.height) / 2);
     }
@@ -129,7 +130,7 @@ export function moveClientTo(client: Client, workspace: Workspace): boolean {
     if (!isWorkspace(workspace)) {
         throw new TypeError(`${client}.moveToWorkspace: needs a Workspace`);
     }
-    const from = ctx.membership.get(client) ?? null;
+    const from = std.membership.get(client) ?? null;
     if (
         !client.alive ||
         !wsState(workspace).attached ||
@@ -166,7 +167,7 @@ export function transferClient(workspace: Workspace, client: Client): void {
 
 /** `workspace.clients.remove(client)`: the client has no workspace until it is given one. */
 export function detachClient(workspace: Workspace, client: Client): void {
-    if (ctx.membership.get(client) === workspace) {
+    if (std.membership.get(client) === workspace) {
         moveClient(client, null, false);
     }
 }

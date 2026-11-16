@@ -350,6 +350,13 @@ impl JsGeneration {
         self.load.files()
     }
 
+    /// The name of every embedded module this generation loaded, sorted: the stock library's import log
+    /// (`gnoblin-core/host/client`, `gnoblin-std/layout`, ...) and any module the host registered by name. A test reads
+    /// it to say which packages a shell pulled in.
+    pub fn embedded_modules(&self) -> Vec<String> {
+        self.load.embedded()
+    }
+
     /// Imports and evaluates the module at `entry`, a path under the config root (a relative path counts
     /// from the root), then runs its promise jobs until the module settles.
     ///

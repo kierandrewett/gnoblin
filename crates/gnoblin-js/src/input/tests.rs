@@ -1,7 +1,7 @@
 //! Tests of this module.
 
 use super::claims::{JsClaimOutcome, claim, claim_args, claim_device, claim_gesture, unclaim};
-use super::seats::{JsSeatSettings, clear_focus, devices, focus, pointer, seat_name, seats};
+use super::seats::{JsSeatSettings, clear_focus, devices, focus, pointer, seat_name, seats, set_builtin_motion};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror, TxOp};
 
 use crate::bindings::HostState;
@@ -69,6 +69,23 @@ fn clearing_the_focus_queues_a_write_of_no_node_and_only_a_seat_takes_it() {
 }
 
 #[test]
+fn turning_the_built_in_motion_off_queues_a_write_of_the_flag_and_only_a_seat_takes_it() {
+    let mut state = state();
+    assert_eq!(
+        set_builtin_motion(&mut state, 3, false),
+        Some("unknown-node"),
+        "a window is not a seat"
+    );
+    assert_eq!(set_builtin_motion(&mut state, 99, false), Some("unknown-node"));
+    assert!(state.tick.ops().is_empty());
+    assert_eq!(set_builtin_motion(&mut state, 4, false), None);
+    assert!(matches!(
+        state.tick.ops(),
+        [TxOp::Set { node: 4, key, value: MirrorValue::Bool(false), .. }] if key == "builtin_motion"
+    ));
+}
+
+#[test]
 fn seat_settings_are_the_schema_defaults_until_the_compositor_publishes_them() {
     let defaults = JsSeatSettings::of(&state(), 4);
     assert_eq!(
@@ -82,6 +99,7 @@ fn seat_settings_are_the_schema_defaults_until_the_compositor_publishes_them() {
             auto_raise_delay: 500.0,
             focus_change_on_pointer_rest: false,
             reduced_motion: false,
+            builtin_motion: true,
         }
     );
     let published = vec![
@@ -90,12 +108,14 @@ fn seat_settings_are_the_schema_defaults_until_the_compositor_publishes_them() {
         ("raise_on_click".to_owned(), MirrorValue::Bool(false)),
         ("auto_raise_delay".to_owned(), MirrorValue::Int(120)),
         ("reduced_motion".to_owned(), MirrorValue::Bool(true)),
+        ("builtin_motion".to_owned(), MirrorValue::Bool(false)),
     ];
     let nodes = [node(1, 0, "node", Vec::new()), node(4, 1, "seat", published)];
     let state = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
     let settings = JsSeatSettings::of(&state, 4);
     assert!(settings.edge_tiling && !settings.raise_on_click);
     assert!(settings.reduced_motion, "the seat's reduced_motion is read");
+    assert!(!settings.builtin_motion, "the seat's builtin_motion is read");
     assert_eq!(settings.focus_mode, "hover");
     assert_eq!(settings.auto_raise_delay, 120.0);
     assert_eq!(

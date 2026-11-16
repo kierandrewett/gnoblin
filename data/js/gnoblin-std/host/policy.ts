@@ -1,18 +1,20 @@
 // Installs the stock window-request, gesture, move-mode and focus policies.
 
-import { FocusPolicy } from "gnoblin-std/focus";
+import { FOCUS_DEFAULTS, FocusPolicy, seatFocusSettings } from "gnoblin-std/focus";
+import type { FocusSettings } from "gnoblin-std/focus";
 import { gestureDirection, onPinch, onSwipe } from "gnoblin-std/gesture_actions";
 import type { GestureActions } from "gnoblin-std/gesture_actions";
 import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
 import { clientHolders } from "gnoblin-core/host/collection_events";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { currentDesk, isShown, primaryDesk, primaryOutput } from "gnoblin-std/host/desks";
 import { describeListener, handlerOf } from "gnoblin-core/host/dispatch";
 import type { Source } from "gnoblin-core/host/dispatch";
 import { stateOf } from "gnoblin-core/host/node_state";
 import type { Output } from "gnoblin-core/host/output";
-import { currentFocusSettings, focusedClient, hasFocus, mainSeat } from "gnoblin-core/host/seat";
+import { focusedClient, hasFocus, mainSeat } from "gnoblin-core/host/seat";
 import { showWorkspace, SLIDE_DURATION } from "gnoblin-std/host/show";
 import { framed, outputRectOf, workAreaOf } from "gnoblin-std/host/work_area";
 import type { Workspace } from "gnoblin-std/host/workspace";
@@ -26,7 +28,7 @@ import type { ClientRequest } from "gnoblin-std/window_state";
 
 /** Whether a non-minimised fullscreen window is shown on the workspace for `output`. */
 function fullscreenShowing(output: { alive: boolean } | null): boolean {
-    const desk = output === null ? primaryDesk() : (ctx.deskByOutput.get(output as Output) ?? null);
+    const desk = output === null ? primaryDesk() : (std.deskByOutput.get(output as Output) ?? null);
     const shown = desk === null || desk.parked ? null : desk.shown;
     if (shown === null) {
         return false;
@@ -61,10 +63,17 @@ function stepWorkspace(step: number): void {
     if (shown === null) {
         return;
     }
-    const target = ctx.workspaceRoot.list[ctx.workspaceRoot.list.indexOf(shown) + step];
+    const target = std.workspaceRoot.list[std.workspaceRoot.list.indexOf(shown) + step];
     if (target !== undefined) {
         showWorkspace(target as Workspace, { duration: SLIDE_DURATION });
     }
+}
+
+/** Resolves the effective focus policy from the first seat's published settings. */
+function currentFocusSettings(): FocusSettings {
+    const seat = host.input.seats()[0];
+    const published = seat === undefined ? undefined : host.input.settings(seat);
+    return published === undefined ? FOCUS_DEFAULTS : seatFocusSettings(published);
 }
 
 /** Attaches the stock focus policy to every client. */
@@ -85,7 +94,7 @@ export function installFocus(): void {
         fromLauncher: (client) => client.fromLauncher,
         alive: (client) => client.alive,
     });
-    ctx.focusPolicy = focus;
+    std.focusPolicy = focus;
     ctx.clientRoot.self.addListener(focus);
 }
 
@@ -120,7 +129,7 @@ export function installPolicy(): void {
     };
 
     // `gnoblin.gestures`: the five actions and the helpers that bind them to a swipe or a pinch.
-    ctx.gestureTools = {
+    std.gestureTools = {
         actions: gestureActions,
         direction: gestureDirection,
         onSwipe: (map, threshold) => onSwipe(map, threshold, { actions: gestureActions }),
@@ -131,11 +140,11 @@ export function installPolicy(): void {
     windowState.start<Client>({
         clientOf: (node) => ctx.clientsByNode.get(node),
         siblings: (client) => {
-            const own = ctx.membership.get(client) ?? null;
+            const own = std.membership.get(client) ?? null;
             return host
                 .windows()
                 .flatMap((node) => ctx.clientsByNode.get(node) ?? [])
-                .filter((other) => (ctx.membership.get(other) ?? null) === own);
+                .filter((other) => (std.membership.get(other) ?? null) === own);
         },
         raise: (client) => client.raise(),
         lower: (client) => client.lower(),
@@ -153,7 +162,7 @@ export function installPolicy(): void {
             }
         },
         onActiveWorkspace: (client) => {
-            const own = ctx.membership.get(client);
+            const own = std.membership.get(client);
             return own !== undefined && isShown(own);
         },
         output: (client) => outputRectOf(client ?? null),

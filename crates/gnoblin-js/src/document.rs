@@ -150,7 +150,8 @@ mod tests {
         std::fs::write(dir.path().join("keys.ts"), "export const radius = 8;\n").expect("keys.ts");
         std::fs::write(
             dir.path().join("shell.ts"),
-            r#"import { radius } from "./keys.ts";
+            r#"import "gnoblin-std";
+            import { radius } from "./keys.ts";
             if (radius !== 8) throw new Error("the import did not run");
             gnoblin.clients.style.cornerRadius = radius;"#,
         )

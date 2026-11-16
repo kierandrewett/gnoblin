@@ -1,18 +1,24 @@
 // Private collection state and the functions that query its current members.
 
-import type { Display } from "gnoblin-std/display/display";
-import type { OutputProfile } from "gnoblin-std/display/output_profile";
 import type { Client } from "gnoblin-core/host/client";
 import type { Collection } from "gnoblin-core/host/collections";
 import { ctx } from "gnoblin-core/host/context";
 import type { Source } from "gnoblin-core/host/dispatch";
 import type { Output } from "gnoblin-core/host/output";
-import type { Workspace } from "gnoblin-std/host/workspace";
 import { noteSignal } from "gnoblin-core/properties";
 import type { Query } from "gnoblin-core/types";
 
+/**
+ * The kinds of object a collection holds, by the name `where` and the console know them. A package that adds a kind
+ * (workspaces, displays) merges its own into this interface, so `Member` and everything typed by it follow.
+ */
+export interface MemberKinds {
+    Client: Client;
+    Output: Output;
+}
+
 /** Any object kind supported by a host collection. */
-export type Member = Client | Workspace | Output | Display | OutputProfile;
+export type Member = MemberKinds[keyof MemberKinds];
 
 /** Operations that mutate a script-owned collection. */
 export interface Mutation {
@@ -55,13 +61,13 @@ export function collectionState(collection: object): CollectionState {
     return state;
 }
 
-/** Fields supported by `where` for each kind of collection. */
+/**
+ * Fields supported by `where` for each kind of collection. A package that adds a kind of member names its fields here
+ * when it is imported.
+ */
 export const QUERY_KEYS: Record<string, readonly string[]> = {
     Client: ["id", "appId", "title", "focused", "fullscreen", "x", "y", "width", "height"],
-    Workspace: ["id", "name", "index", "active"],
     Output: ["id", "name", "make", "model", "mode", "scale", "primary", "enabled", "x", "y", "width", "height"],
-    Display: ["id", "mode"],
-    OutputProfile: ["id", "enabled", "scale", "transform"],
 };
 
 /** Tests a member against the data-only property query. */

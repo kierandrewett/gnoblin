@@ -5,8 +5,7 @@
 import { growRect, NO_INSET, sameInset, shrinkRect } from "gnoblin-core/inset";
 import type { FrameInset } from "gnoblin-core/inset";
 import type { Client } from "gnoblin-core/host/client";
-import { ctx } from "gnoblin-core/host/context";
-import { stateOf } from "gnoblin-core/host/node_state";
+import { std } from "gnoblin-std/host/state";
 import { framed, outputRectOf } from "gnoblin-std/host/work_area";
 import { restoreSnap, snapClient, snappedZone, snapRecord } from "gnoblin-std/snap";
 import type { SnapClient } from "gnoblin-std/snap";
@@ -31,7 +30,7 @@ function fitInto(rect: Rect, area: Rect): Rect {
  * fullscreen brings the frame back.
  */
 function reservedInset(client: Client): FrameInset {
-    return ctx.decorations?.reservedOf(client) ?? NO_INSET;
+    return std.decorations?.reservedOf(client) ?? NO_INSET;
 }
 
 /**
@@ -93,8 +92,8 @@ export function followFrame(client: Client, area: Rect): boolean {
         return false;
     }
     const inset = reservedInset(client);
-    const was = ctx.fittedInset.get(client);
-    ctx.fittedInset.set(client, inset);
+    const was = std.fittedInset.get(client);
+    std.fittedInset.set(client, inset);
     if (was === undefined || sameInset(was, inset)) {
         return false;
     }
@@ -119,7 +118,7 @@ export function followFrame(client: Client, area: Rect): boolean {
         client.bounds = framed(client, area);
     } else if (zone !== null) {
         snapClient(client as unknown as SnapClient, zone, { edgeTiling: true, area, inset });
-    } else if (!client.tiled || stateOf(client).floating) {
+    } else if (!client.tiled || std.floating.has(client)) {
         client.bounds = moved(client.bounds);
     }
     return true;

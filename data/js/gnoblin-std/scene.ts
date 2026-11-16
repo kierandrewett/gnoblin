@@ -2,6 +2,9 @@
 // The code is in `gnoblin-std/scene/*` (one concept each; `gnoblin-std/scene/registry` owns the node bookkeeping); this module
 // is the one import path scripts use, so `Camera3D` and the `Node` it extends are named from the same place.
 
+// A script that imports the scene alone still gets `gnoblin-std` installed: the scene is attached to the host there.
+import "gnoblin-std/host";
+
 export { Plane, Ray, Vector3 } from "gnoblin-core/math/vector";
 export { Camera3D } from "gnoblin-std/scene/camera";
 export { Node } from "gnoblin-std/scene/node";

@@ -69,6 +69,8 @@ pub struct JsLoadState {
     maps: RefCell<HashMap<String, MapSlot>>,
     /// Every file the loader read, canonical: the module graph the hot-reload watcher observes.
     files: RefCell<BTreeSet<PathBuf>>,
+    /// Every embedded module the loader handed out, by name: the import log of the library.
+    embedded: RefCell<BTreeSet<String>>,
     failure: RefCell<Option<JsFailure>>,
 }
 
@@ -88,6 +90,11 @@ impl JsLoadState {
     /// The canonical path of every file module loaded so far, sorted.
     pub(crate) fn files(&self) -> Vec<PathBuf> {
         self.files.borrow().iter().cloned().collect()
+    }
+
+    /// The name of every embedded module (stock library or host-registered) loaded so far, sorted.
+    pub(crate) fn embedded(&self) -> Vec<String> {
+        self.embedded.borrow().iter().cloned().collect()
     }
 
     /// Records `error` as the last load failure and returns the message to hand to QuickJS.
@@ -422,6 +429,9 @@ impl Loader for JsLoader {
         _attributes: Option<ImportAttributes<'js>>,
     ) -> Result<Module<'js>> {
         let origin = self.origin(name).map_err(|error| self.refuse(name, error))?;
+        if self.embedded.contains_key(name) || self.typescript.contains_key(name) {
+            self.state.embedded.borrow_mut().insert(name.to_owned());
+        }
         let digest: Option<Digest> = origin
             .cacheable
             .then(|| self.cache.digest(origin.kind, name, &origin.text))

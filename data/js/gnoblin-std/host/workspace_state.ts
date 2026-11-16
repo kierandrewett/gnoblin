@@ -4,7 +4,7 @@
 import type { Client } from "gnoblin-core/host/client";
 import type { CollectionState } from "gnoblin-core/host/collection_state";
 import type { MutableCollection } from "gnoblin-core/host/collections";
-import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import type { Workspace } from "gnoblin-std/host/workspace";
 import type { Gaps, Layout } from "gnoblin-std/layout";
 import type { Rect } from "gnoblin-core/types";
@@ -45,7 +45,7 @@ export interface WorkspaceState {
 
 /** Returns workspace state. Throws when the value is not a Workspace. */
 export function wsState(workspace: unknown): WorkspaceState {
-    const state = typeof workspace === "object" && workspace !== null ? ctx.wsStates.get(workspace) : undefined;
+    const state = typeof workspace === "object" && workspace !== null ? std.wsStates.get(workspace) : undefined;
     if (!state) {
         throw new TypeError("not a Workspace");
     }
@@ -54,11 +54,11 @@ export function wsState(workspace: unknown): WorkspaceState {
 
 /** Returns private workspace state for a client, or null when it has no workspace. */
 export function wsOf(client: Client): WorkspaceState | null {
-    const workspace = ctx.membership.get(client);
+    const workspace = std.membership.get(client);
     return workspace ? wsState(workspace) : null;
 }
 
 /** Whether `value` is a `Workspace` (a brand check, so a module below `Workspace` can ask). */
 export function isWorkspace(value: unknown): value is Workspace {
-    return typeof value === "object" && value !== null && ctx.wsStates.has(value);
+    return typeof value === "object" && value !== null && std.wsStates.has(value);
 }

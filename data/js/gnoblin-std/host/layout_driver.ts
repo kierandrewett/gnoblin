@@ -3,6 +3,7 @@
 import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { deskShowing, fillDesks } from "gnoblin-std/host/desks";
 import { guard } from "gnoblin-core/host/dispatch";
 import { followFrame, refitClient } from "gnoblin-std/host/fitting";
@@ -26,11 +27,11 @@ export function layout(): number {
     // Bindings first, so what they write is laid out in the same frame.
     guard("gnoblin.properties", flushBindings);
     guard("gnoblin.lostWrites", relayLostWrites);
-    ctx.flags.laying = true;
+    std.flags.laying = true;
     try {
         return layoutWorkspaces();
     } finally {
-        ctx.flags.laying = false;
+        std.flags.laying = false;
     }
 }
 
@@ -44,23 +45,23 @@ export function layout(): number {
 function relayLostWrites(): void {
     for (const node of host.lostWrites()) {
         const client = ctx.clientsByNode.get(node);
-        const workspace = client === undefined ? undefined : ctx.membership.get(client);
+        const workspace = client === undefined ? undefined : std.membership.get(client);
         if (client === undefined || workspace === undefined) {
             continue;
         }
-        ctx.writtenVisible.delete(client);
+        std.writtenVisible.delete(client);
         wsState(workspace).dirty = true;
     }
 }
 
 /** Runs one guarded layout pass over workspaces and returns the number recomputed. */
 function layoutWorkspaces(): number {
-    ctx.displayManager.frame();
+    std.displayManager.frame();
     fillDesks();
     // An unshown workspace uses the primary output's work area for its hooks.
     const fallback = screenArea();
     let laidOut = 0;
-    for (const workspace of ctx.workspaceRoot.list as Workspace[]) {
+    for (const workspace of std.workspaceRoot.list as Workspace[]) {
         const state = wsState(workspace);
         const desk = deskShowing(workspace);
         const area = desk === null ? fallback : areaOfDesk(desk);
@@ -103,7 +104,7 @@ function layoutWorkspaces(): number {
                 guard(`${workspace}.layout.onClientRemoved`, () => target.onClientRemoved?.(client, context));
             }
             for (const client of state.arrived.splice(0)) {
-                if (client.alive && ctx.membership.get(client) === workspace) {
+                if (client.alive && std.membership.get(client) === workspace) {
                     guard(`${workspace}.layout.onClientAdded`, () => target.onClientAdded?.(client, context));
                 }
             }
@@ -137,7 +138,7 @@ function layoutWorkspaces(): number {
                     // parent, are centred in it and are never tiled.
                     const tiled = children.filter(
                         (client) =>
-                            !stateOf(client).floating &&
+                            !std.floating.has(client) &&
                             !client.fullscreen &&
                             !client.maximised &&
                             client.parentWindow === null,
@@ -154,7 +155,7 @@ function layoutWorkspaces(): number {
             state.fields = layoutFields(state.layout);
         });
     }
-    ctx.flags.lastFocus = focusedClient();
+    std.flags.lastFocus = focusedClient();
     startSlides();
     guard("gnoblin.workspaces.visibility", syncVisibility);
     guard("gnoblin.style", applyStyles);

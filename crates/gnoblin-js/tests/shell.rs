@@ -147,7 +147,7 @@ fn boot_reads_two_windows_through_gnoblin_clients() {
 #[test]
 fn workspaces_are_the_scripts_and_clients_are_the_compositors() {
     let comp = two_windows();
-    let mut rig = rig(&comp, "export {};\n");
+    let mut rig = rig(&comp, "import \"gnoblin-std\";\nexport {};\n");
     // The tree's own workspace node (2) is not a member: a workspace is a script object, and a config that
     // declares none gets the stock `desktop` as soon as its entry has loaded.
     assert_eq!(rig.eval("gnoblin.workspaces.length"), "1");
@@ -1015,7 +1015,7 @@ fn value_of(reply: &Json) -> &Json {
 #[test]
 fn the_console_evaluates_in_the_running_generation_and_renders_what_it_finds() {
     let comp = two_windows();
-    let rig = rig(&comp, "export {};\n");
+    let rig = rig(&comp, "import \"gnoblin-std\";\nexport {};\n");
     let dir = tempfile::tempdir().expect("a temp dir");
     let path = dir.path().join("js.sock");
     let mut console = JsConsole::bind(&path).expect("the console listens");

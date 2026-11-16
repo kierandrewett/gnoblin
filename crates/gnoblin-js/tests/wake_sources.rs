@@ -45,16 +45,44 @@ const CONTEXT: &[(&str, Part)] = &[
     ("noticed", State),
     ("verdicts", State),
     ("states", State),
-    ("wsStates", State),
     ("outputSeen", State),
     ("collections", State),
     ("clientsByNode", State),
     ("outputsByNode", State),
-    ("membership", State),
     ("preexisting", State),
+    ("tracked", State),
+    (
+        "applications",
+        Driven("an output application is answered by the compositor, which is a message on the link"),
+    ),
+    ("flags", State),
+    ("clientRoot", State),
+    ("outputRoot", State),
+    (
+        "input",
+        Driven("a drag samples the seat's pointer, which the compositor reports as a message"),
+    ),
+    ("dialogs", Driven("the offers of the dialog slot, which wake a frame")),
+    (
+        "idleMonitor",
+        Driven("the readings of the idle connection, which wake a frame"),
+    ),
+    (
+        "authentication",
+        Driven("a polkit request arrives through the dialog slot"),
+    ),
+    ("launches", Wakes("launch deadlines")),
+    ("hostApi", Wakes("timers")),
+];
+
+/// Every field of `StdContext` (`data/js/gnoblin-std/host/state.ts`), classified the same way: the desktop policy the
+/// package installs on the object model.
+const STD_CONTEXT: &[(&str, Part)] = &[
+    ("wsStates", State),
+    ("membership", State),
     ("offered", State),
     ("centred", State),
-    ("tracked", State),
+    ("floating", State),
     ("desks", State),
     ("deskByOutput", State),
     (
@@ -68,10 +96,6 @@ const CONTEXT: &[(&str, Part)] = &[
     ("scopeStyles", State),
     ("styledSelections", State),
     ("clientStyles", State),
-    (
-        "applications",
-        Driven("an output application is answered by the compositor, which is a message on the link"),
-    ),
     ("focusPolicy", Wakes("focus rests")),
     ("decorations", Wakes("window close fade")),
     ("flags", State),
@@ -79,29 +103,12 @@ const CONTEXT: &[(&str, Part)] = &[
         "staging",
         Driven("holds the writes of the frame that made them until it sends them"),
     ),
-    ("clientRoot", State),
     ("profileRoot", State),
-    ("outputRoot", State),
     ("workspaceRoot", State),
     ("displayRoot", State),
     ("displayManager", Wakes("display manager")),
-    (
-        "input",
-        Driven("a drag samples the seat's pointer, which the compositor reports as a message"),
-    ),
     ("gestureTools", State),
-    ("dialogs", Driven("the offers of the dialog slot, which wake a frame")),
-    (
-        "idleMonitor",
-        Driven("the readings of the idle connection, which wake a frame"),
-    ),
-    (
-        "authentication",
-        Driven("a polkit request arrives through the dialog slot"),
-    ),
-    ("launches", Wakes("launch deadlines")),
     ("xrRuntime", Wakes("xr session")),
-    ("hostApi", Wakes("timers")),
     (
         "transitions",
         Driven("a transition ends on the compositor's `track_ended`, which is a message"),
@@ -121,10 +128,11 @@ const MODULES: &[&str] = &[
 /// test reads.
 const STOCK: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\n\
     import { ctx } from \"gnoblin-core/host/context\";\n\
+    import { std } from \"gnoblin-std/host/state\";\n\
     import { wakeOwners } from \"gnoblin-core/wake\";\n\
     import \"gnoblin-std/widgets\";\n\
     const { gnoblin: _runtime, ...exported } = lib;\n\
-    Object.assign(globalThis, exported, { ctx, wakeOwners });\n";
+    Object.assign(globalThis, exported, { ctx, std, wakeOwners });\n";
 
 /// The stock shell over three decorated windows.
 fn stock() -> Rig {
@@ -142,15 +150,17 @@ fn names(rig: &mut Rig, expression: &str) -> BTreeSet<String> {
 #[test]
 fn every_subsystem_of_the_host_context_is_classified() {
     let mut rig = stock();
-    let held = names(&mut rig, "Object.keys(ctx)");
-    let listed: BTreeSet<String> = CONTEXT.iter().map(|(field, _)| (*field).to_owned()).collect();
-    let new: Vec<_> = held.difference(&listed).collect();
-    let gone: Vec<_> = listed.difference(&held).collect();
-    assert!(
-        new.is_empty() && gone.is_empty(),
-        "HostContext gained {new:?} and lost {gone:?}: give each new field a row in CONTEXT (State, Wakes or Driven), \
-         and delete the rows of fields that are gone"
-    );
+    for (context, table, name) in [("ctx", CONTEXT, "HostContext"), ("std", STD_CONTEXT, "StdContext")] {
+        let held = names(&mut rig, &format!("Object.keys({context})"));
+        let listed: BTreeSet<String> = table.iter().map(|(field, _)| (*field).to_owned()).collect();
+        let new: Vec<_> = held.difference(&listed).collect();
+        let gone: Vec<_> = listed.difference(&held).collect();
+        assert!(
+            new.is_empty() && gone.is_empty(),
+            "{name} gained {new:?} and lost {gone:?}: give each new field a row in its table (State, Wakes or Driven), \
+             and delete the rows of fields that are gone"
+        );
+    }
 }
 
 #[test]
@@ -158,7 +168,7 @@ fn the_stock_shell_registers_a_source_for_every_part_that_keeps_a_clock_and_for_
     let mut rig = stock();
     let registered = names(&mut rig, "wakeOwners()");
     let mut expected: BTreeSet<String> = MODULES.iter().map(|owner| (*owner).to_owned()).collect();
-    for (field, part) in CONTEXT {
+    for (field, part) in CONTEXT.iter().chain(STD_CONTEXT) {
         if let Wakes(owner) = part {
             assert!(!owner.is_empty(), "{field}: a part that keeps a clock names its source");
             expected.insert((*owner).to_owned());
@@ -172,7 +182,7 @@ fn the_stock_shell_registers_a_source_for_every_part_that_keeps_a_clock_and_for_
          know: {unknown:?} (a new source goes in CONTEXT, when it belongs to a subsystem, or in MODULES)"
     );
     // A subsystem that is driven by something else says what, so that the reason is read when it is reviewed.
-    for (field, part) in CONTEXT {
+    for (field, part) in CONTEXT.iter().chain(STD_CONTEXT) {
         if let Driven(why) = part {
             assert!(!why.is_empty(), "{field}: a driven subsystem says what drives it");
         }
@@ -222,10 +232,7 @@ const NO_SOURCE_NEEDED: &[(&str, &str)] = &[
         "gnoblin-std/ui/session.ts",
         "defines `uiNow`, which the parts below read; it keeps no deadline",
     ),
-    (
-        "gnoblin-core/host/input_bridge.ts",
-        "hands the toolkit the seat's clock",
-    ),
+    ("gnoblin-std/host/install.ts", "hands the toolkit the seat's clock"),
     (
         "gnoblin-std/host/policy.ts",
         "hands the focus and window-state policies the seat's clock",

@@ -9,10 +9,7 @@ import { handlerOf, run } from "gnoblin-core/host/dispatch";
 import { assertListener } from "gnoblin-core/host/listeners";
 import type { ClientListener, CollectionListener, OutputListener } from "gnoblin-core/host/listeners";
 import { focusedAmong } from "gnoblin-core/host/seat";
-import { scopeStyle } from "gnoblin-std/host/style_scopes";
 import { noteSignal } from "gnoblin-core/properties";
-import { replaceStyle } from "gnoblin-std/style/style";
-import type { ClientStyle, ClientStyleInit } from "gnoblin-std/style/style";
 import type { Query } from "gnoblin-core/types";
 
 /** A live, array-like view of compositor objects. It is not an Array and its membership cannot be changed. */
@@ -96,19 +93,6 @@ export class Collection<T extends Member> implements Iterable<T> {
             listeners: [],
             priority,
         });
-    }
-
-    /**
-     * The default styles applied to clients in this collection: `gnoblin.clients.style`, a workspace's `clients`, or
-     * a `where()` selection. Only set properties override inherited values; see `Client.style`. Assigning replaces
-     * the properties set by this scope.
-     */
-    get style(): ClientStyle {
-        return scopeStyle(collectionState(this)).style;
-    }
-
-    set style(value: ClientStyle | ClientStyleInit) {
-        replaceStyle(scopeStyle(collectionState(this)).style, value);
     }
 
     /**

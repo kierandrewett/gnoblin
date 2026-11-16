@@ -4,7 +4,7 @@ import { CREATE } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
 import { collectionState, rootState } from "gnoblin-core/host/collection_state";
 import { MutableCollection } from "gnoblin-core/host/collections";
-import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { deskShowing, isShown } from "gnoblin-std/host/desks";
 import { clearClients, detachClient, swapClients, transferClient } from "gnoblin-std/host/membership";
 import type { Output } from "gnoblin-core/host/output";
@@ -40,7 +40,7 @@ export class Workspace extends NativeObject {
                 swapped: (a, b) => swapClients(this, a as Client, b as Client),
             },
         });
-        ctx.wsStates.set(this, {
+        std.wsStates.set(this, {
             id: checked.id,
             name: checked.name,
             layout: checked.layout,
@@ -84,7 +84,7 @@ export class Workspace extends NativeObject {
 
     /** The position in `gnoblin.workspaces`, or -1 while it is not in it. */
     get index(): number {
-        return ctx.workspaceRoot.list.indexOf(this);
+        return std.workspaceRoot.list.indexOf(this);
     }
 
     /** Whether an output shows this workspace. With several outputs, several workspaces are active. */
@@ -133,7 +133,7 @@ export class Workspace extends NativeObject {
      * drawn to where the new layout puts them. Without `options` the change is atomic and immediate.
      */
     set(props: Record<string, unknown>, options?: TransitionOptions): Transition {
-        return setProperties(ctx.transitions, this, `${this}`, props, options);
+        return setProperties(std.transitions, this, `${this}`, props, options);
     }
 
     /** The reactive properties of the workspace: `workspace.properties.bind("blurRadius", () => ...)`. */

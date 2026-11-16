@@ -4,6 +4,7 @@ import { errorCodeOfRefusal, GnoblinError } from "gnoblin-core/errors";
 import { host, nodeName } from "gnoblin-core/host/bridge";
 import { ANIMATED_KEYS } from "gnoblin-std/host/client_animation";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { layout } from "gnoblin-std/host/layout_driver";
 import { motion } from "gnoblin-core/host/seat";
 import { everyStyle } from "gnoblin-std/host/style_scopes";
@@ -19,11 +20,11 @@ import { layoutFields } from "gnoblin-std/workspace";
  * assigned (and so was not the workspace's layout when the transition began) keeps the field changes made to it.
  */
 function snapshotScriptState(): () => void {
-    if (ctx.flags.laying) {
+    if (std.flags.laying) {
         throw new GnoblinError("busy", "gnoblin.requestTransition", "cannot start inside a layout pass");
     }
     const restores: (() => void)[] = [];
-    for (const workspace of ctx.workspaceRoot.list as Workspace[]) {
+    for (const workspace of std.workspaceRoot.list as Workspace[]) {
         const state = wsState(workspace);
         const { layout: held, gaps, name, dirty, fields, gapsSeen } = state;
         const own = layoutFields(held);
@@ -40,8 +41,8 @@ function snapshotScriptState(): () => void {
         });
     }
     restores.push(snapshotStyles(everyStyle));
-    restores.push(ctx.displayManager.snapshot());
-    const shownBefore = ctx.desks.map((desk) => [desk, desk.shown] as const);
+    restores.push(std.displayManager.snapshot());
+    const shownBefore = std.desks.map((desk) => [desk, desk.shown] as const);
     restores.push(() => {
         for (const [desk, shown] of shownBefore) {
             desk.shown = shown;
@@ -74,8 +75,8 @@ function settleStaged(): void {
 /** Installs the engine that stages transition writes and drives animation tracks. */
 export function installTransitions(): void {
     // Transition engine that stages writes, validates placements, and drives animation tracks.
-    ctx.transitions = new TransitionEngine({
-        staging: ctx.staging,
+    std.transitions = new TransitionEngine({
+        staging: std.staging,
         motion,
         animated: (key) => Object.hasOwn(ANIMATED_KEYS, key),
         placed: (node) =>
@@ -105,5 +106,5 @@ export function installTransitions(): void {
         error: (code, target, message) => new GnoblinError(code, target, message),
     });
 
-    ctx.hostApi.onTrackEnded = (event) => ctx.transitions.trackEnded(event);
+    ctx.hostApi.onTrackEnded = (event) => std.transitions.trackEnded(event);
 }

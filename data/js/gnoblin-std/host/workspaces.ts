@@ -4,6 +4,7 @@ import { GnoblinError } from "gnoblin-core/errors";
 import type { Client } from "gnoblin-core/host/client";
 import { holders, recompute } from "gnoblin-core/host/collection_events";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import { currentDesk, deskShowing, ensureDesk, fillDesks, setShown } from "gnoblin-std/host/desks";
 import { queueFor } from "gnoblin-core/host/dispatch";
 import { moveClient, placeDialog } from "gnoblin-std/host/membership";
@@ -14,7 +15,7 @@ import { initialWorkspace } from "gnoblin-std/workspace";
 
 /** The workspace a window that has none joins: the one the output under the pointer shows, else the initial rule's. */
 export function newWindowWorkspace(): Workspace | null {
-    return currentDesk()?.shown ?? initialWorkspace(ctx.workspaceRoot.list as Workspace[]);
+    return currentDesk()?.shown ?? initialWorkspace(std.workspaceRoot.list as Workspace[]);
 }
 
 /** Gives each window that has no workspace the one the initial-workspace rule names. */
@@ -23,7 +24,7 @@ export function adoptOrphans(): void {
         return;
     }
     for (const client of [...ctx.clientRoot.list] as Client[]) {
-        if (ctx.membership.has(client)) {
+        if (std.membership.has(client)) {
             continue;
         }
         if (placeDialog(client)) {
@@ -43,7 +44,7 @@ export function addWorkspace(workspace: Workspace): void {
     if (state.attached) {
         return;
     }
-    if (ctx.workspaceRoot.list.some((other) => other.id === state.id)) {
+    if (std.workspaceRoot.list.some((other) => other.id === state.id)) {
         throw new GnoblinError(
             "already_exists",
             "gnoblin.workspaces.add",
@@ -52,13 +53,13 @@ export function addWorkspace(workspace: Workspace): void {
     }
     state.attached = true;
     state.dirty = true;
-    ctx.workspaceRoot.list.push(workspace);
-    raiseSignal(ctx.workspaceRoot, "items");
-    queueFor(ctx.workspaceRoot, "onAdded", [workspace, ctx.workspaceRoot.self]);
-    recompute(ctx.workspaceRoot, workspace);
+    std.workspaceRoot.list.push(workspace);
+    raiseSignal(std.workspaceRoot, "items");
+    queueFor(std.workspaceRoot, "onAdded", [workspace, std.workspaceRoot.self]);
+    recompute(std.workspaceRoot, workspace);
     ensureDesk();
     fillDesks();
-    ctx.displayManager.changed();
+    std.displayManager.changed();
     adoptOrphans();
 }
 
@@ -67,24 +68,24 @@ export function addWorkspace(workspace: Workspace): void {
  * for the first), and that neighbour is shown where the removed one was; none is closed.
  */
 export function removeWorkspace(workspace: Workspace): void {
-    ctx.displayManager.changed();
+    std.displayManager.changed();
     const state = wsState(workspace);
     if (!state.attached) {
         return;
     }
-    const held = holders(ctx.workspaceRoot, workspace);
+    const held = holders(std.workspaceRoot, workspace);
     state.attached = false;
-    const at = ctx.workspaceRoot.list.indexOf(workspace);
-    const neighbour = (ctx.workspaceRoot.list[at - 1] ?? ctx.workspaceRoot.list[at + 1]) as Workspace | undefined;
-    ctx.workspaceRoot.list.splice(at, 1);
-    raiseSignal(ctx.workspaceRoot, "items");
+    const at = std.workspaceRoot.list.indexOf(workspace);
+    const neighbour = (std.workspaceRoot.list[at - 1] ?? std.workspaceRoot.list[at + 1]) as Workspace | undefined;
+    std.workspaceRoot.list.splice(at, 1);
+    raiseSignal(std.workspaceRoot, "items");
     disposeBindingsOf(workspace);
     for (const view of held) {
         view.members?.delete(workspace);
         queueFor(view, "onRemoved", [workspace, view.self]);
     }
     const target = neighbour ?? null;
-    for (const desk of ctx.desks) {
+    for (const desk of std.desks) {
         if (desk.shown === workspace) {
             desk.shown = null;
             // The neighbour takes its place, unless another output shows it already: then the first workspace that
@@ -92,7 +93,7 @@ export function removeWorkspace(workspace: Workspace): void {
             const free =
                 neighbour !== undefined && deskShowing(neighbour) === null
                     ? neighbour
-                    : ((ctx.workspaceRoot.list as Workspace[]).find((one) => deskShowing(one) === null) ?? null);
+                    : ((std.workspaceRoot.list as Workspace[]).find((one) => deskShowing(one) === null) ?? null);
             setShown(desk, free);
         }
     }
@@ -106,7 +107,7 @@ export function removeWorkspace(workspace: Workspace): void {
  * stock default's four workspaces are declared by `data/js/starter/shell.ts`; a user's `shell.ts` that declares none gets this one.
  */
 export function ensureDefaultWorkspace(): void {
-    if (ctx.workspaceRoot.list.length > 0) {
+    if (std.workspaceRoot.list.length > 0) {
         return;
     }
     addWorkspace(new Workspace({ id: "desktop" }));

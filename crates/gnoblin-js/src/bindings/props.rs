@@ -104,6 +104,14 @@ const WINDOW: &[JsPropDef] = &[
     def("secure", JsPropKind::Flag, true),
     // Whether the client has left a liveness ping unanswered too long. The compositor writes it.
     def("unresponsive", JsPropKind::Flag, false),
+    // How the compositor answers the window's frame callbacks (`auto`, `hold` or `throttle`), and how often it answers a
+    // throttled window's client, in hertz. The shell writes both: a window it does not show can be held.
+    def("frame_policy", JsPropKind::Text, true),
+    def("frame_rate", JsPropKind::Double, true),
+    // Whether the compositor writes `presented` each time a frame that draws the window reaches the screen: written by
+    // the shell, and `presented` is the compositor's, in milliseconds on its monotonic clock.
+    def("report_presented", JsPropKind::Flag, true),
+    def("presented", JsPropKind::Double, false),
     // The node's effects in paint order (blur and shadow), and the ones the compositor cannot draw. The style
     // cascade writes the first; the second is read-only.
     def("effects", JsPropKind::Effects, true),
@@ -269,6 +277,8 @@ pub(crate) fn default_value(def: &JsPropDef) -> MirrorValue {
         ("transform", _) => MirrorValue::Text("normal".to_owned()),
         ("decoration", _) => MirrorValue::Text("client".to_owned()),
         ("decoration_wanted", _) => MirrorValue::Text("unset".to_owned()),
+        ("frame_policy", _) => MirrorValue::Text("auto".to_owned()),
+        ("frame_rate", _) => MirrorValue::Double(30.0),
         ("opacity", _) => MirrorValue::Double(1.0),
         ("input", _) => MirrorValue::Bool(true),
         ("input_mode", _) => MirrorValue::Text("forward".to_owned()),
@@ -334,12 +344,18 @@ mod tests {
                 "rotation",
                 "scale",
                 "secure",
+                "frame_policy",
+                "frame_rate",
+                "report_presented",
                 "effects"
             ]
         );
         for def in defs_for("window").into_iter().flatten().filter(|def| def.writable) {
             let want = match def.name {
-                "fullscreen" | "maximised" | "minimised" | "tiled" | "visible" | "secure" => JsPropKind::Flag,
+                "fullscreen" | "maximised" | "minimised" | "tiled" | "visible" | "secure" | "report_presented" => {
+                    JsPropKind::Flag
+                }
+                "frame_policy" => JsPropKind::Text,
                 "effects" => JsPropKind::Effects,
                 "rotation" | "scale" => JsPropKind::Doubles,
                 _ => JsPropKind::Double,

@@ -9,8 +9,8 @@ export type Scalar = string | number | boolean;
 export interface FindSource {
     /** Returns the current windows in shell order. */
     windows(): object[];
-    /** Returns the current workspaces in shell order. */
-    workspaces(): object[];
+    /** The current workspaces in shell order, or null when this shell has none. */
+    workspaces(): object[] | null;
     /** The live outputs, or null when this shell has none. */
     outputs(): object[] | null;
 }
@@ -43,7 +43,11 @@ const FIELDS: Record<string, readonly string[]> = {
 
 /** Returns the kinds available from this shell. */
 export function findKinds(source: FindSource): string[] {
-    return source.outputs() === null ? ["Window", "Workspace"] : ["Window", "Workspace", "Output"];
+    return [
+        "Window",
+        ...(source.workspaces() === null ? [] : ["Workspace"]),
+        ...(source.outputs() === null ? [] : ["Output"]),
+    ];
 }
 
 /**
@@ -56,7 +60,11 @@ export function find(source: FindSource, kind: string, filter?: Record<string, S
         throw new TypeError(`gnoblin.find: no kind named ${JSON.stringify(kind)}; the kinds are ${kinds.join(", ")}`);
     }
     const objects =
-        kind === "Window" ? source.windows() : kind === "Workspace" ? source.workspaces() : (source.outputs() ?? []);
+        kind === "Window"
+            ? source.windows()
+            : kind === "Workspace"
+              ? (source.workspaces() ?? [])
+              : (source.outputs() ?? []);
     if (filter === undefined) {
         return [...objects];
     }

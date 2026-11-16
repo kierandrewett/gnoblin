@@ -81,6 +81,8 @@ pub(crate) struct JsSeatSettings {
     pub(super) focus_change_on_pointer_rest: bool,
     /// `appearance.reduced-motion`: the shell shortens its animations to zero while it is true.
     pub(super) reduced_motion: bool,
+    /// Whether the compositor plays its own window animations (`builtin_motion`).
+    pub(super) builtin_motion: bool,
 }
 
 impl<'js> IntoJs<'js> for JsSeatSettings {
@@ -94,6 +96,7 @@ impl<'js> IntoJs<'js> for JsSeatSettings {
         object.set("autoRaiseDelay", self.auto_raise_delay)?;
         object.set("focusChangeOnPointerRest", self.focus_change_on_pointer_rest)?;
         object.set("reducedMotion", self.reduced_motion)?;
+        object.set("builtinMotion", self.builtin_motion)?;
         Ok(object.into_value())
     }
 }
@@ -119,10 +122,8 @@ pub(super) fn clear_focus(state: &mut HostState, seat: NodeId) -> Option<&'stati
     write_focus(state, seat, NIL)
 }
 
-/// Queues a write of the seat's `decorations_available`: whether this shell draws window decorations. The compositor
-/// answers a client's server-side request with server-side only while it is true, and clears it when the shell's
-/// connection drops. Refused when `seat` is not a live seat node.
-pub(super) fn declare_decorations(state: &mut HostState, seat: NodeId, available: bool) -> Option<&'static str> {
+/// Queues a write of the flag `key` of `seat`. Refused when `seat` is not a live seat node.
+fn write_flag(state: &mut HostState, seat: NodeId, key: &str, value: bool) -> Option<&'static str> {
     let HostState { mirror, tick, .. } = state;
     let is_seat = tick
         .node(mirror, seat)
@@ -130,16 +131,22 @@ pub(super) fn declare_decorations(state: &mut HostState, seat: NodeId, available
     if !is_seat {
         return Some("unknown-node");
     }
-    tick.set(
-        mirror,
-        seat,
-        "decorations_available",
-        MirrorValue::Bool(available),
-        None,
-        None,
-    )
-    .err()
-    .map(|_| "unknown-node")
+    tick.set(mirror, seat, key, MirrorValue::Bool(value), None, None)
+        .err()
+        .map(|_| "unknown-node")
+}
+
+/// Queues a write of the seat's `decorations_available`: whether this shell draws window decorations. The compositor
+/// answers a client's server-side request with server-side only while it is true, and clears it when the shell's
+/// connection drops. Refused when `seat` is not a live seat node.
+pub(super) fn declare_decorations(state: &mut HostState, seat: NodeId, available: bool) -> Option<&'static str> {
+    write_flag(state, seat, "decorations_available", available)
+}
+
+/// Queues a write of the seat's `builtin_motion`: whether the compositor plays its own animations on window nodes. The
+/// compositor sets it back to true when the shell lets go of the tree. Refused when `seat` is not a live seat node.
+pub(super) fn set_builtin_motion(state: &mut HostState, seat: NodeId, enabled: bool) -> Option<&'static str> {
+    write_flag(state, seat, "builtin_motion", enabled)
 }
 
 /// Queues the first seat's keyboard focus going to `window`. The compositor answers no `focus` call on a window; the
@@ -184,6 +191,7 @@ impl JsSeatSettings {
             auto_raise_delay: delay,
             focus_change_on_pointer_rest: flag("focus_change_on_pointer_rest", false),
             reduced_motion: flag("reduced_motion", false),
+            builtin_motion: flag("builtin_motion", true),
         }
     }
 }

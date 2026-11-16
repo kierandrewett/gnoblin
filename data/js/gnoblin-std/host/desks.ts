@@ -4,6 +4,7 @@ import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
 import { recompute } from "gnoblin-core/host/collection_events";
 import { ctx } from "gnoblin-core/host/context";
+import { std } from "gnoblin-std/host/state";
 import type { Output } from "gnoblin-core/host/output";
 import type { Workspace } from "gnoblin-std/host/workspace";
 import { wsState } from "gnoblin-std/host/workspace_state";
@@ -40,7 +41,7 @@ export function liveOutputs(): Output[] {
 
 /** The outputs that have a desk: every connected output but a mirror and one that is off. */
 export function deskOutputs(): Output[] {
-    return liveOutputs().filter((output) => ctx.deskByOutput.has(output));
+    return liveOutputs().filter((output) => std.deskByOutput.has(output));
 }
 
 /** The output flagged primary, or the first one; null while the tree has none. */
@@ -53,21 +54,21 @@ export function primaryOutput(): Output | null {
 export function primaryDesk(): Desk | null {
     const output = primaryOutput();
     return output === null
-        ? (ctx.desks.find((desk) => desk.output === null) ?? null)
-        : (ctx.deskByOutput.get(output) ?? null);
+        ? (std.desks.find((desk) => desk.output === null) ?? null)
+        : (std.deskByOutput.get(output) ?? null);
 }
 
 /** The desk a new window, a key and a plain `show` act on: the one under the pointer, else the primary one. */
 export function currentDesk(): Desk | null {
     const node = host.pointerScreen();
     const under = node === undefined ? undefined : ctx.outputsByNode.get(node);
-    const own = (under === undefined ? undefined : ctx.deskByOutput.get(under)) ?? primaryDesk();
+    const own = (under === undefined ? undefined : std.deskByOutput.get(under)) ?? primaryDesk();
     return own === null ? null : effectiveDesk(own);
 }
 
 /** Finds the desk that currently shows a workspace, if any. */
 export function deskShowing(workspace: Workspace): Desk | null {
-    return ctx.desks.find((desk) => desk.shown === workspace) ?? null;
+    return std.desks.find((desk) => desk.shown === workspace) ?? null;
 }
 
 /** Whether an output (or the tree's one output-less desk) shows `workspace`. A parked desk shows nothing. */
@@ -78,24 +79,24 @@ export function isShown(workspace: Workspace): boolean {
 
 /** The desk the workspace `client` is on is shown on, or null. */
 export function deskOfClient(client: Client): Desk | null {
-    const workspace = ctx.membership.get(client);
+    const workspace = std.membership.get(client);
     return workspace === undefined ? null : deskShowing(workspace);
 }
 
 /** A desk for a tree that has no output, so the first workspace is on show whatever the compositor has. */
 export function ensureDesk(): void {
-    if (ctx.desks.length === 0) {
-        ctx.desks.push({ output: null, shown: null, parked: false, spans: null, spannedBy: null });
+    if (std.desks.length === 0) {
+        std.desks.push({ output: null, shown: null, parked: false, spans: null, spannedBy: null });
     }
 }
 
 /** Gives each desk that shows nothing the first workspace no desk shows. */
 export function fillDesks(): void {
-    for (const desk of ctx.desks) {
+    for (const desk of std.desks) {
         if (desk.shown !== null || desk.spannedBy !== null) {
             continue;
         }
-        const free = (ctx.workspaceRoot.list as Workspace[]).find((workspace) => deskShowing(workspace) === null);
+        const free = (std.workspaceRoot.list as Workspace[]).find((workspace) => deskShowing(workspace) === null);
         if (free !== undefined) {
             setShown(desk, free);
         }
@@ -114,7 +115,7 @@ export function setShown(desk: Desk, next: Workspace | null): void {
     }
     for (const changed of [before, next]) {
         if (changed && wsState(changed).attached) {
-            recompute(ctx.workspaceRoot, changed);
+            recompute(std.workspaceRoot, changed);
         }
     }
 }
