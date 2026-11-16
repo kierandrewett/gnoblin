@@ -1,6 +1,6 @@
 # Idle watches
 
-`gnoblin.idle.watch(ms, handlers)` runs your code when the session has had no input for `ms` milliseconds. Use it to dim a
+`gnoblin.idle.watch(ms, listener)` runs your code when the session has had no input for `ms` milliseconds. Use it to dim a
 panel, lock the screen or suspend the machine after a pause. It returns an `IdleWatch`.
 
 ```ts
@@ -27,7 +27,7 @@ A watch is not idle when it starts. It becomes idle once the session has been id
 - `onClosed(watch, reason)` runs once when the watch ends. `reason` is `"cancelled"`.
 - A watch made while the session is already idle runs `onIdle` at once.
 
-All three handlers are optional.
+An `IdleListener` is a class with optional methods, or an object that has some of them. All three methods are optional.
 
 | Member                    | Value                                                                 |
 | ------------------------- | --------------------------------------------------------------------- |

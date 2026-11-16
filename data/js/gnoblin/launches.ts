@@ -22,10 +22,11 @@ export const MAX_LAUNCH_TIMEOUT_MS = 10_000;
 /** Where a launch is. It begins `pending` and leaves it once, for one of the other three. */
 export type LaunchState = "pending" | "started" | "timed_out" | "ended";
 
-/** Callbacks for launch state changes. Every member is optional. */
-export interface LaunchHandlers {
-    /** The deadline of the launch in milliseconds, 100 to 10000. Default 3000. */
-    timeoutMs?: number;
+/**
+ * Observes one launch: pass it to `gnoblin.launches.begin` as `listener`. Every method is optional, and each receives
+ * the launch first.
+ */
+export class LaunchListener {
     /** A field changed; `fields` names them. */
     onChanged?(launch: Launch, fields: readonly string[]): void;
     /** A window of the application appeared or took focus. */
@@ -33,10 +34,18 @@ export interface LaunchHandlers {
     /** The deadline passed first. */
     onTimedOut?(launch: Launch): void;
     /**
-     * The launch left `pending`, for any reason; it runs after the other handlers. `reason` is the new state,
+     * The launch left `pending`, for any reason; it runs after the other methods. `reason` is the new state,
      * `replaced` or a refusal.
      */
     onClosed?(launch: Launch, reason: string): void;
+}
+
+/** What `gnoblin.launches.begin` takes beside the token and the application. */
+export interface LaunchOptions {
+    /** The deadline of the launch in milliseconds, 100 to 10000. Default 3000. */
+    timeoutMs?: number;
+    /** Told of the launch's changes. */
+    listener?: LaunchListener;
 }
 
 /** What the registry needs of the shell: a clock and the call queue. */
@@ -69,7 +78,7 @@ export class Launch {
     #state: LaunchState = "pending";
     #revision = 0;
     readonly #deadline: number;
-    readonly #handlers: LaunchHandlers;
+    readonly #handlers: LaunchListener;
     readonly #registry: LaunchFeedback;
 
     /** Made by `gnoblin.launches.begin`; a script has no use for the constructor. */
@@ -79,7 +88,7 @@ export class Launch {
         application: string,
         timeoutMs: number,
         deadline: number,
-        handlers: LaunchHandlers,
+        handlers: LaunchListener,
     ) {
         this.#registry = registry;
         this.token = token;
@@ -149,7 +158,7 @@ export class Launch {
     }
 }
 
-function validate(token: unknown, application: unknown, options: unknown): LaunchHandlers {
+function validate(token: unknown, application: unknown, options: unknown): LaunchOptions {
     if (typeof token !== "string" || token.length === 0 || token.length > NAME_MAX) {
         throw new TypeError(
             `gnoblin.launches.begin: the token must be a non-empty string of at most ${NAME_MAX} characters`,
@@ -168,6 +177,12 @@ function validate(token: unknown, application: unknown, options: unknown): Launc
         throw new TypeError("gnoblin.launches.begin: the options must be an object");
     }
     const given = options as Record<string, unknown>;
+    const known = ["timeoutMs", "listener"];
+    for (const key of Object.keys(given)) {
+        if (!known.includes(key)) {
+            throw new TypeError(`gnoblin.launches.begin: unknown option "${key}" (known: ${known.join(", ")})`);
+        }
+    }
     const timeout = given.timeoutMs;
     if (
         timeout !== undefined &&
@@ -181,12 +196,19 @@ function validate(token: unknown, application: unknown, options: unknown): Launc
                 `from ${MIN_LAUNCH_TIMEOUT_MS} to ${MAX_LAUNCH_TIMEOUT_MS}`,
         );
     }
-    for (const name of ["onChanged", "onStarted", "onTimedOut", "onClosed"]) {
-        if (given[name] !== undefined && typeof given[name] !== "function") {
-            throw new TypeError(`gnoblin.launches.begin: ${name} must be a function`);
+    const listener = given.listener;
+    if (listener !== undefined) {
+        if (listener === null || typeof listener !== "object") {
+            throw new TypeError("gnoblin.launches.begin: the listener must be an object");
+        }
+        for (const name of ["onChanged", "onStarted", "onTimedOut", "onClosed"]) {
+            const member = (listener as Record<string, unknown>)[name];
+            if (member !== undefined && typeof member !== "function") {
+                throw new TypeError(`gnoblin.launches.begin: ${name} must be a function`);
+            }
         }
     }
-    return given as LaunchHandlers;
+    return given as LaunchOptions;
 }
 
 /** `gnoblin.launches`: the launches the shell tracks, and the windows that answer them. */
@@ -215,15 +237,22 @@ export class LaunchFeedback {
      * already in use ends the earlier launch (`onClosed` with the reason `replaced`). A launch the registry cannot
      * take, because it holds 64 pending ones, comes back `ended` with that reason in its `onClosed`.
      */
-    begin(token: string, application: string, options?: LaunchHandlers): Launch {
-        const handlers = validate(token, application, options);
+    begin(token: string, application: string, options?: LaunchOptions): Launch {
+        const given = validate(token, application, options);
         const earlier = this.#launches.find((launch) => launch.token === token);
         if (earlier !== undefined) {
             Launch.settle(earlier, this.#host, "ended", "replaced");
             this.#launches.splice(this.#launches.indexOf(earlier), 1);
         }
-        const timeoutMs = handlers.timeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS;
-        const launch = new Launch(this, token, application, timeoutMs, this.#host.now() + timeoutMs, handlers);
+        const timeoutMs = given.timeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS;
+        const launch = new Launch(
+            this,
+            token,
+            application,
+            timeoutMs,
+            this.#host.now() + timeoutMs,
+            given.listener ?? {},
+        );
         if (this.#launches.length >= MAX_LAUNCHES) {
             const finished = this.#launches.find((held) => !held.alive);
             if (finished === undefined) {

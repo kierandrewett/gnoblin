@@ -83,10 +83,12 @@ fn rig(body: &str, windows: &[(u64, &str)]) -> Rig {
 
 const BEGIN: &str = "g.l = gnoblin.launches.begin('t1', 'org.example.App', {\n\
     timeoutMs: 5000,\n\
-    onChanged: (l, fields) => g.log.push('changed:' + fields.join('+')),\n\
-    onStarted: (l) => g.log.push('started'),\n\
-    onTimedOut: (l) => g.log.push('timed-out'),\n\
-    onClosed: (l, why) => g.log.push('closed:' + why),\n\
+    listener: {\n\
+        onChanged: (l, fields) => g.log.push('changed:' + fields.join('+')),\n\
+        onStarted: (l) => g.log.push('started'),\n\
+        onTimedOut: (l) => g.log.push('timed-out'),\n\
+        onClosed: (l, why) => g.log.push('closed:' + why),\n\
+    },\n\
 });";
 
 // --- the states of a launch --------------------------------------------------------------------------------------
@@ -197,9 +199,11 @@ fn the_deadline_times_the_launch_out_and_a_later_window_changes_nothing() {
     let mut rig = rig(
         "g.l = gnoblin.launches.begin('t1', 'org.example.App', {\n\
             timeoutMs: 100,\n\
-            onTimedOut: () => g.log.push('timed-out'),\n\
-            onStarted: () => g.log.push('started'),\n\
-            onClosed: (l, why) => g.log.push('closed:' + why),\n\
+            listener: {\n\
+                onTimedOut: () => g.log.push('timed-out'),\n\
+                onStarted: () => g.log.push('started'),\n\
+                onClosed: (l, why) => g.log.push('closed:' + why),\n\
+            },\n\
         });",
         &[],
     );
@@ -243,8 +247,8 @@ fn a_finish_after_the_launch_started_is_unchanged() {
 #[test]
 fn beginning_a_token_in_use_ends_the_earlier_launch_with_the_reason_replaced() {
     let mut rig = rig(
-        "g.old = gnoblin.launches.begin('t', 'org.example.App', { onClosed: (l, why) => g.log.push('old:' + why) });\n\
-         g.fresh = gnoblin.launches.begin('t', 'org.example.App', { onClosed: (l, why) => g.log.push('new:' + why) });",
+        "g.old = gnoblin.launches.begin('t', 'org.example.App', { listener: { onClosed: (l, why) => g.log.push('old:' + why) } });\n\
+         g.fresh = gnoblin.launches.begin('t', 'org.example.App', { listener: { onClosed: (l, why) => g.log.push('new:' + why) } });",
         &[],
     );
     rig.settle();
@@ -259,7 +263,7 @@ fn beginning_a_token_in_use_ends_the_earlier_launch_with_the_reason_replaced() {
 fn the_registry_holds_64_launches_drops_the_oldest_finished_and_refuses_when_all_are_pending() {
     let mut rig = rig(
         "for (let i = 0; i < 64; i++) { gnoblin.launches.begin('t' + i, 'app' + i); }\n\
-         g.extra = gnoblin.launches.begin('extra', 'app', { onClosed: (l, why) => g.log.push('extra:' + why) });",
+         g.extra = gnoblin.launches.begin('extra', 'app', { listener: { onClosed: (l, why) => g.log.push('extra:' + why) } });",
         &[],
     );
     rig.settle();
@@ -306,7 +310,13 @@ fn begin_takes_a_token_up_to_128_characters_an_application_up_to_512_and_a_timeo
     assert_eq!(rig.eval("g.try('t4', 'app', { timeoutMs: 1.5 })"), "RangeError");
     assert_eq!(rig.eval("g.try('t4', 'app', { timeoutMs: 100 })"), "ok");
     assert_eq!(rig.eval("g.try('t5', 'app', { timeoutMs: 10000 })"), "ok");
-    assert_eq!(rig.eval("g.try('t6', 'app', { onStarted: 1 })"), "TypeError");
+    assert_eq!(
+        rig.eval("g.try('t6', 'app', { listener: { onStarted: 1 } })"),
+        "TypeError"
+    );
+    assert_eq!(rig.eval("g.try('t6', 'app', { listener: 5 })"), "TypeError");
+    // A handler given the way the options used to take them is refused, not ignored.
+    assert_eq!(rig.eval("g.try('t6', 'app', { onStarted: () => {} })"), "TypeError");
     assert_eq!(rig.eval("g.try('t6', 'app', 5)"), "TypeError");
 }
 
@@ -315,10 +325,10 @@ fn begin_takes_a_token_up_to_128_characters_an_application_up_to_512_and_a_timeo
 #[test]
 fn a_handler_that_throws_is_reported_once_and_the_next_handler_still_runs() {
     let mut rig = rig(
-        "g.l = gnoblin.launches.begin('t', 'org.example.App', {\n\
+        "g.l = gnoblin.launches.begin('t', 'org.example.App', { listener: {\n\
             onStarted: () => { throw new Error('started broke'); },\n\
             onClosed: (l, why) => g.log.push('closed:' + why),\n\
-        });",
+        } });",
         &[],
     );
     rig.comp.create_window(3, "A", "org.example.App");

@@ -35,8 +35,8 @@ export interface IdleHost {
     schedule(site: string, task: () => void): void;
 }
 
-/** What a watch does when the session goes idle and when it comes back. Every member is optional. */
-export interface IdleWatchHandlers {
+/** Observes one watch: pass it to `gnoblin.idle.watch`. Every method is optional, and each receives the watch first. */
+export class IdleListener {
     /** The session has been idle for the watch's time and nothing inhibits idle. */
     onIdle?(watch: IdleWatch): void;
     /** The first input after an idle period, or an inhibitor that took the idle state away. */
@@ -45,12 +45,12 @@ export interface IdleWatchHandlers {
     onClosed?(watch: IdleWatch, reason: string): void;
 }
 
-function validateHandlers(handlers: unknown): IdleWatchHandlers {
+function validateHandlers(handlers: unknown): IdleListener {
     if (handlers === undefined) {
         return {};
     }
     if (handlers === null || typeof handlers !== "object") {
-        throw new TypeError("gnoblin.idle.watch: the handlers must be an object");
+        throw new TypeError("gnoblin.idle.watch: the listener must be an object");
     }
     const given = handlers as Record<string, unknown>;
     for (const name of ["onIdle", "onResume", "onClosed"]) {
@@ -58,7 +58,7 @@ function validateHandlers(handlers: unknown): IdleWatchHandlers {
             throw new TypeError(`gnoblin.idle.watch: ${name} must be a function`);
         }
     }
-    return given as IdleWatchHandlers;
+    return given as IdleListener;
 }
 
 /**
@@ -72,11 +72,11 @@ export class IdleWatch {
     readonly ms: number;
     #idle = false;
     #alive = true;
-    readonly #handlers: IdleWatchHandlers;
+    readonly #handlers: IdleListener;
     readonly #manager: IdleMonitor;
 
     /** Made by `gnoblin.idle.watch`; a script has no use for the constructor. */
-    constructor(manager: IdleMonitor, id: string, ms: number, handlers: IdleWatchHandlers) {
+    constructor(manager: IdleMonitor, id: string, ms: number, handlers: IdleListener) {
         this.#manager = manager;
         this.id = id;
         this.ms = ms;
@@ -192,14 +192,14 @@ export class IdleMonitor {
     }
 
     /**
-     * Runs `handlers.onIdle` when the session has been idle for `ms` milliseconds, and `onResume` when it is active
+     * Calls `listener.onIdle` when the session has been idle for `ms` milliseconds, and `onResume` when it is active
      * again. `ms` is a number above 0 and at most a day; a runtime has at most 256 live watches.
      */
-    watch(ms: number, handlers?: IdleWatchHandlers): IdleWatch {
+    watch(ms: number, listener?: IdleListener): IdleWatch {
         if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0 || ms > MAX_IDLE_MS) {
             throw new RangeError(`gnoblin.idle.watch: ms must be a number above 0 and at most ${MAX_IDLE_MS}`);
         }
-        const given = validateHandlers(handlers);
+        const given = validateHandlers(listener);
         if (this.#watches.length >= MAX_IDLE_WATCHES) {
             throw new RangeError(`gnoblin.idle.watch: a runtime has at most ${MAX_IDLE_WATCHES} live watches`);
         }

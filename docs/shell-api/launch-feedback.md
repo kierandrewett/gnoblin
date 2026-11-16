@@ -7,8 +7,10 @@ a spinner while the program starts.
 gnoblin.input.primary.bind("Super+e", () => {
     gnoblin.launches.begin("terminal-1", "foot", {
         timeoutMs: 5000,
-        onStarted: () => gnoblin.spawn(["notify-send", "The terminal is open"]),
-        onTimedOut: () => gnoblin.spawn(["notify-send", "The terminal did not open"]),
+        listener: {
+            onStarted: () => gnoblin.spawn(["notify-send", "The terminal is open"]),
+            onTimedOut: () => gnoblin.spawn(["notify-send", "The terminal did not open"]),
+        },
     });
     gnoblin.spawn("foot");
 });
@@ -27,8 +29,9 @@ Anything outside these limits throws:
 | `token`       | non-empty string, at most 128 characters | none    | Names the launch. Beginning the same token again replaces it. |
 | `application` | non-empty string, at most 512 characters | none    | The application id the window is matched against.             |
 | `timeoutMs`   | integer from 100 to 10000                | `3000`  | How long the launch waits for a window.                       |
+| `listener`    | a `LaunchListener`                       | none    | Told of the launch's changes.                                 |
 
-`options` also takes the handlers listed below.
+`options` also takes a `listener`, described below. An option it does not know throws.
 
 A launch leaves `pending` once, for one of three states:
 
@@ -38,9 +41,11 @@ A launch leaves `pending` once, for one of three states:
 | `timed_out` | The deadline passes first.                                                                   |
 | `ended`     | `launch.finish()` is called, the token is begun again (`replaced`), or the registry is full. |
 
-## Handlers
+## The listener
 
-| Handler                     | Called when                                                                                                     |
+A `LaunchListener` is a class with optional methods, or an object that has some of them.
+
+| Method                      | Called when                                                                                                     |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `onChanged(launch, fields)` | A field of the launch changed. `fields` names them.                                                             |
 | `onStarted(launch)`         | The launch became `started`.                                                                                    |
