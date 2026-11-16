@@ -28,6 +28,7 @@ mod applied;
 mod consent;
 mod localtime;
 mod lock_card;
+mod outbox;
 mod path;
 mod polkit;
 mod portal;

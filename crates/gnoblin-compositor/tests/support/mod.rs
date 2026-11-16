@@ -452,6 +452,49 @@ impl Wire {
         }
     }
 
+    /// Reads and discards up to `bytes` bytes that the session has waiting for this client, without parsing them: a
+    /// client that takes a little of what is held for it, however slowly, and so is not stalled. The frames are not
+    /// kept, so a wire that has been taken from is only read again with [`Wire::read_until_eof`].
+    pub fn take(&mut self, bytes: usize) {
+        self.stream
+            .set_read_timeout(Some(std::time::Duration::from_millis(20)))
+            .expect("a poll deadline");
+        let mut chunk = vec![0u8; 16 * 1024];
+        let mut left = bytes;
+        while left > 0 {
+            let want = left.min(chunk.len());
+            match std::io::Read::read(&mut self.reader, &mut chunk[..want]) {
+                Ok(0) | Err(_) => return,
+                Ok(taken) => left -= taken,
+            }
+        }
+    }
+
+    /// Reads and discards bytes until the session has ended the connection, which is `true`, or `limit` passes, which is
+    /// `false`. What the session held for the client is read first, so a test about a client that does not read calls
+    /// this last: reading makes the room the session was waiting for.
+    pub fn read_until_eof(&mut self, limit: std::time::Duration) -> bool {
+        self.stream
+            .set_read_timeout(Some(std::time::Duration::from_millis(50)))
+            .expect("a poll deadline");
+        let mut chunk = vec![0u8; 64 * 1024];
+        let deadline = Instant::now() + limit;
+        while Instant::now() < deadline {
+            match std::io::Read::read(&mut self.reader, &mut chunk) {
+                Ok(0) => return true,
+                Ok(_) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut | std::io::ErrorKind::Interrupted
+                    ) => {}
+                // A reset is the end of the connection too.
+                Err(_) => return true,
+            }
+        }
+        false
+    }
+
     fn read_handshake(&mut self) -> gnoblin_proto::Handshake {
         let mut frame = [0u8; gnoblin_proto::HANDSHAKE_LEN];
         std::io::Read::read_exact(&mut self.reader, &mut frame).expect("a handshake");

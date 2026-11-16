@@ -24,6 +24,9 @@
 //!    arrived under the lock took the focus, or a script moved it) loses the lock UI too, within the grace: nobody
 //!    could type a password into a screen no key reaches.
 //! 7. The card gives the keys back when the shell takes the keyboard to its screen again.
+//! 8. A client that stops reading stalls neither the session nor the card: the dispatcher never waits for a socket. It
+//!    drops a client that took nothing for five seconds, or that has more than 32 MiB waiting, and a client that reads
+//!    late but inside the limit hears every change, in order (`ipc/outbox.rs` holds the unit tests of the outbox).
 
 mod support;
 
@@ -85,6 +88,8 @@ struct Peer {
     /// How many nodes the holder made, and the request id of its next transaction.
     made: u64,
     request: u64,
+    /// The serial of every batch of changes this connection was told, in the order it was told them.
+    batches: Vec<u64>,
 }
 
 fn attach(session: &Session, mode: &str) -> Peer {
@@ -128,6 +133,7 @@ fn attach(session: &Session, mode: &str) -> Peer {
         epoch: attached.epoch,
         made: 0,
         request: 20,
+        batches: Vec::new(),
     }
 }
 
@@ -137,6 +143,7 @@ impl Peer {
             return;
         }
         let batch: ChangesPayload = envelope.payload_as().expect("the payload decodes");
+        self.batches.push(batch.serial);
         self.serial = self.serial.max(batch.serial);
         for change in &batch.changes {
             if change.kind == "set" && change.node == self.lock && change.key == "state" {
@@ -548,69 +555,167 @@ fn a_card_that_took_the_keys_gives_them_back_when_the_shell_takes_the_keyboard_a
     session.stop().expect("the session stops cleanly");
 }
 
-/// The longest the session may stand still while a client that stopped reading is fed: one request to the compositor
-/// waiting this long for its answer is the stall. The dispatcher that serves every connection, the lock card among
-/// them, must never wait for a client's socket, so this is a few turns of the dispatcher's own tick (50 ms) and not the
-/// seconds a write to a full socket used to take before the connection was dropped.
+/// How long a client may take nothing of what the session holds for it before the session drops the connection
+/// (`ipc/outbox.rs`, `STALL_LIMIT`).
+const STALL_LIMIT: Duration = Duration::from_secs(5);
+
+/// The longest one request may wait for its answer while a client that stopped reading is being fed. The dispatcher that
+/// serves every connection, the lock card among them, must never wait for a client's socket, so this is a few turns of
+/// the dispatcher's own tick (50 ms) and not the seconds a write to a full socket takes.
 const STALL_BOUND: Duration = Duration::from_millis(1_500);
 
-/// A paint list of `rects` rectangles, the first as wide as `seed`, so that no two lists are equal and each is a change
-/// the compositor publishes. About 40 bytes a rectangle.
-fn large_paint_list(seed: u32, rects: usize) -> Vec<u8> {
+/// A paint list of 60 long texts, a little under the 1 MiB a `content` may hold. The first text says which list it is,
+/// so no two are equal and each is a change the compositor publishes to every observer.
+fn large_paint_list(which: u16) -> Vec<u8> {
     use gnoblin_paint::{PaintList, PaintOp, Rgba8};
-    let rect = |width: f64| PaintOp::Rect {
+    let text = |first: String| PaintOp::Text {
         x: 0.0,
         y: 0.0,
-        width,
-        height: 8.0,
-        radius: 0.0,
-        fill: Rgba8::new(10, 20, 30, 255),
-        stroke: Rgba8::TRANSPARENT,
-        stroke_width: 0.0,
+        size: 13.0,
+        colour: Rgba8::new(10, 20, 30, 255),
+        font: "sans".to_owned(),
+        text: first + &"x".repeat(16_000),
     };
-    let mut ops = vec![rect(f64::from(seed) + 1.0)];
-    ops.extend((1..rects).map(|_| rect(8.0)));
+    let mut ops = vec![text(format!("{which:05}"))];
+    ops.extend((1..60).map(|_| text(String::new())));
     gnoblin_paint::encode(&PaintList { ops })
 }
 
-#[test]
-fn a_client_that_stopped_reading_stalls_neither_the_session_nor_the_card_past_the_bound() {
-    let session = start();
-    let mut observer = lock(&session);
-    // A second observer subscribes to every change, and never reads again: its socket fills, and a dispatcher that wrote
-    // to it with a blocking write would stand still until the write timed out.
-    let _stalled = attach(&session, "observer");
-    let mut holder = attach(&session, "holder");
-    let root = holder.root;
-    let fed = holder.canvas_under(root);
-    let mut slowest = Duration::ZERO;
-    let began = Instant::now();
-    for round in 0..40 {
+/// What feeding a canvas told: the slowest answer to one change, and the serial each change was applied at.
+struct Fed {
+    slowest: Duration,
+    serials: Vec<u64>,
+}
+
+/// Changes the canvas `fed` `changes` times (960 KB each) through the holder, each answered before the next, as a shell
+/// that draws does, while the locker's own observer keeps reading: only a client that does not read may fill. `slow`,
+/// when there is one, takes 64 KB of what is held for it after each change, so that it is never without progress.
+fn feed(holder: &mut Peer, fed: u64, reading: &mut Peer, changes: u16, mut slow: Option<&mut Peer>) -> Fed {
+    let mut told = Fed {
+        slowest: Duration::ZERO,
+        serials: Vec::new(),
+    };
+    for which in 0..changes {
         let asked = Instant::now();
         holder.apply(&[op::Properties {
             kind: "set".to_owned(),
             node: fed,
             key: "content".to_owned(),
             value_kind: "bytes".to_owned(),
-            value_bytes: large_paint_list(round, 15_000),
+            value_bytes: large_paint_list(which),
             ..Default::default()
         }]);
-        slowest = slowest.max(asked.elapsed());
-        // The locker's own observer keeps reading: only the one that stopped may fill.
-        observer.watch(Duration::from_millis(60));
+        told.slowest = told.slowest.max(asked.elapsed());
+        told.serials.push(holder.serial);
+        reading.watch(Duration::from_millis(20));
+        if let Some(slow) = slow.as_deref_mut() {
+            slow.wire.take(64 * 1024);
+        }
     }
+    told
+}
+
+/// A locked session with the locker's observer, a second observer that is about to stop reading, and a holder with a
+/// canvas to feed.
+fn session_with_a_client_to_stall() -> (Session, Peer, Peer, Peer, u64) {
+    let session = start();
+    let observer = lock(&session);
+    // The second observer subscribes to every change, and the test never reads from it until it says so.
+    let stalled = attach(&session, "observer");
+    let mut holder = attach(&session, "holder");
+    let root = holder.root;
+    let fed = holder.canvas_under(root);
+    (session, observer, stalled, holder, fed)
+}
+
+#[test]
+fn a_client_that_stopped_reading_stalls_neither_the_session_nor_the_card_and_is_dropped_once_the_stall_limit_has_passed()
+ {
+    let (session, mut observer, mut stalled, mut holder, fed) = session_with_a_client_to_stall();
+    let began = Instant::now();
+    let told = feed(&mut holder, fed, &mut observer, 12, None);
     eprintln!(
-        "a client that stopped reading: 40 changes of 600 KB in {:?}, the slowest answer {slowest:?}",
-        began.elapsed()
+        "a client that stopped reading: 12 changes of 960 KB in {:?}, the slowest answer {:?}",
+        began.elapsed(),
+        told.slowest
     );
     assert!(
-        slowest <= STALL_BOUND,
-        "a request waited {slowest:?} for the compositor while a client that stopped reading was being fed"
+        told.slowest <= STALL_BOUND,
+        "a request waited {:?} for the compositor while a client that stopped reading was being fed",
+        told.slowest
     );
     // The card still takes the password: the session never stood still long enough to lose it.
     assert!(
         type_right_until_unlocked(&session, &mut observer, Duration::from_secs(5)),
         "the card took no password after a client stopped reading"
     );
+    // The client has taken nothing since the first changes. It is read last, because reading makes the room the session
+    // waits for: once the limit has passed the session has dropped it, and what it reads is what its socket held and
+    // then the end of the stream.
+    let silent_until = began + STALL_LIMIT + Duration::from_millis(1_500);
+    while Instant::now() < silent_until {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        stalled.wire.read_until_eof(Duration::from_secs(10)),
+        "the session still held a client that took nothing for {:?}",
+        began.elapsed()
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_client_that_reads_but_too_little_is_dropped_once_more_than_the_session_holds_is_waiting_for_it() {
+    let (session, mut observer, mut slow, mut holder, fed) = session_with_a_client_to_stall();
+    let began = Instant::now();
+    // 50 changes of 960 KB are 48 MB, more than the 32 MiB the session holds for one client. The client takes 64 KB with
+    // each of them, so it is never without progress for the stall limit: if the session drops it, the size bound did.
+    let told = feed(&mut holder, fed, &mut observer, 50, Some(&mut slow));
+    eprintln!(
+        "a client that reads too little: 50 changes of 960 KB in {:?}, the slowest answer {:?}",
+        began.elapsed(),
+        told.slowest
+    );
+    assert!(
+        told.slowest <= STALL_BOUND,
+        "a request waited {:?} for the compositor while a client that reads too little was being fed",
+        told.slowest
+    );
+    assert!(
+        slow.wire.read_until_eof(Duration::from_secs(5)),
+        "the session still held a client with 48 MB queued for it and 3 MB taken, {:?} in",
+        began.elapsed()
+    );
+    assert!(
+        type_right_until_unlocked(&session, &mut observer, Duration::from_secs(5)),
+        "the card took no password after a client was dropped"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_client_that_reads_late_but_inside_the_stall_limit_loses_nothing_and_hears_every_change_in_order() {
+    let (session, mut observer, mut late, mut holder, fed) = session_with_a_client_to_stall();
+    let told = feed(&mut holder, fed, &mut observer, 10, None);
+    assert!(
+        told.slowest <= STALL_BOUND,
+        "a request waited {:?} for the compositor while a client that reads late was being fed",
+        told.slowest
+    );
+    // Two seconds of not reading is inside the limit: what the session keeps for it, it keeps in order.
+    std::thread::sleep(Duration::from_secs(2));
+    late.watch(Duration::from_millis(1_500));
+    assert!(
+        late.batches.windows(2).all(|pair| pair[0] < pair[1]),
+        "the changes arrived out of order: {:?}",
+        late.batches
+    );
+    for serial in &told.serials {
+        assert!(
+            late.batches.contains(serial),
+            "the change applied at serial {serial} never reached a client that read late: {:?}",
+            late.batches
+        );
+    }
     session.stop().expect("the session stops cleanly");
 }
