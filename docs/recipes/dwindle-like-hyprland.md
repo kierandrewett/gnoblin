@@ -7,7 +7,7 @@ Hyprland names, the actions you bind to keys, and where Gnoblin differs. Put the
 ## The setup
 
 ```ts
-import { DwindleLayout, Workspace } from "gnoblin";
+import { DwindleLayout, Workspace } from "gnoblin-std";
 
 const input = gnoblin.input.primary;
 

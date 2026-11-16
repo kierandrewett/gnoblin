@@ -122,7 +122,7 @@ export interface Host {
         delay?: number,
         tween?: number,
     ): string | undefined;
-    /** Tween nodes used by tracks in a transition (`data/js/gnoblin/transition.ts`). */
+    /** Tween nodes used by tracks in a transition (`data/js/gnoblin-std/transition/`). */
     tween: {
         create(): NodeId | string;
         destroy(node: NodeId): string | undefined;

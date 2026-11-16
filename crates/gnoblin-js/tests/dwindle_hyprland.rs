@@ -1,4 +1,4 @@
-//! `DwindleLayout` against Hyprland's dwindle layout (`data/js/gnoblin/layouts/dwindle.ts`; `docs/recipes/dwindle-like-hyprland.md`):
+//! `DwindleLayout` against Hyprland's dwindle layout (`data/js/gnoblin-std/layouts/dwindle.ts`; `docs/recipes/dwindle-like-hyprland.md`):
 //! splits that follow the shape of their cell, the options `forceSplit`, `preserveSplit`, `smartSplit`,
 //! `splitWidthMultiplier`, `useActiveForSplits`, `splitBias`, `permanentDirectionOverride` and `smartResizing`, and the
 //! actions `toggleSplit`, `swapSplit`, `rotateSplit`, `preselect`, `moveToRoot`, `splitRatio` and `pseudotile`.
@@ -76,7 +76,7 @@ export function emit(value) {
 
 const IMPORTS: &str = r#"
 import { area, nodes, focusables, tiled, lay, arrive, thrown, rect, emit } from "harness";
-import { DwindleLayout } from "gnoblin";
+import { DwindleLayout } from "gnoblin-std";
 "#;
 
 /// Evaluates `body` (TypeScript) with the stock library imported and returns what it passed to `emit`.
