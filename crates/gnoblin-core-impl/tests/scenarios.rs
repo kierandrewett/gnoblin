@@ -232,10 +232,13 @@ fn num(stdout: &str, prefix: &str, key: &str) -> i64 {
 
 // ---- ELF inspection, through the binutils the spike used --------------------------------------------------------------
 
+// `LD_LIBRARY_PATH` is removed: cargo puts `target/<profile>` on it for a test run, and that directory holds the staged
+// `libgnoblin-core.so.1` of the workspace build, which `ldd` would then report instead of the one beside the launcher.
 fn tool(name: &str, args: &[&str], path: &Path) -> String {
     let output = Command::new(name)
         .args(args)
         .arg(path)
+        .env_remove("LD_LIBRARY_PATH")
         .output()
         .unwrap_or_else(|error| panic!("`{name}` is needed for these tests (binutils): {error}"));
     assert!(

@@ -8,11 +8,16 @@
 //!
 //! The catalog the `catalog_*` functions answer from is generated from `gnoblin-schema`'s files: every class with its
 //! properties, methods and signals, as `static` slices, plus a hash that `gnoblin_catalog_hash` returns.
+//!
+//! Last, the build tree is staged: `target/<profile>/libgnoblin-core.so.1` is made a link to the library Cargo uplifts as
+//! `libgnoblin_core_impl.so`. The `gnoblin` binary records the SONAME and finds it through its `$ORIGIN` run path, so a
+//! workspace build (and `cargo test --workspace`) leaves a tree whose binary runs. `cargo xtask stage` does the same
+//! after building only this crate, checks the library, and is the supported way to stage for `cargo build -p gnoblin`.
 
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use gnoblin_core_abi as abi;
 use gnoblin_schema::{Catalog, Namespace, Type};
@@ -22,6 +27,7 @@ fn main() {
     println!("cargo:rustc-cdylib-link-arg=-Wl,-z,nodelete");
     println!("cargo:rustc-cdylib-link-arg=-Wl,-z,defs");
 
+    stage_soname_link();
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"));
     let schema_dir = manifest.join("../gnoblin-schema/schema");
     println!("cargo:rerun-if-changed={}", schema_dir.display());
@@ -36,6 +42,34 @@ fn main() {
         format!("{data}\npub(crate) const CATALOG_HASH: u64 = {hash:#018x};\n"),
     )
     .unwrap_or_else(|error| panic!("cannot write {}: {error}", out.display()));
+}
+
+/// Links `libgnoblin-core.so.1` to `libgnoblin_core_impl.so` in the profile directory this build writes to.
+///
+/// The link may dangle until Cargo has linked the library. This is a convenience: a layout other than
+/// `<target>/<profile>/build/<package>/out` is left alone, and a failure is a warning, never a failed build.
+fn stage_soname_link() {
+    let Some(out_dir) = env::var_os("OUT_DIR").map(PathBuf::from) else {
+        return;
+    };
+    // `<profile dir>/build/<package>-<hash>/out`: the profile directory is where Cargo uplifts the library and writes the binaries.
+    let Some(profile_dir) = out_dir.ancestors().nth(3) else {
+        return;
+    };
+    if out_dir.ancestors().nth(2).and_then(Path::file_name) != Some("build".as_ref()) {
+        return;
+    }
+    let link = profile_dir.join(abi::SONAME);
+    let temporary = profile_dir.join(format!("{}.stage", abi::SONAME));
+    let _ = fs::remove_file(&temporary);
+    let linked =
+        std::os::unix::fs::symlink("libgnoblin_core_impl.so", &temporary).and_then(|()| fs::rename(&temporary, &link));
+    if let Err(error) = linked {
+        println!(
+            "cargo:warning=cannot stage {}: {error}; run `cargo xtask stage`",
+            link.display()
+        );
+    }
 }
 
 /// The static catalog source and the hash of its canonical text.

@@ -103,6 +103,20 @@ pub fn link_core(extra: &[&str]) {
     directive(&format!("rustc-link-lib=dylib={}", crate::LINK_NAME));
 }
 
+/// The linker arguments that record the core as NEEDED in a binary even when no code references it yet.
+///
+/// rustc links a `dylib` with `--as-needed`, so a binary that calls none of the core's functions would silently lose the
+/// NEEDED entry. A launcher that must carry the entry whatever it calls (`gnoblin`, until it serves its role from the
+/// library) states it with these arguments, scoped by `push-state` so the libraries after it keep the default.
+pub const FORCE_NEEDED_ARGS: &str = "-Wl,--push-state,--no-as-needed,-lgnoblin-core,--pop-state";
+
+/// [`link_core`] for a crate with a binary that has to record `NEEDED libgnoblin-core.so.1` unconditionally: the same
+/// link, plus [`FORCE_NEEDED_ARGS`] for the crate's binaries. A binary that calls a core function needs only `link_core`.
+pub fn link_core_in_bins(extra: &[&str]) {
+    link_core(extra);
+    directive(&format!("rustc-link-arg-bins={FORCE_NEEDED_ARGS}"));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,5 +140,10 @@ mod tests {
     fn extra_symbols_are_appended() {
         let source = stub_source(&["gnoblin_test_main"]);
         assert!(source.contains("void gnoblin_test_main(void) {}\n"));
+    }
+
+    #[test]
+    fn the_forced_needed_argument_names_the_link_name() {
+        assert!(FORCE_NEEDED_ARGS.contains(&format!("-l{}", crate::LINK_NAME)));
     }
 }

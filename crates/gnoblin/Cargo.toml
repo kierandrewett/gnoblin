@@ -34,6 +34,11 @@ gnoblin-compat-host = { path = "../compat/gnoblin-compat-host" }
 # The role flag. One flag with a documented default, and `--version`.
 clap.workspace = true
 
+[build-dependencies]
+# `build.rs` links `libgnoblin-core.so.1` through the generated stub (`build_support`), so the binary records the library
+# without Cargo building it first. A build dependency only: the binary calls nothing in the ABI yet.
+gnoblin-core-abi = { path = "../gnoblin-core-abi", features = ["build-support"] }
+
 [lints]
 workspace = true
 

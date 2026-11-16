@@ -1071,6 +1071,7 @@ dependencies = [
  "gnoblin-compat-host",
  "gnoblin-compositor",
  "gnoblin-config",
+ "gnoblin-core-abi",
  "gnoblin-js",
  "gnoblin-lock-auth",
  "gnoblin-log",

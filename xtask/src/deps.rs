@@ -196,6 +196,9 @@ const LINT_OPT_OUT: &[&str] = &[
 /// `client-side-isolation`'s, not this one's.
 const SESSION_BINARY: &str = "gnoblin";
 
+/// The leaf ABI crate whose link stub `crates/gnoblin/build.rs` uses; the session binary may name it as a build dependency.
+const CORE_ABI_CRATE: &str = "gnoblin-core-abi";
+
 /// The crate that wires the compat adapters into a process. It is a compat crate but not an
 /// adapter, and the session binary is the only process that links it.
 const COMPAT_HOST: &str = "gnoblin-compat-host";
@@ -845,6 +848,11 @@ fn pipewire_export_isolation(package: &Package, dep: &Dep) -> Option<String> {
 /// engine directly to prove what the binary does with it, and that edge cannot ship.
 fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
     if package.name != SESSION_BINARY || dep.kind == DepKind::Dev {
+        return None;
+    }
+    // `build.rs` links `libgnoblin-core.so.1` through the ABI crate's link stub. The crate is a leaf with no
+    // behaviour, and only a build dependency: the binary never calls the core through it.
+    if dep.kind == DepKind::Build && dep.name == CORE_ABI_CRATE {
         return None;
     }
     if BINARY_ROOTS.contains(&dep.name.as_str()) || dep.name == LOG_CRATE || is_compat(&dep.name) {
@@ -1518,6 +1526,25 @@ mod tests {
             reported[0].starts_with("gnoblin-service-polkit -> gnoblin-wayland [client-side-isolation]"),
             "unexpected violation: {}",
             reported[0]
+        );
+    }
+
+    #[test]
+    fn the_session_binary_may_build_against_the_core_abi_crate_but_not_call_it() {
+        let build_edge = |kind: serde_json::Value| {
+            let document = serde_json::json!({ "packages": [
+                { "name": "gnoblin", "dependencies": [{ "name": "gnoblin-core-abi", "kind": kind }] },
+                { "name": "gnoblin-core-abi", "dependencies": [] },
+            ] });
+            let graph = from_json(&document.to_string()).expect("the fixture parses");
+            check(&graph).iter().map(DepViolation::to_string).collect::<Vec<_>>()
+        };
+        assert_eq!(build_edge(serde_json::json!("build")), Vec::<String>::new());
+        let normal = build_edge(serde_json::Value::Null);
+        assert_eq!(normal.len(), 1, "{normal:?}");
+        assert!(
+            normal[0].starts_with("gnoblin -> gnoblin-core-abi [binary-roots]"),
+            "{normal:?}"
         );
     }
 
