@@ -753,12 +753,12 @@ impl Shell {
 
     /// Takes the tree, as a connected shell does.
     fn attach(&self) {
-        self.queue.read(|scene, _| scene.set_shell_places(true));
+        self.queue.read(|scene, _| scene.set_holder_attached(true));
     }
 
     /// Lets go of the tree, as a shell whose connection dropped does.
     fn detach(&self) {
-        self.queue.read(|scene, _| scene.set_shell_places(false));
+        self.queue.read(|scene, _| scene.set_holder_attached(false));
     }
 
     /// The main seat's node, once the compositor announced it.

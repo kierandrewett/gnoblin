@@ -4819,7 +4819,7 @@ impl GrabRig {
         session.move_pointer(at);
         client.wait_for(|state| state.pointer_enters == 1);
         // The shell takes the tree after the window is placed, so the window stays where the fallback put it.
-        queue.read(|scene, _| scene.set_shell_places(true));
+        queue.read(|scene, _| scene.set_holder_attached(true));
         let seat = compositor_seat(batches);
         let set = |key: &str, value: f64| TreeOp::Set {
             node: GRAB_NODE,

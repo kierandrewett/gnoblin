@@ -55,7 +55,7 @@ impl State {
     /// Reads the shell's cursor values and keeps what is drawn in line with them. A shell that no longer holds the tree
     /// has its values cleared. A change damages the cursor so it repaints where it stands.
     pub(crate) fn follow_shell_cursor(&mut self) {
-        if !self.composer.shell_places() {
+        if !self.composer.holder_attached() {
             self.composer.release_shell_cursor();
         }
         if self.composer.main_seat_cursor_is(&self.shell_cursor.asked) {

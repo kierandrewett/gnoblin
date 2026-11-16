@@ -138,7 +138,7 @@ impl State {
         };
         let refusal = if self.composer.main_seat_node() != Some(call.node) {
             Some("not the main seat")
-        } else if !self.composer.shell_places() {
+        } else if !self.composer.holder_attached() {
             Some("no shell holds the tree")
         } else if self
             .input_tables
@@ -225,7 +225,7 @@ impl State {
         let Some(grab) = self.input_tables.grab else {
             return;
         };
-        if !self.composer.shell_places()
+        if !self.composer.holder_attached()
             || !self.composer.is_shell_node(grab.node)
             || !self.grab_allowed_by_lock(grab.node)
         {
