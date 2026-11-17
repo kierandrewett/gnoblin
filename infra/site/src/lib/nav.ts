@@ -36,6 +36,8 @@ export const NAV: NavSection[] = [
                     { label: "Alpine", slug: "install-alpine" },
                     { label: "Build from source", slug: "install-source" },
                     { label: "Optional packages", slug: "optional-packages" },
+                    { label: "Install layout", slug: "install-layout" },
+                    { label: "ABI compatibility", slug: "abi-compatibility" },
                 ],
             },
             { label: "Platform support", slug: "platform-support" },
@@ -131,6 +133,9 @@ export const NAV: NavSection[] = [
         items: [
             { label: "Integration guide", slug: "shell-integration" },
             { label: "TypeScript shell", slug: "typescript-shell" },
+            { label: "Python shell", slug: "python-shell" },
+            { label: "Rust shell", slug: "rust-shell" },
+            { label: "SDK generator", slug: "sdk-generator" },
             { label: "Migrating from Lua", slug: "migrating-from-lua" },
             { label: "Write your own shell", slug: "user-shell" },
             { label: "Event handlers", slug: "user-scripts" },

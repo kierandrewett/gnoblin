@@ -7,19 +7,29 @@ file that `shell.ts` imports.
 
 ## Which file is loaded?
 
-The shell reads `shell.ts` from the config directory, `~/.config/gnoblin` or `$XDG_CONFIG_HOME/gnoblin` when that
-variable is set. A `shell.js` beside it is an error, because two shell files leave nothing to choose by.
+Gnoblin runs one shell, chosen when it starts. `gnoblin` looks in seven places in order and takes the first that names
+exactly one shell:
 
-- The `GNOBLIN_SHELL` environment variable names a file or an installed shell instead.
-- `[shell]` in `config.toml` does the same from a file.
+1. The command line: `gnoblin ./shell.ts` or `gnoblin --shell NAME`.
+2. The `GNOBLIN_SHELL` environment variable: a path when it has a `/`, else the name of an installed shell.
+3. `[shell]` in `config.toml`: `default = "NAME"` or `path = "..."`.
+4. `shell.so`, `shell.py`, `shell.js`, `shell.mjs`, `shell.ts` or `shell.mts` in the config directory.
+5. An installed shell in `~/.local/share/gnoblin/shells/`.
+6. An installed shell in `gnoblin/shells/` under each `XDG_DATA_DIRS` directory.
+7. The packaged default, `<prefix>/share/gnoblin/default-shell/shell.ts`.
 
-An already-running compositor does not see a variable you set in a terminal.
+The config directory is `~/.config/gnoblin`, or `$XDG_CONFIG_HOME/gnoblin` when that variable is an absolute path. Putting
+a `shell.ts` there is the usual choice, and `gnoblinctl config init` writes a starter.
+
+Two shell files in the config directory, such as `shell.ts` and `shell.js`, leave nothing to choose by, so the start stops
+with a message that lists both. An already-running compositor does not see a variable you set in a terminal.
+
+[Start Gnoblin and choose a shell](/starting-gnoblin) shows an example of each place, the `config.toml` keys, and the
+messages for no shell and for several. `gnoblin --list-shells` prints what Gnoblin can see and which one would run.
 
 When no user config exists, the session runs the stock config described in the
-[TypeScript shell](/typescript-shell#with-no-shell-ts). `gnoblinctl config init` writes a starter `shell.ts` you can edit.
-
-There are no system drop-in directories: `/etc/gnoblin/conf.d` and `gnoblin/conf.d` under `XDG_DATA_DIRS` are not
-read by the shell. Put a setting you want from a package in your `shell.ts`.
+[TypeScript shell](/typescript-shell#with-no-shell-ts). There are no system drop-in directories: `/etc/gnoblin/conf.d` and
+`gnoblin/conf.d` under `XDG_DATA_DIRS` are not read by the shell. Put a setting you want from a package in your `shell.ts`.
 
 ## Split a config into files
 

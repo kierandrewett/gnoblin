@@ -39,29 +39,91 @@ Did you mean --shell tiler?    (a path needs a `/`, as in ./tiler)
 
 The first place in this list that gives exactly one shell wins.
 
-| Tier | Source                                                                                             | What it names                                                                                            |
-| ---- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 1    | The command line: `PATH`, or `--shell NAME`                                                        | The path as given, or the installed shell of that name.                                                  |
-| 2    | `GNOBLIN_SHELL`                                                                                    | A path when the value has a `/`, else a name. Empty is ignored.                                          |
-| 3    | `[shell]` in `$XDG_CONFIG_HOME/gnoblin/config.toml`                                                | `default = "name"`, or `path = "..."`. Both together is an error.                                        |
-| 4    | `shell.so`, `shell.py`, `shell.js`, `shell.mjs`, `shell.ts` or `shell.mts` in the config directory | The file that is there.                                                                                  |
-| 5    | `$XDG_DATA_HOME/gnoblin/shells/` (`~/.local/share/gnoblin/shells/`)                                | An [installed shell](#installed-shells).                                                                 |
-| 6    | `gnoblin/shells/` in each `$XDG_DATA_DIRS` entry, in order (`/usr/local/share:/usr/share`)         | An installed shell. The first directory that has one decides, so an earlier directory hides a later one. |
-| 7    | The packaged default: `<prefix>/share/gnoblin/default-shell/shell.<ext>`                           | What a fresh install runs. Found from where `gnoblin` is installed, so a relocated prefix finds its own. |
+| Tier | Source                                                                                             | What it names                                                            |
+| ---- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1    | The command line: `PATH`, or `--shell NAME`                                                        | The path as given, or the installed shell of that name.                  |
+| 2    | `GNOBLIN_SHELL`                                                                                    | A path when the value has a `/`, else a name. Empty is ignored.          |
+| 3    | `[shell]` in `$XDG_CONFIG_HOME/gnoblin/config.toml`                                                | `default = "name"`, or `path = "..."`. Both together is an error.        |
+| 4    | `shell.so`, `shell.py`, `shell.js`, `shell.mjs`, `shell.ts` or `shell.mts` in the config directory | The file that is there.                                                  |
+| 5    | `$XDG_DATA_HOME/gnoblin/shells/`                                                                   | An [installed shell](#installed-shells).                                 |
+| 6    | `gnoblin/shells/` in each `$XDG_DATA_DIRS` entry                                                   | An installed shell. The first directory that has one decides.            |
+| 7    | `<prefix>/share/gnoblin/default-shell/`                                                            | The shell a fresh install runs, found from where `gnoblin` is installed. |
 
-The config directory is `$XDG_CONFIG_HOME/gnoblin` when that is an absolute path, else `~/.config/gnoblin`. A relative
-`XDG_CONFIG_HOME`, `XDG_DATA_HOME` or `XDG_DATA_DIRS` entry is ignored, as the XDG specification says.
+The config directory is `$XDG_CONFIG_HOME/gnoblin` when that is an absolute path, else `~/.config/gnoblin`.
+
+Without the XDG variables, tier 5 is `~/.local/share/gnoblin/shells/`, and tier 6 is `/usr/local/share/gnoblin/shells/`
+then `/usr/share/gnoblin/shells/`. A relative entry in any of the variables is ignored, as the XDG specification says.
 
 Three rules keep the choice honest:
 
 - **A request that cannot be met is an error, never a fall-through.** If tier 1, 2 or 3 names a shell that is not there,
   Gnoblin stops. A person who named a shell and got a different one has been misled.
 - **A tier with nothing in it is skipped.**
-- **Equals are not ranked.** Two shells in one tier are an error that lists them, except that inside a `shells/` directory
-  (tiers 5 to 7) a shell named `default` wins over the others.
+- **Equals are not ranked.** Two shells in one tier are an error that lists them. Inside a `shells/` directory (tiers 5
+  to 7) a shell named `default` wins over the others.
 
 A name (`--shell tiler`, `GNOBLIN_SHELL=tiler`, `default = "tiler"`) is looked up in tiers 5, 6 and 7, in that order. The
 packaged default is the shell named `default`.
+
+## One example for each tier
+
+Each example below uses a `tiler` shell. Try one, then run `gnoblin --list-shells` to see which row says `yes` in the
+`DEFAULT` column.
+
+**Tier 1: the command line.** Name a file or an installed shell:
+
+```sh
+gnoblin ./target/debug/libtiler.so
+gnoblin --shell tiler
+```
+
+**Tier 2: `GNOBLIN_SHELL`.** Useful in a script or a login-manager entry. A value with a `/` is a path:
+
+```sh
+GNOBLIN_SHELL=$HOME/dev/tiler/shell.py gnoblin
+GNOBLIN_SHELL=tiler gnoblin
+```
+
+**Tier 3: `config.toml`.** Set a default once. `path` is absolute, starts with `~/`, or is relative to the directory that
+holds `config.toml`:
+
+```toml
+# ~/.config/gnoblin/config.toml
+[shell]
+path = "~/dev/tiler/shell.ts"
+```
+
+Use `default = "tiler"` instead to name an installed shell. Setting both is an error:
+
+```text
+gnoblin: /home/me/.config/gnoblin/config.toml: `[shell]` sets both `default` and `path`; keep one
+```
+
+**Tier 4: a file in the config directory.** Copy or link your shell to the name the session looks for:
+
+```sh
+cp target/debug/libtiler.so ~/.config/gnoblin/shell.so      # a native shell
+cp tiler.py ~/.config/gnoblin/shell.py                       # or a script
+```
+
+**Tier 5: installed for your user.** Put a module file, a directory or a launcher file in your data directory:
+
+```sh
+mkdir -p ~/.local/share/gnoblin/shells
+cp tiler.ts ~/.local/share/gnoblin/shells/tiler.ts
+gnoblin --shell tiler
+```
+
+**Tier 6: installed for the system.** The same, in `/usr/share/gnoblin/shells/` or any other `$XDG_DATA_DIRS` entry. A
+package ships its shell this way.
+
+**Tier 7: the packaged default.** Install Gnoblin and choose nothing. With no `shell.*` file of your own, `gnoblin` runs
+the stock shell, `<prefix>/share/gnoblin/default-shell/shell.ts`.
+
+An earlier tier hides a later one, and a request that names something missing is an error. To check which shell a setup
+selects without starting a session, run `gnoblin --list-shells`.
+
+## The config file
 
 A `config.toml` has one table:
 
@@ -73,9 +135,16 @@ default = "tiler"        # the name of an installed shell, or
 # isolate = true         # run the shell in its own process, whichever tier chose it
 ```
 
+| Key        | Accepted values                                           | Default                | Effect                             |
+| ---------- | --------------------------------------------------------- | ---------------------- | ---------------------------------- |
+| `default`  | An installed shell's name                                 | none                   | Names the shell to run. Tier 3.    |
+| `path`     | An absolute path, `~/...`, or a path relative to the file | none                   | The shell to run. Tier 3.          |
+| `language` | `native`, `python`, `js`, `ts`, or a runtime's name       | detected from the file | How to load the file.              |
+| `isolate`  | `true` or `false`                                         | `false`                | Runs the shell in its own process. |
+
 An unknown key is a warning. `isolate` is read whichever tier chose the shell; the other keys are read when the lookup
-reaches tier 3. A `config.toml` that cannot be read ends the start only when the lookup reaches it; when a higher tier
-chose the shell it is a warning.
+reaches tier 3. A `config.toml` that cannot be read ends the start only when the lookup reaches it. When a higher tier chose
+the shell it is a warning.
 
 ### Installed shells
 
@@ -84,18 +153,26 @@ In a `shells/` directory a shell is one of:
 - a module file: `tiler.so`, `tiler.py`, `tiler.js`, `tiler.mjs`, `tiler.ts` or `tiler.mts`;
 - a directory `tiler/` that holds a `shell.<ext>`, for a shell of several files;
 - a link to either;
-- a launcher file, `tiler.toml`, a few lines that point at a shell without copying it:
+- a launcher file, `tiler.toml`: a few lines that point at a shell without copying it.
+
+A launcher file has these keys. Set exactly one of `module` and `path`:
+
+| Key           | Accepted values                                               | Effect                                                                 |
+| ------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `module`      | A path relative to `<libdir>/gnoblin/shells/`                 | A native shell library. Correct on every architecture.                 |
+| `path`        | An absolute path, `~/...`, or a path relative to the launcher | A script or a library anywhere on disk.                                |
+| `language`    | `native`, `python`, `js`, `ts`, or a runtime's name           | Overrides detection. A file that begins with the ELF header is native. |
+| `description` | Any text                                                      | A note for people reading the file.                                    |
 
 ```toml
 # /usr/share/gnoblin/shells/tiler.toml
-module = "libtiler.so"           # relative to <libdir>/gnoblin/shells/, which is correct on every architecture
-# path = "/opt/tiler/shell.py"   # or: absolute, or relative to this file
-# language = "native"            # only to override how the file is detected
+module = "libtiler.so"
 description = "A tiling shell"
 ```
 
-The name is the file name without its extension, the directory's name, or the link's own name. The same name in an
-earlier tier hides a later one; `--list-shells` marks the hidden one `shadowed`.
+The name is the file name without its extension, the directory's name, or the link's own name. The same name in an earlier
+tier hides a later one, and `--list-shells` marks the hidden one `shadowed`. A launcher whose target is missing shows as
+`unusable` in the list and is refused if you choose it.
 
 ## See what Gnoblin sees
 
@@ -110,12 +187,16 @@ lines    6     python             /usr/share/gnoblin/shells/lines.py
 default  7     ts                 /usr/share/gnoblin/default-shell/shell.ts  (packaged)
 ```
 
-One row per shell in every place, in the order Gnoblin looks, and `yes` marks the one that would run now. A launcher file
-shows its target after `->`. `gnoblinctl shell list` prints the same table and needs no session.
+One row per shell in every place, in the order Gnoblin looks:
+
+- `yes` in the `DEFAULT` column marks the shell that would run now. `shadowed` marks one that an earlier tier hides.
+- A launcher file shows its target after `->`. One that cannot be used ends in `[unusable: ...]` with the reason.
+- `gnoblinctl shell list` prints the same table and needs no session.
+- `--list-shells` cannot be combined with `--watch` or `--isolate` (exit 2).
 
 ## When there is no shell, or too many
 
-With nothing installed, and no packaged default, Gnoblin says where it looked and what to do, exits 1 and starts nothing:
+With nothing installed and no packaged default, Gnoblin says where it looked and what to do, exits 1 and starts nothing:
 
 ```text
 gnoblin: no shell found.
@@ -126,7 +207,7 @@ Looked in this order:
   3. /home/me/.config/gnoblin/config.toml   missing
   4. /home/me/.config/gnoblin/shell.{so,py,js,mjs,ts,mts}   none present
   5. /home/me/.local/share/gnoblin/shells/  missing
-  6. /usr/local/share/gnoblin/shells/  missing;  /usr/share/gnoblin/shells/  empty
+  6. /usr/local/share/gnoblin/shells/  missing;  /usr/share/gnoblin/shells/  missing
   7. /usr/share/gnoblin/default-shell/shell.*   not installed
 
 Run a shell directly:     gnoblin ./myshell.so
@@ -134,29 +215,73 @@ Pick an installed shell:  gnoblin --shell NAME    (gnoblin --list-shells)
 Set a default:            [shell] default = "NAME"  in /home/me/.config/gnoblin/config.toml
 ```
 
-Several equal candidates in one tier are listed with the same block (the tier that has them says how many) and the same three
-remedies:
+Several equal candidates in one tier are listed with the same block. The tier that holds them says how many, and the later
+tiers say `not reached`:
 
 ```text
 gnoblin: several shells are equally preferred:
   lines  /home/me/.local/share/gnoblin/shells/lines.py  (python)
-  tiler  /home/me/.local/share/gnoblin/shells/tiler.toml -> /opt/tiler/libtiler.so  (native)
+  tiler  /home/me/.local/share/gnoblin/shells/tiler.ts  (ts)
+
+Looked in this order:
+  1. command line            not given
+  2. GNOBLIN_SHELL           not set
+  3. /home/me/.config/gnoblin/config.toml   missing
+  4. /home/me/.config/gnoblin/shell.{so,py,js,mjs,ts,mts}   none present
+  5. /home/me/.local/share/gnoblin/shells/  2 shells
+  6. /usr/local/share/gnoblin/shells/  not reached
+  7. /usr/share/gnoblin/default-shell/shell.*   not reached
+
+Run a shell directly:     gnoblin ./myshell.so
+Pick an installed shell:  gnoblin --shell NAME    (gnoblin --list-shells)
+Set a default:            [shell] default = "NAME"  in /home/me/.config/gnoblin/config.toml
 ```
 
-A name that is not installed says so, offers the nearest installed name when one is within two edits, lists what is
-installed and where Gnoblin looked.
+Choose one of the three remedies: run one by path, pick one by name, or name a default in `config.toml`. Two shells in the
+config directory (a `shell.py` and a `shell.ts`) are an ambiguity of tier 4 in the same form.
 
-A shell that is found and cannot load (its `init` fails, it was built for another ABI, a library is missing, a script throws)
-prints the loader's own reason: the `dlopen` message for a missing library, both versions for an ABI mismatch, and
-`file:line:column` for a script.
+A name that is not installed says so, offers the nearest installed name when one is within two edits, lists what is
+installed and where Gnoblin looked:
+
+```text
+gnoblin: no shell named "tilr" (from the command line).
+Did you mean "tiler"?
+
+Installed shells:
+  lines  /home/me/.local/share/gnoblin/shells/lines.py
+  tiler  /home/me/.local/share/gnoblin/shells/tiler.ts
+
+Looked in:
+  /home/me/.local/share/gnoblin/shells/
+  /usr/local/share/gnoblin/shells/  (missing)
+  /usr/share/gnoblin/shells/  (missing)
+```
+
+The first line ends with where the name came from: `(from the command line)`, `(from GNOBLIN_SHELL)` or `(from [shell] in
+/home/me/.config/gnoblin/config.toml)`.
+
+A path that does not exist is its own error:
+
+```text
+gnoblin: ./nothere.so: no such file (from the command line).
+```
+
+With no shell installed at all, a name says so: `No shells are installed.` instead of the list.
+
+A shell that is found and cannot load prints the loader's own reason. That covers a failed `init`, a different ABI, a
+missing library and a script that throws:
+
+- A missing library gives the `dlopen` message.
+- An ABI mismatch gives both versions.
+- A script gives `file:line:column`.
 
 The session runs on with the compositor's own window management, and the shell is reloadable once the file is fixed.
 
 ## Reload and watch
 
 A shell is replaced while it runs. Windows stay open on the same Wayland connection and surface, a shell's nodes, kept state
-and running programs carry over (see `design/modular-framework.md`, section 8), and a replacement that cannot take over leaves
-the running shell serving.
+and running programs carry over, and a replacement that cannot take over leaves
+the running shell serving. [Write a shell in Rust](rust-shell.md#reload-while-it-runs) lists what a native shell keeps.
 
 - **A native shell** is a library you rebuild. `gnoblin --watch ./target/debug/libmyshell.so` reloads it each time the file is
   rewritten, after 100 ms of quiet. The compositor never runs `cargo`: build with `cargo build`, or keep
@@ -165,7 +290,8 @@ the running shell serving.
 - **A script** reloads when any file it imported changes: the shell's runtime watches the import set, with or without
   `--watch`. `GNOBLIN_JS_WATCH=0` turns that off for JavaScript and TypeScript.
 - **On request**, `gnoblinctl shell reload` reloads the shell and waits for the outcome: exit 0 and `reloaded: generation 3`,
-  or exit 1 and the reason (`reload of /x/libshell.so failed, still running generation 2: ...`).
+  or exit 1 and the reason (`reload of /x/libshell.so failed, still running generation 2: ...`). An isolated shell has no
+  in-process shell to reload, and the command says so: it reloads with `--watch`.
 - `gnoblinctl shell status` says which generation runs and how the reloads went.
 - `gnoblinctl shell watch [PATH]` is the same loop from the command line: it reloads the running shell each time `PATH` (default:
   the shell Gnoblin finds) is rebuilt, until you interrupt it. `--once` exits after the first reload with its code.

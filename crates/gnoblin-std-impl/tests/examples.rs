@@ -486,7 +486,7 @@ fn example_6_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_clo
         ],
         "{stdout}"
     );
-    // `Super+Tab` swapped the focused third window with the first: the layout was not told how, it read the new order.
+    // `<Super>Tab` swapped the focused third window with the first: the layout was not told how, it read the new order.
     assert_eq!(
         step(&stdout, "swapped"),
         [

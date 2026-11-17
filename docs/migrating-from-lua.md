@@ -48,7 +48,7 @@ the first line of `shell.ts` says so:
 // INCOMPLETE: 19 unmapped settings, see comments
 ```
 
-See the [gnoblinctl reference](gnoblinctl.md#convert-an-initlua).
+See the [gnoblinctl reference](gnoblinctl.md#convert-an-init-lua).
 
 ### What the converter writes
 

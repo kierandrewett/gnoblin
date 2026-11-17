@@ -30,7 +30,7 @@ the stock desktop as statements against the shell's objects.
 - It exits 0 when everything converted, 1 when something was left out and 2 when nothing was written.
 - A file with something left out starts with `// INCOMPLETE: N unmapped settings, see comments`.
 
-See [Convert an init.lua](../gnoblinctl.md#convert-an-initlua).
+See [Convert an init.lua](../gnoblinctl.md#convert-an-init-lua).
 
 `config reload` also reloads the `shell.ts` of the [TypeScript shell](../typescript-shell.md), and exits 1 with
 `file:line:column` when that file fails to load.

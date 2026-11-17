@@ -14,6 +14,21 @@ setup built from Waybar and other layer-shell clients.
 
 Gnoblin is built on Mutter. It does not ship a desktop shell UI.
 
+## Run a shell
+
+Gnoblin starts a compositor and one shell, which you can write in Rust, Python, JavaScript or TypeScript. There are three
+ways to choose it:
+
+```sh
+gnoblin ./target/debug/libmyshell.so   # run this file; add --watch to reload it when it is rebuilt
+gnoblin --shell tiler                  # run the installed shell called tiler
+gnoblin                                # run the shell Gnoblin finds: ~/.config/gnoblin/shell.so, shell.py or shell.ts, or the default
+```
+
+`gnoblin --list-shells` prints every shell Gnoblin can see and marks the one that would run. See
+[Start Gnoblin and choose a shell](docs/starting-gnoblin.md) for how it chooses, [Build a desktop](docs/build-a-desktop.md)
+for small example shells, and [Write a shell in Rust](docs/rust-shell.md).
+
 ## Features
 
 - **Bring your own chrome.** Use [Bingux](https://github.com/kierandrewett/bingux),

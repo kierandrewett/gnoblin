@@ -55,13 +55,13 @@ gnoblinctl session get ID backend
 
 ### Settings for a nested session
 
-| Setting                         | Default           | What it does                                                                                                                               |
-| ------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `compositor.nested-display`     | `WAYLAND_DISPLAY` | The socket of the compositor that hosts the session: a name in `XDG_RUNTIME_DIR`, or an absolute path.                                     |
-| `compositor.nested-outputs`     | `1`               | How many windows (outputs) to open, from 1 to 8. They are named `NESTED-1`, `NESTED-2` and so on.                                          |
-| `compositor.nested-width`       | `1024`            | The width an output starts at when the host leaves the size to the session.                                                                |
-| `compositor.nested-height`      | `768`             | The height, likewise. A size the host states always wins, and resizing the window resizes the output.                                      |
-| `compositor.nested-decorations` | `auto`            | Whether the session draws a window frame of its own when the host does not: `auto` or `off`. See [The window's frame](#the-windows-frame). |
+| Setting                         | Default           | What it does                                                                                                                                |
+| ------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compositor.nested-display`     | `WAYLAND_DISPLAY` | The socket of the compositor that hosts the session: a name in `XDG_RUNTIME_DIR`, or an absolute path.                                      |
+| `compositor.nested-outputs`     | `1`               | How many windows (outputs) to open, from 1 to 8. They are named `NESTED-1`, `NESTED-2` and so on.                                           |
+| `compositor.nested-width`       | `1024`            | The width an output starts at when the host leaves the size to the session.                                                                 |
+| `compositor.nested-height`      | `768`             | The height, likewise. A size the host states always wins, and resizing the window resizes the output.                                       |
+| `compositor.nested-decorations` | `auto`            | Whether the session draws a window frame of its own when the host does not: `auto` or `off`. See [The window's frame](#the-window-s-frame). |
 
 ## Run on a desktop
 
@@ -73,7 +73,7 @@ GNOBLIN_BACKEND=nested gnoblin
 
 The host decides the window. You can move, resize and fullscreen it. Closing the last window logs the session out;
 closing one of several only removes that output. A host that draws no window frame of its own gets a small one from the
-session ([The window's frame](#the-windows-frame)).
+session ([The window's frame](#the-window-s-frame)).
 
 If the host is not reachable, the start stops and names the socket:
 

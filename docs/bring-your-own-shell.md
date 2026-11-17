@@ -4,12 +4,13 @@ Choose a complete shell or combine a bar, launcher and notification daemon.
 Bingux is a separate project and one example of a shell built on Gnoblin.
 It is optional.
 
-| Setup                                             | What you get                                        |
-| ------------------------------------------------- | --------------------------------------------------- |
-| [Waybar + Fuzzel + Mako](#waybar-fuzzel-and-mako) | Separate tools you configure independently          |
-| [Quickshell](#quickshell)                         | A custom layer-shell surface                        |
-| [Bingux](#bingux)                                 | An integrated bar, dock, launcher and notifications |
-| Your own layer-shell clients                      | A custom desktop using Gnoblin's Wayland protocols  |
+| Setup                                             | What you get                                             |
+| ------------------------------------------------- | -------------------------------------------------------- |
+| [Waybar + Fuzzel + Mako](#waybar-fuzzel-and-mako) | Separate tools you configure independently               |
+| [Quickshell](#quickshell)                         | A custom layer-shell surface                             |
+| [Bingux](#bingux)                                 | An integrated bar, dock, launcher and notifications      |
+| Your own layer-shell clients                      | A custom desktop using Gnoblin's Wayland protocols       |
+| [A shell Gnoblin loads](#a-shell-gnoblin-loads)   | Window management and keys in Rust, Python or TypeScript |
 
 ## Waybar, Fuzzel and Mako
 
@@ -74,13 +75,38 @@ _The panel is a separate Quickshell process using Gnoblin's layer-shell support.
 
 Bingux is an integrated desktop with a bar, dock, search and notifications. See [Bingux](bingux.md) to install it.
 
+## A shell Gnoblin loads
+
+Gnoblin runs your shell inside the compositor and reloads it when you change it, with your windows staying open. The shell
+can be a native library or a script:
+
+| Language               | File                   | Guide                                   |
+| ---------------------- | ---------------------- | --------------------------------------- |
+| Rust                   | `libmyshell.so`        | [Write a shell in Rust](rust-shell.md)  |
+| Python                 | `shell.py`             | [Python shell](python-shell.md)         |
+| TypeScript, JavaScript | `shell.ts`, `shell.js` | [TypeScript shell](typescript-shell.md) |
+
+There are three ways to start one:
+
+```sh
+gnoblin ./libmyshell.so       # run this file now
+gnoblin --shell tiler         # run the installed shell called tiler
+gnoblin                       # run the shell Gnoblin finds: shell.so, shell.py or shell.ts in ~/.config/gnoblin, or the default
+```
+
+Put a file called `shell` with the right extension in `~/.config/gnoblin` and it runs whenever you start a session. The
+extensions are `.so`, `.py`, `.js`, `.mjs`, `.ts` and `.mts`.
+
+[Start Gnoblin and choose a shell](starting-gnoblin.md) lists every place Gnoblin looks. [Build a desktop](build-a-desktop.md)
+shows small shells you can start from.
+
 ## What Gnoblin provides
 
 Gnoblin provides window management, locking, desktop services, and a small
 recovery panel for shell setup.
 
 Native notifications and the keyboard-layout popup are optional.
-See [session settings](/guides/session_settings#protocol-settings).
+See [session settings](/guides/session_settings).
 
 Gnoblin paints a solid black background behind desktop surfaces so areas
 uncovered while windows move are repainted. This is not a wallpaper client.

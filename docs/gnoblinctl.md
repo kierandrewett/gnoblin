@@ -196,7 +196,7 @@ gnoblinctl output call 6 apply supersample=2
 - `gnoblinctl config init [DIR] [--force]` writes a starter `shell.ts` for the
   [TypeScript shell](typescript-shell.md). It needs no session.
 - `gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]` converts an `init.lua` to a `shell.ts`. It needs
-  no session. See [Convert an init.lua](#convert-an-initlua).
+  no session. See [Convert an init.lua](#convert-an-init-lua).
 
 ```sh
 gnoblinctl config validate FILE

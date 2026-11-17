@@ -6,7 +6,7 @@
 //!
 //! - every window that opens joins the one workspace and takes a column;
 //! - a window that closes leaves its column and the rest share the room;
-//! - `Super+Tab` swaps the window that has the keyboard with the first, which moves both columns without the layout being told how.
+//! - `<Super>Tab` swaps the window that has the keyboard with the first, which moves both columns without the layout being told how.
 //!
 //! The layout is an ordinary value: it may keep state between calls (`&mut self`), and it runs outside any lock of the library, so it
 //! may call back into the SDK. This one keeps nothing.
@@ -50,7 +50,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         .gaps(10.0, 20.0)
         .add()?;
 
-    g.bind("Super+Tab", move || {
+    g.bind("<Super>Tab", move || {
         let swapped = (|| -> gnoblin_std::Result<()> {
             let clients = main.clients()?;
             if let (Some(focused), Some(first)) = (clients.focused()?, clients.at(0)?) {

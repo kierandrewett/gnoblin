@@ -12,13 +12,27 @@ def place(window):
     window.x, window.y = 40, 40
 
 
-@gnoblin.bind("Super+Return")
+@gnoblin.bind("<Super>Return")
 def terminal():
     gnoblin.spawn("foot")
 ```
 
-Run it with `gnoblin ./shell.py`. A file named `shell.py` in the config directory is found the way `shell.ts` is (see
-[Where the config lives](typescript-shell.md#where-the-config-lives)).
+Run it with `gnoblin ./shell.py`. It reloads when you save it or a module it imports. A chord is each modifier in angle brackets,
+then the key, as in `<Super>Return`; see [shortcuts](/guides/shortcuts) for the syntax.
+
+## Run it
+
+| To run the shell          | Do this                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------- |
+| Once, from a terminal     | `gnoblin ./shell.py`                                                                  |
+| At every start            | Save it as `~/.config/gnoblin/shell.py`, then run `gnoblin`                           |
+| By name                   | Save it as `~/.local/share/gnoblin/shells/tiler.py`, then run `gnoblin --shell tiler` |
+| Chosen in a file          | Set `[shell] path = "~/dev/tiler/shell.py"` in `~/.config/gnoblin/config.toml`        |
+| Chosen by the environment | `GNOBLIN_SHELL=~/dev/tiler/shell.py gnoblin`                                          |
+
+`gnoblin --list-shells` shows which shell would run and why. [Start Gnoblin and choose a shell](starting-gnoblin.md)
+lists every place Gnoblin looks and the errors it gives. Do not put both a `shell.py` and a `shell.ts` in the config
+directory: two equal shells stop the start with a list of both.
 
 ## What you need
 
@@ -65,13 +79,13 @@ unchanged, so you can still call it:
 @gnoblin.on_client_created                  # no parameters: the function is the callback
 def place(window): ...
 
-@gnoblin.bind("Super+q")                    # parameters first: the call returns the decorator
+@gnoblin.bind("<Super>q")                    # parameters first: the call returns the decorator
 def close_focused():
     focused = next((w for w in gnoblin.windows if w.focused), None)
     if focused:
         focused.close()
 
-sub = gnoblin.bind("Super+d", launcher)     # parameters and the function: returns the Subscription
+sub = gnoblin.bind("<Super>d", launcher)     # parameters and the function: returns the Subscription
 sub.unsubscribe()
 ```
 
@@ -180,10 +194,14 @@ Point the checker at `<prefix>/share/gnoblin/python`, or add it to `extraPaths`.
 ## The desktop library: `gnoblin.std`
 
 `gnoblin.std` is the object model above the core: collections of clients, outputs and workspaces, layouts, pointer bindings,
-transitions, styles and scene nodes. It is **generated** from the function table of `libgnoblin-std.so.1` (`cargo xtask gen-sdks`;
-[the generator](sdk-generator.md)), so it has every function of the table and none the library lacks. `std.py` and its `std.pyi`
-are typed: a record is a dataclass, a constant group an `IntEnum` or `IntFlag`, a handle a class (`Collection`, `Workspace`,
-`Client`, `Transition`, `Registration`), and every call goes through one native function, `gnoblin._std.call`.
+transitions, styles and scene nodes. It is **generated** from the function table of `libgnoblin-std.so.1`
+(`cargo xtask gen-sdks`; [the generator](sdk-generator.md)), so it has every function of the table and none the library lacks.
+
+`std.py` and its `std.pyi` are typed:
+
+- A record is a dataclass, and a constant group an `IntEnum` or `IntFlag`.
+- A handle is a class: `Collection`, `Workspace`, `Client`, `Transition` or `Registration`.
+- Every call goes through one native function, `gnoblin._std.call`.
 
 ```python
 from gnoblin import gnoblin
@@ -214,11 +232,6 @@ installed (looked for libgnoblin-std.so.1 in ...)`, which is the check a core-on
   `gnoblin` alone is complete: example 8 tiles windows with no workspace.
 - The only hand-written parts are `_std_base.py` (the native, handles, argument conversion) and `_std_sugar.py` (`len(collection)`,
   `client.window`, `Placement.tile`, `Workspace.create`, `Workspace.use`).
-
-## What is not here yet
-
-- **`gnoblin ./shell.py` in the compositor's own process** arrives with the in-process shell (see
-  `design/modular-framework.md`, section 24).
 
 ## Examples
 

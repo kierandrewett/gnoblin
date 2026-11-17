@@ -18,6 +18,8 @@ gnoblin.input.primary.bind("Super+Return", () => {
 ## Where to go
 
 - [TypeScript shell](/typescript-shell): write your first config, where it lives and how it reloads.
+- [Start Gnoblin and choose a shell](/starting-gnoblin): run a shell from a file, a name or `config.toml`, and list the
+  shells Gnoblin can see. The shell can also be a [Python script](/python-shell) or a [Rust library](/rust-shell).
 - [Settings in shell.ts](/js-settings): what you can set on each object, with an example, and the settings that have no
   TypeScript home yet.
 - [Settings reference](/config/configure): the pages for devices, monitors, dialogs and the other settings.

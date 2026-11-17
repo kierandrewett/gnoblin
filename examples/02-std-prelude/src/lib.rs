@@ -6,8 +6,8 @@
 //!   that appears; the library places each window the moment it joins a workspace, so no two windows open on the same spot;
 //! - a window that opens joins the workspace of the output that has the pointer (the library's own rule, which this shell does not
 //!   repeat: it only says so in the log);
-//! - `Super+Return` starts a terminal (`foot`);
-//! - `Super+Right` and `Super+Left` walk the workspaces on the output that shows the focused window.
+//! - `<Super>Return` starts a terminal (`foot`);
+//! - `<Super>Right` and `<Super>Left` walk the workspaces on the output that shows the focused window.
 //!
 //! What it is not: it draws nothing. `readelf -d` shows `libgnoblin-std.so.1` as the only library of ours the shell names, and
 //! `libgnoblin-std.so.1` records `libgnoblin-core.so.1` in its turn, so the process maps the chain shell, std, core, one of each.
@@ -34,13 +34,13 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         ));
     })?;
 
-    g.bind("Super+Return", move || {
+    g.bind("<Super>Return", move || {
         if let Err(error) = g.spawn("foot") {
             g.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
 
-    for (chord, step) in [("Super+Right", 1), ("Super+Left", -1)] {
+    for (chord, step) in [("<Super>Right", 1), ("<Super>Left", -1)] {
         g.bind(chord, move || {
             let walked = (|| -> gnoblin_std::Result<()> {
                 let focused = g.clients()?.focused()?;

@@ -41,6 +41,8 @@ const LANGS = [
     "go",
     "glsl",
     "rust",
+    "python",
+    "toml",
 ] as const;
 const LANG_LABELS: Record<string, string> = {
     lua: "Lua",
@@ -55,6 +57,8 @@ const LANG_LABELS: Record<string, string> = {
     go: "Go",
     glsl: "GLSL",
     rust: "Rust",
+    python: "Python",
+    toml: "TOML",
     text: "Text",
 };
 const CALLOUTS: Record<string, { icon: string; title: string }> = {

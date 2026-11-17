@@ -251,7 +251,7 @@ pub(crate) fn std_prelude(shell: &Path) -> i32 {
     for id in [FIRST, SECOND, THIRD, FOURTH] {
         geometry(&comp, id);
     }
-    press(&comp, &module, "Super+Return");
+    press(&comp, &module, "<Super>Return");
     out!("terminal_started={}", terminal_started());
     finish(&comp, &module);
     0
@@ -281,7 +281,7 @@ pub(crate) fn rust_layout(shell: &Path) -> i32 {
     // The window that has the keyboard swaps places with the first.
     comp.external_set(THIRD, "focused", MirrorValue::Bool(true));
     pump(&module);
-    press(&comp, &module, "Super+Tab");
+    press(&comp, &module, "<Super>Tab");
     out!("step=swapped");
     for id in [FIRST, SECOND, THIRD] {
         geometry(&comp, id);
