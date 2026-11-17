@@ -86,6 +86,7 @@ members = [
     "crates/gnoblin-schema",
     "crates/gnoblin-secret",
     "crates/gnoblin-runtime-js",
+    "crates/gnoblin-runtime-python",
     "crates/gnoblin-service-core",
     "crates/gnoblin-service-location",
     "crates/gnoblin-service-polkit",

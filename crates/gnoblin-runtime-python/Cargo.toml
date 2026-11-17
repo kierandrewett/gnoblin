@@ -1,0 +1,33 @@
+[package]
+name = "gnoblin-runtime-python"
+description = "libgnoblin-runtime-python: the Python runtime of the shell host. A cdylib that exports gnoruntime_entry_v1 and runs .py shells inside the compositor process on the system CPython, through the core SDK."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "gnoblin_runtime_python"
+# The library the loader opens by file name (`libgnoblin-runtime-python.so`, installed from `libgnoblin_runtime_python.so`). Nothing links it
+# as a Rust library (`impl-sealed`).
+crate-type = ["cdylib"]
+
+[dependencies]
+# The runtime is written on the SDK like any shell: it acts on the compositor through the installed core, with the handle the
+# loader made for each generation (`gnoblin_core::private::gnoblin_for`), and records `NEEDED libgnoblin-core.so.1` through the
+# SDK's link stub. It holds no compositor logic of its own.
+gnoblin-core = { path = "../gnoblin-core" }
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+# CPython. Linked against the system libpython (`NEEDED libpython3.N.so.1.0`), so a compositor that never runs a Python shell
+# never maps it: this library is opened only when a `.py` shell is selected. MIT OR Apache-2.0; no `abi3`, because an embedding
+# host links one concrete libpython anyway (design/modular-framework.md, 10.1).
+pyo3 = { version = "0.30", default-features = false, features = ["macros"] }
+
+# The workspace table forbids unsafe code; a library that exports a C entry and calls through a C table needs it. Only the modules
+# that open with `#![allow(unsafe_code)]` and a SAFETY note use it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
