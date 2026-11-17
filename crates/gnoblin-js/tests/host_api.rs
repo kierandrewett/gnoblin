@@ -119,6 +119,7 @@ fn rig(init_body: &str) -> (Rig, FakeSession) {
         comp,
         load_diagnostics,
         clock,
+        core: None,
         _dir: dir,
     };
     rig.settle();

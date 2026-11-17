@@ -402,6 +402,61 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         inputs: &["kind", "options"],
         scriptable: true,
     },
+    FunctionInfo {
+        name: "builtin_new",
+        inputs: &["kind", "options"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_free",
+        inputs: &["builtin"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_set",
+        inputs: &["builtin", "option"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_get",
+        inputs: &["builtin", "name"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_compute",
+        inputs: &["builtin", "query"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_act",
+        inputs: &["builtin", "action", "values", "query"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_client_removed",
+        inputs: &["builtin", "query", "client"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_clients_swapped",
+        inputs: &["builtin", "a", "b"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_find_split",
+        inputs: &["builtin", "client", "x", "y"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_set_split",
+        inputs: &["builtin", "token", "ratio", "cross_ratio"],
+        scriptable: true,
+    },
+    FunctionInfo {
+        name: "builtin_reset_split",
+        inputs: &["builtin", "token"],
+        scriptable: true,
+    },
 ];
 
 pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
@@ -481,6 +536,17 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "binding_drag" => binding_drag(lib, ctx, args),
         "binding_gesture" => binding_gesture(lib, ctx, args),
         "binding_builtin" => binding_builtin(lib, ctx, args),
+        "builtin_new" => builtin_new(lib, ctx, args),
+        "builtin_free" => builtin_free(lib, ctx, args),
+        "builtin_set" => builtin_set(lib, ctx, args),
+        "builtin_get" => builtin_get(lib, ctx, args),
+        "builtin_compute" => builtin_compute(lib, ctx, args),
+        "builtin_act" => builtin_act(lib, ctx, args),
+        "builtin_client_removed" => builtin_client_removed(lib, ctx, args),
+        "builtin_clients_swapped" => builtin_clients_swapped(lib, ctx, args),
+        "builtin_find_split" => builtin_find_split(lib, ctx, args),
+        "builtin_set_split" => builtin_set_split(lib, ctx, args),
+        "builtin_reset_split" => builtin_reset_split(lib, ctx, args),
         other => Err(StdError::unsupported(other)),
     }
 }
@@ -2260,6 +2326,295 @@ fn binding_builtin(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError
     Ok(Dyn::Uint(handle))
 }
 
+#[allow(unused_mut, unused_variables)]
+fn builtin_new(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_new) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_new"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`builtin_new` takes 2 arguments (kind, options), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let kind = args[0].to_u32("argument `kind` of `builtin_new`")?;
+    let options: Vec<GnoblinStdOption> = args[1]
+        .to_list("argument `options` of `builtin_new`")?
+        .iter()
+        .map(|item| write_gnoblin_std_option(&mut arena, item, "argument `options` of `builtin_new`"))
+        .collect::<Result<_, _>>()?;
+    let mut out: u64 = 0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_new)(ctx, kind, options.as_ptr(), options.len(), &raw mut out) };
+    let status = lib.check("builtin_new", returned)?;
+    arena.adopt();
+    Ok(if out == 0 { Dyn::Nil } else { Dyn::Uint(out) })
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_free(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_free) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_free"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`builtin_free` takes 1 arguments (builtin), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_free`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_free)(ctx, builtin) };
+    let status = lib.check("builtin_free", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_set(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_set) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_set"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`builtin_set` takes 2 arguments (builtin, option), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_set`")?;
+    let option = write_gnoblin_std_option(&mut arena, &args[1], "argument `option` of `builtin_set`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_set)(ctx, builtin, &raw const option) };
+    let status = lib.check("builtin_set", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_get(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_get) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_get"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`builtin_get` takes 2 arguments (builtin, name), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_get`")?;
+    let name = arena.text(args[1].to_text("argument `name` of `builtin_get`")?);
+    // SAFETY: an all-zero `GnoblinStdOption` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdOption = unsafe { zeroed() };
+    out.size = size_of::<GnoblinStdOption>() as u32;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_get)(ctx, builtin, name.ptr, name.len, &raw mut out) };
+    let status = lib.check("builtin_get", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_option(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_compute(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_compute) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_compute"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`builtin_compute` takes 2 arguments (builtin, query), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_compute`")?;
+    let query = write_gnoblin_std_layout_query(&mut arena, &args[1], "argument `query` of `builtin_compute`")?;
+    // SAFETY: an all-zero `GnoblinStdPlacements` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdPlacements = unsafe { zeroed() };
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_compute)(ctx, builtin, &raw const query, &raw mut out) };
+    let status = lib.check("builtin_compute", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_placements(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_act(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_act) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_act"));
+    }
+    if args.len() != 4 {
+        return Err(StdError::type_error(format!(
+            "`builtin_act` takes 4 arguments (builtin, action, values, query), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_act`")?;
+    let action = arena.text(args[1].to_text("argument `action` of `builtin_act`")?);
+    let values: Vec<GnoblinStdOption> = args[2]
+        .to_list("argument `values` of `builtin_act`")?
+        .iter()
+        .map(|item| write_gnoblin_std_option(&mut arena, item, "argument `values` of `builtin_act`"))
+        .collect::<Result<_, _>>()?;
+    let query = write_gnoblin_std_layout_query(&mut arena, &args[3], "argument `query` of `builtin_act`")?;
+    let mut focus: u64 = 0;
+    // SAFETY: an all-zero `GnoblinStdOption` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdOption = unsafe { zeroed() };
+    out.size = size_of::<GnoblinStdOption>() as u32;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe {
+        (api.builtin_act)(
+            ctx,
+            builtin,
+            action.ptr,
+            action.len,
+            values.as_ptr(),
+            values.len(),
+            &raw const query,
+            &raw mut focus,
+            &raw mut out,
+        )
+    };
+    let status = lib.check("builtin_act", returned)?;
+    arena.adopt();
+    Ok(Dyn::List(vec![
+        if focus == 0 { Dyn::Nil } else { Dyn::Uint(focus) },
+        read_gnoblin_std_option(&out),
+    ]))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_client_removed(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_client_removed) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_client_removed"));
+    }
+    if args.len() != 3 {
+        return Err(StdError::type_error(format!(
+            "`builtin_client_removed` takes 3 arguments (builtin, query, client), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_client_removed`")?;
+    let query = write_gnoblin_std_layout_query(&mut arena, &args[1], "argument `query` of `builtin_client_removed`")?;
+    let client = args[2].to_u64("argument `client` of `builtin_client_removed`")?;
+    let mut focus: u64 = 0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_client_removed)(ctx, builtin, &raw const query, client, &raw mut focus) };
+    let status = lib.check("builtin_client_removed", returned)?;
+    arena.adopt();
+    Ok(if focus == 0 { Dyn::Nil } else { Dyn::Uint(focus) })
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_clients_swapped(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_clients_swapped) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_clients_swapped"));
+    }
+    if args.len() != 3 {
+        return Err(StdError::type_error(format!(
+            "`builtin_clients_swapped` takes 3 arguments (builtin, a, b), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_clients_swapped`")?;
+    let a = args[1].to_u64("argument `a` of `builtin_clients_swapped`")?;
+    let b = args[2].to_u64("argument `b` of `builtin_clients_swapped`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_clients_swapped)(ctx, builtin, a, b) };
+    let status = lib.check("builtin_clients_swapped", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_find_split(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_find_split) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_find_split"));
+    }
+    if args.len() != 4 {
+        return Err(StdError::type_error(format!(
+            "`builtin_find_split` takes 4 arguments (builtin, client, x, y), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_find_split`")?;
+    let client = args[1].to_u64("argument `client` of `builtin_find_split`")?;
+    let x = args[2].to_f64("argument `x` of `builtin_find_split`")?;
+    let y = args[3].to_f64("argument `y` of `builtin_find_split`")?;
+    // SAFETY: an all-zero `GnoblinStdSplit` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdSplit = unsafe { zeroed() };
+    out.size = size_of::<GnoblinStdSplit>() as u32;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_find_split)(ctx, builtin, client, x, y, &raw mut out) };
+    let status = lib.check("builtin_find_split", returned)?;
+    arena.adopt();
+    if status == 0 {
+        return Ok(Dyn::Nil);
+    }
+    Ok(read_gnoblin_std_split(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_set_split(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_set_split) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_set_split"));
+    }
+    if args.len() != 4 {
+        return Err(StdError::type_error(format!(
+            "`builtin_set_split` takes 4 arguments (builtin, token, ratio, cross_ratio), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_set_split`")?;
+    let token = args[1].to_u64("argument `token` of `builtin_set_split`")?;
+    let ratio = args[2].to_f64("argument `ratio` of `builtin_set_split`")?;
+    let cross_ratio = args[3].to_f64("argument `cross_ratio` of `builtin_set_split`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_set_split)(ctx, builtin, token, ratio, cross_ratio) };
+    let status = lib.check("builtin_set_split", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn builtin_reset_split(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, builtin_reset_split) + size_of::<usize>()) {
+        return Err(StdError::unsupported("builtin_reset_split"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`builtin_reset_split` takes 2 arguments (builtin, token), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let builtin = args[0].to_u64("argument `builtin` of `builtin_reset_split`")?;
+    let token = args[1].to_u64("argument `token` of `builtin_reset_split`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.builtin_reset_split)(ctx, builtin, token) };
+    let status = lib.check("builtin_reset_split", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
 fn read_gnoblin_std_stats(record: &GnoblinStdStats) -> Dyn {
     // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
     Dyn::Map(vec![
@@ -2484,6 +2839,34 @@ fn read_gnoblin_std_gesture_event(record: &GnoblinStdGestureEvent) -> Dyn {
         ("progress".to_owned(), Dyn::Float(record.progress)),
         ("x".to_owned(), Dyn::Float(record.x)),
         ("y".to_owned(), Dyn::Float(record.y)),
+    ])
+}
+
+fn read_gnoblin_std_placements(record: &GnoblinStdPlacements) -> Dyn {
+    // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
+    Dyn::List(
+        unsafe { slice_of(record.ptr, record.len) }
+            .iter()
+            .map(read_gnoblin_std_placement)
+            .collect(),
+    )
+}
+
+fn read_gnoblin_std_placement(record: &GnoblinStdPlacement) -> Dyn {
+    // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
+    Dyn::Map(vec![
+        ("flags".to_owned(), Dyn::Uint(u64::from(record.flags))),
+        ("node".to_owned(), Dyn::Uint(record.node)),
+        ("bounds".to_owned(), read_gnoblin_std_rect(&record.bounds)),
+        ("z".to_owned(), Dyn::Float(record.z)),
+        ("rotation_x".to_owned(), Dyn::Float(record.rotation_x)),
+        ("rotation_y".to_owned(), Dyn::Float(record.rotation_y)),
+        ("rotation_z".to_owned(), Dyn::Float(record.rotation_z)),
+        ("scale_x".to_owned(), Dyn::Float(record.scale_x)),
+        ("scale_y".to_owned(), Dyn::Float(record.scale_y)),
+        ("scale_z".to_owned(), Dyn::Float(record.scale_z)),
+        ("offset_x".to_owned(), Dyn::Float(record.offset_x)),
+        ("offset_y".to_owned(), Dyn::Float(record.offset_y)),
     ])
 }
 
@@ -2940,6 +3323,58 @@ fn write_gnoblin_std_binding_spec(
     }
     if let Some(item) = reader.take("threshold") {
         record.threshold = item.to_f64(&reader.path("threshold"))?;
+    }
+    reader.finish()?;
+    Ok(record)
+}
+
+#[allow(unused_mut)]
+fn write_gnoblin_std_layout_query(
+    arena: &mut Arena,
+    value: &Dyn,
+    what: &str,
+) -> Result<GnoblinStdLayoutQuery, StdError> {
+    let mut reader = MapReader::new(value, what)?;
+    // SAFETY: an all-zero `GnoblinStdLayoutQuery` is valid: numbers, null pointers and absent functions.
+    let mut record: GnoblinStdLayoutQuery = unsafe { zeroed() };
+    record.size = size_of::<GnoblinStdLayoutQuery>() as u32;
+    if let Some(item) = reader.take("flags") {
+        record.flags = item.to_u32(&reader.path("flags"))?;
+    }
+    if let Some(item) = reader.take("children") {
+        let list = item.to_list(&reader.path("children"))?;
+        let mut values = Vec::with_capacity(list.len());
+        for entry in list {
+            values.push(entry.to_u64(&reader.path("children"))?);
+        }
+        let kept = arena.keep(values);
+        // SAFETY: `kept` points at the vector the arena owns for the call.
+        record.children = unsafe { (*kept).as_ptr() };
+        record.n_children = unsafe { (*kept).len() };
+    }
+    if let Some(item) = reader.take("area") {
+        record.area = write_gnoblin_std_rect(arena, item, &reader.path("area"))?;
+    }
+    if let Some(item) = reader.take("gap_inner") {
+        record.gap_inner = item.to_f64(&reader.path("gap_inner"))?;
+    }
+    if let Some(item) = reader.take("gap_outer") {
+        record.gap_outer = item.to_f64(&reader.path("gap_outer"))?;
+    }
+    if let Some(item) = reader.take("focused") {
+        record.focused = item.to_u64(&reader.path("focused"))?;
+    }
+    if let Some(item) = reader.take("pointer_x") {
+        record.pointer_x = item.to_f64(&reader.path("pointer_x"))?;
+    }
+    if let Some(item) = reader.take("pointer_y") {
+        record.pointer_y = item.to_f64(&reader.path("pointer_y"))?;
+    }
+    if let Some(item) = reader.take("focused_width") {
+        record.focused_width = item.to_f64(&reader.path("focused_width"))?;
+    }
+    if let Some(item) = reader.take("focused_height") {
+        record.focused_height = item.to_f64(&reader.path("focused_height"))?;
     }
     reader.finish()?;
     Ok(record)

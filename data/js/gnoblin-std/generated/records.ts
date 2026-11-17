@@ -3,7 +3,7 @@
 // catalog 0x8d9a5c8fd0c2c922, core-abi 1.0, std-abi 1.0
 
 import type { Init } from "gnoblin-std/generated/native";
-import { CollectionKind, EventKind, TermKind, LayoutKind, PlaceKind, PlacementFlags, OutputsKind, WorkspacesKind, AxisKind, ClientFlags, SnapKind, EasingKind, PropKind, TransitionKind, ControlKind, StyleKind, EntryKind, SceneKind, BuiltinKind, ValueKind, BindingKind, DragKind, ConstraintKind, GestureKind, WayKind } from "gnoblin-std/generated/constants";
+import { CollectionKind, EventKind, TermKind, LayoutKind, PlaceKind, PlacementFlags, QueryFlags, OutputsKind, WorkspacesKind, AxisKind, ClientFlags, SnapKind, EasingKind, PropKind, TransitionKind, ControlKind, StyleKind, EntryKind, SceneKind, BuiltinKind, ValueKind, BindingKind, DragKind, ConstraintKind, GestureKind, WayKind } from "gnoblin-std/generated/constants";
 
 // A rectangle in the compositor's logical pixels.
 export interface Rect {
@@ -318,6 +318,7 @@ export interface LayoutContext {
 export function layoutContextToNative(value: Init<LayoutContext>): Record<string, unknown> {
   return {
     workspace: value.workspace,
+    children: value.children === undefined ? undefined : [...value.children],
     area: value.area === undefined ? undefined : rectToNative(value.area),
     gap_inner: value.gapInner,
     gap_outer: value.gapOuter,
@@ -333,6 +334,52 @@ export function layoutContextFromNative(data: any): LayoutContext {
     gapInner: data.gap_inner,
     gapOuter: data.gap_outer,
     focused: data.focused,
+  };
+}
+
+// What a built-in layout that belongs to no workspace is asked about: the clients it is to place, where, and what the shell
+// knows that the layout reads. A copy: the library keeps nothing of it past the call. The clients are ids the caller chooses
+// and keeps stable for as long as the layout lives (a layout that keeps a tree of them remembers which is which).
+export interface LayoutQuery {
+  flags: number;
+  children: number[];
+  area: Rect;
+  gapInner: number;
+  gapOuter: number;
+  focused: number;
+  pointerX: number;
+  pointerY: number;
+  focusedWidth: number;
+  focusedHeight: number;
+}
+
+export function layoutQueryToNative(value: Init<LayoutQuery>): Record<string, unknown> {
+  return {
+    flags: value.flags,
+    children: value.children === undefined ? undefined : [...value.children],
+    area: value.area === undefined ? undefined : rectToNative(value.area),
+    gap_inner: value.gapInner,
+    gap_outer: value.gapOuter,
+    focused: value.focused,
+    pointer_x: value.pointerX,
+    pointer_y: value.pointerY,
+    focused_width: value.focusedWidth,
+    focused_height: value.focusedHeight,
+  };
+}
+
+export function layoutQueryFromNative(data: any): LayoutQuery {
+  return {
+    flags: data.flags,
+    children: Array.from(data.children as number[]),
+    area: rectFromNative(data.area),
+    gapInner: data.gap_inner,
+    gapOuter: data.gap_outer,
+    focused: data.focused,
+    pointerX: data.pointer_x,
+    pointerY: data.pointer_y,
+    focusedWidth: data.focused_width,
+    focusedHeight: data.focused_height,
   };
 }
 

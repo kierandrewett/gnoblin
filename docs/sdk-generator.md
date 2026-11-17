@@ -82,6 +82,10 @@ From it the generator writes three things:
 3. **The layouts and bindings**: one class per entry of `gnoblin_std_abi::layouts::{LAYOUT_KINDS, BINDING_KINDS}` with its options as
    properties (defaults, bounds and enumerations from the table), its actions as methods, and `attach`/`start`.
 
+A record that holds a pointer and its count as a field (`GnoblinStdLayoutQuery.children`) is written by every language as a list, and a
+record that is only a list (`GnoblinStdPlacements`) is read as one. `builtin_*` is the built-in layout that belongs to no workspace
+(`Builtin` in TypeScript and Python): the library computes it for a shell that keeps its own workspaces.
+
 A hand-written layer remains, on purpose small: the spellings in `_std_sugar.py` and `gnoblin-std/native.ts` (`len(collection)`,
 `clients()`, the tile rounding of `Placement.tile`, a workspace in one call). Nothing in them is behaviour of the desktop.
 

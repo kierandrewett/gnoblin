@@ -87,6 +87,8 @@ fn sent(comp: &Comp) -> Vec<Vec<TxOp>> {
 struct Rig {
     shell: JsShell,
     clock: ManualClock,
+    /// The core and the std library the shell runs over.
+    core: common::native::NativeCore,
     _dir: TempDir,
 }
 
@@ -98,7 +100,9 @@ impl Rig {
     }
 
     fn frame(&mut self) -> Vec<String> {
-        self.shell.frame().expect("a frame").diagnostics
+        let diagnostics = self.shell.frame().expect("a frame").diagnostics;
+        self.core.dispatch(&self.shell);
+        diagnostics
     }
 
     /// Frames until the compositor's echo of the last transaction has been taken in.
@@ -122,12 +126,13 @@ fn rig(comp: &Comp, init: &str) -> Rig {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let (config, clock) = timed_config(&root);
-    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
+    let (mut shell, core) = common::native::shell_over_core(comp, std::sync::Arc::new(clock.clone()), config);
     let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     Rig {
         shell,
         clock,
+        core,
         _dir: dir,
     }
 }

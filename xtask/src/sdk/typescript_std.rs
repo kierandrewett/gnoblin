@@ -260,7 +260,13 @@ impl Renderer<'_> {
                     vtable_adapter(inner),
                     vtable_name(inner)
                 ),
-                Shape::Array(_) => continue,
+                Shape::Array(Elem::Scalar(_)) => {
+                    format!("value.{ident} === undefined ? undefined : [...value.{ident}]")
+                }
+                Shape::Array(Elem::Record(inner)) => format!(
+                    "value.{ident} === undefined ? undefined : value.{ident}.map({})",
+                    to_native_fn(inner)
+                ),
                 Shape::Sink(_) | Shape::Callback(_) | Shape::Pointer(_) => continue,
             };
             c.line(format!("{}: {expr},", field.name));
