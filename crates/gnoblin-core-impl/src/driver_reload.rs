@@ -24,6 +24,7 @@
 //! | `dump`          | the tree as the compositor holds it: windows, the shell's nodes, claims, how many nodes were made   |
 //! | `limit:N`       | the retire list refuses a load once `N` libraries are kept                                           |
 //! | `stats`         | the running generation's and every retired generation's counters, and the core's                    |
+//! | `put:DEST=SRC`  | replaces the file `DEST` with `SRC`, atomically: an edit of a file a script imports, not the module  |
 //! | `sleep:MS`      | waits `MS` real milliseconds, for a file watcher that runs on the clock and not on the manual one    |
 //! | `writes:ID:KEY` | prints how many times a transaction set property `KEY` of node `ID` since the scene started          |
 //! | `stop`          | ends the shell                                                                                       |
@@ -122,6 +123,10 @@ impl ReloadScene {
                 self.pump();
             }
             "copy" => self.replace_module(Path::new(argument))?,
+            "put" => {
+                let (dest, source) = argument.split_once('=').ok_or_else(|| fail("put takes DEST=SRC"))?;
+                replace_file(Path::new(dest), Path::new(source))?;
+            }
             "truncate" => {
                 let len = number(argument)?;
                 let file = fs::OpenOptions::new()
@@ -188,9 +193,7 @@ impl ReloadScene {
 
     /// What a finished build does to the library: a new file is written beside it and renamed over it.
     fn replace_module(&self, source: &Path) -> Result<(), i32> {
-        let staging = self.module.with_extension("so.new");
-        fs::copy(source, &staging).map_err(|error| fail(&format!("copy {}: {error}", source.display())))?;
-        fs::rename(&staging, &self.module).map_err(|error| fail(&format!("rename: {error}")))
+        replace_file(&self.module, source)
     }
 
     fn reload(&mut self, trigger: ReloadTrigger) {
@@ -285,6 +288,13 @@ impl ReloadScene {
         out!("retained={}", host::retired_libraries());
         crate::driver::maps_line();
     }
+}
+
+/// Replaces `dest` with a copy of `source` the way an editor or a build does: the new file is written beside it and renamed over it.
+fn replace_file(dest: &Path, source: &Path) -> Result<(), i32> {
+    let staging = dest.with_extension("new");
+    fs::copy(source, &staging).map_err(|error| fail(&format!("copy {}: {error}", source.display())))?;
+    fs::rename(&staging, dest).map_err(|error| fail(&format!("rename: {error}")))
 }
 
 fn number(text: &str) -> Result<u64, i32> {

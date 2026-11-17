@@ -45,7 +45,7 @@ use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use gnoblin_config::Language;
@@ -99,6 +99,8 @@ struct Counters {
 
 #[derive(Debug)]
 struct CacheState {
+    /// The toolchain's name: the part of every entry's name that says which build compiled it.
+    toolchain: String,
     /// The directory of this toolchain's files.
     dir: PathBuf,
     /// The directory the toolchains' directories are in, whose other children are pruned.
@@ -114,24 +116,33 @@ pub struct JsBytecodeCache {
     inner: Option<Arc<CacheState>>,
 }
 
+/// What the engine and the type stripper are: the versions of QuickJS-ng and of the oxc crates this build compiled in, read from
+/// the lock file by the build script. Empty when the build could not read them.
+#[must_use]
+pub const fn toolchain_versions() -> &'static str {
+    BUILD_TOOLCHAIN
+}
+
 /// The toolchain's name, or `None` when the build cannot name it. The build names the engine (`rquickjs-sys`, which
-/// fixes the QuickJS that is compiled in) and the oxc crates that strip the types.
-fn toolchain() -> Option<&'static str> {
-    static KEY: LazyLock<Option<String>> = LazyLock::new(|| {
-        if BUILD_TOOLCHAIN.is_empty() {
-            return None;
-        }
-        let mut hash = Sha256::new();
-        hash.update(MAGIC);
-        hash.update(BUILD_TOOLCHAIN.as_bytes());
-        hash.update([0]);
-        hash.update(env!("CARGO_PKG_VERSION").as_bytes());
-        hash.update([0]);
-        hash.update(usize::BITS.to_le_bytes());
-        hash.update(if cfg!(target_endian = "big") { [1] } else { [0] });
-        Some(hex(&hash.finalize()[..8]))
-    });
-    KEY.as_deref()
+/// fixes the QuickJS that is compiled in) and the oxc crates that strip the types. `runtime` is the version string of
+/// the runtime module that holds this engine (`gnoblin-runtime-js 0.2.0 ...`), empty for a build that links the engine
+/// into its own binary: bytecode is then named for the module that compiled it as well as for the engine, so two runtime
+/// libraries that differ in anything their version string says never read each other's files.
+fn toolchain(runtime: &str) -> Option<String> {
+    if BUILD_TOOLCHAIN.is_empty() {
+        return None;
+    }
+    let mut hash = Sha256::new();
+    hash.update(MAGIC);
+    hash.update(BUILD_TOOLCHAIN.as_bytes());
+    hash.update([0]);
+    hash.update(env!("CARGO_PKG_VERSION").as_bytes());
+    hash.update([0]);
+    hash.update(runtime.as_bytes());
+    hash.update([0]);
+    hash.update(usize::BITS.to_le_bytes());
+    hash.update(if cfg!(target_endian = "big") { [1] } else { [0] });
+    Some(hex(&hash.finalize()[..8]))
 }
 
 /// The one place bytecode enters the engine.
@@ -168,13 +179,20 @@ impl JsBytecodeCache {
     /// A cache whose files live under `root`, in the directory of this toolchain. `disabled` when the build cannot
     /// name its toolchain.
     pub fn in_dir(root: impl Into<PathBuf>) -> Self {
-        let Some(toolchain) = toolchain() else {
+        Self::in_dir_for("", root)
+    }
+
+    /// A cache for the runtime module whose version string is `runtime`, with its files under `root`. The version string is
+    /// part of the toolchain's name, so a runtime of another version has a directory of its own.
+    pub fn in_dir_for(runtime: &str, root: impl Into<PathBuf>) -> Self {
+        let Some(toolchain) = toolchain(runtime) else {
             return Self::disabled();
         };
         let parent: PathBuf = root.into();
         Self {
             inner: Some(Arc::new(CacheState {
                 dir: parent.join(format!("qjs-{toolchain}")),
+                toolchain,
                 parent,
                 counters: Counters::default(),
                 prepared: Mutex::new(false),
@@ -186,6 +204,12 @@ impl JsBytecodeCache {
     /// when `GNOBLIN_JS_CACHE` is `0` or when there is no place to put it. Only an absolute `XDG_CACHE_HOME` counts,
     /// as the XDG specification says.
     pub fn from_environment(env: &dyn Fn(&str) -> Option<String>) -> Self {
+        Self::from_environment_for("", env)
+    }
+
+    /// [`from_environment`](Self::from_environment) for the runtime module whose version string is `runtime`: the location is
+    /// the same, `$XDG_CACHE_HOME/gnoblin/js`, and the key adds the version string (see [`in_dir_for`](Self::in_dir_for)).
+    pub fn from_environment_for(runtime: &str, env: &dyn Fn(&str) -> Option<String>) -> Self {
         if env(CACHE_VARIABLE).as_deref() == Some("0") {
             return Self::disabled();
         }
@@ -197,7 +221,7 @@ impl JsBytecodeCache {
         let Some(base) = absolute("XDG_CACHE_HOME").or_else(|| absolute("HOME").map(|home| home.join(".cache"))) else {
             return Self::disabled();
         };
-        Self::in_dir(base.join("gnoblin").join("js"))
+        Self::in_dir_for(runtime, base.join("gnoblin").join("js"))
     }
 
     /// Whether modules are cached at all.
@@ -224,9 +248,9 @@ impl JsBytecodeCache {
 
     /// The name of the entry for a module `name` made from `text` of `kind`, or `None` without a cache.
     pub(crate) fn digest(&self, kind: Language, name: &str, text: &str) -> Option<Digest> {
-        self.inner.as_ref()?;
+        let inner = self.inner.as_ref()?;
         let mut hash = Sha256::new();
-        hash.update(toolchain()?.as_bytes());
+        hash.update(inner.toolchain.as_bytes());
         let tag = match kind {
             Language::TypeScript => "ts",
             Language::JavaScript => "js",
@@ -536,6 +560,54 @@ mod tests {
             checked_payload(&fs::read(inner.path(&digest)).expect("readable")),
             Some(&b"payload"[..])
         );
+    }
+
+    #[test]
+    fn the_runtime_modules_version_is_part_of_the_key_and_the_location_is_the_same() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let named = |runtime: &str| JsBytecodeCache::in_dir_for(runtime, dir.path());
+        let (a, again, b, none) = (
+            named("gnoblin-runtime-js 1"),
+            named("gnoblin-runtime-js 1"),
+            named("gnoblin-runtime-js 2"),
+            named(""),
+        );
+        let dir_of = |cache: &JsBytecodeCache| cache.dir().expect("enabled").to_owned();
+        assert_eq!(dir_of(&a), dir_of(&again), "the same runtime reads the same files");
+        assert_ne!(dir_of(&a), dir_of(&b), "a runtime of another version does not");
+        assert_ne!(
+            dir_of(&a),
+            dir_of(&none),
+            "nor does a build that links the engine itself"
+        );
+        for cache in [&a, &b, &none] {
+            assert_eq!(
+                dir_of(cache).parent(),
+                Some(dir.path()),
+                "every key lives under the one cache directory"
+            );
+        }
+        let entry = |cache: &JsBytecodeCache| cache.digest(Language::JavaScript, "m", "1").expect("a digest");
+        assert_ne!(
+            entry(&a),
+            entry(&b),
+            "the same module is another entry under another runtime"
+        );
+        assert_eq!(entry(&a), entry(&again));
+    }
+
+    #[test]
+    fn the_environment_names_the_location_whatever_the_runtime_is() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let base = dir.path().to_string_lossy().into_owned();
+        let env = move |name: &str| (name == "XDG_CACHE_HOME").then(|| base.clone());
+        let cache = JsBytecodeCache::from_environment_for("gnoblin-runtime-js 1", &env);
+        let found = cache.dir().expect("enabled");
+        assert_eq!(found.parent(), Some(dir.path().join("gnoblin/js").as_path()));
+        let off = JsBytecodeCache::from_environment_for("gnoblin-runtime-js 1", &|name: &str| {
+            (name == CACHE_VARIABLE).then(|| "0".to_owned())
+        });
+        assert!(!off.is_enabled());
     }
 
     #[test]

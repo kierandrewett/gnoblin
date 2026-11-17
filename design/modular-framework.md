@@ -1595,3 +1595,35 @@ type-stripper versions the build read from the lock file and the crate's own ver
 stripped input, the module name and the key, so two runtime libraries that differ in any of them never read each other's files, and a
 directory a different key wrote is removed when this one is first written. `JsBytecodeCache::in_dir_for` and `from_environment_for` take the
 version string; the engine linked into a binary keeps an empty one.
+
+### 23.4 Examples and tests
+
+- **Where the tests are.** `crates/gnoblin-runtime-js/tests/shells.rs` builds the core with its test driver, the launcher fixture and the
+  runtime library with nested `cargo` runs, and drives the reload scenario of the core's launcher over the fake compositor with a script as
+  the module (the same `NativeShell` the compositor edge runs). It covers: example 4 (std master-stack tiling, a relative import that binds
+  keys, the runtime the only extra mapping), example 5 (three files, types erased, columns and rows, an error reported at the `.ts` line of
+  the file that threw), example 7 (a `KeyBinding` subclass moves a window), the TypeScript half of example 11 (edit the shell and a module it
+  imports: the new module is in force, the windows are the same windows, the old generation's listener never runs again, the claim is made
+  once, nothing is mapped; a broken edit is reported at its line and the running shell stays; a fix loads as the next generation) and the
+  JavaScript half of example 17 (a shell that imports only `gnoblin-core` runs).
+- **The scenario driver** gained `put:DEST=SRC` (replace a file the script imports), `sleep:MS` (a watcher runs on the real clock) and
+  `writes:ID:KEY`. Its world's screen carries the node base's geometry beside `screen_*`, which is what a script reads as the output's.
+- **Not covered here.** A real client's Wayland connection across a reload (the fake compositor has no Wayland: what is proven is that no
+  window is destroyed or made again), and the session suites of `crates/gnoblin/tests` (`js_*`), which need `gnoblin ./shell.ts`.
+
+### 23.5 What is not done, and why
+
+- **M6.6, the cutover, is not done.** The old `--role runtime` path, `JsRoleRunner` and `gnoblin-js` in `BINARY_ROOTS` stay. The condition
+  was that the in-process JavaScript shell passes every `crates/gnoblin/tests/js_*` test through the new path with the flip landed. Neither
+  holds yet: the flip (`gnoblin_main`, `gnoblin ./shell.ts`) is a separate lane's open work, and the in-process role does not own the
+  configuration document, commit it to the compositor, report `autostart`, `config-accepted` and `ready` to the guardian, or answer
+  `gnoblinctl config reload` as `JsRoleRunner` does (it runs `owns_document: false`, over the owner socket's slot, session and idle links when
+  that socket exists). Those are the runner's duties, and they need the guardian's report descriptor and the session object's
+  `reload_requested` signal in the process of the compositor, which the flip's edge decides.
+- **Example 5's `gnoblinctl check`** needs the installed declarations (`gnoblinctl types init` with the two specifiers, M8.5). The shell
+  itself is checked here by running it.
+- **Example 17 (JavaScript), the missing-std error text.** The stock library is still compiled into the runtime (M6.3's installed data is
+  installed by dist and read as a fallback only), so there is no prefix without `gnoblin-std` to import from. A shell that imports only
+  `gnoblin-core` runs, which is the part of the example this lane can show; `gnoblin-std is not installed (looked in: ...)` belongs with the
+  step that makes the installed directory the source.
+- **`dist-check`** does not yet check the runtime library (one export `gnoruntime_entry_v1`, `NEEDED` the core only).

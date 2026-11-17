@@ -177,15 +177,39 @@ fn public_remote(remote: &str) -> String {
     format!("{scheme}://{host}{path}")
 }
 
-/// Where the sidecar may be, best first: the override, beside the executable's prefix, then the data directories.
-fn sidecar_paths(override_path: Option<&str>, executable: Option<&Path>, data_dirs: Option<&str>) -> Vec<PathBuf> {
+/// How many directories above the library the prefix may be: `<prefix>/<libdir>/gnoblin/<library>` is two above its directory,
+/// and a multiarch libdir (`lib/x86_64-linux-gnu`) makes it three.
+const PREFIX_SEARCH_DEPTH: usize = 4;
+
+/// Where the sidecar may be, best first: the override, then beside the prefix of the library this code runs in (the runtime
+/// library, `<prefix>/<libdir>/gnoblin/libgnoblin-runtime-js.so`, in a shipped build; every ancestor that holds the file is
+/// a candidate, so a relocated prefix and a multiarch libdir both work), then beside the executable's prefix, then the data
+/// directories. A runtime library is loaded into whatever process hosts it, so the executable says nothing about where the
+/// installation is.
+fn sidecar_paths(
+    override_path: Option<&str>,
+    library: Option<&Path>,
+    executable: Option<&Path>,
+    data_dirs: Option<&str>,
+) -> Vec<PathBuf> {
+    const SIDECAR: &str = "share/gnoblin/version.ini";
     let mut paths: Vec<PathBuf> = override_path
         .filter(|path| !path.is_empty())
         .map(PathBuf::from)
         .into_iter()
         .collect();
+    if let Some(library) = library {
+        paths.extend(
+            library
+                .ancestors()
+                .skip(1)
+                .take(PREFIX_SEARCH_DEPTH)
+                .filter(|ancestor| ancestor.parent().is_some())
+                .map(|ancestor| ancestor.join(SIDECAR)),
+        );
+    }
     if let Some(prefix) = executable.and_then(Path::parent).and_then(Path::parent) {
-        paths.push(prefix.join("share/gnoblin/version.ini"));
+        paths.push(prefix.join(SIDECAR));
     }
     let dirs = data_dirs
         .filter(|dirs| !dirs.is_empty())
@@ -225,8 +249,10 @@ fn version_record(sidecar: &str) -> String {
 fn read_version() -> String {
     let env = |name: &str| std::env::var(name).ok();
     let executable = std::env::current_exe().ok();
+    let library = gnoblin_shell_host::runtime::library_containing(read_version as fn() -> String as *const ());
     let paths = sidecar_paths(
         env("GNOBLIN_VERSION_METADATA_FILE").as_deref(),
+        library.as_deref(),
         executable.as_deref(),
         env("XDG_DATA_DIRS").as_deref(),
     );
@@ -333,6 +359,7 @@ mod tests {
     fn the_sidecar_is_looked_for_at_the_override_then_the_prefix_then_the_data_dirs() {
         let paths = sidecar_paths(
             Some("/o/version.ini"),
+            None,
             Some(Path::new("/usr/bin/gnoblin")),
             Some("/a:/b"),
         );
@@ -346,5 +373,36 @@ mod tests {
                 "/b/gnoblin/version.ini"
             ]
         );
+    }
+
+    #[test]
+    fn a_runtime_library_finds_the_sidecar_of_its_own_prefix_not_the_hosts() {
+        // The runtime is loaded into a process whose executable is anywhere; its own place says where the install is.
+        let paths = sidecar_paths(
+            None,
+            Some(Path::new(
+                "/opt/gn/lib/x86_64-linux-gnu/gnoblin/libgnoblin-runtime-js.so",
+            )),
+            Some(Path::new("/somewhere/else/bin/host")),
+            None,
+        );
+        let paths: Vec<&str> = paths.iter().map(|path| path.to_str().unwrap_or("")).collect();
+        assert_eq!(
+            &paths[..4],
+            [
+                "/opt/gn/lib/x86_64-linux-gnu/gnoblin/share/gnoblin/version.ini",
+                "/opt/gn/lib/x86_64-linux-gnu/share/gnoblin/version.ini",
+                "/opt/gn/lib/share/gnoblin/version.ini",
+                "/opt/gn/share/gnoblin/version.ini",
+            ]
+        );
+        assert_eq!(paths[4], "/somewhere/else/share/gnoblin/version.ini");
+    }
+
+    #[test]
+    fn a_library_directly_under_the_root_has_no_root_candidate_beyond_the_root_itself() {
+        let paths = sidecar_paths(None, Some(Path::new("/libx.so")), None, Some("/a"));
+        let paths: Vec<&str> = paths.iter().map(|path| path.to_str().unwrap_or("")).collect();
+        assert_eq!(paths, ["/a/gnoblin/version.ini"]);
     }
 }

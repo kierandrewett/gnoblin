@@ -1553,18 +1553,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-fixture-runtime-test"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+]
+
+[[package]]
 name = "gnoblin-fixture-shell-bindings"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",
  "gnoblin-std",
-]
-
-[[package]]
-name = "gnoblin-fixture-runtime-test"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-core-abi",
 ]
 
 [[package]]
@@ -1903,6 +1903,16 @@ dependencies = [
  "smithay",
  "tempfile",
  "wayland-client",
+]
+
+[[package]]
+name = "gnoblin-runtime-js"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+ "gnoblin-js",
+ "gnoblin-log",
+ "gnoblin-tree-client",
 ]
 
 [[package]]

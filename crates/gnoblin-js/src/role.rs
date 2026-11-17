@@ -77,6 +77,11 @@ pub struct JsRoleConfig {
     pub commits: Option<JsCommitLog>,
     /// How many diagnostics the role keeps (see [`JsRole::diagnostics`]). A test that floods the role sets it low.
     pub diagnostics_kept: usize,
+    /// Whether a change the watcher sees is left to the host. On, the role does not reload itself: it notes that a reload is
+    /// wanted ([`JsRole::take_reload_wanted`]) and the host, which owns the shell's lifecycle, asks for one and calls
+    /// [`JsRole::reload_now`] when it takes it. The runtime library does this so that a script reloads through the loader
+    /// that every language shares. Off, the role reloads inside its own turn, as the runtime role always has.
+    pub external_reload: bool,
 }
 
 impl JsRoleConfig {
@@ -98,6 +103,18 @@ impl JsRoleConfig {
             owns_document: false,
             commits: None,
             diagnostics_kept: DIAGNOSTICS_KEPT,
+            external_reload: false,
+        }
+    }
+
+    /// Resolves [`JsConsoleSite::Environment`] against `env`: the console follows the owner socket's directory, and
+    /// `GNOBLIN_JS_CONSOLE=0` turns it off. Any other site is left as it is.
+    pub fn resolve_console(&mut self, env: &dyn Fn(&str) -> Option<String>) {
+        if self.console == JsConsoleSite::Environment {
+            self.console = match console_socket_path(env) {
+                Ok(site) if console_enabled(env) => JsConsoleSite::At(site),
+                _ => JsConsoleSite::Off,
+            };
         }
     }
 }
@@ -113,6 +130,76 @@ pub struct JsRoleLinks {
     pub session: Option<Box<dyn JsSessionLink>>,
     /// Opens the connection for the compositor's idle state when a script first wants it (`gnoblin.idle`).
     pub idle: Option<JsIdleConnector>,
+}
+
+impl JsRoleLinks {
+    /// The role's three connections beside the tree, opened on the owner socket at `path`: slots, the configuration document and
+    /// the session (the idle connection is opened when a script first wants it). Slots and the document travel on the `gnoblin`
+    /// namespace, which the tree link does not carry, so each is a connection of its own. Without one the shell still runs: the
+    /// compositor's own dialogs serve every request and the document keeps what the retired host committed, so a failure to open
+    /// either is reported and not fatal.
+    pub fn over_owner_socket(path: &std::path::Path, version: Version) -> Self {
+        let slots: Option<Box<dyn SlotLink>> = match ClientSlotLink::connect(path, version) {
+            Ok(link) => Some(Box::new(link)),
+            Err(error) => {
+                log::warn!(
+                    area = "shell-vm",
+                    "the shell has no slot connection ({error}); the built-in dialogs serve prompts"
+                );
+                None
+            }
+        };
+        let config: Option<Box<dyn JsConfigLink>> = match JsClientConfigLink::connect(path, version) {
+            Ok(link) => Some(Box::new(link)),
+            Err(error) => {
+                log::warn!(
+                    area = "shell-vm",
+                    "the shell has no configuration connection ({error}); its document settings are not committed"
+                );
+                None
+            }
+        };
+        let session: Option<Box<dyn JsSessionLink>> = match JsClientSessionLink::connect(path, version) {
+            Ok(link) => Some(Box::new(link)),
+            Err(error) => {
+                log::warn!(
+                    area = "shell-vm",
+                    "the shell has no session connection ({error}); gnoblin.session calls are refused"
+                );
+                None
+            }
+        };
+        let idle_path = path.to_path_buf();
+        let idle: JsIdleConnector = Box::new(move || {
+            JsClientIdleLink::connect(&idle_path, version).map(|link| Box::new(link) as Box<dyn JsIdleLink>)
+        });
+        Self {
+            slots,
+            config,
+            session,
+            idle: Some(idle),
+        }
+    }
+
+    /// The links over the owner socket `env` names (`GNOBLIN_IPC_SOCKET`, else the runtime directory's default socket), or none
+    /// at all when there is no such socket to name, as in a process with no compositor socket. The role is the owner by the
+    /// credentials of its process, so a shell that runs inside the compositor is one too.
+    pub fn from_environment(env: &dyn Fn(&str) -> Option<String>) -> Self {
+        let version = {
+            let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
+            Version::new(major, minor, patch)
+        };
+        match socket_path(env) {
+            Ok(path) => Self::over_owner_socket(&path, version),
+            Err(error) => {
+                log::warn!(
+                    area = "shell-vm",
+                    "the shell has no owner socket ({error}); it runs without slots, a configuration document or session calls"
+                );
+                Self::default()
+            }
+        }
+    }
 }
 
 /// The reloader's commit: it hands a generation that evaluated cleanly to the role, which swaps it into the
@@ -136,6 +223,10 @@ pub struct JsRole {
     entry: PathBuf,
     /// The console socket, polled before each frame; `None` when it is off or could not be made.
     console: Option<JsConsole>,
+    /// Whether the host reloads for the watcher ([`JsRoleConfig::external_reload`]).
+    external_reload: bool,
+    /// A change the watcher saw that the host has not been told of.
+    reload_wanted: bool,
 }
 
 impl JsRole {
@@ -147,13 +238,7 @@ impl JsRole {
     /// connection is the one that can attach the tree.
     pub fn connect(env: &dyn Fn(&str) -> Option<String>, mut config: JsRoleConfig) -> Result<Self, JsShellError> {
         let path = socket_path(env).map_err(JsShellError::Link)?;
-        if config.console == JsConsoleSite::Environment {
-            // The console follows the owner socket's directory, and `GNOBLIN_JS_CONSOLE=0` turns it off.
-            config.console = match console_socket_path(env) {
-                Ok(site) if console_enabled(env) => JsConsoleSite::At(site),
-                _ => JsConsoleSite::Off,
-            };
-        }
+        config.resolve_console(env);
         let transport = UnixTransport::connect(&path)
             .map_err(|error| JsShellError::Link(format!("cannot connect to {}: {error}", path.display())))?;
         let version = {
@@ -166,54 +251,7 @@ impl JsRole {
             .into_stream()
             .map_err(|error| JsShellError::Link(error.to_string()))?;
         let link = SocketTreeLink::new(stream).map_err(|error| JsShellError::Link(error.to_string()))?;
-        // Slots and the configuration document travel on the `gnoblin` namespace, which the tree socket does not
-        // carry, so the shell holds two more owner connections. Without one the shell still runs: the compositor's
-        // own dialogs serve every request and the document keeps what the retired host committed, so a failure to
-        // open either is reported and not fatal.
-        let slots: Option<Box<dyn SlotLink>> = match ClientSlotLink::connect(&path, version) {
-            Ok(link) => Some(Box::new(link)),
-            Err(error) => {
-                log::warn!(
-                    area = "shell-vm",
-                    "the shell has no slot connection ({error}); the built-in dialogs serve prompts"
-                );
-                None
-            }
-        };
-        let document: Option<Box<dyn JsConfigLink>> = match JsClientConfigLink::connect(&path, version) {
-            Ok(link) => Some(Box::new(link)),
-            Err(error) => {
-                log::warn!(
-                    area = "shell-vm",
-                    "the shell has no configuration connection ({error}); its document settings are not committed"
-                );
-                None
-            }
-        };
-        let session: Option<Box<dyn JsSessionLink>> = match JsClientSessionLink::connect(&path, version) {
-            Ok(link) => Some(Box::new(link)),
-            Err(error) => {
-                log::warn!(
-                    area = "shell-vm",
-                    "the shell has no session connection ({error}); gnoblin.session calls are refused"
-                );
-                None
-            }
-        };
-        let idle_path = path.clone();
-        let idle: JsIdleConnector = Box::new(move || {
-            JsClientIdleLink::connect(&idle_path, version).map(|link| Box::new(link) as Box<dyn JsIdleLink>)
-        });
-        Self::over_link(
-            Box::new(link),
-            JsRoleLinks {
-                slots,
-                config: document,
-                session,
-                idle: Some(idle),
-            },
-            config,
-        )
+        Self::over_link(Box::new(link), JsRoleLinks::over_owner_socket(&path, version), config)
     }
 
     /// Boots the shell over `link` and loads the user's entry. With no entry file, or an entry that fails to
@@ -277,6 +315,8 @@ impl JsRole {
             ended: None,
             entry: config.entry.clone(),
             console: None,
+            external_reload: config.external_reload,
+            reload_wanted: false,
         };
         if let JsConsoleSite::At(site) = &config.console {
             // A shell without a console is still a shell: the reason is logged and the loop goes on.
@@ -335,7 +375,11 @@ impl JsRole {
             return Err(error);
         }
         if let Some(request) = self.watcher.as_ref().and_then(|w| w.next_request(Duration::ZERO)) {
-            self.staged(|reloader| reloader.reload_for(&request));
+            if self.external_reload {
+                self.reload_wanted = true;
+            } else {
+                self.staged(|reloader| reloader.reload_for(&request));
+            }
         }
         // Console expressions run here, between frames: never beside one, so what they read and write is the state
         // the frame after them sees.
@@ -362,6 +406,12 @@ impl JsRole {
             }
         }
         Ok(())
+    }
+
+    /// Whether the watcher saw a change since the last call, once. Only a role built with [`JsRoleConfig::external_reload`]
+    /// sets it; the host answers it by reloading through its own lifecycle and calling [`reload_now`](Self::reload_now).
+    pub fn take_reload_wanted(&mut self) -> bool {
+        std::mem::take(&mut self.reload_wanted)
     }
 
     /// Reloads from disk because the user asked (`gnoblinctl config reload`) or at startup. A deliberate retry

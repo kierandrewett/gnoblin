@@ -55,6 +55,11 @@ pub(crate) fn world() -> FakeCompositor {
             ("screen_y", double(0.0)),
             ("screen_width", double(1000.0)),
             ("screen_height", double(800.0)),
+            // The node base's geometry, which the script runtimes read as the output's (`Output.width`).
+            ("x", double(0.0)),
+            ("y", double(0.0)),
+            ("width", double(1000.0)),
+            ("height", double(800.0)),
             ("primary", MirrorValue::Bool(true)),
         ],
     );

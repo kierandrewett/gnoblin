@@ -1,0 +1,38 @@
+[package]
+name = "gnoblin-runtime-js"
+description = "libgnoblin-runtime-js: the JavaScript and TypeScript runtime of the shell host. A cdylib that exports gnoruntime_entry_v1 and runs .js, .mjs, .ts and .mts shells inside the compositor process, over the core's relayed tree link."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[lib]
+name = "gnoblin_runtime_js"
+# The library the loader opens by file name (`libgnoblin-runtime-js.so`, installed from `libgnoblin_runtime_js.so`). Nothing links it
+# as a Rust library (`impl-sealed`).
+crate-type = ["cdylib"]
+
+[dependencies]
+# Only the ABI's types: the runtime reaches the core through the table `start` hands it.
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+# The engine and the shell over it: QuickJS, the TypeScript stripper, the loader, the generation, the role and the bytecode cache.
+gnoblin-js = { path = "../gnoblin-js" }
+# The shell side of the tree protocol: the link trait the engine drives and the byte form the core relays it in.
+gnoblin-tree-client = { path = "../gnoblin-tree-client" }
+# The log is a per-library singleton; this library's events are forwarded to the core's.
+gnoblin-log = { path = "../gnoblin-log" }
+
+[build-dependencies]
+# The link stub that records `NEEDED libgnoblin-core.so.1`, for the one core function the table has no counterpart of
+# (`gnoblin_last_error`).
+gnoblin-core-abi = { path = "../gnoblin-core-abi", features = ["build-support"] }
+
+# The workspace table forbids unsafe code; a library that exports a C entry and calls through a C table needs it. Only the modules
+# that open with `#![allow(unsafe_code)]` and a SAFETY note use it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

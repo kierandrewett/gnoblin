@@ -92,6 +92,19 @@ gnoblin.clients.addListener(new FocusLog());
 - `import { ... } from "gnoblin-core"` gives you the classes. The `gnoblin` object is also a global, so a module needs no import to
   use it.
 
+## Examples
+
+Three small shells in `examples/` show the pieces, and a test in `crates/gnoblin-runtime-js/tests/shells.rs` runs each one
+as it is:
+
+- `examples/04-js-esm` is a JavaScript shell of ES modules. It imports `gnoblin-core` and `gnoblin-std`, adds one workspace
+  with the stock master-stack layout, and binds its launcher keys in a module of its own (`./keys.js`).
+- `examples/05-ts-types` is a TypeScript shell of three files: the types, the geometry and the shell. The types are erased
+  when each file loads, and an error is reported at the line of the `.ts` file that wrote it, not at the stripped
+  JavaScript.
+- `examples/07-script-binding` is a custom input binding written in TypeScript: a `KeyBinding` subclass that moves a window
+  when its chord is pressed.
+
 ## Save and see it
 
 Saving `shell.ts`, or any file it imports, reloads the shell after a short pause. The windows you have open stay where they

@@ -43,6 +43,10 @@ const DEFAULT_LIBDIR: &str = "lib";
 const LIBDIR_TOKEN: &str = "@LIBDIR@";
 /// The manifest records a symlink as this prefix followed by its target, where a file has its sha256.
 const LINK_PREFIX: &str = "symlink:";
+/// What cargo names the JavaScript runtime's `cdylib` (`libgnoblin_runtime_js.so`); dist installs it as
+/// `libgnoblin-runtime-js.so`, the name the loader looks for.
+const RUNTIME_JS_BUILT_NAME: &str = "libgnoblin_runtime_js.so";
+
 /// What cargo names the core's `cdylib` (`libgnoblin_core_impl.so`); dist installs it under the SONAME's name.
 const CORE_BUILT_NAME: &str = "libgnoblin_core_impl.so";
 
@@ -215,6 +219,13 @@ const ITEMS: &[InstallItem] = &[
         major: gnoblin_core_abi::ABI_MAJOR,
         minor: gnoblin_core_abi::ABI_MINOR,
         patch: gnoblin_core_abi::ABI_PATCH,
+    },
+    // The JavaScript and TypeScript runtime, when the build wrote it: the loader opens it by the file name
+    // `libgnoblin-runtime-js.so` in the core's library directory when a `.js`, `.mjs`, `.ts` or `.mts` shell is selected. It is
+    // optional: a build, and a package, without it still runs native shells.
+    InstallItem::BuiltIfPresent {
+        name: RUNTIME_JS_BUILT_NAME,
+        to: "@LIBDIR@/gnoblin/libgnoblin-runtime-js.so",
     },
     InstallItem::Generated {
         to: "include/gnoblin/core.h",
@@ -1290,6 +1301,22 @@ mod tests {
             target_dir: target.to_owned(),
             libdir: libdir.to_owned(),
         }
+    }
+
+    #[test]
+    fn the_javascript_runtime_is_installed_under_the_name_the_loader_looks_for_only_when_it_was_built() {
+        let dir = scratch("dist-plan-runtime");
+        let built = fake_build(&dir, None, None);
+        let without = plan(&repo_root(), &built.join("release"), "lib64").unwrap();
+        assert!(without.iter().all(|entry| !entry.to.contains("runtime-js")));
+        fs::write(built.join("release").join(RUNTIME_JS_BUILT_NAME), b"fake runtime").unwrap();
+        let with = plan(&repo_root(), &built.join("release"), "lib64").unwrap();
+        let runtime = with
+            .iter()
+            .find(|entry| entry.to == "lib64/gnoblin/libgnoblin-runtime-js.so")
+            .expect("the runtime is planned");
+        assert_eq!(runtime.mode, FileMode::Program);
+        assert!(matches!(runtime.content, PlannedContent::File(_)));
     }
 
     #[test]

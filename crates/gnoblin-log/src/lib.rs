@@ -48,6 +48,9 @@ mod json;
 #[cfg(feature = "pipeline")]
 pub mod pipeline;
 
+/// Hands a library's events to a host that owns the log, for a library loaded into a process that already logs.
+pub mod forward;
+
 /// The journald sink: one structured entry per event in the systemd journal. Needs the `journal`
 /// feature.
 #[cfg(feature = "journal")]

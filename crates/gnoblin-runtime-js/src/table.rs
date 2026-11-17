@@ -1,0 +1,172 @@
+//! The core as the runtime reaches it: the function table `start` hands over, and the one export the table has no function for.
+//!
+//! Every call a runtime makes into the core is here, so the `unsafe` is in one module and each call states what makes it sound.
+#![allow(unsafe_code)]
+
+use std::cell::Cell;
+use std::os::fd::{FromRawFd as _, OwnedFd};
+
+use gnoblin_core_abi::{self as abi, GnoblinApi, GnoblinBuf, GnoblinCtx, LastErrorFn};
+
+unsafe extern "C" {
+    fn gnoblin_last_error(buf: *mut u8, cap: usize) -> usize;
+}
+
+// The declaration above must have the signature the ABI crate publishes.
+const _: LastErrorFn = gnoblin_last_error;
+
+/// The text the core left for the last failure on this thread.
+pub(crate) fn last_error() -> String {
+    // SAFETY: with a null buffer the call only reports the text's length.
+    let len = unsafe { gnoblin_last_error(core::ptr::null_mut(), 0) };
+    if len == 0 {
+        return String::new();
+    }
+    let mut bytes = vec![0_u8; len + 1];
+    // SAFETY: `bytes` is writable for `len + 1` bytes, which is the capacity passed.
+    unsafe { gnoblin_last_error(bytes.as_mut_ptr(), bytes.len()) };
+    bytes.truncate(len);
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// What the core said about a call that failed: its code and the text it left.
+pub(crate) fn failure(what: &str, code: i32) -> String {
+    let text = last_error();
+    if text.is_empty() {
+        format!("{what} failed with code {code}")
+    } else {
+        text
+    }
+}
+
+/// The core's table, which lives for the rest of the process (the core is linked with `-z nodelete`).
+#[derive(Clone, Copy)]
+pub(crate) struct CoreTable {
+    api: &'static GnoblinApi,
+}
+
+impl CoreTable {
+    /// The table a runtime's `start` was handed.
+    ///
+    /// # Safety
+    ///
+    /// `api` must be null or the pointer the loader passes to `start`: the core's static table.
+    pub(crate) unsafe fn from_table(api: *const GnoblinApi) -> Option<Self> {
+        // SAFETY: the caller guarantees `api` is null or the core's static table, which is never unmapped, so it is valid for
+        // `'static`.
+        let api: Option<&'static GnoblinApi> = unsafe { api.as_ref() };
+        api.map(|api| Self { api })
+    }
+
+    /// Writes `text` to the core's log at `level` (`LOG_*`), tagged with the generation of `ctx`.
+    pub(crate) fn log(self, ctx: GnoblinCtx, level: u32, text: &str) {
+        // SAFETY: `text` is a live string for the call.
+        unsafe { (self.api.log)(ctx, level, text.as_ptr(), text.len()) };
+    }
+
+    /// Sets the text `gnoblin_last_error` returns, so the loader can say why a `start` failed.
+    pub(crate) fn set_last_error(self, ctx: GnoblinCtx, text: &str) {
+        // SAFETY: `text` is a live string for the call.
+        unsafe { (self.api.set_last_error)(ctx, text.as_ptr(), text.len()) };
+    }
+
+    /// Reports a panic the runtime caught, so the core logs it with the generation.
+    pub(crate) fn report_panic(self, ctx: GnoblinCtx, text: &str) {
+        // SAFETY: `text` is a live string for the call.
+        unsafe { (self.api.report_panic)(ctx, text.as_ptr(), text.len()) };
+    }
+
+    /// Asks the host to reload this shell. Any thread.
+    pub(crate) fn request_reload(self, ctx: GnoblinCtx) -> i32 {
+        // SAFETY: the function takes only the context.
+        unsafe { (self.api.request_reload)(ctx) }
+    }
+
+    /// Opens the compositor's link as the shell.
+    pub(crate) fn link_open(self, ctx: GnoblinCtx) -> Result<(), String> {
+        // SAFETY: the function takes the context and a mode constant.
+        match unsafe { (self.api.tree_link_open)(ctx, abi::ATTACH_HOLDER) } {
+            abi::E_OK => Ok(()),
+            code => Err(failure("tree_link_open", code)),
+        }
+    }
+
+    /// Sends the attach request.
+    pub(crate) fn link_attach(self, ctx: GnoblinCtx, version: u64) -> Result<(), String> {
+        // SAFETY: the function takes the context and a number.
+        match unsafe { (self.api.tree_link_attach)(ctx, version) } {
+            abi::E_OK => Ok(()),
+            code => Err(failure("tree_link_attach", code)),
+        }
+    }
+
+    /// Sends one encoded transaction.
+    pub(crate) fn link_send(self, ctx: GnoblinCtx, bytes: &[u8]) -> Result<(), String> {
+        // SAFETY: `bytes` is a live slice for the call.
+        match unsafe { (self.api.tree_link_send)(ctx, bytes.as_ptr(), bytes.len()) } {
+            abi::E_OK => Ok(()),
+            code => Err(failure("tree_link_send", code)),
+        }
+    }
+
+    /// Takes the encoded batch of everything that arrived, copying it out and freeing the core's buffer.
+    pub(crate) fn link_recv(self, ctx: GnoblinCtx) -> Result<Vec<u8>, String> {
+        let mut buf = GnoblinBuf {
+            ptr: core::ptr::null_mut(),
+            len: 0,
+            cap: 0,
+        };
+        // SAFETY: `buf` is a live local the call fills in.
+        let code = unsafe { (self.api.tree_link_recv)(ctx, &raw mut buf) };
+        if code != abi::E_OK {
+            return Err(failure("tree_link_recv", code));
+        }
+        let bytes = if buf.ptr.is_null() {
+            Vec::new()
+        } else {
+            // SAFETY: the core filled `buf` with `len` readable bytes it allocated.
+            unsafe { std::slice::from_raw_parts(buf.ptr, buf.len) }.to_vec()
+        };
+        // SAFETY: `buf` is the buffer the core returned, freed once through its own function.
+        unsafe { (self.api.buf_free)(&raw mut buf) };
+        Ok(bytes)
+    }
+
+    /// A descriptor that turns readable when the link has something to take, owned by the caller; `None` when the link has none.
+    pub(crate) fn link_fd(self, ctx: GnoblinCtx) -> Option<OwnedFd> {
+        // SAFETY: the function takes only the context.
+        let fd = unsafe { (self.api.tree_link_fd)(ctx) };
+        // SAFETY: a non-negative result is a duplicate the core made for the caller, who owns it.
+        (fd >= 0).then(|| unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+}
+
+thread_local! {
+    /// The context the runtime's log lines are tagged with: the generation that started last.
+    static LOG_CTX: Cell<GnoblinCtx> = const { Cell::new(0) };
+}
+
+/// Sets the context log lines are tagged with.
+pub(crate) fn set_log_context(ctx: GnoblinCtx) {
+    LOG_CTX.with(|cell| cell.set(ctx));
+}
+
+/// The context log lines are tagged with.
+pub(crate) fn log_context() -> GnoblinCtx {
+    LOG_CTX.with(Cell::get)
+}
+
+thread_local! {
+    /// The table this thread's shell was started with, for the entry points that are not handed it (`turn`, `shutdown`).
+    static REMEMBERED: Cell<Option<CoreTable>> = const { Cell::new(None) };
+}
+
+/// Keeps `table` for the entry points that are not handed one.
+pub(crate) fn remember(table: CoreTable) {
+    REMEMBERED.with(|cell| cell.set(Some(table)));
+}
+
+/// The table `start` was handed on this thread, once it has run.
+pub(crate) fn remembered() -> Option<CoreTable> {
+    REMEMBERED.with(Cell::get)
+}

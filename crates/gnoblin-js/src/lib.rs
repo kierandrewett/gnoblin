@@ -63,7 +63,9 @@ mod workspaces;
 mod xr;
 
 pub use budget::{ENTRY_BUDGET, FRAME_BUDGET, STAGE_BUDGET, WALL_BACKSTOP_FACTOR};
-pub use bytecode::{CACHE_VARIABLE, JsBytecodeCache, JsCacheStats, MAX_ENTRIES as CACHE_MAX_ENTRIES};
+pub use bytecode::{
+    CACHE_VARIABLE, JsBytecodeCache, JsCacheStats, MAX_ENTRIES as CACHE_MAX_ENTRIES, toolchain_versions,
+};
 pub use config::{JsClientConfigLink, JsCommitLog, JsCommitRecord, JsConfigCommit, JsConfigLink, JsLinkError};
 pub use console::{
     CONSOLE_FILE, CONSOLE_SOCKET, CONSOLE_VARIABLE, DEFAULT_MAX_BYTES, JsConsole, JsConsoleError, JsConsoleSite,

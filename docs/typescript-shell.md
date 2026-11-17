@@ -139,8 +139,9 @@ again: about 6 ms in place of about 40 ms for the stock library and a small `she
 
 - **Where.** `$XDG_CACHE_HOME/gnoblin/js/`, or `~/.cache/gnoblin/js/` without the variable. The files are private to
   you.
-- **Why it is never stale.** Each file is named by a hash of the module's text and of the shell's build, so an edit or
-  an upgrade reads nothing old. A file that is damaged is compiled again and replaced.
+- **Why it is never stale.** Each file is named by a hash of the module's text, and the directory it is in by a hash of
+  the shell's build: the QuickJS and type stripper versions and, when the runtime is a library, its version string. An edit
+  or an upgrade reads nothing old. A file that is damaged is compiled again and replaced.
 - **Clearing and turning it off.** Delete the directory, or set `GNOBLIN_JS_CACHE=0`.
 
 ## Which shell runs
@@ -149,9 +150,26 @@ This build runs TypeScript and JavaScript shells, and [Where the config lives](#
 one. `GNOBLIN_SHELL_VM` is not read. To work on the stock library, point `GNOBLIN_JS_STOCK_DIR` at a directory to
 read it from instead of the copy built into the binary.
 
-> **Planned change.** This section describes the shell as it runs today. Shells are moving to loadable modules: a native `.so`,
-> Python, JavaScript or TypeScript, with the stock library installed as data instead of built into the binary. TypeScript will then
-> be one of four shell languages, not the only one. The plan is in `design/modular-framework.md`.
+### How a script is run
+
+A `.js`, `.mjs`, `.ts` or `.mts` shell is run by the JavaScript runtime. That is a library, `libgnoblin-runtime-js.so`, in
+`<libdir>/gnoblin/`, which the shell loader opens when it is asked to run such a file.
+
+The loader finds the library by the file's extension, opens it once, and asks it for a new generation of your file each time
+the file loads. The loader is the one every language shares. A script is staged beside the running one, takes over only when
+it evaluated cleanly, and logs `generation N active` as a native shell does.
+
+- **The runtime is optional.** Without `libgnoblin-runtime-js.so` a `.ts` file is refused with the library's name and the
+  directories searched. `GNOBLIN_RUNTIME_DIR` names a directory to look in first.
+- **The engine is in the library.** QuickJS and the type stripper are not part of the `gnoblin` binary, so a session that
+  runs no script never loads them.
+- **The shell is in the compositor's process.** The runtime reaches the compositor's tree through the core library and keeps
+  its own copy of it, as the script runtime always has. A script that hangs is interrupted at its budget, as before.
+
+The session still starts `shell.ts` as the runtime role of the guardian.
+
+Running a file inside the compositor with `gnoblin ./shell.ts` arrives with the compositor's in-process shell. The plan is
+in `design/modular-framework.md`, section 23.
 
 ### If you still have an `init.lua`
 
@@ -354,6 +372,12 @@ same text.
 
 Set `GNOBLIN_JS_WATCH=0` to turn the watcher off, for a config directory on a file system that cannot be watched. The shell
 then reloads only when asked.
+
+When the JavaScript runtime library runs the file, it watches every file the running generation loaded and asks the shell
+loader for a reload when one changes.
+
+The loader evaluates the new generation beside the old one and swaps it in only when it loaded. An edit that does not load
+leaves the running shell and reports the file, line and column.
 
 ## Debugging
 
