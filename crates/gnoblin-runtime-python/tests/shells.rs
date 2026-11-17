@@ -358,7 +358,6 @@ fn example_8_a_python_tiler_places_raw_window_nodes_and_makes_no_node_of_its_own
         "{}",
         run.dump()
     );
-    assert!(run.stdout.contains("order=[42, 20, 21, 40]"), "{}", run.dump());
     assert!(run.stdout.contains("terminal_started=true"), "{}", run.dump());
     // No scene graph, no std: the one extra mapping of the process is the runtime, and the interpreter is its dependency.
     assert_eq!(num(&run.stdout, "new_nodes", "new_nodes"), 0, "{}", run.dump());

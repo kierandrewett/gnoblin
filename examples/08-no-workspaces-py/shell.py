@@ -3,13 +3,14 @@
     gnoblin ./shell.py
 
 The windows of the tree are the whole model. The shell tiles them master-and-stack on the primary screen by writing each window's
-rectangle, in the order the compositor stacks them (the first window of the root's children is the master), and it makes no node of
-its own: no canvas, no camera, no view. There is no workspace because there is nothing a workspace would hold that the tree does not.
+rectangle, the window the user chose as the master first and the others in the order they opened, and it makes no node of its own:
+no canvas, no camera, no view. The shell does not reorder the tree: the order of the windows is its own. There is no workspace because
+there is nothing a workspace would hold that the tree does not.
 
 - one window fills the screen; with more, the master takes the left half and the others split the right half;
 - a window opening or closing tiles the rest again, in the same transaction;
-- Super+m makes the window that has the keyboard the master;
-- Super+Return starts a terminal.
+- <Super>m makes the window that has the keyboard the master;
+- <Super>Return starts a terminal.
 """
 
 from gnoblin import Screen, gnoblin
@@ -24,8 +25,15 @@ def work_area():
     return (0.0, 0.0, 1920.0, 1080.0)
 
 
+# The window the user chose as the master, if one; a closed one is simply not found and the oldest leads again.
+master = None
+
+
 def retile():
-    windows = gnoblin.windows
+    windows = list(gnoblin.windows)
+    if master in windows:
+        windows.remove(master)
+        windows.insert(0, master)
     for window, (x, y, width, height) in zip(windows, tiles(work_area(), len(windows))):
         window.x, window.y, window.width, window.height = x, y, width, height
 
@@ -36,16 +44,16 @@ def _changed(_window):
     retile()
 
 
-@gnoblin.bind("Super+m")
+@gnoblin.bind("<Super>m")
 def promote():
-    # The master is the first of the root's children: lowering a window to the bottom of the stack makes it the first.
+    global master
     focused = next((window for window in gnoblin.windows if window.focused), None)
     if focused is not None:
-        focused.insert_into(gnoblin.root, 0)
+        master = focused
         retile()
 
 
-@gnoblin.bind("Super+Return")
+@gnoblin.bind("<Super>Return")
 def terminal():
     gnoblin.spawn("foot")
 
