@@ -22,6 +22,7 @@ mod profiles;
 mod stage;
 #[cfg(test)]
 mod test_fixtures;
+mod watch_shell;
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -47,6 +48,9 @@ subcommands:
                      install or remove the session tree; see xtask/src/dist.rs
   dist-check ...     check an installed or staged tree: core SONAME and exports, NEEDED entries and how they resolve,
                      links, header, pkg-config, manifest and layout, glibc floor; see xtask/src/dist_check.rs
+  watch-shell PROJECT [--once] [--release] [--debounce MS] [-- CARGO_ARGS...]
+                     rebuild a native shell project when its source changes, so a compositor watching the library reloads it;
+                     a failed build leaves the library and prints the compiler's output; see xtask/src/watch_shell.rs
   stage [--release | --profile NAME] [--no-build]
                      build gnoblin-core-impl and name it libgnoblin-core.so.1 beside the binary, so `cargo build -p gnoblin`
                      output runs; see xtask/src/stage.rs
@@ -67,6 +71,7 @@ fn main() -> ExitCode {
         ("logging", []) => logging::run(),
         ("native-libs", []) => native_libs::run(),
         ("stage", _) => stage::run(&rest),
+        ("watch-shell", _) => watch_shell::run(&rest),
         ("docs-parity", []) => docs_parity::run(),
         ("compat-report", []) => compat_report::run(false),
         ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),

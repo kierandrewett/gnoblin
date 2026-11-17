@@ -655,9 +655,12 @@ start of `gnoblin`, with the shell unchanged (example 12).
 
 ### 8.4 Tooling
 
-`gnoblinctl shell watch [DIR]` is optional: it runs `cargo build` on source change under `DIR` (the `notify` crate is already a dependency) and
-the compositor's own `--watch` then reloads the new artifact. A failed build leaves the artifact untouched, so the running shell stays. The
-compositor never runs cargo.
+`cargo xtask watch-shell PROJECT [--once] [--release] [--debounce MS] [-- CARGO_ARGS...]` is the developer loop (built in lane Reload; a
+`gnoblinctl shell watch` can wrap it later). It builds the project with `BuildStep`, watches its Rust source and manifests with the
+shell host's watcher, and rebuilds on change. **The trigger is the library file.** A running compositor holds a `ModuleWatch` on the
+module it loaded (`--watch`, Startup lane) and requests a reload when the file changes, so the tool needs no socket, no trigger file and
+no second process to talk to. A failed build leaves the library as it was, so the running shell stays; the tool prints the compiler's
+output and keeps it in a `ReloadController` for `gnoblinctl shell status`. The compositor never runs cargo.
 
 ## 9. Core and std
 
@@ -1294,15 +1297,25 @@ which the installed core (ABI 1.0) does not provide ...` (a symbol the core lack
   post of a staged generation runs after the takeover).
 - **Watching (M5.2, M5.5 library parts).** `ModuleWatch` watches the module file (and a launcher file's target, a symlink at both
   ends) and turns a change into `ReloadTrigger::Files`; `watch::shell_files()` and `with_any_extension` are the widened relevance
-  sets (`.so`, `.py`, `.ts/.mts/.js/.mjs`, launcher `.toml`). `BuildStep::cargo(project)` is the build step. A `cargo xtask
-watch-shell` command and the compositor's `--watch` wiring are **not done** (Startup).
+  sets (`.so`, `.py`, `.ts/.mts/.js/.mjs`, launcher `.toml`). `BuildStep::cargo(project)` is the build step; `cargo xtask watch-shell`
+  (section 20.1) drives it. The compositor's `--watch` wiring is **not done** (Startup).
 - **Example 10 and its test.** `examples/10-hot-reload` is built twice from one source in a temporary project (the two constants
   edited between the builds) and reloaded three times by the scenario driver (`gnoblin-fixture-launcher reload MODULE STEP...`,
   `driver_reload.rs`): window ids, geometry and claims are untouched, no window is made or destroyed, the badge is the same node,
   the toast is destroyed, the kept count continues (the next window uses the new step at the old count), a press counts once, the
   helper program starts once, the retired generations' counters stand still and each dropped exactly what it registered.
 - **Missing for the real compositor (Flip/Validation).** The fake has no Wayland: the test proves the compositor-owned nodes are
-  neither destroyed nor made again, not that a client's socket survives. It also does not prove the shell-requested reload
-  (`request_reload` from a chord callback), which only the core unit test covers (the example's `Super+Shift+r` chord did not
-  deliver in the fake; not investigated). Needed: the in-process edge calling `serve_requests`, `gnoblinctl shell reload|status`
+  neither destroyed nor made again, not that a client's socket survives. The shell-requested reload is proven through the chord
+  (section 20.1). Needed: the in-process edge calling `serve_requests`, `gnoblinctl shell reload|status`
   over the socket, `--watch` and the config's `max_retained`.
+
+### 20.1 Follow-up: the chord-requested reload and `watch-shell`
+
+- **The shell-requested reload works.** The first version of the example-10 test pressed `Super+Shift+r` straight after the scenario's `serve`
+  step and saw nothing. The cause was the scenario, not the core: a new generation's claims go out with its first transaction, so until
+  that turn runs the compositor still lists the old generation's chord claim, and the fake's `claim_id` returned it; the press went to a
+  retired registration and was dropped. `serve` now runs the turn (as `reload` did), and `example_10_asks_for_its_own_reload_with_a_chord_even_straight_after_a_reload`
+  drives the real path: key press, claim, callback, `request_reload`, controller, `serve_requests`. In a real compositor the same window
+  exists for one transaction round trip after a takeover: a key pressed inside it reaches the old claim and is dropped.
+- **`cargo xtask watch-shell`** is built (`xtask/src/watch_shell.rs`); the trigger is the library file, see 8.4. Its unit test runs the watch loop
+  over a stand-in build command: an edit rebuilds, a broken edit leaves the library and is reported, a fix rebuilds and clears the failure.

@@ -5163,12 +5163,14 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core-abi",
  "gnoblin-schema",
+ "gnoblin-shell-host",
  "proc-macro2",
  "quote",
  "serde",
  "serde_json",
  "sha2",
  "syn 2.0.119",
+ "tempfile",
  "toml",
 ]
 

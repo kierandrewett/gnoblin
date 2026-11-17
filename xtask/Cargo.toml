@@ -30,6 +30,11 @@ serde.workspace = true
 toml.workspace = true
 # The install manifest records a sha256 for every file the install writes.
 sha2.workspace = true
+# `watch-shell` rebuilds a native shell with the shell host's build step and watches its source with the host's file watcher.
+gnoblin-shell-host = { path = "../crates/gnoblin-shell-host" }
+
+[dev-dependencies]
+tempfile = "3.23.0"
 
 [lints]
 workspace = true

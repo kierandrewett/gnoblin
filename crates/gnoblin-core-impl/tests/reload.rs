@@ -826,3 +826,51 @@ fn example_18_the_retire_limit_refuses_the_reload_before_anything_is_copied_and_
     let maps = run.lines(Some("full"), "maps ")[0];
     assert_eq!(word(maps, "shell_mappings"), "3", "{maps}");
 }
+
+#[test]
+fn example_10_asks_for_its_own_reload_with_a_chord_even_straight_after_a_reload() {
+    // The shell's own request: a chord the shell claimed runs its callback, which calls `request_reload`; nothing but the key press
+    // goes through the compositor, and the controller holds the request until the shell thread serves it. The press comes straight
+    // after a reload is served, which is the case that failed in the first version of this test: the new generation's claims go out
+    // with its first transaction, and the scenario pressed the chord by the claim the compositor still listed (the old one) because
+    // `serve` did not run the turn that sends them. `serve` runs it now, as `reload` does.
+    let stage = stage();
+    let module = live(stage, "example-10-chord", &stage.example_v1);
+    let marker = stage.dir.join("live/example-10-chord/helper-started");
+    let _ = fs::remove_file(&marker);
+    let run = scenario_run(
+        stage,
+        &module,
+        &[
+            "request",
+            "serve",
+            "chord:Super+Shift+r",
+            "mark:asked",
+            "status",
+            "serve",
+            "chord:Super+Shift+r",
+            "mark:again",
+            "status",
+        ],
+        &[("GNOBLIN_TEST_MARKER", marker.as_path())],
+    );
+    assert_eq!(run.code, 0, "{}", run.dump());
+    let asked = run.section(Some("asked"));
+    assert!(
+        asked.contains(&"status a reload is waiting (the shell asked for it)"),
+        "{}",
+        run.dump()
+    );
+    assert!(
+        run.lines(Some("asked"), "reload ")[0].starts_with("reload ok generation=3 previous=2 "),
+        "{}",
+        run.dump()
+    );
+    // And again from the generation the chord's own request produced.
+    assert!(
+        run.section(Some("again"))
+            .contains(&"status a reload is waiting (the shell asked for it)"),
+        "{}",
+        run.dump()
+    );
+}

@@ -138,7 +138,11 @@ impl ReloadScene {
                 out!("request already_waiting={already}");
             }
             "serve" => match self.shell.serve_requests() {
-                Some(outcome) => self.print_reload(&outcome),
+                Some(outcome) => {
+                    self.print_reload(&outcome);
+                    // The new generation's claims go out with its first transaction, as after `reload`.
+                    self.pump();
+                }
                 None => out!("serve nothing_waiting=true"),
             },
             "build" => self.build(argument),
