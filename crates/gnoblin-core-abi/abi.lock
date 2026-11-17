@@ -47,6 +47,9 @@ const | VALUE_NODE | u32 = 6 | 1.0
 const | VALUE_LIST | u32 = 7 | 1.0
 const | VALUE_TEXTS | u32 = 8 | 1.0
 const | VALUE_EFFECTS | u32 = 9 | 1.0
+const | EFFECT_BLUR | u32 = 1 | 1.0
+const | EFFECT_SHADOW | u32 = 2 | 1.0
+const | EFFECT_BORDER | u32 = 3 | 1.0
 const | VALUE_BYTES | u32 = 10 | 1.0
 const | VALUE_SECRET | u32 = 11 | 1.0
 const | VALUE_RECORD | u32 = 12 | 1.0
@@ -122,6 +125,38 @@ field | GnoblinValue.reserved | u32 @12 +4 | 1.0
 field | GnoblinValue.bits | u64 @16 +8 | 1.0
 field | GnoblinValue.ptr | *const c_void @24 +8 | 1.0
 field | GnoblinValue.len | usize @32 +8 | 1.0
+
+struct | GnoblinEffect | size 152 align 8 extensible | 1.0
+
+field | GnoblinEffect.size | u32 @0 +4 | 1.0
+field | GnoblinEffect.kind | u32 @4 +4 | 1.0
+field | GnoblinEffect.downscale | u32 @8 +4 | 1.0
+field | GnoblinEffect.passes | u32 @12 +4 | 1.0
+field | GnoblinEffect.inset | u32 @16 +4 | 1.0
+field | GnoblinEffect.frame | u32 @20 +4 | 1.0
+field | GnoblinEffect.noise | f64 @24 +8 | 1.0
+field | GnoblinEffect.brightness | f64 @32 +8 | 1.0
+field | GnoblinEffect.contrast | f64 @40 +8 | 1.0
+field | GnoblinEffect.saturation | f64 @48 +8 | 1.0
+field | GnoblinEffect.offset_x | f64 @56 +8 | 1.0
+field | GnoblinEffect.offset_y | f64 @64 +8 | 1.0
+field | GnoblinEffect.blur_radius | f64 @72 +8 | 1.0
+field | GnoblinEffect.spread | f64 @80 +8 | 1.0
+field | GnoblinEffect.width | f64 @88 +8 | 1.0
+field | GnoblinEffect.offset | f64 @96 +8 | 1.0
+field | GnoblinEffect.algorithm | GnoblinStr @104 +16 | 1.0
+field | GnoblinEffect.tint | GnoblinStr @120 +16 | 1.0
+field | GnoblinEffect.colour | GnoblinStr @136 +16 | 1.0
+
+struct | GnoblinTiming | size 48 align 8 extensible | 1.0
+
+field | GnoblinTiming.size | u32 @0 +4 | 1.0
+field | GnoblinTiming.reserved | u32 @4 +4 | 1.0
+field | GnoblinTiming.seconds | f64 @8 +8 | 1.0
+field | GnoblinTiming.delay | f64 @16 +8 | 1.0
+field | GnoblinTiming.tween | GnoblinNode @24 +8 | 1.0
+field | GnoblinTiming.samples | *const f64 @32 +8 | 1.0
+field | GnoblinTiming.n_samples | usize @40 +8 | 1.0
 
 struct | GnoblinEvent | size 40 align 8 extensible | 1.0
 
@@ -271,7 +306,7 @@ field | GnoblinRuntimeEntry.activate | Option<unsafe extern "C" fn(ctx: GnoblinC
 field | GnoblinRuntimeEntry.abandon | Option<unsafe extern "C" fn(ctx: GnoblinCtx)> @88 +8 | 1.0
 field | GnoblinRuntimeEntry.turn | Option<unsafe extern "C" fn(ctx: GnoblinCtx, timeout_ms: u32) -> i32> @96 +8 | 1.0
 
-struct | GnoblinApi | size 392 align 8 extensible | 1.0
+struct | GnoblinApi | size 400 align 8 extensible | 1.0
 
 field | GnoblinApi.size | u32 @0 +4 | 1.0
 field | GnoblinApi.major | u32 @4 +4 | 1.0
@@ -319,8 +354,9 @@ field | GnoblinApi.proc_kill | unsafe extern "C" fn(ctx: GnoblinCtx, process: Gn
 field | GnoblinApi.state_put | unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, bytes: *const u8, len: usize, version: u32) -> i32 @328 +8 | 1.0
 field | GnoblinApi.state_get | unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, out: *mut GnoblinBuf, version: *mut u32) -> i32 @336 +8 | 1.0
 field | GnoblinApi.node_adopt | unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, name: *const u8, name_len: usize, flags: u32, out: *mut GnoblinNode) -> i32 @344 +8 | 1.0
-field | GnoblinApi.tree_link_open | unsafe extern "C" fn(ctx: GnoblinCtx, mode: u32) -> i32 @352 +8 | 1.0
-field | GnoblinApi.tree_link_attach | unsafe extern "C" fn(ctx: GnoblinCtx, version: u64) -> i32 @360 +8 | 1.0
-field | GnoblinApi.tree_link_send | unsafe extern "C" fn(ctx: GnoblinCtx, bytes: *const u8, len: usize) -> i32 @368 +8 | 1.0
-field | GnoblinApi.tree_link_recv | unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinBuf) -> i32 @376 +8 | 1.0
-field | GnoblinApi.tree_link_fd | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @384 +8 | 1.0
+field | GnoblinApi.write_set_timed | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, prop: u32, value: *const GnoblinValue, timing: *const GnoblinTiming) -> i32 @352 +8 | 1.0
+field | GnoblinApi.tree_link_open | unsafe extern "C" fn(ctx: GnoblinCtx, mode: u32) -> i32 @360 +8 | 1.0
+field | GnoblinApi.tree_link_attach | unsafe extern "C" fn(ctx: GnoblinCtx, version: u64) -> i32 @368 +8 | 1.0
+field | GnoblinApi.tree_link_send | unsafe extern "C" fn(ctx: GnoblinCtx, bytes: *const u8, len: usize) -> i32 @376 +8 | 1.0
+field | GnoblinApi.tree_link_recv | unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinBuf) -> i32 @384 +8 | 1.0
+field | GnoblinApi.tree_link_fd | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @392 +8 | 1.0

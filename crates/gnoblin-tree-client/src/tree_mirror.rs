@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 
 use std::fmt::Write as _;
 
-use gnoblin_proto::tree::effect;
+pub use gnoblin_proto::tree::effect;
 use gnoblin_secret::SecretText;
 
 /// A node id. Zero is nil.

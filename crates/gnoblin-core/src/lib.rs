@@ -43,6 +43,7 @@ mod input;
 mod owned;
 mod process;
 mod sys;
+mod timed;
 mod tree;
 mod value;
 
@@ -60,6 +61,7 @@ pub use gnoblin_macros::main;
 pub use input::{ChordEvent, ChordState, DragPhase, GestureEvent, GestureKind, GrabScope, PointerButton, PointerDrag};
 pub use owned::Value;
 pub use process::{Command, Process, ProcessExit, Signal, Stream};
+pub use timed::{Effect, EffectKind, Timing};
 pub use tree::{Adoption, Answer, Client, Node, PendingCall, Rect, Window};
 pub use value::{CatalogMember, Class, MemberKind, NodeId, ShellValue, SignalEvent};
 

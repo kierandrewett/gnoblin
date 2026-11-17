@@ -16,7 +16,7 @@ use std::cell::RefCell;
 use std::slice;
 
 use gnoblin_core_abi::{self as abi, GnoblinNode, GnoblinNodes, GnoblinStr, GnoblinValue};
-use gnoblin_tree_client::tree_mirror::MirrorValue;
+use gnoblin_tree_client::tree_mirror::{MirrorValue, effect};
 
 use crate::catalog::DefaultDef;
 use crate::memory;
@@ -456,9 +456,68 @@ pub(crate) unsafe fn read_value(raw: *const GnoblinValue, want: u32) -> Result<M
                 .collect::<Result<Vec<String>, _>>()
                 .map(MirrorValue::Texts)
         }
-        abi::VALUE_EFFECTS => Err(ValueError::Unsupported(
-            "effects are not carried across the ABI yet (a later minor defines the record)".to_owned(),
-        )),
+        abi::VALUE_EFFECTS if raw.kind == abi::VALUE_EFFECTS => {
+            if raw.len == 0 {
+                return Ok(MirrorValue::Effects(Vec::new()));
+            }
+            if raw.ptr.is_null() {
+                return Err(ValueError::Malformed(
+                    "a list of effects with a length and no data".to_owned(),
+                ));
+            }
+            // SAFETY: the caller guarantees an effects value points at `len` `GnoblinEffect`s.
+            let items = unsafe { slice::from_raw_parts(raw.ptr.cast::<abi::GnoblinEffect>(), raw.len) };
+            let text = |text: &GnoblinStr| -> Result<String, ValueError> {
+                if text.len == 0 {
+                    return Ok(String::new());
+                }
+                if text.ptr.is_null() {
+                    return Err(ValueError::Malformed("a string with a length and no data".to_owned()));
+                }
+                // SAFETY: the caller guarantees each string is `len` readable bytes.
+                let bytes = unsafe { slice::from_raw_parts(text.ptr, text.len) };
+                String::from_utf8(bytes.to_vec())
+                    .map_err(|error| ValueError::Malformed(format!("text that is not UTF-8 ({error})")))
+            };
+            items
+                .iter()
+                .map(|item| {
+                    if (item.size as usize) < size_of::<abi::GnoblinEffect>() {
+                        return Err(ValueError::Malformed(format!(
+                            "an effect of {} bytes is too small",
+                            item.size
+                        )));
+                    }
+                    let kind = match item.kind {
+                        abi::EFFECT_BLUR => "blur",
+                        abi::EFFECT_SHADOW => "shadow",
+                        abi::EFFECT_BORDER => "border",
+                        other => return Err(ValueError::Type(format!("{other} is not an effect kind"))),
+                    };
+                    Ok(effect::Properties {
+                        kind: kind.to_owned(),
+                        downscale: u64::from(item.downscale),
+                        passes: u64::from(item.passes),
+                        algorithm: text(&item.algorithm)?,
+                        noise: item.noise,
+                        brightness: item.brightness,
+                        contrast: item.contrast,
+                        saturation: item.saturation,
+                        tint: text(&item.tint)?,
+                        offset_x: item.offset_x,
+                        offset_y: item.offset_y,
+                        blur_radius: item.blur_radius,
+                        spread: item.spread,
+                        colour: text(&item.colour)?,
+                        width: item.width,
+                        offset: item.offset,
+                        inset: item.inset != 0,
+                        frame: item.frame != 0,
+                    })
+                })
+                .collect::<Result<Vec<effect::Properties>, _>>()
+                .map(MirrorValue::Effects)
+        }
         abi::VALUE_SECRET | abi::VALUE_RECORD => Err(ValueError::Unsupported(format!(
             "a {} value cannot be written to a tree property",
             kind_name(want)
@@ -650,10 +709,10 @@ mod tests {
                 read_value(&list, abi::VALUE_TEXTS),
                 Ok(MirrorValue::Texts(vec!["a".to_owned(), "bc".to_owned()]))
             );
-            assert!(matches!(
+            assert_eq!(
                 read_value(&scalar(abi::VALUE_EFFECTS, 0), abi::VALUE_EFFECTS),
-                Err(ValueError::Unsupported(_))
-            ));
+                Ok(MirrorValue::Effects(Vec::new()))
+            );
         }
     }
 

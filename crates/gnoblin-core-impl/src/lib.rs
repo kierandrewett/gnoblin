@@ -49,6 +49,9 @@ mod values;
 mod driver;
 
 #[cfg(feature = "test-driver")]
+mod driver_anim;
+
+#[cfg(feature = "test-driver")]
 mod driver_examples;
 
 #[cfg(feature = "test-driver")]

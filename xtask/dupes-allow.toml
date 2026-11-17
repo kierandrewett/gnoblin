@@ -2147,3 +2147,195 @@ left = "gnoblin-input::GesturePhase"
 right = "gnoblin-std::GestureStage"
 kind = "same-shape"
 reason = "the four steps of a gesture (begin, update, end, cancel) as the SDK tells a binding; the compositor-side type names the steps of its own input pipeline, and the SDK tier cannot depend on it"
+
+[[allow]]
+left = "gnoblin-std-impl::Radii"
+right = "gnoblin-std::CornerRadius"
+kind = "same-shape"
+reason = "one corner radius or four, on both sides of the C ABI: the library checks it, the SDK's caller states it"
+
+[[allow]]
+left = "gnoblin-std-impl::Prop"
+right = "gnoblin-std::PropValue"
+kind = "same-shape"
+reason = "a number, a boolean, three numbers, text or a node on both sides of the C ABI: the library stages it, the SDK's caller states it"
+
+[[allow]]
+left = "gnoblin-render::Shadow"
+right = "gnoblin-std::Shadow"
+kind = "same-name"
+reason = "the renderer's shadow pass and the SDK's style shadow are different things: one is drawn, the other is what a style asks for"
+
+[[allow]]
+left = "gnoblin-shell-host::Staged"
+right = "gnoblin-std-impl::Staged"
+kind = "same-name"
+reason = "a shell-host process that is staged to start, and a property write a transition holds: unrelated"
+
+[[allow]]
+left = "gnoblin-std-impl::Entry"
+right = "gnoblinctl::Entry"
+kind = "same-name"
+reason = "a style list element, and a generated file's entry in the command line tool: unrelated"
+
+[[allow]]
+left = "gnoblin-std-impl::Easing"
+right = "gnoblin-std::Easing"
+kind = "same-name"
+reason = "the library holds the curve and its solver, the SDK names it for the caller and asks the library for the values"
+
+[[allow]]
+left = "gnoblin-std::Filter"
+right = "gnoblinctl::Filter"
+kind = "same-name"
+reason = "a style filter, and a log filter of the command line tool: unrelated"
+
+[[allow]]
+left = "gnoblin-std-impl::Transition"
+right = "gnoblin-std::Transition"
+kind = "same-name"
+reason = "the library's record of a transition and the SDK's handle on it by id"
+
+[[allow]]
+left = "gnoblin-core::EffectKind"
+right = "gnoblin-render::Pass"
+kind = "same-shape"
+reason = "blur, shadow and border: the SDK's name for the kinds of effect a shell writes, and the renderer's passes; the SDK tier cannot depend on the renderer"
+
+[[allow]]
+left = "gnoblin-a11y::Effect"
+right = "gnoblin-core::Effect"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-animation::Easing"
+right = "gnoblin-std-impl::Easing"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-animation::Easing"
+right = "gnoblin-std::Easing"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-authority::Effect"
+right = "gnoblin-core::Effect"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-backend-drm::Applied"
+right = "gnoblin-std-impl::Applied"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-backend-drm::Transition"
+right = "gnoblin-std-impl::Transition"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-backend-drm::Transition"
+right = "gnoblin-std::Transition"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-compositor::Effect"
+right = "gnoblin-core::Effect"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-config::Store"
+right = "gnoblin-std-impl::Store"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-core::Effect"
+right = "gnoblin-lock::Effect"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-core::Effect"
+right = "gnoblin-output::Effect"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-core::Effect"
+right = "gnoblin-session::Effect"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-core::Timing"
+right = "gnoblin-render::Timing"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-input-eis::Options"
+right = "gnoblin-std-impl::Options"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-input-eis::Scope"
+right = "gnoblin-std-impl::Scope"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-input::Scope"
+right = "gnoblin-std-impl::Scope"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-model::Filter"
+right = "gnoblin-std::Filter"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-render-frame::Layer"
+right = "gnoblin-std-impl::Layer"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-render-frame::View"
+right = "gnoblin-std::View"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-render::Border"
+right = "gnoblin-std::Border"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-render::Curve"
+right = "gnoblin-std-impl::Curve"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-render::Projection"
+right = "gnoblin-std::Projection"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
+left = "gnoblin-render::Scene"
+right = "gnoblin-std::Scene"
+kind = "same-name"
+reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"

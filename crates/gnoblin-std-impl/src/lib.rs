@@ -19,6 +19,11 @@
 //!   table) and the floating placement; `fit` refits windows to a new work area.
 //! - `turn`: the pass that runs once after the listeners of a dispatch turn: it tells the listeners what changed, computes the dirty
 //!   workspaces that are shown, writes their placements, and shows and hides windows.
+//! - `animation`: the five easing curves, the staging of a transition's writes, and the engine that sends them as timed writes joined
+//!   to one `tween` node and follows the compositor's word on how each ended.
+//! - `style`: scopes of style (every client, a workspace's, a selection's, one client's), the cascade, and what a resolved style
+//!   becomes on a node: effects (shadows, borders, the backdrop blur), opacity and corner radius.
+//! - `scene` and `camera`: nodes, views, `Camera3D` and the flat `Camera2D`, with the checks of the TypeScript scene.
 //!
 //! The library reaches the compositor only through the installed core, as the shell's guest: it holds the same handle on the
 //! generation that the shell does, made by `gnoblin_core::private::gnoblin_for`. It names the core SDK and the two ABI crates and
@@ -26,6 +31,8 @@
 //! it as a Rust library (`impl-sealed`): a shell that does carries a second copy of the object model, which is the failure
 //! `cargo xtask dist-check` exists to catch.
 
+mod animation;
+mod camera;
 mod client_state;
 mod collection;
 mod desks;
@@ -36,8 +43,10 @@ mod fit;
 mod floating;
 mod layout;
 mod nodes;
+mod scene;
 mod splits;
 mod state;
+mod style;
 mod table;
 mod turn;
 mod workspace;

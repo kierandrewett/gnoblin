@@ -146,6 +146,10 @@ impl<T: Member> Collection<T> {
         self.id
     }
 
+    pub(crate) fn std_ref(&self) -> &Std {
+        &self.std
+    }
+
     /// The number of members.
     ///
     /// # Errors

@@ -77,6 +77,7 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     tree_link_send: api_tree_link_send,
     tree_link_recv: api_tree_link_recv,
     tree_link_fd: api_tree_link_fd,
+    write_set_timed: api_write_set_timed,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -436,6 +437,19 @@ unsafe extern "C" fn api_write_set(
     guard(abi::E_PANIC, "write_set", || {
         // SAFETY: the table's contract passes `value` as a readable `GnoblinValue` valid for the call.
         unsafe { tree::set(ctx, node, prop, value, seconds) }
+    })
+}
+
+unsafe extern "C" fn api_write_set_timed(
+    ctx: GnoblinCtx,
+    node: GnoblinNode,
+    prop: u32,
+    value: *const GnoblinValue,
+    timing: *const abi::GnoblinTiming,
+) -> i32 {
+    guard(abi::E_PANIC, "write_set_timed", || {
+        // SAFETY: the table's contract passes `value` and `timing` as readable structs valid for the call.
+        unsafe { tree::set_timed(ctx, node, prop, value, timing) }
     })
 }
 

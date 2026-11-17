@@ -1,0 +1,19 @@
+[package]
+name = "gnoblin-fixture-shell-anim"
+description = "Test fixture: a std shell whose chords run scripted transitions, style changes and scene writes, so a test can hold their tree writes to the TypeScript library's."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "shell_anim"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+gnoblin-std = { path = "../../../gnoblin-std" }
+
+[lints]
+workspace = true

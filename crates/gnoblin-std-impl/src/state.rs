@@ -202,6 +202,12 @@ pub(crate) struct State {
     /// The window that had the keyboard at the end of the last turn.
     pub(crate) last_focus: Option<NodeId>,
     pub(crate) counters: Counters,
+    /// The transition engine: staged writes, tracks and what owns them.
+    pub(crate) anim: crate::animation::engine::AnimState,
+    /// Styles: what each scope sets and what was applied to each client.
+    pub(crate) styles: crate::style::cascade::StyleState,
+    /// The scene nodes the shell made.
+    pub(crate) scene: crate::scene::SceneState,
 }
 
 /// One generation's library state and the flags that decide what runs when.
@@ -297,6 +303,11 @@ impl Std {
                 },
             };
             reg.call(&event);
+            if notice.kind == gnoblin_std_abi::STD_EVENT_TRANSITION_FINISHED {
+                // A transition ends once: the listener has heard it and goes.
+                let removed = self.st.borrow_mut().regs.remove(&id);
+                drop(removed);
+            }
         }
     }
 }

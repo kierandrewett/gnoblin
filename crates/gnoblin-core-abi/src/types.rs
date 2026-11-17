@@ -114,8 +114,14 @@ abi_consts! {
     pub const VALUE_LIST: u32 = 7;
     /// `GnoblinValue.kind`: a list of strings: `ptr` points at `len` `GnoblinStr`s.
     pub const VALUE_TEXTS: u32 = 8;
-    /// `GnoblinValue.kind`: a list of effect records (a later minor defines the record).
+    /// `GnoblinValue.kind`: a list of effects: `ptr` points at `len` `GnoblinEffect`s (a node's `effects`). Only a write carries it.
     pub const VALUE_EFFECTS: u32 = 9;
+    /// `GnoblinEffect.kind`: a backdrop blur.
+    pub const EFFECT_BLUR: u32 = 1;
+    /// `GnoblinEffect.kind`: a drop shadow.
+    pub const EFFECT_SHADOW: u32 = 2;
+    /// `GnoblinEffect.kind`: a border stroke.
+    pub const EFFECT_BORDER: u32 = 3;
     /// `GnoblinValue.kind`: opaque bytes in `ptr` and `len`.
     pub const VALUE_BYTES: u32 = 10;
     /// `GnoblinValue.kind`: secret text in `ptr` and `len`. Never logged; the receiver copies it out.
@@ -242,6 +248,68 @@ abi_structs! {
         pub ptr: *const c_void,
         /// Element or byte count for `ptr`.
         pub len: usize,
+    }
+
+    /// One effect of a node's `effects` list, the `effect` record of the schema flattened: a parameter the kind does not use is
+    /// ignored. Text fields are borrowed for the call. A write of `effects` passes a `GnoblinValue` of kind `VALUE_EFFECTS` whose
+    /// `ptr` is an array of these; the list replaces the node's whole list.
+    pub struct GnoblinEffect {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `EFFECT_BLUR`, `EFFECT_SHADOW` or `EFFECT_BORDER`.
+        pub kind: u32,
+        /// Blur: the backdrop is sampled at `1 / downscale` of full resolution.
+        pub downscale: u32,
+        /// Blur: the number of passes.
+        pub passes: u32,
+        /// Border: the stroke lies inside the silhouette when nonzero.
+        pub inset: u32,
+        /// Shadow: the shadow follows the whole frame (titlebar included) when nonzero.
+        pub frame: u32,
+        /// Blur: grain from 0 to 1.
+        pub noise: f64,
+        /// Blur: brightness multiplier, 1 leaves it.
+        pub brightness: f64,
+        /// Blur: contrast multiplier, 1 leaves it.
+        pub contrast: f64,
+        /// Blur: saturation multiplier, 1 leaves it.
+        pub saturation: f64,
+        /// Shadow: horizontal offset in logical pixels.
+        pub offset_x: f64,
+        /// Shadow: vertical offset in logical pixels.
+        pub offset_y: f64,
+        /// Shadow: blur radius in logical pixels.
+        pub blur_radius: f64,
+        /// Shadow: how far the shadow grows before blurring.
+        pub spread: f64,
+        /// Border: stroke width in logical pixels.
+        pub width: f64,
+        /// Border: distance of the stroke from the silhouette's edge.
+        pub offset: f64,
+        /// Blur: the kernel name (`kawase`); empty reads as the compositor's default.
+        pub algorithm: GnoblinStr,
+        /// Blur: the tint as `#rrggbb` or `#rrggbbaa`; empty is none.
+        pub tint: GnoblinStr,
+        /// Shadow and border: the colour as `#rrggbb` or `#rrggbbaa`.
+        pub colour: GnoblinStr,
+    }
+
+    /// How a timed write plays: the argument of `write_set_timed`. A struct that starts with `size` may grow.
+    pub struct GnoblinTiming {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The duration in seconds, above zero.
+        pub seconds: f64,
+        /// Seconds the compositor holds the start value before the animation begins; zero is none, at most 3600.
+        pub delay: f64,
+        /// The `tween` node whose `progress`, `paused` and `reverse` drive the track, or zero for none.
+        pub tween: GnoblinNode,
+        /// The curve: `n_samples` (at least two) progress values from 0 to 1, each in `[0, 1]`, spread evenly over the duration.
+        pub samples: *const f64,
+        /// Number of samples.
+        pub n_samples: usize,
     }
 
     /// One signal delivery. Valid until the callback it is passed to returns.
@@ -684,6 +752,10 @@ abi_structs! {
         /// destroyed. Nodes made by `write_create`, and nodes the compositor owns (windows, screens, seats), are never
         /// destroyed by a reload. Shell thread.
         pub node_adopt: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, name: *const u8, name_len: usize, flags: u32, out: *mut GnoblinNode) -> i32,
+        /// Sets a property of `node` to `value` as a timed write: the compositor plays the change over `timing.seconds` along
+        /// the curve of `timing.samples`, after `timing.delay`, as part of `timing.tween` when one is named. The property must be
+        /// `MEMBER_ANIMATED`. Writes are queued like `write_set`'s. Shell thread.
+        pub write_set_timed: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, prop: u32, value: *const GnoblinValue, timing: *const GnoblinTiming) -> i32,
 
         // ---- the relayed link: a runtime that keeps its own mirror drives the compositor's link as bytes ---------------
 

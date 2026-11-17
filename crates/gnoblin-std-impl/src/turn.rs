@@ -62,10 +62,20 @@ pub(crate) fn turn(std: &Rc<Std>) {
             st.adopt_orphans();
         }
         st.flush_geometry();
+        st.anim_flush();
     }
     std.drain();
     layout_pass(std, &g);
+    std.st.borrow_mut().apply_styles();
     std.drain();
+}
+
+/// The passes of a turn that a staged transition runs against its staged state, so what they write is staged with the callback's:
+/// the layout pass, then the style pass.
+pub(crate) fn settle(std: &Rc<Std>) {
+    let g = std.g();
+    layout_pass(std, &g);
+    std.st.borrow_mut().apply_styles();
 }
 
 /// A slide the pass started: the windows have been moved to where it begins, and these are the writes that carry them home.

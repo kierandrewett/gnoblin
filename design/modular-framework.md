@@ -1560,6 +1560,46 @@ properties (tiled, visible, depth, rotation, scale) of the named windows must be
   layout's first placement ignores the frame inset. (6) Frame inset, size limits and snap are tested natively (unit tests, and the move, resize and
   snap scenarios without an inset), not against the TypeScript library, whose host takes them from the decorations module.
 
+### 22.8 Animation, styling and cameras (M7.6, lane StdAnimStyle)
+
+What the lane built against the fake compositor, and what it did not. The proof is `crates/gnoblin-std-impl/tests/anim_style.rs`: one
+17-step scenario (`fixtures/shell-anim` natively, the same calls as TypeScript through `JsShell`) over the fake compositor, and every
+write of every step, the timed ones with duration, delay, 33-sample curve and `tween` node, must be the same list on both sides (node ids
+renamed by creation order; the order within a step is not compared).
+
+- **Two additions to the core ABI**, both additive, both std-below-core (they are what the TypeScript std already sent through the tree
+  client): `write_set_timed(ctx, node, prop, value, GnoblinTiming*)` carries the curve, delay and `tween` node of a timed write (`write_set`
+  keeps its straight line), and `GnoblinEffect` with `VALUE_EFFECTS` lets a shell write a node's `effects` (blur, shadow, border). The core
+  SDK has `Node::set_timed` and `Node::set_effects`. `abi.lock` of both ABIs was regenerated.
+- **Transitions** (`animation/`). `transition_begin` starts staging; the shell's closure runs outside every library borrow and stages writes
+  with `transition_set` (checked at once), and the library's own writes (`nodes.rs`: the layout pass, the style pass) are staged too
+  because `nodes::write_*` and the reads consult the thread-local staging; `transition_commit` runs those passes against the staged state,
+  ends staging and sends each write as a timed one when the duration is above zero, the property is one the tree animates (`x`, `y`, `z`,
+  `width`, `height`, `opacity`, `rotation`, `scale`) and the node is drawn (a node with no size has its place written at once), all joined to
+  one `tween` node made for the transition. Ownership of a property, the end of a track (`tree.track_ended`), a transition that lost its last
+  property, a run back to the start (start values restored), cancel (end values written, tween destroyed) and reduced motion (the seat's
+  `reduced_motion`) follow `transition/engine.ts`. The finished listener is a one-shot `STD_EVENT_TRANSITION_FINISHED` notice delivered
+  with the turn's other notices. The five easings are the TypeScript solver step for step.
+- **Styles** (`style/`). Scopes (the root collection, a workspace's clients, a `where` selection, one client), lists replaced whole, the
+  resolve per property with its origin string, `map_style` to effects (backdrop blur first, shadows last to first, borders), opacity and
+  corner radius, the `notes` of what the tree cannot express, and the same limits and error texts as `style/values.ts`. Applied in the turn
+  after the layout pass when the epoch or a client's layers changed. The in-place array edit and the inherited-list copy-on-write of the
+  TypeScript style have no Rust equivalent (a list is read, changed and set whole). Effects are not staged: they are written at settle time.
+- **Scene and cameras** (`scene/`, `camera/`). `Node`, `View` (a client), `Camera3D` (projection, metres, near, far, fov, ipd, the library-kept
+  orthographic `size`) and the flat `Camera2D` (position, zoom as the node's scale, roll as its rotation), with the TypeScript checks; a write
+  goes through the staging of a transition, so a camera move, zoom and roll tween. The 2D to 3D transition is a transition over `z`,
+  `rotation`, `scale` of the windows and `fov` of a camera (the TypeScript std has no projection blend either; `fov` is not an animated key
+  there or here, so it lands at once, as in the scenario).
+- **Shape, for the generator (SdkGen).** Every function is `(ctx, ids..., value struct) -> code`. Shapes that resist generation: the tagged
+  value `GnoblinStdProp` (one struct, a `kind`) and `GnoblinStdStyleEntry` (one struct for borders, shadows and four filters), the
+  begin/commit pair with the shell's closure between them (`Std::transition`), and lent arrays and text (`style_list`, `style_origin`).
+- **Not done, and why.** The custom shader pass (M7.9) and XR (assignment). A `View` of a workspace (`WorkspaceMirror`): it needs child
+  views per window, not started. Rollback of script state after a failed transition (layout objects, arrays): the native objects have none;
+  nothing is written. The workspace slide still plays a straight line (`turn.rs` `play_slide` uses `set_animated`, not the engine): moving it
+  onto `transition_animate` would put its writes on the same curve and tween as the TypeScript slide, and belongs with the layouts lane's
+  edits of `desks.rs`/`turn.rs`. Camera nodes and the `Camera3D` projection blend are not drawn by any renderer (nothing to interpolate).
+  Not run on the real compositor: only the fake.
+
 ## 23. Implementation notes, M6.1 to M6.4
 
 What the JsRuntime lane built, where it differs from sections 5.10, 6, 8.2 and 10.2, and what is still missing.

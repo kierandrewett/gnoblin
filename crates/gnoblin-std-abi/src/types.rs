@@ -26,6 +26,11 @@ abi_aliases! {
     pub type GnoblinStdCollection = u64;
     /// A workspace, by the library's own id. Zero is nil; an id is never reused in one process.
     pub type GnoblinStdWorkspace = u64;
+    /// A transition (a set of timed writes that play together), by the library's own id. Zero is nil; an id is never reused in
+    /// one process.
+    pub type GnoblinStdTransition = u64;
+    /// The style of one scope (a collection of clients, or one client), by the library's own id. Zero is nil.
+    pub type GnoblinStdStyle = u64;
 }
 
 abi_callbacks! {
@@ -155,6 +160,97 @@ abi_consts! {
     pub const STD_SNAP_RIGHT: u32 = 2;
     /// A snap zone: all of the work area.
     pub const STD_SNAP_TOP: u32 = 3;
+    /// `GnoblinStdEvent.kind`: a transition ended. `member` is the transition, `flag` is 1 when it did not reach its target. The
+    /// listener hears it once.
+    pub const STD_EVENT_TRANSITION_FINISHED: u32 = 11;
+
+    /// `easing` argument: no easing.
+    pub const STD_EASING_LINEAR: u32 = 0;
+    /// `easing` argument: the CSS `ease` curve.
+    pub const STD_EASING_EASE: u32 = 1;
+    /// `easing` argument: the CSS `ease-in` curve.
+    pub const STD_EASING_EASE_IN: u32 = 2;
+    /// `easing` argument: the CSS `ease-out` curve (the default of a transition).
+    pub const STD_EASING_EASE_OUT: u32 = 3;
+    /// `easing` argument: the CSS `ease-in-out` curve.
+    pub const STD_EASING_EASE_IN_OUT: u32 = 4;
+
+    /// `GnoblinStdProp.kind`: nothing: a property that inherits (a style read) or is not there.
+    pub const STD_PROP_UNSET: u32 = 0;
+    /// `GnoblinStdProp.kind`: a number in `a`.
+    pub const STD_PROP_NUMBER: u32 = 1;
+    /// `GnoblinStdProp.kind`: a boolean in `a` (0 or 1).
+    pub const STD_PROP_BOOL: u32 = 2;
+    /// `GnoblinStdProp.kind`: three numbers in `a`, `b` and `c`.
+    pub const STD_PROP_TRIPLE: u32 = 3;
+    /// `GnoblinStdProp.kind`: text in `text`.
+    pub const STD_PROP_TEXT: u32 = 4;
+    /// `GnoblinStdProp.kind`: four corner radii in `a`, `b`, `c` and `d` (top left, top right, bottom right, bottom left).
+    pub const STD_PROP_CORNERS: u32 = 5;
+    /// `GnoblinStdProp.kind`: a value that is null (a style's background of none).
+    pub const STD_PROP_NULL: u32 = 6;
+    /// `GnoblinStdProp.kind`: a node in `node`.
+    pub const STD_PROP_NODE: u32 = 7;
+
+    /// `GnoblinStdTransitionInfo.state`: the transition has tracks that have not ended.
+    pub const STD_TRANSITION_RUNNING: u32 = 0;
+    /// `GnoblinStdTransitionInfo.state`: every track reached its target.
+    pub const STD_TRANSITION_FINISHED: u32 = 1;
+    /// `GnoblinStdTransitionInfo.state`: it was cancelled, or a newer write took every property, or it ran back to its start.
+    pub const STD_TRANSITION_CANCELLED: u32 = 2;
+
+    /// `transition_control` operation: let the tracks run on towards the target.
+    pub const STD_CONTROL_PLAY: u32 = 1;
+    /// `transition_control` operation: hold the tracks where they are.
+    pub const STD_CONTROL_PAUSE: u32 = 2;
+    /// `transition_control` operation: run the tracks back towards their start.
+    pub const STD_CONTROL_REVERSE: u32 = 3;
+    /// `transition_control` operation: move every track to the fraction of its duration the value gives, 0 to 1.
+    pub const STD_CONTROL_SEEK: u32 = 4;
+    /// `transition_control` operation: end every track at its target value now.
+    pub const STD_CONTROL_CANCEL: u32 = 5;
+
+    /// `style_scope` scope: the collection of clients whose handle is the target (the root, a workspace's clients or a selection).
+    pub const STD_STYLE_SCOPE_COLLECTION: u32 = 1;
+    /// `style_scope` scope: the client whose node is the target.
+    pub const STD_STYLE_SCOPE_CLIENT: u32 = 2;
+
+    /// Style property: opacity, a number from 0 to 1.
+    pub const STD_STYLE_OPACITY: u32 = 1;
+    /// Style property: the corner radius, a number or four corners.
+    pub const STD_STYLE_CORNER_RADIUS: u32 = 2;
+    /// Style property: the background colour, or null.
+    pub const STD_STYLE_BACKGROUND: u32 = 3;
+    /// Style property: the list of borders.
+    pub const STD_STYLE_BORDERS: u32 = 4;
+    /// Style property: the list of shadows.
+    pub const STD_STYLE_SHADOWS: u32 = 5;
+    /// Style property: the list of filters of the window's own content.
+    pub const STD_STYLE_FILTER: u32 = 6;
+    /// Style property: the list of filters of what is behind the window.
+    pub const STD_STYLE_BACKDROP_FILTER: u32 = 7;
+
+    /// `GnoblinStdStyleEntry.kind`: a border (`a` width, `b` offset, `color`, `inset`).
+    pub const STD_ENTRY_BORDER: u32 = 1;
+    /// `GnoblinStdStyleEntry.kind`: a shadow (`a` x, `b` y, `c` blur, `d` spread, `color`, `inset`).
+    pub const STD_ENTRY_SHADOW: u32 = 2;
+    /// `GnoblinStdStyleEntry.kind`: a blur filter (`a` radius).
+    pub const STD_ENTRY_BLUR: u32 = 3;
+    /// `GnoblinStdStyleEntry.kind`: a saturate filter (`a` amount).
+    pub const STD_ENTRY_SATURATE: u32 = 4;
+    /// `GnoblinStdStyleEntry.kind`: a brightness filter (`a` amount).
+    pub const STD_ENTRY_BRIGHTNESS: u32 = 5;
+    /// `GnoblinStdStyleEntry.kind`: a contrast filter (`a` amount).
+    pub const STD_ENTRY_CONTRAST: u32 = 6;
+
+    /// `scene_new` kind: a plain node.
+    pub const STD_SCENE_NODE: u32 = 1;
+    /// `scene_new` kind: a view, which draws a client without moving it.
+    pub const STD_SCENE_VIEW: u32 = 2;
+    /// `scene_new` kind: a camera that projects its children in three dimensions.
+    pub const STD_SCENE_CAMERA3D: u32 = 3;
+    /// `scene_new` kind: a flat camera: a node whose position, zoom and roll say where a viewport looks.
+    pub const STD_SCENE_CAMERA2D: u32 = 4;
 }
 
 abi_structs! {
@@ -497,6 +593,93 @@ abi_structs! {
         pub computes: u64,
     }
 
+    /// A value the library takes or gives for a property: the `kind` (`STD_PROP_*`) says which fields are read. Text it gives is
+    /// valid until the next call into the library on this thread.
+    pub struct GnoblinStdProp {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// One of the `STD_PROP_*` kinds.
+        pub kind: u32,
+        /// A number, a boolean (0 or 1), the first of three numbers or the first corner.
+        pub a: f64,
+        /// The second number or corner.
+        pub b: f64,
+        /// The third number or corner.
+        pub c: f64,
+        /// The fourth corner.
+        pub d: f64,
+        /// Text.
+        pub text: GnoblinStr,
+        /// A node.
+        pub node: GnoblinNode,
+    }
+
+    /// How a transition plays: the argument of `transition_begin` and `transition_animate`. A struct that starts with `size` may
+    /// grow.
+    pub struct GnoblinStdTransitionOptions {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// Nonzero plays at once; zero holds the tracks at the start until `STD_CONTROL_PLAY` or `STD_CONTROL_REVERSE`.
+        pub autoplay: u32,
+        /// `STD_EASING_*`.
+        pub easing: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// Milliseconds, 0 or more. Zero commits the change at once, still as one transaction.
+        pub duration_ms: f64,
+        /// Milliseconds the compositor holds the start state before the animation begins, 0 or more.
+        pub delay_ms: f64,
+    }
+
+    /// What a transition is now: filled by `transition_info`.
+    pub struct GnoblinStdTransitionInfo {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_TRANSITION_*`.
+        pub state: u32,
+        /// The transition's number, which grows with every transition of the process.
+        pub id: u64,
+        /// The milliseconds it takes, or 0 under reduced motion.
+        pub duration_ms: f64,
+        /// Where the tracks were last put, 0 to 1 (what a seek wrote).
+        pub progress: f64,
+        /// Nonzero while the tracks are held.
+        pub paused: u32,
+        /// Nonzero while the tracks run back to their start.
+        pub reversed: u32,
+    }
+
+    /// One element of a style list: a border, a shadow or a filter. The `kind` (`STD_ENTRY_*`) says which fields are read.
+    pub struct GnoblinStdStyleEntry {
+        /// Size of this struct, set by whoever builds it.
+        pub size: u32,
+        /// One of the `STD_ENTRY_*` kinds.
+        pub kind: u32,
+        /// Nonzero for an inset border or shadow.
+        pub inset: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// Border width, shadow x, filter radius or amount.
+        pub a: f64,
+        /// Border offset, shadow y.
+        pub b: f64,
+        /// Shadow blur.
+        pub c: f64,
+        /// Shadow spread.
+        pub d: f64,
+        /// The colour as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
+        pub color: GnoblinStr,
+    }
+
+    /// An array of style entries the library lends for the call: `ptr` points at `len` entries, valid until the next call into the
+    /// library on this thread.
+    pub struct GnoblinStdStyleEntries {
+        /// First entry, or null when `len` is zero.
+        pub ptr: *const GnoblinStdStyleEntry,
+        /// Number of entries.
+        pub len: usize,
+    }
+
     /// The versioned function table of `libgnoblin-std`. `size` is the byte size of the table the library filled in; a field is
     /// present when `offset_of(field) + size_of(field) <= size`. Fields are appended in later minors, never moved, retyped or
     /// removed within a major. Every function takes the core's generation context first and runs on the shell thread.
@@ -609,6 +792,70 @@ abi_structs! {
         pub workspace_set_split: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, token: u64, ratio: f64, cross_ratio: f64) -> i32,
         /// Puts the dividers of the drag `token` back as they were and makes the workspace compute again.
         pub workspace_reset_split: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, token: u64) -> i32,
+        /// Writes `easing(t)` to `out`: the CSS timing function `easing` (`STD_EASING_*`) at progress `t`.
+        pub easing_sample: unsafe extern "C" fn(ctx: GnoblinCtx, easing: u32, t: f64, out: *mut f64) -> i32,
+        /// Starts staging: property writes (the shell's through `transition_set`, and the library's own layout and style passes)
+        /// are held until `transition_commit`. `E_BUSY` while another transition is being staged.
+        pub transition_begin: unsafe extern "C" fn(ctx: GnoblinCtx, options: *const GnoblinStdTransitionOptions) -> i32,
+        /// Stages a write of `key` of `node` (checked at once). Without a transition being staged the write goes straight to the tree.
+        pub transition_set: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, value: *const GnoblinStdProp) -> i32,
+        /// Reads `key` of `node`: the staged value while a transition is staged, else the tree's.
+        pub transition_get: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, out: *mut GnoblinStdProp) -> i32,
+        /// Runs the layout and style passes against the staged state, ends staging and sends the writes as timed writes joined to
+        /// one `tween` node. Writes the transition to `out`.
+        pub transition_commit: unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinStdTransition) -> i32,
+        /// Ends staging and drops what was staged.
+        pub transition_abort: unsafe extern "C" fn(ctx: GnoblinCtx) -> i32,
+        /// One timed write of its own: writes `key` of `node` over the options' duration, as a transition of that one property.
+        pub transition_animate: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, value: *const GnoblinStdProp, options: *const GnoblinStdTransitionOptions, out: *mut GnoblinStdTransition) -> i32,
+        /// Plays, pauses, reverses, seeks or cancels a transition (`STD_CONTROL_*`; `value` is the seek fraction). `E_BUSY` while a
+        /// transition is being staged.
+        pub transition_control: unsafe extern "C" fn(ctx: GnoblinCtx, transition: GnoblinStdTransition, op: u32, value: f64) -> i32,
+        /// Fills `out` with what the transition is now.
+        pub transition_info: unsafe extern "C" fn(ctx: GnoblinCtx, transition: GnoblinStdTransition, out: *mut GnoblinStdTransitionInfo) -> i32,
+        /// Calls `cb` once with a `STD_EVENT_TRANSITION_FINISHED` event when the transition ends (at once, from the next turn, when it
+        /// has ended already). Zero on failure, with `user` not adopted.
+        pub transition_finished: unsafe extern "C" fn(ctx: GnoblinCtx, transition: GnoblinStdTransition, cb: GnoblinStdEventFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinStdReg,
+
+        /// Writes the style of a scope to `out`, making it the first time it is asked for. For `STD_STYLE_SCOPE_COLLECTION` the
+        /// target is a collection of clients (`E_TYPE` for any other).
+        pub style_scope: unsafe extern "C" fn(ctx: GnoblinCtx, scope: u32, target: u64, out: *mut GnoblinStdStyle) -> i32,
+        /// Sets a scalar style property (`STD_STYLE_OPACITY`, `STD_STYLE_CORNER_RADIUS`, `STD_STYLE_BACKGROUND`); a value of kind
+        /// `STD_PROP_UNSET` takes it back to inheriting. A bad value fails with the property's path and changes nothing.
+        pub style_set: unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32, value: *const GnoblinStdProp) -> i32,
+        /// Replaces a list style property (borders, shadows, filter, backdrop filter) with `n` entries, checked first.
+        pub style_set_list: unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32, entries: *const GnoblinStdStyleEntry, n: usize) -> i32,
+        /// Takes a property back to inheriting; property zero takes every property.
+        pub style_unset: unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32) -> i32,
+        /// Writes what the scope itself sets of a scalar property: `STD_PROP_UNSET` when it inherits.
+        pub style_get: unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32, out: *mut GnoblinStdProp) -> i32,
+        /// Lends the list a scope has for a property: its own, else a copy of what it inherits.
+        pub style_list: unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32, out: *mut GnoblinStdStyleEntries) -> i32,
+        /// Writes the resolved value of a scalar property for a client.
+        pub style_computed: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, prop: u32, out: *mut GnoblinStdProp) -> i32,
+        /// Lends the resolved list of a property for a client.
+        pub style_computed_list: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, prop: u32, out: *mut GnoblinStdStyleEntries) -> i32,
+        /// Lends the name of the layer a property of a client resolved from: `default`, `global`, `workspace:<id>`,
+        /// `where(<query>)` or `client`.
+        pub style_origin: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, prop: u32, out: *mut GnoblinStr) -> i32,
+        /// Lends what a client's style asks for that is not drawn, one text per line, empty when all of it is.
+        pub style_notes: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStr) -> i32,
+
+        /// Makes a scene node of `kind` (`STD_SCENE_*`) and writes it to `out`. It is in no parent until `scene_insert`.
+        pub scene_new: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, out: *mut GnoblinNode) -> i32,
+        /// Destroys a scene node and everything under it.
+        pub scene_destroy: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode) -> i32,
+        /// Puts `node` under `parent` at `index` (negative is last); a node already in the tree moves.
+        pub scene_insert: unsafe extern "C" fn(ctx: GnoblinCtx, parent: GnoblinNode, node: GnoblinNode, index: i64) -> i32,
+        /// Writes the root of the scene.
+        pub scene_root: unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinNode) -> i32,
+        /// Writes a property of a scene node, checked as the TypeScript scene checks it (finite numbers, the projection names, a
+        /// zoom above zero). A camera takes `projection`, `metres`, `near`, `far`, `fov`, `ipd` and `size`; a flat camera `zoom` and
+        /// `roll`; a view `source`, `camera`, `width` and `height`; every node `name`, `x`, `y`, `z`, `rotation`, `scale`,
+        /// `visible`, `opacity` and `input`.
+        pub scene_set: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, value: *const GnoblinStdProp) -> i32,
+        /// Reads a property of a scene node, including the ones the library keeps (a camera's `size`).
+        pub scene_get: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, out: *mut GnoblinStdProp) -> i32,
     }
 }
 

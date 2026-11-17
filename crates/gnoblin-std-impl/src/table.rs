@@ -47,7 +47,7 @@ pub(crate) fn call(name: &'static str, body: impl FnOnce() -> Res<i32>) -> i32 {
 }
 
 /// [`call`] for a function that returns a registration: zero is the failure.
-fn call_reg(name: &'static str, body: impl FnOnce() -> Res<GnoblinStdReg>) -> GnoblinStdReg {
+pub(crate) fn call_reg(name: &'static str, body: impl FnOnce() -> Res<GnoblinStdReg>) -> GnoblinStdReg {
     match catch_unwind(AssertUnwindSafe(body)) {
         Ok(Ok(reg)) => reg,
         Ok(Err(fail)) => {
@@ -62,7 +62,7 @@ fn call_reg(name: &'static str, body: impl FnOnce() -> Res<GnoblinStdReg>) -> Gn
 }
 
 /// The generation's state, or why there is none.
-fn std_of(ctx: GnoblinCtx) -> Res<Rc<Std>> {
+pub(crate) fn std_of(ctx: GnoblinCtx) -> Res<Rc<Std>> {
     state::lookup(ctx)
 }
 
@@ -87,7 +87,7 @@ pub(crate) fn read<R>(ctx: GnoblinCtx, f: impl FnOnce(&State) -> Res<R>) -> Res<
 /// # Safety
 ///
 /// `ptr` must be null (with `len` zero) or point at `len` readable bytes that stay valid for the returned borrow.
-unsafe fn utf8<'a>(ptr: *const u8, len: usize) -> Res<&'a str> {
+pub(crate) unsafe fn utf8<'a>(ptr: *const u8, len: usize) -> Res<&'a str> {
     if ptr.is_null() || len == 0 {
         return Ok("");
     }
@@ -101,7 +101,7 @@ unsafe fn utf8<'a>(ptr: *const u8, len: usize) -> Res<&'a str> {
 /// # Safety
 ///
 /// As for [`utf8`].
-unsafe fn owned(text: &GnoblinStr) -> Res<String> {
+pub(crate) unsafe fn owned(text: &GnoblinStr) -> Res<String> {
     // SAFETY: forwarded from the caller.
     unsafe { utf8(text.ptr, text.len) }.map(str::to_owned)
 }
@@ -175,7 +175,7 @@ thread_local! {
     static LENT_TEXT: RefCell<(String, String)> = const { RefCell::new((String::new(), String::new())) };
 }
 
-fn lent(text: &str) -> GnoblinStr {
+pub(crate) fn lent(text: &str) -> GnoblinStr {
     GnoblinStr {
         ptr: if text.is_empty() {
             core::ptr::null()
@@ -937,6 +937,32 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     workspace_find_split: crate::splits::workspace_find_split,
     workspace_set_split: crate::splits::workspace_set_split,
     workspace_reset_split: crate::splits::workspace_reset_split,
+    easing_sample: crate::animation::table::easing_sample,
+    transition_begin: crate::animation::table::transition_begin,
+    transition_set: crate::animation::table::transition_set,
+    transition_get: crate::animation::table::transition_get,
+    transition_commit: crate::animation::table::transition_commit,
+    transition_abort: crate::animation::table::transition_abort,
+    transition_animate: crate::animation::table::transition_animate,
+    transition_control: crate::animation::table::transition_control,
+    transition_info: crate::animation::table::transition_info,
+    transition_finished: crate::animation::table::transition_finished,
+    style_scope: crate::style::table::style_scope,
+    style_set: crate::style::table::style_set,
+    style_set_list: crate::style::table::style_set_list,
+    style_unset: crate::style::table::style_unset,
+    style_get: crate::style::table::style_get,
+    style_list: crate::style::table::style_list,
+    style_computed: crate::style::table::style_computed,
+    style_computed_list: crate::style::table::style_computed_list,
+    style_origin: crate::style::table::style_origin,
+    style_notes: crate::style::table::style_notes,
+    scene_new: crate::scene::table::scene_new,
+    scene_destroy: crate::scene::table::scene_destroy,
+    scene_insert: crate::scene::table::scene_insert,
+    scene_root: crate::scene::table::scene_root,
+    scene_set: crate::scene::table::scene_set,
+    scene_get: crate::scene::table::scene_get,
 };
 
 #[cfg(test)]

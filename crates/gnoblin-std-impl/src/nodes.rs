@@ -6,6 +6,7 @@
 
 use gnoblin_core::{Gnoblin, NodeId, Rect, Value};
 
+use crate::animation::staging::{self, Prop};
 use crate::state::NodeId as Id;
 
 /// A handle on the node `id`.
@@ -20,16 +21,22 @@ pub(crate) fn alive(g: &Gnoblin, id: Id) -> bool {
 
 /// A number property, `0` when it cannot be read.
 pub(crate) fn number(g: &Gnoblin, id: Id, key: &str) -> f64 {
+    if let Some(Prop::Number(staged)) = staging::peek(id, key) {
+        return staged;
+    }
     node(g, id).get_f64(key).unwrap_or(0.0)
 }
 
 /// A boolean property, `false` when it cannot be read.
 pub(crate) fn flag(g: &Gnoblin, id: Id, key: &str) -> bool {
-    node(g, id).get_bool(key).unwrap_or(false)
+    flag_or(g, id, key, false)
 }
 
 /// A boolean property, `default` when it cannot be read.
 pub(crate) fn flag_or(g: &Gnoblin, id: Id, key: &str, default: bool) -> bool {
+    if let Some(Prop::Bool(staged)) = staging::peek(id, key) {
+        return staged;
+    }
     node(g, id).get_bool(key).unwrap_or(default)
 }
 
@@ -45,7 +52,7 @@ pub(crate) fn node_ref(g: &Gnoblin, id: Id, key: &str) -> Option<Id> {
 
 /// Whether the window is drawn: a window nothing has hidden is.
 pub(crate) fn visible(g: &Gnoblin, id: Id) -> bool {
-    node(g, id).get_bool("visible").unwrap_or(true)
+    flag_or(g, id, "visible", true)
 }
 
 /// The window's rectangle: what the shell wrote, or what the client committed until it did.
@@ -60,31 +67,47 @@ pub(crate) fn rect_of(g: &Gnoblin, id: Id) -> Rect {
 
 /// A list of numbers (`rotation`, `scale`) as three components, `fallback` when it is not three numbers.
 pub(crate) fn triple(g: &Gnoblin, id: Id, key: &str, fallback: [f64; 3]) -> [f64; 3] {
+    if let Some(Prop::Triple(staged)) = staging::peek(id, key) {
+        return staged;
+    }
     match node(g, id).get(key) {
         Ok(Value::List(list)) if list.len() == 3 => [list[0], list[1], list[2]],
         _ => fallback,
     }
 }
 
+/// A write of the library's own: held while a transition is staging, else made at once (and a transition that played the property lets
+/// it go).
+fn put(g: &Gnoblin, id: Id, key: &str, value: Prop) {
+    if staging::capture(id, key, &value) {
+        return;
+    }
+    staging::released(id, key);
+    let _ = node(g, id).set(key, value.to_value());
+}
+
 /// Writes a number property when it differs from what the node holds.
 pub(crate) fn write_num(g: &Gnoblin, id: Id, key: &str, value: f64) {
     if number(g, id, key) != value {
-        let _ = node(g, id).set(key, value);
+        put(g, id, key, Prop::Number(value));
     }
 }
 
 /// Writes a boolean property when it differs from what the node holds.
 pub(crate) fn write_flag(g: &Gnoblin, id: Id, key: &str, value: bool) {
-    let held = node(g, id).get_bool(key).ok();
+    let held = match staging::peek(id, key) {
+        Some(Prop::Bool(staged)) => Some(staged),
+        _ => node(g, id).get_bool(key).ok(),
+    };
     if held != Some(value) {
-        let _ = node(g, id).set(key, value);
+        put(g, id, key, Prop::Bool(value));
     }
 }
 
 /// Writes a three-component property when it differs from what the node holds.
 pub(crate) fn write_triple(g: &Gnoblin, id: Id, key: &str, value: [f64; 3], default: [f64; 3]) {
     if triple(g, id, key, default) != value {
-        let _ = node(g, id).set(key, value.to_vec());
+        put(g, id, key, Prop::Triple(value));
     }
 }
 

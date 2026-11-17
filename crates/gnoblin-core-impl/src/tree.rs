@@ -256,18 +256,25 @@ pub(crate) fn insert(ctx: GnoblinCtx, parent: u64, node: u64, index: i64) -> i32
 /// The curve a timed write plays: linear. The compositor needs one and the ABI carries none yet.
 const LINEAR: [f64; 2] = [0.0, 1.0];
 
-/// `write_set`.
+/// The animation a write carries, once its arguments are checked, or the reason they are not.
+type Animation = Result<TxAnimation, String>;
+
+/// The shared body of `write_set` and `write_set_timed`: checks the property, reads the value as the property's kind and queues the
+/// write with `animation`.
 ///
 /// # Safety
 ///
 /// `value` must be null or point at a `GnoblinValue` valid for the call.
-pub(crate) unsafe fn set(ctx: GnoblinCtx, node: u64, prop: u32, value: *const GnoblinValue, seconds: f64) -> i32 {
-    if let Err(code) = check_ctx(ctx, "write_set", true) {
+unsafe fn write_property(
+    ctx: GnoblinCtx,
+    what: &str,
+    node: u64,
+    prop: u32,
+    value: *const GnoblinValue,
+    animation: impl FnOnce(&gnoblin_tree_client::session::TreeSession) -> Animation,
+) -> i32 {
+    if let Err(code) = check_ctx(ctx, what, true) {
         return code;
-    }
-    if !seconds.is_finite() || seconds < 0.0 {
-        set_code_error(abi::E_ERR, format!("write_set: {seconds} is not a duration"));
-        return abi::E_ERR;
     }
     let result = session::with(|session| {
         let tree = session.tree()?;
@@ -281,7 +288,8 @@ pub(crate) unsafe fn set(ctx: GnoblinCtx, node: u64, prop: u32, value: *const Gn
         if def.flags & abi::MEMBER_READONLY != 0 {
             return Err((abi::E_REFUSED, format!("read-only: `{}` cannot be set", def.name)));
         }
-        if seconds > 0.0 && def.flags & abi::MEMBER_ANIMATED == 0 {
+        let animation = animation(tree).map_err(|message| (abi::E_ERR, message))?;
+        if animation.seconds.is_some() && def.flags & abi::MEMBER_ANIMATED == 0 {
             return Err((
                 abi::E_REFUSED,
                 format!("not-animated: `{}` cannot be animated", def.name),
@@ -290,21 +298,97 @@ pub(crate) unsafe fn set(ctx: GnoblinCtx, node: u64, prop: u32, value: *const Gn
         // SAFETY: the caller guarantees `value` is null or valid for the call.
         let value: MirrorValue =
             unsafe { read_value(value, def.value_kind) }.map_err(|error| (error.code(), error.message().to_owned()))?;
-        let animation = if seconds > 0.0 {
-            TxAnimation {
-                seconds: Some(seconds),
-                samples: Some(LINEAR.to_vec()),
-                ..TxAnimation::default()
-            }
-        } else {
-            TxAnimation::default()
-        };
         tree.set(node, def.name, value, animation)
             .map_err(|error| (abi::E_NO_SUCH_NODE, error.to_string()))
     });
     match result {
         Ok(()) => abi::E_OK,
-        Err(error) => fail("write_set", error),
+        Err(error) => fail(what, error),
+    }
+}
+
+/// `write_set`.
+///
+/// # Safety
+///
+/// `value` must be null or point at a `GnoblinValue` valid for the call.
+pub(crate) unsafe fn set(ctx: GnoblinCtx, node: u64, prop: u32, value: *const GnoblinValue, seconds: f64) -> i32 {
+    // SAFETY: forwarded from the caller.
+    unsafe {
+        write_property(ctx, "write_set", node, prop, value, |_| {
+            if !seconds.is_finite() || seconds < 0.0 {
+                return Err(format!("write_set: {seconds} is not a duration"));
+            }
+            Ok(if seconds > 0.0 {
+                TxAnimation {
+                    seconds: Some(seconds),
+                    samples: Some(LINEAR.to_vec()),
+                    ..TxAnimation::default()
+                }
+            } else {
+                TxAnimation::default()
+            })
+        })
+    }
+}
+
+/// `write_set_timed`.
+///
+/// # Safety
+///
+/// `value` must be null or point at a `GnoblinValue` valid for the call, and `timing` null or at a `GnoblinTiming` whose `samples`
+/// holds `n_samples` readable doubles.
+pub(crate) unsafe fn set_timed(
+    ctx: GnoblinCtx,
+    node: u64,
+    prop: u32,
+    value: *const GnoblinValue,
+    timing: *const abi::GnoblinTiming,
+) -> i32 {
+    // SAFETY: forwarded from the caller.
+    unsafe {
+        write_property(ctx, "write_set_timed", node, prop, value, |tree| {
+            // The caller guarantees `timing` is null or readable.
+            let timing = timing.as_ref().ok_or("write_set_timed: a null timing")?;
+            if (timing.size as usize) < size_of::<abi::GnoblinTiming>() {
+                return Err("write_set_timed: the timing struct is smaller than the core's".to_owned());
+            }
+            if !timing.seconds.is_finite() || timing.seconds <= 0.0 {
+                return Err(format!("write_set_timed: {} is not a duration", timing.seconds));
+            }
+            if !timing.delay.is_finite() || !(0.0..=3600.0).contains(&timing.delay) {
+                return Err(format!("write_set_timed: {} is not a delay", timing.delay));
+            }
+            let samples = if timing.samples.is_null() || timing.n_samples < 2 {
+                return Err("write_set_timed: a curve needs at least two samples".to_owned());
+            } else {
+                // The caller guarantees `n_samples` readable doubles at `samples`.
+                std::slice::from_raw_parts(timing.samples, timing.n_samples).to_vec()
+            };
+            if samples.iter().any(|sample| !(0.0..=1.0).contains(sample)) {
+                return Err("write_set_timed: a curve sample is outside 0 to 1".to_owned());
+            }
+            let tween = if timing.tween == 0 {
+                None
+            } else {
+                match tree.class_of(timing.tween) {
+                    Some(class) if class == "tween" || class == "Tween" => Some(timing.tween),
+                    Some(class) => {
+                        return Err(format!(
+                            "write_set_timed: node {} is a `{class}`, not a tween",
+                            timing.tween
+                        ));
+                    }
+                    None => return Err(format!("write_set_timed: no tween node {}", timing.tween)),
+                }
+            };
+            Ok(TxAnimation {
+                seconds: Some(timing.seconds),
+                delay: (timing.delay > 0.0).then_some(timing.delay),
+                tween,
+                samples: Some(samples),
+            })
+        })
     }
 }
 

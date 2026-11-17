@@ -43,6 +43,7 @@
 //! and a handle that outlives its generation fails with `Retired`. The library never calls a callback inside a call you made: a change
 //! is announced from the next turn of the dispatch, with the other events of that turn.
 
+mod animation;
 mod api;
 mod bindings;
 mod client;
@@ -56,11 +57,16 @@ mod layout;
 mod layouts;
 mod output;
 mod query;
+mod scene;
 mod split;
+mod style;
 mod subscription;
 mod sys;
 mod workspace;
 
+pub use animation::{
+    Easing, PropValue, Transition, TransitionInfo, TransitionOptions, TransitionResult, TransitionState, Tx,
+};
 pub use api::{Stats, Std};
 pub use bindings::{
     ClientMoveBinding, ClientResizeBinding, ClientSwapBinding, DRAG_STRIP, DRAG_THRESHOLD, DragBinding, DragConstraint,
@@ -85,7 +91,11 @@ pub use layouts::{
 };
 pub use output::Output;
 pub use query::{Query, QueryValue};
+pub use scene::{
+    Camera2D, Camera2DOptions, Camera3D, Camera3DOptions, InputMode, Projection, Scene, SceneNode, View, ViewOptions,
+};
 pub use split::{Divider, Split, SplitAxis};
+pub use style::{Border, ComputedStyle, CornerRadius, Filter, MAX_STYLE_LIST, Origin, Shadow, Style, StyleProperty};
 pub use subscription::{ListenerHandle, ScopedListener, ScopedSubscription, Subscription};
 pub use workspace::{ShowOptions, Workspace, WorkspaceBuilder, WorkspaceInfo};
 
@@ -116,5 +126,11 @@ pub mod prelude {
         FloatingLayout, FrameInset, FramePolicy, GnoblinStdExt, GridFill, GridLayout, Layout, LayoutContext,
         MasterStackLayout, MonocleLayout, Orientation, Output, OutputPolicy, Placement, Preselect, Query, ShowOptions,
         SnapZone, SplitResizeBinding, Std, StripLayout, Workspace, WorkspacePolicy,
+    };
+
+    pub use crate::{
+        Border, Camera2D, Camera2DOptions, Camera3D, Camera3DOptions, CornerRadius, Easing, Filter, InputMode,
+        Projection, Scene, SceneNode, Shadow, Style, Transition, TransitionOptions, TransitionResult, View,
+        ViewOptions,
     };
 }

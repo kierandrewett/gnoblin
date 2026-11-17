@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::{Gnoblin, Value};
+use gnoblin_core::{Gnoblin, ShellValue, Value};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_std_abi as abi;
 
@@ -59,6 +59,9 @@ impl State {
             policy: Policy::default(),
             last_focus: None,
             counters: Counters::default(),
+            anim: crate::animation::engine::AnimState::default(),
+            styles: crate::style::cascade::StyleState::default(),
+            scene: crate::scene::SceneState::default(),
         };
         let clients = state.new_root(abi::STD_COLLECTION_CLIENTS, Source::Clients);
         let outputs = state.new_root(abi::STD_COLLECTION_OUTPUTS, Source::Outputs);
@@ -307,6 +310,22 @@ pub(crate) fn open(ctx: GnoblinCtx) -> Res<()> {
 fn subscribe(std: &Rc<Std>, g: &Gnoblin) -> Res<()> {
     let ctx = std.st.borrow().ctx;
     g.on_shutdown(move || state::retire(ctx))?;
+
+    // The compositor's word that a timed write ended: the transition engine settles the transitions whose tracks all have.
+    let ended = Rc::clone(std);
+    g.on_signal_named("tree", "track_ended", move |event| {
+        if let (
+            Some(ShellValue::Uint(node)),
+            Some(ShellValue::Text(property)),
+            Some(ShellValue::Text(reason)),
+            Some(ShellValue::Uint(tween)),
+        ) = (event.value(0), event.value(1), event.value(2), event.value(3))
+        {
+            handle(&ended, |st| {
+                st.track_ended(node, property, reason == "completed", tween)
+            });
+        }
+    })?;
 
     let created = Rc::clone(std);
     g.on_client_created(move |window| handle(&created, |st| st.client_created(window.id().0)))?;
