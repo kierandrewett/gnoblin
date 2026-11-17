@@ -251,6 +251,34 @@ abi_consts! {
     pub const STD_SCENE_CAMERA3D: u32 = 3;
     /// `scene_new` kind: a flat camera: a node whose position, zoom and roll say where a viewport looks.
     pub const STD_SCENE_CAMERA2D: u32 = 4;
+
+    /// `workspace_set_layout_kind` kind: the master-stack layout (`layouts::LAYOUT_KINDS`).
+    pub const STD_BUILTIN_MASTER_STACK: u32 = 1;
+    /// `workspace_set_layout_kind` kind: the grid.
+    pub const STD_BUILTIN_GRID: u32 = 2;
+    /// `workspace_set_layout_kind` kind: the monocle.
+    pub const STD_BUILTIN_MONOCLE: u32 = 3;
+    /// `workspace_set_layout_kind` kind: the dwindle.
+    pub const STD_BUILTIN_DWINDLE: u32 = 4;
+    /// `workspace_set_layout_kind` kind: the strip of columns.
+    pub const STD_BUILTIN_STRIP: u32 = 5;
+    /// `workspace_set_layout_kind` kind: the arc.
+    pub const STD_BUILTIN_ARC: u32 = 6;
+    /// `workspace_set_layout_kind` kind: the 3D carousel.
+    pub const STD_BUILTIN_CAROUSEL: u32 = 7;
+
+    /// `GnoblinStdOption.kind`: no value (an optional option that is not set, or an action that answers nothing).
+    pub const STD_VALUE_NONE: u32 = 0;
+    /// `GnoblinStdOption.kind`: a boolean, in `flag`.
+    pub const STD_VALUE_BOOL: u32 = 1;
+    /// `GnoblinStdOption.kind`: a number, in `number` (a whole number for an integer option).
+    pub const STD_VALUE_NUMBER: u32 = 2;
+    /// `GnoblinStdOption.kind`: the number of an enumeration member, in `number`.
+    pub const STD_VALUE_ENUM: u32 = 3;
+    /// `GnoblinStdOption.kind`: a window, by node id, in `node`.
+    pub const STD_VALUE_NODE: u32 = 4;
+    /// `GnoblinStdOption.kind`: text, in `text`.
+    pub const STD_VALUE_TEXT: u32 = 5;
 }
 
 abi_structs! {
@@ -573,6 +601,39 @@ abi_structs! {
         pub layout: *const GnoblinStdLayoutSpec,
     }
 
+    /// One named, typed value: an option of a built-in layout, an argument of one of its actions, or what an action answers.
+    /// `layouts::LAYOUT_KINDS` declares which names exist and what type each has; the library refuses any other.
+    pub struct GnoblinStdOption {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_VALUE_*`: which of the fields below holds the value.
+        pub kind: u32,
+        /// The value of a `STD_VALUE_BOOL` option (0 or 1).
+        pub flag: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The option's or argument's name; empty for what an action answers.
+        pub name: GnoblinStr,
+        /// The value of a `STD_VALUE_TEXT` option.
+        pub text: GnoblinStr,
+        /// The value of a `STD_VALUE_NUMBER` or `STD_VALUE_ENUM` option.
+        pub number: f64,
+        /// The value of a `STD_VALUE_NODE` option: a window's node id.
+        pub node: u64,
+    }
+
+    /// One card of the ring that `layout_ring` computes.
+    pub struct GnoblinStdRingSlot {
+        /// The projected rectangle.
+        pub rect: GnoblinStdRect,
+        /// Fade from 0.4 at the back to 1 at the front.
+        pub opacity: f64,
+        /// Degrees: 0 at the front, 180 at the back, positive to the right of the front card.
+        pub rotation: f64,
+        /// Negative in front of the camera, more so for the back of the ring.
+        pub z: f64,
+    }
+
     /// Counters the library keeps. Filled by `stats`.
     pub struct GnoblinStdStats {
         /// Size of this struct, set by the caller.
@@ -856,6 +917,25 @@ abi_structs! {
         pub scene_set: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, value: *const GnoblinStdProp) -> i32,
         /// Reads a property of a scene node, including the ones the library keeps (a camera's `size`).
         pub scene_get: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, out: *mut GnoblinStdProp) -> i32,
+
+        /// Gives the workspace the built-in layout `kind` (`STD_BUILTIN_*`) with the options given; an option not given has the
+        /// default `layouts::LAYOUT_KINDS` declares. Replaces the layout; its windows stay where they are until it computes.
+        /// `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong type or out of range.
+        pub workspace_set_layout_kind: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, kind: u32, options: *const GnoblinStdOption, n_options: usize) -> i32,
+        /// Changes one option of the workspace's built-in layout. The tree the layout keeps is kept; the workspace computes again.
+        /// `E_REFUSED` when the workspace's layout is not a built-in one.
+        pub workspace_layout_set: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, option: *const GnoblinStdOption) -> i32,
+        /// Writes one option of the workspace's built-in layout to `out`.
+        pub workspace_layout_get: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, name: *const u8, len: usize, out: *mut GnoblinStdOption) -> i32,
+        /// Runs an action of the workspace's built-in layout with the arguments given and writes what it answers to `out`
+        /// (`STD_VALUE_NONE` when it answers nothing). The workspace computes again when the action changed the layout.
+        pub workspace_layout_act: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, action: *const u8, len: usize, args: *const GnoblinStdOption, n_args: usize, out: *mut GnoblinStdOption) -> i32,
+        /// Writes the `STD_BUILTIN_*` kind of the workspace's layout, or zero when it is the floating layout or a foreign one.
+        pub workspace_layout_kind: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, out: *mut u32) -> i32,
+        /// Computes the ring of `count` cards with the 1-based `focus` at the front inside `area`, with the options of the carousel
+        /// kind (`fov`, `card_width`, `card_height`), and writes one slot per card to `out`, which has room for `count` slots.
+        /// `E_TYPE` when `focus` is not in `1..=count`.
+        pub layout_ring: unsafe extern "C" fn(ctx: GnoblinCtx, count: usize, focus: usize, area: *const GnoblinStdRect, options: *const GnoblinStdOption, n_options: usize, out: *mut GnoblinStdRingSlot) -> i32,
     }
 }
 

@@ -33,7 +33,8 @@
 //! - [`Workspace`]: membership, layout, gaps, showing on an output.
 //! - [`Layout`]: the trait a shell implements for its own layout; [`FloatingLayout`] is the library's, and
 //!   [`MasterStackLayout`], [`GridLayout`], [`MonocleLayout`], [`DwindleLayout`], [`StripLayout`], [`ArcLayout`] and
-//!   [`Carousel3dLayout`] are tiling layouts written on the trait.
+//!   [`Carousel3dLayout`] name the tiling layouts the library has built in (typed options and actions; the algorithms are the
+//!   library's, so every language gets the same).
 //! - [`ClientMoveBinding`], [`ClientResizeBinding`] and [`DragBinding`]: pointer drags, claimed with [`Std::bind_drag`].
 //! - [`Emitter`]: events of the shell's own.
 //!
@@ -46,6 +47,7 @@
 mod animation;
 mod api;
 mod bindings;
+mod builtin;
 mod client;
 mod client_state;
 mod collection;
@@ -73,6 +75,7 @@ pub use bindings::{
     DragEvent, Grip, MIN_SIZE, Point, ResizeCorner, ResizeEdge, ResizeGrip, SplitResizeBinding, clamp_axis,
     constrain_rect, resized_rect,
 };
+pub use builtin::{BuiltinLayout, LayoutValue};
 pub use client::{AsClient, Client, FramePolicy};
 pub use client_state::{FrameInset, SNAP_MARGIN, SnapZone, edge_zone};
 pub use collection::{ClientListener, Collection, CollectionListener, Member};
@@ -87,7 +90,7 @@ pub use layout::{FloatPlacement, FloatingLayout, IntoLayout, Layout, LayoutConte
 pub use layouts::{
     ArcLayout, Carousel3dLayout, Columns, DwindleLayout, DwindleOptions, ForceSplit, GridFill, GridLayout, KioskLayout,
     MasterStackLayout, MonocleLayout, Orientation, PointerSource, Preselect, RingOptions, RingSlot, SplitBias,
-    SplitMode, StripLayout, ring,
+    SplitMode, StripLayout,
 };
 pub use output::Output;
 pub use query::{Query, QueryValue};

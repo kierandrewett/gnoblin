@@ -26,6 +26,7 @@ use gnoblin_std_abi::{
     STD_PLACEMENT_BOUNDS, STD_PLACEMENT_HIDDEN, STD_PLACEMENT_OFFSET, STD_PLACEMENT_TILED,
 };
 
+use crate::builtin::Builtin;
 use crate::error::{Fail, Res};
 use crate::floating::{DEFAULT_HEIGHT, DEFAULT_WIDTH, Inset, PlaceMode, apart_from, grow, place_rect, shrink};
 use crate::nodes;
@@ -55,6 +56,8 @@ pub(crate) struct LayoutContext {
     pub(crate) gap_inner: f64,
     pub(crate) gap_outer: f64,
     pub(crate) focused: Option<NodeId>,
+    /// The seat's pointer, for a layout that reads it (`Imp::wants_pointer`).
+    pub(crate) pointer: Option<(f64, f64)>,
 }
 
 /// A layout the shell implements: the table of its functions and the closure behind them, freed exactly once.
@@ -73,6 +76,8 @@ pub(crate) enum Kind {
         placed: RefCell<HashSet<NodeId>>,
     },
     Foreign(Foreign),
+    /// A built-in layout of the library's own (`builtin/`).
+    Builtin(Builtin),
 }
 
 /// A workspace's layout.
@@ -287,6 +292,26 @@ impl LayoutObj {
         })
     }
 
+    /// A built-in layout.
+    pub(crate) fn builtin(builtin: Builtin) -> Rc<LayoutObj> {
+        Rc::new(LayoutObj {
+            kind: Kind::Builtin(builtin),
+        })
+    }
+
+    /// The built-in layout, if this is one.
+    pub(crate) fn as_builtin(&self) -> Option<&Builtin> {
+        match &self.kind {
+            Kind::Builtin(builtin) => Some(builtin),
+            _ => None,
+        }
+    }
+
+    /// Whether the layout reads the pointer when it computes.
+    pub(crate) fn wants_pointer(&self) -> bool {
+        self.as_builtin().is_some_and(Builtin::wants_pointer)
+    }
+
     /// A number that changes when one of the layout's own options does: the workspace computes again.
     pub(crate) fn revision(&self) -> u64 {
         match &self.kind {
@@ -296,6 +321,7 @@ impl LayoutObj {
                 Some(revision) => catch_unwind(AssertUnwindSafe(|| unsafe { revision(foreign.user) })).unwrap_or(0),
                 None => 0,
             },
+            Kind::Builtin(_) => 0,
         }
     }
 
@@ -305,6 +331,7 @@ impl LayoutObj {
         match &self.kind {
             Kind::Floating { .. } => false,
             Kind::Foreign(foreign) => foreign.vtable.client_removed.is_some(),
+            Kind::Builtin(builtin) => builtin.hands_focus(),
         }
     }
 
@@ -313,6 +340,7 @@ impl LayoutObj {
         match &self.kind {
             Kind::Floating { .. } => Ok(Vec::new()),
             Kind::Foreign(foreign) => foreign.compute(cx),
+            Kind::Builtin(builtin) => Ok(builtin.compute(cx)),
         }
     }
 
@@ -321,13 +349,19 @@ impl LayoutObj {
         match &self.kind {
             Kind::Floating { mode, step, placed } => place_floating(g, cx, client, *mode, *step, placed),
             Kind::Foreign(foreign) => foreign.hook_client(foreign.vtable.client_added, cx, client),
+            Kind::Builtin(_) => {}
         }
     }
 
     /// A client left the workspace.
-    pub(crate) fn client_removed(&self, cx: &LayoutContext, client: NodeId) {
-        if let Kind::Foreign(foreign) = &self.kind {
-            foreign.hook_client(foreign.vtable.client_removed, cx, client);
+    pub(crate) fn client_removed(&self, cx: &LayoutContext, client: NodeId) -> Option<NodeId> {
+        match &self.kind {
+            Kind::Foreign(foreign) => {
+                foreign.hook_client(foreign.vtable.client_removed, cx, client);
+                None
+            }
+            Kind::Builtin(builtin) => builtin.client_removed(cx, client),
+            Kind::Floating { .. } => None,
         }
     }
 
@@ -345,19 +379,25 @@ impl LayoutObj {
     /// Two clients traded places in the workspace's order. A layout that places by order has nothing to do: its next compute reads
     /// the new order.
     pub(crate) fn clients_swapped(&self, a: NodeId, b: NodeId) {
-        if let Kind::Foreign(foreign) = &self.kind
-            && let Some(hook) = foreign.vtable.clients_swapped
-        {
-            // SAFETY: `hook` and `user` are the shell's.
-            let _ = catch_unwind(AssertUnwindSafe(|| unsafe { hook(foreign.user, a, b) }));
+        match &self.kind {
+            Kind::Foreign(foreign) => {
+                if let Some(hook) = foreign.vtable.clients_swapped {
+                    // SAFETY: `hook` and `user` are the shell's.
+                    let _ = catch_unwind(AssertUnwindSafe(|| unsafe { hook(foreign.user, a, b) }));
+                }
+            }
+            Kind::Builtin(builtin) => builtin.clients_swapped(a, b),
+            Kind::Floating { .. } => {}
         }
     }
 
     /// The divider a drag that pressed `client` at (`x`, `y`) would move: `None` when the layout has none there. A layout with no
     /// `find_split` has no dividers.
     pub(crate) fn find_split(&self, client: NodeId, x: f64, y: f64) -> Option<GnoblinStdSplit> {
-        let Kind::Foreign(foreign) = &self.kind else {
-            return None;
+        let foreign = match &self.kind {
+            Kind::Foreign(foreign) => foreign,
+            Kind::Builtin(builtin) => return builtin.find_split(client, x, y).map(|split| split.to_raw()),
+            Kind::Floating { .. } => return None,
         };
         let find = foreign.vtable.find_split?;
         let mut out = GnoblinStdSplit {
@@ -387,23 +427,31 @@ impl LayoutObj {
 
     /// Moves the dividers of the drag `token`.
     pub(crate) fn set_split(&self, token: u64, ratio: f64, cross_ratio: f64) {
-        if let Kind::Foreign(foreign) = &self.kind
-            && let Some(hook) = foreign.vtable.set_split
-        {
-            // SAFETY: `hook` and `user` are the shell's.
-            let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
-                hook(foreign.user, token, ratio, cross_ratio)
-            }));
+        match &self.kind {
+            Kind::Builtin(builtin) => builtin.set_split(token, ratio, (!cross_ratio.is_nan()).then_some(cross_ratio)),
+            Kind::Foreign(foreign) => {
+                if let Some(hook) = foreign.vtable.set_split {
+                    // SAFETY: `hook` and `user` are the shell's.
+                    let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
+                        hook(foreign.user, token, ratio, cross_ratio)
+                    }));
+                }
+            }
+            Kind::Floating { .. } => {}
         }
     }
 
     /// Puts the dividers of the drag `token` back as they were.
     pub(crate) fn reset_split(&self, token: u64) {
-        if let Kind::Foreign(foreign) = &self.kind
-            && let Some(hook) = foreign.vtable.reset_split
-        {
-            // SAFETY: `hook` and `user` are the shell's.
-            let _ = catch_unwind(AssertUnwindSafe(|| unsafe { hook(foreign.user, token) }));
+        match &self.kind {
+            Kind::Builtin(builtin) => builtin.reset_split(token),
+            Kind::Foreign(foreign) => {
+                if let Some(hook) = foreign.vtable.reset_split {
+                    // SAFETY: `hook` and `user` are the shell's.
+                    let _ = catch_unwind(AssertUnwindSafe(|| unsafe { hook(foreign.user, token) }));
+                }
+            }
+            Kind::Floating { .. } => {}
         }
     }
 }

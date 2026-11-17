@@ -1885,12 +1885,6 @@ kind = "same-shape"
 reason = "both say a layout is the library's floating one or the shell's own; one is the library's object, the other the SDK's argument to the table"
 
 [[allow]]
-left = "gnoblin-std-impl::Layout"
-right = "gnoblin-std::LayoutSpec"
-kind = "same-shape"
-reason = "both say a layout is the library's floating one or the shell's own; one is the checked table argument, the other the SDK's value"
-
-[[allow]]
 left = "gnoblin-std-impl::Want"
 right = "gnoblin-std::QueryValue"
 kind = "same-shape"
@@ -2411,3 +2405,45 @@ left = "gnoblin-std::Shape"
 right = "xtask::Shape"
 kind = "same-name"
 reason = "the SDK generator's `Shape` is what an ABI record field is to a script; the std SDK's is a layout geometry"
+
+[[allow]]
+left = "gnoblin-std-impl::Pt"
+right = "gnoblin-types::PointF"
+kind = "same-shape"
+reason = "a point the built-in layouts read the pointer as; the library is below the geometry crate in the dependency order and keeps its own two numbers"
+
+[[allow]]
+left = "gnoblin-std::Point"
+right = "gnoblin-std-impl::Pt"
+kind = "same-shape"
+reason = "the SDK's point and the library's: the SDK cannot share a type with the library it links, so each side has its own two numbers"
+
+[[allow]]
+left = "gnoblin-std::RingOptions"
+right = "gnoblin-std-impl::RingShape"
+kind = "same-shape"
+reason = "the SDK's options of the ring and the library's reading of them; the SDK cannot share a type with the library it links"
+
+[[allow]]
+left = "gnoblin-std::RingSlot"
+right = "gnoblin-std-impl::RingCard"
+kind = "same-shape"
+reason = "one card of the ring as the SDK hands it back and as the library computes it; the SDK cannot share a type with the library it links"
+
+[[allow]]
+left = "gnoblin-std::ForceSplit"
+right = "gnoblin-std-impl::ForceSide"
+kind = "same-shape"
+reason = "the SDK's name for an option of the dwindle and the library's reading of it; the SDK cannot share a type with the library it links"
+
+[[allow]]
+left = "gnoblin-std::Preselect"
+right = "gnoblin-std-impl::PreselectDir"
+kind = "same-shape"
+reason = "the SDK's name for an action argument of the dwindle and the library's reading of it; the SDK cannot share a type with the library it links"
+
+[[allow]]
+left = "gnoblin-std::SplitMode"
+right = "gnoblin-std-impl::SplitDirMode"
+kind = "same-shape"
+reason = "the SDK's name for an option of the dwindle and the library's reading of it; the SDK cannot share a type with the library it links"

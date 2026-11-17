@@ -134,3 +134,9 @@ pub(crate) fn write_rect(g: &Gnoblin, id: Id, rect: &Rect) {
     write_num(g, id, "width", rect.width);
     write_num(g, id, "height", rect.height);
 }
+
+/// The seat's pointer, as the seat reports it (`pointer_x` and `pointer_y`), or `None` for a tree with no seat.
+pub(crate) fn pointer(g: &Gnoblin) -> Option<(f64, f64)> {
+    let seat = seat(g)?;
+    Some((seat.get_f64("pointer_x").ok()?, seat.get_f64("pointer_y").ok()?))
+}

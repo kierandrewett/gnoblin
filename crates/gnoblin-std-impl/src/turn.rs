@@ -135,7 +135,9 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
         return;
     };
     for client in &plan.departed {
-        layout.client_removed(&plan.cx, *client);
+        if let Some(next) = layout.client_removed(&plan.cx, *client) {
+            let _ = g.window_handle(gnoblin_core::NodeId(next)).focus();
+        }
     }
     for client in &plan.arrived {
         layout.client_added(g, &plan.cx, *client);
@@ -147,6 +149,9 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
         }
         let mut cx = plan.cx.clone();
         cx.children.clone_from(&run.tiled);
+        if layout.wants_pointer() {
+            cx.pointer = nodes::pointer(g);
+        }
         std.st.borrow_mut().counters.computes += 1;
         match layout.compute(&cx) {
             Ok(placements) => std
@@ -274,6 +279,7 @@ impl State {
             gap_inner: ws.gap_inner,
             gap_outer: ws.gap_outer,
             focused,
+            pointer: None,
         };
         let departed = std::mem::take(&mut ws.departed);
         let arrived: Vec<NodeId> = std::mem::take(&mut ws.arrived)

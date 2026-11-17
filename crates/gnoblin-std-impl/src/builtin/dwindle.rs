@@ -1,193 +1,119 @@
-//! [`DwindleLayout`]: a binary split tree that places windows as Hyprland's dwindle layout does.
+//! The dwindle: a binary split tree that places windows as Hyprland's dwindle layout does.
 //!
 //! A port of `data/js/gnoblin-std/layouts/dwindle.ts`, which is the reference: a new window splits the cell of the focused window (the
 //! last window's cell when none has focus) in two. A split's direction is not fixed: every compute reads the cell the split divides,
 //! wider than tall puts the halves side by side, taller than wide one above the other. `preserve_split` (or `smart_split`) keeps the
-//! direction a split had when it was made, as does `split` when it is not `Aspect` and a split made by [`preselect`]. The tree persists
-//! between computes: removing a window collapses its split, adding one inserts a leaf.
+//! direction a split had when it was made, as does `split` when it is not `aspect` and a split made by a preselection. The tree
+//! persists between computes: removing a window collapses its split, adding one inserts a leaf.
 //!
 //! Ratios are fractions of the first child, 0.1 to 0.9. Hyprland's `splitRatio` and `default_split_ratio` are twice that: its 1.0 is
 //! 0.5 here.
-//!
-//! The layout is a handle (cheap to clone, the clones share one tree), because the actions that change the tree
-//! ([`toggle_split`], [`swap_split`], [`rotate_split`], [`preselect`], [`move_to_root`], [`split_ratio`], [`pseudotile`]) are called
-//! by a shell's key bindings after the layout has been given to a workspace:
-//!
-//! ```ignore
-//! let dwindle = DwindleLayout::new();
-//! workspace.set_layout(dwindle.clone())?;
-//! g.bind("Super+T", { let (d, w) = (dwindle.clone(), workspace.clone()); move || { d.toggle_split(&w).ok(); } })?;
-//! ```
-//!
-//! [`preselect`]: DwindleLayout::preselect
-//! [`toggle_split`]: DwindleLayout::toggle_split
-//! [`swap_split`]: DwindleLayout::swap_split
-//! [`rotate_split`]: DwindleLayout::rotate_split
-//! [`move_to_root`]: DwindleLayout::move_to_root
-//! [`split_ratio`]: DwindleLayout::split_ratio
-//! [`pseudotile`]: DwindleLayout::pseudotile
 
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use gnoblin_core::Rect;
 
-use crate::bindings::Point;
-use crate::client::{AsClient, Client};
-use crate::error::{Error, ErrorKind, Result};
-use crate::layout::{Layout, LayoutContext, Placement};
-use crate::layouts::{clamp, geometry};
-use crate::split::{Divider, Split, SplitAxis};
-use crate::workspace::Workspace;
+use super::{ActionEnv, ActionResult, DividerSpec, Imp, OptionSet, Pt, SplitSpec, Val, clamp, geometry, tile};
+use crate::error::{Fail, Res};
+use crate::layout::{LayoutContext, Placement};
+use crate::state::NodeId;
 
 const MIN_RATIO: f64 = 0.1;
 const MAX_RATIO: f64 = 0.9;
 const MIN_MULTIPLIER: f64 = 0.1;
 const MAX_MULTIPLIER: f64 = 3.0;
 
-/// How a split picks its direction. `Aspect` follows the shape of the cell, as Hyprland's dwindle does.
+/// How a split picks its direction (`SPLIT_MODE`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SplitMode {
-    /// The shape of the cell, every compute.
+enum SplitDirMode {
     #[default]
     Aspect,
-    /// Side by side, for the splits this layout makes.
     Horizontal,
-    /// One above the other, for the splits this layout makes.
     Vertical,
 }
 
-/// Where [`DwindleLayout::preselect`] puts the next window, relative to the window it splits. `None` clears the choice.
+/// Where a preselection puts the next window (`PRESELECT`, `None` clears it).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Preselect {
-    /// To the left of it.
+enum PreselectDir {
     Left,
-    /// To the right of it.
     Right,
-    /// Above it.
     Up,
-    /// Below it.
     Down,
-    /// No choice.
     #[default]
     None,
 }
 
-/// Where a new window goes in the cell it splits.
+impl PreselectDir {
+    fn from_number(number: u32) -> PreselectDir {
+        match number {
+            0 => PreselectDir::Left,
+            1 => PreselectDir::Right,
+            2 => PreselectDir::Up,
+            3 => PreselectDir::Down,
+            _ => PreselectDir::None,
+        }
+    }
+
+    fn number(self) -> f64 {
+        match self {
+            PreselectDir::Left => 0.0,
+            PreselectDir::Right => 1.0,
+            PreselectDir::Up => 2.0,
+            PreselectDir::Down => 3.0,
+            PreselectDir::None => 4.0,
+        }
+    }
+}
+
+/// Where a new window goes in the cell it splits (`FORCE_SPLIT`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ForceSplit {
-    /// On the side of the cell the pointer is on, and second (right or below) when there is no pointer.
+enum ForceSide {
     #[default]
     ByPointer,
-    /// First (left or above).
     First,
-    /// Second (right or below).
     Second,
 }
 
-/// Which window of a new split gets the layout's ratio.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SplitBias {
-    /// The first one (top or left).
-    #[default]
-    First,
-    /// The window the new one was opened on, wherever it sits.
-    Opened,
+/// The options of the layout, as the algorithm reads them.
+#[derive(Clone, Copy, Debug)]
+struct DwindleSettings {
+    split: SplitDirMode,
+    ratio: f64,
+    gap: Option<f64>,
+    force_split: ForceSide,
+    preserve_split: bool,
+    smart_split: bool,
+    smart_resizing: bool,
+    permanent_direction_override: bool,
+    split_width_multiplier: f64,
+    use_active_for_splits: bool,
+    /// `split_bias` is "opened".
+    bias_opened: bool,
 }
 
-/// Where the pointer is, or `None`: the layout has no pointer of its own, so a shell gives it one.
-pub type PointerSource = Rc<dyn Fn() -> Option<Point>>;
-
-/// The options of a [`DwindleLayout`]. The names are Hyprland's `dwindle` options, with their defaults.
-#[derive(Clone)]
-pub struct DwindleOptions {
-    /// Split direction for each new window. Default [`SplitMode::Aspect`].
-    pub split: SplitMode,
-    /// The first child's share of every split that was not dragged or set, held to 0.1 to 0.9. Default 0.5.
-    pub ratio: f64,
-    /// Overrides the workspace's inner gap.
-    pub gap: Option<f64>,
-    /// Where a new window goes in the cell it splits. Default [`ForceSplit::ByPointer`].
-    pub force_split: ForceSplit,
-    /// Keeps each split's direction as it was made instead of following the shape of its cell. Default false.
-    pub preserve_split: bool,
-    /// Chooses the direction and side of a new window by the pointer's place in the cell it splits (the cell's diagonals make four
-    /// triangles). Implies `preserve_split`. With no pointer it does nothing. Default false.
-    pub smart_split: bool,
-    /// Which divider a split-resize drag moves. True: the divider nearest the press. False: both dividers that bound the window by
-    /// its place in the tree. Default true.
-    pub smart_resizing: bool,
-    /// Keeps a [`preselect`](DwindleLayout::preselect) choice for every new window until it is cleared, instead of once. Default false.
-    pub permanent_direction_override: bool,
-    /// A split goes side by side when the cell's width is at least its height times this, held to 0.1 to 3.0. Default 1.
-    pub split_width_multiplier: f64,
-    /// True: a new window splits the focused window. False: it splits the window under the pointer, or the first window when there
-    /// is no pointer. Default true.
-    pub use_active_for_splits: bool,
-    /// Which window of a new split gets `ratio`. Default [`SplitBias::First`].
-    pub split_bias: SplitBias,
-    /// Where the pointer is, in the layout's coordinates. `force_split`, `smart_split` and `use_active_for_splits` read it when a
-    /// window arrives. Default none.
-    pub pointer: Option<PointerSource>,
-}
-
-impl Default for DwindleOptions {
-    fn default() -> DwindleOptions {
-        DwindleOptions {
-            split: SplitMode::Aspect,
-            ratio: 0.5,
-            gap: None,
-            force_split: ForceSplit::ByPointer,
-            preserve_split: false,
-            smart_split: false,
-            smart_resizing: true,
-            permanent_direction_override: false,
-            split_width_multiplier: 1.0,
-            use_active_for_splits: true,
-            split_bias: SplitBias::First,
-            pointer: None,
+impl DwindleSettings {
+    fn read(opts: &OptionSet) -> DwindleSettings {
+        DwindleSettings {
+            split: match opts.member("split") {
+                1 => SplitDirMode::Horizontal,
+                2 => SplitDirMode::Vertical,
+                _ => SplitDirMode::Aspect,
+            },
+            ratio: opts.num("ratio"),
+            gap: opts.maybe("gap"),
+            force_split: match opts.member("force_split") {
+                1 => ForceSide::First,
+                2 => ForceSide::Second,
+                _ => ForceSide::ByPointer,
+            },
+            preserve_split: opts.boolean("preserve_split"),
+            smart_split: opts.boolean("smart_split"),
+            smart_resizing: opts.boolean("smart_resizing"),
+            permanent_direction_override: opts.boolean("permanent_direction_override"),
+            split_width_multiplier: opts.num("split_width_multiplier"),
+            use_active_for_splits: opts.boolean("use_active_for_splits"),
+            bias_opened: opts.member("split_bias") == 1,
         }
-    }
-}
-
-impl std::fmt::Debug for DwindleOptions {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DwindleOptions")
-            .field("split", &self.split)
-            .field("ratio", &self.ratio)
-            .field("gap", &self.gap)
-            .field("force_split", &self.force_split)
-            .field("preserve_split", &self.preserve_split)
-            .field("smart_split", &self.smart_split)
-            .field("smart_resizing", &self.smart_resizing)
-            .field("permanent_direction_override", &self.permanent_direction_override)
-            .field("split_width_multiplier", &self.split_width_multiplier)
-            .field("use_active_for_splits", &self.use_active_for_splits)
-            .field("split_bias", &self.split_bias)
-            .field("pointer", &self.pointer.as_ref().map(|_| "fn"))
-            .finish()
-    }
-}
-
-impl DwindleOptions {
-    fn check(&self) -> Result<()> {
-        let bad = |message: &str| Err(Error::new(ErrorKind::Type, message));
-        if !self.ratio.is_finite() {
-            return bad("DwindleLayout ratio must be a finite number");
-        }
-        if !self.split_width_multiplier.is_finite() {
-            return bad("DwindleLayout splitWidthMultiplier must be a finite number");
-        }
-        if let Some(gap) = self.gap
-            && !(gap.is_finite() && gap >= 0.0)
-        {
-            return Err(Error::new(
-                ErrorKind::Type,
-                format!("DwindleLayout gap must be a finite number of at least 0, got {gap}"),
-            ));
-        }
-        Ok(())
     }
 }
 
@@ -248,14 +174,14 @@ fn inherited_share(split: &SplitNode, ratio: f64) -> f64 {
 }
 
 /// The squared distance from `point` to `rect`; 0 inside it.
-fn distance(rect: &Rect, point: Point) -> f64 {
+fn distance(rect: &Rect, point: Pt) -> f64 {
     let dx = (rect.x - point.x).max(0.0).max(point.x - (rect.x + rect.width));
     let dy = (rect.y - point.y).max(0.0).max(point.y - (rect.y + rect.height));
     dx * dx + dy * dy
 }
 
 /// The window whose cell holds `point`, else the one whose cell is nearest it; the first of equals.
-fn nearest(rects: &[(u64, Rect)], point: Point) -> Option<u64> {
+fn nearest(rects: &[(u64, Rect)], point: Pt) -> Option<u64> {
     let mut best: Option<(u64, f64)> = None;
     for (client, rect) in rects {
         let d = distance(rect, point);
@@ -276,7 +202,7 @@ struct DividerDrag {
 
 /// The tree and everything the actions need, over window ids.
 struct DwindleCore {
-    options: DwindleOptions,
+    options: DwindleSettings,
     nodes: Vec<Option<ArenaNode>>,
     free: Vec<Ix>,
     root: Option<Ix>,
@@ -284,20 +210,18 @@ struct DwindleCore {
     leaves: Vec<(u64, Ix)>,
     /// Pseudotiled windows and the size each keeps; `None` until the next compute gives it its cell's size.
     pseudo: HashMap<u64, Option<(f64, f64)>>,
-    preselect: Preselect,
+    preselect: PreselectDir,
     /// The focus the previous compute saw: the window a new one splits, because the new one takes focus on arrival.
     focus: Option<u64>,
     geometry: Option<(Rect, Shape)>,
     drag: Option<DividerDrag>,
     next_token: u64,
-    /// The workspace the layout computed for last: the one an action asks to compute again.
-    workspace: Option<Workspace>,
-    /// A change to it is what makes the workspace compute again.
-    revision: u64,
+    /// Where the pointer is, for the compute that is running.
+    at: Option<Pt>,
 }
 
 impl DwindleCore {
-    fn new(options: DwindleOptions) -> DwindleCore {
+    fn new(options: DwindleSettings) -> DwindleCore {
         DwindleCore {
             options,
             nodes: Vec::new(),
@@ -305,13 +229,12 @@ impl DwindleCore {
             root: None,
             leaves: Vec::new(),
             pseudo: HashMap::new(),
-            preselect: Preselect::None,
+            preselect: PreselectDir::None,
             focus: None,
             geometry: None,
             drag: None,
             next_token: 0,
-            workspace: None,
-            revision: 0,
+            at: None,
         }
     }
 
@@ -371,10 +294,6 @@ impl DwindleCore {
 
     fn parent_of(&self, at: Ix) -> Option<Ix> {
         self.node(at).parent
-    }
-
-    fn bump(&mut self) {
-        self.revision += 1;
     }
 
     fn shape(&self, gap: f64) -> Shape {
@@ -452,12 +371,6 @@ impl DwindleCore {
         out
     }
 
-    /// The pointer, or `None` when there is no source for it or it gave something that is not a point.
-    fn pointer(&self) -> Option<Point> {
-        let at = self.options.pointer.as_ref().and_then(|source| source())?;
-        (at.x.is_finite() && at.y.is_finite()).then_some(at)
-    }
-
     /// Computes the cells of `children` and updates the tree: windows that left are removed, windows that arrived are inserted.
     fn compute(&mut self, children: &[u64], focused: Option<u64>, area: Rect, gap: f64) -> Vec<(u64, Rect)> {
         let shape = self.shape(gap);
@@ -502,8 +415,8 @@ impl DwindleCore {
             return;
         };
         let rects = self.cells(root, area, shape, None);
-        let at = self.pointer();
-        let options = self.options.clone();
+        let at = self.at;
+        let options = self.options;
         let target = if !options.use_active_for_splits {
             match at {
                 None => self.leaves.first().map(|(id, _)| *id),
@@ -527,21 +440,21 @@ impl DwindleCore {
         let mut dir;
         let mut first = false;
         let mut fixed = false;
-        if self.preselect != Preselect::None {
+        if self.preselect != PreselectDir::None {
             let choice = self.preselect;
-            dir = if matches!(choice, Preselect::Left | Preselect::Right) {
+            dir = if matches!(choice, PreselectDir::Left | PreselectDir::Right) {
                 Dir::H
             } else {
                 Dir::V
             };
-            first = matches!(choice, Preselect::Left | Preselect::Up);
+            first = matches!(choice, PreselectDir::Left | PreselectDir::Up);
             fixed = true;
             if !options.permanent_direction_override {
-                self.preselect = Preselect::None;
+                self.preselect = PreselectDir::None;
             }
         } else {
-            if options.split != SplitMode::Aspect {
-                dir = if options.split == SplitMode::Horizontal {
+            if options.split != SplitDirMode::Aspect {
+                dir = if options.split == SplitDirMode::Horizontal {
                     Dir::H
                 } else {
                     Dir::V
@@ -573,9 +486,9 @@ impl DwindleCore {
                     dir = Dir::V;
                     first = dy <= 0.0 || dy.is_nan();
                 }
-            } else if options.force_split == ForceSplit::First {
+            } else if options.force_split == ForceSide::First {
                 first = true;
-            } else if options.force_split == ForceSplit::ByPointer
+            } else if options.force_split == ForceSide::ByPointer
                 && let Some(at) = at
             {
                 first = if dir == Dir::H {
@@ -585,14 +498,7 @@ impl DwindleCore {
                 };
             }
         }
-        self.insert(
-            target,
-            client,
-            dir,
-            first,
-            fixed,
-            options.split_bias == SplitBias::Opened && first,
-        );
+        self.insert(target, client, dir, first, fixed, options.bias_opened && first);
     }
 
     /// The last leaf in reading order: the one a new window splits when none had focus.
@@ -690,7 +596,7 @@ impl DwindleCore {
     /// The divider a resize drag that pressed `client` at `point` moves. With `smart_resizing` it is the split of the last compute
     /// whose divider is nearest `point`, among the splits above `client`'s tile; a tie goes to the split nearer the tile. Without it,
     /// the split directly above the tile, and the nearest split above that which goes the other way as its cross.
-    fn find_split(&mut self, client: u64, point: Point) -> Option<Split> {
+    fn find_split(&mut self, client: u64, point: Pt) -> Option<SplitSpec> {
         let (area, shape) = self.geometry?;
         let leaf = self.leaf_of(client)?;
         let root = self.root?;
@@ -704,16 +610,12 @@ impl DwindleCore {
                 region.height
             }) - shape.gap
         };
-        let divider = |core: &DwindleCore, at: Ix| -> Divider {
+        let divider = |core: &DwindleCore, at: Ix| -> DividerSpec {
             let split = core.split(at);
-            Divider {
-                axis: if split.dir == Dir::H {
-                    SplitAxis::X
-                } else {
-                    SplitAxis::Y
-                },
+            DividerSpec {
+                x_axis: split.dir == Dir::H,
                 span: span(core, at),
-                direction: 1.0,
+                direction: 1,
                 min: MIN_RATIO,
                 max: MAX_RATIO,
                 ratio: clamp(
@@ -776,7 +678,7 @@ impl DwindleCore {
             main: original(self, main),
             cross: cross.map(|at| original(self, at)),
         });
-        Some(Split {
+        Some(SplitSpec {
             token,
             divider: divider(self, main),
             cross: cross.map(|at| divider(self, at)),
@@ -791,7 +693,6 @@ impl DwindleCore {
         if let (Some((at, _)), Some(cross)) = (drag.cross, cross_ratio) {
             self.split_mut(at).ratio = Some(clamp(cross, MIN_RATIO, MAX_RATIO));
         }
-        self.bump();
     }
 
     fn reset_split(&mut self, token: u64) {
@@ -802,7 +703,6 @@ impl DwindleCore {
         if let Some((at, original)) = drag.cross {
             self.split_mut(at).ratio = original;
         }
-        self.bump();
     }
 
     // ---- actions ------------------------------------------------------------------------------------------------------------
@@ -818,7 +718,6 @@ impl DwindleCore {
         };
         let split = self.split_mut(at);
         split.dir = if split.dir == Dir::H { Dir::V } else { Dir::H };
-        self.bump();
         true
     }
 
@@ -828,7 +727,6 @@ impl DwindleCore {
         };
         let split = self.split_mut(at);
         std::mem::swap(&mut split.a, &mut split.b);
-        self.bump();
         true
     }
 
@@ -845,7 +743,6 @@ impl DwindleCore {
         if flip {
             split.dir = if split.dir == Dir::H { Dir::V } else { Dir::H };
         }
-        self.bump();
         true
     }
 
@@ -891,7 +788,6 @@ impl DwindleCore {
             let split = self.split_mut(root);
             std::mem::swap(&mut split.a, &mut split.b);
         }
-        self.bump();
         true
     }
 
@@ -906,7 +802,6 @@ impl DwindleCore {
             MIN_RATIO,
             MAX_RATIO,
         ));
-        self.bump();
         true
     }
 
@@ -921,285 +816,97 @@ impl DwindleCore {
         } else {
             self.pseudo.remove(&client);
         }
-        self.bump();
         on
     }
 }
 
-// ---- the layout ------------------------------------------------------------------------------------------------------------
+// ---- the layout --------------------------------------------------------------------------------------------------------------
 
-/// A dwindle tiling layout: each new window splits the cell it arrives in. See the [module](self) documentation.
-///
-/// A clone is another handle on the same layout: give one to the workspace and keep one for the actions.
-#[derive(Clone)]
-pub struct DwindleLayout {
-    core: Rc<RefCell<DwindleCore>>,
+/// The built-in dwindle layout.
+pub(super) struct Dwindle {
+    opts: OptionSet,
+    core: DwindleCore,
+    /// Where the options say the pointer is (`fixed`), or `None`.
+    pointer: PointerFrom,
 }
 
-impl Default for DwindleLayout {
-    fn default() -> DwindleLayout {
-        DwindleLayout::new()
-    }
+#[derive(Clone, Copy, Debug)]
+enum PointerFrom {
+    Nowhere,
+    Seat,
+    Fixed(Option<Pt>),
 }
 
-impl std::fmt::Debug for DwindleLayout {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DwindleLayout")
-            .field("options", &self.core.borrow().options)
-            .finish_non_exhaustive()
-    }
-}
-
-/// The id of the window that has the keyboard among `workspace`'s clients.
-fn focused_id(workspace: &Workspace) -> Result<Option<u64>> {
-    for client in workspace.clients()?.to_vec()? {
-        if client.window().is_focused().unwrap_or(false) {
-            return Ok(Some(client.window().id().0));
+impl Dwindle {
+    pub(super) fn new(opts: OptionSet) -> Dwindle {
+        let options = DwindleSettings::read(&opts);
+        Dwindle {
+            opts,
+            core: DwindleCore::new(options),
+            pointer: PointerFrom::Nowhere,
         }
     }
-    Ok(None)
 }
 
-impl DwindleLayout {
-    /// A dwindle layout with Hyprland's defaults.
-    pub fn new() -> DwindleLayout {
-        DwindleLayout {
-            core: Rc::new(RefCell::new(DwindleCore::new(DwindleOptions::default()))),
-        }
+fn finite(point: Pt) -> Option<Pt> {
+    (point.x.is_finite() && point.y.is_finite()).then_some(point)
+}
+
+impl Imp for Dwindle {
+    fn options(&self) -> &OptionSet {
+        &self.opts
     }
 
-    /// A dwindle layout with `options`.
-    ///
-    /// # Errors
-    ///
-    /// The ratio or the width multiplier is not a finite number, or the gap is negative or not finite.
-    pub fn with_options(options: DwindleOptions) -> Result<DwindleLayout> {
-        options.check()?;
-        Ok(DwindleLayout {
-            core: Rc::new(RefCell::new(DwindleCore::new(options))),
-        })
+    fn options_mut(&mut self) -> &mut OptionSet {
+        &mut self.opts
     }
 
-    /// The layout's options now.
-    pub fn options(&self) -> DwindleOptions {
-        self.core.borrow().options.clone()
-    }
-
-    /// Replaces the options. The workspace computes again; the tree is kept, so splits already made keep their direction and ratio.
-    ///
-    /// # Errors
-    ///
-    /// As for [`with_options`](DwindleLayout::with_options).
-    pub fn set_options(&self, options: DwindleOptions) -> Result<()> {
-        options.check()?;
-        let workspace = {
-            let mut core = self.core.borrow_mut();
-            core.options = options;
-            core.bump();
-            core.workspace.clone()
+    fn refresh(&mut self) {
+        self.core.options = DwindleSettings::read(&self.opts);
+        self.pointer = match self.opts.member("pointer") {
+            1 => PointerFrom::Seat,
+            2 => PointerFrom::Fixed(
+                self.opts
+                    .maybe("pointer_x")
+                    .zip(self.opts.maybe("pointer_y"))
+                    .map(|(x, y)| Pt { x, y }),
+            ),
+            _ => PointerFrom::Nowhere,
         };
-        if let Some(workspace) = workspace {
-            workspace.invalidate()?;
-        }
-        Ok(())
     }
 
-    /// Tells `workspace` to compute again when an action changed the tree.
-    fn changed(workspace: &Workspace, did: bool) -> Result<bool> {
-        if did {
-            workspace.invalidate()?;
-        }
-        Ok(did)
+    fn wants_pointer(&self) -> bool {
+        matches!(self.pointer, PointerFrom::Seat)
     }
 
-    /// The direction [`preselect`](DwindleLayout::preselect) set for the next window, or [`Preselect::None`].
-    pub fn preselected(&self) -> Preselect {
-        self.core.borrow().preselect
-    }
-
-    /// Sets where the next window opens: `Left` or `Up` puts it first (left or above) with a split that goes that way, `Right` or
-    /// `Down` second. The split keeps its direction whatever its cell's shape. The choice is used once, unless
-    /// `permanent_direction_override` is set; `None` clears it. Nothing is changed in the tree, and the first window of a workspace
-    /// does not use it.
-    pub fn preselect(&self, direction: Preselect) {
-        self.core.borrow_mut().preselect = direction;
-    }
-
-    /// Turns the split above the focused window of `workspace` from side by side to top and bottom or back. A split that follows the
-    /// shape of its cell takes its direction from the cell again at once, so this needs `preserve_split` (or a split that is fixed),
-    /// as in Hyprland. `false` when no window with a split above it has focus.
-    ///
-    /// # Errors
-    ///
-    /// The workspace is gone, or the generation retired.
-    pub fn toggle_split(&self, workspace: &Workspace) -> Result<bool> {
-        let focus = focused_id(workspace)?;
-        let did = self.core.borrow_mut().toggle_split(focus);
-        DwindleLayout::changed(workspace, did)
-    }
-
-    /// Swaps the two halves of the split above the focused window. `false` when there is none.
-    ///
-    /// # Errors
-    ///
-    /// As for [`toggle_split`](DwindleLayout::toggle_split).
-    pub fn swap_split(&self, workspace: &Workspace) -> Result<bool> {
-        let focus = focused_id(workspace)?;
-        let did = self.core.borrow_mut().swap_split(focus);
-        DwindleLayout::changed(workspace, did)
-    }
-
-    /// Turns the split above the focused window by `angle` degrees clockwise, a multiple of 90 (negative turns the other way): the
-    /// first half goes from the left to the top to the right to the bottom. 180 swaps the halves. Like
-    /// [`toggle_split`](DwindleLayout::toggle_split), the direction part needs `preserve_split`. `false` when there is no split above
-    /// the focused window.
-    ///
-    /// # Errors
-    ///
-    /// `angle` is not a multiple of 90, the workspace is gone, or the generation retired.
-    pub fn rotate_split(&self, workspace: &Workspace, angle: f64) -> Result<bool> {
-        if !angle.is_finite() || angle % 90.0 != 0.0 {
-            return Err(Error::new(
-                ErrorKind::Type,
-                format!("DwindleLayout rotateSplit angle must be a multiple of 90, got {angle}"),
-            ));
-        }
-        let focus = focused_id(workspace)?;
-        let turns = (angle / 90.0).trunc() as i64;
-        let did = self.core.borrow_mut().rotate_split(focus, turns);
-        DwindleLayout::changed(workspace, did)
-    }
-
-    /// Makes the focused window a direct child of the root split: it takes the place of the root's other half, which goes where the
-    /// window was. `stable` keeps the window on the same side of the screen; otherwise it goes to the other. `false` when the window
-    /// is alone or already a child of the root.
-    ///
-    /// # Errors
-    ///
-    /// As for [`toggle_split`](DwindleLayout::toggle_split).
-    pub fn move_to_root(&self, workspace: &Workspace, stable: bool) -> Result<bool> {
-        let focus = focused_id(workspace)?;
-        let did = self.core.borrow_mut().move_to_root(focus, stable);
-        DwindleLayout::changed(workspace, did)
-    }
-
-    /// Changes the share of the split above the focused window by `amount` (a fraction, so 0.1 moves the divider a tenth of the
-    /// split), held to 0.1 to 0.9. The split keeps the ratio, whatever the layout's `ratio` becomes. `false` when the window has no
-    /// split above it.
-    ///
-    /// # Errors
-    ///
-    /// `amount` is not finite, the workspace is gone, or the generation retired.
-    pub fn split_ratio(&self, workspace: &Workspace, amount: f64) -> Result<bool> {
-        self.change_ratio(workspace, amount, false)
-    }
-
-    /// Sets the share of the split above the focused window to `ratio`, held to 0.1 to 0.9.
-    ///
-    /// # Errors
-    ///
-    /// As for [`split_ratio`](DwindleLayout::split_ratio).
-    pub fn set_split_ratio(&self, workspace: &Workspace, ratio: f64) -> Result<bool> {
-        self.change_ratio(workspace, ratio, true)
-    }
-
-    fn change_ratio(&self, workspace: &Workspace, amount: f64, exact: bool) -> Result<bool> {
-        if !amount.is_finite() {
-            return Err(Error::new(
-                ErrorKind::Type,
-                format!("DwindleLayout splitRatio needs a finite number, got {amount}"),
-            ));
-        }
-        let focus = focused_id(workspace)?;
-        let did = self.core.borrow_mut().split_ratio(focus, amount, exact);
-        DwindleLayout::changed(workspace, did)
-    }
-
-    /// Toggles pseudotiling of the focused window: it keeps its own size, centred in its cell and held to the cell's size, instead of
-    /// filling the cell. The size is `size`, else the window's own size with its frame, else the size its cell has at the next
-    /// compute. Returns whether the window is pseudotiled after the call; `false` also when no window with a tile has focus.
-    ///
-    /// # Errors
-    ///
-    /// `size` is not two finite numbers above 0, the workspace is gone, or the generation retired.
-    pub fn pseudotile(&self, workspace: &Workspace, size: Option<(f64, f64)>) -> Result<bool> {
-        if let Some((width, height)) = size
-            && !(width.is_finite() && height.is_finite() && width > 0.0 && height > 0.0)
-        {
-            return Err(Error::new(
-                ErrorKind::Type,
-                format!("DwindleLayout pseudotile size must be finite numbers above 0, got {width} by {height}"),
-            ));
-        }
-        let focus = workspace
-            .clients()?
-            .to_vec()?
-            .into_iter()
-            .find(|client| client.window().is_focused().unwrap_or(false));
-        let Some(client) = focus else {
-            return Ok(false);
-        };
-        let id = client.window().id().0;
-        // The window's own size with its frame is read only when it becomes pseudotiled.
-        let pseudotiled = self.core.borrow().pseudo.contains_key(&id);
-        let own = match size {
-            Some(size) => Some(size),
-            None if !pseudotiled => own_size(&client),
-            None => None,
-        };
-        let on = self.core.borrow_mut().pseudotile(Some(id), own);
-        workspace.invalidate()?;
-        Ok(on)
-    }
-
-    /// Whether `client` is pseudotiled.
-    pub fn is_pseudotiled(&self, client: impl AsClient) -> bool {
-        self.core.borrow().pseudo.contains_key(&client.client_id().0)
-    }
-}
-
-/// The own size of `client` with its frame, when it has a width and a height; else `None`.
-fn own_size(client: &Client) -> Option<(f64, f64)> {
-    let bounds = client.bounds().ok()?;
-    if !(bounds.width > 0.0 && bounds.height > 0.0) {
-        return None;
-    }
-    let outer = client
-        .frame_inset()
-        .unwrap_or_default()
-        .grow(Rect::new(0.0, 0.0, bounds.width, bounds.height));
-    Some((outer.width, outer.height))
-}
-
-impl Layout for DwindleLayout {
     fn compute(&mut self, cx: &LayoutContext) -> Vec<Placement> {
-        let (area, gap) = {
-            let own = self.core.borrow().options.gap;
-            geometry(own, cx)
-        };
-        let ids: Vec<u64> = cx.children.iter().map(|client| client.window().id().0).collect();
-        let focused = cx.focused.as_ref().map(|client| client.window().id().0);
-        let mut core = self.core.borrow_mut();
-        core.workspace = Some(cx.workspace.clone());
-        let rects = core.compute(&ids, focused, area, gap);
+        let (area, gap) = geometry(self.core.options.gap, cx);
+        self.core.at = match self.pointer {
+            PointerFrom::Nowhere => None,
+            PointerFrom::Seat => cx.pointer.map(|(x, y)| Pt { x, y }),
+            PointerFrom::Fixed(point) => point,
+        }
+        .and_then(finite);
+        let focused = cx.focused;
+        let rects = self.core.compute(&cx.children, focused, area, gap);
         if rects.is_empty() {
             return Vec::new();
         }
         let by_id: HashMap<u64, Rect> = rects.into_iter().collect();
         let mut placements = Vec::with_capacity(cx.children.len());
-        for (client, id) in cx.children.iter().zip(&ids) {
-            let Some(cell) = by_id.get(id).copied() else {
+        for client in &cx.children {
+            let Some(cell) = by_id.get(client).copied() else {
                 continue;
             };
-            match core.pseudo.get(id).copied() {
-                None => placements.push(Placement::tile(client, cell.x, cell.y, cell.width, cell.height)),
+            match self.core.pseudo.get(client).copied() {
+                None => placements.push(tile(*client, cell.x, cell.y, cell.width, cell.height)),
                 Some(kept) => {
                     let own = kept.unwrap_or((cell.width, cell.height));
-                    core.pseudo.insert(*id, Some(own));
+                    self.core.pseudo.insert(*client, Some(own));
                     let width = own.0.min(cell.width);
                     let height = own.1.min(cell.height);
-                    placements.push(Placement::tile(
-                        client,
+                    placements.push(tile(
+                        *client,
                         cell.x + (cell.width - width) / 2.0,
                         cell.y + (cell.height - height) / 2.0,
                         width,
@@ -1211,24 +918,93 @@ impl Layout for DwindleLayout {
         placements
     }
 
-    fn clients_swapped(&mut self, a: &Client, b: &Client) {
-        self.core.borrow_mut().swapped(a.window().id().0, b.window().id().0);
+    fn clients_swapped(&mut self, a: NodeId, b: NodeId) {
+        self.core.swapped(a, b);
     }
 
-    fn revision(&self) -> u64 {
-        self.core.borrow().revision
+    fn find_split(&mut self, client: NodeId, at: Pt) -> Option<SplitSpec> {
+        self.core.find_split(client, at)
     }
 
-    fn find_split(&mut self, client: &Client, point: Point) -> Option<Split> {
-        self.core.borrow_mut().find_split(client.window().id().0, point)
-    }
-
-    fn set_split(&mut self, token: u64, ratio: f64, cross_ratio: Option<f64>) {
-        self.core.borrow_mut().set_split(token, ratio, cross_ratio);
+    fn set_split(&mut self, token: u64, ratio: f64, cross: Option<f64>) {
+        self.core.set_split(token, ratio, cross);
     }
 
     fn reset_split(&mut self, token: u64) {
-        self.core.borrow_mut().reset_split(token);
+        self.core.reset_split(token);
+    }
+
+    fn act(&mut self, action: &str, args: &[Val], env: &ActionEnv) -> Res<ActionResult> {
+        let number = |at: usize| match args.get(at) {
+            Some(Val::Num(value)) => *value,
+            _ => 0.0,
+        };
+        let focus = env.focused;
+        Ok(match action {
+            "toggle_split" => ActionResult::did(self.core.toggle_split(focus)),
+            "swap_split" => ActionResult::did(self.core.swap_split(focus)),
+            "rotate_split" => {
+                let angle = number(0);
+                if angle % 90.0 != 0.0 {
+                    return Err(Fail::type_error(format!(
+                        "dwindle.rotate_split angle must be a multiple of 90, got {angle}"
+                    )));
+                }
+                ActionResult::did(self.core.rotate_split(focus, (angle / 90.0).trunc() as i64))
+            }
+            "move_to_root" => ActionResult::did(
+                self.core
+                    .move_to_root(focus, matches!(args.first(), Some(Val::Bool(true)))),
+            ),
+            "split_ratio" => ActionResult::did(self.core.split_ratio(focus, number(0), false)),
+            "set_split_ratio" => ActionResult::did(self.core.split_ratio(focus, number(0), true)),
+            "preselect" => {
+                self.core.preselect = PreselectDir::from_number(number(0) as u32);
+                ActionResult::nothing()
+            }
+            "preselected" => ActionResult::answer(Val::Num(self.core.preselect.number())),
+            "pseudotile" => {
+                let size = match (args.first(), args.get(1)) {
+                    (Some(Val::Num(width)), Some(Val::Num(height))) => {
+                        if !(*width > 0.0 && *height > 0.0) {
+                            return Err(Fail::type_error(format!(
+                                "dwindle.pseudotile size must be numbers above 0, got {width} by {height}"
+                            )));
+                        }
+                        Some((*width, *height))
+                    }
+                    (Some(Val::None) | None, Some(Val::None) | None) => None,
+                    _ => {
+                        return Err(Fail::type_error(
+                            "dwindle.pseudotile takes both `width` and `height`, or neither",
+                        ));
+                    }
+                };
+                let Some(id) = focus else {
+                    return Ok(ActionResult::answer(Val::Bool(false)));
+                };
+                // The window's own size with its frame is read only when it becomes pseudotiled.
+                let pseudotiled = self.core.pseudo.contains_key(&id);
+                let own = match size {
+                    Some(size) => Some(size),
+                    None if !pseudotiled => env.focused_size,
+                    None => None,
+                };
+                let on = self.core.pseudotile(Some(id), own);
+                ActionResult {
+                    value: Val::Bool(on),
+                    changed: true,
+                    focus: None,
+                }
+            }
+            "is_pseudotiled" => {
+                let Some(Val::Node(client)) = args.first() else {
+                    return Err(Fail::type_error("dwindle.is_pseudotiled needs a window"));
+                };
+                ActionResult::answer(Val::Bool(self.core.pseudo.contains_key(client)))
+            }
+            other => return Err(Fail::no_such(format!("the dwindle layout has no action `{other}`"))),
+        })
     }
 }
 
@@ -1238,6 +1014,16 @@ mod tests {
 
     fn area() -> Rect {
         Rect::new(0.0, 0.0, 1000.0, 800.0)
+    }
+
+    fn core(options: DwindleSettings) -> DwindleCore {
+        DwindleCore::new(options)
+    }
+
+    fn defaults() -> DwindleSettings {
+        DwindleSettings::read(&OptionSet::defaults(
+            gnoblin_std_abi::layouts::layout_kind(gnoblin_std_abi::STD_BUILTIN_DWINDLE).expect("dwindle is declared"),
+        ))
     }
 
     /// Windows `1..=n` arrive one at a time, each taking the focus as it does; the cells after the last.
@@ -1262,7 +1048,7 @@ mod tests {
 
     #[test]
     fn windows_dwindle_into_the_corner_by_the_shape_of_their_cell() {
-        let mut core = DwindleCore::new(DwindleOptions::default());
+        let mut core = core(defaults());
         assert_eq!(text(&arrive(&mut core, 1)), "0,0,1000,800");
         // 1000 by 800 is wider than tall: side by side.
         assert_eq!(text(&arrive(&mut core, 2)), "0,0,500,800 500,0,500,800");
@@ -1276,7 +1062,7 @@ mod tests {
 
     #[test]
     fn a_window_that_leaves_gives_its_cell_to_its_sibling() {
-        let mut core = DwindleCore::new(DwindleOptions::default());
+        let mut core = core(defaults());
         arrive(&mut core, 3);
         let cells = core.compute(&[1, 3], Some(1), area(), 0.0);
         assert_eq!(text(&cells), "0,0,500,800 500,0,500,800");
@@ -1286,23 +1072,23 @@ mod tests {
 
     #[test]
     fn preselect_chooses_the_side_once_and_fixes_the_direction() {
-        let mut core = DwindleCore::new(DwindleOptions::default());
+        let mut core = core(defaults());
         arrive(&mut core, 1);
-        core.preselect = Preselect::Up;
+        core.preselect = PreselectDir::Up;
         // Above, though the 1000 by 800 cell would split side by side, and the new window is first.
         assert_eq!(
             text(&core.compute(&[1, 2], Some(2), area(), 0.0)),
             "0,400,1000,400 0,0,1000,400"
         );
-        assert_eq!(core.preselect, Preselect::None);
+        assert_eq!(core.preselect, PreselectDir::None);
     }
 
     #[test]
     fn a_drag_moves_the_nearest_divider_and_a_cancel_puts_it_back() {
-        let mut core = DwindleCore::new(DwindleOptions::default());
+        let mut core = core(defaults());
         arrive(&mut core, 2);
-        let split = core.find_split(1, Point { x: 505.0, y: 100.0 }).expect("a divider");
-        assert_eq!(split.divider.axis, SplitAxis::X);
+        let split = core.find_split(1, Pt { x: 505.0, y: 100.0 }).expect("a divider");
+        assert!(split.divider.x_axis);
         assert_eq!(split.divider.span, 1000.0);
         assert_eq!(split.divider.ratio, 0.5);
         core.set_split(split.token, 0.7, None);
@@ -1319,9 +1105,9 @@ mod tests {
 
     #[test]
     fn the_tree_turns_over_when_the_split_above_the_focus_is_rotated_or_swapped() {
-        let mut core = DwindleCore::new(DwindleOptions {
+        let mut core = core(DwindleSettings {
             preserve_split: true,
-            ..DwindleOptions::default()
+            ..defaults()
         });
         arrive(&mut core, 2);
         assert!(core.swap_split(Some(2)));

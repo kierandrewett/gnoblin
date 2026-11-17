@@ -118,6 +118,7 @@ impl WorkspaceBuilder {
             Some(layout) => layout,
             None => RawLayout::new(FloatingLayout::default(), &self.std),
         };
+        let built = layout.builtin().cloned();
         let spec = GnoblinStdWorkspaceSpec {
             size: size_of::<GnoblinStdWorkspaceSpec>() as u32,
             reserved: 0,
@@ -133,7 +134,11 @@ impl WorkspaceBuilder {
         let rc = unsafe { (self.std.api().workspace_new)(self.std.ctx(), &spec, &mut id) };
         self.std.check(rc)?;
         layout.adopted();
-        Ok(Workspace::from_handle(&self.std, id))
+        let workspace = Workspace::from_handle(&self.std, id);
+        if let Some(builtin) = built {
+            workspace.install_builtin(&builtin)?;
+        }
+        Ok(workspace)
     }
 
     /// Makes the workspace and adds it to the list.
@@ -318,6 +323,9 @@ impl Workspace {
     /// The generation retired.
     pub fn set_layout(&self, layout: impl IntoLayout) -> Result<()> {
         let raw = RawLayout::new(layout, &self.std);
+        if let Some(builtin) = raw.builtin() {
+            return self.install_builtin(builtin);
+        }
         // SAFETY: the layout's table and `user` are live for the call; on success the library adopts `user`.
         let rc = unsafe { (self.std.api().workspace_set_layout)(self.std.ctx(), self.id, raw.spec()) };
         self.std.check(rc)?;

@@ -39,6 +39,7 @@ use gnoblin_std_abi::{
 
 use crate::api::Std;
 use crate::bindings::Point;
+use crate::builtin::BuiltinLayout;
 use crate::client::Client;
 use crate::split::Split;
 use crate::workspace::Workspace;
@@ -321,6 +322,8 @@ pub enum LayoutSpec {
         /// Whether it hands the keyboard on itself.
         removal: bool,
     },
+    /// One of the library's own tiling layouts, by kind and options.
+    Builtin(BuiltinLayout),
 }
 
 impl IntoLayout for FloatingLayout {
@@ -570,6 +573,8 @@ static VTABLE_REMOVAL: GnoblinStdLayoutVtable = GnoblinStdLayoutVtable {
 pub(crate) struct RawLayout {
     spec: GnoblinStdLayoutSpec,
     owned: Option<*mut Boxed>,
+    /// A built-in layout is given through `workspace_set_layout_kind`, not through the spec.
+    builtin: Option<BuiltinLayout>,
 }
 
 impl RawLayout {
@@ -589,7 +594,19 @@ impl RawLayout {
             LayoutSpec::Floating(floating) => {
                 spec.placement = floating.raw_placement();
                 spec.cascade_step = floating.raw_step();
-                RawLayout { spec, owned: None }
+                RawLayout {
+                    spec,
+                    owned: None,
+                    builtin: None,
+                }
+            }
+            LayoutSpec::Builtin(builtin) => {
+                // The spec stays the floating layout: a workspace made with it takes the kind right after.
+                RawLayout {
+                    spec,
+                    owned: None,
+                    builtin: Some(builtin),
+                }
             }
             LayoutSpec::Foreign { layout, removal } => {
                 let boxed = Box::into_raw(Box::new(Boxed {
@@ -607,6 +624,7 @@ impl RawLayout {
                 RawLayout {
                     spec,
                     owned: Some(boxed),
+                    builtin: None,
                 }
             }
         }
@@ -615,6 +633,11 @@ impl RawLayout {
     /// The table argument.
     pub(crate) fn spec(&self) -> *const GnoblinStdLayoutSpec {
         &raw const self.spec
+    }
+
+    /// The built-in layout this value names, if it names one.
+    pub(crate) fn builtin(&self) -> Option<&BuiltinLayout> {
+        self.builtin.as_ref()
     }
 
     /// The library took the layout: it owns the box now.

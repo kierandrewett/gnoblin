@@ -743,6 +743,19 @@ unsafe extern "C" fn workspace_set_gaps(
     })
 }
 
+/// Gives the workspace `layout`. The old layout is dropped at the next turn, outside every borrow: dropping a foreign one runs the
+/// shell's `drop_user`.
+pub(crate) fn replace_layout(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, layout: Rc<LayoutObj>) -> Res<i32> {
+    mutate(ctx, |st| {
+        let ws = st.workspace_mut(workspace)?;
+        let old = std::mem::replace(&mut ws.layout, layout);
+        ws.revision = None;
+        ws.dirty = true;
+        st.graveyard.push(old);
+        Ok(abi::E_OK)
+    })
+}
+
 unsafe extern "C" fn workspace_set_layout(
     ctx: GnoblinCtx,
     workspace: GnoblinStdWorkspace,
@@ -753,15 +766,7 @@ unsafe extern "C" fn workspace_set_layout(
         read(ctx, |st| st.workspace(workspace).map(|_| ()))?;
         // SAFETY: the caller guarantees `spec` and its vtable are valid.
         let layout = unsafe { layout_spec(spec) }?;
-        mutate(ctx, |st| {
-            let ws = st.workspace_mut(workspace)?;
-            let old = std::mem::replace(&mut ws.layout, layout.build());
-            ws.revision = None;
-            ws.dirty = true;
-            // The old layout is dropped at the next turn, outside every borrow: dropping a foreign one runs the shell's `drop_user`.
-            st.graveyard.push(old);
-            Ok(abi::E_OK)
-        })
+        replace_layout(ctx, workspace, layout.build())
     })
 }
 
@@ -963,6 +968,12 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     scene_root: crate::scene::table::scene_root,
     scene_set: crate::scene::table::scene_set,
     scene_get: crate::scene::table::scene_get,
+    workspace_set_layout_kind: crate::builtin_api::workspace_set_layout_kind,
+    workspace_layout_set: crate::builtin_api::workspace_layout_set,
+    workspace_layout_get: crate::builtin_api::workspace_layout_get,
+    workspace_layout_act: crate::builtin_api::workspace_layout_act,
+    workspace_layout_kind: crate::builtin_api::workspace_layout_kind,
+    layout_ring: crate::builtin_api::layout_ring,
 };
 
 #[cfg(test)]

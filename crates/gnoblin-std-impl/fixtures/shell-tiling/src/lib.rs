@@ -23,8 +23,8 @@ use std::rc::Rc;
 use gnoblin_core::Subscription;
 use gnoblin_std::prelude::*;
 use gnoblin_std::{
-    ArcLayout, Carousel3dLayout, DwindleOptions, ForceSplit, Orientation, Point, Preselect, SplitBias, SplitMode,
-    StripLayout,
+    ArcLayout, Carousel3dLayout, DwindleOptions, ForceSplit, Orientation, Point, PointerSource, Preselect, SplitBias,
+    SplitMode, StripLayout,
 };
 
 const CHORDS: &[&str] = &[
@@ -76,12 +76,10 @@ struct TilingShell {
     main: Workspace,
     drags: RefCell<Vec<Subscription>>,
     bound: Cell<Drags>,
-    dwindle: RefCell<Option<DwindleLayout>>,
-    strip: RefCell<Option<StripLayout>>,
 }
 
-fn pointer(x: f64, y: f64) -> Option<gnoblin_std::PointerSource> {
-    Some(Rc::new(move || Some(Point { x, y })))
+fn pointer(x: f64, y: f64) -> PointerSource {
+    PointerSource::Fixed(Point { x, y })
 }
 
 impl TilingShell {
@@ -110,23 +108,20 @@ impl TilingShell {
     }
 
     fn dwindle(&self, options: DwindleOptions) -> gnoblin_std::Result<()> {
-        let layout = DwindleLayout::with_options(options)?;
-        *self.dwindle.borrow_mut() = Some(layout.clone());
-        self.main.set_layout(layout)?;
+        self.main.set_layout(DwindleLayout::with_options(options)?)?;
         self.bind(Drags::Tiling)
     }
 
     fn strip(&self, column: f64) -> gnoblin_std::Result<()> {
-        let layout = StripLayout::with_column(column)?;
-        *self.strip.borrow_mut() = Some(layout.clone());
-        self.main.set_layout(layout)?;
+        self.main.set_layout(StripLayout::with_column(column)?)?;
         self.bind(Drags::Nothing)
     }
 
     fn run(&self, chord: &str) -> gnoblin_std::Result<()> {
-        let dwindle = self.dwindle.borrow().clone();
-        let strip = self.strip.borrow().clone();
+        // The layout's actions work on the workspace's own layout: a chord of a kind the workspace does not have does nothing.
         let main = &self.main;
+        let dwindle = DwindleLayout::is_active(main)?.then(DwindleLayout::new);
+        let strip = StripLayout::is_active(main)?.then(StripLayout::new);
         match chord {
             "Super+1" => {
                 main.set_layout(MasterStackLayout::new())?;
@@ -191,18 +186,9 @@ impl TilingShell {
             "Super+F2" => dwindle.map_or(Ok(()), |d| d.swap_split(main).map(drop)),
             "Super+F3" => dwindle.map_or(Ok(()), |d| d.rotate_split(main, 90.0).map(drop)),
             "Super+F4" => dwindle.map_or(Ok(()), |d| d.rotate_split(main, -90.0).map(drop)),
-            "Super+F5" => {
-                dwindle.inspect(|d| d.preselect(Preselect::Right));
-                Ok(())
-            }
-            "Super+F6" => {
-                dwindle.inspect(|d| d.preselect(Preselect::Down));
-                Ok(())
-            }
-            "Super+F7" => {
-                dwindle.inspect(|d| d.preselect(Preselect::Left));
-                Ok(())
-            }
+            "Super+F5" => dwindle.map_or(Ok(()), |d| d.preselect(main, Preselect::Right)),
+            "Super+F6" => dwindle.map_or(Ok(()), |d| d.preselect(main, Preselect::Down)),
+            "Super+F7" => dwindle.map_or(Ok(()), |d| d.preselect(main, Preselect::Left)),
             "Super+F8" => dwindle.map_or(Ok(()), |d| d.move_to_root(main, true).map(drop)),
             "Super+F9" => dwindle.map_or(Ok(()), |d| d.move_to_root(main, false).map(drop)),
             "Super+F10" => dwindle.map_or(Ok(()), |d| d.split_ratio(main, 0.1).map(drop)),
@@ -210,7 +196,7 @@ impl TilingShell {
             "Super+F12" => dwindle.map_or(Ok(()), |d| d.pseudotile(main, None).map(drop)),
             "Super+Left" => strip.map_or(Ok(()), |s| s.focus_left(main)),
             "Super+Right" => strip.map_or(Ok(()), |s| s.focus_right(main)),
-            "Super+Up" => strip.map_or(Ok(()), |s| s.scroll_to(300.0)),
+            "Super+Up" => strip.map_or(Ok(()), |s| s.scroll_to(main, 300.0)),
             "Super+Down" => Carousel3dLayout::new().rotate(main, 1),
             other => {
                 self.std.gnoblin().log(&format!("unknown chord {other}"));
@@ -232,8 +218,6 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         main,
         drags: RefCell::new(Vec::new()),
         bound: Cell::new(Drags::Nothing),
-        dwindle: RefCell::new(None),
-        strip: RefCell::new(None),
     });
     shell.bind(Drags::Tiling)?;
     for chord in CHORDS {

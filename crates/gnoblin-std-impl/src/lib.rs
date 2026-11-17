@@ -33,6 +33,8 @@
 
 mod animation;
 mod camera;
+mod builtin;
+mod builtin_api;
 mod client_state;
 mod collection;
 mod desks;

@@ -1600,6 +1600,33 @@ renamed by creation order; the order within a step is not compared).
   edits of `desks.rs`/`turn.rs`. Camera nodes and the `Camera3D` projection blend are not drawn by any renderer (nothing to interpolate).
   Not run on the real compositor: only the fake.
 
+### 22.9 Built-in layouts, declared once (lane StdLayoutsLib)
+
+22.7 left the tiling algorithms in the Rust SDK, which gave them to Rust shells only. They now live in `libgnoblin-std`, behind one declarative
+surface, and the SDK has no algorithm left. Item (1) of 22.7's "not done" is closed by this subsection; the layouts bullet of 22.7 describes
+the behaviour, which is unchanged (the 13 scenarios of `tiling.rs` are equal, exactly), and not where the code is.
+
+- **One table.** `gnoblin_std_abi::layouts::LAYOUT_KINDS` declares every built-in kind (`master_stack`, `grid`, `monocle`, `dwindle`, `strip`,
+  `arc`, `carousel`), each with its options (name, type, range, default, one line of documentation), its actions (name, arguments, answer) and
+  whether it has dividers. The library validates against it and takes its defaults from it; `cargo xtask gen-sdks` reads it, so the typed
+  wrapper of every language is generated, never written. An option or an action is added by one entry there and the algorithm in
+  `crates/gnoblin-std-impl/src/builtin/`; no SDK changes.
+- **Typed property set.** An option, an action argument and an answer are one record, `GnoblinStdOption` (`size`, `kind` of `STD_VALUE_NONE`, `BOOL`,
+  `NUMBER`, `ENUM`, `NODE` or `TEXT`, `flag`, `name`, `text`, `number`, `node`); an enumeration travels as the number of its member, whose name the
+  table gives. The library checks the name, the type and the range (finite, whole, at least, above) and refuses with `E_NO_SUCH_MEMBER` or `E_TYPE`
+  before a layout sees a value.
+- **Functions.** `workspace_set_layout_kind(workspace, kind, options)` replaces the layout; `workspace_layout_set`, `workspace_layout_get` and
+  `workspace_layout_act(workspace, action, args, out)` change and read one option and run one action on the workspace's own layout (an action that
+  needs a window works on the one with the keyboard, and one that changes the layout makes the workspace compute again); `workspace_layout_kind`
+  says which kind a workspace has; `layout_ring` is the pure ring. The dividers keep the functions of 22.7 (`workspace_find_split`,
+  `workspace_set_split`, `workspace_reset_split`), which now reach a built-in layout directly.
+- **Where the pointer comes from.** The old `pointer` closure of the dwindle is the option `pointer` (`none`, `seat`, `fixed`) with
+  `pointer_x` and `pointer_y` for `fixed`: a closure does not cross a table, a seat's position does.
+- **The SDK.** `DwindleLayout`, `StripLayout`, `ArcLayout`, `Carousel3dLayout`, `MasterStackLayout`, `GridLayout` and `MonocleLayout` are values
+  that name a kind and the options they set; their methods call `Workspace::layout_act` by action name (`DwindleLayout::new().toggle_split(&ws)`).
+  `Std::ring` replaces the free function `ring`. The `Layout` trait and the vtable stay for layouts a shell writes. Unit tests of the SDK check
+  that every name a wrapper sends is declared and that a default wrapper sends the table's defaults.
+
 ## 23. Implementation notes, M6.1 to M6.4
 
 What the JsRuntime lane built, where it differs from sections 5.10, 6, 8.2 and 10.2, and what is still missing.

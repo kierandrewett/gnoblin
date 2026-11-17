@@ -20,6 +20,7 @@
 //! [`ABI_MAJOR`] is the SONAME major and the std SDK crate's semver major. Within a major the table only grows. The ABI is
 //! unstable until 0.2.0 ships (decision D18), as the core's is.
 
+pub mod layouts;
 pub mod types;
 
 #[cfg(feature = "build-support")]
