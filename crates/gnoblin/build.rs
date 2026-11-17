@@ -2,8 +2,8 @@
 //!
 //! `design/modular-framework.md` section 4.3: Cargo cannot make a binary wait for a `cdylib`, so the link goes through a
 //! generated stub that carries the SONAME. The binary records `NEEDED libgnoblin-core.so.1` once; at run time the dynamic
-//! loader resolves that name to the real library. The binary still runs its old roles and calls nothing in the core yet, so
-//! the entry is forced (`--no-as-needed`): without it the linker would drop a library no code references.
+//! loader resolves that name to the real library. The binary calls the core (`gnoblin_main`, which serves the compositor
+//! role), so the plain link records the entry: no `--no-as-needed` is needed for a library the code references.
 //!
 //! Where the loader looks, when `LD_LIBRARY_PATH` is unset, is the binary's run path, and `$ORIGIN` is the directory the
 //! binary sits in:
@@ -24,7 +24,7 @@ const DEFAULT_RPATH: &str = "$ORIGIN:$ORIGIN/../lib:$ORIGIN/../lib64";
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=GNOBLIN_RPATH");
-    gnoblin_core_abi::build_support::link_core_in_bins(&[]);
+    gnoblin_core_abi::build_support::link_core(&[]);
     let rpath = env::var("GNOBLIN_RPATH").unwrap_or_else(|_| DEFAULT_RPATH.to_owned());
     if !rpath.is_empty() {
         // DT_RUNPATH, not DT_RPATH, so a caller's `LD_LIBRARY_PATH` can still point the binary at another core.

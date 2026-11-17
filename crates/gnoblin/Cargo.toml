@@ -12,11 +12,11 @@ name = "gnoblin"
 path = "src/main.rs"
 
 [dependencies]
-# The composition root: the only crate that knows every subsystem. This binary hands
-# it a configuration and stays out of the way; it must never learn a subsystem itself,
-# because a binary that reached into an engine crate would be a second composition
-# root.
-gnoblin-compositor = { path = "../gnoblin-compositor" }
+# The compositor is not a dependency of this binary: the composition root is `libgnoblin-core.so.1`, which this binary links
+# through the stub of `build.rs` and enters through `gnoblin_main` (`design/modular-framework.md`, M2.10). What the binary
+# keeps are the roles that are not the compositor's, the logging configuration they read and the IPC version `--version` prints.
+gnoblin-config = { path = "../gnoblin-config" }
+gnoblin-proto = { path = "../gnoblin-proto" }
 # The guardian: the plan of children, the events it answers, the effects it returns and
 # the supervisor that performs them. The guardian role is this crate's, because the
 # process that starts the other processes is the one that names them.
@@ -36,11 +36,16 @@ clap.workspace = true
 
 [build-dependencies]
 # `build.rs` links `libgnoblin-core.so.1` through the generated stub (`build_support`), so the binary records the library
-# without Cargo building it first. A build dependency only: the binary calls nothing in the ABI yet.
+# without Cargo building it first. A build dependency only: the one call the binary makes (`gnoblin_main`) is declared in
+# `src/core_link.rs`.
 gnoblin-core-abi = { path = "../gnoblin-core-abi", features = ["build-support"] }
 
-[lints]
-workspace = true
+# The launcher makes one `unsafe` call, into the core library (`src/core_link.rs`).
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
 
 [dev-dependencies]
 # The tests run the built binary, so the exit codes and the flags are the shipped
@@ -60,6 +65,9 @@ rustix = { workspace = true, features = ["process", "net", "time"] }
 # the shell logged.
 wayland-client = "0.31.14"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
+# `tests/native_shell.rs` types a chord into a real session through `zwp_virtual_keyboard_v1`, as an on-screen keyboard does: the
+# spawned binary has no input tap to inject through.
+wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
 gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-proto = { path = "../gnoblin-proto" }
 # `tests/js_shell.rs` moves a manual clock under the shell and reads its health: the host's supervisor types.

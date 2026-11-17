@@ -122,6 +122,9 @@ pub struct SupervisorConfig {
     /// The XR extension binary, when the user opted in with [`XR_VARIABLE`] and it was found.
     /// Without it the plan has no `xr` child.
     pub xr_program: Option<PathBuf>,
+    /// The native shell module the compositor runs in its own process, from `gnoblin ./libshell.so`. The compositor child is
+    /// started with it, and the plan has no script runtime child.
+    pub shell: Option<PathBuf>,
     /// The children to supervise.
     pub plan: Plan,
     /// How the guardian behaves: the stop grace, the safe-mode threshold, the environment.
@@ -142,11 +145,13 @@ impl SupervisorConfig {
     /// The configuration the process finds: the standard plan, the C supervisor's numbers and
     /// the recovery state under `$XDG_STATE_HOME/gnoblin`.
     ///
+    /// With a `shell` the compositor loads it in process and the plan has no runtime child.
+    ///
     /// # Errors
     ///
     /// [`SupervisorError::Plan`] when the standard plan is not a valid plan, which would mean the crate
     /// and its own defaults disagree.
-    pub fn from_environment(program: PathBuf) -> Result<SupervisorConfig, SupervisorError> {
+    pub fn from_environment(program: PathBuf, shell: Option<PathBuf>) -> Result<SupervisorConfig, SupervisorError> {
         let prefix = std::env::var("GNOBLIN_PREFIX").unwrap_or_else(|_| "/usr".to_owned());
         let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_owned());
         let library_path = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
@@ -183,6 +188,9 @@ impl SupervisorConfig {
         };
         let mut plan = Plan::standard(false, portal_program.is_some(), xr_program.is_some(), Vec::new())
             .map_err(SupervisorError::Plan)?;
+        if shell.is_some() {
+            plan = plan.without_runtime();
+        }
         let mut rules = Rules::standard(&inherited);
         let mut tick = Duration::from_millis(200);
         if std::env::var_os(TEST_FAST_VARIABLE).is_some() {
@@ -196,6 +204,7 @@ impl SupervisorConfig {
             program,
             portal_program,
             xr_program,
+            shell,
             plan,
             rules,
             recovery: read_recovery(&recovery_path),
@@ -567,6 +576,12 @@ impl Supervisor {
                 let mut command = Command::new(&self.config.program);
                 let role = self.role_name(spec).unwrap_or_else(|| "guardian".to_owned());
                 command.arg("--role").arg(role);
+                // The compositor loads a native shell in its own process, so it is the child that is told which.
+                if spec.kind == ChildKind::Compositor
+                    && let Some(shell) = &self.config.shell
+                {
+                    command.arg(shell);
+                }
                 command
             }
         }
@@ -1157,6 +1172,7 @@ mod xr_tests {
             program: PathBuf::from("/nonexistent/gnoblin"),
             portal_program: None,
             xr_program: Some(program),
+            shell: None,
             plan,
             rules: Rules::standard(&inherited),
             recovery: Recovery::default(),
@@ -1187,6 +1203,32 @@ mod xr_tests {
                 Err(error) => panic!("no exit was reported: {error}"),
             }
         }
+    }
+
+    #[test]
+    fn the_compositor_is_started_with_the_native_shell_and_no_other_role_is() {
+        let (mut supervisor, _lines) = supervisor(PathBuf::from("/nonexistent/gnoblin-xr"));
+        let arguments = |supervisor: &Supervisor, kind: ChildKind| -> Vec<String> {
+            let spec = supervisor
+                .guardian
+                .plan()
+                .children()
+                .iter()
+                .find(|child| child.kind == kind)
+                .expect("the plan has the child")
+                .clone();
+            supervisor
+                .command(&spec)
+                .get_args()
+                .map(|argument| argument.to_string_lossy().into_owned())
+                .collect()
+        };
+        assert_eq!(arguments(&supervisor, ChildKind::Compositor), ["--role", "compositor"]);
+        supervisor.config.shell = Some(PathBuf::from("/shells/libshell.so"));
+        assert_eq!(
+            arguments(&supervisor, ChildKind::Compositor),
+            ["--role", "compositor", "/shells/libshell.so"]
+        );
     }
 
     #[test]

@@ -1,14 +1,17 @@
 //! The roles this executable has.
 //!
 //! Design/rust-compositor.md, "Process model", gives the executable four roles and
-//! keeps them in one binary. The command line is therefore one flag and nothing else:
-//! a role is a word a supervisor passes, not a configuration surface, and every
-//! other knob belongs to the configuration document a role reads.
+//! keeps them in one binary. The command line is therefore one flag and one optional path
+//! and nothing else: a role is a word a supervisor passes, not a configuration surface, and
+//! every other knob belongs to the configuration document a role reads. The path is the
+//! native shell module a session runs in the compositor's process (`gnoblin ./libshell.so`).
 //!
 //! A role name this build does not have is a command line error, the same as any
 //! other unknown word: the supervisor's exit 2 names the roles that exist.
 
-use clap::{Arg, ArgMatches, Command};
+use std::path::PathBuf;
+
+use clap::{Arg, ArgMatches, Command, value_parser};
 
 /// One role of `design/rust-compositor.md`'s process model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,8 +50,9 @@ impl Role {
 /// The command line.
 ///
 /// `--role` is documented and defaulted; `--version` prints the version the IPC
-/// serves. Nothing else is a flag: a role reads the configuration document, so an
-/// option here would be a second, undocumented place for the same setting.
+/// serves; the positional `PATH` names a native shell module. Nothing else is a flag: a
+/// role reads the configuration document, so an option here would be a second,
+/// undocumented place for the same setting.
 pub fn command() -> Command {
     Command::new("gnoblin")
         .about("Gnoblin session entry point: one executable, one role per process.")
@@ -65,6 +69,21 @@ pub fn command() -> Command {
                      the D-Bus agents.",
                 ),
         )
+        .arg(
+            Arg::new("shell")
+                .value_name("PATH")
+                .value_parser(value_parser!(PathBuf))
+                .help(
+                    "A native shell module (a `.so` built with gnoblin-core) to run in the compositor's \
+                     process, for example `gnoblin ./target/debug/libminimal_core_shell.so`. The session starts \
+                     no script runtime for it.",
+                ),
+        )
+}
+
+/// The shell module the command line names, if it names one.
+pub fn shell_from_matches(matches: &ArgMatches) -> Option<PathBuf> {
+    matches.get_one::<PathBuf>("shell").cloned()
 }
 
 /// The version `--version` prints.
@@ -79,11 +98,8 @@ pub fn command() -> Command {
 /// command line once.
 fn version_line() -> &'static str {
     static VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-        format!(
-            "{} (build {})",
-            gnoblin_compositor::version(),
-            env!("CARGO_PKG_VERSION")
-        )
+        let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
+        format!("{major}.{minor}.{patch} (build {})", env!("CARGO_PKG_VERSION"))
     });
     VERSION.as_str()
 }
@@ -106,7 +122,7 @@ pub fn from_matches(matches: &ArgMatches) -> Result<Role, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Role, command, from_matches, version_line};
+    use super::{Role, command, from_matches, shell_from_matches, version_line};
 
     #[test]
     fn every_role_round_trips_through_its_name() {
@@ -130,6 +146,20 @@ mod tests {
                 .expect("the role is one this build has");
             assert_eq!(from_matches(&matches), Ok(role));
         }
+    }
+
+    #[test]
+    fn a_positional_argument_is_the_shell_module() {
+        let matches = command()
+            .try_get_matches_from(["gnoblin", "./libshell.so"])
+            .expect("a path is accepted");
+        assert_eq!(from_matches(&matches), Ok(Role::Guardian));
+        assert_eq!(
+            shell_from_matches(&matches),
+            Some(std::path::PathBuf::from("./libshell.so"))
+        );
+        let none = command().try_get_matches_from(["gnoblin"]).expect("no flag is fine");
+        assert_eq!(shell_from_matches(&none), None);
     }
 
     #[test]

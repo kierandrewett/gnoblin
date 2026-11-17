@@ -1,17 +1,21 @@
 //! Example 8: a shell with no workspaces and no scene graph.
 //!
 //! The windows of the tree are the whole model. The shell tiles them master-and-stack on the primary screen by writing each
-//! window's rectangle, in the order the compositor stacks them (the first window of the root's children is the master), and
-//! it makes no node of its own: no canvas, no camera, no view. There is no `Workspace` object because there is nothing a
-//! workspace would hold that the tree does not.
+//! window's rectangle, in the order the windows opened in (the oldest is the master until the user chooses another), and it
+//! makes no node of its own: no canvas, no camera, no view. There is no `Workspace` object because there is nothing a
+//! workspace would hold that the tree does not. The windows are listed by class, because the compositor does not parent them:
+//! they are not children of the root until a shell inserts them, and this shell never does.
 //!
 //! - one window fills the screen; with more, the master takes the left half and the others split the right half;
 //! - a window opening or closing tiles the rest again, in the same transaction;
-//! - `Super+m` makes the window that has the keyboard the master;
-//! - `Super+Return` starts a terminal.
+//! - `<Super>m` makes the window that has the keyboard the master;
+//! - `<Super>Return` starts a terminal.
+
+use std::cell::Cell;
+use std::rc::Rc;
 
 use gnoblin_core as gnoblin;
-use gnoblin_core::{Gnoblin, Rect, Window};
+use gnoblin_core::{Gnoblin, NodeId, Rect, Window};
 
 /// The space between windows and around them.
 const GAP: f64 = 10.0;
@@ -45,12 +49,18 @@ fn tiles(area: Rect, count: usize) -> Vec<Rect> {
     }
 }
 
-/// The primary screen's rectangle: the first screen of the tree, or a default when the compositor has none yet.
+/// The primary screen's rectangle: the first screen of the tree, or a default when the compositor has none yet. The compositor
+/// publishes a screen's place and size as the node's own `x`, `y`, `width` and `height`; a screen that leaves them at zero is read
+/// by its `screen_*` properties instead.
 fn work_area(g: &Gnoblin) -> Rect {
     let area = || -> gnoblin::Result<Option<Rect>> {
         let screen = g.class("screen")?;
         for node in g.root()?.children()? {
             if node.class()? == screen {
+                let (width, height) = (node.get_f64("width")?, node.get_f64("height")?);
+                if width > 0.0 && height > 0.0 {
+                    return Ok(Some(Rect::new(node.get_f64("x")?, node.get_f64("y")?, width, height)));
+                }
                 return Ok(Some(Rect::new(
                     node.get_f64("screen_x")?,
                     node.get_f64("screen_y")?,
@@ -64,10 +74,14 @@ fn work_area(g: &Gnoblin) -> Rect {
     area().ok().flatten().unwrap_or(Rect::new(0.0, 0.0, 1920.0, 1080.0))
 }
 
-/// Tiles every window again.
-fn retile(g: &Gnoblin) {
+/// Tiles every window again: the master first, then the others in the order they opened.
+fn retile(g: &Gnoblin, master: &Cell<Option<NodeId>>) {
     let result = (|| -> gnoblin::Result<()> {
-        let windows = g.windows()?;
+        let mut windows = g.windows()?;
+        if let Some(index) = windows.iter().position(|window| Some(window.id()) == master.get()) {
+            let chosen = windows.remove(index);
+            windows.insert(0, chosen);
+        }
         for (window, tile) in windows.iter().zip(tiles(work_area(g), windows.len())) {
             window.set_geometry(tile)?;
         }
@@ -88,19 +102,25 @@ fn focused(g: &Gnoblin) -> Option<Window> {
 
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin::Result<()> {
-    retile(g);
-    g.on_client_created(move |_window| retile(g))?;
-    g.on_client_destroyed(move |_window| retile(g))?;
+    // The window the user chose as the master, if one; a closed one is simply not found and the oldest leads again.
+    let master: Rc<Cell<Option<NodeId>>> = Rc::default();
+    retile(g, &master);
+    {
+        let master = Rc::clone(&master);
+        g.on_client_created(move |_window| retile(g, &master))?;
+    }
+    {
+        let master = Rc::clone(&master);
+        g.on_client_destroyed(move |_window| retile(g, &master))?;
+    }
 
-    g.bind("Super+m", move || {
+    g.bind("<Super>m", move || {
         if let Some(window) = focused(g) {
-            // The master is the first of the root's children: lowering a window to the bottom of the stack makes it the first.
-            if window.lower().is_ok() {
-                retile(g);
-            }
+            master.set(Some(window.id()));
+            retile(g, &master);
         }
     })?;
-    g.bind("Super+Return", move || {
+    g.bind("<Super>Return", move || {
         if let Err(error) = g.spawn("foot") {
             g.log(&format!("cannot start a terminal: {error}"));
         }

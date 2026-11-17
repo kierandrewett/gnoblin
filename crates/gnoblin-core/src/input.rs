@@ -5,8 +5,8 @@
 //! reload hands a chord from the old generation to the new one without the compositor ever seeing it claimed twice.
 //!
 //! ```ignore
-//! g.bind("Super+Return", || { g.spawn("foot").ok(); })?;
-//! g.bind_pointer("Super+Button1", |drag| { /* move a window by drag.dx, drag.dy */ })?;
+//! g.bind("<Super>Return", || { g.spawn("foot").ok(); })?;
+//! g.bind_pointer("<Super>Button1", |drag| { /* move a window by drag.dx, drag.dy */ })?;
 //! ```
 #![allow(unsafe_code)]
 
@@ -65,7 +65,7 @@ impl DragPhase {
     }
 }
 
-/// One step of a pointer chord's drag (`Super+Button1`): where the pointer is and how far it moved since the press.
+/// One step of a pointer chord's drag (`<Super>Button1`): where the pointer is and how far it moved since the press.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PointerDrag {
     /// Where in the drag this is.
@@ -250,11 +250,12 @@ impl Gnoblin {
         }
     }
 
-    /// Claims the key chord `chord` (`Super+Return`, `Ctrl+Alt+Delete`) and calls `f` each time it is pressed. The compositor
-    /// withholds the chord from every client. The chord is claimed on the shell's seat, for every keyboard.
+    /// Claims the key chord `chord` (`<Super>Return`, `<Ctrl><Alt>Delete`: the compositor's syntax, each modifier in angle
+    /// brackets before the key) and calls `f` each time it is pressed. The compositor withholds the chord from every client.
+    /// The chord is claimed on the shell's seat, for every keyboard.
     ///
     /// ```ignore
-    /// g.bind("Super+Return", || { g.spawn("foot").ok(); })?;
+    /// g.bind("<Super>Return", || { g.spawn("foot").ok(); })?;
     /// ```
     pub fn bind<F>(&self, chord: &str, mut f: F) -> Result<Subscription>
     where
@@ -292,7 +293,7 @@ impl Gnoblin {
         )
     }
 
-    /// Claims a pointer chord (a chord that ends in `Button1` to `Button9`: `Super+Button1`) and calls `f` for each step of the
+    /// Claims a pointer chord (a chord that ends in `Button1` to `Button9`: `<Super>Button1`) and calls `f` for each step of the
     /// drag. With exactly the chord's modifiers held, the press is withheld from clients.
     pub fn bind_pointer<F>(&self, chord: &str, mut f: F) -> Result<Subscription>
     where

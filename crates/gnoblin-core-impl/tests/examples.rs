@@ -30,7 +30,9 @@ fn build_stage() -> Result<Stage, String> {
     let base = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("examples-stage");
     let _ = fs::remove_dir_all(&base);
     let main_target = base.join("target-main");
-    let next_target = base.join("target-next");
+    // One target directory for both cores: the compositor is inside the library now, and building its dependencies twice would
+    // double the disk the nested builds take. The next-minor build only recompiles the ABI crate and the core.
+    let next_target = main_target.clone();
     let core_dir = base.join("core10");
     let next_dir = base.join("core11");
 
@@ -223,7 +225,7 @@ fn example_1_places_every_window_claims_two_chords_and_closes_the_focused_window
         "{stdout}"
     );
 
-    assert!(stdout.contains("claims=[\"Super+Return\", \"Super+q\"]"), "{stdout}");
+    assert!(stdout.contains("claims=[\"<Super>Return\", \"<Super>q\"]"), "{stdout}");
     assert!(
         stdout.contains("terminal_started=true"),
         "the chord started the terminal: {stdout}"
@@ -288,7 +290,8 @@ fn example_8_tiles_raw_window_nodes_and_makes_no_node_of_its_own() {
         ],
         "{stdout}"
     );
-    // `Super+m` makes the focused window the master: it goes first among the root's children and the rest follow.
+    // `<Super>m` makes the focused window the master: it takes the left half and the rest follow. The shell does not reorder the
+    // tree: the order of the windows is the shell's own.
     assert_eq!(
         step(&stdout, "promoted"),
         [
@@ -297,7 +300,6 @@ fn example_8_tiles_raw_window_nodes_and_makes_no_node_of_its_own() {
         ],
         "{stdout}"
     );
-    assert!(stdout.contains("order=[42, 20, 21, 40]"), "{stdout}");
     assert!(stdout.contains("terminal_started=true"), "{stdout}");
 
     // No scene graph: the shell created no node at all (asserted from the ops the compositor received), and no std is mapped.

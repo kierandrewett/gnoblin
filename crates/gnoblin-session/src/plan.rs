@@ -318,6 +318,17 @@ impl Plan {
         Self::new(children)
     }
 
+    /// This plan without its script runtime child: the plan of a session whose shell runs in the compositor's process.
+    ///
+    /// A native shell is loaded by the compositor and reports on the compositor's descriptor, so nothing is left for a
+    /// `gnoblin --role runtime` child to do, and a second shell would find the tree already held. The other children keep their
+    /// identifiers: they are names the events use, not positions.
+    #[must_use]
+    pub fn without_runtime(mut self) -> Self {
+        self.children.retain(|child| child.kind != ChildKind::Runtime);
+        self
+    }
+
     /// Every child, in start order.
     #[must_use]
     pub fn children(&self) -> &[ChildSpec] {
@@ -345,6 +356,16 @@ mod tests {
 
     fn names(plan: &Plan) -> Vec<&str> {
         plan.children().iter().map(|child| child.name.as_str()).collect()
+    }
+
+    #[test]
+    fn a_session_with_a_native_shell_has_no_runtime_child_and_keeps_the_rest_in_order() {
+        let plan = Plan::standard(true, true, false, ["app.desktop".to_owned()])
+            .expect("valid plan")
+            .without_runtime();
+        let names: Vec<&str> = plan.children().iter().map(|child| child.name.as_str()).collect();
+        assert_eq!(names, ["compositor", "services", "portal", "front", "app.desktop"]);
+        assert_eq!(plan.children()[0].kind, ChildKind::Compositor);
     }
 
     #[test]

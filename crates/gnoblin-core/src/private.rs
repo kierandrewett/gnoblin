@@ -115,7 +115,7 @@ pub unsafe extern "C" fn init(_api: *const GnoblinApi, ctx: GnoblinCtx) -> i32 {
     };
     install_panic_hook(api, ctx);
     // The handle is leaked: sixteen bytes per generation, so the author's closures may capture `g` for as long as the shell runs
-    // (`g.bind("Super+Return", || g.spawn("foot"))`). The core never unmaps a generation's code (D16), so what the box costs is
+    // (`g.bind("<Super>Return", || g.spawn("foot"))`). The core never unmaps a generation's code (D16), so what the box costs is
     // what the library already costs, and a handle kept past its generation fails with `Retired` instead of acting.
     let g: &'static Gnoblin = Box::leak(Box::new(Gnoblin::new(api, ctx)));
     CURRENT.with(|current| current.set(Some(g)));
@@ -131,9 +131,24 @@ pub unsafe extern "C" fn init(_api: *const GnoblinApi, ctx: GnoblinCtx) -> i32 {
             g.log_at(LogLevel::CoreError, &format!("shell init error: {message}"));
             abi::E_LOAD
         }
-        // The panic hook has already reported the message to the core.
-        Err(_) => abi::E_PANIC,
+        // The panic hook has already reported the message and the place to the core's log; the load's error carries the message
+        // too, so whoever reads why the shell did not start (the compositor's log, the guardian) is told.
+        Err(payload) => {
+            let message = payload_text(payload.as_ref());
+            // SAFETY: `set_last_error` reads `len` bytes at `msg` for the call.
+            let _ = unsafe { (api.set_last_error)(ctx, message.as_ptr(), message.len()) };
+            abi::E_PANIC
+        }
     }
+}
+
+/// The text of a panic payload: a `&str` or a `String`, or a note for anything else.
+fn payload_text(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|text| (*text).to_owned())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "a panic with a non-text payload".to_owned())
 }
 
 /// The shell's retirement hook. The core runs registered shutdown hooks itself, so there is nothing left for the
@@ -168,12 +183,7 @@ fn install_panic_hook(api: &'static GnoblinApi, ctx: GnoblinCtx) {
 }
 
 fn describe(info: &PanicHookInfo<'_>) -> String {
-    let payload = info.payload();
-    let message = payload
-        .downcast_ref::<&str>()
-        .map(|text| (*text).to_owned())
-        .or_else(|| payload.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "a panic with a non-text payload".to_owned());
+    let message = payload_text(info.payload());
     match info.location() {
         Some(location) => format!(
             "{message} at {}:{}:{}",

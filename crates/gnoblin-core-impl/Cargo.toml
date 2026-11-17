@@ -10,20 +10,26 @@ build = "build.rs"
 
 [lib]
 name = "gnoblin_core_impl"
-# The cdylib is the library. The rlib exists for this crate's own tests and for the compositor edge a later step adds;
-# nothing else may depend on it (`impl-sealed`).
+# The cdylib is the library. The rlib exists for this crate's own tests; nothing else may depend on it (`impl-sealed`).
 crate-type = ["cdylib", "rlib"]
 
 [features]
 # Test only: adds the `gnoblin_test_main` export, the scenario driver the integration tests run through a launcher, and
 # turns the log console on. Never in a build that ships; `cargo xtask dist-check` rejects the export.
-test-driver = ["gnoblin-log/init", "dep:gnoblin-testkit"]
+test-driver = ["dep:gnoblin-testkit"]
 # Test only: a core of a hypothetical ABI 1.1 (one function appended to the table). See `gnoblin-core-abi`.
 next-minor = ["gnoblin-core-abi/next-minor"]
 
 [dependencies]
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
-gnoblin-log = { path = "../gnoblin-log" }
+# The log of the compositor process: the library installs it (`gnoblin_main`), so it enables the `init` feature that only a
+# binary or an implementation library may (`log-features`).
+gnoblin-log = { path = "../gnoblin-log", features = ["init"] }
+# The compositor, and what the compositor role of the launcher wires into it: the compat adapters, the power backend of the
+# services crate, and the shell it runs in process. The launcher reaches all of it only through `gnoblin_main` (M2.10).
+gnoblin-compositor = { path = "../gnoblin-compositor" }
+gnoblin-compat-host = { path = "../compat/gnoblin-compat-host" }
+gnoblin-services = { path = "../gnoblin-services" }
 # The host: generations and their registrations, the dispatch loop, the loader and its retire list, panic containment.
 # This crate adds the C handles and the function table over it.
 gnoblin-shell-host = { path = "../gnoblin-shell-host" }

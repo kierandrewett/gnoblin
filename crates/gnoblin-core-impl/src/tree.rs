@@ -123,6 +123,25 @@ pub(crate) fn node_children(ctx: GnoblinCtx, node: u64) -> Result<Vec<u64>, i32>
     .map_err(|error| fail("node_children", error))
 }
 
+/// `class_nodes`: every node of `class` the compositor has published, as this tick sees it, ordered by id.
+pub(crate) fn class_nodes(ctx: GnoblinCtx, class: u32) -> Result<Vec<u64>, i32> {
+    check_ctx(ctx, "class_nodes", true)?;
+    session::with(|session| {
+        let tree = session.tree_ref()?;
+        let mut nodes: Vec<u64> = tree
+            .mirror()
+            .ids()
+            .filter(|id| {
+                tree.class_of(*id)
+                    .is_some_and(|name| catalog::tree_class_id(&name) == class)
+            })
+            .collect();
+        nodes.sort_unstable();
+        Ok(nodes)
+    })
+    .map_err(|error| fail("class_nodes", error))
+}
+
 /// `node_get`: the property's value through this tick's writes, or its default when nothing wrote it.
 pub(crate) fn node_get(ctx: GnoblinCtx, node: u64, prop: u32) -> Result<GnoblinValue, i32> {
     check_ctx(ctx, "node_get", true)?;

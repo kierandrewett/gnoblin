@@ -130,6 +130,63 @@ pub struct NoReports;
 
 impl ShellReports for NoReports {}
 
+/// The reports an in-process shell makes, written on the guardian's report descriptor in the wire form of
+/// [`gnoblin_proto::report`] (the compositor's own `ready` and `x11` reports go down the same descriptor, so the reporter
+/// is shared and each report is one whole write).
+///
+/// - `autostart`, `config_accepted` and `config_rejected` are the script runtime's three lines, unchanged.
+/// - `ready` is the runtime's `ready` block with `GNOBLIN_CONFIG_REVISION`. The compositor reported its own `ready` when it
+///   began to serve, so a guardian that sees this one has a duplicate of a report it has acted on and ignores it (it says so
+///   at debug level); the block is kept so a shell that is not a script reports as a script does, and so a guardian that
+///   one day waits for the shell has the report to wait for.
+/// - `ended` is `config-rejected` with revision `0` ("the document never got that far") and the way the shell ended, for a
+///   shell that failed, panicked or was abandoned: the guardian logs the warning and records the status, and the session
+///   continues, because the compositor does. A shell that returned is not reported: it ended on purpose or with the session.
+///
+/// What it was told is passed on to the spec's own reports afterwards, so a test's hook still sees every report.
+pub struct GuardianReports {
+    reporter: Arc<Mutex<gnoblin_client::Reporter>>,
+    then: Arc<dyn ShellReports>,
+}
+
+impl GuardianReports {
+    fn write(&self, text: &str) {
+        self.reporter.lock().unwrap_or_else(PoisonError::into_inner).write(text);
+    }
+}
+
+impl ShellReports for GuardianReports {
+    fn autostart(&self, revision: u64, name: &str, command: &[String]) {
+        self.write(&gnoblin_proto::report::autostart(revision, name, command));
+        self.then.autostart(revision, name, command);
+    }
+
+    fn config_accepted(&self, revision: u64) {
+        self.write(&gnoblin_proto::report::config_accepted(revision));
+        self.then.config_accepted(revision);
+    }
+
+    fn config_rejected(&self, revision: u64, diagnostic: &str) {
+        self.write(&gnoblin_proto::report::config_rejected(revision, diagnostic));
+        self.then.config_rejected(revision, diagnostic);
+    }
+
+    fn ready(&self, revision: u64) {
+        self.write(&gnoblin_proto::report::ready(&[(
+            "GNOBLIN_CONFIG_REVISION".to_owned(),
+            revision.to_string(),
+        )]));
+        self.then.ready(revision);
+    }
+
+    fn ended(&self, end: &ShellEnd) {
+        if !matches!(end, ShellEnd::Returned) {
+            self.write(&gnoblin_proto::report::config_rejected(0, &end.to_string()));
+        }
+        self.then.ended(end);
+    }
+}
+
 /// A request, from the compositor, that the shell stop. The shell's link reports it too (its descriptor turns readable and
 /// its `poll` fails), so a shell that sleeps on the link wakes without watching this.
 #[derive(Clone, Debug, Default)]
@@ -209,6 +266,15 @@ impl InProcShellSpec {
     #[must_use]
     pub fn with_reports(mut self, reports: Arc<dyn ShellReports>) -> Self {
         self.reports = reports;
+        self
+    }
+
+    /// Also reports to the guardian over `reporter`, the compositor's own report descriptor, in front of the reports the spec
+    /// already had ([`GuardianReports`]).
+    #[must_use]
+    pub(crate) fn reporting_to(mut self, reporter: Arc<Mutex<gnoblin_client::Reporter>>) -> Self {
+        let then = std::mem::replace(&mut self.reports, Arc::new(NoReports));
+        self.reports = Arc::new(GuardianReports { reporter, then });
         self
     }
 
@@ -1038,5 +1104,73 @@ mod tests {
         rig.pump();
         assert_eq!(reply.expect("a reply").code, "not-privileged");
         assert_eq!(shell.stop(), ShellEnd::Returned);
+    }
+
+    /// A reporter whose descriptor is a pipe the test reads, and the pipe's read end.
+    fn pipe_reporter() -> (Arc<Mutex<gnoblin_client::Reporter>>, std::io::PipeReader) {
+        use std::os::fd::IntoRawFd as _;
+        let (read, write) = std::io::pipe().expect("a pipe");
+        let number = write.into_raw_fd().to_string();
+        let reporter = gnoblin_client::Reporter::new(move |name| {
+            (name == gnoblin_proto::report::READY_VARIABLE).then(|| number.clone())
+        });
+        (Arc::new(Mutex::new(reporter)), read)
+    }
+
+    #[test]
+    fn the_guardian_hears_what_the_shell_reports_in_the_script_runtimes_wire_form() {
+        use std::io::Read as _;
+        let (reporter, mut read) = pipe_reporter();
+        let seen = Arc::new(Ends::default());
+        let spec = InProcShellSpec::new("reports", |_link, context| {
+            context.reports.autostart(0, "bar", &["waybar".to_owned()]);
+            context.reports.config_accepted(0);
+            context.reports.ready(0);
+            Err("a failure after the reports".into())
+        })
+        .with_reports(seen.clone())
+        .reporting_to(reporter.clone());
+        let rig = Rig::new();
+        let shell = InProcShell::spawn(&rig.host, spec).expect("the shell starts");
+        let mut waited = 0;
+        while seen.all().is_empty() && waited < 1000 {
+            std::thread::sleep(Duration::from_millis(10));
+            waited += 1;
+        }
+        let end = shell.stop();
+        assert_eq!(end, ShellEnd::Failed("a failure after the reports".to_owned()));
+        // The shell's thread has ended and dropped its copy of the reporter; this is the last one, and dropping it closes the
+        // pipe's write end, which is what lets the test read to the end.
+        drop(reporter);
+        let mut text = String::new();
+        read.read_to_string(&mut text).expect("the report");
+        assert_eq!(
+            text,
+            "autostart 0 bar waybar\nconfig-accepted 0\nready\nGNOBLIN_CONFIG_REVISION=0\n\n\
+             config-rejected 0 the shell failed: a failure after the reports\n"
+        );
+        assert_eq!(seen.all(), [ShellEnd::Failed("a failure after the reports".to_owned())]);
+    }
+
+    #[test]
+    fn a_shell_that_returns_is_not_reported_to_the_guardian_as_a_failure() {
+        use std::io::Read as _;
+        let (reporter, mut read) = pipe_reporter();
+        let seen = Arc::new(Ends::default());
+        let spec = InProcShellSpec::new("returns", |_link, _context| Ok(()))
+            .with_reports(seen.clone())
+            .reporting_to(reporter.clone());
+        let rig = Rig::new();
+        let shell = InProcShell::spawn(&rig.host, spec).expect("the shell starts");
+        let mut waited = 0;
+        while seen.all().is_empty() && waited < 1000 {
+            std::thread::sleep(Duration::from_millis(10));
+            waited += 1;
+        }
+        assert_eq!(shell.stop(), ShellEnd::Returned);
+        drop(reporter);
+        let mut text = String::new();
+        read.read_to_string(&mut text).expect("the report");
+        assert_eq!(text, "");
     }
 }

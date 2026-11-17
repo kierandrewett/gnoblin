@@ -4,8 +4,8 @@
 //!
 //! - every window gets a place the moment it opens (a cascade of 800 by 600 rectangles), including the ones that were open before
 //!   the shell started;
-//! - `Super+Return` starts a terminal (`foot`);
-//! - `Super+q` closes the window that has the keyboard.
+//! - `<Super>Return` starts a terminal (`foot`);
+//! - `<Super>q` closes the window that has the keyboard.
 //!
 //! What it is not: it draws nothing, owns no workspaces and links nothing but the core library (`readelf -d` shows
 //! `libgnoblin-core.so.1` as the only library of ours, and `nm -D` shows one defined symbol, `gnoshell_entry_v1`).
@@ -45,13 +45,13 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     }
     g.on_client_created(place)?;
 
-    g.bind("Super+Return", move || {
+    g.bind("<Super>Return", move || {
         if let Err(error) = g.spawn("foot") {
             g.log(&format!("cannot start a terminal: {error}"));
         }
     })?;
 
-    g.bind("Super+q", move || {
+    g.bind("<Super>q", move || {
         let focused = g
             .windows()
             .ok()

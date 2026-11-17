@@ -464,16 +464,31 @@ impl Gnoblin {
         Ok(Node::new(self.clone(), NodeId(root)))
     }
 
-    /// Every window in the tree, in stacking order (the last is on top). Attaches to the tree if this generation has not.
+    /// Every window the compositor has published, in the order they came into the tree. Attaches to the tree if this generation
+    /// has not.
+    ///
+    /// Windows arrive unparented: they are not children of the root until a shell inserts them, so this lists them by class and
+    /// not by walking the root's children (`design/node-core.md`, 3.2). The order is the order the windows opened in; the
+    /// compositor's stacking is not in the tree, and a shell that wants an order of its own keeps it.
     pub fn windows(&self) -> Result<Vec<Window>> {
         let window = self.class("window")?;
-        let mut windows = Vec::new();
-        for child in self.root()?.children()? {
-            if child.class()? == window {
-                windows.push(Window(child));
-            }
-        }
-        Ok(windows)
+        self.attach()?;
+        let mut nodes = GnoblinNodes {
+            ptr: core::ptr::null(),
+            len: 0,
+        };
+        // SAFETY: `class_nodes` fills `nodes`, a live local; the array it points at is copied before the next ABI call.
+        check(unsafe { (self.api().class_nodes)(self.ctx(), window.0, &mut nodes) })?;
+        let ids: &[u64] = if nodes.ptr.is_null() {
+            &[]
+        } else {
+            // SAFETY: the core lends `len` ids at `ptr` until the next ABI call on this thread.
+            unsafe { std::slice::from_raw_parts(nodes.ptr, nodes.len) }
+        };
+        Ok(ids
+            .iter()
+            .map(|id| Window(Node::new(self.clone(), NodeId(*id))))
+            .collect())
     }
 
     /// The window with this id, if it is one.

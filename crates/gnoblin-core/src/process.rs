@@ -363,7 +363,7 @@ impl Gnoblin {
     /// through a shell.
     ///
     /// ```ignore
-    /// g.bind("Super+Return", || { g.spawn("foot").ok(); })?;
+    /// g.bind("<Super>Return", || { g.spawn("foot").ok(); })?;
     /// ```
     pub fn spawn(&self, program: &str) -> Result<Process> {
         self.command(program).spawn()

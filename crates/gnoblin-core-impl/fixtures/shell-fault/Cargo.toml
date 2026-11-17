@@ -1,0 +1,19 @@
+[package]
+name = "gnoblin-fixture-shell-fault"
+description = "Test fixture: a native shell that misbehaves on command (hangs a callback, panics one, exits, calls the core after it retired, fails its init), so a real session can be shown to survive each."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "fixture_shell_fault"
+crate-type = ["cdylib"]
+
+# Like every shell: the SDK and nothing else.
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+
+[lints]
+workspace = true

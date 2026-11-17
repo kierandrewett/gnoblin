@@ -162,12 +162,12 @@ pub(crate) fn minimal(shell: &Path) -> i32 {
     // The shell's own writes did not move a window the compositor still owns: the first one is where it was put.
     geometry(&comp, FIRST);
 
-    press(&comp, &module, "Super+Return");
+    press(&comp, &module, "<Super>Return");
     out!("terminal_started={}", terminal_started());
 
     comp.external_set(SECOND, "focused", MirrorValue::Bool(true));
     pump(&module);
-    press(&comp, &module, "Super+q");
+    press(&comp, &module, "<Super>q");
     for (node, method) in comp.calls() {
         out!("call node={node} method={method}");
     }
@@ -175,7 +175,7 @@ pub(crate) fn minimal(shell: &Path) -> i32 {
     0
 }
 
-/// Example 8: the tiler with no workspaces and no scene graph. Windows are tiled master and stack as they open and close, `Super+m`
+/// Example 8: the tiler with no workspaces and no scene graph. Windows are tiled master and stack as they open and close, `<Super>m`
 /// promotes the focused window, and the shell makes no node of its own.
 pub(crate) fn tiler(shell: &Path) -> i32 {
     let (comp, module) = match start(shell) {
@@ -204,13 +204,12 @@ pub(crate) fn tiler(shell: &Path) -> i32 {
     }
     comp.external_set(THIRD, "focused", MirrorValue::Bool(true));
     pump(&module);
-    press(&comp, &module, "Super+m");
+    press(&comp, &module, "<Super>m");
     out!("step=promoted");
     for id in [FIRST, THIRD] {
         geometry(&comp, id);
     }
-    out!("order={:?}", comp.children(ROOT));
-    press(&comp, &module, "Super+Return");
+    press(&comp, &module, "<Super>Return");
     out!("terminal_started={}", terminal_started());
     finish(&comp, &module);
     0

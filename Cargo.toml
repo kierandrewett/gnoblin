@@ -46,6 +46,7 @@ members = [
     "crates/gnoblin-core-impl",
     "crates/gnoblin-core-impl/fixtures/launcher",
     "crates/gnoblin-core-impl/fixtures/runtime-test",
+    "crates/gnoblin-core-impl/fixtures/shell-fault",
     "crates/gnoblin-core-impl/fixtures/shell-hot",
     "crates/gnoblin-core-impl/fixtures/shell-min",
     "crates/gnoblin-std-impl/fixtures/shell-anim",

@@ -38,8 +38,10 @@ pub mod host;
 mod link;
 mod listen;
 mod memory;
+mod native_shell;
 mod procs;
 mod registry;
+mod role;
 mod session;
 mod table;
 mod tree;
@@ -60,7 +62,7 @@ mod driver_reload;
 #[cfg(feature = "test-driver")]
 mod driver_script;
 
-pub use exports::{gnoblin_abi_version, gnoblin_catalog_hash, gnoblin_get_api, gnoblin_last_error};
+pub use exports::{gnoblin_abi_version, gnoblin_catalog_hash, gnoblin_get_api, gnoblin_last_error, gnoblin_main};
 
 #[cfg(feature = "test-driver")]
 pub use driver::gnoblin_test_main;

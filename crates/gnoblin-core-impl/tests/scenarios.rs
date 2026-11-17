@@ -40,7 +40,9 @@ fn build_stage() -> Result<Stage, String> {
     let base = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("abi-stage");
     let _ = fs::remove_dir_all(&base);
     let main_target = base.join("target-main");
-    let next_target = base.join("target-next");
+    // One target directory for both cores: the compositor is inside the library now, and building its dependencies twice would
+    // double the disk the nested builds take. The next-minor build only recompiles the ABI crate and the core.
+    let next_target = main_target.clone();
     let core_dir = base.join("core10");
     let next_dir = base.join("core11");
 

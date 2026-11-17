@@ -186,7 +186,7 @@ const STD_FEATURE: &str = "std-providers";
 /// The crates that may omit `[lints] workspace = true` and restate the table with
 /// `unsafe_code = "deny"` (the pattern at the top of the workspace `Cargo.toml`): the existing FFI and
 /// generated-protocol crates, `gnoblin-core-abi` (the `repr(C)` types), `gnoblin-core`, `gnoblin-macros` and `gnoblin-std` of the SDK, the
-/// core's test-fixture launcher and the reload fixture shell (which exports `gnoshell_unload_safe`), the shell host (whose
+/// session launcher (one `unsafe` call into the core), the core's test-fixture launcher and the reload fixture shell (which exports `gnoshell_unload_safe`), the shell host (whose
 /// `native` module is the one loader and is the only module that opens libraries), and every [`IMPL`] crate. An addition here
 /// is a reviewed change.
 const LINT_OPT_OUT: &[&str] = &[
@@ -195,6 +195,7 @@ const LINT_OPT_OUT: &[&str] = &[
     "gnoblin-compat-wayland-mutter-x11-interop",
     "gnoblin-core",
     "gnoblin-core-abi",
+    "gnoblin",
     "gnoblin-fixture-launcher",
     "gnoblin-fixture-runtime-test",
     "gnoblin-fixture-shell-hot",
@@ -218,6 +219,14 @@ const LINT_OPT_OUT: &[&str] = &[
 /// `client-side-isolation`'s, not this one's.
 const SESSION_BINARY: &str = "gnoblin";
 
+/// The core library crate: the compositor, the compat wiring and the shell host linked into `libgnoblin-core.so.1`. The
+/// launcher reaches it through the ABI and never names it ([`core_through_abi`]); it is the one crate besides the launcher
+/// that may link the compat host, because the compositor role it serves is what wires the adapters in.
+const CORE_LIBRARY: &str = "gnoblin-core-impl";
+
+/// The composition root. After the flip (M2.10) the launcher does not link it: it is a dependency of [`CORE_LIBRARY`].
+const COMPOSITION_ROOT: &str = "gnoblin-compositor";
+
 /// The leaf ABI crate whose link stub `crates/gnoblin/build.rs` uses; the session binary may name it as a build dependency.
 const CORE_ABI_CRATE: &str = "gnoblin-core-abi";
 
@@ -240,17 +249,26 @@ const COMPAT_HOSTS: &[&str] = &[COMPAT_HOST];
 /// policy crate directly would be a second composition root: two places deciding which
 /// backend runs, which IPC server serves and how a snapshot becomes an object.
 ///
-/// The others are role entry points, named because the binary is what runs a role:
-/// `gnoblin-session` for the guardian, and `gnoblin-js` and `gnoblin-services` for the two
-/// roles the guardian starts. Each is the top of its own process, so an edge to it decides
-/// nothing the composition root decides — the compositor, the engine and the policy crates
-/// stay out of reach either way.
+/// The composition root is not among them any more: the compositor role is `libgnoblin-core.so.1`'s
+/// (`gnoblin_main`), reached only through the link stub and never as a Cargo edge ([`core_through_abi`]).
+///
+/// What remains are role entry points, named because the binary is what runs a role:
+/// `gnoblin-session` for the guardian, `gnoblin-js` (until the script runtime moves into the core's
+/// shell host, M6.6) and `gnoblin-services` for the two roles the guardian starts, and
+/// `gnoblin-shell-discovery`, the pure rule that names the shell a start runs. Each is the top of its
+/// own process, so an edge to it decides nothing the composition root decides — the compositor, the
+/// engine and the policy crates stay out of reach either way.
 const BINARY_ROOTS: &[&str] = &[
-    "gnoblin-compositor",
     "gnoblin-session",
     "gnoblin-js",
     "gnoblin-services",
+    "gnoblin-shell-discovery",
 ];
+
+/// Foundation crates the launcher names for itself: the `logging` section it reads before it installs the log of a role
+/// that is not the compositor's (`gnoblin-config`), and the IPC version `--version` prints (`gnoblin-proto`). Both are
+/// contracts and hold no mechanism, so neither lets the binary decide what the composition root decides.
+const BINARY_FOUNDATION: &[&str] = &["gnoblin-config", "gnoblin-proto"];
 
 /// The logging facade: the macros every crate logs through, and the one crate that carries the
 /// sinks behind its features. It names no workspace crate (see [`log_isolation`]), so it cannot
@@ -329,6 +347,10 @@ const RULES: &[Rule] = &[
     Rule {
         id: "binary-roots",
         check: binary_roots,
+    },
+    Rule {
+        id: "core-through-abi",
+        check: core_through_abi,
     },
     Rule {
         id: "log-isolation",
@@ -657,11 +679,11 @@ fn compat_isolation(package: &Package, dep: &Dep) -> Option<String> {
 /// else names one and no library can pull an adapter in behind the composition root.
 fn compat_host(package: &Package, dep: &Dep) -> Option<String> {
     if dep.name == COMPAT_HOST {
-        if package.name == SESSION_BINARY {
+        if package.name == SESSION_BINARY || package.name == CORE_LIBRARY {
             return None;
         }
         return Some(format!(
-            "only the session binary links `{COMPAT_HOST}`, the one place that wires the compat adapters into a process"
+            "only the session binary (the services role) and the core library (the compositor role) link `{COMPAT_HOST}`, the one place that wires the compat adapters into a process"
         ));
     }
     if !is_adapter(&dep.name) || is_compat(&package.name) || COMPAT_HOSTS.contains(&package.name.as_str()) {
@@ -877,7 +899,16 @@ fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
     if dep.kind == DepKind::Build && dep.name == CORE_ABI_CRATE {
         return None;
     }
-    if BINARY_ROOTS.contains(&dep.name.as_str()) || dep.name == LOG_CRATE || is_compat(&dep.name) {
+    // The composition root and the library that links it are reached through the ABI alone: `core_through_abi` says so with
+    // its own id, and this rule leaves the edge to it.
+    if dep.name == COMPOSITION_ROOT || dep.name == CORE_LIBRARY {
+        return None;
+    }
+    if BINARY_ROOTS.contains(&dep.name.as_str())
+        || BINARY_FOUNDATION.contains(&dep.name.as_str())
+        || dep.name == LOG_CRATE
+        || is_compat(&dep.name)
+    {
         return None;
     }
     // Only the workspace's own crates can be a second composition root; `clap` and
@@ -888,6 +919,25 @@ fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
     }
     Some(format!(
         "the session binary depends on the composition root, the guardian and a role entry crate, not on `{}`; a second composition root decides the same things twice",
+        dep.name
+    ))
+}
+
+/// The launcher reaches the compositor only through `libgnoblin-core.so.1`: the link stub of `build.rs` and the one call of
+/// `gnoblin_main` (design/modular-framework.md, 4.4). A Cargo edge from the launcher to the composition root, or to the
+/// library that links it, would compile the compositor into the executable as well as into the library: two copies, and
+/// a launcher that is a second composition root again. A development dependency is exempt for the reason the other binary
+/// rules give: a test may build a session in its own process, and that edge cannot ship.
+fn core_through_abi(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != SESSION_BINARY || dep.kind == DepKind::Dev {
+        return None;
+    }
+    if dep.name != COMPOSITION_ROOT && dep.name != CORE_LIBRARY {
+        return None;
+    }
+    Some(format!(
+        "the launcher reaches the compositor only through `libgnoblin-core.so.1` (the link stub and `gnoblin_main`), not through a {} dependency on `{}`",
+        dep.kind.as_str(),
         dep.name
     ))
 }
@@ -1276,11 +1326,58 @@ mod tests {
     }
 
     #[test]
-    fn the_session_binary_may_depend_on_the_composition_root_and_the_guardian() {
+    fn the_session_binary_may_depend_on_the_guardian_and_the_compat_host() {
+        assert_eq!(
+            violations(&[("gnoblin", &["gnoblin-session", "gnoblin-compat-host"])]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_session_binary_reaches_the_compositor_only_through_the_core_library() {
+        for library in ["gnoblin-compositor", "gnoblin-core-impl"] {
+            let found: Vec<String> = violations(&[("gnoblin", &[library])])
+                .into_iter()
+                .filter(|line| line.contains("[core-through-abi]"))
+                .collect();
+            assert_eq!(found.len(), 1, "{library}: {found:?}");
+            assert!(
+                found[0].starts_with(&format!("gnoblin -> {library} [core-through-abi]")),
+                "{found:?}"
+            );
+            // A development dependency may: a test builds a session in its own process, and that edge cannot ship.
+            assert!(
+                !edge_violations("gnoblin", library, "dev")
+                    .iter()
+                    .any(|line| line.contains("[core-through-abi]")),
+            );
+        }
+    }
+
+    #[test]
+    fn the_launcher_may_name_the_foundation_contracts_it_reads_and_the_shell_discovery_rule() {
         assert_eq!(
             violations(&[(
                 "gnoblin",
-                &["gnoblin-compositor", "gnoblin-session", "gnoblin-compat-host"],
+                &["gnoblin-config", "gnoblin-proto", "gnoblin-shell-discovery"]
+            )]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_core_library_may_link_the_composition_root_the_compat_host_and_the_shell_host() {
+        assert_eq!(
+            violations(&[(
+                "gnoblin-core-impl",
+                &[
+                    "gnoblin-compositor",
+                    "gnoblin-compat-host",
+                    "gnoblin-shell-host",
+                    "gnoblin-services",
+                    "gnoblin-core-abi",
+                    "gnoblin-log",
+                ],
             )]),
             Vec::<String>::new()
         );
@@ -1288,7 +1385,7 @@ mod tests {
 
     #[test]
     fn the_session_binary_links_the_compat_host_and_no_adapter() {
-        let host_only = violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-compat-host"])]);
+        let host_only = violations(&[("gnoblin", &["gnoblin-session", "gnoblin-compat-host"])]);
         assert!(
             !host_only.iter().any(|found| found.contains("[compat-host]")),
             "{host_only:?}"
@@ -1313,6 +1410,11 @@ mod tests {
             library.iter().filter(|found| found.contains("[compat-host]")).count(),
             1,
             "{library:?}"
+        );
+        let library_host = violations(&[("gnoblin-core-impl", &["gnoblin-compat-host"])]);
+        assert!(
+            !library_host.iter().any(|found| found.contains("[compat-host]")),
+            "{library_host:?}"
         );
         let other_host = violations(&[("gnoblin-compositor", &["gnoblin-compat-host"])]);
         assert_eq!(
@@ -1347,7 +1449,7 @@ mod tests {
     #[test]
     fn the_session_binary_may_depend_on_the_logging_facade() {
         assert_eq!(
-            violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-log"])]),
+            violations(&[("gnoblin", &["gnoblin-session", "gnoblin-log"])]),
             Vec::<String>::new()
         );
     }
@@ -1508,7 +1610,7 @@ mod tests {
         // `clap` parses the one flag and `tempfile` is the test's; neither is a
         // subsystem.
         assert_eq!(
-            violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-session", "clap"])]),
+            violations(&[("gnoblin", &["gnoblin-session", "clap"])]),
             Vec::<String>::new()
         );
     }
@@ -1520,10 +1622,10 @@ mod tests {
             violations(&[(
                 "gnoblin",
                 &[
-                    "gnoblin-compositor",
                     "gnoblin-session",
                     "gnoblin-js",
                     "gnoblin-services",
+                    "gnoblin-shell-discovery",
                 ],
             )]),
             Vec::<String>::new()
@@ -1610,7 +1712,7 @@ mod tests {
 
     #[test]
     fn the_session_binary_may_not_depend_on_a_subsystem() {
-        let reported = violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-wayland"])]);
+        let reported = violations(&[("gnoblin", &["gnoblin-session", "gnoblin-wayland"])]);
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
             reported[0].starts_with("gnoblin -> gnoblin-wayland [binary-roots]"),

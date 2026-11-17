@@ -16,3 +16,11 @@ reason = "gnoblin-wlcs is a plugin the wlcs executable loads: its stderr is the 
 [[allow]]
 path = "crates/gnoblin-testkit/src/backend_status.rs"
 reason = "a test-support helper: a conformance row that cannot be measured on this machine (no GPU renderer) says so on the test's own stdout, which the test runner shows, so a skip is loud and never silent"
+
+[[allow]]
+path = "crates/gnoblin/src/main.rs"
+reason = "the launcher's usage errors (a shell path that is not a file, or given to a role that serves none) are for the person at the terminal and are written before any role has installed a log"
+
+[[allow]]
+path = "crates/gnoblin-core-impl/src/role.rs"
+reason = "the core's usage error for a command line it does not serve is for the person at the terminal and is written before the compositor's log is installed"

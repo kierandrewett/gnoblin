@@ -78,6 +78,7 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     tree_link_recv: api_tree_link_recv,
     tree_link_fd: api_tree_link_fd,
     write_set_timed: api_write_set_timed,
+    class_nodes: api_class_nodes,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -391,6 +392,14 @@ unsafe extern "C" fn api_node_children(ctx: GnoblinCtx, node: GnoblinNode, out: 
     guard(abi::E_PANIC, "node_children", || match tree::node_children(ctx, node) {
         // SAFETY: the table's contract passes `out` as a writable `GnoblinNodes`.
         Ok(children) => unsafe { put(out, values::lend_nodes(&children), "node_children") },
+        Err(code) => code,
+    })
+}
+
+unsafe extern "C" fn api_class_nodes(ctx: GnoblinCtx, class: u32, out: *mut GnoblinNodes) -> i32 {
+    guard(abi::E_PANIC, "class_nodes", || match tree::class_nodes(ctx, class) {
+        // SAFETY: the table's contract passes `out` as a writable `GnoblinNodes`.
+        Ok(nodes) => unsafe { put(out, values::lend_nodes(&nodes), "class_nodes") },
         Err(code) => code,
     })
 }

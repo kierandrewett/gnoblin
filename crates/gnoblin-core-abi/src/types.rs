@@ -13,7 +13,7 @@
 //!   defaults the rest. A struct the core fills in starts with `size` too. This is what makes appending a field
 //!   compatible in both directions.
 
-use core::ffi::c_void;
+use core::ffi::{c_char, c_int, c_void};
 
 abi_aliases! {
     /// A generation context: one load of one shell module. Made by the loader, passed to the shell's `init`, and the
@@ -756,6 +756,11 @@ abi_structs! {
         /// the curve of `timing.samples`, after `timing.delay`, as part of `timing.tween` when one is named. The property must be
         /// `MEMBER_ANIMATED`. Writes are queued like `write_set`'s. Shell thread.
         pub write_set_timed: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, prop: u32, value: *const GnoblinValue, timing: *const GnoblinTiming) -> i32,
+        /// Writes every node of `class` that the compositor has published, as this tick sees it, to `out`, ordered by id (the
+        /// order the nodes came into the tree). Windows and layer surfaces arrive unparented: they are not children of the
+        /// root until a shell inserts them, so this is how a shell lists them. The array is valid until the next ABI call on
+        /// this thread. Shell thread.
+        pub class_nodes: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, out: *mut GnoblinNodes) -> i32,
 
         // ---- the relayed link: a runtime that keeps its own mirror drives the compositor's link as bytes ---------------
 
@@ -816,4 +821,9 @@ abi_exports! {
     /// `uint64_t gnoblin_catalog_hash(void)`: a 64-bit hash of the schema catalog the core was built with, a cheap
     /// compatibility probe for generated SDK constants.
     CatalogHashFn => gnoblin_catalog_hash = unsafe extern "C" fn() -> u64;
+    /// `int gnoblin_main(int argc, char **argv)`: the launcher's entry. `argv` is the launcher's command line as it was
+    /// parsed (the program name, `--role compositor`, then an optional shell path). The core initialises the log, serves
+    /// the role in the calling thread until the session ends and returns the process's exit code. It returns 2 for a
+    /// command line it does not serve, 1 for a start that failed and the logout code for a logout.
+    MainFn => gnoblin_main = unsafe extern "C" fn(argc: c_int, argv: *const *const c_char) -> c_int;
 }

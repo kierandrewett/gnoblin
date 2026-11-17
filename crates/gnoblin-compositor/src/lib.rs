@@ -528,7 +528,9 @@ impl Compositor {
         // The in-process shell starts last, when the tree it attaches to is served. Its thread is the only place it runs;
         // the loop below never runs shell code.
         let shell = match config.shell.take() {
-            Some(spec) => match inproc_shell::InProcShell::spawn(&shell_host, spec) {
+            // It reports to the guardian on the descriptor the compositor reports its own readiness on.
+            Some(spec) => match inproc_shell::InProcShell::spawn(&shell_host, spec.reporting_to(Arc::clone(&reporter)))
+            {
                 Ok(shell) => Some(shell),
                 Err(error) => {
                     eis_gate.stop();

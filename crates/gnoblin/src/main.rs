@@ -2,7 +2,7 @@
 //!
 //! Design/rust-compositor.md, "Process model": one executable, four roles, and a
 //! guardian that starts and supervises the others. `gnoblin` is that executable. It
-//! parses one flag, dispatches to exactly one role, and owns no policy of its own: a
+//! parses the command line, dispatches to exactly one role, and owns no policy of its own: a
 //! role that needs work done names the crate that does it, which is why this file is
 //! dispatch and nothing else.
 //!
@@ -12,6 +12,12 @@
 //! | `--role compositor`   | runs the compositor in the foreground, until it is stopped         |
 //! | `--role runtime`      | runs the JavaScript role: loads the configuration and serves it   |
 //! | `--role services`     | runs the D-Bus agents: polkit, the keyring and slots               |
+//!
+//! The compositor role is not in this executable. It is `libgnoblin-core.so.1`'s `gnoblin_main`
+//! (`design/modular-framework.md`, M2.10): the launcher links the library through a stub, forwards
+//! the command line and exits with the library's code. An optional positional `PATH` names a native
+//! shell module (`gnoblin ./libshell.so`); the compositor role loads it in its own process, and the
+//! guardian, which starts no runtime child for it, passes it to the compositor it starts.
 //!
 //! The guardian is the default because that is the process a session manager starts: it is
 //! the one that lives for the login, and every other role is a child of it.
@@ -31,8 +37,8 @@
 //!    start is exit 1 with the reason; the compositor's own loop failure is exit 1
 //!    too, because the session is over either way and the message says which:
 //!    `tests/roles.rs::the_compositor_reports_a_refused_start`.
-//! 2. **A flag nobody documented appears in `--help`.** The only flags are `--role`
-//!    and `--version`, and the test that walks the help checks that:
+//! 2. **A flag nobody documented appears in `--help`.** The only flags are `--role`,
+//!    `--version` and the positional shell path, and the test that walks the help checks that:
 //!    `tests/roles.rs::the_help_documents_only_the_flags_this_build_has`.
 //! 3. **`--version` prints a partial version.** It prints the full triple the IPC
 //!    serves and the build it came from:
@@ -41,6 +47,7 @@
 //!    line error (exit 2) naming the roles this build has:
 //!    `tests/roles.rs::an_unknown_role_is_a_command_line_error`.
 
+mod core_link;
 mod role;
 
 use std::process::ExitCode;
@@ -82,49 +89,97 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<()
         }
     };
     let role = role::from_matches(&matches).map_err(|_| Exit(2))?;
+    let shell = shell_from_matches(&matches, role)?;
+    // The compositor installs no log here: it is the core library's, the log is one copy per library, and the records of the
+    // compositor are the library's to write.
+    let _log = log_role(&role).map(install_log);
+    dispatch(role, shell)
+}
+
+/// Installs the log of this process for `process` from the `logging` section and the environment.
+fn install_log(process: gnoblin_log::ProcessRole) -> gnoblin_log::init::LogGuard {
     // The configuration is read before the log exists, so a problem with it is reported once
     // the log is installed. The defaults apply meanwhile.
-    let (logging, problem) = match gnoblin_compositor::logging_from_environment() {
+    let (logging, problem) = match gnoblin_config::logging_from_environment() {
         Ok(logging) => (logging, None),
-        Err(problem) => (gnoblin_compositor::Logging::default(), Some(problem)),
+        Err(problem) => (gnoblin_config::Logging::default(), Some(problem)),
     };
     let options = log_options(&logging);
-    let _log = gnoblin_log::init::init(log_role(&role), &options);
+    let guard = gnoblin_log::init::init(process, &options);
     if let Some(problem) = problem {
         log::warn!(area = "logging", "{problem}; the default logging is used");
     }
-    dispatch(role)
+    guard
+}
+
+/// The shell module the command line names, made absolute, or `None` for none.
+///
+/// Only the guardian and the compositor serve one; the guardian passes it on to the compositor it starts. A path that is not
+/// a file ends the start here, with the reason, rather than as a compositor child that exits and a session that never comes up.
+fn shell_from_matches(matches: &clap::ArgMatches, role: role::Role) -> Result<Option<std::path::PathBuf>, Exit> {
+    let Some(path) = role::shell_from_matches(matches) else {
+        return Ok(None);
+    };
+    if !matches!(role, role::Role::Guardian | role::Role::Compositor) {
+        eprintln!(
+            "gnoblin: a shell path applies to the guardian and the compositor, not to `--role {}`",
+            role.name()
+        );
+        return Err(Exit(2));
+    }
+    match std::path::absolute(&path) {
+        Ok(absolute) if absolute.is_file() => Ok(Some(absolute)),
+        _ => {
+            eprintln!("gnoblin: cannot find the shell module `{}`", path.display());
+            Err(Exit(1))
+        }
+    }
+}
+
+/// The command line the core's `gnoblin_main` serves: the program, the role and the shell path.
+fn core_arguments(shell: Option<&std::path::Path>) -> Vec<std::ffi::OsString> {
+    let mut arguments = vec!["gnoblin".into(), "--role".into(), "compositor".into()];
+    arguments.extend(shell.map(|path| path.as_os_str().to_owned()));
+    arguments
+}
+
+/// The exit a code the core returned is.
+fn core_exit(code: i32) -> Result<(), Exit> {
+    match code {
+        0 => Ok(()),
+        code => Err(Exit(u8::try_from(code).unwrap_or(1))),
+    }
 }
 
 /// Runs one role.
-fn dispatch(role: role::Role) -> Result<(), Exit> {
+fn dispatch(role: role::Role, shell: Option<std::path::PathBuf>) -> Result<(), Exit> {
     match role {
-        role::Role::Compositor => compositor(),
-        role::Role::Guardian => guardian(),
+        role::Role::Compositor => core_exit(core_link::main(&core_arguments(shell.as_deref()))),
+        role::Role::Guardian => guardian(shell),
         role::Role::Runtime => runtime(),
         role::Role::Services => services(),
     }
 }
 
-/// The process role the log records for this role.
-fn log_role(role: &role::Role) -> gnoblin_log::ProcessRole {
+/// The process role this executable's own log records for `role`, or `None` for the compositor, which the core library logs.
+fn log_role(role: &role::Role) -> Option<gnoblin_log::ProcessRole> {
     match role {
-        role::Role::Compositor => gnoblin_log::ProcessRole::Compositor,
-        role::Role::Guardian => gnoblin_log::ProcessRole::Guardian,
-        role::Role::Runtime => gnoblin_log::ProcessRole::Runtime,
-        role::Role::Services => gnoblin_log::ProcessRole::Services,
+        role::Role::Compositor => None,
+        role::Role::Guardian => Some(gnoblin_log::ProcessRole::Guardian),
+        role::Role::Runtime => Some(gnoblin_log::ProcessRole::Runtime),
+        role::Role::Services => Some(gnoblin_log::ProcessRole::Services),
     }
 }
 
 /// The log settings the `logging` section asks for. An unset field keeps the default the log
 /// uses with no configuration.
-fn log_settings(logging: &gnoblin_compositor::Logging) -> gnoblin_log::init::LogSettings {
+fn log_settings(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogSettings {
     let defaults = gnoblin_log::init::LogSettings::default();
     gnoblin_log::init::LogSettings {
         console: match logging.console {
-            None | Some(gnoblin_compositor::LogConsole::Auto) => gnoblin_log::init::Console::Auto,
-            Some(gnoblin_compositor::LogConsole::Pretty) => gnoblin_log::init::Console::Pretty,
-            Some(gnoblin_compositor::LogConsole::Off) => gnoblin_log::init::Console::Off,
+            None | Some(gnoblin_config::LogConsole::Auto) => gnoblin_log::init::Console::Auto,
+            Some(gnoblin_config::LogConsole::Pretty) => gnoblin_log::init::Console::Pretty,
+            Some(gnoblin_config::LogConsole::Off) => gnoblin_log::init::Console::Off,
         },
         level: logging.level.clone().unwrap_or(defaults.level),
     }
@@ -133,77 +188,27 @@ fn log_settings(logging: &gnoblin_compositor::Logging) -> gnoblin_log::init::Log
 /// The log options for this process: the environment over the `logging` section. When the
 /// section keeps the log, the log file receives every record. A file that cannot open is a
 /// problem the log reports once it is installed, and console logging still works.
-fn log_options(logging: &gnoblin_compositor::Logging) -> gnoblin_log::init::LogOptions {
+fn log_options(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogOptions {
     let mut options = gnoblin_log::init::LogOptions::from_environment(&log_settings(logging));
-    match gnoblin_compositor::open_log_file(logging) {
-        Ok(Some(sink)) => options.sink = Some(gnoblin_log::record::SinkHandle::new(Box::new(sink))),
-        Ok(None) => {}
-        Err(problem) => options.problems.push(problem),
+    if logging.file.unwrap_or(true) {
+        let opened = gnoblin_log::file::open_from_settings(logging.dir.as_deref(), logging.max_size_mb, |key| {
+            std::env::var(key).ok()
+        });
+        match opened {
+            Ok(sink) => options.sink = Some(gnoblin_log::record::SinkHandle::new(Box::new(sink))),
+            Err(problem) => options.problems.push(problem),
+        }
     }
     options
 }
 
-/// Runs the compositor in the foreground.
-fn compositor() -> Result<(), Exit> {
-    // The guardian keeps one control socket open to this process and sends each privileged
-    // child's connection down it, tagged with the role it was made for. A control socket that
-    // cannot be adopted is a refusal rather than a session without privileged children: every
-    // child the guardian starts after it would talk into a socket nobody reads.
-    let guardian = match gnoblin_compositor::guardian_from_environment() {
-        Ok(guardian) => guardian,
-        Err(error) => {
-            log::error!("{error}");
-            return Err(Exit(1));
-        }
-    };
-    let mut config = gnoblin_compositor::SessionConfig {
-        privileged: gnoblin_compositor::Privileged::declared(),
-        guardian,
-        power: Some(gnoblin_services::power::system_power_backend()),
-        ..gnoblin_compositor::SessionConfig::default()
-    };
-    // The privileged socket is the one door a user-declared tool uses to reach screencopy.
-    // It lives in the runtime directory and is owner-only, so it is reachable by this user's
-    // own processes and nobody else. Sandboxed clients never get it: they connect through
-    // their own listener, which carries no privileged role.
-    config.wayland.privileged_socket_path = gnoblin_compositor::default_privileged_socket_path();
-    // The compat adapters are served with the session's default mode until a configuration
-    // key selects one. A failure to build them starts the session without them.
-    if let Err(error) = gnoblin_compat_host::session::configure(&mut config, gnoblin_compat_host::Mode::default()) {
-        log::warn!("compat adapters not loaded, starting without them: {error:?}");
-    }
-    gnoblin_compositor::configure_cursor_from_environment(&mut config);
-    gnoblin_compositor::configure_bell_from_environment(&mut config);
-    gnoblin_compositor::configure_accessibility_from_environment(&mut config);
-    gnoblin_compositor::configure_window_management_from_environment(&mut config);
-    gnoblin_compositor::configure_session_tables_from_environment(&mut config);
-    gnoblin_compositor::configure_monitors_from_environment(&mut config);
-    gnoblin_compositor::configure_xwayland_from_environment(&mut config);
-    gnoblin_compositor::configure_renderer_from_environment(&mut config);
-    // The backend is decided last: it reads the same document and the environment, and a refusal of it (a value no
-    // backend has, a nested session with no host) ends the start with the reason rather than starting headless.
-    if let Err(error) = gnoblin_compositor::configure_backend_from_environment(&mut config) {
-        log::error!("{error}");
-        return Err(Exit(1));
-    }
-    match gnoblin_compositor::Compositor::run(config) {
-        Ok(gnoblin_compositor::SessionEnd::Stopped) => Ok(()),
-        // The guardian reads this code as a logout and ends the session rather than restarting it.
-        Ok(gnoblin_compositor::SessionEnd::LoggedOut) => Err(Exit(gnoblin_compositor::LOGOUT_EXIT_CODE)),
-        Err(error) => {
-            log::error!("{error}");
-            Err(Exit(1))
-        }
-    }
-}
-
 /// Runs the guardian: the session's supervisor, until the session ends.
-fn guardian() -> Result<(), Exit> {
+fn guardian(shell: Option<std::path::PathBuf>) -> Result<(), Exit> {
     let program = std::env::current_exe().map_err(|error| {
         log::error!("cannot find this executable to start its children: {error}");
         Exit(1)
     })?;
-    let mut config = gnoblin_session::SupervisorConfig::from_environment(program).map_err(|error| {
+    let mut config = gnoblin_session::SupervisorConfig::from_environment(program, shell).map_err(|error| {
         log::error!("{error}");
         Exit(1)
     })?;

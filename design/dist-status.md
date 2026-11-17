@@ -16,7 +16,7 @@ just dist-check                             # build, stage, install into tempora
 
 ## Build order
 
-`gnoblin` records `NEEDED libgnoblin-core.so.1` once. The link goes through a stub that `crates/gnoblin/build.rs` generates (`gnoblin_core_abi::build_support::link_core_in_bins`), so `cargo build -p gnoblin` succeeds alone and never builds the library. The binary's run path is `$ORIGIN:$ORIGIN/../lib:$ORIGIN/../lib64` (`GNOBLIN_RPATH` replaces it when `gnoblin` is built; empty means none, which a `/usr` package wants), so with `LD_LIBRARY_PATH` unset it finds the library beside itself in the build tree and under `<prefix>/lib` or `<prefix>/lib64` once installed. A multiarch libdir under a private prefix is not on the run path; `dist-check` names that.
+`gnoblin` records `NEEDED libgnoblin-core.so.1` once. The link goes through a stub that `crates/gnoblin/build.rs` generates (`gnoblin_core_abi::build_support::link_core`), so `cargo build -p gnoblin` succeeds alone and never builds the library. The binary's run path is `$ORIGIN:$ORIGIN/../lib:$ORIGIN/../lib64` (`GNOBLIN_RPATH` replaces it when `gnoblin` is built; empty means none, which a `/usr` package wants), so with `LD_LIBRARY_PATH` unset it finds the library beside itself in the build tree and under `<prefix>/lib` or `<prefix>/lib64` once installed. A multiarch libdir under a private prefix is not on the run path; `dist-check` names that.
 
 In the build tree the library is `target/<profile>/libgnoblin_core_impl.so`, and must be reachable as `libgnoblin-core.so.1` beside `gnoblin`:
 
