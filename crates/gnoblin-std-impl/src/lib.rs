@@ -51,6 +51,7 @@ mod nodes;
 mod providers;
 mod scene;
 mod splits;
+mod standalone;
 mod state;
 mod style;
 mod table;

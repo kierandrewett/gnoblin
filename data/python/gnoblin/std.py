@@ -68,6 +68,12 @@ class PlacementFlags(IntFlag):
     TILED = 4
     OFFSET = 8
 
+class QueryFlags(IntFlag):
+    """The `STD_QUERY_*` constants."""
+
+    POINTER = 1
+    FOCUSED_SIZE = 2
+
 class OutputsKind(IntEnum):
     """The `STD_OUTPUTS_*` constants."""
 
@@ -582,6 +588,7 @@ class LayoutContext:
     def _to_dyn(self) -> dict[str, Any]:
         return {
             "workspace": self.workspace,
+            "children": list(self.children),
             "area": self.area._to_dyn(),
             "gap_inner": self.gap_inner,
             "gap_outer": self.gap_outer,
@@ -597,6 +604,53 @@ class LayoutContext:
             gap_inner=data["gap_inner"],
             gap_outer=data["gap_outer"],
             focused=data["focused"],
+        )
+
+@dataclass
+class LayoutQuery:
+    """What a built-in layout that belongs to no workspace is asked about: the clients it is to place, where, and what the shell
+    knows that the layout reads. A copy: the library keeps nothing of it past the call. The clients are ids the caller chooses
+    and keeps stable for as long as the layout lives (a layout that keeps a tree of them remembers which is which).
+    """
+
+    flags: int = 0
+    children: list[int] = field(default_factory=list)
+    area: Rect = field(default_factory=Rect)
+    gap_inner: float = 0.0
+    gap_outer: float = 0.0
+    focused: int = 0
+    pointer_x: float = 0.0
+    pointer_y: float = 0.0
+    focused_width: float = 0.0
+    focused_height: float = 0.0
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "flags": self.flags,
+            "children": list(self.children),
+            "area": self.area._to_dyn(),
+            "gap_inner": self.gap_inner,
+            "gap_outer": self.gap_outer,
+            "focused": self.focused,
+            "pointer_x": self.pointer_x,
+            "pointer_y": self.pointer_y,
+            "focused_width": self.focused_width,
+            "focused_height": self.focused_height,
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> LayoutQuery:
+        return cls(
+            flags=data["flags"],
+            children=list(data["children"]),
+            area=Rect._from_dyn(data["area"]),
+            gap_inner=data["gap_inner"],
+            gap_outer=data["gap_outer"],
+            focused=data["focused"],
+            pointer_x=data["pointer_x"],
+            pointer_y=data["pointer_y"],
+            focused_width=data["focused_width"],
+            focused_height=data["focused_height"],
         )
 
 @dataclass
@@ -1803,6 +1857,85 @@ class Binding(_b.Handle):
         """
         raw = _call("binding_builtin", _b.dyn(kind), _b.dyn(options))
         return Registration(raw)
+
+class Builtin(_b.Handle):
+    """A built-in layout that belongs to no workspace: one made by `builtin_new`, which computes what it is asked about and keeps
+    the state its kind keeps (a dwindle's tree). Owned by the generation that made it; `builtin_free` ends it, and the
+    generation's retirement ends the rest. Zero is nil.
+    """
+
+    __slots__ = ("handle",)
+
+    def __init__(self, handle: int | Builtin) -> None:
+        self.handle = _b.ident(handle)
+
+    @staticmethod
+    def new(kind: int, options: Sequence[Option | dict[str, Any]]) -> Optional[Builtin]:
+        """Makes the built-in layout `kind` (`STD_BUILTIN_*`) with the options given, as `workspace_set_layout_kind` does, but for no
+        workspace, and writes its handle to `out`. `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong
+        type or out of range.
+        """
+        raw = _call("builtin_new", _b.dyn(kind), _b.dyn(options))
+        return _b.wrap(Builtin, raw)
+
+    def free(self) -> int:
+        """Frees a built-in layout, and the state its kind kept."""
+        raw = _call("builtin_free", self.handle)
+        return raw
+
+    def set(self, option: Option | dict[str, Any]) -> int:
+        """Changes one option of the layout. The state the layout keeps (a dwindle's tree) is kept."""
+        raw = _call("builtin_set", self.handle, _b.dyn(option))
+        return raw
+
+    def get(self, name: str) -> Option:
+        """Writes one option of the layout to `out`."""
+        raw = _call("builtin_get", self.handle, _b.dyn(name))
+        return Option._from_dyn(raw)
+
+    def compute(self, query: LayoutQuery | dict[str, Any]) -> list[Placement]:
+        """Computes where the query's clients go and lends the placements, one for each client the layout places. A layout that keeps
+        a tree adds the clients it has not seen and drops the ones it no longer is given, as a workspace's layout does.
+        """
+        raw = _call("builtin_compute", self.handle, _b.dyn(query))
+        return [Placement._from_dyn(item) for item in raw]
+
+    def act(self, action: str, values: Sequence[Option | dict[str, Any]], query: LayoutQuery | dict[str, Any]) -> tuple[Optional[int], Option]:
+        """Runs an action of the layout with the arguments given, against the clients and the focus the query holds, and writes what
+        it answers to `out` (`STD_VALUE_NONE` when it answers nothing). A layout that hands the keyboard on writes the client that
+        is to get it to `focus` (zero when there is none).
+        """
+        raw = _call("builtin_act", self.handle, _b.dyn(action), _b.dyn(values), _b.dyn(query))
+        return (raw[0], Option._from_dyn(raw[1]))
+
+    def client_removed(self, query: LayoutQuery | dict[str, Any], client: int) -> Optional[int]:
+        """Tells the layout that `client` left the workspace it lays out. Writes the client the layout hands the keyboard to (zero
+        when it hands it to none, or is not a layout that does).
+        """
+        raw = _call("builtin_client_removed", self.handle, _b.dyn(query), _b.dyn(client))
+        return raw
+
+    def clients_swapped(self, a: int, b: int) -> int:
+        """Tells the layout that two clients traded places in the workspace's order."""
+        raw = _call("builtin_clients_swapped", self.handle, _b.dyn(a), _b.dyn(b))
+        return raw
+
+    def find_split(self, client: int, x: float, y: float) -> Optional[Split]:
+        """The divider that a drag which pressed `client` at (`x`, `y`) would move, from the layout of its last compute: 1 when it
+        wrote one to `out`, 0 when the layout has none there (or none at all).
+        """
+        raw = _call("builtin_find_split", self.handle, _b.dyn(client), _b.dyn(x), _b.dyn(y))
+        return None if raw is None else Split._from_dyn(raw)
+
+    def set_split(self, token: int, ratio: float, cross_ratio: float) -> int:
+        """Moves the dividers of the drag that `builtin_find_split` named `token`."""
+        raw = _call("builtin_set_split", self.handle, _b.dyn(token), _b.dyn(ratio), _b.dyn(cross_ratio))
+        return raw
+
+    def reset_split(self, token: int) -> int:
+        """Puts the dividers of the drag named `token` back as they were when `builtin_find_split` returned them."""
+        raw = _call("builtin_reset_split", self.handle, _b.dyn(token))
+        return raw
 
 class Registration(_b.Handle):
     """A registration the std library holds for a shell: a listener on a collection. Owned by the generation that made it;

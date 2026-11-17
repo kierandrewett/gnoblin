@@ -4,7 +4,7 @@
 
 import { call } from "gnoblin-std/generated/native";
 import type { Init } from "gnoblin-std/generated/native";
-import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
+import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutQuery, layoutQueryToNative, layoutQueryFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
 
 function handleOf(value: { handle: number } | { node: number } | number): number {
   if (typeof value === "number") {
@@ -462,6 +462,73 @@ export class Binding {
   static builtin(kind: number, options: Init<Option>[]): Registration {
     const raw = call("binding_builtin", kind, options.map(optionToNative));
     return new Registration(raw);
+  }
+}
+
+export class Builtin {
+  constructor(readonly handle: number) {}
+
+  // Makes the built-in layout `kind` (`STD_BUILTIN_*`) with the options given, as `workspace_set_layout_kind` does, but for no
+  // workspace, and writes its handle to `out`. `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong
+  // type or out of range.
+  static new(kind: number, options: Init<Option>[]): Builtin | null {
+    const raw = call("builtin_new", kind, options.map(optionToNative));
+    return (raw == null ? null : new Builtin(raw));
+  }
+  // Frees a built-in layout, and the state its kind kept.
+  free(): number {
+    const raw = call("builtin_free", this.handle);
+    return raw;
+  }
+  // Changes one option of the layout. The state the layout keeps (a dwindle's tree) is kept.
+  set(option: Init<Option>): number {
+    const raw = call("builtin_set", this.handle, optionToNative(option));
+    return raw;
+  }
+  // Writes one option of the layout to `out`.
+  get(name: string): Option {
+    const raw = call("builtin_get", this.handle, name);
+    return (optionFromNative(raw));
+  }
+  // Computes where the query's clients go and lends the placements, one for each client the layout places. A layout that keeps
+  // a tree adds the clients it has not seen and drops the ones it no longer is given, as a workspace's layout does.
+  compute(query: Init<LayoutQuery>): Placement[] {
+    const raw = call("builtin_compute", this.handle, layoutQueryToNative(query));
+    return ((Array.from(raw) as any[]).map(placementFromNative));
+  }
+  // Runs an action of the layout with the arguments given, against the clients and the focus the query holds, and writes what
+  // it answers to `out` (`STD_VALUE_NONE` when it answers nothing). A layout that hands the keyboard on writes the client that
+  // is to get it to `focus` (zero when there is none).
+  act(action: string, values: Init<Option>[], query: Init<LayoutQuery>): [number | null, Option] {
+    const raw = call("builtin_act", this.handle, action, values.map(optionToNative), layoutQueryToNative(query));
+    return [raw[0], optionFromNative(raw[1])];
+  }
+  // Tells the layout that `client` left the workspace it lays out. Writes the client the layout hands the keyboard to (zero
+  // when it hands it to none, or is not a layout that does).
+  clientRemoved(query: Init<LayoutQuery>, client: number): number | null {
+    const raw = call("builtin_client_removed", this.handle, layoutQueryToNative(query), handleOf(client));
+    return (raw);
+  }
+  // Tells the layout that two clients traded places in the workspace's order.
+  clientsSwapped(a: number, b: number): number {
+    const raw = call("builtin_clients_swapped", this.handle, handleOf(a), handleOf(b));
+    return raw;
+  }
+  // The divider that a drag which pressed `client` at (`x`, `y`) would move, from the layout of its last compute: 1 when it
+  // wrote one to `out`, 0 when the layout has none there (or none at all).
+  findSplit(client: number, x: number, y: number): Split | null {
+    const raw = call("builtin_find_split", this.handle, handleOf(client), x, y);
+    return raw == null ? null : (splitFromNative(raw));
+  }
+  // Moves the dividers of the drag that `builtin_find_split` named `token`.
+  setSplit(token: number, ratio: number, crossRatio: number): number {
+    const raw = call("builtin_set_split", this.handle, token, ratio, crossRatio);
+    return raw;
+  }
+  // Puts the dividers of the drag named `token` back as they were when `builtin_find_split` returned them.
+  resetSplit(token: number): number {
+    const raw = call("builtin_reset_split", this.handle, token);
+    return raw;
   }
 }
 

@@ -189,14 +189,15 @@ pub fn rig_configured(
     fs::write(root.join("shell.ts"), format!("{imports}{init_body}\n")).expect("shell.ts is written");
     let (mut config, clock) = timed_config(&root);
     configure(&mut config);
-    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
+    // Every rig runs over a core with the std library loaded: the stock layouts are the library's.
+    let (mut shell, core) = native::shell_over_core(&comp, Arc::new(clock.clone()), config);
     let load_diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     Rig {
         shell,
         comp,
         load_diagnostics,
         clock,
-        core: None,
+        core: Some(core),
         _dir: dir,
     }
 }

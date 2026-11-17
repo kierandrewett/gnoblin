@@ -983,6 +983,17 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     binding_drag: crate::bindings::binding_drag,
     binding_gesture: crate::bindings::binding_gesture,
     binding_builtin: crate::bindings::binding_builtin,
+    builtin_new: crate::standalone::builtin_new,
+    builtin_free: crate::standalone::builtin_free,
+    builtin_set: crate::standalone::builtin_set,
+    builtin_get: crate::standalone::builtin_get,
+    builtin_compute: crate::standalone::builtin_compute,
+    builtin_act: crate::standalone::builtin_act,
+    builtin_client_removed: crate::standalone::builtin_client_removed,
+    builtin_clients_swapped: crate::standalone::builtin_clients_swapped,
+    builtin_find_split: crate::standalone::builtin_find_split,
+    builtin_set_split: crate::standalone::builtin_set_split,
+    builtin_reset_split: crate::standalone::builtin_reset_split,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };

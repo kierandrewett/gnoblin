@@ -151,7 +151,9 @@ impl Needs {
         if let Some(def) = library.record(record) {
             for field in &def.fields {
                 match &field.shape {
-                    Shape::Record(inner) | Shape::RecordPtr(inner) => self.need_write(library, inner),
+                    Shape::Record(inner) | Shape::RecordPtr(inner) | Shape::Array(Elem::Record(inner)) => {
+                        self.need_write(library, inner);
+                    }
                     Shape::Vtable(inner) => self.need_vtable(library, inner),
                     _ => {}
                 }
@@ -659,8 +661,40 @@ fn write_record(code: &mut CodeWriter, library: &Library, record: &StructDef) ->
                 code.dedent();
                 code.line("}");
             }
+            Shape::Array(elem) => {
+                let (ptr, count) = array_fields(record, field);
+                code.line(format!("if let Some(item) = reader.take({key}) {{"));
+                code.indent();
+                code.line(format!("let list = item.to_list(&reader.path({key}))?;"));
+                match elem {
+                    Elem::Scalar(scalar) => {
+                        code.line("let mut values = Vec::with_capacity(list.len());");
+                        code.line("for entry in list {");
+                        code.indent();
+                        code.line(format!(
+                            "values.push({});",
+                            from_dyn(prim_of(library, scalar), "entry", &format!("&reader.path({key})"))
+                        ));
+                        code.dedent();
+                        code.line("}");
+                    }
+                    Elem::Record(inner) => {
+                        code.line(format!(
+                            "let values: Vec<{inner}> = list.iter().map(|entry| {}(arena, entry, &reader.path({key}))).collect::<Result<_, _>>()?;",
+                            writer(inner)
+                        ));
+                    }
+                }
+                // The array lives as long as the arena, which outlives the call.
+                code.line("let kept = arena.keep(values);");
+                code.line("// SAFETY: `kept` points at the vector the arena owns for the call.");
+                code.line(format!("record.{ptr} = unsafe {{ (*kept).as_ptr() }};"));
+                code.line(format!("record.{count} = unsafe {{ (*kept).len() }};"));
+                code.dedent();
+                code.line("}");
+            }
             // Lent by the library or built by it: a script does not write them.
-            Shape::Array(_) | Shape::Sink(_) | Shape::Callback(_) | Shape::Pointer(_) => {}
+            Shape::Sink(_) | Shape::Callback(_) | Shape::Pointer(_) => {}
         }
     }
     code.line("reader.finish()?;");

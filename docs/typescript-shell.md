@@ -265,6 +265,17 @@ new GridLayout({ columns: 3 }).attach(other); // a built-in layout: the algorith
 Records use camelCase (`gapInner`). A record you give may leave out the fields it wants zero, and a layout may leave out the
 hooks it does not need.
 
+The engine and `gnoblin-std/native` share one tree: the core is the one holder of the compositor's link, the engine's mirror is a
+view of the core's (`tree_link_open`/`tree_link_attach`), and what the engine writes and what the library writes leave through
+that one connection, one transaction on the wire at a time. A shell may therefore use `gnoblin-core`'s objects and
+`gnoblin-std/native` together, as `examples/03-typescript-std/shell.ts` does.
+
+The stock layouts of `gnoblin-std` (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `KioskLayout`) are thin classes over the
+library's built-in layouts: the options are plain fields as before, the algorithm is `libgnoblin-std`'s (`Builtin`, made by
+`builtin_new`, which belongs to no workspace). They need `libgnoblin-std.so.1`, like `gnoblin-std/native`; their option errors are the
+library's. `DwindleLayout`, `StripLayout`, `Carousel3dLayout`, `ArcLayout` and `FloatingLayout` are still TypeScript (see design
+section 25.4).
+
 `examples/03-typescript-std/` has the shells the tests run. The hand-written part of the binding is `gnoblin-std/native`
 itself (`clients()`, `tile`, `createWorkspace`).
 

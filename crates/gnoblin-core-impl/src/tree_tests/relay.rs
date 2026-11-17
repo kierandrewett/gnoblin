@@ -14,9 +14,9 @@ use gnoblin_tree_client::tree_mirror::{TreeIncoming, TreeTx, TxAnimation};
 use crate::{link, session};
 
 /// The engine's link: the relayed functions of the core, as the runtime calls them.
-struct View(GnoblinCtx);
+struct EngineLink(GnoblinCtx);
 
-impl TreeLink for View {
+impl TreeLink for EngineLink {
     fn attach(&mut self, version: u64) -> Result<(), LinkError> {
         match link::attach(self.0, version) {
             abi::E_OK => Ok(()),
@@ -59,7 +59,8 @@ impl TreeLink for View {
 fn with_engine() -> (Rig, TreeSession) {
     let rig = rig();
     assert_eq!(link::open(rig.ctx(), abi::ATTACH_HOLDER), abi::E_OK, "{}", last_error());
-    let engine = TreeSession::attach(Box::new(View(rig.ctx())), Duration::from_secs(1)).expect("the engine attaches");
+    let engine =
+        TreeSession::attach(Box::new(EngineLink(rig.ctx())), Duration::from_secs(1)).expect("the engine attaches");
     (rig, engine)
 }
 
