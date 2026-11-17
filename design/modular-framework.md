@@ -2245,6 +2245,7 @@ The Python runtime's `exports.map` makes PyO3's `PyInit__gnoblin_core` and `PyIn
 Each asserts what the compositor's tree holds, what the process maps and what it logs.
 
 Found on the way: a Python chord written `Super+Right` is refused by the seat (the compositor's syntax is `<Super>Right`, as example 8 of the flip already uses); example 7 in Python and the Python docs now spell the chords the compositor's way. `examples/03-python-std` still binds `Super+1`, which the fake compositor of the runtime tests accepts and a real seat does not (lane SdkGenStd).
+
 ## 31. Implementation notes, the callback budget and the SDK's spelling (lane RustSdkLeft)
 
 What the lane built of the leftovers of M3.x and the reload edge (sections 19, 20 and 26), what it chose, and what it left.
