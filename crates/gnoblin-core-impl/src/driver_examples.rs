@@ -275,7 +275,7 @@ pub(crate) fn spec_text(shell: &Path) -> i32 {
     for id in [FIRST, SECOND, THIRD] {
         geometry(&comp, id);
     }
-    // The chord was written `Super+Return`; the compositor reads `<Super>Return`, and that is what the shell claimed.
+    // The chord is claimed as it was written: the compositor reads the plus form.
     out!("claims={}", comp.claimed().join(","));
     press(&comp, &module, "Super+Return");
     out!("terminal_started={}", terminal_started());
