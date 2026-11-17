@@ -196,8 +196,8 @@ mod tests {
     #[test]
     fn the_next_minor_table_is_one_function_longer() {
         let table = size_of::<GnoblinApi>();
-        // `tree_link_fd` is the last function of the ABI 1.0 table.
-        let base = offset_of!(GnoblinApi, tree_link_fd) + size_of::<unsafe extern "C" fn()>();
+        // `class_nodes` is the last function of the ABI 1.0 table.
+        let base = offset_of!(GnoblinApi, class_nodes) + size_of::<unsafe extern "C" fn()>();
         if cfg!(feature = "next-minor") {
             assert_eq!(ABI_MINOR, 1);
             assert_eq!(table, base + size_of::<usize>());

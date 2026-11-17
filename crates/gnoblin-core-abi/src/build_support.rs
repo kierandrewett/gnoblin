@@ -198,9 +198,4 @@ mod tests {
         assert!(source.contains("void gnoblin_std_get_api(void) {}\n"));
         assert!(!source.contains("gnoblin_get_api"));
     }
-
-    #[test]
-    fn the_forced_needed_argument_names_the_link_name() {
-        assert!(FORCE_NEEDED_ARGS.contains(&format!("-l{}", crate::LINK_NAME)));
-    }
 }

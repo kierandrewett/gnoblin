@@ -756,11 +756,6 @@ abi_structs! {
         /// the curve of `timing.samples`, after `timing.delay`, as part of `timing.tween` when one is named. The property must be
         /// `MEMBER_ANIMATED`. Writes are queued like `write_set`'s. Shell thread.
         pub write_set_timed: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, prop: u32, value: *const GnoblinValue, timing: *const GnoblinTiming) -> i32,
-        /// Writes every node of `class` that the compositor has published, as this tick sees it, to `out`, ordered by id (the
-        /// order the nodes came into the tree). Windows and layer surfaces arrive unparented: they are not children of the
-        /// root until a shell inserts them, so this is how a shell lists them. The array is valid until the next ABI call on
-        /// this thread. Shell thread.
-        pub class_nodes: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, out: *mut GnoblinNodes) -> i32,
 
         // ---- the relayed link: a runtime that keeps its own mirror drives the compositor's link as bytes ---------------
 
@@ -779,6 +774,13 @@ abi_structs! {
         /// A descriptor that turns readable when the link has something to take, duplicated for the caller, who closes it;
         /// negative when the link has none (and the caller polls). Shell thread.
         pub tree_link_fd: unsafe extern "C" fn(ctx: GnoblinCtx) -> i32,
+
+        // ---- listing the compositor's nodes by class ------------------------------------------------------------------
+        /// Writes every node of `class` that the compositor has published, as this tick sees it, to `out`, ordered by id (the
+        /// order the nodes came into the tree). Windows and layer surfaces arrive unparented: they are not children of the
+        /// root until a shell inserts them, so this is how a shell lists them. The array is valid until the next ABI call on
+        /// this thread. Shell thread.
+        pub class_nodes: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, out: *mut GnoblinNodes) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]
