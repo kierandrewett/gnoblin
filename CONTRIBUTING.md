@@ -132,6 +132,7 @@ hosted runner.
 
 - `cargo build --workspace`, `cargo test --workspace` and any build that includes `gnoblin-core-impl` do it themselves: its `build.rs` links `target/<profile>/libgnoblin-core.so.1` to the library Cargo writes.
 - `cargo xtask stage` (`just stage`; `--release` for the release tree) builds `gnoblin-core-impl`, refuses a library `dist-check` would refuse (a missing export, the test driver left in) and makes the SONAME link and the linker link `libgnoblin-core.so`. Run it before `cargo build -p gnoblin` and `cargo test -p gnoblin`, whose integration tests run `target/debug/gnoblin`. Without it the binary stops with the loader's own message, `libgnoblin-core.so.1: cannot open shared object file`.
+- The stock session also needs `libgnoblin-std.so.1`, beside the core: the compositor role with no shell opens it and std registers the window manager, the portal dialogs and the visual settings (`design/modular-framework.md`, 28). `cargo xtask stage` stages it with the core. A tree without it still runs: the session says so once and runs core-only, with `NullWm` placing windows at the origin and portal requests refused `no-ui`. `GNOBLIN_STD_DIR` names another directory to look in first.
 
 ```sh
 cargo xtask stage && cargo build -p gnoblin && target/debug/gnoblin --version
@@ -170,54 +171,49 @@ product was. A longer deadline or a retry is not a fix. A flake the suite shows 
 reproduced by running several copies of the test binary at once (`js_shell` under eight workers and eight busy loops
 showed the shell reading a stale `decoration` about once in sixty runs).
 
-## Core and std: the `std-providers` feature
+## Core and std: providers
 
-The compositor is split into core and std (`design/modular-framework.md`, section 9). Core is mechanism and a minimal
-safe default; what the desktop does by convention is a provider. Until the C ABI carries providers, the stock ones are
-compiled in behind one cargo feature, `std-providers` of `gnoblin-compositor`, which is on by default:
+The compositor is split into core and std (`design/modular-framework.md`, sections 9 and 28). Core is mechanism and a
+minimal safe default; what the desktop does by convention is a provider, and providers are std's. `libgnoblin-std.so.1`
+registers them with the core through the C ABI (`provider_register`, with the vtables of `gnoblin-core-abi`), so the core
+carries no std code and no cargo feature chooses between the two:
 
-| Provider                                                                                               | Lives in                                                                                          | With the feature off                                                                         |
-| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Window manager (placement, focus on map and on click, focus rotation, maximise and fullscreen fitting) | `crates/gnoblin-std-wm` (`Fallback`), registered by `gnoblin-compositor/src/std_providers/mod.rs` | `NullWm` from `gnoblin-wm-api`: windows at the origin at their natural size, no focus policy |
-| `window-management` section                                                                            | `std_providers/wm.rs`                                                                             | not read; the options keep their defaults                                                    |
-| Magnifier and colour filter                                                                            | `std_providers/a11y.rs`, writing the composer's `a11y.zoom` and `a11y.filter` settings            | no magnifier, no filter                                                                      |
-| Visual bell                                                                                            | `std_providers/bell.rs`, writing `bell.flash`                                                     | no flash                                                                                     |
-| Portal dialogs                                                                                         | `std_providers/portal_ui.rs`, a `portal::UiProvider`                                              | `portal::NoUi`: every portal request is refused `no-ui`, nothing is granted                  |
+| Provider                                                                                                                          | Lives in                                                                                        | With no std loaded                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Window manager (placement, focus on map and on click, focus rotation, maximise and fullscreen fitting)                            | `crates/gnoblin-std-wm` (`Fallback`), registered by `crates/gnoblin-std-impl/src/providers.rs`  | `NullWm` from `gnoblin-wm-api`: windows at the origin at their natural size, no focus policy |
+| Portal dialogs                                                                                                                    | `crates/gnoblin-std-portal` (`PortalUi`), registered the same way                               | `NoUi`: every portal request is refused `no-ui`, nothing is granted                          |
+| `window-management`, `accessibility` and `compositor` sections (policy, titlebar gestures, magnifier, colour filter, visual bell) | the configuration observer in `crates/gnoblin-std-impl/src/providers.rs`, calling `setting_set` | not read; the settings keep their defaults                                                   |
 
-The lock card, the slot mechanism and the portal's request queue and reply validation stay in core (D7).
+`crates/gnoblin-provider-wire` is the one place that knows both ends of each vtable: std exports a Rust provider as a
+vtable, and the core wraps a registered vtable as the trait the compositor drives. The lock card, the slot mechanism and
+the portal's request queue and reply validation stay in core (D7).
 
 ```sh
-just core-only        # cargo test -p gnoblin-compositor -p gnoblin-wayland --no-default-features
+just core-only        # builds the core, fails if a std crate is in its tree, and runs the no-provider suites
 ```
 
-`just core-only` is the CI job `core-only` and the Phase 1 acceptance: the core builds and its whole test suites pass
-with no std code compiled. It is part of `just ci`, and `just test` runs the same suites with the feature on.
+`just core-only` is the CI job `core-only`: the compositor and the core library build with no std crate in their
+dependency tree, a session with no provider places windows at the origin (`crates/gnoblin-wayland/tests/null_wm.rs`) and
+refuses portal requests `no-ui` (`crates/gnoblin-compositor/tests/portal_no_ui.rs`).
 
 When you add code or a test:
 
-- Desktop policy goes in a std crate or in `std_providers/`, never in core. That means a placement rule, a default look,
-  or anything a tiling shell would replace.
-- A core module reaches std only through a `#[cfg(feature = "std-providers")]` line. `cargo xtask deps` fails any other
-  edge to a std crate. It also requires the std dependencies of `gnoblin-compositor` to be `optional` and enabled by
-  that feature.
-- A test whose subject is the stock desktop carries `#[cfg(feature = "std-providers")]`, or its file starts with
-  `#![cfg(feature = "std-providers")]`. Do not weaken a core test to pass without the feature.
-- A core test that needs a window manager holds for `NullWm`, or for the test-only `FocusOnMap` described below.
+- Desktop policy goes in a std crate, never in core. That means a placement rule, a default look, a mapping from a
+  configuration section to a setting, or anything a tiling shell would replace. Core offers the mechanism (a setting key,
+  a vtable) and std decides what it is set to.
+- No crate outside the std tier names a std crate as a normal or build dependency: `cargo xtask deps` fails the edge
+  (`std-below-core`). A test whose subject is the stock desktop may name one as a development dependency.
+- A core test that needs a window manager holds for `NullWm`, or registers a provider in its own session (see below). Do not
+  weaken a core test to pass without std.
 
-The Wayland engine's test sessions take their window manager from `crates/gnoblin-wayland/tests/stock/mod.rs`:
+A session of the compositor's own tests registers the stock providers the way std does, as the traits the provider
+slots take: `tests/support`'s `stock_providers()` in `gnoblin-compositor` puts `Fallback` and `PortalUi` in
+`SessionConfig::providers`, and `core_only` clears them. The Wayland engine's test sessions take their window manager from
+`crates/gnoblin-wayland/tests/stock/mod.rs`: a test that starts a session builds its `Config` from `stock::config()`, never
+`Config::default()`, and `gnoblin-std-wm` is a development dependency, so the library holds no provider.
 
-| Feature             | Provider the test sessions run                                                                            |
-| ------------------- | --------------------------------------------------------------------------------------------------------- |
-| `std-providers` on  | The stock window manager. `gnoblin-std-wm` is a development dependency, so the library holds no provider. |
-| `std-providers` off | `FocusOnMap`: `NullWm`, plus focus when a window maps or is clicked.                                      |
-
-A test that starts a session builds its `Config` from `stock::config()`, never `Config::default()`.
-
-The feature is not a default of `gnoblin-wayland`, because a default there would be switched on by every crate that
-depends on it. `gnoblin-compositor` forwards its own `std-providers` instead:
-
-- A workspace build and test run the stock tests.
-- `cargo test -p gnoblin-wayland --features std-providers` runs them on their own.
+The whole path through the C ABI, a real `libgnoblin-std.so.1` opened by a real compositor process, is
+`crates/gnoblin/tests/std_providers.rs`. It needs the std library staged beside the core (`cargo xtask stage`).
 
 ## Boundaries
 

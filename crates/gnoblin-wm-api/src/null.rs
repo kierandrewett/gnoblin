@@ -113,6 +113,10 @@ impl WindowManager for NullWm {
         self.outputs.iter().find(|output| output.id == id)
     }
 
+    fn outputs(&self) -> Box<dyn Iterator<Item = &OutputRecord> + '_> {
+        Box::new(self.outputs.iter())
+    }
+
     fn set_role(
         &mut self,
         id: WindowId,

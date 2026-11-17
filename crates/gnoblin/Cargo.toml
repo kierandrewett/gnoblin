@@ -58,6 +58,9 @@ tempfile = "3.23.0"
 # and read the version the compositor advertises from the crate that serves it.
 gnoblinctl = { path = "../gnoblinctl" }
 gnoblin-compositor = { path = "../gnoblin-compositor" }
+# The in-process sessions run the stock window manager, which the core does not carry (a development edge only).
+gnoblin-std-wm = { path = "../gnoblin-std-wm" }
+gnoblin-std-portal = { path = "../gnoblin-std-portal" }
 # A test kills a child the way a crash does, which is one signal to one process group; the authentication test plays
 # the guardian, whose control socket is a SEQPACKET pair (`net`). The idle-turn benchmark of `tests/js_shell.rs` reads the
 # thread's CPU clock, to tell the time a turn computes from the time it waits in a read (`time`).

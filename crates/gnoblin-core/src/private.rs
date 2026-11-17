@@ -46,6 +46,17 @@ pub fn ctx_of(g: &Gnoblin) -> GnoblinCtx {
     g.ctx()
 }
 
+/// The installed core's function table, as `g` holds it: for `libgnoblin-std`, which registers providers and sets settings
+/// through functions the SDK has no wrapper for.
+pub fn api_of(g: &Gnoblin) -> &'static GnoblinApi {
+    g.api()
+}
+
+/// The last error text on this thread, as the core wrote it (`E_NAME: what`).
+pub fn last_error() -> String {
+    crate::error::last_error_text()
+}
+
 /// A handle on the generation `ctx`, made by `libgnoblin-std` (which runs inside the shell's process and is given only the
 /// handle) to talk to the installed core as that generation: the same table, the same context, the same calls a shell makes.
 ///

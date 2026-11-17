@@ -23,7 +23,6 @@
 //!
 //! A View of a GPU-backed window is tested in `tests/view_capture_e2e.rs` (`a_view_of_a_gpu_window_shows_its_real_pixels_to_every_reader`,
 //! `a_secure_gpu_window_never_reaches_a_capture_of_a_view`, the two cast tests).
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 
@@ -507,8 +506,7 @@ fn a_session_offers_dma_buf_only_when_the_backend_can_render_into_a_client_buffe
     });
 }
 
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn a_gpu_buffer_in_an_offered_format_is_copied_and_the_frame_is_ready() {
     with_gpu(Some(mock_gpu::renderable()), |handle| {

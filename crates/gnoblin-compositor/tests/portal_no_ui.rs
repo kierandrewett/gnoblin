@@ -1,9 +1,7 @@
 //! A session with no portal UI provider refuses every portal dialog `no-ui`, and grants nothing.
 //!
-//! The built-in dialogs are the stock `UiProvider` behind the `std-providers` feature (`portal_ui.rs` covers them
-//! end to end). Without it the compositor has nothing to ask the user with, so a consent request must fail closed: the
-//! requester is told `no-ui` and no dialog is ever shown or answered.
-#![cfg(not(feature = "std-providers"))]
+//! The dialogs are std's `UiProvider` (`portal_ui.rs` covers them end to end). A session that registered none has nothing to ask
+//! the user with, so a consent request must fail closed: the requester is told `no-ui` and no dialog is ever shown or answered.
 
 mod support;
 
@@ -28,8 +26,8 @@ fn consent(interface: &str) -> PortalRequest {
 }
 
 #[test]
-fn a_consent_request_is_refused_no_ui_without_a_provider() {
-    let session = Session::start();
+fn a_consent_request_is_refused_no_ui_by_a_session_with_no_provider() {
+    let (session, _roles) = Session::start_privileged_configured(&[], support::core_only);
     let mut owner = session.wire();
     owner.set_read_timeout(REPLY_WAIT);
 

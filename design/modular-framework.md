@@ -747,9 +747,7 @@ Replaces `shell_places()` (the boolean) and the hard-wired `Fallback` field.
   separate from any generation, so these registrations survive shell reloads (spec 6.3).
 - **Provider conflicts.** At most one `WM` provider is live. A second `provider_register` of the same kind from another module returns
   `E_BUSY`; a shell that wants its own WM first calls `provider_unregister`, or simply holds the tree (the Shell decider outranks any provider).
-- **Between Phase 1 and Phase 2** the same code is compiled in behind the cargo feature `std-providers` of `gnoblin-compositor` (default on) so
-  the compositor keeps working before the ABI exists. The feature is deleted in M2.11 when std-impl takes over registration. The xtask
-  `std-below-core` rule allows that one edge for exactly that period.
+- **Between Phase 1 and Phase 2** the same code was compiled in behind the cargo feature `std-providers` of `gnoblin-compositor`, so the compositor kept working before the ABI existed. The feature and its module were deleted in M2.11 (section 28), and the `std-below-core` rule now allows no edge from the core to a std crate at all.
 
 Failure containment for providers: a provider call is wrapped in `catch_unwind` on the compositor thread (it is std code, in-process); a panic or
 a vtable returning an invalid effect swaps in `NullWm` for the rest of the session and logs once. The compositor thread never waits on a
@@ -1324,6 +1322,8 @@ which the installed core (ABI 1.0) does not provide ...` (a symbol the core lack
 
 What lane StdMove built, where it differs from sections 4.4, 9.3, 9.4 and 13, and why. Phase 1 is complete when `just core-only` passes: the compositor and the Wayland engine build and pass their whole suites with no std code compiled.
 
+The `std-providers` feature, the `std_providers` module and `FocusOnMap` described below were deleted in M2.11: the providers are std's, registered through the C ABI (section 27), and `just core-only` now proves the same thing without a feature.
+
 ### 21.1 What moved
 
 | From                                                        | To                                                                      |
@@ -1508,9 +1508,8 @@ dist-check` passes `--std-shell` for example 2 in all four trees. A tree without
 
 ### 22.6 What is missing, and what the next lanes need
 
-- **Provider registration (9.4).** `libgnoblin-std.so.1` does not yet register the WM, a11y, bell and `SLOT_UI` providers when `open` runs: the
-  StdMove and Flip lanes own the providers and the `std-providers` feature of the compositor; when they land, `open` registers them through
-  the core's `provider_register` and example 17 gains its "no provider registered, `NullWm` in force" assertion.
+- **Provider registration (9.4)** is done (M2.11, section 28): `open` registers the window manager, the portal dialogs and the settings
+  observer through the core's `provider_register`, and example 17 has its "no provider registered, `NullWm` in force" assertion.
 - **Animation, styling, camera (M7.6)**, **Python std (M7.7)**, **JS convergence (M7.8)** and **the shader pass (M7.9)** are not started.
   The std ABI has no function for them yet; each adds functions at the end of `GnoblinStdApi` (a minor bump) and a family in `exports.txt`
   is not needed (everything goes through `gnoblin_std_get_api`).
@@ -2022,7 +2021,7 @@ The examples had only run against the fake compositor, which modelled the tree d
 
 ### Not done here
 
-- **M2.11** (`gnoblin-std-impl` registering providers through `provider_register` and C vtables, deleting the `std-providers` feature and `gnoblin-compositor/src/std_providers`) is not done. Lane StdMove has landed, so it is reachable, but it is a lane of its own, not a step after the flip. What it needs, measured against `origin/rust-compositor` after the flip: (1) the core ABI has no `provider_register`, `provider_unregister`, `GnoblinWmVtable` or UI vtable at all (section 9.4 describes them; the table has no entry), so the ABI, `abi.lock`, the header, the generated SDKs and a `ForeignWm` adapter with panic containment (swap to `NullWm` after one log line) are new work; (2) the `WindowManager` trait has about twenty methods with the window, effect and rectangle types of `gnoblin-wm-api`, each needing a `repr(C)` mirror and a marshalling pair; (3) `UiProvider` (seventeen methods over `Dialog`, `Verdict`, `RequestId` and a pixel `Frame`) needs a wire form, and `std_providers/portal_ui.rs` (842 lines) moves into `gnoblin-std-impl`, so the types it shares with `portal/provider.rs` move to a crate both sides can name; (4) `std_providers::commit` re-derives `window-management`, `accessibility` and `compositor` sections from an accepted document, so the vtable (or a settings call) must carry those sections to std; (5) a session with no shell that loads std (`gnoblin --role compositor` in the session suites, and the compositor's own tests) would run `NullWm`, so the suites that assume the stock window manager either load std in process or take `gnoblin-std-wm` as a dev-dependency harness, as the StdMove `FocusOnMap` harness does for the opposite case. The core still compiles the stock providers in behind `std-providers`; the `std-below-core` rule still allows that one edge.
+- **M2.11** was not done by the flip; it is section 28.
 - The `gnoblinctl shell reload` and watcher edges to the in-process shell: the shell thread serves `Reload` requests between dispatch turns (a shell's own `request_reload` and the chord-requested reload of example 10 reach it), but nothing in the session socket asks it yet, so `gnoblinctl shell reload` and the watcher still wait for the Startup lane's `--watch`. The 2 s callback budget, `wake_fd`, verbs, `--shell`, `--watch`, `--isolate`, `--list-shells` and discovery on the command line are the Startup and RustSdk lanes'.
 
 ## 27. Implementation notes, M4.3 to M4.5 and the reload edges (lane Startup)
@@ -2069,3 +2068,46 @@ What a package puts in `default-shell/` is the JsCutover lane's: `shell.ts`, the
 - **The 2 s callback budget, `wake_fd` and the verbs** are the RustSdk lane's (section 26, "Not done here").
 - **The packaged default's contents** (27.3) and the deletion of `JsRoleRunner`, `gnoblin-js` in `BINARY_ROOTS` and the `gnoblin` -> `gnoblin-js` dependency are the JsCutover lane's.
 - **`ProcessRole::Runtime`** in `gnoblin-log` is still the name the isolated shell's log lines carry (`runtime/...`); renaming it touches the log crate's file layout and is left to the lane that owns it.
+
+## 28. Implementation notes, M2.11 (the providers through the C ABI)
+
+Lane StdProviders. The core carries no std code: the window manager, the portal dialogs and the visual settings that the compositor used to compile in behind `std-providers` are registered by `libgnoblin-std.so.1` through `provider_register`. A session with no std runs `NullWm` and refuses portal requests `no-ui`.
+
+### 28.1 Who registers, and where
+
+- `gnoblin-std-impl/src/providers.rs` registers the three providers on a context. `register_defaults` is the one entry; a kind that is already held is left to its holder (`E_BUSY`), and anything else is an error with the core's text.
+- **A shell that opens std** registers on its own generation (`open`, which every shell and runtime calls). The registrations end with the generation, and a reload hands them over: the core keeps who holds each kind, and a staged generation of the same shell module (the same file) that registers while the serving one still holds the kind is not refused but waits and takes the slot when the serving one ends, so no window is left without a provider across a reload.
+- **The stock session** has no shell that links std: its shell is a script runtime in another process. The compositor role with no shell argument therefore opens `libgnoblin-std.so.1` itself (`gnoblin-core-impl/src/std_host.rs`), through the new fourth export `gnoblin_std_init(ctx)`, on a context of the host's own that is active from the start and never retires, so the registrations live as long as the process and survive every shell reload (spec 6.3). std is looked for in `$GNOBLIN_STD_DIR`, beside the core and then by name through the loader. The core names no std crate: it opens a file and calls one symbol, so the core is the same bytes whether std is installed or not. A session that cannot find std says so once (`libgnoblin-std is not loaded ... NullWm ... no-ui`) and runs core-only; that is a supported install (example 17), not a failure.
+- A native or script shell that is given on the command line (`gnoblin ./x.so`) decides for itself: a shell that never opens std leaves the session on `NullWm`, and the compositor does not open std behind its back.
+
+### 28.2 The ABI
+
+- `provider_register(ctx, kind, vtable, user, drop_user) -> reg` with `PROVIDER_WM`, `PROVIDER_UI` and `PROVIDER_CONFIG`. `vtable` is read by its own `size`; `user` is handed back to every function; `drop_user` runs once, on the compositor's thread, when the provider ends. Zero on failure with `user` not adopted (the caller frees it): `E_BUSY` for a held kind, `E_ABI` for a vtable that is too small, `E_UNSUPPORTED` for another kind. The design's `provider_unregister` is `remove(reg)`, which every registration already has.
+- A registration is a host registration like a timer: it ends with its generation or with `remove`, the slot falls back (`NullWm`, `NoUi`, no observer) and the provider is dropped.
+- `GnoblinWmVtable` has the twenty methods of `WindowManager` as plain functions over `repr(C)` records. The trait returns references from its reads, which no C function can, so `ForeignWm` keeps a copy of the provider's windows and outputs and refreshes it after each mutating call (two calls and at most `MAX_WINDOWS` records, once per window event and never per frame). Effects come back through a sink the core passes, so neither side frees the other's memory.
+- **Containment.** Every function a library exports is `catch_unwind`ed and answers `E_PANIC`. A provider that panics, answers an error, answers a refusal the contract does not have, sends an effect that does not decode or shows a record that does not decode is dropped for the rest of the session. The window manager is replaced by `NullWm` holding what it held (`gnoblin_wm_api::hand_over`, which also serves a provider registered while windows exist), the clients are told only what changed, and the compositor logs one line. The compositor thread never waits on a shell, but it does call providers, which is why they are library code with a bounded cost.
+- `setting_set(ctx, key, value)` replaces what core read from the `window-management`, `accessibility` and `compositor` sections. The keys are `a11y.zoom` (a double, at most 1 is off), `a11y.filter` (80 bytes, the 4 by 5 colour matrix, none for off), `bell.flash` (`off`, `frame` or `fullscreen`) and `wm.edge_tiling`, `wm.drag_constraint`, `wm.new_window_focus`, `wm.focus_mode`, `wm.focus_change_on_pointer_rest`, `wm.raise_on_click`, `wm.auto_raise`, `wm.auto_raise_delay`, `wm.check_alive_timeout` and the three `wm.titlebar.*` gestures. Core owns what each key does (the frame's zoom and colour passes, the bell effect, the seat policy); a document's meaning (`invert`, `2x`, `hover`) is std's. A wrong key, kind or value is `E_NO_SUCH_MEMBER`, `E_TYPE` or `E_REFUSED` with the reason.
+- `PROVIDER_CONFIG` is how a provider reads the document. The core calls the observer's `apply` with the accepted document as JSON when it registers and on every accepted commit, and std turns the three sections into `setting_set` calls, every key every time so that removing a section puts its settings back. Core keeps the workspace names (`workspaces`) and everything else it reads itself.
+
+### 28.3 The portal UI wire form: a vtable
+
+The UI provider is a vtable, not a node-tree description. The trait has seventeen methods and each is a call with plain arguments, so each is one function of `GnoblinUiVtable`. What is not plain crosses as bytes the portal's own crate defines (`gnoblin_portal_core::wire` for a dialog, a verdict, an interface and a key; `DialogStyle::to_bytes` for the look), and what the provider hands back (a frame, the verdicts that settled) goes through a sink the core passes. A node-tree description would have made the dialogs nodes the shell could restyle, which is the shell's concern and not the provider's, and would have put a second description language into the ABI for seventeen calls. A UI provider that fails is dropped: every new request is refused `no-ui` and each admitted one settles `error(provider-failed)`, so a consent that can no longer be shown is never granted and never left waiting.
+
+### 28.4 What moved, and the rules
+
+- `gnoblin-compositor/src/std_providers/{wm,a11y,bell}.rs` became `gnoblin-std-impl/src/providers.rs`; `portal_ui.rs` (the dialogs) became the crate `gnoblin-std-portal`; the portal's negotiation, queue and outcome (`negotiate.rs`, `queue.rs`, `outcome.rs`) moved to `gnoblin-portal-core`, because the compositor and std both name them; the `UiProvider` trait lives in `gnoblin-portal-ui::provider`; `portal::dialog_style` stays in core and is set by std through the UI provider.
+- `gnoblin-provider-wire` is the one place that knows both ends of each vtable (`export_*` for std, `Foreign*` for the core), so a change to a vtable is one change and the round trip is tested without a library boundary. It is an adapter the core and std both link, and is not itself a provider.
+- `gnoblin-compositor::providers` holds the slots and the traits the compositor drives; the core library puts them in `SessionConfig::providers` when it serves. A test registers a provider in them as plain Rust.
+- `std-below-core` allows no edge from `gnoblin-compositor`, `gnoblin-core-impl` or `gnoblin-provider-wire` to a std crate, as a normal or build dependency; `gnoblin-std-portal` names the portal crates and the primitives only.
+- The `std-providers` feature of `gnoblin-compositor` and of `gnoblin-wayland`, the module, and the test-only `FocusOnMap` are gone; the Wayland engine's tests run `gnoblin-std-wm` as a development dependency, and the compositor's sessions register the stock providers in their own slots (`tests/support`).
+
+### 28.5 Tests
+
+- The round trip of each vtable and the containment of each failure: `gnoblin-provider-wire` (a provider that panics, errors or sends a bad effect becomes `NullWm` holding what it held), `gnoblin-portal-core::wire` (every dialog and verdict decodes to what was encoded, and a malformed byte string is an error).
+- Registration: `gnoblin-core-impl/src/providers.rs` (busy, not adopted when refused, freed once, retire frees the slot, the reload handover, the observer hears the document it registered after, `setting_set`'s errors).
+- The process: `crates/gnoblin/tests/std_providers.rs` runs the shipped binary. Example 17: a core-only shell that holds no tree, with no std loaded, leaves every window at the origin (`NullWm`). The stock session with std staged places windows with std's window manager, which cascades; the same binary and core on a prefix with no std says std is not loaded and runs `NullWm`. A portal request with no provider is refused `no-ui` by `gnoblin-compositor/tests/portal_no_ui.rs`, and `crates/gnoblin-wayland/tests/null_wm.rs` covers a provider-less session of the engine. The default desktop's suites (`gnoblin-compositor/tests`, `gnoblin-wayland/tests`) run unchanged over the stock providers.
+
+### 28.6 Not done here
+
+- The ABI is `1.0` and unreleased (D18), so the provider vtables are not yet frozen; the first release freezes them.
+- A script shell run by path (`gnoblin ./x.ts`) registers std's providers only when it imports std (its `open`). That follows from the rule that a core-only shell never loads std, and is not a gap, but a user who runs a core-only script shell gets `NullWm`.

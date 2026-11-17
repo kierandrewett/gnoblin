@@ -1,4 +1,4 @@
-//! The symbols `libgnoblin-std.so.1` exports. Three of them; everything else is reached through the function table.
+//! The symbols `libgnoblin-std.so.1` exports. Four of them; everything else is reached through the function table.
 //!
 //! Nothing else in the library is visible to the dynamic linker: rustc's own export list for a cdylib is its `#[no_mangle]` items,
 //! and these are the only ones. `cargo xtask dist-check` compares the library's defined dynamic symbols with
@@ -8,15 +8,18 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use gnoblin_core_abi as abi;
-use gnoblin_std_abi::{ABI_MAJOR, ABI_MINOR, ABI_PATCH, GnoblinStdApi, StdAbiVersionFn, StdGetApiFn, StdLastErrorFn};
+use gnoblin_std_abi::{
+    ABI_MAJOR, ABI_MINOR, ABI_PATCH, GnoblinStdApi, StdAbiVersionFn, StdGetApiFn, StdInitFn, StdLastErrorFn,
+};
 
-use crate::error::{last_text, set_last};
+use crate::error::{Fail, last_text, record, set_last};
 use crate::table::API;
 
 // The definitions below must have the signatures `gnoblin-std-abi` publishes; the compiler checks it here.
 const _: StdAbiVersionFn = gnoblin_std_abi_version;
 const _: StdGetApiFn = gnoblin_std_get_api;
 const _: StdLastErrorFn = gnoblin_std_last_error;
+const _: StdInitFn = gnoblin_std_init;
 
 /// `gnoblin_std_abi_version(major, minor, patch)`: the std ABI version of this library. Any pointer may be null.
 ///
@@ -91,4 +94,26 @@ pub unsafe extern "C" fn gnoblin_std_last_error(buf: *mut u8, cap: usize) -> usi
         text.len()
     }))
     .unwrap_or(0)
+}
+
+/// `gnoblin_std_init(ctx)`: registers std's default providers with the core on `ctx`: the window manager, the portal dialog UI and
+/// the configuration observer (`providers.rs`). A kind another registrant already holds is left to it.
+///
+/// The compositor process calls it on a context of its own, so that the stock session has a window manager, dialogs and the
+/// visual settings with no shell that links std; a shell that uses std gets the same through `open`.
+#[unsafe(no_mangle)]
+pub extern "C" fn gnoblin_std_init(ctx: abi::GnoblinCtx) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        let registered = gnoblin_core::private::gnoblin_for(ctx)
+            .map_err(Fail::from)
+            .and_then(|g| {
+                crate::providers::register_defaults(gnoblin_core::private::api_of(&g), ctx)
+                    .map_err(|why| Fail::err(format!("gnoblin_std_init: {why}")))
+            });
+        match registered {
+            Ok(_) => abi::E_OK,
+            Err(fail) => record(&fail),
+        }
+    }))
+    .unwrap_or(abi::E_PANIC)
 }

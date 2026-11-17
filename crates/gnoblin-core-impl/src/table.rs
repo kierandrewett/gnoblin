@@ -22,7 +22,7 @@ use gnoblin_core_abi::{
 use crate::guard::{guard, set_code_error};
 use crate::listen::{self, NodeFilter};
 use crate::registry::{self, Registering};
-use crate::{catalog, link, log, memory, procs, tree, values};
+use crate::{catalog, link, log, memory, procs, providers, tree, values};
 
 /// The table of this core, built at compile time. Its `size` is what lets a caller built against another minor probe it.
 pub(crate) static API: GnoblinApi = GnoblinApi {
@@ -79,6 +79,8 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     tree_link_fd: api_tree_link_fd,
     write_set_timed: api_write_set_timed,
     class_nodes: api_class_nodes,
+    provider_register: api_provider_register,
+    setting_set: api_setting_set,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -393,6 +395,33 @@ unsafe extern "C" fn api_node_children(ctx: GnoblinCtx, node: GnoblinNode, out: 
         // SAFETY: the table's contract passes `out` as a writable `GnoblinNodes`.
         Ok(children) => unsafe { put(out, values::lend_nodes(&children), "node_children") },
         Err(code) => code,
+    })
+}
+
+unsafe extern "C" fn api_provider_register(
+    ctx: GnoblinCtx,
+    kind: u32,
+    vtable: *const c_void,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+) -> GnoblinReg {
+    guard(0, "provider_register", || {
+        providers::register(ctx, kind, vtable, user, drop_user)
+    })
+}
+
+unsafe extern "C" fn api_setting_set(
+    ctx: GnoblinCtx,
+    key: *const u8,
+    key_len: usize,
+    value: *const GnoblinValue,
+) -> i32 {
+    guard(abi::E_PANIC, "setting_set", || {
+        // SAFETY: the table's contract passes `key` as `key_len` readable bytes.
+        match unsafe { text(key, key_len, "setting_set") } {
+            Ok(key) => providers::setting_set(ctx, key, value),
+            Err(code) => code,
+        }
     })
 }
 

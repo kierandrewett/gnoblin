@@ -43,10 +43,8 @@ use gnoblin_wayland::{Modal, ModalEvent, SessionSnapshot, WindowProcess};
 use crate::log;
 use crate::portal::{CancelReason, PortalError, UiProvider, Verdict};
 
-/// The built-in dialog's frame size, in pixels.
-#[cfg(feature = "std-providers")]
+/// The largest frame a portal dialog is drawn in until the first output says otherwise, in pixels.
 const FRAME_WIDTH: usize = 640;
-#[cfg(feature = "std-providers")]
 const FRAME_HEIGHT: usize = 360;
 
 /// The wire code for a key name the dialog grammar does not know.
@@ -123,8 +121,8 @@ struct HeldRequest {
 
 /// The portal UI session and the routing of its requests to their owners.
 pub struct PortalService {
-    /// The dialog UI that shows requests to the user, one dialog at a time: the stock provider with the
-    /// `std-providers` feature, `NoUi` without it, which refuses every request `no-ui`.
+    /// The dialog UI that shows requests to the user, one dialog at a time: the provider std registered, or none, which
+    /// refuses every request `no-ui` (`providers::SlotUi`).
     ui: Box<dyn UiProvider>,
     /// Admitted requests still waiting for an outcome, in admission order.
     owners: Vec<HeldRequest>,
@@ -145,29 +143,12 @@ pub struct PortalService {
     locked: bool,
 }
 
-impl Default for PortalService {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl PortalService {
-    /// Builds an empty portal service with no owners and no dialog shown.
-    ///
-    /// The dialog frame is sized to the fixed `FRAME_WIDTH` by `FRAME_HEIGHT`, so every
-    /// portal dialog has the same geometry regardless of the request that opened it.
+    /// Builds an empty portal service that shows its dialogs with `ui`, drawn in frames of at most `FRAME_WIDTH` by
+    /// `FRAME_HEIGHT` pixels until an output says otherwise, so every dialog has the same geometry whatever request opened it.
     #[must_use]
-    pub fn new() -> Self {
-        #[cfg(feature = "std-providers")]
-        let ui = crate::std_providers::portal_ui(FRAME_WIDTH, FRAME_HEIGHT);
-        #[cfg(not(feature = "std-providers"))]
-        let ui: Box<dyn UiProvider> = Box::new(crate::portal::NoUi);
-        Self::with_ui(ui)
-    }
-
-    /// Builds an empty portal service that shows its dialogs with `ui`.
-    #[must_use]
-    pub fn with_ui(ui: Box<dyn UiProvider>) -> Self {
+    pub fn with_ui(mut ui: Box<dyn UiProvider>) -> Self {
+        ui.set_bounds(FRAME_WIDTH, FRAME_HEIGHT);
         Self {
             ui,
             owners: Vec::new(),
@@ -1057,14 +1038,19 @@ mod no_ui_tests {
     }
 }
 
-/// The portal service over the built-in dialogs, which are the stock UI provider (`std-providers`).
-#[cfg(all(test, feature = "std-providers"))]
-mod tests {
+/// The portal service over the built-in dialogs, which are std's UI provider (`gnoblin-std-portal`, a development dependency).
+#[cfg(test)]
+mod stock_tests {
     use gnoblin_model::Fields;
 
     use gnoblin_wayland::ProcessIdentity;
 
     use super::*;
+
+    /// A portal service over the stock dialogs.
+    fn stock() -> PortalService {
+        PortalService::with_ui(Box::new(gnoblin_std_portal::PortalUi::new(FRAME_WIDTH, FRAME_HEIGHT)))
+    }
 
     fn screenshot() -> PortalRequest {
         PortalRequest {
@@ -1079,7 +1065,7 @@ mod tests {
 
     #[test]
     fn locking_settles_the_open_request_as_locked() {
-        let mut service = PortalService::new();
+        let mut service = stock();
         let requester = ClientId::new(1);
         let opened = service.submit(requester, 1, &screenshot(), Tick::ZERO);
         assert!(
@@ -1121,7 +1107,7 @@ mod tests {
 
     #[test]
     fn an_allowed_secret_consent_grants_that_app() {
-        let mut service = PortalService::new();
+        let mut service = stock();
         let replies = answer(&mut service, &secret_from("org.example.Keys"), &["tab", "enter"]);
         assert_eq!(replies.len(), 1, "the consent is settled once");
         assert!(service.secret_granted("org.example.Keys"));
@@ -1133,21 +1119,21 @@ mod tests {
 
     #[test]
     fn a_denied_secret_consent_grants_nothing() {
-        let mut service = PortalService::new();
+        let mut service = stock();
         answer(&mut service, &secret_from("org.example.Keys"), &["escape"]);
         assert!(!service.secret_granted("org.example.Keys"));
     }
 
     #[test]
     fn a_screenshot_grant_is_not_a_secret_grant() {
-        let mut service = PortalService::new();
+        let mut service = stock();
         answer(&mut service, &screenshot(), &["tab", "enter"]);
         assert!(!service.secret_granted("org.example.Requester"));
     }
 
     #[test]
     fn a_lock_ends_every_secret_grant() {
-        let mut service = PortalService::new();
+        let mut service = stock();
         answer(&mut service, &secret_from("org.example.Keys"), &["tab", "enter"]);
         assert!(service.secret_granted("org.example.Keys"));
         service.set_locked(true);
@@ -1176,7 +1162,7 @@ mod tests {
     #[test]
     fn a_window_the_user_allowed_is_approved_once_for_the_connection_that_asked() {
         let window = WindowId::new(7);
-        let mut service = PortalService::new();
+        let mut service = stock();
         answer(&mut service, &cast_of(7), &["tab", "enter"]);
         assert!(
             !service.take_window_consent(ClientId::new(2), window),
@@ -1195,7 +1181,7 @@ mod tests {
 
     #[test]
     fn a_window_the_user_denied_or_was_never_asked_about_is_never_approved() {
-        let mut service = PortalService::new();
+        let mut service = stock();
         answer(&mut service, &cast_of(7), &["escape"]);
         assert!(!service.take_window_consent(ClientId::new(1), WindowId::new(7)));
         assert!(!service.take_window_consent(ClientId::new(1), WindowId::new(9)));
@@ -1204,7 +1190,7 @@ mod tests {
     #[test]
     fn a_lock_and_a_departing_connection_withdraw_a_window_approval() {
         let window = WindowId::new(7);
-        let mut service = PortalService::new();
+        let mut service = stock();
         answer(&mut service, &cast_of(7), &["tab", "enter"]);
         service.set_locked(true);
         service.set_locked(false);
@@ -1213,7 +1199,7 @@ mod tests {
             "a lock withdraws it"
         );
 
-        let mut service = PortalService::new();
+        let mut service = stock();
         answer(&mut service, &cast_of(7), &["tab", "enter"]);
         service.departed(ClientId::new(1));
         assert!(
@@ -1350,7 +1336,7 @@ mod tests {
 
     #[test]
     fn no_dialog_leaves_the_modal_alone() {
-        let mut service = PortalService::new();
+        let mut service = stock();
         let scene = service.pump(Some((OutputId::new(1), Rect::new(0, 0, 1920, 1080))), false, &[]);
         assert!(scene.modal.is_none(), "nothing to show and nothing to clear");
         assert!(scene.replies.is_empty());
@@ -1358,7 +1344,7 @@ mod tests {
 
     #[test]
     fn a_lock_clears_the_shown_modal_and_settles_the_request() {
-        let mut service = PortalService::new();
+        let mut service = stock();
         let requester = ClientId::new(1);
         let output = OutputId::new(1);
         let rect = Rect::new(0, 0, 1920, 1080);
@@ -1516,7 +1502,7 @@ mod tests {
 
     /// A service that has offered `request` (envelope id 7, from client 1) to a claimant at tick 0.
     fn offered(request: &PortalRequest) -> PortalService {
-        let mut service = PortalService::new();
+        let mut service = stock();
         let (interface, _) = service.routable(7, request).expect("the request can be routed");
         service.offered_to_claimant(
             ClientId::new(1),
@@ -1541,7 +1527,7 @@ mod tests {
 
     #[test]
     fn the_claimant_gets_half_the_timeout_and_the_built_in_the_rest() {
-        let service = PortalService::new();
+        let service = stock();
         let (_, window) = service.routable(7, &screenshot()).expect("routable");
         assert_eq!(window, 15_000, "half of 30 s");
         let mut short = screenshot();
@@ -1768,7 +1754,7 @@ mod tests {
         // The failure this prevents: the portal only learned of a lock while a dialog was open and
         // never learned the unlock, so a request after the first lock was refused for good, and a
         // request that arrived while locked with no dialog open was not refused at all.
-        let mut service = PortalService::new();
+        let mut service = stock();
         assert!(service.follow_lock(true).is_empty(), "nothing is held to refuse");
         let refused = service
             .submit(ClientId::new(1), 7, &screenshot(), Tick::ZERO)
@@ -1788,7 +1774,7 @@ mod tests {
 
     /// A service that has shown `request` (envelope id 7, from client 1) to the dialogs observer at tick 0.
     fn observed(request: &PortalRequest) -> PortalService {
-        let mut service = PortalService::new();
+        let mut service = stock();
         let (interface, _) = service.routable(7, request).expect("the request can be routed");
         service.offered_to_observer(
             ClientId::new(1),

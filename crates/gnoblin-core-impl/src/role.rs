@@ -196,9 +196,6 @@ fn serve(shell: Option<ShellModule>) -> i32 {
         log::warn!("compat adapters not loaded, starting without them: {error:?}");
     }
     gnoblin_compositor::configure_cursor_from_environment(&mut config);
-    gnoblin_compositor::configure_bell_from_environment(&mut config);
-    gnoblin_compositor::configure_accessibility_from_environment(&mut config);
-    gnoblin_compositor::configure_window_management_from_environment(&mut config);
     gnoblin_compositor::configure_session_tables_from_environment(&mut config);
     gnoblin_compositor::configure_monitors_from_environment(&mut config);
     gnoblin_compositor::configure_xwayland_from_environment(&mut config);
@@ -209,8 +206,15 @@ fn serve(shell: Option<ShellModule>) -> i32 {
         log::error!("{error}");
         return EXIT_FAILED;
     }
-    if let Some(module) = shell {
-        config.shell = Some(native_shell::spec(module));
+    // The providers std registers (window management, portal dialogs, the visual settings) are put in the process's slots,
+    // which the session takes when it serves.
+    config.providers = crate::providers::slots();
+    match shell {
+        // A shell given on the command line decides for itself whether to load std (its `open` registers std's defaults), so
+        // a shell that does not runs the core's own defaults.
+        Some(module) => config.shell = Some(native_shell::spec(module)),
+        // No shell in this process: the compositor opens std for the stock session.
+        None => crate::std_host::install_stock(),
     }
     match Compositor::run(config) {
         Ok(SessionEnd::Stopped) => 0,

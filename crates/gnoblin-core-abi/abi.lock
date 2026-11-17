@@ -85,6 +85,37 @@ const | CLAIM_EVENT_POINTER_BUTTON | u32 = 4 | 1.0
 const | STREAM_INHERIT | u32 = 0 | 1.0
 const | STREAM_DISCARD | u32 = 1 | 1.0
 const | STREAM_CAPTURE | u32 = 2 | 1.0
+const | PROVIDER_WM | u32 = 1 | 1.0
+const | PROVIDER_UI | u32 = 2 | 1.0
+const | PROVIDER_CONFIG | u32 = 3 | 1.0
+const | WM_KIND_NORMAL | u32 = 0 | 1.0
+const | WM_KIND_DIALOG | u32 = 1 | 1.0
+const | WM_KIND_MODAL | u32 = 2 | 1.0
+const | WM_WINDOW_MAXIMISED | u32 = 1 | 1.0
+const | WM_WINDOW_FULLSCREEN | u32 = 2 | 1.0
+const | WM_WINDOW_MINIMISED | u32 = 4 | 1.0
+const | WM_WINDOW_HAS_OUTPUT | u32 = 8 | 1.0
+const | WM_WINDOW_HAS_PARENT | u32 = 16 | 1.0
+const | WM_OPEN_HAS_REQUESTED | u32 = 32 | 1.0
+const | WM_STANDING_HAS_FOCUS | u32 = 1 | 1.0
+const | WM_EFFECT_CONFIGURE | u32 = 1 | 1.0
+const | WM_EFFECT_VISIBLE | u32 = 2 | 1.0
+const | WM_EFFECT_STACK | u32 = 3 | 1.0
+const | WM_EFFECT_FOCUS | u32 = 4 | 1.0
+const | WM_REFUSED_DUPLICATE | i32 = 1 | 1.0
+const | WM_REFUSED_TOO_MANY | i32 = 2 | 1.0
+const | WM_REFUSED_NO_OUTPUT | i32 = 3 | 1.0
+const | WM_REFUSED_GONE | i32 = 4 | 1.0
+const | WM_REFUSED_NOT_FLOATING | i32 = 5 | 1.0
+const | WM_REFUSED_UNKNOWN_OUTPUT | i32 = 6 | 1.0
+const | WM_REFUSED_FOLLOWS_PARENT | i32 = 7 | 1.0
+const | WM_FOCUS_ALLOW | u32 = 0 | 1.0
+const | WM_FOCUS_PREVENT | u32 = 1 | 1.0
+const | UI_SCHEME_DARK | u32 = 0 | 1.0
+const | UI_SCHEME_LIGHT | u32 = 1 | 1.0
+const | UI_STARTED | i32 = 0 | 1.0
+const | UI_QUEUED | i32 = 1 | 1.0
+const | UI_REFUSED | i32 = 16 | 1.0
 const | STATE_MAX_BYTES | u64 = 16777216 | 1.0
 const | ADOPTED | i32 = 1 | 1.0
 const | NODE_FLAG_EPHEMERAL | u32 = 1 | 1.0
@@ -281,6 +312,143 @@ field | GnoblinProcessExit.stderr | GnoblinStr @56 +16 | 1.0
 field | GnoblinProcessExit.truncated | u32 @72 +4 | 1.0
 field | GnoblinProcessExit.reserved | u32 @76 +4 | 1.0
 
+struct | GnoblinWmRect | size 16 align 4 fixed | 1.0
+
+field | GnoblinWmRect.x | i32 @0 +4 | 1.0
+field | GnoblinWmRect.y | i32 @4 +4 | 1.0
+field | GnoblinWmRect.width | u32 @8 +4 | 1.0
+field | GnoblinWmRect.height | u32 @12 +4 | 1.0
+
+struct | GnoblinWmInsets | size 16 align 4 fixed | 1.0
+
+field | GnoblinWmInsets.top | i32 @0 +4 | 1.0
+field | GnoblinWmInsets.right | i32 @4 +4 | 1.0
+field | GnoblinWmInsets.bottom | i32 @8 +4 | 1.0
+field | GnoblinWmInsets.left | i32 @12 +4 | 1.0
+
+struct | GnoblinWmWindow | size 72 align 8 extensible | 1.0
+
+field | GnoblinWmWindow.size | u32 @0 +4 | 1.0
+field | GnoblinWmWindow.kind | u32 @4 +4 | 1.0
+field | GnoblinWmWindow.flags | u32 @8 +4 | 1.0
+field | GnoblinWmWindow.reserved | u32 @12 +4 | 1.0
+field | GnoblinWmWindow.id | u64 @16 +8 | 1.0
+field | GnoblinWmWindow.transient_for | u64 @24 +8 | 1.0
+field | GnoblinWmWindow.output | u64 @32 +8 | 1.0
+field | GnoblinWmWindow.geometry | GnoblinWmRect @40 +16 | 1.0
+field | GnoblinWmWindow.restore | GnoblinWmRect @56 +16 | 1.0
+
+struct | GnoblinWmOutput | size 48 align 8 extensible | 1.0
+
+field | GnoblinWmOutput.size | u32 @0 +4 | 1.0
+field | GnoblinWmOutput.reserved | u32 @4 +4 | 1.0
+field | GnoblinWmOutput.id | u64 @8 +8 | 1.0
+field | GnoblinWmOutput.rect | GnoblinWmRect @16 +16 | 1.0
+field | GnoblinWmOutput.reserved_insets | GnoblinWmInsets @32 +16 | 1.0
+
+struct | GnoblinWmStanding | size 32 align 8 extensible | 1.0
+
+field | GnoblinWmStanding.size | u32 @0 +4 | 1.0
+field | GnoblinWmStanding.flags | u32 @4 +4 | 1.0
+field | GnoblinWmStanding.focus | u64 @8 +8 | 1.0
+field | GnoblinWmStanding.stack | *const u64 @16 +8 | 1.0
+field | GnoblinWmStanding.n_stack | usize @24 +8 | 1.0
+
+struct | GnoblinWmOpen | size 48 align 8 extensible | 1.0
+
+field | GnoblinWmOpen.size | u32 @0 +4 | 1.0
+field | GnoblinWmOpen.kind | u32 @4 +4 | 1.0
+field | GnoblinWmOpen.flags | u32 @8 +4 | 1.0
+field | GnoblinWmOpen.reserved | u32 @12 +4 | 1.0
+field | GnoblinWmOpen.id | u64 @16 +8 | 1.0
+field | GnoblinWmOpen.transient_for | u64 @24 +8 | 1.0
+field | GnoblinWmOpen.requested | GnoblinWmRect @32 +16 | 1.0
+
+struct | GnoblinWmEffect | size 56 align 8 extensible | 1.0
+
+field | GnoblinWmEffect.size | u32 @0 +4 | 1.0
+field | GnoblinWmEffect.kind | u32 @4 +4 | 1.0
+field | GnoblinWmEffect.flags | u32 @8 +4 | 1.0
+field | GnoblinWmEffect.reserved | u32 @12 +4 | 1.0
+field | GnoblinWmEffect.window | u64 @16 +8 | 1.0
+field | GnoblinWmEffect.geometry | GnoblinWmRect @24 +16 | 1.0
+field | GnoblinWmEffect.ids | *const u64 @40 +8 | 1.0
+field | GnoblinWmEffect.n_ids | usize @48 +8 | 1.0
+
+struct | GnoblinWmSink | size 24 align 8 extensible | 1.0
+
+field | GnoblinWmSink.size | u32 @0 +4 | 1.0
+field | GnoblinWmSink.reserved | u32 @4 +4 | 1.0
+field | GnoblinWmSink.sink | *mut c_void @8 +8 | 1.0
+field | GnoblinWmSink.push | unsafe extern "C" fn(sink: *mut c_void, effect: *const GnoblinWmEffect) -> i32 @16 +8 | 1.0
+
+struct | GnoblinWmVtable | size 176 align 8 extensible | 1.0
+
+field | GnoblinWmVtable.size | u32 @0 +4 | 1.0
+field | GnoblinWmVtable.reserved | u32 @4 +4 | 1.0
+field | GnoblinWmVtable.windows | unsafe extern "C" fn(user: *mut c_void, out: *mut GnoblinWmWindow, cap: usize) -> usize @8 +8 | 1.0
+field | GnoblinWmVtable.outputs | unsafe extern "C" fn(user: *mut c_void, out: *mut GnoblinWmOutput, cap: usize) -> usize @16 +8 | 1.0
+field | GnoblinWmVtable.set_role | unsafe extern "C" fn(user: *mut c_void, id: u64, kind: u32, flags: u32, transient_for: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @24 +8 | 1.0
+field | GnoblinWmVtable.may_take_focus | unsafe extern "C" fn(user: *mut c_void, id: u64, policy: u32, standing: *const GnoblinWmStanding) -> i32 @32 +8 | 1.0
+field | GnoblinWmVtable.open | unsafe extern "C" fn(user: *mut c_void, open: *const GnoblinWmOpen, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @40 +8 | 1.0
+field | GnoblinWmVtable.close | unsafe extern "C" fn(user: *mut c_void, id: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @48 +8 | 1.0
+field | GnoblinWmVtable.activate | unsafe extern "C" fn(user: *mut c_void, id: u64, raise: u32, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @56 +8 | 1.0
+field | GnoblinWmVtable.raise | unsafe extern "C" fn(user: *mut c_void, id: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @64 +8 | 1.0
+field | GnoblinWmVtable.lower | unsafe extern "C" fn(user: *mut c_void, id: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @72 +8 | 1.0
+field | GnoblinWmVtable.set_maximised | unsafe extern "C" fn(user: *mut c_void, id: u64, on: u32, sink: *const GnoblinWmSink) -> i32 @80 +8 | 1.0
+field | GnoblinWmVtable.set_fullscreen | unsafe extern "C" fn(user: *mut c_void, id: u64, on: u32, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @88 +8 | 1.0
+field | GnoblinWmVtable.set_minimised | unsafe extern "C" fn(user: *mut c_void, id: u64, on: u32, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @96 +8 | 1.0
+field | GnoblinWmVtable.move_resize | unsafe extern "C" fn(user: *mut c_void, id: u64, wanted: *const GnoblinWmRect, sink: *const GnoblinWmSink) -> i32 @104 +8 | 1.0
+field | GnoblinWmVtable.place | unsafe extern "C" fn(user: *mut c_void, id: u64, x: i32, y: i32, sink: *const GnoblinWmSink) -> i32 @112 +8 | 1.0
+field | GnoblinWmVtable.set_rect | unsafe extern "C" fn(user: *mut c_void, id: u64, wanted: *const GnoblinWmRect, sink: *const GnoblinWmSink) -> i32 @120 +8 | 1.0
+field | GnoblinWmVtable.adopt_size | unsafe extern "C" fn(user: *mut c_void, id: u64, width: u32, height: u32) -> i32 @128 +8 | 1.0
+field | GnoblinWmVtable.move_to_output | unsafe extern "C" fn(user: *mut c_void, id: u64, target: u64, sink: *const GnoblinWmSink) -> i32 @136 +8 | 1.0
+field | GnoblinWmVtable.output_added | unsafe extern "C" fn(user: *mut c_void, id: u64, rect: *const GnoblinWmRect, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @144 +8 | 1.0
+field | GnoblinWmVtable.output_removed | unsafe extern "C" fn(user: *mut c_void, id: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32 @152 +8 | 1.0
+field | GnoblinWmVtable.output_moved | unsafe extern "C" fn(user: *mut c_void, id: u64, rect: *const GnoblinWmRect, sink: *const GnoblinWmSink) -> i32 @160 +8 | 1.0
+field | GnoblinWmVtable.reserve | unsafe extern "C" fn(user: *mut c_void, id: u64, reserved: *const GnoblinWmInsets, sink: *const GnoblinWmSink) -> i32 @168 +8 | 1.0
+
+struct | GnoblinUiFrameSink | size 24 align 8 extensible | 1.0
+
+field | GnoblinUiFrameSink.size | u32 @0 +4 | 1.0
+field | GnoblinUiFrameSink.reserved | u32 @4 +4 | 1.0
+field | GnoblinUiFrameSink.sink | *mut c_void @8 +8 | 1.0
+field | GnoblinUiFrameSink.frame | unsafe extern "C" fn(sink: *mut c_void, width: u32, height: u32, rgba: *const u8, len: usize) -> i32 @16 +8 | 1.0
+
+struct | GnoblinUiOutcomeSink | size 24 align 8 extensible | 1.0
+
+field | GnoblinUiOutcomeSink.size | u32 @0 +4 | 1.0
+field | GnoblinUiOutcomeSink.reserved | u32 @4 +4 | 1.0
+field | GnoblinUiOutcomeSink.sink | *mut c_void @8 +8 | 1.0
+field | GnoblinUiOutcomeSink.verdict | unsafe extern "C" fn(sink: *mut c_void, request: u64, bytes: *const u8, len: usize) -> i32 @16 +8 | 1.0
+
+struct | GnoblinUiVtable | size 136 align 8 extensible | 1.0
+
+field | GnoblinUiVtable.size | u32 @0 +4 | 1.0
+field | GnoblinUiVtable.reserved | u32 @4 +4 | 1.0
+field | GnoblinUiVtable.frame_size | unsafe extern "C" fn(user: *mut c_void, width: *mut u32, height: *mut u32) -> i32 @8 +8 | 1.0
+field | GnoblinUiVtable.set_scheme | unsafe extern "C" fn(user: *mut c_void, scheme: u32) -> i32 @16 +8 | 1.0
+field | GnoblinUiVtable.set_style | unsafe extern "C" fn(user: *mut c_void, bytes: *const u8, len: usize) -> i32 @24 +8 | 1.0
+field | GnoblinUiVtable.set_bounds | unsafe extern "C" fn(user: *mut c_void, width: u32, height: u32) -> i32 @32 +8 | 1.0
+field | GnoblinUiVtable.active_request | unsafe extern "C" fn(user: *mut c_void, request: *mut u64) -> i32 @40 +8 | 1.0
+field | GnoblinUiVtable.waiting | unsafe extern "C" fn(user: *mut c_void) -> usize @48 +8 | 1.0
+field | GnoblinUiVtable.submit | unsafe extern "C" fn(user: *mut c_void, request: u64, app_id: GnoblinStr, interface: u32, dialog: *const u8, dialog_len: usize, timeout_ms: u64, now: u64) -> i32 @56 +8 | 1.0
+field | GnoblinUiVtable.key | unsafe extern "C" fn(user: *mut c_void, kind: u32, character: u32, repeat: u32) -> i32 @64 +8 | 1.0
+field | GnoblinUiVtable.pointer_press | unsafe extern "C" fn(user: *mut c_void, x: f32, y: f32) -> i32 @72 +8 | 1.0
+field | GnoblinUiVtable.pointer_release | unsafe extern "C" fn(user: *mut c_void, x: f32, y: f32) -> i32 @80 +8 | 1.0
+field | GnoblinUiVtable.tick | unsafe extern "C" fn(user: *mut c_void, now: u64) -> i32 @88 +8 | 1.0
+field | GnoblinUiVtable.take_frame | unsafe extern "C" fn(user: *mut c_void, sink: *const GnoblinUiFrameSink) -> i32 @96 +8 | 1.0
+field | GnoblinUiVtable.redraw | unsafe extern "C" fn(user: *mut c_void) -> i32 @104 +8 | 1.0
+field | GnoblinUiVtable.take_outcomes | unsafe extern "C" fn(user: *mut c_void, sink: *const GnoblinUiOutcomeSink) -> i32 @112 +8 | 1.0
+field | GnoblinUiVtable.cancel | unsafe extern "C" fn(user: *mut c_void, request: u64) -> i32 @120 +8 | 1.0
+field | GnoblinUiVtable.set_locked | unsafe extern "C" fn(user: *mut c_void, locked: u32) -> i32 @128 +8 | 1.0
+
+struct | GnoblinConfigVtable | size 16 align 8 extensible | 1.0
+
+field | GnoblinConfigVtable.size | u32 @0 +4 | 1.0
+field | GnoblinConfigVtable.reserved | u32 @4 +4 | 1.0
+field | GnoblinConfigVtable.apply | unsafe extern "C" fn(user: *mut c_void, document: GnoblinStr) -> i32 @8 +8 | 1.0
+
 struct | GnoblinShellEntry | size 56 align 8 extensible | 1.0
 
 field | GnoblinShellEntry.size | u32 @0 +4 | 1.0
@@ -307,7 +475,7 @@ field | GnoblinRuntimeEntry.activate | Option<unsafe extern "C" fn(ctx: GnoblinC
 field | GnoblinRuntimeEntry.abandon | Option<unsafe extern "C" fn(ctx: GnoblinCtx)> @88 +8 | 1.0
 field | GnoblinRuntimeEntry.turn | Option<unsafe extern "C" fn(ctx: GnoblinCtx, timeout_ms: u32) -> i32> @96 +8 | 1.0
 
-struct | GnoblinApi | size 408 align 8 extensible | 1.0
+struct | GnoblinApi | size 424 align 8 extensible | 1.0
 
 field | GnoblinApi.size | u32 @0 +4 | 1.0
 field | GnoblinApi.major | u32 @4 +4 | 1.0
@@ -362,3 +530,5 @@ field | GnoblinApi.tree_link_send | unsafe extern "C" fn(ctx: GnoblinCtx, bytes:
 field | GnoblinApi.tree_link_recv | unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinBuf) -> i32 @384 +8 | 1.0
 field | GnoblinApi.tree_link_fd | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @392 +8 | 1.0
 field | GnoblinApi.class_nodes | unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, out: *mut GnoblinNodes) -> i32 @400 +8 | 1.0
+field | GnoblinApi.provider_register | unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, vtable: *const c_void, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg @408 +8 | 1.0
+field | GnoblinApi.setting_set | unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, value: *const GnoblinValue) -> i32 @416 +8 | 1.0

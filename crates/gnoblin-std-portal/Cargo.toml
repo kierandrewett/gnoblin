@@ -1,0 +1,22 @@
+[package]
+name = "gnoblin-std-portal"
+description = "The stock portal dialogs: the consent, file chooser and app chooser screens behind one UiProvider, with a queue of admitted requests. Std's, registered through the C ABI by gnoblin-std-impl."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Std tier (design/modular-framework.md, 9.3): the dialogs the user answers are desktop policy, not core. This crate names the
+# portal crates and the primitives and nothing of the compositor, so the compositor can run, and refuse `no-ui`, without it.
+[dependencies]
+# The negotiation, the queue and the verdicts the provider settles with.
+gnoblin-portal-core.workspace = true
+# The `UiProvider` trait, the frame, the look and the scheme.
+gnoblin-portal-ui.workspace = true
+# The dialog screens and the shell that draws them.
+gnoblin-portal = { path = "../gnoblin-portal" }
+gnoblin-types.workspace = true
+
+[lints]
+workspace = true

@@ -1082,6 +1082,8 @@ dependencies = [
  "gnoblin-session",
  "gnoblin-shell-discovery",
  "gnoblin-shell-host",
+ "gnoblin-std-portal",
+ "gnoblin-std-wm",
  "gnoblin-tree-client",
  "gnoblin-types",
  "gnoblin-wayland",
@@ -1398,7 +1400,6 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "async-io",
  "futures-lite",
- "gnoblin-a11y",
  "gnoblin-backend",
  "gnoblin-backend-drm",
  "gnoblin-capture",
@@ -1423,10 +1424,12 @@ dependencies = [
  "gnoblin-service-core",
  "gnoblin-service-screensaver",
  "gnoblin-services",
+ "gnoblin-std-portal",
  "gnoblin-std-wm",
  "gnoblin-tree-client",
  "gnoblin-types",
  "gnoblin-wayland",
+ "gnoblin-wm-api",
  "gnoblin-xwayland",
  "gnoblinctl",
  "png",
@@ -1495,11 +1498,13 @@ dependencies = [
  "gnoblin-core-abi",
  "gnoblin-log",
  "gnoblin-proto",
+ "gnoblin-provider-wire",
  "gnoblin-schema",
  "gnoblin-services",
  "gnoblin-shell-host",
  "gnoblin-testkit",
  "gnoblin-tree-client",
+ "gnoblin-wm-api",
 ]
 
 [[package]]
@@ -1762,6 +1767,8 @@ dependencies = [
  "futures-lite",
  "gnoblin-compositor",
  "gnoblin-input-eis",
+ "gnoblin-std-portal",
+ "gnoblin-std-wm",
  "gnoblin-wayland",
  "gnoblinctl",
  "reis",
@@ -1871,6 +1878,17 @@ dependencies = [
  "protox",
  "rustix 1.1.6",
  "zeroize",
+]
+
+[[package]]
+name = "gnoblin-provider-wire"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+ "gnoblin-portal-core",
+ "gnoblin-portal-ui",
+ "gnoblin-types",
+ "gnoblin-wm-api",
 ]
 
 [[package]]
@@ -2159,14 +2177,30 @@ dependencies = [
 name = "gnoblin-std-impl"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-a11y",
+ "gnoblin-config",
  "gnoblin-core",
  "gnoblin-core-abi",
  "gnoblin-js",
+ "gnoblin-provider-wire",
  "gnoblin-shell-host",
  "gnoblin-std-abi",
+ "gnoblin-std-portal",
+ "gnoblin-std-wm",
  "gnoblin-testkit",
  "gnoblin-tree-client",
+ "gnoblin-wm-api",
  "tempfile",
+]
+
+[[package]]
+name = "gnoblin-std-portal"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-portal",
+ "gnoblin-portal-core",
+ "gnoblin-portal-ui",
+ "gnoblin-types",
 ]
 
 [[package]]

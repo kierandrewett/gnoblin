@@ -775,7 +775,8 @@ mod tests {
             [
                 "gnoblin_std_abi_version",
                 "gnoblin_std_get_api",
-                "gnoblin_std_last_error"
+                "gnoblin_std_last_error",
+                "gnoblin_std_init"
             ]
         );
     }

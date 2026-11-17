@@ -12,7 +12,6 @@
 //! session ends.
 //!
 //! Each test owns its bus, its compositor and its sockets, so the tests run concurrently.
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod support;
 
@@ -652,7 +651,6 @@ fn bind_devices(remote: &mut EiClient) {
 /// A key sent to no dialog is acknowledged and dropped, so the dialog that opens afterwards is
 /// never answered. The rig must wait for the compositor to hold the dialog, not for the clock.
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn an_offer_that_reaches_the_compositor_late_is_still_answered() {
     let mut rig = Rig::start_late(None, LATE_OFFER);
@@ -675,7 +673,6 @@ fn an_offer_that_reaches_the_compositor_late_is_still_answered() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn an_approved_remote_desktop_moves_a_wayland_clients_pointer_over_the_descriptor() {
     let mut rig = Rig::start(None);
@@ -782,7 +779,6 @@ fn a_remote_desktop_with_screen_denied_never_asks_for_input() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn closing_the_session_over_dbus_ends_the_compositor_session_and_revokes_input() {
     let mut rig = Rig::start(None);
@@ -830,7 +826,6 @@ fn closing_the_session_over_dbus_ends_the_compositor_session_and_revokes_input()
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn the_caller_leaving_the_bus_ends_its_remote_desktop_session() {
     let mut rig = Rig::start(None);
@@ -854,7 +849,6 @@ fn the_caller_leaving_the_bus_ends_its_remote_desktop_session() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn an_approved_screen_cast_answers_a_pipewire_node_and_closing_removes_it() {
     let daemon = Daemon::start();
@@ -894,7 +888,6 @@ fn a_denied_screen_cast_answers_cancelled_and_makes_no_node() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn the_caller_leaving_the_bus_removes_its_screen_cast_node() {
     let daemon = Daemon::start();
@@ -915,7 +908,6 @@ fn the_caller_leaving_the_bus_removes_its_screen_cast_node() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn input_capture_start_answers_not_supported_and_holds_nothing() {
     let mut rig = Rig::start(None);
@@ -957,7 +949,6 @@ fn a_denied_input_capture_answers_cancelled() {
 /// asked as for any share, and the stream the portal answers is the compositor's stream of that View. It goes
 /// through the real portal, the real IPC and a real PipeWire daemon.
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn an_approved_virtual_source_streams_the_view_the_app_named_and_closing_removes_it() {
     let daemon = Daemon::start();
@@ -1018,7 +1009,6 @@ fn a_virtual_source_that_names_no_view_is_refused_before_the_user_is_asked() {
 
 /// A View that is not in the scene is refused when the share starts, after the user said yes, and no node is made.
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn a_virtual_source_naming_a_view_that_is_not_there_makes_no_node() {
     let daemon = Daemon::start();
@@ -1042,7 +1032,6 @@ fn a_virtual_source_naming_a_view_that_is_not_there_makes_no_node() {
 /// A window source: the app names the window it wants to share, the user is asked about that window and says yes, the
 /// compositor streams it, and the `Start` reply carries the stream's `position` and `size`.
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn an_approved_window_source_streams_the_window_the_app_named_with_its_position_and_size() {
     let daemon = Daemon::start();

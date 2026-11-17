@@ -8,9 +8,8 @@
 //! request. `admit` is the barrier: a test admits a dialog before it keys it. Each test owns
 //! its sockets and directory, so the tests run concurrently.
 //!
-//! The dialogs are the stock `UiProvider` (`std_providers/portal_ui.rs`), so the whole file is `std-providers`; with the
-//! feature off a request is refused `no-ui` (`portal_no_ui.rs`).
-#![cfg(feature = "std-providers")]
+//! The dialogs are std's `UiProvider` (`gnoblin-std-portal`), which these sessions register in their provider slots; a session
+//! with none refuses a request `no-ui` (`portal_no_ui.rs`).
 
 mod support;
 

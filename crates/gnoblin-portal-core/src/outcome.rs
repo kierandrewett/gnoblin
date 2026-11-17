@@ -4,7 +4,7 @@
 //! never sent to the caller: a provider decline starts the built-in fallback instead.
 //! The wire names come from `as_str` and must match `portal-call-reply`.
 
-use gnoblin_portal_core::model::Grant;
+use crate::model::Grant;
 
 /// The result a provider or the built-in UI returns for one request.
 #[derive(Clone, Debug, PartialEq, Eq)]

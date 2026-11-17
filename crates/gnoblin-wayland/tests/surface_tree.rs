@@ -13,7 +13,6 @@
 //! The ordering and placement tests run on the software path and on the GLES path, as `tests/render.rs` does: a
 //! popup hanging past a window's edge, or a layer behind its parent, is the kind of thing one renderer can get wrong
 //! that the frame the composer describes does not show.
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 
@@ -766,8 +765,7 @@ fn a_subsurface_that_is_destroyed_leaves_the_screen() {
 
 // The window geometry is the window: a client that draws outside it has that drawn, and not counted.
 
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn a_window_with_a_shadow_margin_is_placed_by_its_geometry_and_draws_its_shadow() {
     for_each_renderer(|backend| {
@@ -792,8 +790,7 @@ fn a_window_with_a_shadow_margin_is_placed_by_its_geometry_and_draws_its_shadow(
     });
 }
 
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn a_bar_above_the_surface_is_the_top_of_the_window() {
     for_each_renderer(|backend| {

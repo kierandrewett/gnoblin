@@ -52,6 +52,11 @@ impl WindowManager for Fallback {
         self.outputs.iter().find(|output| output.id == id)
     }
 
+    /// Every connected output, in the order they arrived.
+    fn outputs(&self) -> Box<dyn Iterator<Item = &OutputRecord> + '_> {
+        Box::new(self.outputs.iter())
+    }
+
     /// Applies a window's role: its kind and parent, as its protocol says. A window that becomes a transient is
     /// stacked directly above its parent, and a modal that appears while its parent holds focus takes it. A parent
     /// that is not open changes nothing.

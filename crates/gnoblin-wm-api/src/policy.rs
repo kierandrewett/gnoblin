@@ -88,6 +88,36 @@ impl DragConstraint {
     }
 }
 
+impl DragConstraint {
+    /// The constraint a name from [`DragConstraint::name`] says.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::WorkArea, Self::MinimumStrip]
+            .into_iter()
+            .find(|candidate| candidate.name() == name)
+    }
+}
+
+impl FocusMode {
+    /// The mode a name from [`FocusMode::name`] says.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::Click, Self::Hover, Self::HoverStrict]
+            .into_iter()
+            .find(|candidate| candidate.name() == name)
+    }
+}
+
+impl NewWindowFocus {
+    /// The choice a name from [`NewWindowFocus::name`] says.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::Allow, Self::Prevent]
+            .into_iter()
+            .find(|candidate| candidate.name() == name)
+    }
+}
+
 impl FocusMode {
     /// The name the seat property carries.
     #[must_use]

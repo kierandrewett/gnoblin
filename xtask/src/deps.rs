@@ -171,24 +171,34 @@ const STD: &[&str] = &[
     "gnoblin-std-abi",
     "gnoblin-std-dyn",
     "gnoblin-std-impl",
+    "gnoblin-std-portal",
     "gnoblin-std-wm",
 ];
 
 /// The pure fallback window manager. It may name the provider trait crate and the primitives only.
 const STD_WM: &str = "gnoblin-std-wm";
 
-/// The one crate outside the std tier that may depend on a std crate, and the one feature it may do it through
-/// (design/modular-framework.md, 9.4): the composition root compiles the stock providers in until the C ABI carries
-/// them (M2.11), and with the feature off it is core.
-const STD_ROOT: &str = "gnoblin-compositor";
+/// The crates that make the core into a running compositor: the composition root, the core library and the vtable adapters between
+/// it and std. Std is not one of their dependencies, as an ordinary or build dependency: the core is the same bytes whether
+/// `libgnoblin-std` is installed or not.
+const CORE_ROOTS: &[&str] = &["gnoblin-compositor", "gnoblin-core-impl", "gnoblin-provider-wire"];
 
-/// The feature of [`STD_ROOT`] that brings every std crate in.
-const STD_FEATURE: &str = "std-providers";
+/// The stock portal dialogs. They may name the portal crates, the screens that draw them and the primitives, and nothing of
+/// the compositor.
+const STD_PORTAL: &str = "gnoblin-std-portal";
+
+/// The workspace crates [`STD_PORTAL`] may name.
+const STD_PORTAL_ALLOWED: &[&str] = &[
+    "gnoblin-portal",
+    "gnoblin-portal-core",
+    "gnoblin-portal-ui",
+    "gnoblin-types",
+];
 
 /// The crates that may omit `[lints] workspace = true` and restate the table with
 /// `unsafe_code = "deny"` (the pattern at the top of the workspace `Cargo.toml`): the existing FFI and
 /// generated-protocol crates, `gnoblin-core-abi` (the `repr(C)` types), `gnoblin-core`, `gnoblin-macros` and `gnoblin-std` of the SDK, the
-/// session launcher (one `unsafe` call into the core), the core's test-fixture launcher and the reload fixture shell (which exports `gnoshell_unload_safe`), the shell host (whose
+/// session launcher (one `unsafe` call into the core), the vtable adapters of the provider ABI (`gnoblin-provider-wire`), the core's test-fixture launcher and the reload fixture shell (which exports `gnoshell_unload_safe`), the shell host (whose
 /// `native` module is the one loader and is the only module that opens libraries), and every [`IMPL`] crate. An addition here
 /// is a reviewed change.
 const LINT_OPT_OUT: &[&str] = &[
@@ -204,6 +214,7 @@ const LINT_OPT_OUT: &[&str] = &[
     "gnoblin-js",
     "gnoblin-lock-auth",
     "gnoblin-macros",
+    "gnoblin-provider-wire",
     "gnoblin-render-frame",
     "gnoblin-render-gles",
     "gnoblin-render-vulkan",
@@ -745,9 +756,9 @@ fn portal_layering(package: &Package, dep: &Dep) -> Option<String> {
         "gnoblin-portal-appchooser",
     ];
 
-    if dep.name == SCREENS && package.name != "gnoblin-compositor" {
+    if dep.name == SCREENS && package.name != "gnoblin-compositor" && package.name != STD_PORTAL {
         return Some(format!(
-            "the portal dialog screens in `{SCREENS}` are used only by the compositor, where portal.ui requests land (D19); `{}` may not depend on it",
+            "the portal dialog screens in `{SCREENS}` are used only by the compositor (the lock and prompt cards) and by std's portal dialogs `{STD_PORTAL}`, where portal.ui requests land (D19); `{}` may not depend on it",
             package.name
         ));
     }
@@ -757,11 +768,12 @@ fn portal_layering(package: &Package, dep: &Dep) -> Option<String> {
             package.name, dep.name
         ));
     }
-    let may_name_ui =
-        package.name == "gnoblin-compositor" || package.name == SCREENS || DIALOGS.contains(&package.name.as_str());
+    let may_name_ui = ["gnoblin-compositor", "gnoblin-provider-wire", STD_PORTAL, SCREENS]
+        .contains(&package.name.as_str())
+        || DIALOGS.contains(&package.name.as_str());
     if dep.name == UI && !may_name_ui {
         return Some(format!(
-            "`{UI}` is the egui layer of the dialogs: only `{SCREENS}`, the dialog crates and `gnoblin-compositor` (for `paint::Frame`) may depend on it (D19); `{}` may not",
+            "`{UI}` is the egui layer of the dialogs: only `{SCREENS}`, the dialog crates, `{STD_PORTAL}`, `gnoblin-provider-wire` and `gnoblin-compositor` (for `paint::Frame` and the `UiProvider` trait) may depend on it (D19); `{}` may not",
             package.name
         ));
     }
@@ -796,6 +808,16 @@ const PORTAL_ALLOWED: &[(&str, &[&str])] = &[
     (
         "gnoblin-portal-appchooser",
         &["egui", "gnoblin-portal-core", "gnoblin-portal-ui", "gnoblin-types"],
+    ),
+    (
+        // Std's dialogs: the screens behind one `UiProvider`.
+        "gnoblin-std-portal",
+        &[
+            "gnoblin-portal",
+            "gnoblin-portal-core",
+            "gnoblin-portal-ui",
+            "gnoblin-types",
+        ],
     ),
     (
         "gnoblin-portal",
@@ -1202,26 +1224,31 @@ fn impl_sealed(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
-/// The std tier sits above core: no foundation, engine, client-side or core SDK crate depends on a
+/// The std tier sits above core: no foundation, engine, client-side, core SDK or composition crate depends on a
 /// std crate. `gnoblin-wm-api` is not std (it is the trait core calls), so the fallback window manager
 /// in `gnoblin-std-wm` reaches core through it. `gnoblin-std-wm` itself is pure and names the provider
-/// trait crate and the primitives only. A development dependency is exempt.
+/// trait crate and the primitives only. A development dependency is exempt: the tests whose subject is the stock desktop run a
+/// stock provider in a session of their own.
 ///
-/// The composition root `gnoblin-compositor` is the one crate outside the std tier that may name a std crate (the
-/// stock providers are compiled in behind its `std-providers` feature from M1.5 to M2.11), and only that way: the
-/// dependency is `optional` and the feature `std-providers` is what enables it, so building the root with
-/// `--no-default-features` compiles no std code (the CI job `core-only`).
+/// No crate outside the std tier names a std crate, `gnoblin-compositor` included: std reaches the core through the C ABI
+/// (`provider_register`, `design/modular-framework.md`, 9.4), so a build of the core compiles no std code.
 fn std_below_core(package: &Package, dep: &Dep) -> Option<String> {
     if dep.kind == DepKind::Dev {
         return None;
-    }
-    if package.name == STD_ROOT && is_std(&dep.name) {
-        return std_root_edge(package, dep);
     }
     if package.name == STD_WM {
         if is_workspace_crate(&dep.name) && dep.name != "gnoblin-wm-api" && dep.name != TYPES {
             return Some(format!(
                 "`{STD_WM}` is the pure fallback window manager and may depend only on `gnoblin-wm-api` and `{TYPES}` among workspace crates, not `{}`",
+                dep.name
+            ));
+        }
+        return None;
+    }
+    if package.name == STD_PORTAL {
+        if is_workspace_crate(&dep.name) && !STD_PORTAL_ALLOWED.contains(&dep.name.as_str()) {
+            return Some(format!(
+                "`{STD_PORTAL}` is std's portal dialogs and may depend only on the portal crates and `{TYPES}` among workspace crates, not `{}`",
                 dep.name
             ));
         }
@@ -1234,37 +1261,14 @@ fn std_below_core(package: &Package, dep: &Dep) -> Option<String> {
         || is_engine(&package.name)
         || is_client_side(&package.name)
         || SDK_CORE.contains(&package.name.as_str())
+        || CORE_ROOTS.contains(&package.name.as_str())
     {
         return Some(format!(
-            "`{}` sits below std and may not depend on the std crate `{}`",
+            "`{}` sits below std and may not depend on the std crate `{}`; std reaches the core through `provider_register`",
             package.name, dep.name
         ));
     }
     None
-}
-
-/// The edge from [`STD_ROOT`] to a std crate: optional, and enabled by [`STD_FEATURE`].
-fn std_root_edge(package: &Package, dep: &Dep) -> Option<String> {
-    if !dep.optional {
-        return Some(format!(
-            "`{STD_ROOT}` may name the std crate `{}` only as an `optional` dependency enabled by its `{STD_FEATURE}` feature, so a build without the feature compiles no std code",
-            dep.name
-        ));
-    }
-    let enables = |feature: &str, entry: &str| {
-        package.feature_table.get(feature).is_some_and(|items| {
-            items
-                .iter()
-                .any(|item| item == &format!("dep:{entry}") || item == entry)
-        })
-    };
-    if enables(STD_FEATURE, &dep.name) {
-        return None;
-    }
-    Some(format!(
-        "`{STD_ROOT}` depends on the std crate `{}` but its `{STD_FEATURE}` feature does not enable it (`{STD_FEATURE} = [\"dep:{}\"]`), so another feature or the default build would compile std code",
-        dep.name, dep.name
-    ))
 }
 
 /// Only the crates in [`LINT_OPT_OUT`] and the [`IMPL`] crates may omit `[lints] workspace = true`,
@@ -2248,8 +2252,17 @@ mod tests {
             "gnoblin-js",
             "gnoblin-service-core",
             "gnoblin-core",
+            "gnoblin-compositor",
+            "gnoblin-core-impl",
+            "gnoblin-provider-wire",
         ] {
-            for std in ["gnoblin-std", "gnoblin-std-wm", "gnoblin-std-impl", "gnoblin-a11y"] {
+            for std in [
+                "gnoblin-std",
+                "gnoblin-std-wm",
+                "gnoblin-std-portal",
+                "gnoblin-std-impl",
+                "gnoblin-a11y",
+            ] {
                 let found = edge_violations(package, std, "normal");
                 assert!(
                     found.iter().any(|line| line.contains("[std-below-core]")),
@@ -2259,44 +2272,33 @@ mod tests {
         }
     }
 
-    /// A package `gnoblin-compositor` with one edge to `dependency`, declared `optional` or not, and a feature table.
-    fn root_edge_violations(dependency: &str, optional: bool, features: serde_json::Value) -> Vec<String> {
+    /// A package `gnoblin-compositor` with one edge to `dependency` of the given kind.
+    fn root_edge_violations(dependency: &str, kind: Option<&str>) -> Vec<String> {
         let document = serde_json::json!({ "packages": [{
             "name": "gnoblin-compositor",
-            "dependencies": [{ "name": dependency, "kind": null, "optional": optional }],
-            "features": features,
+            "dependencies": [{ "name": dependency, "kind": kind }],
         }] });
         let graph = from_json(&document.to_string()).expect("the fixture parses");
         check(&graph).iter().map(DepViolation::to_string).collect()
     }
 
     #[test]
-    fn the_composition_root_names_a_std_crate_only_as_an_optional_dependency_of_its_std_providers_feature() {
-        for std in ["gnoblin-std-wm", "gnoblin-a11y"] {
-            let allowed = serde_json::json!({ "default": ["std-providers"], "std-providers": [format!("dep:{std}")] });
-            assert_eq!(root_edge_violations(std, true, allowed), Vec::<String>::new(), "{std}");
-
-            let required = root_edge_violations(std, false, serde_json::json!({ "std-providers": [] }));
+    fn the_composition_root_names_no_std_crate_and_only_its_tests_may() {
+        for std in ["gnoblin-std-wm", "gnoblin-a11y", "gnoblin-std-portal"] {
+            let found = root_edge_violations(std, None);
             assert!(
-                required
-                    .iter()
-                    .any(|line| line.contains("[std-below-core]") && line.contains("optional")),
-                "{std}: a std crate the root always compiles is refused: {required:?}"
+                found.iter().any(|line| line.contains("[std-below-core]")),
+                "{std}: {found:?}"
             );
-
-            let unlisted = root_edge_violations(std, true, serde_json::json!({ "std-providers": [] }));
+            let build = root_edge_violations(std, Some("build"));
             assert!(
-                unlisted
-                    .iter()
-                    .any(|line| line.contains("[std-below-core]") && line.contains("does not enable")),
-                "{std}: an optional crate the feature does not enable is refused: {unlisted:?}"
+                build.iter().any(|line| line.contains("[std-below-core]")),
+                "{std}: {build:?}"
             );
-
-            let other_feature =
-                root_edge_violations(std, true, serde_json::json!({ "extras": [format!("dep:{std}")] }));
-            assert!(
-                other_feature.iter().any(|line| line.contains("[std-below-core]")),
-                "{std}: only the std-providers feature may bring it in: {other_feature:?}"
+            assert_eq!(
+                root_edge_violations(std, Some("dev")),
+                Vec::<String>::new(),
+                "{std}: a test may run a stock provider"
             );
         }
     }
@@ -2305,9 +2307,33 @@ mod tests {
     fn the_composition_root_may_name_the_crates_below_std_however_they_are_declared() {
         for dependency in ["gnoblin-wm-api", "gnoblin-types", "gnoblin-wayland"] {
             assert_eq!(
-                root_edge_violations(dependency, false, serde_json::json!({})),
+                root_edge_violations(dependency, None),
                 Vec::<String>::new(),
                 "{dependency}"
+            );
+        }
+    }
+
+    #[test]
+    fn std_portal_names_the_portal_crates_and_the_primitives_only() {
+        for dep in [
+            "gnoblin-portal",
+            "gnoblin-portal-core",
+            "gnoblin-portal-ui",
+            "gnoblin-types",
+            "egui",
+        ] {
+            assert_eq!(
+                edge_violations("gnoblin-std-portal", dep, "normal"),
+                Vec::<String>::new(),
+                "{dep}"
+            );
+        }
+        for dep in ["gnoblin-compositor", "gnoblin-wayland", "gnoblin-core-abi"] {
+            let found = edge_violations("gnoblin-std-portal", dep, "normal");
+            assert!(
+                found.iter().any(|line| line.contains("[std-below-core]")),
+                "{dep}: {found:?}"
             );
         }
     }
@@ -2356,7 +2382,6 @@ mod tests {
                 deps: Vec::new(),
                 is_binary: false,
                 lints,
-                feature_table: std::collections::BTreeMap::new(),
             }],
         };
         check(&graph).iter().map(DepViolation::to_string).collect()

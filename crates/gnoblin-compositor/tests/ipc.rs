@@ -10,7 +10,6 @@
 //! taken, or in a directory another account could reach; a peer with the wrong
 //! version; a peer that dies; a frame that does not decode. The happy path — a shell
 //! listing, watching and calling through `gnoblinctl` — is `end_to_end.rs`.
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod support;
 
@@ -565,7 +564,6 @@ fn set_workspace_and_set_output_refuse_objects_that_are_not_declared_targets() {
 }
 
 // A window takes the keyboard when it maps and on a click under the stock window manager; a core with no provider has no focus policy.
-#[cfg(feature = "std-providers")]
 #[test]
 fn focus_completes_after_the_diff_it_caused() {
     let session = Session::start();

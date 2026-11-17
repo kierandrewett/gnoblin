@@ -185,6 +185,80 @@ class StreamKind(enum.IntEnum):
     CAPTURE = 2
     """`GnoblinSpawn` stream mode: keep the output, up to `output_limit` bytes, for the exit callback."""
 
+class ProviderKind(enum.IntEnum):
+    """`PROVIDER_*` constants of the ABI."""
+
+    WM = 1
+    """`provider_register` kind: the window manager that places and focuses windows while no shell holds the tree"""
+    UI = 2
+    """`provider_register` kind: the UI that shows portal dialogs (`GnoblinUiVtable`). At most one is live."""
+    CONFIG = 3
+    """`provider_register` kind: an observer of the accepted configuration document (`GnoblinConfigVtable`). At most one is live."""
+
+class WmKind(enum.IntEnum):
+    """`WM_*` constants of the ABI."""
+
+    KIND_NORMAL = 0
+    """`GnoblinWmWindow.kind` and `GnoblinWmOpen.kind`: an application toplevel."""
+    KIND_DIALOG = 1
+    """`GnoblinWmWindow.kind` and `GnoblinWmOpen.kind`: a dialog with a parent."""
+    KIND_MODAL = 2
+    """`GnoblinWmWindow.kind` and `GnoblinWmOpen.kind`: a dialog that blocks its parent."""
+    WINDOW_MAXIMISED = 1
+    """`GnoblinWmWindow.flags`: the window fills its output's work area."""
+    WINDOW_FULLSCREEN = 2
+    """`GnoblinWmWindow.flags`: the window covers its whole output."""
+    WINDOW_MINIMISED = 4
+    """`GnoblinWmWindow.flags`: the window is hidden and out of the focus rotation."""
+    WINDOW_HAS_OUTPUT = 8
+    """`GnoblinWmWindow.flags`: `output` names the output the window is on."""
+    WINDOW_HAS_PARENT = 16
+    """`GnoblinWmWindow.flags` and `GnoblinWmOpen.flags`: `transient_for` names the window's parent."""
+    OPEN_HAS_REQUESTED = 32
+    """`GnoblinWmOpen.flags`: `requested` is the rectangle the client asked for."""
+    STANDING_HAS_FOCUS = 1
+    """`GnoblinWmStanding.flags`: `focus` names the focused window."""
+    EFFECT_CONFIGURE = 1
+    """`GnoblinWmEffect.kind`: place the window at `geometry` and tell its client `flags` (the `WM_WINDOW_*` state bits)."""
+    EFFECT_VISIBLE = 2
+    """`GnoblinWmEffect.kind`: show the window (`flags` nonzero) or hide it."""
+    EFFECT_STACK = 3
+    """`GnoblinWmEffect.kind`: the paint order, topmost first, in `ids`."""
+    EFFECT_FOCUS = 4
+    """`GnoblinWmEffect.kind`: move keyboard focus to `window` (`flags` nonzero) or to none."""
+    REFUSED_DUPLICATE = 1
+    """A window manager call's result: the provider refused, because the window is already open."""
+    REFUSED_TOO_MANY = 2
+    """A window manager call's result: the record is full."""
+    REFUSED_NO_OUTPUT = 3
+    """A window manager call's result: no output is connected to place the window on."""
+    REFUSED_GONE = 4
+    """A window manager call's result: the window is not open."""
+    REFUSED_NOT_FLOATING = 5
+    """A window manager call's result: the window is maximised or fullscreen, so it has no floating rectangle."""
+    REFUSED_UNKNOWN_OUTPUT = 6
+    """A window manager call's result: the output is not connected."""
+    REFUSED_FOLLOWS_PARENT = 7
+    """A window manager call's result: a transient moves with its parent, not on its own."""
+    FOCUS_ALLOW = 0
+    """`may_take_focus` policy: a new window may take focus."""
+    FOCUS_PREVENT = 1
+    """`may_take_focus` policy: a new window takes focus only when nothing is focused or it is a transient of the focused one."""
+
+class UiKind(enum.IntEnum):
+    """`UI_*` constants of the ABI."""
+
+    SCHEME_DARK = 0
+    """`GnoblinUiVtable.set_scheme`: egui's stock dark visuals."""
+    SCHEME_LIGHT = 1
+    """`GnoblinUiVtable.set_scheme`: egui's stock light visuals."""
+    STARTED = 0
+    """`GnoblinUiVtable.submit` result: the dialog is open now."""
+    QUEUED = 1
+    """`GnoblinUiVtable.submit` result: admitted, waiting behind the open dialog."""
+    REFUSED = 16
+    """`GnoblinUiVtable.submit` result: refused, with the portal error's number (`gnoblin_portal_core::wire::error_code`)"""
+
 SHELL_FLAG_FOREIGN_LOOP = 1
 STATE_MAX_BYTES = 16777216
 ADOPTED = 1

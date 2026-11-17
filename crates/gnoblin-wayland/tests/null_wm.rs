@@ -4,7 +4,6 @@
 //! first output at the size the client drew, keeps the order windows arrived in, and has no focus policy. It still
 //! applies a request nobody else decides, and a holder attached to the tree decides in its place, as it does over
 //! the stock provider.
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod session;
 mod stock;
@@ -53,8 +52,7 @@ fn a_session_with_no_provider_places_every_window_at_the_origin_at_the_size_it_d
     });
 }
 
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn the_stock_provider_cascades_the_same_two_windows() {
     // The control for the test above: the placement it asserts is NullWm's, not the headless backend's.

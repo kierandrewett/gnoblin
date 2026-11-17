@@ -220,7 +220,7 @@ pub enum BellFlash {
 ///
 /// The one entry point the compositor's own configuration and, later, a provider registered through the C ABI write
 /// through, so a setting has a single owner. Each variant names its key: the mechanism is in core and the policy that
-/// turns a configuration document into a value is a provider's (`gnoblin-compositor`'s `std_providers`).
+/// turns a configuration document into a value is a provider's (std's configuration observer).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Setting {
     /// How long the compositor's own window motion takes (`window.motion`).

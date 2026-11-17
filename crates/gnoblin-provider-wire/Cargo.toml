@@ -1,0 +1,26 @@
+[package]
+name = "gnoblin-provider-wire"
+description = "The two ends of the provider ABI in one place: a Rust provider exported as a C vtable (std's side), and a C vtable wrapped as a Rust provider (the core's side), so the marshalling cannot drift between them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The vtables, the structs they carry and the error codes.
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+# The window-manager contract the vtable carries, and the `NullWm` a failed provider falls back to.
+gnoblin-wm-api = { path = "../gnoblin-wm-api" }
+# The UI contract and the bytes its dialogs, verdicts and keys cross as.
+gnoblin-portal-core.workspace = true
+gnoblin-portal-ui.workspace = true
+gnoblin-types.workspace = true
+
+# A library that exports and calls C function pointers needs `unsafe`; the workspace table forbids it. Only the modules that
+# open with `#![allow(unsafe_code)]` and a SAFETY note use it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

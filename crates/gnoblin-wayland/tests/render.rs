@@ -31,7 +31,6 @@
 //! arrangement: the compositor is one process and the client is another. The worker
 //! talks to the session through the control handle, which is `Send`, exactly as a
 //! test kit would.
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 
@@ -773,8 +772,7 @@ fn a_surface_alpha_factor_blends_with_the_background() {
     });
 }
 
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn overlapping_windows_are_drawn_in_stacking_order() {
     for_each_renderer(|backend| {

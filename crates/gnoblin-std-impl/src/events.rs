@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gnoblin_core::{Gnoblin, ShellValue, Value};
+use gnoblin_core::{Gnoblin, LogLevel, ShellValue, Value};
 use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_std_abi as abi;
 
@@ -302,7 +302,25 @@ pub(crate) fn open(ctx: GnoblinCtx) -> Res<()> {
         return Err(fail);
     }
     schedule(&std);
+    register_providers(&g, ctx);
     Ok(())
+}
+
+/// Registers std's desktop policy with the core on the generation that opened std (`providers.rs`). A kind someone already holds
+/// (the compositor process registered std's own for the stock session, or another shell did) stays with its holder; a failure
+/// is the log's business, because a shell with no window manager provider still runs.
+fn register_providers(g: &Gnoblin, ctx: GnoblinCtx) {
+    match crate::providers::register_defaults(gnoblin_core::private::api_of(g), ctx) {
+        Ok(done) if done.kept_by_others.is_empty() => {}
+        Ok(done) => g.log_at(
+            LogLevel::Debug,
+            &format!(
+                "std did not register {}: already registered",
+                done.kept_by_others.join(", ")
+            ),
+        ),
+        Err(why) => g.log_at(LogLevel::Warn, &format!("std registered no providers: {why}")),
+    }
 }
 
 /// The core subscriptions that keep the object model current. Each closure holds the library state, which the generation's

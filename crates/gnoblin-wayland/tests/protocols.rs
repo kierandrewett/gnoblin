@@ -28,7 +28,6 @@
 //!   `a_window_remembers_its_layout`,
 //!   `a_keyboard_repeat_committed_after_start_reaches_the_client`,
 //!   `a_layout_committed_after_start_reaches_the_client` — `keyboard`
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 
@@ -1316,8 +1315,7 @@ fn a_confined_pointer_stays_inside_its_region() {
 /// A lock that started when the pointer merely passed over a window would freeze it for a user who types into another
 /// one, so a constraint waits for its window to have the keyboard, ends when another window takes it and starts again
 /// when its window is chosen again.
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn a_pointer_constraint_waits_until_its_window_has_the_keyboard() {
     let session = Session::start();
@@ -1651,8 +1649,7 @@ impl TouchPair {
 
 /// Two clients touch their own windows at the same time: each gets the down, motion, up and frame of its own point
 /// and nothing of the other's, with the slot as the id, and a frame that closes only its own batch.
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn two_clients_touching_at_once_each_get_only_their_own_point() {
     let session = Session::start();
@@ -1712,8 +1709,7 @@ fn two_clients_touching_at_once_each_get_only_their_own_point() {
 
 /// A window destroyed under a finger ends that finger alone: its client gets the up and a frame, the other client's
 /// point stays down and ends normally.
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn destroying_one_clients_window_ends_only_its_point() {
     let session = Session::start();
@@ -1759,8 +1755,7 @@ fn destroying_one_clients_window_ends_only_its_point() {
 }
 
 /// A client that disconnects with a finger down on its window takes only its own point with it.
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn one_client_disconnecting_does_not_disturb_anothers_touch() {
     let session = Session::start();
@@ -1808,8 +1803,7 @@ fn one_client_disconnecting_does_not_disturb_anothers_touch() {
 
 /// The same holds for two windows of one client: a second finger on the second window reports the position on that
 /// window, not on the window the first finger went down on.
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn two_windows_of_one_client_each_get_the_point_on_them() {
     let session = Session::start();
@@ -2272,8 +2266,7 @@ fn a_layout_committed_after_start_reaches_the_client() {
     });
 }
 
-// Windows cascade from (32, 32) under the stock window manager; `NullWm` and `FocusOnMap` put them at the origin.
-#[cfg(feature = "std-providers")]
+// Windows cascade from (32, 32) under the stock window manager; `NullWm` puts them at the origin.
 #[test]
 fn a_window_remembers_its_layout() {
     let config = Config {

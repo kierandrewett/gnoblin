@@ -5,10 +5,10 @@
 //! services role or the compositor must carry out. The first terminal outcome
 //! wins; after it, every event is ignored.
 
-use gnoblin_portal_core::model::Interface;
+use crate::model::Interface;
 use gnoblin_types::{RequestId, Tick};
 
-use super::outcome::{CancelReason, PortalError, Verdict};
+use crate::outcome::{CancelReason, PortalError, Verdict};
 
 /// The D19 negotiation contract for an interface: which ones a timeout may fall
 /// back from, and which the built-in UI can serve.

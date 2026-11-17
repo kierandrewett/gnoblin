@@ -190,6 +190,83 @@ export const StreamKind = {
 } as const;
 export type StreamKind = (typeof StreamKind)[keyof typeof StreamKind];
 
+/** `PROVIDER_*` constants of the ABI. */
+export const ProviderKind = {
+    /** `provider_register` kind: the window manager that places and focuses windows while no shell holds the tree */
+    WM: 1,
+    /** `provider_register` kind: the UI that shows portal dialogs (`GnoblinUiVtable`). At most one is live. */
+    UI: 2,
+    /** `provider_register` kind: an observer of the accepted configuration document (`GnoblinConfigVtable`). At most one is live. */
+    CONFIG: 3,
+} as const;
+export type ProviderKind = (typeof ProviderKind)[keyof typeof ProviderKind];
+
+/** `WM_*` constants of the ABI. */
+export const WmKind = {
+    /** `GnoblinWmWindow.kind` and `GnoblinWmOpen.kind`: an application toplevel. */
+    KIND_NORMAL: 0,
+    /** `GnoblinWmWindow.kind` and `GnoblinWmOpen.kind`: a dialog with a parent. */
+    KIND_DIALOG: 1,
+    /** `GnoblinWmWindow.kind` and `GnoblinWmOpen.kind`: a dialog that blocks its parent. */
+    KIND_MODAL: 2,
+    /** `GnoblinWmWindow.flags`: the window fills its output's work area. */
+    WINDOW_MAXIMISED: 1,
+    /** `GnoblinWmWindow.flags`: the window covers its whole output. */
+    WINDOW_FULLSCREEN: 2,
+    /** `GnoblinWmWindow.flags`: the window is hidden and out of the focus rotation. */
+    WINDOW_MINIMISED: 4,
+    /** `GnoblinWmWindow.flags`: `output` names the output the window is on. */
+    WINDOW_HAS_OUTPUT: 8,
+    /** `GnoblinWmWindow.flags` and `GnoblinWmOpen.flags`: `transient_for` names the window's parent. */
+    WINDOW_HAS_PARENT: 16,
+    /** `GnoblinWmOpen.flags`: `requested` is the rectangle the client asked for. */
+    OPEN_HAS_REQUESTED: 32,
+    /** `GnoblinWmStanding.flags`: `focus` names the focused window. */
+    STANDING_HAS_FOCUS: 1,
+    /** `GnoblinWmEffect.kind`: place the window at `geometry` and tell its client `flags` (the `WM_WINDOW_*` state bits). */
+    EFFECT_CONFIGURE: 1,
+    /** `GnoblinWmEffect.kind`: show the window (`flags` nonzero) or hide it. */
+    EFFECT_VISIBLE: 2,
+    /** `GnoblinWmEffect.kind`: the paint order, topmost first, in `ids`. */
+    EFFECT_STACK: 3,
+    /** `GnoblinWmEffect.kind`: move keyboard focus to `window` (`flags` nonzero) or to none. */
+    EFFECT_FOCUS: 4,
+    /** A window manager call's result: the provider refused, because the window is already open. */
+    REFUSED_DUPLICATE: 1,
+    /** A window manager call's result: the record is full. */
+    REFUSED_TOO_MANY: 2,
+    /** A window manager call's result: no output is connected to place the window on. */
+    REFUSED_NO_OUTPUT: 3,
+    /** A window manager call's result: the window is not open. */
+    REFUSED_GONE: 4,
+    /** A window manager call's result: the window is maximised or fullscreen, so it has no floating rectangle. */
+    REFUSED_NOT_FLOATING: 5,
+    /** A window manager call's result: the output is not connected. */
+    REFUSED_UNKNOWN_OUTPUT: 6,
+    /** A window manager call's result: a transient moves with its parent, not on its own. */
+    REFUSED_FOLLOWS_PARENT: 7,
+    /** `may_take_focus` policy: a new window may take focus. */
+    FOCUS_ALLOW: 0,
+    /** `may_take_focus` policy: a new window takes focus only when nothing is focused or it is a transient of the focused one. */
+    FOCUS_PREVENT: 1,
+} as const;
+export type WmKind = (typeof WmKind)[keyof typeof WmKind];
+
+/** `UI_*` constants of the ABI. */
+export const UiKind = {
+    /** `GnoblinUiVtable.set_scheme`: egui's stock dark visuals. */
+    SCHEME_DARK: 0,
+    /** `GnoblinUiVtable.set_scheme`: egui's stock light visuals. */
+    SCHEME_LIGHT: 1,
+    /** `GnoblinUiVtable.submit` result: the dialog is open now. */
+    STARTED: 0,
+    /** `GnoblinUiVtable.submit` result: admitted, waiting behind the open dialog. */
+    QUEUED: 1,
+    /** `GnoblinUiVtable.submit` result: refused, with the portal error's number (`gnoblin_portal_core::wire::error_code`) */
+    REFUSED: 16,
+} as const;
+export type UiKind = (typeof UiKind)[keyof typeof UiKind];
+
 export const SHELL_FLAG_FOREIGN_LOOP = 1;
 export const STATE_MAX_BYTES = 16777216;
 export const ADOPTED = 1;

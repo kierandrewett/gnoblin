@@ -94,12 +94,12 @@ mod log_store;
 mod monitors;
 /// Portal negotiation, the pure decision layer behind the `org.freedesktop.impl.portal` services.
 pub mod portal;
+/// Where a library that is not the core registers the desktop policy the compositor asks it for: the window manager, the
+/// portal dialog UI and the configuration observer.
+pub mod providers;
 mod renderer;
 mod schema;
 mod session_tables;
-/// The stock providers, registered when the `std-providers` feature is on.
-#[cfg(feature = "std-providers")]
-mod std_providers;
 mod xwayland;
 
 use std::os::unix::net::UnixStream;
@@ -139,21 +139,6 @@ pub use schema::catalog;
 pub use session_tables::{
     configure_from_environment as configure_session_tables_from_environment,
     configure_from_store as configure_session_tables_from_store,
-};
-#[cfg(feature = "std-providers")]
-pub use std_providers::{
-    a11y::{
-        configure_from_environment as configure_accessibility_from_environment,
-        configure_from_store as configure_accessibility_from_store,
-    },
-    bell::{
-        configure_from_environment as configure_bell_from_environment,
-        configure_from_store as configure_bell_from_store,
-    },
-    wm::{
-        configure_from_environment as configure_window_management_from_environment,
-        configure_from_store as configure_window_management_from_store,
-    },
 };
 pub use xwayland::{
     configure_from_environment as configure_xwayland_from_environment,
@@ -255,6 +240,10 @@ pub struct SessionConfig {
     /// process that connects to the IPC socket. The shell holds the tree through an in-process link
     /// ([`inproc_shell`]); the loop never runs its code.
     pub shell: Option<inproc_shell::InProcShellSpec>,
+    /// Where providers are registered. The default is empty slots, which is the core-only session: `NullWm`, no dialog UI
+    /// and the default settings. The core library keeps one for the process and registers std in it; a test registers the
+    /// provider it wants to run under. Registrations made before the session serves take effect when it does.
+    pub providers: providers::ProviderSlots,
 }
 
 /// Where a test sends input a device would, into a running session.
@@ -426,6 +415,7 @@ impl Compositor {
             .as_ref()
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy().into_owned());
+        let started_document = config.started_with.as_ref().map(gnoblin_config::Config::document_json);
         let backend_name = config.backend.name();
         // The tree says where the session runs, before anything is ready to read it.
         store.set_backend(backend_name);
@@ -440,13 +430,6 @@ impl Compositor {
         let wayland = gnoblin_wayland::Config {
             observer: Some(observer),
             tree: tree.hooks(),
-            // The stock window manager is the provider of a session that names none, with the feature on; without
-            // it the session has no provider and runs `NullWm`.
-            #[cfg(feature = "std-providers")]
-            window_manager: config
-                .wayland
-                .window_manager
-                .or_else(|| Some(std_providers::window_manager())),
             ..config.wayland
         };
         // The guardian's report goes out once the server is ready, and the X11 factory reports the
@@ -467,6 +450,12 @@ impl Compositor {
         }
         .map_err(Error::Wayland)?;
         let control = server.control();
+        // The providers registered before the session served (std, which the core library registers while it starts) take
+        // effect now, with the accepted document the session started with, which an observer is told first.
+        if let Some(started) = &started_document {
+            config.providers.commit_document(started.clone());
+        }
+        config.providers.attach(control.clone());
         if let Some(tap) = &config.input_tap {
             tap.fill(control.input_sink());
         }
@@ -501,6 +490,7 @@ impl Compositor {
             }),
             config.polkit_helper.take(),
             config.shell.as_ref().and_then(inproc_shell::InProcShellSpec::control),
+            config.providers.clone(),
         )
         .map_err(Error::Ipc)?;
 
@@ -550,6 +540,8 @@ impl Compositor {
         // The loop's result is kept and returned after cleanup, so a loop error still stops the
         // EIS gate and shuts the IPC server down first.
         let loop_result = server.run();
+        // The loop answers nothing from here: a provider that ends now must not wait for it.
+        config.providers.detach();
         // The shell goes first: it talks to the tree and to the guardian, and neither is torn down yet.
         if let Some(shell) = shell {
             let end = shell.stop();

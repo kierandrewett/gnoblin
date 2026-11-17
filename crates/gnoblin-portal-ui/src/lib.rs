@@ -8,10 +8,12 @@
 //! The dialog models come from `gnoblin-portal-core`. Every dialog screen crate
 //! (`gnoblin-portal-consent`, `-filechooser`, `-appchooser`) depends on this crate
 //! and implements [`ui::DialogUi`]; the compositor depends on it only for
-//! [`paint::Frame`]. This crate names egui and the core and no dialog crate.
+//! [`paint::Frame`] and the [`provider::UiProvider`] seam. This crate names egui and the core and no dialog crate.
 
 /// Painting helpers that turn egui output into frame pixels.
 pub mod paint;
+/// The seam between the portal's negotiation and whatever draws its dialogs.
+pub mod provider;
 /// The look a dialog may be given and the limits that keep it safe.
 pub mod style;
 /// The egui dialog shell and the trait every dialog kind implements.

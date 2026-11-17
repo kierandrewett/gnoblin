@@ -30,6 +30,13 @@ impl Frame {
         Self { width, height, rgba }
     }
 
+    /// A frame of `width` by `height` pixels from raw bytes, row-major, four per pixel. `None` when the bytes are not
+    /// exactly that many.
+    #[must_use]
+    pub fn from_rgba(width: usize, height: usize, rgba: Vec<u8>) -> Option<Self> {
+        (width.checked_mul(height)?.checked_mul(4)? == rgba.len()).then_some(Self { width, height, rgba })
+    }
+
     /// The width in pixels.
     #[must_use]
     pub const fn width(&self) -> usize {

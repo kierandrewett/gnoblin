@@ -20,6 +20,9 @@ serde_json.workspace = true
 # Wayland client creates the toplevel. The same arrangement the compositor's own
 # end-to-end tests use.
 gnoblin-compositor = { path = "../gnoblin-compositor" }
+# The candidate compositor is measured with the stock providers std registers in a real session.
+gnoblin-std-wm = { path = "../gnoblin-std-wm" }
+gnoblin-std-portal = { path = "../gnoblin-std-portal" }
 gnoblin-wayland = { path = "../gnoblin-wayland" }
 gnoblinctl = { path = "../gnoblinctl" }
 wayland-client = "0.31.14"

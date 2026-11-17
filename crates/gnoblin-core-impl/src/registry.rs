@@ -47,8 +47,7 @@ const LINK_POLL: Duration = Duration::from_millis(4);
 
 /// Makes a context for a module that is about to run `init`, staged, owned by the calling thread (which becomes the shell
 /// thread). The generation number is the context's sequence number. The loader does this for a real module; the tests do it
-/// for a context of their own.
-#[cfg(test)]
+/// for a context of their own, and the std host for the library it loads into the compositor's process.
 pub(crate) fn new_context(module_path: &str, language: u32, reload_count: u32, isolate: bool) -> GnoblinCtx {
     use gnoblin_shell_host::generation::GenerationInfo;
 
@@ -73,8 +72,13 @@ pub(crate) fn state_of(ctx: GnoblinCtx) -> Option<GenerationState> {
     HOST.state_of(decode(KIND_CTX, ctx)?)
 }
 
+/// The path of the module a generation index was loaded from, for a registration that asks whether two generations are the
+/// same shell.
+pub(crate) fn module_path_of(index: u64) -> Option<String> {
+    HOST.info(index).map(|info| info.module_path.clone())
+}
+
 /// Staged to active: from now its registrations receive events.
-#[cfg(test)]
 pub(crate) fn activate(ctx: GnoblinCtx) -> Result<(), String> {
     let id = decode(KIND_CTX, ctx).ok_or("not a context handle")?;
     HOST.activate(id)

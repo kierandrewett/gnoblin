@@ -44,7 +44,6 @@
 //!    releases a slot, and when it claims, answers, declines or offers a request, and nothing it
 //!    sent settles the owner's request: `a_connection_that_is_not_the_owner_cannot_claim_or_release_a_slot`,
 //!    `a_connection_that_is_not_the_owner_cannot_claim_answer_decline_or_offer_a_request`.
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod support;
 
@@ -297,7 +296,6 @@ fn an_early_allow_is_terminal_and_the_built_in_dialog_never_opens() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn an_answer_that_is_neither_allow_nor_deny_falls_back_to_the_built_in_dialog() {
     let (session, mut relay, mut input, mut shell) = session_with_claimant();
@@ -318,7 +316,6 @@ fn an_answer_that_is_neither_allow_nor_deny_falls_back_to_the_built_in_dialog() 
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn an_unresponsive_claimant_falls_back_to_the_built_in_dialog() {
     let (session, mut relay, mut input, mut shell) = session_with_claimant();
@@ -336,7 +333,6 @@ fn an_unresponsive_claimant_falls_back_to_the_built_in_dialog() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn a_declining_claimant_falls_back_to_the_built_in_dialog() {
     let (session, mut relay, mut input, mut shell) = session_with_claimant();
@@ -354,7 +350,6 @@ fn a_declining_claimant_falls_back_to_the_built_in_dialog() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn a_claimant_that_disconnects_mid_request_falls_back_to_the_built_in_dialog() {
     let (session, mut relay, mut input, mut shell) = session_with_claimant();
@@ -394,7 +389,6 @@ fn a_requester_that_cancels_ends_the_claimants_offer() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn releasing_the_claim_restores_the_built_in_dialog() {
     let (session, mut relay, mut input, mut shell) = session_with_claimant();
@@ -410,7 +404,6 @@ fn releasing_the_claim_restores_the_built_in_dialog() {
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn with_no_claimant_the_built_in_dialog_serves_the_request() {
     let (session, mut ends) = Session::start_privileged(&["portal", "input"]);
@@ -650,7 +643,6 @@ fn a_prompt_secret_claimant_that_leaves_hands_the_request_to_the_built_in_dialog
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn a_locked_session_refuses_a_request_even_with_a_claimant() {
     let (session, mut relay, _input, _shell) = session_with_claimant();
@@ -719,7 +711,6 @@ fn session_with_outsider() -> (Session, Wire, Wire, Client<UnixTransport>, Clien
 }
 
 // Needs the built-in portal dialogs, the stock `UiProvider`; the core refuses the request `no-ui` (`portal_no_ui.rs`).
-#[cfg(feature = "std-providers")]
 #[test]
 fn a_connection_that_is_not_the_owner_cannot_claim_or_release_a_slot() {
     // The failure this prevents: any program the owner's uid does not run, or a connection the

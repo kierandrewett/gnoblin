@@ -19,16 +19,6 @@ unsafe_code = "deny"
 [lints.clippy]
 all = { level = "deny", priority = -1 }
 
-# `std-providers` is a test-only switch and no library code of this crate reads it. With it on, the test sessions run the
-# stock window manager (`gnoblin-std-wm`, a development dependency) and the tests whose subject is the stock desktop
-# (cascade, raise, focus rotation) are built. With it off, the test sessions run `FocusOnMap`, a test-only provider
-# with a focus-on-map and click-to-focus policy over `NullWm`, and those tests are not built: the core is proved with
-# no std code. It is not a default feature, because a feature that is default here is switched on by every crate that
-# depends on this one, which would defeat `--no-default-features` in the CI job `core-only`. `gnoblin-compositor`
-# forwards its own `std-providers` feature to it, so the ordinary workspace build and test run the stock tests.
-[features]
-std-providers = []
-
 [dependencies]
 # Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
 gnoblin-secret.workspace = true
@@ -118,8 +108,8 @@ gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-pipewire-export = { path = "../gnoblin-pipewire-export" }
 
 [dev-dependencies]
-# The stock window manager the test sessions run under `std-providers`. A development edge only: this crate holds and
-# links no stock provider (design/modular-framework.md, 9.4).
+# The stock window manager the test sessions run. A development edge only: this crate holds and links no stock provider
+# (design/modular-framework.md, 9.4), and a session with none runs `NullWm`.
 gnoblin-std-wm = { path = "../gnoblin-std-wm" }
 # The backend conformance test reads the committed status table and measures headless and nested against it.
 gnoblin-testkit = { path = "../gnoblin-testkit" }

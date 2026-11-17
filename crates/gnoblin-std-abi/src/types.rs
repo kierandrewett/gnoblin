@@ -1115,4 +1115,9 @@ abi_exports! {
     /// `size_t gnoblin_std_last_error(buf, cap)`: copies the text of the last failure of a std call on this thread, NUL
     /// terminated and truncated to `cap`, and returns its full length.
     StdLastErrorFn => gnoblin_std_last_error = unsafe extern "C" fn(buf: *mut u8, cap: usize) -> usize;
+    /// `int32_t gnoblin_std_init(ctx)`: registers std's default providers (the window manager, the portal dialog UI and the
+    /// configuration observer) with the core through `provider_register` on `ctx`, a core context that is either a shell's
+    /// generation or one of the host's own. A provider kind another registrant already holds is left to it. Returns `E_OK`, or
+    /// an error with the reason in `gnoblin_std_last_error`. Call it once per context; the providers live as long as `ctx`.
+    StdInitFn => gnoblin_std_init = unsafe extern "C" fn(ctx: GnoblinCtx) -> i32;
 }

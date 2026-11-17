@@ -22,6 +22,9 @@ next-minor = ["gnoblin-core-abi/next-minor"]
 
 [dependencies]
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+# The provider ABI's two ends in one place: the core wraps what a library registers (std's window manager, dialogs and
+# configuration observer) as the traits the compositor drives.
+gnoblin-provider-wire = { path = "../gnoblin-provider-wire" }
 # The log of the compositor process: the library installs it (`gnoblin_main`), so it enables the `init` feature that only a
 # binary or an implementation library may (`log-features`).
 gnoblin-log = { path = "../gnoblin-log", features = ["init"] }
@@ -48,6 +51,8 @@ gnoblin-testkit = { path = "../gnoblin-testkit", optional = true }
 [dev-dependencies]
 # The unit tests of the table's tree functions run over the fake compositor.
 gnoblin-testkit = { path = "../gnoblin-testkit" }
+# The provider registration tests register `NullWm` as the window manager.
+gnoblin-wm-api = { path = "../gnoblin-wm-api" }
 
 [build-dependencies]
 # The ABI crate names the SONAME and the value kinds the generated catalog uses; the schema is the catalog's source.

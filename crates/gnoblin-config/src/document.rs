@@ -268,6 +268,11 @@ impl Config {
         &self.document
     }
 
+    /// The accepted document as JSON text: what a provider that reads its own sections is handed.
+    pub fn document_json(&self) -> String {
+        self.document.to_json().to_string()
+    }
+
     /// The deprecated spellings this document used.
     ///
     /// Empty for a document read back from the last-good store, because storing

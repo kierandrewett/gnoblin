@@ -28,6 +28,19 @@ use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 pub mod lock_session;
+
+/// The provider slots of the stock desktop, as the core library gets them from `libgnoblin-std`: std's window manager and portal dialogs, here as the
+/// Rust trait the slots take. The in-process sessions of these suites run it, so what they prove is what users get.
+pub fn stock_providers() -> gnoblin_compositor::providers::ProviderSlots {
+    let slots = gnoblin_compositor::providers::ProviderSlots::new();
+    slots
+        .set_window_manager(|| Box::<gnoblin_std_wm::Fallback>::default())
+        .expect("the slot is free");
+    slots
+        .set_ui(|| Box::new(gnoblin_std_portal::PortalUi::new(1280, 800)))
+        .expect("the slot is free");
+    slots
+}
 pub mod native_shell;
 
 // ---- the scene, read as an observer ------------------------------------------------------------------------------

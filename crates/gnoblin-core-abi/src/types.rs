@@ -204,6 +204,78 @@ abi_consts! {
     /// `GnoblinSpawn` stream mode: keep the output, up to `output_limit` bytes, for the exit callback.
     pub const STREAM_CAPTURE: u32 = 2;
 
+    /// `provider_register` kind: the window manager that places and focuses windows while no shell holds the tree
+    /// (`GnoblinWmVtable`). At most one is live.
+    pub const PROVIDER_WM: u32 = 1;
+    /// `provider_register` kind: the UI that shows portal dialogs (`GnoblinUiVtable`). At most one is live.
+    pub const PROVIDER_UI: u32 = 2;
+    /// `provider_register` kind: an observer of the accepted configuration document (`GnoblinConfigVtable`). At most one is live.
+    pub const PROVIDER_CONFIG: u32 = 3;
+
+    /// `GnoblinWmWindow.kind` and `GnoblinWmOpen.kind`: an application toplevel.
+    pub const WM_KIND_NORMAL: u32 = 0;
+    /// `GnoblinWmWindow.kind` and `GnoblinWmOpen.kind`: a dialog with a parent.
+    pub const WM_KIND_DIALOG: u32 = 1;
+    /// `GnoblinWmWindow.kind` and `GnoblinWmOpen.kind`: a dialog that blocks its parent.
+    pub const WM_KIND_MODAL: u32 = 2;
+
+    /// `GnoblinWmWindow.flags`: the window fills its output's work area.
+    pub const WM_WINDOW_MAXIMISED: u32 = 1;
+    /// `GnoblinWmWindow.flags`: the window covers its whole output.
+    pub const WM_WINDOW_FULLSCREEN: u32 = 2;
+    /// `GnoblinWmWindow.flags`: the window is hidden and out of the focus rotation.
+    pub const WM_WINDOW_MINIMISED: u32 = 4;
+    /// `GnoblinWmWindow.flags`: `output` names the output the window is on.
+    pub const WM_WINDOW_HAS_OUTPUT: u32 = 8;
+    /// `GnoblinWmWindow.flags` and `GnoblinWmOpen.flags`: `transient_for` names the window's parent.
+    pub const WM_WINDOW_HAS_PARENT: u32 = 16;
+    /// `GnoblinWmOpen.flags`: `requested` is the rectangle the client asked for.
+    pub const WM_OPEN_HAS_REQUESTED: u32 = 32;
+
+    /// `GnoblinWmStanding.flags`: `focus` names the focused window.
+    pub const WM_STANDING_HAS_FOCUS: u32 = 1;
+
+    /// `GnoblinWmEffect.kind`: place the window at `geometry` and tell its client `flags` (the `WM_WINDOW_*` state bits).
+    pub const WM_EFFECT_CONFIGURE: u32 = 1;
+    /// `GnoblinWmEffect.kind`: show the window (`flags` nonzero) or hide it.
+    pub const WM_EFFECT_VISIBLE: u32 = 2;
+    /// `GnoblinWmEffect.kind`: the paint order, topmost first, in `ids`.
+    pub const WM_EFFECT_STACK: u32 = 3;
+    /// `GnoblinWmEffect.kind`: move keyboard focus to `window` (`flags` nonzero) or to none.
+    pub const WM_EFFECT_FOCUS: u32 = 4;
+
+    /// A window manager call's result: the provider refused, because the window is already open.
+    pub const WM_REFUSED_DUPLICATE: i32 = 1;
+    /// A window manager call's result: the record is full.
+    pub const WM_REFUSED_TOO_MANY: i32 = 2;
+    /// A window manager call's result: no output is connected to place the window on.
+    pub const WM_REFUSED_NO_OUTPUT: i32 = 3;
+    /// A window manager call's result: the window is not open.
+    pub const WM_REFUSED_GONE: i32 = 4;
+    /// A window manager call's result: the window is maximised or fullscreen, so it has no floating rectangle.
+    pub const WM_REFUSED_NOT_FLOATING: i32 = 5;
+    /// A window manager call's result: the output is not connected.
+    pub const WM_REFUSED_UNKNOWN_OUTPUT: i32 = 6;
+    /// A window manager call's result: a transient moves with its parent, not on its own.
+    pub const WM_REFUSED_FOLLOWS_PARENT: i32 = 7;
+
+    /// `may_take_focus` policy: a new window may take focus.
+    pub const WM_FOCUS_ALLOW: u32 = 0;
+    /// `may_take_focus` policy: a new window takes focus only when nothing is focused or it is a transient of the focused one.
+    pub const WM_FOCUS_PREVENT: u32 = 1;
+
+    /// `GnoblinUiVtable.set_scheme`: egui's stock dark visuals.
+    pub const UI_SCHEME_DARK: u32 = 0;
+    /// `GnoblinUiVtable.set_scheme`: egui's stock light visuals.
+    pub const UI_SCHEME_LIGHT: u32 = 1;
+    /// `GnoblinUiVtable.submit` result: the dialog is open now.
+    pub const UI_STARTED: i32 = 0;
+    /// `GnoblinUiVtable.submit` result: admitted, waiting behind the open dialog.
+    pub const UI_QUEUED: i32 = 1;
+    /// `GnoblinUiVtable.submit` result: refused, with the portal error's number (`gnoblin_portal_core::wire::error_code`)
+    /// added to this value.
+    pub const UI_REFUSED: i32 = 16;
+
     /// The most bytes `state_put` keeps across all keys: 16 MiB.
     pub const STATE_MAX_BYTES: u64 = 16 * 1024 * 1024;
 
@@ -538,6 +610,273 @@ abi_structs! {
         pub reserved: u32,
     }
 
+    /// A rectangle in global logical pixels, as `gnoblin-types` has it.
+    pub struct GnoblinWmRect {
+        /// Left edge.
+        pub x: i32,
+        /// Top edge.
+        pub y: i32,
+        /// Horizontal extent.
+        pub width: u32,
+        /// Vertical extent.
+        pub height: u32,
+    }
+
+    /// The insets layer surfaces reserve along the edges of an output.
+    pub struct GnoblinWmInsets {
+        /// Reserved above the work area.
+        pub top: i32,
+        /// Reserved to the right of the work area.
+        pub right: i32,
+        /// Reserved below the work area.
+        pub bottom: i32,
+        /// Reserved to the left of the work area.
+        pub left: i32,
+    }
+
+    /// One window a window manager provider holds. Filled by the provider for `windows`, passed by the core for nothing else.
+    pub struct GnoblinWmWindow {
+        /// Size of this struct, set by whoever fills it.
+        pub size: u32,
+        /// `WM_KIND_NORMAL`, `WM_KIND_DIALOG` or `WM_KIND_MODAL`.
+        pub kind: u32,
+        /// `WM_WINDOW_*` flags: the state bits, and whether `output` and `transient_for` are set.
+        pub flags: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The compositor's identity for the window.
+        pub id: u64,
+        /// The window it is a transient of, when `WM_WINDOW_HAS_PARENT` is set.
+        pub transient_for: u64,
+        /// The output it is on, when `WM_WINDOW_HAS_OUTPUT` is set.
+        pub output: u64,
+        /// Its frame rectangle in global logical coordinates.
+        pub geometry: GnoblinWmRect,
+        /// The floating rectangle it returns to when it leaves maximise or fullscreen.
+        pub restore: GnoblinWmRect,
+    }
+
+    /// One output a window manager provider holds. Filled by the provider for `outputs`.
+    pub struct GnoblinWmOutput {
+        /// Size of this struct, set by whoever fills it.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The output's identity, as the backend numbers it.
+        pub id: u64,
+        /// The whole monitor rectangle.
+        pub rect: GnoblinWmRect,
+        /// What layer surfaces reserved along its edges.
+        pub reserved_insets: GnoblinWmInsets,
+    }
+
+    /// The paint order and the focus a decision starts from, which the scene and the keyboard own. Borrowed for the call.
+    pub struct GnoblinWmStanding {
+        /// Size of this struct, set by the core.
+        pub size: u32,
+        /// `WM_STANDING_HAS_FOCUS` when `focus` names a window.
+        pub flags: u32,
+        /// The focused window.
+        pub focus: u64,
+        /// Every window drawn, topmost first.
+        pub stack: *const u64,
+        /// Number of ids in `stack`.
+        pub n_stack: usize,
+    }
+
+    /// A window the compositor opens. Borrowed for the call.
+    pub struct GnoblinWmOpen {
+        /// Size of this struct, set by the core.
+        pub size: u32,
+        /// `WM_KIND_*`.
+        pub kind: u32,
+        /// `WM_WINDOW_HAS_PARENT` and `WM_OPEN_HAS_REQUESTED`.
+        pub flags: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The window's identity.
+        pub id: u64,
+        /// The window it is a transient of, when `WM_WINDOW_HAS_PARENT` is set.
+        pub transient_for: u64,
+        /// The rectangle the client asked for, when `WM_OPEN_HAS_REQUESTED` is set; only its size is used.
+        pub requested: GnoblinWmRect,
+    }
+
+    /// One thing a provider's decision asks the compositor to do. Borrowed for the call of the sink it is passed to.
+    pub struct GnoblinWmEffect {
+        /// Size of this struct, set by the provider.
+        pub size: u32,
+        /// `WM_EFFECT_*`.
+        pub kind: u32,
+        /// A configure's `WM_WINDOW_*` state bits; a visibility's or a focus's flag.
+        pub flags: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The window a configure, a visibility or a focus is about.
+        pub window: u64,
+        /// A configure's rectangle.
+        pub geometry: GnoblinWmRect,
+        /// A stack's window ids, topmost first.
+        pub ids: *const u64,
+        /// Number of ids.
+        pub n_ids: usize,
+    }
+
+    /// Where a provider puts the effects of a decision: it calls `push` once per effect, during the call it was passed to.
+    pub struct GnoblinWmSink {
+        /// Size of this struct, set by the core.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The core's own pointer, handed back to `push`.
+        pub sink: *mut c_void,
+        /// Takes one effect; returns `E_OK`. The effect is copied before `push` returns.
+        pub push: unsafe extern "C" fn(sink: *mut c_void, effect: *const GnoblinWmEffect) -> i32,
+    }
+
+    /// The window manager a provider registers with `provider_register(PROVIDER_WM)`: the decisions the compositor asks while
+    /// no shell holds the tree. Every function runs on the compositor's thread, once per window event and never per frame,
+    /// and is wrapped in `catch_unwind` by the provider, which returns `E_PANIC` after a panic. A mutating function returns
+    /// `E_OK`, a `WM_REFUSED_*` refusal (nothing changed) or a negative error; an effect that does not decode or a negative
+    /// result takes the provider out of the session: the core logs it once and runs `NullWm` from then on. `user` is the
+    /// pointer the provider registered; the core calls `drop_user` on it exactly once when the provider ends, from the
+    /// compositor's thread while the provider's code is still mapped.
+    pub struct GnoblinWmVtable {
+        /// Size of this struct, set by the provider.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// Writes up to `cap` of the windows the provider holds, by identity, to `out`, and returns how many it holds.
+        pub windows: unsafe extern "C" fn(user: *mut c_void, out: *mut GnoblinWmWindow, cap: usize) -> usize,
+        /// Writes up to `cap` of the outputs the provider holds to `out`, and returns how many it holds.
+        pub outputs: unsafe extern "C" fn(user: *mut c_void, out: *mut GnoblinWmOutput, cap: usize) -> usize,
+        /// Applies a window's role: its kind and parent.
+        pub set_role: unsafe extern "C" fn(user: *mut c_void, id: u64, kind: u32, flags: u32, transient_for: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// Whether a window that has just mapped may take focus under `policy` (`WM_FOCUS_*`): 1 yes, 0 no, or a negative error.
+        pub may_take_focus: unsafe extern "C" fn(user: *mut c_void, id: u64, policy: u32, standing: *const GnoblinWmStanding) -> i32,
+        /// Opens a window and places it.
+        pub open: unsafe extern "C" fn(user: *mut c_void, open: *const GnoblinWmOpen, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// Forgets a closed window.
+        pub close: unsafe extern "C" fn(user: *mut c_void, id: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// Focuses a window, and raises it when `raise` is nonzero.
+        pub activate: unsafe extern "C" fn(user: *mut c_void, id: u64, raise: u32, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// Puts a window on top of its layer.
+        pub raise: unsafe extern "C" fn(user: *mut c_void, id: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// Puts a window under every other window of its layer.
+        pub lower: unsafe extern "C" fn(user: *mut c_void, id: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// Maximises a window (`on` nonzero), or returns it to its floating rectangle.
+        pub set_maximised: unsafe extern "C" fn(user: *mut c_void, id: u64, on: u32, sink: *const GnoblinWmSink) -> i32,
+        /// Makes a window cover its output (`on` nonzero), or returns it to the rectangle it came from.
+        pub set_fullscreen: unsafe extern "C" fn(user: *mut c_void, id: u64, on: u32, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// Hides a window (`on` nonzero), or brings it back.
+        pub set_minimised: unsafe extern "C" fn(user: *mut c_void, id: u64, on: u32, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// Moves and resizes a floating window, as a control request asks.
+        pub move_resize: unsafe extern "C" fn(user: *mut c_void, id: u64, wanted: *const GnoblinWmRect, sink: *const GnoblinWmSink) -> i32,
+        /// Puts a floating window's top left at an exact position and keeps its size.
+        pub place: unsafe extern "C" fn(user: *mut c_void, id: u64, x: i32, y: i32, sink: *const GnoblinWmSink) -> i32,
+        /// Sets a floating window's rectangle exactly: what an interactive move or resize ends each pointer step on.
+        pub set_rect: unsafe extern "C" fn(user: *mut c_void, id: u64, wanted: *const GnoblinWmRect, sink: *const GnoblinWmSink) -> i32,
+        /// Takes the size the client drew a floating window at as the window's size: 1 when the record changed, 0 when not.
+        pub adopt_size: unsafe extern "C" fn(user: *mut c_void, id: u64, width: u32, height: u32) -> i32,
+        /// Moves a window, and its transients, to another output.
+        pub move_to_output: unsafe extern "C" fn(user: *mut c_void, id: u64, target: u64, sink: *const GnoblinWmSink) -> i32,
+        /// An output arrived.
+        pub output_added: unsafe extern "C" fn(user: *mut c_void, id: u64, rect: *const GnoblinWmRect, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// An output went away.
+        pub output_removed: unsafe extern "C" fn(user: *mut c_void, id: u64, standing: *const GnoblinWmStanding, sink: *const GnoblinWmSink) -> i32,
+        /// An output's rectangle changed.
+        pub output_moved: unsafe extern "C" fn(user: *mut c_void, id: u64, rect: *const GnoblinWmRect, sink: *const GnoblinWmSink) -> i32,
+        /// The insets layer surfaces reserve on an output changed.
+        pub reserve: unsafe extern "C" fn(user: *mut c_void, id: u64, reserved: *const GnoblinWmInsets, sink: *const GnoblinWmSink) -> i32,
+    }
+
+    /// Where the UI provider puts the pixels of the dialog it draws: `frame` is called once, during the `take_frame` call it
+    /// was passed to, and `rgba` is copied before it returns.
+    pub struct GnoblinUiFrameSink {
+        /// Size of this struct, set by the core.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The core's own pointer, handed back to `frame`.
+        pub sink: *mut c_void,
+        /// Takes one frame of `width` by `height` pixels, four bytes per pixel, row-major.
+        pub frame: unsafe extern "C" fn(sink: *mut c_void, width: u32, height: u32, rgba: *const u8, len: usize) -> i32,
+    }
+
+    /// Where the UI provider puts the verdicts of the requests that settled: `verdict` is called once per request during the
+    /// `take_outcomes` call it was passed to, with the verdict in the byte form of `gnoblin_portal_core::wire`.
+    pub struct GnoblinUiOutcomeSink {
+        /// Size of this struct, set by the core.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The core's own pointer, handed back to `verdict`.
+        pub sink: *mut c_void,
+        /// Takes one settled request and its verdict bytes, which are copied before it returns.
+        pub verdict: unsafe extern "C" fn(sink: *mut c_void, request: u64, bytes: *const u8, len: usize) -> i32,
+    }
+
+    /// The portal dialog UI a provider registers with `provider_register(PROVIDER_UI)`: one dialog on screen at a time, a
+    /// queue behind it, and the verdict of each request once it settles. The functions are the methods of
+    /// `gnoblin_portal_ui::provider::UiProvider`, driven from the compositor's IPC thread with the time passed in. A dialog,
+    /// a verdict and a key cross as the bytes `gnoblin_portal_core::wire` defines, so neither side names the other's types. A
+    /// function returns `E_OK` or a negative error (`E_PANIC` after a caught panic); a negative `submit` settles the request
+    /// `error(provider-failed)`, and the core closes the provider's open requests with `error(no-ui)` when it ends.
+    pub struct GnoblinUiVtable {
+        /// Size of this struct, set by the provider.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// Writes the frame size in pixels: the open dialog's size, or the bounds when nothing is open.
+        pub frame_size: unsafe extern "C" fn(user: *mut c_void, width: *mut u32, height: *mut u32) -> i32,
+        /// Sets the visuals later dialogs are drawn with (`UI_SCHEME_*`).
+        pub set_scheme: unsafe extern "C" fn(user: *mut c_void, scheme: u32) -> i32,
+        /// Sets the look later dialogs are drawn with, already clamped, as `gnoblin_portal_ui::style::DialogStyle::to_bytes`.
+        pub set_style: unsafe extern "C" fn(user: *mut c_void, bytes: *const u8, len: usize) -> i32,
+        /// Sets the largest frame a dialog may take, in pixels.
+        pub set_bounds: unsafe extern "C" fn(user: *mut c_void, width: u32, height: u32) -> i32,
+        /// Writes the request whose dialog is open to `request` and returns 1, or returns 0 when none is open.
+        pub active_request: unsafe extern "C" fn(user: *mut c_void, request: *mut u64) -> i32,
+        /// The number of admitted requests waiting behind the open dialog.
+        pub waiting: unsafe extern "C" fn(user: *mut c_void) -> usize,
+        /// Admits a request for the interface `interface` (its place in `Interface::ALL`) on behalf of `app_id`, with the
+        /// dialog already built (its bytes). Returns `UI_STARTED`, `UI_QUEUED`, `UI_REFUSED` plus the error's number, or a
+        /// negative error.
+        pub submit: unsafe extern "C" fn(user: *mut c_void, request: u64, app_id: GnoblinStr, interface: u32, dialog: *const u8, dialog_len: usize, timeout_ms: u64, now: u64) -> i32,
+        /// Feeds one key press or repeat (`repeat` nonzero) to the open dialog: its kind and character as `wire::key_code`.
+        pub key: unsafe extern "C" fn(user: *mut c_void, kind: u32, character: u32, repeat: u32) -> i32,
+        /// Feeds a pointer press at frame pixel `(x, y)` to the open dialog.
+        pub pointer_press: unsafe extern "C" fn(user: *mut c_void, x: f32, y: f32) -> i32,
+        /// Feeds a pointer release at frame pixel `(x, y)` to the open dialog.
+        pub pointer_release: unsafe extern "C" fn(user: *mut c_void, x: f32, y: f32) -> i32,
+        /// Moves the clock: animations advance and the open request's deadline is checked.
+        pub tick: unsafe extern "C" fn(user: *mut c_void, now: u64) -> i32,
+        /// Gives `sink` the open dialog rasterised, but only when its pixels changed since the last frame; nothing when not.
+        pub take_frame: unsafe extern "C" fn(user: *mut c_void, sink: *const GnoblinUiFrameSink) -> i32,
+        /// Hands the open dialog out again by the next `take_frame`, even when its pixels did not change.
+        pub redraw: unsafe extern "C" fn(user: *mut c_void) -> i32,
+        /// Gives `sink` every request that settled since the last call, in settle order.
+        pub take_outcomes: unsafe extern "C" fn(user: *mut c_void, sink: *const GnoblinUiOutcomeSink) -> i32,
+        /// The requester has gone: a dialog open for it closes and a queued one is dropped. Returns 1 when the request was
+        /// admitted, 0 when not.
+        pub cancel: unsafe extern "C" fn(user: *mut c_void, request: u64) -> i32,
+        /// The session lock changes: locking settles every admitted request `error(locked)` and refuses new ones.
+        pub set_locked: unsafe extern "C" fn(user: *mut c_void, locked: u32) -> i32,
+    }
+
+    /// The configuration observer a provider registers with `provider_register(PROVIDER_CONFIG)`. The core calls `apply` with
+    /// the accepted document as JSON when the provider registers, and again on every accepted commit, from the thread that
+    /// accepted it; the provider turns the sections it owns into `setting_set` calls. A section the document leaves out puts
+    /// its settings back to the default, so the provider sets them all every time.
+    pub struct GnoblinConfigVtable {
+        /// Size of this struct, set by the provider.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The accepted document, as UTF-8 JSON. Returns `E_OK` or a negative error, which the core logs.
+        pub apply: unsafe extern "C" fn(user: *mut c_void, document: GnoblinStr) -> i32,
+    }
+
     /// What a native shell module exports through its one symbol, `gnoshell_entry_v1`.
     pub struct GnoblinShellEntry {
         /// Size of this struct, set by the shell.
@@ -781,6 +1120,25 @@ abi_structs! {
         /// root until a shell inserts them, so this is how a shell lists them. The array is valid until the next ABI call on
         /// this thread. Shell thread.
         pub class_nodes: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, out: *mut GnoblinNodes) -> i32,
+
+        // ---- providers and compositor settings --------------------------------------------------------------------------
+
+        /// Registers a provider of `kind` (`PROVIDER_WM`, `PROVIDER_UI` or `PROVIDER_CONFIG`): `vtable` points at that kind's
+        /// vtable, read by its own `size`, and `user` is handed back to each of its functions. The provider serves while the
+        /// generation lives: when the generation retires, or `remove(reg)` is called, the core stops calling it, runs
+        /// `drop_user` on `user` from the thread the provider was called on and falls back (`NullWm`, `NoUi`, no observer).
+        /// The window manager, the UI and the observer are one each: a second registration of a kind while one is live is
+        /// `E_BUSY` with `user` not adopted. Zero on failure, with `user` not adopted. Shell thread of the generation, or the
+        /// thread that made a context of the host's own (std's).
+        pub provider_register: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, vtable: *const c_void, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg,
+        /// Sets a compositor setting by key: `a11y.zoom` (a double, at most 1 is off), `a11y.filter` (bytes, 80 for the twenty
+        /// little-endian `f32` of a 4 by 5 colour matrix, none for off), `bell.flash` (text `off`, `frame` or `fullscreen`), and the window
+        /// management keys `wm.edge_tiling`, `wm.drag_constraint`, `wm.new_window_focus`, `wm.focus_mode`,
+        /// `wm.focus_change_on_pointer_rest`, `wm.raise_on_click`, `wm.auto_raise`, `wm.auto_raise_delay`,
+        /// `wm.check_alive_timeout`, `wm.titlebar.double_click`, `wm.titlebar.middle_click` and `wm.titlebar.right_click`.
+        /// `E_NO_SUCH_MEMBER` for another key, `E_TYPE` for a value of the wrong kind, `E_REFUSED` with the reason for a
+        /// value out of range. Any thread.
+        pub setting_set: unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, value: *const GnoblinValue) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]

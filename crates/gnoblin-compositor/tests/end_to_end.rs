@@ -12,7 +12,6 @@
 //! shipped command logic and the shipped exit codes. The only thing the test does not
 //! do is fork: the session runs in a thread and the clients in this one, which is the
 //! same arrangement with one less process to clean up.
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod support;
 
@@ -49,7 +48,6 @@ impl Watcher {
 }
 
 // A window takes the keyboard when it maps and on a click under the stock window manager; a core with no provider has no focus policy.
-#[cfg(feature = "std-providers")]
 #[test]
 fn a_shell_lists_watches_and_focuses_through_gnoblinctl() {
     let session = Session::start();

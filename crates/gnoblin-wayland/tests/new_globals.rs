@@ -19,7 +19,6 @@
 //!
 //! Smithay posts a protocol error by closing the offending connection. The refusal test
 //! reads the error code the client receives and checks a second client still connects.
-#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 
@@ -597,7 +596,6 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for App {
 }
 
 // The stock window manager's focus policy (rotation, modal handover, raise, refusal of a window with no output) decides this.
-#[cfg(feature = "std-providers")]
 #[test]
 fn a_modal_dialog_takes_focus_from_its_parent_and_is_reported_modal() {
     Session::start_allowing_focus().run(|session| {

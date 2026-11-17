@@ -30,6 +30,7 @@ use std::path::{Path, PathBuf};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use gnoblin_compositor::providers::ProviderSlots;
 use gnoblin_compositor::{Compositor, EisGate, SessionConfig, StopHandle};
 use gnoblinctl::SocketConnection;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
@@ -127,6 +128,7 @@ impl Session {
             },
             privileged,
             guardian: Some(UnixStream::from(compositor_control)),
+            providers: stock_providers(),
             ..SessionConfig::default()
         };
         configure(&mut config);
@@ -175,6 +177,7 @@ impl Session {
                 gpu_memory_period: Duration::ZERO,
                 ..gnoblin_wayland::Config::default()
             },
+            providers: stock_providers(),
             ..SessionConfig::default()
         };
         let thread = std::thread::Builder::new()
@@ -304,6 +307,27 @@ impl Drop for Session {
     }
 }
 
+/// The provider slots of the stock desktop: std's window manager and portal dialogs, registered the way the core library
+/// registers them for a session (`libgnoblin-std` through `provider_register`), here as the Rust traits the slots take. The
+/// sessions of this suite run them, so what they prove is what users get; a session that wants the core on its own clears them
+/// with [`core_only`].
+pub fn stock_providers() -> ProviderSlots {
+    let slots = ProviderSlots::new();
+    slots
+        .set_window_manager(|| Box::<gnoblin_std_wm::Fallback>::default())
+        .expect("the slot is free");
+    slots
+        .set_ui(|| Box::new(gnoblin_std_portal::PortalUi::new(1280, 800)))
+        .expect("the slot is free");
+    slots
+}
+
+/// Takes the stock providers out of `config`: the core on its own, whose window manager is `NullWm` and whose portal requests
+/// are refused `no-ui`.
+pub fn core_only(config: &mut SessionConfig) {
+    config.providers = ProviderSlots::new();
+}
+
 /// A configuration for a session rooted at `directory`, with both sockets named.
 pub fn config(directory: &Path, ipc: PathBuf) -> SessionConfig {
     SessionConfig {
@@ -313,6 +337,7 @@ pub fn config(directory: &Path, ipc: PathBuf) -> SessionConfig {
             gpu_memory_period: Duration::ZERO,
             ..gnoblin_wayland::Config::default()
         },
+        providers: stock_providers(),
         ..SessionConfig::default()
     }
 }

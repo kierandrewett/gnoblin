@@ -195,6 +195,61 @@ impl Default for DialogStyle {
 }
 
 impl DialogStyle {
+    /// The length of [`to_bytes`](Self::to_bytes).
+    pub const WIRE_LEN: usize = 12;
+
+    /// The style as twelve bytes, the form it crosses the provider ABI in: a presence flag and value for the radius, the
+    /// accent (three bytes) and the font size, the monospace flag, the scale in thousandths (little-endian) and the layout.
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; Self::WIRE_LEN] {
+        let [red, green, blue] = self.accent.unwrap_or_default();
+        let scale = self.scale_permille.to_le_bytes();
+        [
+            u8::from(self.radius.is_some()),
+            self.radius.unwrap_or(0),
+            u8::from(self.accent.is_some()),
+            red,
+            green,
+            blue,
+            u8::from(self.font_size.is_some()),
+            self.font_size.unwrap_or(0),
+            u8::from(self.monospace),
+            scale[0],
+            scale[1],
+            match self.button_layout {
+                ButtonLayout::Start => 0,
+                ButtonLayout::End => 1,
+                ButtonLayout::Stretch => 2,
+                ButtonLayout::Stacked => 3,
+            },
+        ]
+    }
+
+    /// The style [`to_bytes`](Self::to_bytes) wrote, clamped again as any style is, so bytes from outside this process can
+    /// ask for nothing a document could not. `None` when the bytes are not twelve or name a layout that does not exist.
+    #[must_use]
+    pub fn from_bytes(bytes: &[u8]) -> Option<DialogStyle> {
+        let bytes: &[u8; Self::WIRE_LEN] = bytes.try_into().ok()?;
+        let layout = match bytes[11] {
+            0 => ButtonLayout::Start,
+            1 => ButtonLayout::End,
+            2 => ButtonLayout::Stretch,
+            3 => ButtonLayout::Stacked,
+            _ => return None,
+        };
+        Some(
+            StyleRequest {
+                radius: (bytes[0] != 0).then_some(i64::from(bytes[1])),
+                accent: (bytes[2] != 0).then_some([bytes[3], bytes[4], bytes[5]]),
+                font_family: (bytes[8] != 0).then(|| "monospace".to_owned()),
+                font_size: (bytes[6] != 0).then_some(i64::from(bytes[7])),
+                scale: Some(f64::from(u16::from_le_bytes([bytes[9], bytes[10]])) / 1000.0),
+                button_layout: Some(layout),
+            }
+            .clamp(),
+        )
+    }
+
     /// The corner radius in points, when restyled.
     #[must_use]
     pub const fn radius(&self) -> Option<u8> {
@@ -493,6 +548,44 @@ fn accept_button(label: &str, accent: Option<AccentColours>, size: Vec2) -> Butt
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_style_survives_the_bytes_it_crosses_the_provider_abi_as() {
+        let styles = [
+            DialogStyle::default(),
+            StyleRequest {
+                radius: Some(12),
+                accent: Some([10, 200, 90]),
+                font_family: Some("monospace".to_owned()),
+                font_size: Some(18),
+                scale: Some(1.5),
+                button_layout: Some(ButtonLayout::Stacked),
+            }
+            .clamp(),
+        ];
+        for style in styles {
+            assert_eq!(DialogStyle::from_bytes(&style.to_bytes()), Some(style));
+        }
+        assert_eq!(DialogStyle::from_bytes(&[0; 3]), None, "too short");
+        let mut unknown = DialogStyle::default().to_bytes();
+        unknown[11] = 9;
+        assert_eq!(DialogStyle::from_bytes(&unknown), None, "no such layout");
+    }
+
+    #[test]
+    fn bytes_from_outside_are_clamped_like_any_request() {
+        let mut loud = DialogStyle::default().to_bytes();
+        loud[0] = 1;
+        loud[1] = 250;
+        loud[6] = 1;
+        loud[7] = 250;
+        loud[9] = 0xFF;
+        loud[10] = 0xFF;
+        let style = DialogStyle::from_bytes(&loud).expect("decodes");
+        assert!(style.radius().is_some_and(|radius| radius <= RADIUS_MAX));
+        assert!(style.font_size().is_some_and(|size| size <= FONT_SIZE_MAX));
+        assert!(style.scale() <= SCALE_MAX as f32);
+    }
+
     use std::sync::{Arc, Mutex};
 
     use super::*;

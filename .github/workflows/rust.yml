@@ -152,11 +152,10 @@ jobs:
       - name: Check the workspace with the minimum supported toolchain
         run: just msrv
 
-  # Phase 1 acceptance of the modular framework (design/modular-framework.md, M1.8): the core builds and its whole test
-  # suites pass with no std code compiled. `std-providers` is on by default and compiles the stock providers into the
-  # compositor; the Wayland engine's tests run the stock window manager under the same feature. The workspace job runs
-  # both crates with the feature on; this job runs them with it off, so a core module that reached into std (or a test
-  # that silently needed the stock desktop) fails here by name.
+  # Phase 1 acceptance of the modular framework (design/modular-framework.md, M1.8, M2.11): the core builds with no std code and
+  # its no-provider behaviour holds. The stock providers are std's, registered through `provider_register`; this job builds the
+  # compositor and the core library, fails if a std crate is in their dependency tree, and runs the suites of a session with no
+  # provider (`NullWm`, and `no-ui` for a portal request).
   core-only:
     name: Core without the std providers
     runs-on: ubuntu-latest
@@ -175,5 +174,5 @@ jobs:
         run: scripts/ci-install-system-libraries.sh
       - name: Show the pinned toolchain
         run: rustup show active-toolchain
-      - name: Test the compositor and the Wayland engine with no std providers
+      - name: Build the core with no std crate and test a session with no provider
         run: just core-only

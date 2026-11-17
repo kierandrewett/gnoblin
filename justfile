@@ -38,14 +38,15 @@ pipewire-test:
     cargo test --locked -p gnoblin-pipewire-export
     cargo test --locked -p gnoblin-wayland --test view_capture_e2e
 
-# Phase 1 acceptance of the modular framework (design/modular-framework.md, M1.8): the core with no std code compiled.
-# `std-providers` is the cargo feature that compiles the stock providers (window manager, accessibility, visual bell,
-# portal dialogs) into the compositor, and it is on by default; with it off the compositor is the core, and so are the
-# Wayland engine's test sessions, which run a test-only focus provider over `NullWm`. Both crates' whole suites must
-# pass. The tests whose subject is the stock desktop are `cfg(feature = "std-providers")` and are not built here;
-# `just test` runs them.
+# Phase 1 acceptance of the modular framework (design/modular-framework.md, M1.8, M2.11): the core with no std code. The
+# stock providers are std's and reach the core through `provider_register`, so the core's own build holds none of them.
+# This builds the compositor and the core library, fails if a std crate is in their dependency tree, and runs the suites whose
+# subject is a session with no provider: `NullWm` places windows at the origin, and a portal request is refused `no-ui`.
 core-only:
-    cargo test --locked -p gnoblin-compositor -p gnoblin-wayland --no-default-features
+    cargo build --locked -p gnoblin-compositor -p gnoblin-core-impl
+    ! cargo tree --locked -p gnoblin-compositor -p gnoblin-core-impl --edges normal,build --prefix none | grep -E '^gnoblin-(std|a11y)'
+    cargo test --locked -p gnoblin-wayland --test null_wm
+    cargo test --locked -p gnoblin-compositor --test portal_no_ui
 
 # Run the JavaScript conformance tests, including the ignored acceptance gates.
 spec-gate:

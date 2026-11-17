@@ -5,7 +5,6 @@
 //! run with `--no-deps`: no registry access, no resolution and no lockfile
 //! churn, which keeps it fast and offline on a build node.
 
-use std::collections::BTreeMap;
 use std::env;
 use std::ffi::OsString;
 use std::path::Path;
@@ -29,8 +28,6 @@ pub struct Package {
     /// How the manifest declares its lint levels. `cargo metadata` does not report them, so the
     /// manifest is read when the document names it.
     pub lints: Lints,
-    /// The package's `[features]` table: each feature and what it enables (`dep:name`, another feature, `name/feature`).
-    pub feature_table: BTreeMap<String, Vec<String>>,
 }
 
 /// How a manifest declares its lints.
@@ -57,8 +54,6 @@ pub struct Dep {
     pub kind: DepKind,
     /// The features this package enables on the dependency.
     pub features: Vec<String>,
-    /// Whether the dependency is declared `optional = true`, so only a feature of the package brings it in.
-    pub optional: bool,
 }
 
 /// How a dependency is declared. `Normal` is a regular build and runtime
@@ -143,38 +138,19 @@ pub fn from_json(json: &str) -> Result<Graph, String> {
                 .and_then(Value::as_array)
                 .map(|features| features.iter().filter_map(Value::as_str).map(str::to_owned).collect())
                 .unwrap_or_default();
-            let optional = raw_dep.get("optional").and_then(Value::as_bool).unwrap_or(false);
             deps.push(Dep {
                 name: dep_name.to_owned(),
                 kind,
                 features,
-                optional,
             });
         }
         let is_binary = has_binary_target(raw_package);
         let lints = read_lints(raw_package, &name)?;
-        let feature_table = raw_package
-            .get("features")
-            .and_then(Value::as_object)
-            .map(|table| {
-                table
-                    .iter()
-                    .map(|(feature, enables)| {
-                        let enables = enables
-                            .as_array()
-                            .map(|items| items.iter().filter_map(Value::as_str).map(str::to_owned).collect())
-                            .unwrap_or_default();
-                        (feature.clone(), enables)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
         packages.push(Package {
             name,
             deps,
             is_binary,
             lints,
-            feature_table,
         });
     }
     Ok(Graph { packages })

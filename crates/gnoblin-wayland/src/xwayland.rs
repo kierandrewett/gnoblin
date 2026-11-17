@@ -1316,7 +1316,7 @@ mod core_tests {
 }
 
 /// The same paths over the stock provider (`gnoblin-std-wm`), whose placement and focus policy the assertions name.
-#[cfg(all(test, feature = "std-providers"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

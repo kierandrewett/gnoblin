@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, VecDeque};
 
 use gnoblin_types::{RequestId, Tick};
 
-use super::outcome::PortalError;
+use crate::outcome::PortalError;
 
 /// At most this many UI requests are queued in total.
 pub const MAX_QUEUED: usize = 8;

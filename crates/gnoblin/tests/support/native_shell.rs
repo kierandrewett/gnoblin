@@ -47,6 +47,8 @@ pub struct Shells {
     pub tiler: PathBuf,
     /// The fault fixture: misbehaves when its directory says so.
     pub fault: PathBuf,
+    /// The smallest core-only shell: it holds no tree, places nothing and loads no std, so what decides is the compositor's own.
+    pub idle: PathBuf,
 }
 
 /// Builds the shells into a target directory of their own, so this does not wait for the lock of the one the test run holds.
@@ -77,6 +79,8 @@ fn build_shells() -> Result<Shells, String> {
             "gnoblin-example-no-workspaces",
             "-p",
             "gnoblin-fixture-shell-fault",
+            "-p",
+            "gnoblin-fixture-shell-min",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -92,6 +96,7 @@ fn build_shells() -> Result<Shells, String> {
         minimal: debug.join("libminimal_core_shell.so"),
         tiler: debug.join("libno_workspaces.so"),
         fault: debug.join("libfixture_shell_fault.so"),
+        idle: debug.join("libshell_min.so"),
     })
 }
 

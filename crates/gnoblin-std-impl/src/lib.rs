@@ -7,6 +7,8 @@
 //!
 //! What it holds, in the order a request meets it:
 //!
+//! - `providers`: what std registers with the core as the desktop's policy (the window manager, the portal dialogs and the
+//!   configuration observer) and `gnoblin_std_init`, which does it.
 //! - `table`: the C functions, each contained against a panic, each reading the caller's structs by their own `size`.
 //! - `state`: the object model of one generation (clients, outputs, workspaces, desks, collections, listeners) and the one rule
 //!   about callbacks: the library never runs a shell callback inside a table call or while it holds a borrow of its state.
@@ -46,6 +48,7 @@ mod fit;
 mod floating;
 mod layout;
 mod nodes;
+mod providers;
 mod scene;
 mod splits;
 mod state;

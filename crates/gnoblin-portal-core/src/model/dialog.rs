@@ -63,6 +63,12 @@ impl Consent {
         }
     }
 
+    /// The tick the dialog was opened at, from which it arms.
+    #[must_use]
+    pub const fn opened_at(&self) -> Tick {
+        Tick::new(self.armed_at.get().saturating_sub(ARM_DELAY_MS))
+    }
+
     /// The attributed app id shown as identity.
     #[must_use]
     pub fn app_id(&self) -> &str {

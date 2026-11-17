@@ -20,6 +20,14 @@ crate-type = ["cdylib", "rlib"]
 gnoblin-core = { path = "../gnoblin-core" }
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
 gnoblin-std-abi = { path = "../gnoblin-std-abi" }
+# The providers std registers with the core as C vtables: the stock window manager and portal dialogs, the vtable adapters they
+# go through, the trait they speak, and the configuration and accessibility types the settings observer reads.
+gnoblin-provider-wire = { path = "../gnoblin-provider-wire" }
+gnoblin-std-wm = { path = "../gnoblin-std-wm" }
+gnoblin-std-portal = { path = "../gnoblin-std-portal" }
+gnoblin-wm-api = { path = "../gnoblin-wm-api" }
+gnoblin-config = { path = "../gnoblin-config" }
+gnoblin-a11y = { path = "../gnoblin-a11y" }
 
 [dev-dependencies]
 # The parity test drives the TypeScript std over the same fake compositor script as the native one, and compares what each wrote.

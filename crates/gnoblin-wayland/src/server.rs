@@ -54,7 +54,7 @@ use gnoblin_capture::{SessionId, Target};
 use gnoblin_config::Protocols;
 use gnoblin_output::LayoutError;
 use gnoblin_types::{ClientId, OutputId, Rect, WindowId};
-use gnoblin_wm_api::{WindowManagerFactory, WmOptions};
+use gnoblin_wm_api::{WindowManager, WindowManagerFactory, WmOptions};
 
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
@@ -240,7 +240,7 @@ pub struct Config {
     /// The compositor settings applied before the session serves, in order: the window motion, the magnifier and
     /// colour filter, the visual bell. Empty is every setting at the default, which is the motion the compositor
     /// always had and no magnifier, no colour filter and no flash. The providers that read them from a document
-    /// (`gnoblin-compositor`'s `std_providers`) fill it; [`ControlHandle::setting_set`] changes one live.
+    /// (std's configuration observer, through `gnoblin-compositor`'s provider slots) fill it; [`ControlHandle::setting_set`] changes one live.
     pub settings: Vec<Setting>,
     /// The redirect adapters this session serves.
     ///
@@ -256,8 +256,9 @@ pub struct Config {
     /// names a scripted authenticator and the user it is asked about, so the lock is exercised without PAM.
     pub lock_check: Option<LockCheck>,
     /// Builds the window-manager provider the session starts with, or [`None`] for a session with no provider, which
-    /// runs `NullWm`: windows at the origin and no focus policy. The default is [`None`]: this crate holds no
-    /// stock provider, and the composition root registers one (`gnoblin-compositor`'s `std-providers` feature).
+    /// runs `NullWm`: windows at the origin and no focus policy. The default is [`None`]: this crate holds no stock
+    /// provider. One registered later through `gnoblin-compositor`'s provider slots replaces it
+    /// ([`ControlHandle::set_window_manager`]).
     pub window_manager: Option<WindowManagerFactory>,
 }
 
@@ -638,6 +639,10 @@ impl Server {
                                 reply,
                             } => {
                                 state.apply_window_management(options, titlebar, check_alive_timeout);
+                                let _ = reply.send(());
+                            }
+                            Command::WindowManager { provider, reply } => {
+                                state.set_window_manager(provider);
                                 let _ = reply.send(());
                             }
                             Command::Xwayland { session, reply } => {
@@ -1258,6 +1263,18 @@ impl ControlHandle {
         let _ = answer.recv_timeout(FOCUS_TIMEOUT);
     }
 
+    /// Replaces the window-manager provider from the loop: `Some` makes it the session's, `None` puts [`NullWm`] back. The
+    /// windows and outputs the old provider held are taught to the new one (`gnoblin_wm_api::hand_over`), and a client the
+    /// new provider placed differently is told. Waits for the loop's answer, so a provider registered through the C ABI is
+    /// the session's when the registration returns; `false` when the loop did not answer because it is stopping.
+    ///
+    /// [`NullWm`]: gnoblin_wm_api::NullWm
+    pub fn set_window_manager(&self, provider: Option<Box<dyn WindowManager + Send>>) -> bool {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::WindowManager { provider, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).is_ok()
+    }
+
     /// Replaces the X11 session from the loop: `None` stops the running server, a session
     /// starts a fresh one. Waits for the loop's answer, so the caller's reply to a commit is
     /// ordered after the server is up or stopped.
@@ -1625,6 +1642,11 @@ enum Command {
         options: WmOptions,
         titlebar: TitlebarActions,
         check_alive_timeout: Duration,
+        reply: std::sync::mpsc::SyncSender<()>,
+    },
+    /// A new window-manager provider, or `None` for the null one, replacing the running one.
+    WindowManager {
+        provider: Option<Box<dyn WindowManager + Send>>,
         reply: std::sync::mpsc::SyncSender<()>,
     },
     /// The X11 session the configuration accepted, replacing the running one (`None` stops

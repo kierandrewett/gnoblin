@@ -1679,6 +1679,32 @@ impl State {
         self.apply_filtered(effects, |effect| matches!(effect, WmEffect::Visible { .. }));
     }
 
+    /// Replaces the window-manager provider with `next` (the null one for `None`), after teaching it what the old one held.
+    /// A client the new provider placed or showed differently is told, as a decision of the provider is, except that while a
+    /// shell holds the tree only the windows' presence on the outputs is kept, as for any decision.
+    pub(crate) fn set_window_manager(&mut self, next: Option<Box<dyn WindowManager + Send>>) {
+        let mut next: Box<dyn WindowManager> = match next {
+            Some(provider) => provider,
+            None => Box::<gnoblin_wm_api::NullWm>::default(),
+        };
+        let record = gnoblin_wm_api::HeldRecord::of(self.wm.as_ref());
+        let stack = self.composer.window_stack();
+        let seat = Standing {
+            stack: &stack,
+            focus: self.focus,
+        };
+        let effects = gnoblin_wm_api::hand_over(&record, next.as_mut(), seat);
+        log::info!(
+            area = "wm",
+            windows = record.windows.len(),
+            outputs = record.outputs.len(),
+            "the window-manager provider changed"
+        );
+        // The old provider drops here: for one registered through the C ABI that releases the registrant's state.
+        self.wm = next;
+        self.apply_decided(effects);
+    }
+
     /// Applies `effects` in full when no shell holds the tree, and only those `shell_keeps` names while one does.
     fn apply_filtered(&mut self, effects: Vec<WmEffect>, shell_keeps: impl Fn(&WmEffect) -> bool) {
         if self.composer.holder_attached() {

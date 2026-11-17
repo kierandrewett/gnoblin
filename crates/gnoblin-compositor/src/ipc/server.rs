@@ -233,6 +233,7 @@ impl IpcServer {
         started_with: gnoblin_config::Config,
         polkit_helper: Option<std::path::PathBuf>,
         shell: Option<Arc<dyn crate::inproc_shell::ShellControl>>,
+        providers: crate::providers::ProviderSlots,
     ) -> Result<IpcServer, IpcError> {
         let path = prepared.path().to_path_buf();
         let listener = UnixListener::bind(&path).map_err(|source| IpcError::Bind {
@@ -255,7 +256,8 @@ impl IpcServer {
             requests: Requests::new(),
             reload: Reload::default(),
             applied: StartedDocuments::new(started_with),
-            portal: PortalService::new(),
+            providers: providers.clone(),
+            portal: PortalService::with_ui(Box::new(providers.ui_handle())),
             secret: SecretService::new().with_helper(polkit_helper.map(HelperPath::fixed).unwrap_or_default()),
             lock_card: LockCardService::new(),
             connections: BTreeMap::new(),
@@ -742,6 +744,8 @@ struct Dispatcher {
     applied: StartedDocuments,
     /// The portal UI: admitted requests, their owners, and the open dialog.
     portal: PortalService,
+    /// Where the providers registered through the C ABI are, and what they are told of an accepted document.
+    providers: crate::providers::ProviderSlots,
     /// The built-in passphrase dialog: it serves a `prompt.secret` request no shell claimed.
     secret: SecretService,
     /// The built-in lock card: it serves a locked session whose shell does not hold the lock screen.
@@ -1363,8 +1367,7 @@ impl Dispatcher {
                 self.portal.configure(&config);
                 self.secret.configure(&config);
                 self.lock_card.configure(&config);
-                #[cfg(feature = "std-providers")]
-                crate::std_providers::portal_ui::report_dialog_style(&config);
+                crate::portal::report_dialog_style(&config);
                 // Reduced motion turns animations off in the compositor loop. A document that
                 // does not name the key is not reduced, so it animates as before.
                 let reduced_motion = config
@@ -1377,10 +1380,9 @@ impl Dispatcher {
                 // init.retired shell after the session started takes effect on this commit.
                 self.control
                     .set_global_scale(crate::monitors::settings_of(&config).global_scale);
-                // The stock providers read their own sections (window management, accessibility, the visual bell)
-                // from the accepted document, so a reload applies them without a restart.
-                #[cfg(feature = "std-providers")]
-                crate::std_providers::commit(&self.control, &config);
+                // The configuration observer a provider registered (std's) reads the sections it owns (window management,
+                // accessibility, the visual bell) from the accepted document, so a reload applies them without a restart.
+                self.providers.commit_document(config.document_json());
                 // The shortcuts and touchpad gestures are re-derived from the accepted document
                 // too: a document with no such section drops the ones the previous one declared.
                 self.control.set_shortcuts(config.shortcuts.clone().unwrap_or_default());

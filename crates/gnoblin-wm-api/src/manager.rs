@@ -26,6 +26,9 @@ pub trait WindowManager: std::fmt::Debug {
     /// One connected output.
     fn output(&self, id: OutputId) -> Option<&OutputRecord>;
 
+    /// Every connected output, in the order they arrived.
+    fn outputs(&self) -> Box<dyn Iterator<Item = &OutputRecord> + '_>;
+
     /// The work area of an output.
     fn work_area(&self, id: OutputId) -> Option<Rect> {
         self.output(id).map(OutputRecord::work_area)

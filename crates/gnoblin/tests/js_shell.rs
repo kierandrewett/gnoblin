@@ -91,6 +91,7 @@ impl Session {
         let stop = StopHandle::new();
         let input = InputTap::new();
         let mut config = SessionConfig {
+            providers: support::stock_providers(),
             ipc_socket: Some(directory.path().join("ipc.sock")),
             stop: Some(stop.clone()),
             input_tap: Some(input.clone()),

@@ -10,15 +10,6 @@ publish.workspace = true
 [lints]
 workspace = true
 
-# The std tier (design/modular-framework.md, 9.1 and 9.4) that is compiled into the compositor until the C ABI carries
-# it (M2.11). With the feature on, the compositor registers the stock providers of its `std_providers` module; with it off
-# (`--no-default-features`) it is the core: a session with no provider, whose window manager is `NullWm`. This is
-# the one edge from core to a std crate that `xtask deps` (`std-below-core`) allows, and each std dependency below is
-# optional and named by this feature.
-[features]
-default = ["std-providers"]
-std-providers = ["dep:gnoblin-a11y", "dep:gnoblin-std-wm", "gnoblin-wayland/std-providers"]
-
 [dependencies]
 # Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
 gnoblin-secret.workspace = true
@@ -37,11 +28,9 @@ gnoblin-render = { path = "../gnoblin-render" }
 # The Canvas painter: system fonts for text measurement and for drawing `Canvas` nodes.
 gnoblin-paint.workspace = true
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
-# The colour transform rows each named colour filter draws with, for the visual accessibility provider behind
-# `std-providers`.
-gnoblin-a11y = { path = "../gnoblin-a11y", optional = true }
-# The stock window manager, registered as the session's provider behind `std-providers`.
-gnoblin-std-wm = { path = "../gnoblin-std-wm", optional = true }
+# The window-manager provider contract, and the `NullWm` a session with no provider runs. Core-side by design: the stock
+# window manager is std's.
+gnoblin-wm-api = { path = "../gnoblin-wm-api" }
 # The cursor providers and theme lookup the compositor reads its cursor settings from.
 gnoblin-cursor = { path = "../gnoblin-cursor" }
 # The X11 supervisor and window policy. A session with X11 starts Xwayland under it;
@@ -62,8 +51,8 @@ gnoblin-client = { path = "../gnoblin-client" }
 # The in-process shell's link: the compositor serves a shell on its own thread through the same `TreeLink` a socket shell uses,
 # so both read one translation of the wire (`inproc_shell`).
 gnoblin-tree-client = { path = "../gnoblin-tree-client" }
-# The portal's built-in dialog screens (D19). The negotiation core names their models;
-# the screens draw them, and nothing else in the compositor depends on the dialog crates.
+# The portal's built-in dialog screens (D19). The lock card, the secret prompt and the polkit prompt draw with them; the portal's
+# own dialogs are std's provider (`gnoblin-std-portal`).
 gnoblin-portal = { path = "../gnoblin-portal" }
 gnoblin-portal-core = { path = "../gnoblin-portal-core" }
 gnoblin-portal-ui = { path = "../gnoblin-portal-ui" }
@@ -89,6 +78,10 @@ gnoblin-log = { path = "../gnoblin-log" }
 gnoblin-schema = { path = "../gnoblin-schema" }
 
 [dev-dependencies]
+# The stock providers the tests whose subject is the stock desktop register in a session (window management and focus,
+# the portal dialogs). The compositor itself names neither: a session with none runs `NullWm` and refuses requests `no-ui`.
+gnoblin-std-wm = { path = "../gnoblin-std-wm" }
+gnoblin-std-portal = { path = "../gnoblin-std-portal" }
 # Reads back what the compositor logs, so a test proves a typed passphrase reaches no log line.
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # A real client for the real Wayland socket: the end-to-end tests drive the

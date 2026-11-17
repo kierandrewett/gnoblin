@@ -155,6 +155,7 @@ impl CandidateSession {
                 socket_path: Some(wayland.clone()),
                 ..gnoblin_wayland::Config::default()
             },
+            providers: stock_providers(),
             ..SessionConfig::default()
         };
         let thread = std::thread::Builder::new()
@@ -369,6 +370,19 @@ struct Ctl {
 
 /// Serves the candidate compositor in this process, with its sockets in `directory`, until the process is killed.
 ///
+/// The stock desktop's window manager and portal dialogs, as the core library gets them from `libgnoblin-std`: the candidate is
+/// measured as the desktop users get, which is not the provider-less core.
+fn stock_providers() -> gnoblin_compositor::providers::ProviderSlots {
+    let slots = gnoblin_compositor::providers::ProviderSlots::new();
+    slots
+        .set_window_manager(|| Box::<gnoblin_std_wm::Fallback>::default())
+        .expect("the slot is free");
+    slots
+        .set_ui(|| Box::new(gnoblin_std_portal::PortalUi::new(1280, 800)))
+        .expect("the slot is free");
+    slots
+}
+
 /// This is the other half of the performance baseline: the baseline measures the candidate from outside, as it measures
 /// the Mutter targets, so the compositor has to be a process of its own. The Wayland socket is named `display` so the
 /// launcher contract holds (`<directory>/<display>` is what the session serves), and the EIS gate is granted once the
@@ -382,6 +396,7 @@ pub(crate) fn serve(directory: &std::path::Path, display: &str) -> Result<(), Ta
             socket_path: Some(directory.join(display)),
             ..gnoblin_wayland::Config::default()
         },
+        providers: stock_providers(),
         ..SessionConfig::default()
     };
     std::thread::Builder::new()
