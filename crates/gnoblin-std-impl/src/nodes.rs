@@ -1,0 +1,113 @@
+//! Reads and writes of the tree's nodes the library makes through the core SDK.
+//!
+//! A read of a node that is gone, or of a property the schema lacks, yields the empty value of its kind instead of a failure: the
+//! library asks about windows and outputs that may close in the same batch, and a layout pass must not abort on one of them. A
+//! write that fails is logged by the caller's guard; the next pass tries again.
+
+use gnoblin_core::{Gnoblin, NodeId, Rect, Value};
+
+use crate::state::NodeId as Id;
+
+/// A handle on the node `id`.
+fn node(g: &Gnoblin, id: Id) -> gnoblin_core::Node {
+    g.node(NodeId(id))
+}
+
+/// Whether the node is in the tree as this turn sees it.
+pub(crate) fn alive(g: &Gnoblin, id: Id) -> bool {
+    node(g, id).is_alive()
+}
+
+/// A number property, `0` when it cannot be read.
+pub(crate) fn number(g: &Gnoblin, id: Id, key: &str) -> f64 {
+    node(g, id).get_f64(key).unwrap_or(0.0)
+}
+
+/// A boolean property, `false` when it cannot be read.
+pub(crate) fn flag(g: &Gnoblin, id: Id, key: &str) -> bool {
+    node(g, id).get_bool(key).unwrap_or(false)
+}
+
+/// A boolean property, `default` when it cannot be read.
+pub(crate) fn flag_or(g: &Gnoblin, id: Id, key: &str, default: bool) -> bool {
+    node(g, id).get_bool(key).unwrap_or(default)
+}
+
+/// A text property, empty when it cannot be read.
+pub(crate) fn text(g: &Gnoblin, id: Id, key: &str) -> String {
+    node(g, id).get_text(key).unwrap_or_default()
+}
+
+/// A property that refers to another node: `None` for nil and for what cannot be read.
+pub(crate) fn node_ref(g: &Gnoblin, id: Id, key: &str) -> Option<Id> {
+    node(g, id).get_node(key).ok().flatten().map(|other| other.id().0)
+}
+
+/// Whether the window is drawn: a window nothing has hidden is.
+pub(crate) fn visible(g: &Gnoblin, id: Id) -> bool {
+    node(g, id).get_bool("visible").unwrap_or(true)
+}
+
+/// The window's rectangle: what the shell wrote, or what the client committed until it did.
+pub(crate) fn rect_of(g: &Gnoblin, id: Id) -> Rect {
+    Rect::new(
+        number(g, id, "x"),
+        number(g, id, "y"),
+        number(g, id, "width"),
+        number(g, id, "height"),
+    )
+}
+
+/// A list of numbers (`rotation`, `scale`) as three components, `fallback` when it is not three numbers.
+pub(crate) fn triple(g: &Gnoblin, id: Id, key: &str, fallback: [f64; 3]) -> [f64; 3] {
+    match node(g, id).get(key) {
+        Ok(Value::List(list)) if list.len() == 3 => [list[0], list[1], list[2]],
+        _ => fallback,
+    }
+}
+
+/// Writes a number property when it differs from what the node holds.
+pub(crate) fn write_num(g: &Gnoblin, id: Id, key: &str, value: f64) {
+    if number(g, id, key) != value {
+        let _ = node(g, id).set(key, value);
+    }
+}
+
+/// Writes a boolean property when it differs from what the node holds.
+pub(crate) fn write_flag(g: &Gnoblin, id: Id, key: &str, value: bool) {
+    let held = node(g, id).get_bool(key).ok();
+    if held != Some(value) {
+        let _ = node(g, id).set(key, value);
+    }
+}
+
+/// Writes a three-component property when it differs from what the node holds.
+pub(crate) fn write_triple(g: &Gnoblin, id: Id, key: &str, value: [f64; 3], default: [f64; 3]) {
+    if triple(g, id, key, default) != value {
+        let _ = node(g, id).set(key, value.to_vec());
+    }
+}
+
+/// The first seat of the tree, or `None` for a tree with no seat (nothing then has the keyboard, and nothing is asked to).
+pub(crate) fn seat(g: &Gnoblin) -> Option<gnoblin_core::Node> {
+    let seat = g.class("seat").ok()?;
+    g.root()
+        .ok()?
+        .children()
+        .ok()?
+        .into_iter()
+        .find(|child| child.class().ok() == Some(seat))
+}
+
+/// The window that has the keyboard, among `clients`.
+pub(crate) fn focused_window(g: &Gnoblin, clients: &[Id]) -> Option<Id> {
+    clients.iter().copied().find(|client| flag(g, *client, "focused"))
+}
+
+/// Writes the four rectangle properties that differ from the window's own.
+pub(crate) fn write_rect(g: &Gnoblin, id: Id, rect: &Rect) {
+    write_num(g, id, "x", rect.x);
+    write_num(g, id, "y", rect.y);
+    write_num(g, id, "width", rect.width);
+    write_num(g, id, "height", rect.height);
+}

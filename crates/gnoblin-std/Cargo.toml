@@ -1,0 +1,27 @@
+[package]
+name = "gnoblin-std"
+description = "The Rust SDK for the optional Gnoblin desktop library: Client, Collection, Workspace, layouts and policies, as safe wrappers over the installed libgnoblin-std. It links the library and never contains a copy of it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[dependencies]
+# The core SDK: `Gnoblin`, `Window`, `Node`, `Rect`. The std SDK builds on it and re-exports what a shell author needs of it.
+gnoblin-core = { path = "../gnoblin-core" }
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-std-abi = { path = "../gnoblin-std-abi" }
+
+[build-dependencies]
+# The link stub runs in build.rs, so the helper code is a build dependency only.
+gnoblin-std-abi = { path = "../gnoblin-std-abi", features = ["build-support"] }
+
+# The workspace table forbids unsafe code; the SDK's FFI modules need it. Only the modules that open with
+# `#![allow(unsafe_code)]` and a SAFETY note use it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

@@ -1,0 +1,22 @@
+[package]
+name = "gnoblin-example-std-prelude"
+description = "Example 2: a desktop shell written on gnoblin-std. One floating workspace for every output, the windows that open join the workspace of their output, and a chord starts a terminal."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "std_prelude"
+crate-type = ["cdylib"]
+
+# A std shell depends on the std SDK and the core SDK, and nothing else: it links the installed `libgnoblin-std.so.1`, which in turn
+# links `libgnoblin-core.so.1`, and carries no copy of either. (`gnoblin-core = "1"` and `gnoblin-std = "1"` outside this workspace.)
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../crates/gnoblin-std" }
+
+# A shell author writes no unsafe code: the workspace table forbids it, and the macro's expansion needs none.
+[lints]
+workspace = true

@@ -1,0 +1,338 @@
+//! Opening the library for a generation, and what it hears from the core.
+//!
+//! `open` takes stock of the windows and outputs that exist, then watches the tree through the core's own subscriptions: a window
+//! appearing, going, and changing; an output appearing, going, and changing. Each handler updates the object model, queues the
+//! notices the shell's listeners are owed, posts a turn, and delivers what is queued, outside any borrow.
+
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use gnoblin_core::{Gnoblin, Value};
+use gnoblin_core_abi::GnoblinCtx;
+use gnoblin_std_abi as abi;
+
+use crate::collection::Source;
+use crate::desks::Policy;
+use crate::error::{Fail, Res};
+use crate::nodes;
+use crate::state::{self, ClientRec, Counters, NodeId, Notice, State, Std};
+use crate::turn::schedule;
+
+/// The window properties whose changes the library watches.
+const WINDOW_PROPERTIES: [&str; 12] = [
+    "title",
+    "app_id",
+    "focused",
+    "x",
+    "y",
+    "width",
+    "height",
+    "decoration",
+    "fullscreen",
+    "maximised",
+    "minimised",
+    "parent_window",
+];
+
+/// The screen properties whose changes the library watches.
+const SCREEN_PROPERTIES: [&str; 8] = ["x", "y", "width", "height", "mode", "enabled", "mirror_of", "primary"];
+
+impl State {
+    pub(crate) fn new(g: Gnoblin, ctx: GnoblinCtx) -> State {
+        let mut state = State {
+            g,
+            ctx,
+            opened: false,
+            clients: Vec::new(),
+            rec: HashMap::new(),
+            outputs: Vec::new(),
+            workspaces: Vec::new(),
+            ws: HashMap::new(),
+            colls: HashMap::new(),
+            roots: [0; 3],
+            desks: Vec::new(),
+            regs: HashMap::new(),
+            notices: Vec::new(),
+            graveyard: Vec::new(),
+            slides: Vec::new(),
+            holding: HashMap::new(),
+            policy: Policy::default(),
+            last_focus: None,
+            counters: Counters::default(),
+        };
+        let clients = state.new_root(abi::STD_COLLECTION_CLIENTS, Source::Clients);
+        let outputs = state.new_root(abi::STD_COLLECTION_OUTPUTS, Source::Outputs);
+        let workspaces = state.new_root(abi::STD_COLLECTION_WORKSPACES, Source::Workspaces);
+        state.roots = [clients, outputs, workspaces];
+        state
+    }
+
+    /// Starts tracking a window.
+    fn add_client(&mut self, id: NodeId, preexisting: bool) {
+        let position = nodes::rect_of(&self.g, id);
+        self.clients.push(id);
+        self.rec.insert(
+            id,
+            ClientRec {
+                preexisting,
+                last_pos: (position.x, position.y),
+                parent: nodes::node_ref(&self.g, id, "parent_window"),
+                ..ClientRec::default()
+            },
+        );
+    }
+
+    /// A window the library did not know came into the tree: the listeners hear it, and the window gets a workspace.
+    fn client_created(&mut self, id: NodeId) {
+        if self.rec.contains_key(&id) {
+            return;
+        }
+        self.add_client(id, false);
+        let root = self.roots[0];
+        self.notify_one(abi::STD_EVENT_ADDED, id, root);
+        self.recompute(abi::STD_COLLECTION_CLIENTS, id);
+        let holders = self.holders(abi::STD_COLLECTION_CLIENTS, id);
+        self.notices.push(Notice::new(abi::STD_EVENT_READY, id, holders));
+        // Before the first turn the windows wait: the turn gives them a workspace, once the shell has made its own.
+        if self.opened
+            && !self.place_dialog(id)
+            && let Some(target) = self.new_window_workspace()
+        {
+            self.move_client(id, Some(target), true);
+        }
+    }
+
+    /// A window left the tree: its listeners hear it close, it leaves its workspace and the clients, and the keyboard passes on.
+    fn client_destroyed(&mut self, id: NodeId) {
+        let Some(rec) = self.rec.get(&id) else {
+            return;
+        };
+        let (workspace, parent) = (rec.workspace, rec.parent);
+        let holders = self.holders(abi::STD_COLLECTION_CLIENTS, id);
+        self.notices.push(Notice::new(abi::STD_EVENT_CLOSED, id, holders));
+        let was_focused = self.last_focus == Some(id);
+        if let Some(wid) = workspace {
+            let index = self
+                .ws
+                .get(&wid)
+                .and_then(|ws| ws.clients.iter().position(|one| *one == id));
+            let removes = self.ws.get(&wid).is_some_and(|ws| ws.layout.handles_removal());
+            if let Some(ws) = self.ws.get_mut(&wid) {
+                ws.clients.retain(|one| *one != id);
+                ws.dirty = true;
+                let coll = ws.coll;
+                self.forget_arrival(wid, id);
+                self.notices.push(Notice::new(abi::STD_EVENT_REMOVED, id, vec![coll]));
+            }
+            if was_focused
+                && !removes
+                && let Some(index) = index
+            {
+                self.hand_off_focus(wid, index, parent);
+            }
+        }
+        self.clients.retain(|one| *one != id);
+        let root = self.roots[0];
+        self.notify_one(abi::STD_EVENT_REMOVED, id, root);
+        self.rec.remove(&id);
+        self.recompute(abi::STD_COLLECTION_CLIENTS, id);
+    }
+
+    /// A window property changed.
+    fn client_changed(&mut self, id: NodeId, property: &str, value: &Value) {
+        if !self.rec.contains_key(&id) {
+            return;
+        }
+        let holders = self.holders(abi::STD_COLLECTION_CLIENTS, id);
+        let text = value.as_str().unwrap_or_default().to_owned();
+        let mut push = |kind: u32, text: String, flag: u32| {
+            let mut notice = Notice::new(kind, id, holders.clone());
+            notice.text = text;
+            notice.flag = flag;
+            self.notices.push(notice);
+        };
+        match property {
+            "title" => push(abi::STD_EVENT_TITLE_CHANGED, text, 0),
+            "app_id" => push(abi::STD_EVENT_APP_ID_CHANGED, text, 0),
+            "focused" => push(
+                abi::STD_EVENT_FOCUS_CHANGED,
+                String::new(),
+                u32::from(value.as_bool().unwrap_or(false)),
+            ),
+            "decoration" => {
+                push(abi::STD_EVENT_DECORATION_CHANGED, text, 0);
+                // The frame's room round the window came or went: the workspace's layout places it again.
+                if let Some(ws) = self
+                    .rec
+                    .get(&id)
+                    .and_then(|rec| rec.workspace)
+                    .and_then(|workspace| self.ws.get_mut(&workspace))
+                {
+                    ws.dirty = true;
+                }
+            }
+            "x" | "y" | "width" | "height" => {
+                if let Some(rec) = self.rec.get_mut(&id) {
+                    rec.geometry_pending = true;
+                }
+                if property == "x" || property == "y" {
+                    self.dialogs_follow(id);
+                }
+            }
+            "parent_window" => {
+                let parent = nodes::node_ref(&self.g, id, "parent_window");
+                if let Some(rec) = self.rec.get_mut(&id) {
+                    rec.parent = parent;
+                }
+                self.place_dialog(id);
+            }
+            _ => {}
+        }
+        self.recompute(abi::STD_COLLECTION_CLIENTS, id);
+    }
+
+    /// A dialog moves with its parent.
+    fn dialogs_follow(&mut self, parent: NodeId) {
+        let now = nodes::rect_of(&self.g, parent);
+        let Some(rec) = self.rec.get_mut(&parent) else {
+            return;
+        };
+        let (dx, dy) = (now.x - rec.last_pos.0, now.y - rec.last_pos.1);
+        rec.last_pos = (now.x, now.y);
+        if dx == 0.0 && dy == 0.0 {
+            return;
+        }
+        for dialog in self.dialogs_of(parent) {
+            let own = nodes::rect_of(&self.g, dialog);
+            nodes::write_num(&self.g, dialog, "x", own.x + dx);
+            nodes::write_num(&self.g, dialog, "y", own.y + dy);
+        }
+    }
+
+    /// An output came into the tree.
+    fn output_created(&mut self, id: NodeId) {
+        if self.outputs.contains(&id) {
+            return;
+        }
+        self.outputs.push(id);
+        let root = self.roots[1];
+        self.notify_one(abi::STD_EVENT_ADDED, id, root);
+        self.recompute(abi::STD_COLLECTION_OUTPUTS, id);
+        self.output_added(id);
+    }
+
+    /// An output left the tree.
+    fn output_destroyed(&mut self, id: NodeId) {
+        if !self.outputs.contains(&id) {
+            return;
+        }
+        self.outputs.retain(|one| *one != id);
+        let root = self.roots[1];
+        self.notify_one(abi::STD_EVENT_REMOVED, id, root);
+        self.recompute(abi::STD_COLLECTION_OUTPUTS, id);
+        self.output_left(id);
+    }
+
+    /// An output property changed.
+    fn output_property(&mut self, id: NodeId, property: &str, value: &Value) {
+        if !self.outputs.contains(&id) {
+            return;
+        }
+        let holders = self.holders(abi::STD_COLLECTION_OUTPUTS, id);
+        match property {
+            "x" | "y" | "width" | "height" => {
+                let mut notice = Notice::new(abi::STD_EVENT_GEOMETRY_CHANGED, id, holders);
+                notice.rect = crate::desks::output_rect(&self.g, id).unwrap_or_default();
+                self.notices.push(notice);
+                // The area the workspaces are laid out in changed: each recomputes when it sees the new one.
+                for ws in self.ws.values_mut() {
+                    ws.dirty = true;
+                }
+            }
+            "mode" => {
+                let mut notice = Notice::new(abi::STD_EVENT_MODE_CHANGED, id, holders);
+                notice.text = value.as_str().unwrap_or_default().to_owned();
+                self.notices.push(notice);
+            }
+            "enabled" | "mirror_of" => self.output_changed(id),
+            _ => {}
+        }
+        self.recompute(abi::STD_COLLECTION_OUTPUTS, id);
+    }
+}
+
+/// Runs a handler over the state, then posts a turn and tells the listeners what it queued.
+fn handle(std: &Rc<Std>, f: impl FnOnce(&mut State)) {
+    f(&mut std.st.borrow_mut());
+    schedule(std);
+    std.drain();
+}
+
+/// Attaches the library to the generation `ctx`.
+///
+/// # Errors
+///
+/// The core refuses the ABI, the tree cannot be attached, or a subscription is refused.
+pub(crate) fn open(ctx: GnoblinCtx) -> Res<()> {
+    if state::find(ctx).is_some() {
+        return Ok(());
+    }
+    let g = gnoblin_core::private::gnoblin_for(ctx)?;
+    g.attach()?;
+    let mut st = State::new(g.clone(), ctx);
+    for window in g.windows()? {
+        st.add_client(window.id().0, true);
+    }
+    let screen = g.class("screen")?;
+    for child in g.root()?.children()? {
+        if child.class()? == screen {
+            st.outputs.push(child.id().0);
+        }
+    }
+    for output in st.outputs.clone() {
+        st.output_added(output);
+    }
+    let std = Rc::new(Std::new(st));
+    state::insert(ctx, Rc::clone(&std));
+    if let Err(fail) = subscribe(&std, &g) {
+        state::remove(ctx);
+        return Err(fail);
+    }
+    schedule(&std);
+    Ok(())
+}
+
+/// The core subscriptions that keep the object model current. Each closure holds the library state, which the generation's
+/// retirement frees with the subscription.
+fn subscribe(std: &Rc<Std>, g: &Gnoblin) -> Res<()> {
+    let ctx = std.st.borrow().ctx;
+    g.on_shutdown(move || state::retire(ctx))?;
+
+    let created = Rc::clone(std);
+    g.on_client_created(move |window| handle(&created, |st| st.client_created(window.id().0)))?;
+    let destroyed = Rc::clone(std);
+    g.on_client_destroyed(move |window| handle(&destroyed, |st| st.client_destroyed(window.id().0)))?;
+    for property in WINDOW_PROPERTIES {
+        let changed = Rc::clone(std);
+        g.on_window_property_changed(property, move |window, value| {
+            handle(&changed, |st| st.client_changed(window.id().0, property, value));
+        })?;
+    }
+
+    let appeared = Rc::clone(std);
+    g.on_node_created("screen", move |node| {
+        handle(&appeared, |st| st.output_created(node.id().0))
+    })?;
+    let gone = Rc::clone(std);
+    g.on_node_destroyed("screen", move |node| {
+        handle(&gone, |st| st.output_destroyed(node.id().0))
+    })?;
+    for property in SCREEN_PROPERTIES {
+        let changed = Rc::clone(std);
+        g.on_class_property_changed("screen", property, move |node, value| {
+            handle(&changed, |st| st.output_property(node.id().0, property, value));
+        })
+        .map_err(Fail::from)?;
+    }
+    Ok(())
+}

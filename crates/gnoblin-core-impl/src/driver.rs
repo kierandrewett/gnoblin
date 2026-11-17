@@ -66,10 +66,14 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             (Some("retain"), Some(shell), limit, _) => retain(&shell, limit.as_deref()),
             (Some("unload"), Some(safe), Some(unsure), Some(plain)) => unload(&safe, &unsure, &plain),
             (Some("example01"), Some(shell), _, _) => crate::driver_examples::minimal(&shell),
+            (Some("example02"), Some(shell), _, _) => crate::driver_examples::std_prelude(&shell),
+            (Some("example06"), Some(shell), _, _) => crate::driver_examples::rust_layout(&shell),
             (Some("example08"), Some(shell), _, _) => crate::driver_examples::tiler(&shell),
+            (Some("std_layouts"), Some(shell), _, _) => crate::driver_examples::std_layouts(&shell),
+            (Some("std_bindings"), Some(shell), _, _) => crate::driver_examples::std_bindings(&shell),
             _ => {
                 out!(
-                    "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|retain|unload|reload|example01|example08> MODULE..."
+                    "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|retain|unload|reload|example01|example02|example06|example08|std_layouts|std_bindings> MODULE..."
                 );
                 2
             }
@@ -140,7 +144,8 @@ pub(crate) fn maps_line() {
             shells.insert(path.to_owned());
         }
     }
-    let std_copies = maps
+    // One library maps in several segments, one line each: count the files.
+    let std_copies: std::collections::BTreeSet<&str> = maps
         .lines()
         .filter_map(|line| line.split_whitespace().nth(5))
         .filter(|path| {
@@ -148,11 +153,12 @@ pub(crate) fn maps_line() {
                 .next()
                 .is_some_and(|name| name.contains("gnoblin-std") || name.contains("gnoblin_std"))
         })
-        .count();
+        .collect();
     out!(
-        "maps core_copies={} shell_mappings={} std_mappings={std_copies}",
+        "maps core_copies={} shell_mappings={} std_mappings={}",
         cores.len(),
-        shells.len()
+        shells.len(),
+        std_copies.len()
     );
     for core in &cores {
         out!("maps core_path={core}");

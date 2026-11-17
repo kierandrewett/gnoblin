@@ -54,8 +54,10 @@ subcommands:
   stage [--release | --profile NAME] [--no-build]
                      build gnoblin-core-impl and name it libgnoblin-core.so.1 beside the binary, so `cargo build -p gnoblin`
                      output runs; see xtask/src/stage.rs
-  abi-check [--update]  fail when crates/gnoblin-core-abi/abi.lock and the ABI crate disagree, or a released entry changed
-  abi-header [--out FILE]  write the C header (include/gnoblin/core.h) generated from the ABI crate";
+  abi-check [--update]  fail when crates/gnoblin-core-abi/abi.lock or crates/gnoblin-std-abi/abi.lock and its ABI crate
+                     disagree, or a released entry changed
+  abi-header [--std] [--out FILE]  write the C header generated from the ABI crate (include/gnoblin/core.h, or std.h
+                     with --std)";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);

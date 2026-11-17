@@ -2,8 +2,13 @@
 //!
 //! A doc comment on an item is captured and carried into the entry so the generated C header keeps it. A field may carry
 //! `#[cfg(...)]`, which gates both the field and its entry.
+//!
+//! The macros are exported (hidden from the docs) so that `gnoblin-std-abi`, the C table of `libgnoblin-std`, declares its
+//! types with the same code and is described by the same `reflect` data, `abi.lock` check and C header generator.
 
 /// Handle typedefs: `pub type GnoblinCtx = u64;`.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! abi_aliases {
     ($(
         $(#[doc = $doc:literal])*
@@ -25,6 +30,8 @@ macro_rules! abi_aliases {
 }
 
 /// Callback typedefs: `pub type GnoblinDropFn = unsafe extern "C" fn(user: *mut c_void);`.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! abi_callbacks {
     ($(
         $(#[doc = $doc:literal])*
@@ -46,6 +53,8 @@ macro_rules! abi_callbacks {
 }
 
 /// Integer constants: `pub const E_OK: i32 = 0;`.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! abi_consts {
     ($(
         $(#[doc = $doc:literal])*
@@ -68,6 +77,8 @@ macro_rules! abi_consts {
 }
 
 /// `repr(C)` structs. Declaration order is the C header's order, so a struct used by value comes before its user.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! abi_structs {
     ($(
         $(#[doc = $sdoc:literal])*
@@ -118,6 +129,8 @@ macro_rules! abi_structs {
 
 /// The direct exports of the core library. Each entry names a type alias for the function, so the implementation and
 /// the SDK can assert at compile time that their definition has the declared signature.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! abi_exports {
     ($(
         $(#[doc = $doc:literal])*

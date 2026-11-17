@@ -1,0 +1,20 @@
+[package]
+name = "gnoblin-example-rust-layout"
+description = "Example 6: a tiling layout written in Rust. A Layout implementation arranges the clients of a workspace in equal columns, and a chord swaps the focused window with the first."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "rust_layout"
+crate-type = ["cdylib"]
+
+# The std SDK and the core SDK, and nothing else: the shell links the installed libraries and carries no copy of either.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../crates/gnoblin-std" }
+
+[lints]
+workspace = true

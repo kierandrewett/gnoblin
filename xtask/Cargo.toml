@@ -15,6 +15,8 @@ gnoblin-schema = { path = "../crates/gnoblin-schema" }
 # `abi-check` and `abi-header` read the ABI crate's own declarations (layouts, constants, exports), so the lock and
 # the C header are computed from what the compiler saw. `dist-check` and the dist tests also build its link stub.
 gnoblin-core-abi = { path = "../crates/gnoblin-core-abi", features = ["build-support"] }
+# The std library's ABI is read the same way: its lock, its header and its link stub (`gnoblin-std-abi`).
+gnoblin-std-abi = { path = "../crates/gnoblin-std-abi", features = ["build-support"] }
 
 # The duplicate-type report parses every crate's Rust source, so it needs the
 # parser rather than a pattern match. These are build-tool dependencies only:

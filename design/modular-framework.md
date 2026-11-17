@@ -1393,3 +1393,120 @@ New core tests:
 - `portal::provider` tests `NoUi`, in both builds.
 - `ipc::portal::no_ui_tests` runs the service over `NoUi`, in both builds.
 - `xwayland::core_tests` runs an X11 window's open, close and role over `NullWm`, in both builds.
+## 22. Implementation notes, M7.1 to M7.5 (StdNative, first part)
+
+What the StdNative lane built against the fake compositor, where it differs from sections 4, 5, 9 and 13, and what is not done.
+
+### 22.1 The library, its ABI and its SDK (M7.1)
+
+- **`gnoblin-std-abi` is a crate of its own** (decision for section 4.1's "or inside `gnoblin-core-abi`"). The arrow of the design runs one
+  way: std builds on core and the core never names std. A std table declared in `gnoblin-core-abi` would compile std's types into the core's
+  layout manifest and put std's churn into the core's `abi.lock`, which is the file whose stability the core promises. The leaf depends on
+  `gnoblin-core-abi` for handles, `GnoblinStr`, the error codes and the declaration macros (their `$crate` paths are now relative to
+  the invoking crate so another crate may use them), and is the one both `gnoblin-std-impl` and `gnoblin-std` compile. It owns
+  `exports.txt` (three symbols: `gnoblin_std_abi_version`, `gnoblin_std_get_api`, `gnoblin_std_last_error`), `abi.lock` and the stub
+  helper. The table `GnoblinStdApi` is versioned like the core's: a function added in a later minor is invisible to an earlier shell.
+- **`gnoblin-std-impl`** is the cdylib (`libgnoblin_std_impl.so`, SONAME `libgnoblin-std.so.1`, `-z nodelete`, `-z defs`, run path
+  `$ORIGIN` so the sibling core is found when the library is mapped alone). It names the core only through `gnoblin-core` (the SDK) and
+  the two ABI crates, as a shell's guest: `open(ctx)` takes the generation's handle through the new `gnoblin_core::private::gnoblin_for`
+  and attaches to the tree like a shell does. `readelf -d` shows NEEDED `libgnoblin-core.so.1` and nothing else of ours, `nm -D` the
+  three exports and no core symbol (asserted by `crates/gnoblin-std-impl/tests/examples.rs` and by `dist-check`). `std-below-core` and
+  `impl-sealed` pass: `gnoblin-std-impl` is not a Rust dependency of anything but its own tests.
+- **`gnoblin-std`** is the SDK (`Std`, `Client`, `Collection`, `Workspace`, `Layout`, `Emitter`, the bindings). It links `-lgnoblin-std`
+  through the same stub mechanism as the core: `gnoblin_core_abi::build_support::StubSpec` names a library, its SONAME, its exports and
+  its `*_LIB_DIR` variable, and `gnoblin_std_abi::build_support::link_std` fills one in (`GNOBLIN_STD_LIB_DIR` points at a real library).
+  A std shell records NEEDED `libgnoblin-std.so.1` and `libgnoblin-core.so.1`, defines only `gnoshell_entry_v1`, and the process maps one
+  core, one std and one shell.
+- **A shell that does not use std never loads it** (test: `a_core_only_shell_never_loads_the_std_library_even_from_a_prefix_that_has_it`
+  runs example 1 from a prefix that holds `libgnoblin-std.so.1` on the loader's path and counts the mappings). There is no constructor:
+  `g.std()` is the only thing that touches the library, and a shell that does not call it does not name it.
+- **Example 17.** `example_17_a_core_only_shell_runs_without_the_std_library_installed` runs example 1 from a prefix with no std library;
+  `example_17_a_std_shell_without_the_library_fails_naming_it` loads example 2 there and gets the loader's text, which names the file:
+  `cannot load the shell library: libgnoblin-std.so.1: cannot open shared object file: No such file or directory`. A friendlier text for
+  the Python and JS runtimes belongs to their lanes. `NullWm` in force without std is the provider mechanism of 9.4 and is **not built**
+  (see 22.6).
+- **Private prefixes.** A shell finds `libgnoblin-std.so.1` through the loader's own search: an install under `/usr` (any libdir the
+  loader searches) works with nothing set. A shell in a private prefix has no run path, so it needs `LD_LIBRARY_PATH` or its own
+  `-Wl,-rpath`; the tests set `LD_LIBRARY_PATH` to the prefix. This is the same limit as any dlopen'd library with dependencies.
+- **xtask.** `abi-check` and `abi-header` take a target (core or std) with a lock each (`crates/gnoblin-std-abi/abi.lock`, 197 entries,
+  `include/gnoblin/std.h`, which includes `core.h`); `stage` builds and links `libgnoblin-std.so.1` and `libgnoblin-std.so` beside the
+  core and refuses a library `dist-check` would refuse; `dist install` installs the versioned file with its SONAME and linker links,
+  `std.h` and `gnoblin-std.pc` (`Requires: gnoblin-core`); `dist-check` checks the library (SONAME, NODELETE, exact exports, NEEDED core only),
+  the links, the header, the `.pc` and a C program linked through `pkg-config gnoblin-std` that reports the std ABI version. `just
+dist-check` passes `--std-shell` for example 2 in all four trees. A tree without the std library is still a valid install (example 17).
+  Observed on the box: `dist-check` all checks passed for the private prefix and the `lib64` stage.
+- **Core additions the library needed**, all additive and in the core SDK only: `gnoblin_core::private::gnoblin_for`, `Gnoblin::window_handle`,
+  `Gnoblin::on_node_created/on_node_destroyed` by class and `on_window_property_changed` by property.
+
+### 22.2 Client, collections, listeners and emitters (M7.2)
+
+- The object model lives in the library, one per generation (`state.rs`): clients, outputs, workspaces, desks, collections, listeners. The one
+  rule about callbacks is the core's: the library never runs a shell callback inside a table call and never while it holds a borrow of its
+  state; changes are announced from the turn that follows the dispatch (`turn.rs`), with the other events of that turn. A handle that
+  outlives its generation fails with `Retired`.
+- `Collection<T>` over clients, outputs and workspaces is live (`len`, `to_vec`, `at`, `get`, `find`, `filter`, `sorted_by`, `iter`), narrows
+  with `where_(&Query)` and follows the members as they change (a tracked view announces members that stop matching), and listens with
+  closures (`on_added`, `watch`, `on_removed`, `on_title_changed` and the other client events) or listener objects
+  (`add_listener(ClientListener)`, `add_membership_listener(CollectionListener)`), each returning a `Subscription` (`.scoped()` for a
+  guard). `Emitter<E>` is the events of a shell's own, plain Rust (listeners in order, a listener may remove itself, one added while
+  emitting hears the next event).
+- `Subscription` is not `#[must_use]`: `clients.on_added(..)?;` as a statement is the ordinary way to listen for the life of the shell.
+
+### 22.3 Workspaces and policies (M7.3)
+
+- `Workspace` (id, name, gaps, layout, clients, `show`, `show_on(output, ShowOptions::slide(..))`, `walk`, `swap`, list membership),
+  `WorkspacePolicy::PerOutput` (one workspace per output, made as outputs appear and removed with them, their windows moving to one that
+  stays), `OutputPolicy::{Separate, Duplicate, Extend}` as in `data/js/gnoblin-std/host/{policy,desks,displays}.ts`. A window that opens
+  joins the workspace of the output the pointer is on; dialogs follow their parent; the keyboard passes to the neighbour when a window
+  closes (unless the layout keeps its own record).
+- The floating layout is the library's (`floating.rs`: smart, centre and cascade placement, the grid of free spots, the refit to a new work
+  area). The dirty-driven pass is the TypeScript layout driver's: a layout is asked when the workspace changed, placements are tree writes,
+  a placement the compositor refused or lost is written again.
+- **Parity.** `floating_placement_matches_the_typescript_std` runs the same compositor script over the TypeScript std (in this process,
+  through `JsShell`) and the native shell (in the launcher) and compares every window's rectangle: equal. No mismatch is accepted.
+
+### 22.4 Layouts (M7.4)
+
+- `Layout` is a Rust trait (`compute(&mut self, &LayoutContext) -> Vec<Placement>`, plus hooks for add, remove, area change, swap, a
+  revision counter and focus handling). The SDK hands the library a C vtable (`GnoblinStdLayoutVtable` and a `user` pointer with `drop_user`)
+  whose trampolines call the trait object inside `catch_unwind`; the library cannot tell it from its own floating layout. The same
+  vtable is what a Python or JS runtime fills with closures: **the extension point for the scripting layouts is the vtable, and it is built**.
+  A layout runs outside every lock of the library and may call back into the SDK.
+- The library's tiling layouts are Rust values on that trait (`layouts.rs`): `MasterStackLayout` (ratio, master count, gap, four
+  orientations), `GridLayout` (auto or fixed columns, row or column fill, gap) and `MonocleLayout`. They port
+  `data/js/gnoblin-std/layouts/{master-stack,grid,monocle}.ts` line for line, including the flooring of every tile edge on its own.
+  `the_native_tiling_layouts_match_the_typescript_std` switches four windows through six layouts and a close, over the TypeScript std and the
+  native one, and compares all rectangles: equal. **Not ported:** `dwindle`, `strip`, `arc` and `kiosk`: they keep a tree or a record of
+  who sits where and ship pointer-swap and resize triggers; they come with the tiling bindings below.
+- **Example 6** (`examples/06-rust-layout`): a `Columns` layout over a workspace with gaps; windows open, a chord swaps two, one closes;
+  every rectangle is asserted (`example_6_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_close`).
+
+### 22.5 Pointer bindings (M7.5)
+
+- `DragBinding` (a trait: `trigger`, `threshold`, `on_start`, `on_update`, `on_end`, `on_cancel`), `Std::bind_drag`, `ClientMoveBinding`
+  (`Super+Button1`, held inside the work area by the seat's `drag_constraint`), `ClientResizeBinding` (`Super+Button3`, grip by quadrant,
+  nearest side or a fixed corner, the 100 by 80 floor). The state machine is `data/js/gnoblin-core/input/pointer.ts`'s: the press records
+  its origin and the window under it, the drag starts past the threshold and says where the press was, a binding that declines leaves the
+  press a press, a cancel gives the window back its rectangle. Tested through the fake compositor's pointer chords
+  (`pointer_drags_move_and_resize_windows_and_a_binding_of_the_shells_own_runs`): below the threshold, held in, cancelled, on nothing,
+  three resizes including the stop at the smallest size, and a custom binding.
+- **Not done, with reasons.** Edge snapping of a dragged window into tiled zones (needs `gnoblin-std/snap`, which has no native
+  counterpart); the frame inset in the move constraint (not in the std ABI); the window's own min and max size in the resize (not read);
+  floating bounds remembered after a drag; the tiling swap and split-resize bindings (`bindings/tiling.ts`, which the unported layouts
+  need); a gesture binding class over `Gnoblin::bind_gesture` (the core call exists and works, the std class does not); the competition
+  between several bindings on one trigger (the SDK keeps one binding per claim). The work area is the output's rectangle.
+- **Example 7** (a chord claimed in a script that runs a script closure) is TypeScript and Python by definition. What the native side
+  offers it is already in the core (`bind`, `bind_pointer`) and in the layout vtable; the script bindings of std (`Binding` classes over
+  the table) wait for the runtimes (M6).
+
+### 22.6 What is missing, and what the next lanes need
+
+- **Provider registration (9.4).** `libgnoblin-std.so.1` does not yet register the WM, a11y, bell and `SLOT_UI` providers when `open` runs: the
+  StdMove and Flip lanes own the providers and the `std-providers` feature of the compositor; when they land, `open` registers them through
+  the core's `provider_register` and example 17 gains its "no provider registered, `NullWm` in force" assertion.
+- **Animation, styling, camera (M7.6)**, **Python std (M7.7)**, **JS convergence (M7.8)** and **the shader pass (M7.9)** are not started.
+  The std ABI has no function for them yet; each adds functions at the end of `GnoblinStdApi` (a minor bump) and a family in `exports.txt`
+  is not needed (everything goes through `gnoblin_std_get_api`).
+- **Real compositor.** Everything above is proven against the fake compositor. The examples run against the real one when Flip lands the
+  compositor into `libgnoblin-core.so.1`; the parts most likely to differ are the refusal and resend of placements and the pointer's
+  output for a new window.

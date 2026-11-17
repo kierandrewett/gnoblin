@@ -581,6 +581,13 @@ impl Gnoblin {
         Window::from_node(self.node(id))
     }
 
+    /// A handle on the window with this id, without checking that it is one: like [`Gnoblin::node`], for an id the caller knows
+    /// (a window that has just closed, whose id an event carries). Reads and writes through it fail with `NoSuchNode` once the
+    /// window is gone.
+    pub fn window_handle(&self, id: NodeId) -> Window {
+        Window::new(self.clone(), id)
+    }
+
     /// Makes a node of class `class` (a tree class such as `canvas`) and returns it. It exists in this shell's reads at once and
     /// in the compositor when the tick's transaction is applied; insert it into the tree to show it.
     pub fn create_node(&self, class: &str) -> Result<Node> {

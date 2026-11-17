@@ -1530,6 +1530,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-rust-layout"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
+name = "gnoblin-example-std-prelude"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
 name = "gnoblin-fixture-launcher"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1537,10 +1553,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-fixture-shell-bindings"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
 name = "gnoblin-fixture-shell-hot"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",
+]
+
+[[package]]
+name = "gnoblin-fixture-shell-layouts"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
 ]
 
 [[package]]
@@ -2039,6 +2071,36 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "gnoblin-std"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-core-abi",
+ "gnoblin-std-abi",
+]
+
+[[package]]
+name = "gnoblin-std-abi"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+]
+
+[[package]]
+name = "gnoblin-std-impl"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-core-abi",
+ "gnoblin-js",
+ "gnoblin-shell-host",
+ "gnoblin-std-abi",
+ "gnoblin-testkit",
+ "gnoblin-tree-client",
+ "tempfile",
 ]
 
 [[package]]
@@ -5177,6 +5239,7 @@ dependencies = [
  "gnoblin-core-abi",
  "gnoblin-schema",
  "gnoblin-shell-host",
+ "gnoblin-std-abi",
  "proc-macro2",
  "quote",
  "serde",

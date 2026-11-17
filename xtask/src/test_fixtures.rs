@@ -75,6 +75,36 @@ pub fn good_core(dir: &Path) -> PathBuf {
     dir.join("libgnoblin-core.so")
 }
 
+/// A std-like library in `dir`, named `libgnoblin-std.so` (the linker name): SONAME `libgnoblin-std.so.1`, `NODELETE`, exactly the
+/// std exports, linked against the core in the same directory (which `good_core` made).
+pub fn good_std(dir: &Path) -> PathBuf {
+    let mut source = String::from("extern int gnoblin_get_api(unsigned, unsigned, const void **);\n");
+    for symbol in gnoblin_std_abi::export_names() {
+        if symbol == "gnoblin_std_get_api" {
+            source.push_str("void gnoblin_std_get_api(void) { gnoblin_get_api(1, 0, 0); }\n");
+        } else {
+            source.push_str(&format!("void {symbol}(void) {{}}\n"));
+        }
+    }
+    cc(
+        dir,
+        "std.c",
+        &source,
+        &[
+            "-shared",
+            "-fPIC",
+            "-L",
+            ".",
+            "-lgnoblin-core",
+            "-Wl,-soname,libgnoblin-std.so.1",
+            "-Wl,-z,nodelete",
+            "-o",
+            "libgnoblin-std.so",
+        ],
+    );
+    dir.join("libgnoblin-std.so")
+}
+
 /// The source of a shell's one export. It references a core symbol, so a linker that drops unused libraries
 /// (`--as-needed`, the default on Debian derivatives) still records the core as NEEDED.
 pub const ENTRY: &str = "extern int gnoblin_get_api(unsigned, unsigned, const void **);\n\

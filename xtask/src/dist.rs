@@ -45,6 +45,10 @@ const LIBDIR_TOKEN: &str = "@LIBDIR@";
 const LINK_PREFIX: &str = "symlink:";
 /// What cargo names the core's `cdylib` (`libgnoblin_core_impl.so`); dist installs it under the SONAME's name.
 const CORE_BUILT_NAME: &str = "libgnoblin_core_impl.so";
+
+/// What cargo names the std library's `cdylib` (`libgnoblin_std_impl.so`); dist installs it under the SONAME's name too.
+const STD_BUILT_NAME: &str = "libgnoblin_std_impl.so";
+
 /// What the manifest records for a directory the install made, where a file has its sha256: the directory is ours while it
 /// stays empty, and is removed with the install only then (another package may install into it).
 const DIR_DIGEST: &str = "dir";
@@ -124,6 +128,10 @@ enum Generated {
     CoreHeader,
     /// `<libdir>/pkgconfig/gnoblin-core.pc`.
     CorePkgConfig,
+    /// `include/gnoblin/std.h`.
+    StdHeader,
+    /// `<libdir>/pkgconfig/gnoblin-std.pc`.
+    StdPkgConfig,
 }
 
 /// What the session installs. The optional packages (ananicy rules, the GeoClue authorisation file)
@@ -217,6 +225,26 @@ const ITEMS: &[InstallItem] = &[
         to: "@LIBDIR@/pkgconfig/gnoblin-core.pc",
         kind: Generated::CorePkgConfig,
         requires_built: CORE_BUILT_NAME,
+    },
+    // The std library, the same way: the versioned file with its SONAME and linker links, its header (which includes core.h) and its
+    // pkg-config file (which requires gnoblin-core). Only when the build wrote it: a tree without it is a tree whose shells use the core
+    // alone, which is a supported install (example 17).
+    InstallItem::BuiltLibrary {
+        name: STD_BUILT_NAME,
+        stem: "libgnoblin-std",
+        major: gnoblin_std_abi::ABI_MAJOR,
+        minor: gnoblin_std_abi::ABI_MINOR,
+        patch: gnoblin_std_abi::ABI_PATCH,
+    },
+    InstallItem::Generated {
+        to: "include/gnoblin/std.h",
+        kind: Generated::StdHeader,
+        requires_built: STD_BUILT_NAME,
+    },
+    InstallItem::Generated {
+        to: "@LIBDIR@/pkgconfig/gnoblin-std.pc",
+        kind: Generated::StdPkgConfig,
+        requires_built: STD_BUILT_NAME,
     },
     // The stock JavaScript library as installed data (`share/gnoblin/js/<package>/`). The runtime still embeds a copy and
     // falls back to it, so these are read when the JavaScript runtime moves to the loader; they are installed now so the
@@ -654,6 +682,13 @@ fn plan(repo: &Path, built: &Path, libdir: &str) -> Result<Vec<Planned>, DistErr
                             false,
                         ),
                         Generated::CorePkgConfig => (core_pkg_config(libdir).into_bytes(), true),
+                        Generated::StdHeader => (
+                            crate::abi_c::render_header_with(&gnoblin_std_abi::reflection(), &crate::abi_c::STD_HEADER)
+                                .map_err(DistError::Generate)?
+                                .into_bytes(),
+                            false,
+                        ),
+                        Generated::StdPkgConfig => (std_pkg_config(libdir).into_bytes(), true),
                     };
                     planned.push(Planned {
                         to: expand_libdir(to, libdir),
@@ -734,19 +769,49 @@ fn expand_libdir(to: &str, libdir: &str) -> String {
 /// a relocated or staged install still names its own location; a consumer can override it with
 /// `pkg-config --define-variable=prefix=...`.
 fn core_pkg_config(libdir: &str) -> String {
+    pkg_config(
+        libdir,
+        "gnoblin-core",
+        "The Gnoblin compositor core library: the shell ABI",
+        (
+            gnoblin_core_abi::ABI_MAJOR,
+            gnoblin_core_abi::ABI_MINOR,
+            gnoblin_core_abi::ABI_PATCH,
+        ),
+        None,
+    )
+}
+
+/// `gnoblin-std.pc`: the std library builds on the core's, so a consumer that asks for it gets both.
+fn std_pkg_config(libdir: &str) -> String {
+    pkg_config(
+        libdir,
+        "gnoblin-std",
+        "The Gnoblin desktop library above the core: clients, collections, workspaces and layouts",
+        (
+            gnoblin_std_abi::ABI_MAJOR,
+            gnoblin_std_abi::ABI_MINOR,
+            gnoblin_std_abi::ABI_PATCH,
+        ),
+        Some("gnoblin-core"),
+    )
+}
+
+/// A pkg-config file for one of the libraries, with `requires` as its dependency on the other.
+fn pkg_config(libdir: &str, name: &str, description: &str, version: (u32, u32, u32), requires: Option<&str>) -> String {
+    let requires = requires.map_or_else(String::new, |module| format!("Requires: {module}\n"));
     format!(
         "prefix={PLACEHOLDER}\n\
          libdir=${{prefix}}/{libdir}\n\
          includedir=${{prefix}}/include\n\
          \n\
-         Name: gnoblin-core\n\
-         Description: The Gnoblin compositor core library: the shell ABI\n\
+         Name: {name}\n\
+         Description: {description}\n\
          Version: {}.{}.{}\n\
-         Libs: -L${{libdir}} -lgnoblin-core\n\
+         {requires}\
+         Libs: -L${{libdir}} -l{name}\n\
          Cflags: -I${{includedir}}\n",
-        gnoblin_core_abi::ABI_MAJOR,
-        gnoblin_core_abi::ABI_MINOR,
-        gnoblin_core_abi::ABI_PATCH,
+        version.0, version.1, version.2,
     )
 }
 

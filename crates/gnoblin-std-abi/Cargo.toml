@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-std-abi"
+description = "The C ABI of libgnoblin-std: repr(C) types, the versioned function table, the export list and the layout manifest the std abi.lock check reads. It builds on the core ABI and is the leaf both the std library and the std SDK compile."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# The link-stub helper a `build.rs` calls (`build_support`). The std SDK turns it on for its build dependency only, so no
+# shell carries the code.
+build-support = ["gnoblin-core-abi/build-support"]
+
+[dependencies]
+# The handle types, the string and error conventions and the declaration macros the std table is written with.
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+
+# The table is only declarations: function-pointer types and `repr(C)` structs. No unsafe code is written here.
+[lints]
+workspace = true

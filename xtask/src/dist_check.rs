@@ -179,14 +179,42 @@ pub fn check_std_shell(elf: &Elf) -> Vec<String> {
     problems
 }
 
-/// The std library: its own SONAME, and the core it builds on, never the reverse.
+/// The std library: its own SONAME, `NODELETE`, exactly the exports of its `exports.txt`, and the core it builds on (and nothing else
+/// of ours), never the reverse.
 pub fn check_std_library(elf: &Elf) -> Vec<String> {
     let mut problems = Vec::new();
     if elf.soname.as_deref() != Some(STD_SONAME) {
         problems.push(format!("SONAME is {:?}, expected `{STD_SONAME}`", elf.soname));
     }
+    if !elf.is_nodelete() {
+        problems.push("is not linked with `-z nodelete` (FLAGS_1 lacks NODELETE): a retired shell generation's registrations point into it".to_owned());
+    }
     if !elf.needed.iter().any(|needed| is_core(needed)) {
         problems.push(format!("does not need `{}` (NEEDED: {:?})", abi::SONAME, elf.needed));
+    }
+    if let Some(other) = elf
+        .needed
+        .iter()
+        .find(|needed| needed.starts_with("libgnoblin") && !is_core(needed))
+    {
+        problems.push(format!(
+            "needs `{other}`: the std library builds on the core and on nothing else of ours"
+        ));
+    }
+    let expected: BTreeSet<String> = gnoblin_std_abi::export_names().map(str::to_owned).collect();
+    let defined: BTreeSet<String> = elf.defined.iter().cloned().collect();
+    for missing in expected.difference(&defined) {
+        problems.push(format!("does not define `{missing}`, which its exports.txt lists"));
+    }
+    for extra in defined.difference(&expected) {
+        let why = if extra.starts_with("__rust") || extra.starts_with("rust_") {
+            "a Rust runtime symbol leaked into the dynamic symbol table"
+        } else if extra.starts_with("gnoblin_") && !extra.starts_with("gnoblin_std_") {
+            "a copy of a core symbol: the library must call the installed core, not carry one"
+        } else {
+            "it is not in exports.txt"
+        };
+        problems.push(format!("defines `{extra}`: {why}"));
     }
     problems
 }
@@ -440,21 +468,35 @@ pub fn parse_pc(text: &str) -> Result<PkgConfig, String> {
 
 /// The development package's pkg-config file for the core.
 pub fn check_pc(pc: &PkgConfig, libdir_name: &str) -> Vec<String> {
+    check_pc_for(pc, libdir_name, &CORE_LIBRARY)
+}
+
+/// The pkg-config file of `library`: its name and version, what it links and includes, and the module it requires.
+pub fn check_pc_for(pc: &PkgConfig, libdir_name: &str, library: &Library) -> Vec<String> {
     let mut problems = Vec::new();
-    let version = format!("{}.{}.{}", abi::ABI_MAJOR, abi::ABI_MINOR, abi::ABI_PATCH);
-    if pc.field("Name").as_deref() != Some("gnoblin-core") {
-        problems.push(format!("Name is {:?}, expected `gnoblin-core`", pc.field("Name")));
+    let (major, minor, patch) = library.version;
+    let version = format!("{major}.{minor}.{patch}");
+    if pc.field("Name").as_deref() != Some(library.module) {
+        problems.push(format!("Name is {:?}, expected `{}`", pc.field("Name"), library.module));
     }
     if pc.field("Version").as_deref() != Some(version.as_str()) {
         problems.push(format!("Version is {:?}, expected `{version}`", pc.field("Version")));
     }
+    let link = format!("-l{}", library.module);
     match pc.field("Libs") {
-        Some(libs) if libs.contains("-lgnoblin-core") && libs.contains(&format!("-L{}", pc.expand("${libdir}"))) => {}
-        other => problems.push(format!("Libs is {other:?}, expected `-L${{libdir}} -lgnoblin-core`")),
+        Some(libs) if libs.contains(&link) && libs.contains(&format!("-L{}", pc.expand("${libdir}"))) => {}
+        other => problems.push(format!("Libs is {other:?}, expected `-L${{libdir}} {link}`")),
     }
     match pc.field("Cflags") {
         Some(cflags) if cflags.contains(&pc.expand("-I${includedir}")) => {}
         other => problems.push(format!("Cflags is {other:?}, expected `-I${{includedir}}`")),
+    }
+    if pc.field("Requires").as_deref() != library.requires {
+        problems.push(format!(
+            "Requires is {:?}, expected {:?}",
+            pc.field("Requires"),
+            library.requires
+        ));
     }
     let libdir = pc.expand("${libdir}");
     if !libdir.ends_with(&format!("/{libdir_name}")) {
@@ -485,12 +527,55 @@ fn ldd_missing(path: &Path) -> Result<Vec<String>, String> {
 /// Returns problems, or `Ok(None)`-style notes through the second vector when a tool is missing (a missing tool is
 /// reported, never silent).
 pub fn check_pkg_config_link(root: &Path, libdir_name: &str, scratch: &Path) -> (Vec<String>, Vec<String>) {
+    check_pkg_config_link_for(root, libdir_name, scratch, &CORE_LIBRARY)
+}
+
+/// One development library: the pkg-config module a consumer asks for, the header it includes, the function that reports the
+/// version, and the version the install should report.
+pub struct Library {
+    pub module: &'static str,
+    pub header: &'static str,
+    pub version_fn: &'static str,
+    pub version: (u32, u32, u32),
+    /// The module its `.pc` requires, if any.
+    pub requires: Option<&'static str>,
+}
+
+/// The core's development files.
+pub const CORE_LIBRARY: Library = Library {
+    module: "gnoblin-core",
+    header: "gnoblin/core.h",
+    version_fn: "gnoblin_abi_version",
+    version: (abi::ABI_MAJOR, abi::ABI_MINOR, abi::ABI_PATCH),
+    requires: None,
+};
+
+/// The std library's development files.
+pub const STD_LIBRARY: Library = Library {
+    module: "gnoblin-std",
+    header: "gnoblin/std.h",
+    version_fn: "gnoblin_std_abi_version",
+    version: (
+        gnoblin_std_abi::ABI_MAJOR,
+        gnoblin_std_abi::ABI_MINOR,
+        gnoblin_std_abi::ABI_PATCH,
+    ),
+    requires: Some("gnoblin-core"),
+};
+
+/// [`check_pkg_config_link`] for `library`.
+pub fn check_pkg_config_link_for(
+    root: &Path,
+    libdir_name: &str,
+    scratch: &Path,
+    library: &Library,
+) -> (Vec<String>, Vec<String>) {
     let mut problems = Vec::new();
     let mut notes = Vec::new();
     let pc_dir = root.join(libdir_name).join("pkgconfig");
     let flags = Command::new("pkg-config")
         .arg(format!("--define-variable=prefix={}", root.display()))
-        .args(["--cflags", "--libs", "gnoblin-core"])
+        .args(["--cflags", "--libs", library.module])
         .env("PKG_CONFIG_PATH", &pc_dir)
         .env("PKG_CONFIG_LIBDIR", &pc_dir)
         .output();
@@ -498,7 +583,8 @@ pub fn check_pkg_config_link(root: &Path, libdir_name: &str, scratch: &Path) -> 
         Ok(output) if output.status.success() => String::from_utf8_lossy(&output.stdout).trim().to_owned(),
         Ok(output) => {
             problems.push(format!(
-                "`pkg-config --cflags --libs gnoblin-core` failed: {}",
+                "`pkg-config --cflags --libs {}` failed: {}",
+                library.module,
                 String::from_utf8_lossy(&output.stderr).trim()
             ));
             return (problems, notes);
@@ -512,9 +598,12 @@ pub fn check_pkg_config_link(root: &Path, libdir_name: &str, scratch: &Path) -> 
     };
     let source = scratch.join("probe.c");
     let program = scratch.join("probe");
-    let text = "#include <gnoblin/core.h>\n#include <stdio.h>\n\
-                int main(void) {\n  uint32_t major = 0, minor = 0, patch = 0;\n  gnoblin_abi_version(&major, &minor, &patch);\n  \
-                printf(\"%u.%u.%u\\n\", major, minor, patch);\n  return 0;\n}\n";
+    let text = format!(
+        "#include <{}>\n#include <stdio.h>\n\
+         int main(void) {{\n  uint32_t major = 0, minor = 0, patch = 0;\n  {}(&major, &minor, &patch);\n  \
+         printf(\"%u.%u.%u\\n\", major, minor, patch);\n  return 0;\n}}\n",
+        library.header, library.version_fn
+    );
     if let Err(error) = fs::write(&source, text) {
         problems.push(format!("cannot write {}: {error}", source.display()));
         return (problems, notes);
@@ -530,7 +619,8 @@ pub fn check_pkg_config_link(root: &Path, libdir_name: &str, scratch: &Path) -> 
         Ok(output) if output.status.success() => {}
         Ok(output) => {
             problems.push(format!(
-                "a C program using `pkg-config --cflags --libs gnoblin-core` did not compile and link: {}",
+                "a C program using `pkg-config --cflags --libs {}` did not compile and link: {}",
+                library.module,
                 String::from_utf8_lossy(&output.stderr).trim()
             ));
             return (problems, notes);
@@ -548,10 +638,12 @@ pub fn check_pkg_config_link(root: &Path, libdir_name: &str, scratch: &Path) -> 
     {
         Ok(output) if output.status.success() => {
             let printed = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-            let expected = format!("{}.{}.{}", abi::ABI_MAJOR, abi::ABI_MINOR, abi::ABI_PATCH);
+            let (major, minor, patch) = library.version;
+            let expected = format!("{major}.{minor}.{patch}");
             if printed != expected {
                 problems.push(format!(
-                    "the probe program printed ABI {printed}, the installed core should be {expected}"
+                    "the probe program printed ABI {printed}, the installed {} should be {expected}",
+                    library.module
                 ));
             }
         }
@@ -753,12 +845,21 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
         }
     }
 
-    let std_path = options.std.clone().or_else(|| {
-        libdir
-            .as_ref()
-            .map(|libdir| libdir.join(STD_SONAME))
-            .filter(|path| path.exists())
-    });
+    let std_path = options
+        .std
+        .clone()
+        .or_else(|| {
+            libdir
+                .as_ref()
+                .map(|libdir| libdir.join(STD_SONAME))
+                .filter(|path| path.exists())
+        })
+        .or_else(|| {
+            staged_dir
+                .as_ref()
+                .map(|dir| dir.join(STD_SONAME))
+                .filter(|path| path.exists())
+        });
     if let Some(path) = &std_path
         && let Some(std) = read_elf(path, &mut outcome, &mut files)
     {
@@ -767,6 +868,16 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
         // distribution prefix needs none.
         let (_, problems) = check_resolution(path, &std, &system_dirs);
         outcome.report(&format!("loader resolution of {}", path.display()), &problems);
+        if let Some(libdir) = libdir.as_ref().filter(|libdir| path.starts_with(libdir)) {
+            let problems = check_links(
+                libdir,
+                "libgnoblin-std",
+                gnoblin_std_abi::ABI_MAJOR,
+                gnoblin_std_abi::ABI_MINOR,
+                gnoblin_std_abi::ABI_PATCH,
+            );
+            outcome.report(&format!("std SONAME links in {}", libdir.display()), &problems);
+        }
     }
     for path in &options.shells {
         if let Some(shell) = read_elf(path, &mut outcome, &mut files) {
@@ -837,6 +948,46 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
             "a C program linked through pkg-config runs and reports the ABI version",
             &problems,
         );
+
+        // The std library, when the install carries it: the same development files, and a pkg-config module that pulls the core in.
+        if std_path
+            .as_ref()
+            .is_some_and(|path| libdir.as_ref().is_some_and(|dir| path.starts_with(dir)))
+        {
+            let header = root.join("include/gnoblin/std.h");
+            let expected = crate::abi_c::render_header_with(&gnoblin_std_abi::reflection(), &crate::abi_c::STD_HEADER)?;
+            let problems = match fs::read_to_string(&header) {
+                Ok(text) if text == expected => Vec::new(),
+                Ok(_) => vec![format!(
+                    "{} differs from the header `cargo xtask abi-header` generates",
+                    header.display()
+                )],
+                Err(error) => vec![format!("{}: {error}", header.display())],
+            };
+            outcome.report(&format!("header {}", header.display()), &problems);
+
+            let pc_path = root.join(&options.libdir).join("pkgconfig/gnoblin-std.pc");
+            let problems = match fs::read_to_string(&pc_path)
+                .map_err(|error| error.to_string())
+                .and_then(|text| parse_pc(&text))
+            {
+                Ok(pc) => check_pc_for(&pc, &options.libdir, &STD_LIBRARY),
+                Err(error) => vec![format!("{}: {error}", pc_path.display())],
+            };
+            outcome.report(&format!("pkg-config {}", pc_path.display()), &problems);
+
+            let scratch = std::env::temp_dir().join(format!("gnoblin-dist-check-std-{}", std::process::id()));
+            fs::create_dir_all(&scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+            let (problems, notes) = check_pkg_config_link_for(root, &options.libdir, &scratch, &STD_LIBRARY);
+            let _ = fs::remove_dir_all(&scratch);
+            for note in notes {
+                CheckOutcome::note(&note);
+            }
+            outcome.report(
+                "a C program linked through pkg-config against the std library runs and reports its ABI version",
+                &problems,
+            );
+        }
     }
 
     // The glibc floor: the newest symbol version each file needs, so a build on a newer machine than the oldest target
@@ -894,7 +1045,7 @@ pub(crate) fn check_installed(destdir: &Path, prefix: &str, libdir: &str) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::{ENTRY, cc, exports_source, good_core, scratch, shell};
+    use crate::test_fixtures::{ENTRY, cc, exports_source, good_core, good_std, scratch, shell};
 
     #[test]
     fn a_good_core_passes_and_each_defect_is_named() {
@@ -1005,22 +1156,8 @@ mod tests {
     fn std_is_required_of_a_std_shell_and_forbidden_of_a_core_only_one() {
         let dir = scratch("std");
         good_core(&dir);
-        // A stand-in std library: its own SONAME, linked against the core.
-        cc(
-            &dir,
-            "std.c",
-            "extern int gnoblin_get_api(unsigned, unsigned, const void **);\nvoid gnoblin_std_get_api(void) { gnoblin_get_api(1, 0, 0); }\n",
-            &[
-                "-shared",
-                "-fPIC",
-                "-L",
-                ".",
-                "-lgnoblin-core",
-                "-Wl,-soname,libgnoblin-std.so.1",
-                "-o",
-                "libgnoblin-std.so",
-            ],
-        );
+        // A stand-in std library: its own SONAME and exports, linked against the core.
+        good_std(&dir);
         let std = elf::read(&dir.join("libgnoblin-std.so")).unwrap();
         assert_eq!(check_std_library(&std), Vec::<String>::new());
 
@@ -1058,6 +1195,44 @@ mod tests {
             check_std_library(&elf::read(&dir.join("lone.so")).unwrap())
                 .iter()
                 .any(|problem| problem.contains("does not need"))
+        );
+
+        // A std library that carries a core symbol, defines something outside its exports, and is not NODELETE is wrong three ways.
+        cc(
+            &dir,
+            "leaky_std.c",
+            "extern int gnoblin_get_api(unsigned, unsigned, const void **);\nvoid gnoblin_std_get_api(void) { gnoblin_get_api(1, 0, 0); }\n\
+             void gnoblin_get_node(void) {}\nvoid helper(void) {}\n",
+            &[
+                "-shared",
+                "-fPIC",
+                "-L",
+                ".",
+                "-lgnoblin-core",
+                "-Wl,-soname,libgnoblin-std.so.1",
+                "-o",
+                "leaky_std.so",
+            ],
+        );
+        let problems = check_std_library(&elf::read(&dir.join("leaky_std.so")).unwrap());
+        assert!(problems.iter().any(|p| p.contains("NODELETE")), "{problems:?}");
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("gnoblin_get_node") && p.contains("copy of a core symbol")),
+            "{problems:?}"
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("helper") && p.contains("not in exports.txt")),
+            "{problems:?}"
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("does not define `gnoblin_std_abi_version`")),
+            "{problems:?}"
         );
     }
 

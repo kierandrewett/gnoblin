@@ -29,6 +29,8 @@ pub(crate) const SEAT: u64 = 21;
 pub(crate) const FIRST: u64 = 40;
 const SECOND: u64 = 41;
 const THIRD: u64 = 42;
+const FOURTH: u64 = 43;
+const SECOND_SCREEN: u64 = 22;
 
 struct Provider(FakeCompositor);
 
@@ -205,6 +207,235 @@ pub(crate) fn tiler(shell: &Path) -> i32 {
     out!("order={:?}", comp.children(ROOT));
     press(&comp, &module, "Super+Return");
     out!("terminal_started={}", terminal_started());
+    finish(&comp, &module);
+    0
+}
+
+/// Example 2: a desktop shell on the std library. Windows join the floating workspace of their output and are placed by it, a second
+/// output gets a workspace of its own, and a chord starts a terminal.
+pub(crate) fn std_prelude(shell: &Path) -> i32 {
+    let (comp, module) = match start(shell) {
+        Ok(started) => started,
+        Err(code) => return code,
+    };
+    pump(&module);
+    out!("step=one");
+    geometry(&comp, FIRST);
+    comp.create_window(SECOND, "Files", "nautilus");
+    pump(&module);
+    comp.create_window(THIRD, "Editor", "code");
+    pump(&module);
+    out!("step=three");
+    for id in [FIRST, SECOND, THIRD] {
+        geometry(&comp, id);
+    }
+    // A second output appears with the pointer on it: the window that opens next joins the workspace of that output.
+    comp.create_screen(SECOND_SCREEN, "HDMI-2", (1000.0, 0.0, 800.0, 600.0), false);
+    pump(&module);
+    comp.set_pointer(SEAT, 1400.0, 300.0);
+    pump(&module);
+    comp.create_window(FOURTH, "Browser", "firefox");
+    pump(&module);
+    out!("step=second_output");
+    for id in [FIRST, SECOND, THIRD, FOURTH] {
+        geometry(&comp, id);
+    }
+    // A window that closes leaves the others where they were.
+    comp.destroy(SECOND);
+    pump(&module);
+    out!("step=closed");
+    for id in [FIRST, SECOND, THIRD, FOURTH] {
+        geometry(&comp, id);
+    }
+    press(&comp, &module, "Super+Return");
+    out!("terminal_started={}", terminal_started());
+    finish(&comp, &module);
+    0
+}
+
+/// Example 6: a tiling layout written in Rust. Windows open and close and the layout arranges what is left; a chord swaps two.
+pub(crate) fn rust_layout(shell: &Path) -> i32 {
+    let (comp, module) = match start(shell) {
+        Ok(started) => started,
+        Err(code) => return code,
+    };
+    pump(&module);
+    out!("step=one");
+    geometry(&comp, FIRST);
+    comp.create_window(SECOND, "Files", "nautilus");
+    pump(&module);
+    out!("step=two");
+    for id in [FIRST, SECOND] {
+        geometry(&comp, id);
+    }
+    comp.create_window(THIRD, "Editor", "code");
+    pump(&module);
+    out!("step=three");
+    for id in [FIRST, SECOND, THIRD] {
+        geometry(&comp, id);
+    }
+    // The window that has the keyboard swaps places with the first.
+    comp.external_set(THIRD, "focused", MirrorValue::Bool(true));
+    pump(&module);
+    press(&comp, &module, "Super+Tab");
+    out!("step=swapped");
+    for id in [FIRST, SECOND, THIRD] {
+        geometry(&comp, id);
+    }
+    comp.destroy(SECOND);
+    pump(&module);
+    out!("step=closed");
+    for id in [FIRST, SECOND, THIRD] {
+        geometry(&comp, id);
+    }
+    finish(&comp, &module);
+    0
+}
+
+/// The layouts fixture: four windows, then each chord's layout, then a window closing under the last one.
+pub(crate) fn std_layouts(shell: &Path) -> i32 {
+    let (comp, module) = match start(shell) {
+        Ok(started) => started,
+        Err(code) => return code,
+    };
+    pump(&module);
+    for (id, title) in [(SECOND, "Files"), (THIRD, "Editor"), (FOURTH, "Browser")] {
+        comp.create_window(id, title, "app");
+        pump(&module);
+    }
+    comp.external_set(THIRD, "focused", MirrorValue::Bool(true));
+    pump(&module);
+    for chord in ["Super+1", "Super+2", "Super+3", "Super+4", "Super+5", "Super+6"] {
+        press(&comp, &module, chord);
+        out!("step={chord}");
+        for id in [FIRST, SECOND, THIRD, FOURTH] {
+            geometry(&comp, id);
+        }
+    }
+    press(&comp, &module, "Super+1");
+    comp.destroy(SECOND);
+    pump(&module);
+    out!("step=closed");
+    for id in [FIRST, SECOND, THIRD, FOURTH] {
+        geometry(&comp, id);
+    }
+    finish(&comp, &module);
+    0
+}
+
+/// One whole pointer drag of the claimed chord `chord`: the press at `from`, the motion through `path`, and the release at the last
+/// point (or `phase` as the last step instead, `cancel` to have the compositor end it).
+fn drag(comp: &FakeCompositor, module: &Module, chord: &str, from: (f64, f64), path: &[(f64, f64)], last: &str) {
+    let claim = comp.claim_id(chord);
+    comp.pointer_chord(claim, chord, "start", from, from);
+    pump(module);
+    let mut at = from;
+    for point in path {
+        at = *point;
+        comp.pointer_chord(claim, chord, "update", from, at);
+        pump(module);
+    }
+    comp.pointer_chord(claim, chord, last, from, at);
+    pump(module);
+}
+
+fn place(comp: &FakeCompositor, module: &Module, id: u64, rect: (f64, f64, f64, f64)) {
+    for (key, value) in [("x", rect.0), ("y", rect.1), ("width", rect.2), ("height", rect.3)] {
+        comp.external_set(id, key, MirrorValue::Double(value));
+    }
+    pump(module);
+}
+
+/// The bindings fixture: drags that move and resize a window, one that is held inside the work area, one the compositor cancels, one
+/// that lands on nothing, one that stays under the threshold, and a binding of the shell's own.
+pub(crate) fn std_bindings(shell: &Path) -> i32 {
+    let (comp, module) = match start(shell) {
+        Ok(started) => started,
+        Err(code) => return code,
+    };
+    pump(&module);
+    place(&comp, &module, FIRST, (100.0, 100.0, 300.0, 200.0));
+    comp.create_window(SECOND, "Files", "nautilus");
+    pump(&module);
+    place(&comp, &module, SECOND, (500.0, 400.0, 200.0, 150.0));
+
+    // Under the threshold nothing moves; past it the window follows the pointer from where the press was.
+    drag(
+        &comp,
+        &module,
+        "Super+Button1",
+        (150.0, 150.0),
+        &[(152.0, 151.0)],
+        "end",
+    );
+    out!("step=below_threshold");
+    geometry(&comp, FIRST);
+    drag(
+        &comp,
+        &module,
+        "Super+Button1",
+        (150.0, 150.0),
+        &[(152.0, 151.0), (250.0, 200.0), (260.0, 210.0)],
+        "end",
+    );
+    out!("step=moved");
+    geometry(&comp, FIRST);
+    // The work area is the 1000 by 800 screen: a window dragged far off it stops at the edge.
+    drag(
+        &comp,
+        &module,
+        "Super+Button1",
+        (300.0, 250.0),
+        &[(2000.0, 250.0), (2000.0, -500.0)],
+        "end",
+    );
+    out!("step=held_in");
+    geometry(&comp, FIRST);
+    // A drag the compositor cancels puts the window back.
+    drag(
+        &comp,
+        &module,
+        "Super+Button1",
+        (600.0, 450.0),
+        &[(450.0, 550.0)],
+        "cancel",
+    );
+    out!("step=cancelled");
+    geometry(&comp, SECOND);
+    // A press on nothing starts nothing.
+    drag(&comp, &module, "Super+Button1", (20.0, 700.0), &[(300.0, 700.0)], "end");
+    out!("step=nothing");
+    for id in [FIRST, SECOND] {
+        geometry(&comp, id);
+    }
+
+    // Resize by the nearest side: the press near the right edge of the second window at (500,400,200,150).
+    drag(&comp, &module, "Alt+Button3", (698.0, 470.0), &[(740.0, 470.0)], "end");
+    out!("step=resized_right");
+    geometry(&comp, SECOND);
+    // Near the top edge: the top moves with the pointer, the bottom stays.
+    drag(&comp, &module, "Alt+Button3", (600.0, 402.0), &[(600.0, 380.0)], "end");
+    out!("step=resized_top");
+    geometry(&comp, SECOND);
+    // Below the smallest size the opposite side stays put: the left edge dragged far to the right.
+    drag(&comp, &module, "Alt+Button3", (502.0, 450.0), &[(900.0, 450.0)], "end");
+    out!("step=resized_min");
+    geometry(&comp, SECOND);
+
+    // The shell's own binding: raises the window it landed on, once the pointer is ten pixels away.
+    out!("order_before={:?}", comp.children(ROOT));
+    drag(
+        &comp,
+        &module,
+        "Super+Button2",
+        (800.0, 100.0),
+        &[(804.0, 102.0), (810.0, 112.0)],
+        "end",
+    );
+    out!("order_after={:?}", comp.children(ROOT));
+    for (node, method) in comp.calls() {
+        out!("call node={node} method={method}");
+    }
     finish(&comp, &module);
     0
 }

@@ -35,6 +35,9 @@ pub const USAGE: &str = "usage: cargo xtask stage [--release | --profile NAME] [
 const BUILT_NAME: &str = "libgnoblin_core_impl.so";
 /// The linker name of the core: what `-lgnoblin-core` finds in a directory named by `GNOBLIN_CORE_LIB_DIR`.
 const LINKER_NAME: &str = "libgnoblin-core.so";
+/// What cargo names the std library's `cdylib`, and its linker name (`GNOBLIN_STD_LIB_DIR`).
+const STD_BUILT_NAME: &str = "libgnoblin_std_impl.so";
+const STD_LINKER_NAME: &str = "libgnoblin-std.so";
 
 #[derive(Debug, PartialEq, Eq)]
 struct StageOptions {
@@ -78,18 +81,20 @@ fn cargo_profile_args(profile: &str) -> Vec<String> {
 fn build(options: &StageOptions) -> Result<(), String> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     println!(
-        "[stage] cargo build -p gnoblin-core-impl {}",
+        "[stage] cargo build -p gnoblin-core-impl -p gnoblin-std-impl {}",
         cargo_profile_args(&options.profile).join(" ")
     );
     let status = Command::new(&cargo)
-        .args(["build", "-p", "gnoblin-core-impl"])
+        .args(["build", "-p", "gnoblin-core-impl", "-p", "gnoblin-std-impl"])
         .args(cargo_profile_args(&options.profile))
         .status()
         .map_err(|error| format!("cannot run cargo: {error}"))?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!("`cargo build -p gnoblin-core-impl` failed ({status})"))
+        Err(format!(
+            "`cargo build -p gnoblin-core-impl -p gnoblin-std-impl` failed ({status})"
+        ))
     }
 }
 
@@ -116,6 +121,28 @@ fn stage_dir(dir: &Path) -> Result<PathBuf, String> {
     Ok(soname)
 }
 
+/// Checks the std library Cargo wrote in `dir`, if it wrote one, and links it under the SONAME and the linker name. `Ok(None)` is a
+/// tree without it: a core-only tree is a supported one.
+fn stage_std_dir(dir: &Path) -> Result<Option<PathBuf>, String> {
+    let built = dir.join(STD_BUILT_NAME);
+    if !built.exists() {
+        return Ok(None);
+    }
+    let std = elf::read(&built).map_err(|error| format!("{}: {error}", built.display()))?;
+    let problems = dist_check::check_std_library(&std);
+    if !problems.is_empty() {
+        return Err(format!(
+            "{} is not a shippable std library, so it is not staged:\n  {}",
+            built.display(),
+            problems.join("\n  ")
+        ));
+    }
+    let soname = dir.join(dist_check::STD_SONAME);
+    crate::dist::write_link(&soname, STD_BUILT_NAME).map_err(|error| error.to_string())?;
+    crate::dist::write_link(&dir.join(STD_LINKER_NAME), dist_check::STD_SONAME).map_err(|error| error.to_string())?;
+    Ok(Some(soname))
+}
+
 pub fn run(args: &[String]) -> ExitCode {
     let target_dir = std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| PathBuf::from("target"), PathBuf::from);
     let options = match parse(args, target_dir) {
@@ -129,10 +156,16 @@ pub fn run(args: &[String]) -> ExitCode {
         if options.build {
             build(&options)?;
         }
-        stage_dir(&options.target_dir.join(&options.profile))
+        let dir = options.target_dir.join(&options.profile);
+        let core = stage_dir(&dir)?;
+        let std = stage_std_dir(&dir)?;
+        if options.build && std.is_none() {
+            return Err(format!("{} was not built", dir.join(STD_BUILT_NAME).display()));
+        }
+        Ok((core, std))
     })();
     match staged {
-        Ok(soname) => {
+        Ok((soname, std)) => {
             println!(
                 "[stage] {} -> {BUILT_NAME}: `gnoblin` in {} finds its core through $ORIGIN",
                 soname.display(),
@@ -140,6 +173,12 @@ pub fn run(args: &[String]) -> ExitCode {
                     .parent()
                     .map_or_else(String::new, |dir| dir.display().to_string())
             );
+            if let Some(std) = std {
+                println!(
+                    "[stage] {} -> {STD_BUILT_NAME}: a std shell finds the std library beside the core",
+                    std.display()
+                );
+            }
             ExitCode::SUCCESS
         }
         Err(message) => {
@@ -152,7 +191,7 @@ pub fn run(args: &[String]) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::{cc, exports_source, good_core, scratch};
+    use crate::test_fixtures::{cc, exports_source, good_core, good_std, scratch};
 
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|word| (*word).to_owned()).collect()
@@ -218,5 +257,44 @@ mod tests {
         let refused = stage_dir(&dir).unwrap_err();
         assert!(refused.contains("gnoblin_test_main"), "{refused}");
         assert!(!dir.join(abi::SONAME).exists());
+    }
+
+    #[test]
+    fn a_built_std_library_is_staged_beside_the_core_and_a_core_only_tree_is_fine() {
+        let dir = scratch("stage-std");
+        // The std library links the core under its linker name, which stays in the directory; the built copy is what stages.
+        std::fs::copy(good_core(&dir), dir.join(BUILT_NAME)).unwrap();
+        let std = good_std(&dir);
+        std::fs::rename(&std, dir.join(STD_BUILT_NAME)).unwrap();
+        assert_eq!(
+            stage_std_dir(&scratch("stage-none")).unwrap(),
+            None,
+            "no std library, no std staging"
+        );
+        let soname = stage_std_dir(&dir).unwrap().expect("the std library was built");
+        assert_eq!(soname, dir.join(dist_check::STD_SONAME));
+        assert_eq!(std::fs::read_link(&soname).unwrap(), Path::new(STD_BUILT_NAME));
+        assert_eq!(
+            std::fs::read_link(dir.join(STD_LINKER_NAME)).unwrap(),
+            Path::new(dist_check::STD_SONAME)
+        );
+
+        // A std library that carries a core symbol is refused, and nothing is linked.
+        let bad = scratch("stage-std-bad");
+        cc(
+            &bad,
+            "std.c",
+            "void gnoblin_get_api(void) {}\n",
+            &[
+                "-shared",
+                "-fPIC",
+                "-Wl,-soname,libgnoblin-std.so.1",
+                "-o",
+                STD_BUILT_NAME,
+            ],
+        );
+        let refused = stage_std_dir(&bad).unwrap_err();
+        assert!(refused.contains("gnoblin_get_api"), "{refused}");
+        assert!(!bad.join(dist_check::STD_SONAME).exists());
     }
 }

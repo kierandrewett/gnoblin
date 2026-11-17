@@ -130,19 +130,19 @@ dist-check:
     trap 'rm -rf "$scratch"' EXIT
     cargo build --workspace
     cargo xtask stage --no-build
-    cargo xtask dist-check --staged --shell "$target/debug/libshell_min.so" --run
+    cargo xtask dist-check --staged --shell "$target/debug/libshell_min.so" --std-shell "$target/debug/libstd_prelude.so" --run
     # A private prefix: the binary finds the core through its $ORIGIN/../lib run path alone.
     cargo xtask dist install --prefix "$scratch/prefix" --profile debug
-    cargo xtask dist-check --prefix "$scratch/prefix" --shell "$target/debug/libshell_min.so" --run
+    cargo xtask dist-check --prefix "$scratch/prefix" --shell "$target/debug/libshell_min.so" --std-shell "$target/debug/libstd_prelude.so" --run
     env -u LD_LIBRARY_PATH "$scratch/prefix/bin/gnoblin" --version
     cargo xtask dist uninstall --prefix "$scratch/prefix"
     # A distribution stage: /usr with lib64 (still inside the run path), then with a multiarch directory, which only the
     # loader's default search path reaches, so it is checked without running the binary.
     cargo xtask dist install --prefix /usr --destdir "$scratch/lib64" --libdir lib64 --profile debug
-    cargo xtask dist-check --prefix /usr --destdir "$scratch/lib64" --libdir lib64 --shell "$target/debug/libshell_min.so" --run
+    cargo xtask dist-check --prefix /usr --destdir "$scratch/lib64" --libdir lib64 --shell "$target/debug/libshell_min.so" --std-shell "$target/debug/libstd_prelude.so" --run
     multiarch="lib/$(uname -m)-linux-gnu"
     cargo xtask dist install --prefix /usr --destdir "$scratch/multiarch" --libdir "$multiarch" --profile debug
-    cargo xtask dist-check --prefix /usr --destdir "$scratch/multiarch" --libdir "$multiarch" --shell "$target/debug/libshell_min.so"
+    cargo xtask dist-check --prefix /usr --destdir "$scratch/multiarch" --libdir "$multiarch" --shell "$target/debug/libshell_min.so" --std-shell "$target/debug/libstd_prelude.so"
 
 # Check advisories, licences, duplicate versions and git sources.
 deny:

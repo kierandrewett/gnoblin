@@ -139,7 +139,13 @@ const CLIENT_SIDE: &[&str] = &[
 /// The SDK tier of design/modular-framework.md, section 4.4: the crates a shell author depends on
 /// (`gnoblin-core = "1"`, `gnoblin-std = "1"`). They hold `extern` declarations and safe wrappers and
 /// are compiled into the shell, so they may never carry a workspace crate along (see [`sdk_isolation`]).
-const SDK: &[&str] = &["gnoblin-core-abi", "gnoblin-macros", "gnoblin-core", "gnoblin-std"];
+const SDK: &[&str] = &[
+    "gnoblin-core-abi",
+    "gnoblin-macros",
+    "gnoblin-core",
+    "gnoblin-std-abi",
+    "gnoblin-std",
+];
 
 /// The part of [`SDK`] that belongs to core. `gnoblin-std` sits above it, so it may name them; nothing
 /// below std may name `gnoblin-std` (see [`std_below_core`]).
@@ -158,7 +164,13 @@ const IMPL: &[&str] = &[
 
 /// The std tier: policy and the desktop API, linked above core. `gnoblin-a11y` is classified here
 /// (accessibility settings are desktop policy); `gnoblin-wm-api` is not, it is core-side by design.
-const STD: &[&str] = &["gnoblin-a11y", "gnoblin-std", "gnoblin-std-impl", "gnoblin-std-wm"];
+const STD: &[&str] = &[
+    "gnoblin-a11y",
+    "gnoblin-std",
+    "gnoblin-std-abi",
+    "gnoblin-std-impl",
+    "gnoblin-std-wm",
+];
 
 /// The pure fallback window manager. It may name the provider trait crate and the primitives only.
 const STD_WM: &str = "gnoblin-std-wm";
@@ -173,7 +185,7 @@ const STD_FEATURE: &str = "std-providers";
 
 /// The crates that may omit `[lints] workspace = true` and restate the table with
 /// `unsafe_code = "deny"` (the pattern at the top of the workspace `Cargo.toml`): the existing FFI and
-/// generated-protocol crates, `gnoblin-core-abi` (the `repr(C)` types), `gnoblin-core` and `gnoblin-macros` of the SDK, the
+/// generated-protocol crates, `gnoblin-core-abi` (the `repr(C)` types), `gnoblin-core`, `gnoblin-macros` and `gnoblin-std` of the SDK, the
 /// core's test-fixture launcher and the reload fixture shell (which exports `gnoshell_unload_safe`), the shell host (whose
 /// `native` module is the one loader and is the only module that opens libraries), and every [`IMPL`] crate. An addition here
 /// is a reviewed change.
@@ -192,6 +204,7 @@ const LINT_OPT_OUT: &[&str] = &[
     "gnoblin-render-gles",
     "gnoblin-render-vulkan",
     "gnoblin-shell-host",
+    "gnoblin-std",
     "gnoblin-wayland",
     "gnoblin-wlcs",
     "pam-gnoblin-keyring",
@@ -999,12 +1012,16 @@ fn keyring_handoff_isolation(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
-/// The ABI crate and the macro crate are the leaves of the shell SDK: a shell compiles them, so they name no workspace crate
-/// (not even as a build dependency), and nothing of the compositor can reach a shell through them.
-const ABI_LEAVES: &[&str] = &["gnoblin-core-abi", "gnoblin-macros"];
+/// The ABI crates and the macro crate are the leaves of the shell SDK: a shell compiles them, so they name no workspace crate
+/// (not even as a build dependency), and nothing of the compositor can reach a shell through them. The one edge among them is the
+/// std ABI's, which builds on the core ABI's handles, strings, error codes and declaration macros.
+const ABI_LEAVES: &[&str] = &["gnoblin-core-abi", "gnoblin-std-abi", "gnoblin-macros"];
 
 fn abi_leaf(package: &Package, dep: &Dep) -> Option<String> {
     if !ABI_LEAVES.contains(&package.name.as_str()) || !is_workspace_crate(&dep.name) {
+        return None;
+    }
+    if package.name == "gnoblin-std-abi" && dep.name == "gnoblin-core-abi" {
         return None;
     }
     Some(format!(

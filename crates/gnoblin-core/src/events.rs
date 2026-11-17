@@ -302,6 +302,41 @@ impl Gnoblin {
         })
     }
 
+    /// Calls `f` for every node of `class` (a schema name such as `screen`) that comes into the tree. The batch that made
+    /// it has been applied, so the callback reads the node as it will stay.
+    pub fn on_node_created<F>(&self, class: &str, mut f: F) -> Result<Subscription>
+    where
+        F: FnMut(&Node) + 'static,
+    {
+        let class = self.class(class)?;
+        self.on_node_created_raw(Some(class), move |g, notice| f(&Node::new(g.clone(), notice.node)))
+    }
+
+    /// Calls `f` for every node of `class` that leaves the tree. The node is already gone from reads; its id is what is
+    /// left.
+    pub fn on_node_destroyed<F>(&self, class: &str, mut f: F) -> Result<Subscription>
+    where
+        F: FnMut(&Node) + 'static,
+    {
+        let class = self.class(class)?;
+        self.on_node_destroyed_raw(Some(class), move |g, notice| f(&Node::new(g.clone(), notice.node)))
+    }
+
+    /// Calls `f` with a node of `class` and its new value when its property `property` changes, whoever changed it. Both
+    /// are schema names (`screen`, `primary`).
+    pub fn on_class_property_changed<F>(&self, class: &str, property: &str, mut f: F) -> Result<Subscription>
+    where
+        F: FnMut(&Node, &Value) + 'static,
+    {
+        let class = self.class(class)?;
+        let property = self.member(class, MemberKind::Property, property)?;
+        self.on_change_raw(None, class, property.id, move |g, notice| {
+            if let Some(value) = notice.value.as_ref().and_then(Value::from_shell) {
+                f(&Node::new(g.clone(), notice.node), &value);
+            }
+        })
+    }
+
     /// Calls `f` when a window's client makes a request that policy decides (maximise, close, open its menu, ...). A request
     /// changes nothing until the shell answers it.
     pub fn on_window_request<F>(&self, mut f: F) -> Result<Subscription>

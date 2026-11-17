@@ -23,9 +23,44 @@ type UserFn = fn(&'static Gnoblin) -> Result<(), String>;
 
 static USER: OnceLock<UserFn> = OnceLock::new();
 
+thread_local! {
+    /// The handle of the generation whose entry function ran last on this thread.
+    static CURRENT: std::cell::Cell<Option<&'static Gnoblin>> = const { std::cell::Cell::new(None) };
+}
+
+/// The handle of the generation that last started on this thread, for libraries a shell uses that have no `&Gnoblin` to hand
+/// (`gnoblin-std`'s `Workspace::new("main")`). A shell has one thread, and a reload starts the new generation on it, so this is
+/// the generation that is running; `None` outside a shell's entry.
+pub fn current_gnoblin() -> Option<&'static Gnoblin> {
+    CURRENT.with(std::cell::Cell::get)
+}
+
 /// Records the author's function. Called by the generated `gnoshell_entry_v1`; a second call keeps the first.
 pub fn set_user(user: UserFn) {
     let _ = USER.set(user);
+}
+
+/// The raw context handle of `g`'s generation: the first argument of every function in `libgnoblin-std`'s table, which
+/// the std SDK passes on behalf of the shell.
+pub fn ctx_of(g: &Gnoblin) -> GnoblinCtx {
+    g.ctx()
+}
+
+/// A handle on the generation `ctx`, made by `libgnoblin-std` (which runs inside the shell's process and is given only the
+/// handle) to talk to the installed core as that generation: the same table, the same context, the same calls a shell makes.
+///
+/// # Errors
+///
+/// The installed core refuses the ABI major this crate was built for.
+pub fn gnoblin_for(ctx: GnoblinCtx) -> crate::Result<Gnoblin> {
+    let mut table: *const GnoblinApi = core::ptr::null();
+    // SAFETY: `gnoblin_get_api` writes one pointer through the pointer it is given, a live local.
+    let rc = unsafe { sys::gnoblin_get_api(abi::ABI_MAJOR, abi::ABI_MINOR, &mut table) };
+    crate::error::check(rc)?;
+    // SAFETY: on success the core wrote a pointer to its static table, which is never unmapped (the core is linked with
+    // `-z nodelete`), so the reference is valid for the rest of the process.
+    let api = unsafe { table.as_ref() }.ok_or_else(|| crate::CoreError::from_code(abi::E_ABI))?;
+    Ok(Gnoblin::new(api, ctx))
 }
 
 /// What an entry function may return: nothing, or a `Result` whose error is shown to the user.
@@ -83,6 +118,7 @@ pub unsafe extern "C" fn init(_api: *const GnoblinApi, ctx: GnoblinCtx) -> i32 {
     // (`g.bind("Super+Return", || g.spawn("foot"))`). The core never unmaps a generation's code (D16), so what the box costs is
     // what the library already costs, and a handle kept past its generation fails with `Retired` instead of acting.
     let g: &'static Gnoblin = Box::leak(Box::new(Gnoblin::new(api, ctx)));
+    CURRENT.with(|current| current.set(Some(g)));
     let Some(user) = USER.get() else {
         g.log_at(LogLevel::CoreError, "the shell's entry function was not recorded");
         return abi::E_LOAD;

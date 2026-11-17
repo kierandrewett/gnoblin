@@ -1,0 +1,19 @@
+[package]
+name = "gnoblin-fixture-shell-bindings"
+description = "Test fixture: a std shell with the library's move and resize bindings and a drag binding of its own, so a test can drive pointer drags through the fake compositor."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "shell_bindings"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+gnoblin-std = { path = "../../../gnoblin-std" }
+
+[lints]
+workspace = true

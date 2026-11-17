@@ -1763,3 +1763,339 @@ left = "gnoblin-testkit::Drag"
 right = "gnoblin-wayland::Drag"
 kind = "same-name"
 reason = "the fake compositor of the shared test kit names its own model of a node, a fault or a claim; the other crate's type is the real subsystem's"
+
+# ---- the std library, its SDK and its ABI -------------------------------------------------------------------------------------
+#
+# `gnoblin-std` names its public types after the desktop concepts a shell author uses (Client, Output, Workspace, Placement, Layout,
+# Subscription), and `gnoblin-std-impl` mirrors them inside the library on the other side of the C ABI, as the core SDK and the core
+# implementation do. The other crate's type of the same name is unrelated and the two are never in scope together.
+
+[[allow]]
+left = "gnoblin-a11y::Output"
+right = "gnoblin-std::Output"
+kind = "same-name"
+reason = "the std SDK's Output is a handle on a connected monitor; the accessibility crate's Output is its own effect target"
+
+[[allow]]
+left = "gnoblin-backend::FramePolicy"
+right = "gnoblin-std::FramePolicy"
+kind = "same-name"
+reason = "the std SDK's FramePolicy is the shell-facing setting of a window's frame callbacks; the backend's is the renderer's own decision"
+
+[[allow]]
+left = "gnoblin-backend::Output"
+right = "gnoblin-std::Output"
+kind = "same-name"
+reason = "the std SDK's Output is a handle on a connected monitor in the shell's tree; the backend's is the display device"
+
+[[allow]]
+left = "gnoblin-client::Client"
+right = "gnoblin-std::Client"
+kind = "same-name"
+reason = "the std SDK's Client is a window of the compositor; the client crate's Client is the owner-socket connection"
+
+[[allow]]
+left = "gnoblin-compositor::Error"
+right = "gnoblin-std::Error"
+kind = "same-name"
+reason = "every crate has its own error type; the std SDK's carries the std library's error codes"
+
+[[allow]]
+left = "gnoblin-core-impl::Subscription"
+right = "gnoblin-std::Subscription"
+kind = "same-name"
+reason = "the std SDK's Subscription is a listener on a collection; the core implementation's is a generation's registration"
+
+[[allow]]
+left = "gnoblin-core::ScopedSubscription"
+right = "gnoblin-std::ScopedSubscription"
+kind = "same-name"
+reason = "the std SDK's guard ends a std listener, the core SDK's ends a core registration: two SDKs over two tables, each with its own guard"
+
+[[allow]]
+left = "gnoblin-core::Subscription"
+right = "gnoblin-std::Subscription"
+kind = "same-name"
+reason = "the std SDK's Subscription ends a std listener, the core SDK's ends a core registration: two SDKs over two tables"
+
+[[allow]]
+left = "gnoblin-input::Stats"
+right = "gnoblin-std::Stats"
+kind = "same-name"
+reason = "the std SDK's Stats are the std library's counters for a generation; the input router has its own"
+
+[[allow]]
+left = "gnoblin-model::Subscription"
+right = "gnoblin-std::Subscription"
+kind = "same-name"
+reason = "the std SDK's Subscription is a listener on a collection; the model graph's is its own observer handle"
+
+[[allow]]
+left = "gnoblin-output::Placement"
+right = "gnoblin-std::Placement"
+kind = "same-name"
+reason = "the std SDK's Placement says where a layout puts a client; the output crate's places an output"
+
+[[allow]]
+left = "gnoblin-std::OutputPolicy"
+right = "gnoblin-wayland::OutputPolicy"
+kind = "same-name"
+reason = "the std SDK's OutputPolicy is how a shell shares workspaces between outputs; the wayland crate's is the compositor's own output handling"
+
+[[allow]]
+left = "gnoblin-shell-host::Listener"
+right = "gnoblin-std::Listener"
+kind = "same-name"
+reason = "the std SDK's Listener is the guard of an Emitter listener, ordinary Rust; the shell host's is a registration's recipient"
+
+[[allow]]
+left = "gnoblin-core::CoreError"
+right = "gnoblin-std::Error"
+kind = "same-shape"
+reason = "both are an error kind and its text, for the codes of their own table; the std SDK reuses the core's ErrorKind and cannot construct a CoreError, whose constructor is the core SDK's"
+
+[[allow]]
+left = "gnoblin-std::Std"
+right = "gnoblin-std-impl::Std"
+kind = "same-name"
+reason = "the SDK's Std is a shell's handle on the library; the library's Std is one generation's state behind that handle: the two sides of the C ABI"
+
+[[allow]]
+left = "gnoblin-std-impl::Workspace"
+right = "gnoblin-std::Workspace"
+kind = "same-name"
+reason = "the SDK's Workspace is a handle by id; the library's is the workspace's state behind that id: the two sides of the C ABI"
+
+[[allow]]
+left = "gnoblin-std-impl::Placement"
+right = "gnoblin-std::Placement"
+kind = "same-name"
+reason = "the SDK's Placement is the shell's type with a Client; the library's is the checked placement by node id: the two sides of the C ABI"
+
+[[allow]]
+left = "gnoblin-std-impl::LayoutContext"
+right = "gnoblin-std::LayoutContext"
+kind = "same-name"
+reason = "the SDK's LayoutContext carries Clients and a Workspace handle; the library's carries node ids: the two sides of the C ABI"
+
+[[allow]]
+left = "gnoblin-std-impl::Kind"
+right = "gnoblin-std::LayoutSpec"
+kind = "same-shape"
+reason = "both say a layout is the library's floating one or the shell's own; one is the library's object, the other the SDK's argument to the table"
+
+[[allow]]
+left = "gnoblin-std-impl::Layout"
+right = "gnoblin-std::LayoutSpec"
+kind = "same-shape"
+reason = "both say a layout is the library's floating one or the shell's own; one is the checked table argument, the other the SDK's value"
+
+[[allow]]
+left = "gnoblin-std-impl::Want"
+right = "gnoblin-std::QueryValue"
+kind = "same-shape"
+reason = "a query value is a text, a number or a boolean on both sides of the C ABI"
+
+[[allow]]
+left = "gnoblin-render::EffectExtent"
+right = "gnoblin-std-impl::Inset"
+kind = "same-shape"
+reason = "four sides of room: EffectExtent is how far an effect draws beyond a node, Inset how much room a window's frame takes round its content"
+
+[[allow]]
+left = "gnoblin-backend::Inset"
+right = "gnoblin-std-impl::Inset"
+kind = "same-name"
+reason = "the library's Inset is a window frame's room round its content; the backend's is a nested window's own"
+
+[[allow]]
+left = "gnoblin-client::Inner"
+right = "gnoblin-std::Inner"
+kind = "same-name"
+reason = "private shared state of a handle: each crate's own"
+
+[[allow]]
+left = "gnoblin-compositor::Inner"
+right = "gnoblin-std::Inner"
+kind = "same-name"
+reason = "private shared state of a handle: each crate's own"
+
+[[allow]]
+left = "gnoblin-core::Shared"
+right = "gnoblin-std::Shared"
+kind = "same-name"
+reason = "private shared state of a handle: each crate's own"
+
+[[allow]]
+left = "gnoblin-std::Shared"
+right = "xdg-desktop-portal-gnoblin::Shared"
+kind = "same-name"
+reason = "private shared state of a handle: each crate's own"
+
+[[allow]]
+left = "gnoblin-core::Slot"
+right = "gnoblin-std::Slot"
+kind = "same-name"
+reason = "the box behind a `user` pointer of a registered closure, in each SDK"
+
+[[allow]]
+left = "gnoblin-render-gles::Slot"
+right = "gnoblin-std::Slot"
+kind = "same-name"
+reason = "private to each crate: the std SDK's is the box behind a registered closure, the renderer's is a texture slot"
+
+[[allow]]
+left = "gnoblin-compat-core::Kind"
+right = "gnoblin-std-impl::Kind"
+kind = "same-name"
+reason = "private enum naming the kinds of one module's own subject"
+
+[[allow]]
+left = "gnoblin-config-codegen::Kind"
+right = "gnoblin-std-impl::Kind"
+kind = "same-name"
+reason = "private enum naming the kinds of one module's own subject"
+
+[[allow]]
+left = "gnoblin-config::Kind"
+right = "gnoblin-std-impl::Kind"
+kind = "same-name"
+reason = "private enum naming the kinds of one module's own subject"
+
+[[allow]]
+left = "gnoblin-std-impl::Kind"
+right = "xtask::Kind"
+kind = "same-name"
+reason = "private enum naming the kinds of one module's own subject"
+
+[[allow]]
+left = "gnoblin-js::Counters"
+right = "gnoblin-std-impl::Counters"
+kind = "same-name"
+reason = "private counters of each crate's own work"
+
+[[allow]]
+left = "gnoblin-lock::State"
+right = "gnoblin-std-impl::State"
+kind = "same-name"
+reason = "each crate's State is the state of its own machine; the library's is one generation's object model"
+
+[[allow]]
+left = "gnoblin-std-impl::State"
+right = "gnoblin-wayland::State"
+kind = "same-name"
+reason = "each crate's State is the state of its own machine; the library's is one generation's object model"
+
+[[allow]]
+left = "gnoblin-std-impl::State"
+right = "xdg-desktop-portal-gnoblin::State"
+kind = "same-name"
+reason = "each crate's State is the state of its own machine; the library's is one generation's object model"
+
+[[allow]]
+left = "gnoblin-output::Layout"
+right = "gnoblin-std-impl::Layout"
+kind = "same-name"
+reason = "the library's private Layout is a checked layout spec on its way to a layout object; the output crate's is the arrangement of outputs"
+
+[[allow]]
+left = "gnoblin-output::Source"
+right = "gnoblin-std-impl::Source"
+kind = "same-name"
+reason = "private enum: where one collection's members come from"
+
+[[allow]]
+left = "gnoblin-shell-discovery::Source"
+right = "gnoblin-std-impl::Source"
+kind = "same-name"
+reason = "private enum: where one collection's members come from"
+
+[[allow]]
+left = "gnoblin-render-gles::Plan"
+right = "gnoblin-std-impl::Plan"
+kind = "same-name"
+reason = "private plan of one pass in each crate"
+
+[[allow]]
+left = "gnoblin-session::Plan"
+right = "gnoblin-std-impl::Plan"
+kind = "same-name"
+reason = "private plan of one pass in each crate"
+
+[[allow]]
+left = "gnoblin-service-location::Policy"
+right = "gnoblin-std-impl::Policy"
+kind = "same-name"
+reason = "each crate's own policy: the library's says how outputs share workspaces"
+
+[[allow]]
+left = "gnoblin-output::Placement"
+right = "gnoblin-std-impl::Placement"
+kind = "same-name"
+reason = "the library's Placement is a checked layout placement of one client; the output crate's places an output"
+
+[[allow]]
+left = "gnoblin-example-rust-layout::Columns"
+right = "gnoblin-std::Columns"
+kind = "same-name"
+reason = "a private layout type of the example is named for what it does; the SDK's Columns is the grid's column count"
+
+[[allow]]
+left = "gnoblin-std::DragConstraint"
+right = "gnoblin-wm-api::DragConstraint"
+kind = "same-name"
+reason = "the SDK's is the seat setting a shell reads to hold a dragged window in; the SDK tier cannot depend on the provider crate"
+
+[[allow]]
+left = "gnoblin-std::Orientation"
+right = "gnoblin-types::Orientation"
+kind = "same-name"
+reason = "the SDK's says where a master and stack puts the master area; the foundation's is a display's rotation"
+
+[[allow]]
+left = "gnoblin-std::Point"
+right = "gnoblin-types::Point"
+kind = "same-name"
+reason = "the SDK tier cannot depend on the compositor's foundation crate; the SDK's is a pointer position in a shell author's vocabulary"
+
+[[allow]]
+left = "gnoblin-backend::Part"
+right = "gnoblin-std::Orientation"
+kind = "same-shape"
+reason = "four names of sides: the backend's are the parts of a window frame, the SDK's where the master area sits"
+
+[[allow]]
+left = "gnoblin-backend::Part"
+right = "gnoblin-std::ResizeEdge"
+kind = "same-shape"
+reason = "four names of sides: the backend's are the parts of a window frame, the SDK's the edge a resize takes hold of"
+
+[[allow]]
+left = "gnoblin-std::Grip"
+right = "gnoblin-wayland::Edges"
+kind = "same-shape"
+reason = "four booleans for the sides of a window a resize moves; the SDK tier cannot depend on the compositor's crate"
+
+[[allow]]
+left = "gnoblin-std::Orientation"
+right = "gnoblin-types::Edge"
+kind = "same-shape"
+reason = "four names of sides: the SDK's says where the master area sits, the foundation's is an edge of a rectangle"
+
+[[allow]]
+left = "gnoblin-std::Point"
+right = "gnoblin-types::PointF"
+kind = "same-shape"
+reason = "two floats: the SDK tier cannot depend on the compositor's foundation crate"
+
+[[allow]]
+left = "gnoblin-std::ResizeCorner"
+right = "gnoblin-types::Corner"
+kind = "same-shape"
+reason = "four corners: the SDK tier cannot depend on the compositor's foundation crate"
+
+[[allow]]
+left = "gnoblin-std::ResizeEdge"
+right = "gnoblin-types::Edge"
+kind = "same-shape"
+reason = "four edges: the SDK tier cannot depend on the compositor's foundation crate"
