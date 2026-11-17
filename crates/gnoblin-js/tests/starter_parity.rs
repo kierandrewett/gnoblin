@@ -7,8 +7,7 @@
 
 use std::fs;
 use std::path::Path;
-
-use gnoblin_js::JsShell;
+use std::sync::Arc;
 
 mod common;
 use common::*;
@@ -32,7 +31,7 @@ fn boot(init: Option<&str>) -> Rig {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("globals.ts"), LIBRARY_GLOBALS).expect("globals.ts is written");
     let (config, clock) = timed_config(&root);
-    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
+    let (mut shell, core) = common::native::shell_over_core(&comp, Arc::new(clock.clone()), config);
     let load_diagnostics = match init {
         Some(source) => {
             fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
@@ -46,6 +45,7 @@ fn boot(init: Option<&str>) -> Rig {
         comp,
         load_diagnostics,
         clock,
+        core: Some(core),
         _dir: dir,
     }
 }
