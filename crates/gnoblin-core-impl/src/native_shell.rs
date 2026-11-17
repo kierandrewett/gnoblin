@@ -74,6 +74,7 @@ pub(crate) fn status_of(status: &ReloadStatus) -> ShellStatus {
         build_failures: status.build_failures,
         pending: status.pending.is_some(),
         last: status.last.as_ref().map(|record| record.outcome.clone()),
+        failed: status.failed.clone(),
         summary: format!("{status}{}", crate::budget::status()),
     }
 }
@@ -117,6 +118,7 @@ fn run(module: &ShellModule, link: Box<dyn TreeLink>, context: &InProcContext) -
         "in process",
         &|| context.stop.requested(),
         Arc::clone(&context.reports),
+        Some(&|| context.relink()),
     );
     // The tree is detached by the compositor when this thread returns; what belongs to the shell instance goes with it.
     host::reset_session();
@@ -191,13 +193,25 @@ impl Drop for Watching {
     }
 }
 
+/// How to get a link to the tree that attached nothing yet, for the next start after a failed one: the compositor's own
+/// in-process link is detached and replaced; a shell with no way to try again (the isolated shell, whose process the guardian
+/// restarts) has none.
+pub(crate) type Relink<'a> = &'a dyn Fn() -> Option<Box<dyn TreeLink>>;
+
 /// The shell thread's whole life, shared by the compositor's thread and the isolated shell's main thread: start the module,
 /// report it, turn the dispatch loop until something ends it, retire the generation.
+///
+/// A start that fails (a `shell.ts` with a syntax error, an `init` that fails) ends the shell when `relink` is `None`. With
+/// one, the shell stays in a *failed* state instead: the tree is let go, so the compositor's own window management places
+/// windows, the error is logged, reported to the guardian and shown by `shell status`, and the thread waits for a reload
+/// (`gnoblinctl shell reload`, or the watcher of `--watch` and of scripts) to try the file again, on the same terms as the
+/// first start.
 pub(crate) fn serve(
     module: &ShellModule,
     placed: &str,
     stopped: &dyn Fn() -> bool,
     reports: Arc<dyn ShellReports>,
+    relink: Option<Relink<'_>>,
 ) -> Result<(), ShellError> {
     // `report_config` and `report_config_rejected` of a shell with a document of its own reach the guardian through these.
     host::set_reports(Arc::clone(&reports));
@@ -205,7 +219,22 @@ pub(crate) fn serve(
     if let Some(language) = &module.language {
         shell = shell.with_language(language);
     }
-    let generation = shell.start().map_err(|error| error.to_string())?;
+    let generation = match shell.start() {
+        Ok(generation) => generation,
+        Err(error) => {
+            let Some(relink) = relink else {
+                return Err(error.to_string().into());
+            };
+            match await_fix(&mut shell, module, &error.to_string(), stopped, &reports, relink) {
+                Waited::Fixed(generation) => generation,
+                Waited::Stopped => {
+                    shell.stop();
+                    return Ok(());
+                }
+                Waited::Gave(why) => return Err(why.into()),
+            }
+        }
+    };
     log::info!(
         "the shell {} serves {placed} (generation {generation})",
         module.path.display()
@@ -226,6 +255,105 @@ pub(crate) fn serve(
     // The shutdown hooks run, the registrations are removed and the library is kept mapped (D16), whatever ended the loop.
     shell.stop();
     outcome
+}
+
+/// How a failed start ended.
+enum Waited {
+    /// A reload loaded the file: this generation runs.
+    Fixed(gnoblin_shell_host::generation::GenerationId),
+    /// The compositor stopped while the shell waited.
+    Stopped,
+    /// The shell cannot wait: the compositor has no tree link for another start. The text says why.
+    Gave(String),
+}
+
+/// How long the failed shell sleeps between looks at the controller when nothing watches the file.
+const FAILED_TURN: Duration = Duration::from_millis(100);
+
+/// The watcher a failed start waits with: the module file, for a shell that was asked to watch and for a script (a script
+/// that is running reloads on its own when its files change, so a script that never started does too). `GNOBLIN_JS_WATCH=0`
+/// turns the script's off, as it does a running one's.
+fn watch_failed(module: &ShellModule) -> Option<ModuleWatch> {
+    let script = !is_native(module) && std::env::var("GNOBLIN_JS_WATCH").as_deref() != Ok("0");
+    if !module.watch && !script {
+        return None;
+    }
+    match ModuleWatch::new(std::slice::from_ref(&module.path), DEBOUNCE) {
+        Ok(watch) => Some(watch),
+        Err(error) => {
+            log::error!(
+                "cannot watch {}: {error}; fix it and run `gnoblinctl shell reload`",
+                module.path.display()
+            );
+            None
+        }
+    }
+}
+
+/// The failed state of a shell that did not start: the tree is let go and a fresh link is ready for the next try, the error is
+/// logged, reported to the guardian and kept for `shell status`, and the thread waits for a reload request (a user's, or the
+/// watcher's) to run it through the loader. A reload that fails leaves it here with the new error.
+fn await_fix(
+    shell: &mut host::NativeShell,
+    module: &ShellModule,
+    first_error: &str,
+    stopped: &dyn Fn() -> bool,
+    reports: &Arc<dyn ShellReports>,
+    relink: Relink<'_>,
+) -> Waited {
+    let controller = host::reload_controller();
+    let watch = watch_failed(module);
+    let mut error = first_error.to_owned();
+    loop {
+        // What the failed attempt attached is let go (the session forgets its tree and its link; the compositor detaches the
+        // shell, so its own window management has the windows) and the next attempt gets a link of its own.
+        host::reset_session();
+        let Some(link) = relink() else {
+            return if stopped() {
+                Waited::Stopped
+            } else {
+                Waited::Gave(format!("{error}; and the compositor has no link for another start"))
+            };
+        };
+        host::set_tree_link_provider(Box::new(OneLink(RefCell::new(Some(link)))));
+        controller.record_start_failed(error.clone());
+        let path = module.path.display();
+        log::error!(
+            "{path}: the shell did not start, so the compositor's own window management runs until it does; fix the file{}",
+            if watch.is_some() {
+                " (it is watched) or run `gnoblinctl shell reload`"
+            } else {
+                " and run `gnoblinctl shell reload`"
+            }
+        );
+        reports.config_rejected(
+            0,
+            &format!(
+                "the shell failed to start: {error}; the compositor's own window management runs until the file is fixed and the shell reloaded (`gnoblinctl shell reload`)"
+            ),
+        );
+        // Wait for the request.
+        let trigger = loop {
+            if stopped() {
+                return Waited::Stopped;
+            }
+            if let Some(watch) = &watch {
+                watch.forward_to(&controller, FAILED_TURN);
+            } else {
+                std::thread::sleep(FAILED_TURN);
+            }
+            if let Some(trigger) = controller.take_request() {
+                break trigger;
+            }
+        };
+        match shell.reload(trigger) {
+            Ok(reloaded) => return Waited::Fixed(reloaded.generation),
+            Err(failure) => {
+                error = failure.to_string();
+                log::warn!("the shell still does not start: {failure}");
+            }
+        }
+    }
 }
 
 /// Turns the dispatch loop. `Ok` is a clean end (the compositor stopped, or the shell asked to exit with code zero).

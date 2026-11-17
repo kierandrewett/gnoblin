@@ -238,6 +238,9 @@ request reloads the document alone.
   no session, and it is the table `gnoblin --list-shells` prints.
 - `gnoblinctl shell status` prints the running shell's generation, how many reloads committed and failed, the last outcome and
   the last failed build.
+    - A shell that failed its start begins with `state: failed` and the error, with the file and line of a script, until a
+      reload loads it.
+    - `--json` adds `state` (`running`, `failed` or `stopped`) and `error`.
 - `gnoblinctl shell reload` asks the shell to reload and waits until it has: a reload runs on the shell's own thread between its
   callbacks, so the command reads the status until one has finished.
 - `gnoblinctl shell watch [PATH] [--once]` reloads the shell each time its module (default: the one `gnoblin` finds) is rebuilt,

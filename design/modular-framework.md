@@ -2067,7 +2067,7 @@ What a package puts in `default-shell/` is the JsCutover lane's: `shell.ts`, the
 - **A watch on a launcher file** (27.4), and a re-run of discovery on reload (the design's 7.1: reload compares the selection again). The reload loads the path the start resolved.
 - **The 2 s callback budget, `wake_fd` and the verbs** are the RustSdk lane's (section 26, "Not done here").
 - **The packaged default's contents** (27.3) and the deletion of `JsRoleRunner`, `gnoblin-js` in `BINARY_ROOTS` and the `gnoblin` -> `gnoblin-js` dependency are the JsCutover lane's.
-- **`ProcessRole::Runtime`** in `gnoblin-log` is still the name the isolated shell's log lines carry (`runtime/...`); renaming it touches the log crate's file layout and is left to the lane that owns it.
+- **`ProcessRole::Runtime`** was the name the isolated shell's log lines carried (`runtime/...`). It is `ProcessRole::Shell` now (section 31).
 
 ## 28. Implementation notes, M2.11 (the providers through the C ABI)
 

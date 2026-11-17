@@ -469,6 +469,9 @@ pub struct ShellStatus {
     pub pending: bool,
     /// What the last reload came to: the generation that took over, or why it did not.
     pub last: Option<Result<u64, String>>,
+    /// Why the shell did not start, while it has not: the loader's text, with the file, line and column of the script. A
+    /// shell that failed its start serves nothing and waits for a reload; `None` once a generation runs.
+    pub failed: Option<String>,
     /// The whole status as the shell host prints it.
     pub summary: String,
 }
@@ -492,6 +495,13 @@ pub fn shell_status_payload(status: &ShellStatus) -> Vec<u8> {
             writer.text(message);
         }
     }
+    match &status.failed {
+        None => writer.u8(0),
+        Some(message) => {
+            writer.u8(1);
+            writer.text(message);
+        }
+    }
     writer.text(&status.summary);
     writer.finish()
 }
@@ -510,6 +520,11 @@ pub fn read_shell_status(payload: &[u8]) -> Result<ShellStatus, WireError> {
         2 => Some(Err(reader.text()?)),
         other => return Err(WireError::Tag(other)),
     };
+    let failed = match reader.u8()? {
+        0 => None,
+        1 => Some(reader.text()?),
+        other => return Err(WireError::Tag(other)),
+    };
     let summary = reader.text()?;
     reader.done()?;
     Ok(ShellStatus {
@@ -519,6 +534,7 @@ pub fn read_shell_status(payload: &[u8]) -> Result<ShellStatus, WireError> {
         build_failures,
         pending,
         last,
+        failed,
         summary,
     })
 }
@@ -2130,6 +2146,32 @@ mod tests {
         assert!(
             read_cast_stream(&short).is_err(),
             "a reply short of its last field is refused"
+        );
+    }
+
+    /// The status of a shell that did not start carries why, and the status of one that runs carries nothing.
+    #[test]
+    fn a_shell_status_carries_the_failed_start() {
+        let failed = ShellStatus {
+            failed: Some("shell.ts:3:26: unexpected token".to_owned()),
+            last: Some(Err(
+                "reload of /x/shell.ts failed, no generation is running: y".to_owned()
+            )),
+            summary: "state: failed\n".to_owned(),
+            ..ShellStatus::default()
+        };
+        assert_eq!(
+            read_shell_status(&shell_status_payload(&failed)).expect("the answer decodes"),
+            failed
+        );
+        let running = ShellStatus {
+            generation: Some(3),
+            reloads: 2,
+            ..ShellStatus::default()
+        };
+        assert_eq!(
+            read_shell_status(&shell_status_payload(&running)).expect("the answer decodes"),
+            running
         );
     }
 }

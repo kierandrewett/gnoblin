@@ -114,8 +114,9 @@ pub enum ProcessRole {
     Compositor,
     /// The guardian, which spawns the other roles and keeps the session alive.
     Guardian,
-    /// The runtime, which runs the shell and the configuration.
-    Runtime,
+    /// The isolated shell (`--role shell`), which runs the shell and its configuration in a process of its own. A shell
+    /// served in the compositor's process logs as the compositor.
+    Shell,
     /// The services, which host the D-Bus service crates.
     Services,
     /// The xdg-desktop-portal backend.
@@ -128,7 +129,7 @@ impl ProcessRole {
         match self {
             Self::Compositor => "compositor",
             Self::Guardian => "guardian",
-            Self::Runtime => "runtime",
+            Self::Shell => "shell",
             Self::Services => "services",
             Self::Portal => "portal",
         }
@@ -287,7 +288,7 @@ mod tests {
         let names = [
             ProcessRole::Compositor,
             ProcessRole::Guardian,
-            ProcessRole::Runtime,
+            ProcessRole::Shell,
             ProcessRole::Services,
             ProcessRole::Portal,
         ]
@@ -295,6 +296,11 @@ mod tests {
         for (index, name) in names.iter().enumerate() {
             assert!(!names[..index].contains(name), "{name} is named twice");
         }
+    }
+
+    #[test]
+    fn the_isolated_shell_logs_under_the_name_of_its_role() {
+        assert_eq!(ProcessRole::Shell.name(), "shell");
     }
 
     #[test]

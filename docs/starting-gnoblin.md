@@ -275,7 +275,15 @@ missing library and a script that throws:
 - An ABI mismatch gives both versions.
 - A script gives `file:line:column`.
 
-The session runs on with the compositor's own window management, and the shell is reloadable once the file is fixed.
+The session runs on with the compositor's own window management, and the failed start is neither quiet nor final:
+
+- The guardian's log carries the loader's text: `[guardian] configuration revision 0 rejected: the shell failed to start: ...`.
+- `gnoblinctl shell status` prints `state: failed` and the same text (`"state": "failed"` and `"error"` with `--json`).
+- Fixing the file loads the shell in the same session, with no restart. A script is loaded when it is saved, a native
+  module with `--watch`, and any shell with `gnoblinctl shell reload`, which exits 1 with the new text while the file
+  still fails.
+- `GNOBLIN_JS_WATCH=0` turns the save-to-load off for JavaScript and TypeScript.
+- An isolated shell (`--isolate`) exits with the failure instead, and the guardian restarts it under its back-off.
 
 ## Reload and watch
 
@@ -288,7 +296,8 @@ the running shell serving. [Write a shell in Rust](rust-shell.md#reload-while-it
   `cargo xtask watch-shell PROJECT` running, which builds on every source change and keeps a failed build's compiler output for
   `gnoblinctl shell status`.
 - **A script** reloads when any file it imported changes: the shell's runtime watches the import set, with or without
-  `--watch`. `GNOBLIN_JS_WATCH=0` turns that off for JavaScript and TypeScript.
+  `--watch`. `GNOBLIN_JS_WATCH=0` turns that off for JavaScript and TypeScript. A script that failed to start is watched
+  the same way, by its entry file.
 - **On request**, `gnoblinctl shell reload` reloads the shell and waits for the outcome: exit 0 and `reloaded: generation 3`,
   or exit 1 and the reason (`reload of /x/libshell.so failed, still running generation 2: ...`). An isolated shell has no
   in-process shell to reload, and the command says so: it reloads with `--watch`.

@@ -84,12 +84,19 @@ pub struct ReloadStatus {
     pub last: Option<ReloadRecord>,
     /// The failed build whose output is the reason the shell has not changed, until a build succeeds.
     pub last_build_failure: Option<BuildFailure>,
+    /// Why the first load failed, while no generation runs because of it. A shell in this state serves nothing, the
+    /// compositor's own window management has the windows, and a reload that loads clears it.
+    pub failed: Option<String>,
     /// The retire list, as of the last reload.
     pub retained: Option<RetainedStats>,
 }
 
 impl fmt::Display for ReloadStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(error) = &self.failed {
+            writeln!(f, "state: failed")?;
+            writeln!(f, "the shell did not start: {error}")?;
+        }
         match self.generation {
             Some(generation) => writeln!(f, "generation {generation} is running")?,
             None => writeln!(f, "no generation is running")?,
@@ -223,6 +230,7 @@ impl ReloadController {
     pub(super) fn record_committed(&self, trigger: ReloadTrigger, generation: GenerationId, retained: RetainedStats) {
         let mut shared = self.lock();
         shared.status.generation = Some(generation);
+        shared.status.failed = None;
         shared.status.reloads += 1;
         shared.status.retained = Some(retained);
         shared.status.last = Some(ReloadRecord {
@@ -235,6 +243,7 @@ impl ReloadController {
     pub(super) fn record_started(&self, generation: GenerationId, retained: RetainedStats) {
         let mut shared = self.lock();
         shared.status.generation = Some(generation);
+        shared.status.failed = None;
         shared.status.retained = Some(retained);
     }
 
@@ -245,13 +254,23 @@ impl ReloadController {
         shared.status.retained = Some(retained);
         shared.status.last = Some(ReloadRecord {
             trigger,
-            outcome: Err(message),
+            outcome: Err(message.clone()),
         });
+        // A reload that fails while the shell has not started is the reason it has not.
+        if shared.status.failed.is_some() {
+            shared.status.failed = Some(message);
+        }
     }
 
     /// The shell ended: no generation is running.
     pub(super) fn record_stopped(&self) {
         self.lock().status.generation = None;
+    }
+
+    /// The first load failed: no generation runs, and `error` says why until one does. The shell host calls this for the
+    /// state it holds a failed start in, waiting for a reload; it is not a reload, so no counter moves.
+    pub fn record_start_failed(&self, error: String) {
+        self.lock().status.failed = Some(error);
     }
 }
 
@@ -357,5 +376,44 @@ mod tests {
             ),
             "{text}"
         );
+    }
+
+    #[test]
+    fn a_failed_start_is_the_status_until_a_generation_runs() {
+        let controller = ReloadController::new();
+        controller.record_start_failed("shell.ts:3:26: unexpected token".to_owned());
+        let status = controller.status();
+        assert_eq!(status.failed.as_deref(), Some("shell.ts:3:26: unexpected token"));
+        assert_eq!(
+            (status.reloads, status.failures),
+            (0, 0),
+            "a failed start is not a reload"
+        );
+        let text = status.to_string();
+        assert!(text.contains("state: failed"), "{text}");
+        assert!(
+            text.contains("the shell did not start: shell.ts:3:26: unexpected token"),
+            "{text}"
+        );
+        assert!(text.contains("no generation is running"), "{text}");
+
+        // A reload that fails too is the reason now, and counts as a failure.
+        controller.record_failed(
+            ReloadTrigger::User,
+            "reload of /x/shell.ts failed, no generation is running: still broken".to_owned(),
+            RetainedStats::default(),
+        );
+        let status = controller.status();
+        assert_eq!(status.failures, 1);
+        assert!(
+            status.failed.as_deref().is_some_and(|why| why.contains("still broken")),
+            "{status:?}"
+        );
+
+        // One that loads clears it.
+        controller.record_committed(ReloadTrigger::User, 1, RetainedStats::default());
+        let status = controller.status();
+        assert_eq!((status.failed, status.generation, status.reloads), (None, Some(1), 1));
+        assert!(!controller.status().to_string().contains("state: failed"));
     }
 }

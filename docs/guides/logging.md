@@ -10,7 +10,7 @@ Raw capture is an allowlist by role. A role that is not listed is read and disca
 
 | Role                                                                   | Captured                                                        |
 | ---------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `compositor`, `runtime`, `portal`                                      | yes                                                             |
+| `compositor`, `shell`, `portal`                                        | yes                                                             |
 | `services`                                                             | only when the guardian starts with `GNOBLIN_LOG_RAW_SERVICES=1` |
 | `front`, autostart commands, and any other child without a listed role | no                                                              |
 

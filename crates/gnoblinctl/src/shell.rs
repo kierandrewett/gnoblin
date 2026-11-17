@@ -75,7 +75,14 @@ fn print_status(status: &ShellStatus, json: bool, out: &mut dyn Write) -> Result
 }
 
 fn status_json(status: &ShellStatus) -> serde_json::Value {
+    let state = match (&status.failed, status.generation) {
+        (Some(_), _) => "failed",
+        (None, Some(_)) => "running",
+        (None, None) => "stopped",
+    };
     json!({
+        "state": state,
+        "error": status.failed,
         "generation": status.generation,
         "reloads": status.reloads,
         "failures": status.failures,
@@ -200,5 +207,33 @@ pub(crate) fn watch<T: Transport>(
         if once {
             return Ok(code);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_json_status_says_failed_with_the_error_when_the_shell_did_not_start() {
+        let failed = ShellStatus {
+            failed: Some("shell.ts:3:26: unexpected token".to_owned()),
+            ..ShellStatus::default()
+        };
+        let json = status_json(&failed);
+        assert_eq!(json["state"], "failed");
+        assert_eq!(json["error"], "shell.ts:3:26: unexpected token");
+        assert_eq!(json["generation"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn the_json_status_says_running_or_stopped_otherwise() {
+        let running = ShellStatus {
+            generation: Some(2),
+            ..ShellStatus::default()
+        };
+        assert_eq!(status_json(&running)["state"], "running");
+        assert_eq!(status_json(&running)["error"], serde_json::Value::Null);
+        assert_eq!(status_json(&ShellStatus::default())["state"], "stopped");
     }
 }

@@ -27,7 +27,7 @@ use crate::{host, log};
 /// Serves the shell role and returns the process's exit code.
 pub(crate) fn serve_isolated(module: ShellModule) -> i32 {
     let _log = init(
-        ProcessRole::Runtime,
+        ProcessRole::Shell,
         &LogOptions::from_environment(&LogSettings::default()),
     );
     let link = match connect() {
@@ -42,7 +42,7 @@ pub(crate) fn serve_isolated(module: ShellModule) -> i32 {
     })))));
     host::reset_session();
     host::set_tree_link_provider(Box::new(OneLink(RefCell::new(Some(link)))));
-    let outcome = serve(&module, "in its own process", &|| false, Arc::clone(&reports));
+    let outcome = serve(&module, "in its own process", &|| false, Arc::clone(&reports), None);
     host::reset_session();
     match outcome {
         Ok(()) => 0,

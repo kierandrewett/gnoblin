@@ -182,8 +182,8 @@ Gnoblin does not read Lua. When the config directory has an `init.lua` and nothi
 starts on the stock config and logs one warning:
 
 ```text
-init.lua is a Lua config and Gnoblin no longer runs Lua, so the stock config runs instead; run `gnoblinctl config
-migrate` to convert it to shell.ts (see docs/migrating-from-lua.md)
+/home/you/.config/gnoblin/init.lua: this is a Lua config and Gnoblin no longer runs Lua, so the stock desktop runs instead;
+run `gnoblinctl config migrate` to convert it to shell.ts (see docs/migrating-from-lua.md)
 ```
 
 [Migrating from Lua](migrating-from-lua.md) maps each Lua construct to its TypeScript equivalent. Run
@@ -285,7 +285,12 @@ writes:
 
 A `shell.ts` that fails to load when the shell starts is a failed start: the loader's text names the file, line and column in
 your `.ts` coordinates, and the session runs without a shell, on the compositor's own window management, until the file is
-fixed and the session started again. Run it with `gnoblin ./shell.ts` to see the text on your terminal.
+fixed. Nothing is lost by waiting and nothing needs the session restarted:
+
+- the guardian logs `the shell failed to start:` and the text, `gnoblinctl shell status` prints `state: failed` with the
+  same text, and `gnoblin ./shell.ts` shows it on your terminal;
+- saving the file loads it (the watcher of a script covers a file that failed to start too; `GNOBLIN_JS_WATCH=0` turns it
+  off), and `gnoblinctl shell reload` loads it on request, exiting 1 with the new text while it still fails.
 
 ## What it looks like
 
@@ -439,7 +444,7 @@ Each call is one record in the log, component `js` and field `area=script`, and 
 was, as `shell.ts:6:53` (the file relative to your config directory, the line and column in your `.ts`):
 
 ```text
-INFO  runtime/js  shell.ts:6:53: foot focus is true  area=script
+INFO  compositor/js  shell.ts:6:53: foot focus is true  area=script
 ```
 
 Read it with `gnoblinctl log --follow` (see [Logging](/guides/logging)). The console prints what an expression printed

@@ -322,8 +322,8 @@ mod tests {
         "INFO   compositor/ext  Initializing a xkbcommon handler with keymap query  target=smithay::input::keyboard",
         "WARN   compositor/cursor  cursor theme not found; using the default theme  theme=\"default\"",
         "ERROR  compositor/wayland  the socket is gone  area=\"ipc\"",
-        "DEBUG  runtime/shell-vm  a frame  frames=3",
-        "TRACE  runtime/js         a column padded to the widest component",
+        "DEBUG  shell/shell-vm    a frame  frames=3",
+        "TRACE  shell/js         a column padded to the widest component",
     ];
 
     #[test]

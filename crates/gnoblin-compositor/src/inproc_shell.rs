@@ -267,6 +267,40 @@ pub struct InProcContext {
     pub stop: ShellStop,
     /// Where the shell reports to the guardian.
     pub reports: Arc<dyn ShellReports>,
+    relinker: Relinker,
+}
+
+/// What gives a shell that did not start a fresh attachment to try again over.
+struct Relinker {
+    host: TreeHostHandle,
+    client: ClientId,
+    mailbox: Arc<Mailbox>,
+}
+
+impl InProcContext {
+    /// Lets go of the tree and returns a fresh link to attach over: the failed start's hold, its nodes and its observation
+    /// are released as a closed socket's are, so the compositor's own window management places windows until the shell
+    /// starts again, and the link returned has attached nothing yet. For a shell that did not start and will try again; `None`
+    /// when it cannot (the compositor is stopping, or the shell was detached for not draining its mailbox).
+    #[must_use]
+    pub fn relink(&self) -> Option<Box<dyn TreeLink>> {
+        let Relinker { host, client, mailbox } = &self.relinker;
+        if self.stop.requested() {
+            return None;
+        }
+        host.detach_locally(*client);
+        if !mailbox.restart() {
+            return None;
+        }
+        host.serve_locally(*client, Arc::clone(mailbox) as Arc<dyn LocalSink>);
+        Some(Box::new(InProcLink {
+            host: host.clone(),
+            client: *client,
+            mailbox: Arc::clone(mailbox),
+            next_request: 1,
+            pending: Vec::new(),
+        }))
+    }
 }
 
 impl std::fmt::Debug for InProcContext {
@@ -500,6 +534,22 @@ impl Mailbox {
         drop(state);
         self.signal();
     }
+
+    /// Clears what a former attachment left (what waits, the wake-up) so the same mailbox serves the next one. `false` when
+    /// the mailbox is closed: the shell ended, the compositor is stopping or the shell was detached for not draining it, and
+    /// none of those is a mailbox to serve again.
+    fn restart(&self) -> bool {
+        let mut state = self.state();
+        if state.closed.is_some() {
+            return false;
+        }
+        state.queue.clear();
+        state.items = 0;
+        state.waiting_since = None;
+        let mut counter = [0u8; 8];
+        let _ = rustix::io::read(&self.wake, &mut counter);
+        true
+    }
 }
 
 impl LocalSink for Mailbox {
@@ -647,6 +697,11 @@ impl InProcShell {
             let context = InProcContext {
                 stop: stop.clone(),
                 reports: Arc::clone(&reports),
+                relinker: Relinker {
+                    host: host.clone(),
+                    client,
+                    mailbox: Arc::clone(&mailbox),
+                },
             };
             let ended = Arc::clone(&ended);
             let host = host.clone();
@@ -1021,6 +1076,75 @@ mod tests {
         rig.until("the hold released", |rig| rig.another_holder_may_attach(9));
         assert!(!rig.scene.holder_attached(), "the window manager has the windows again");
         (stopped, reports.all())
+    }
+
+    #[test]
+    fn a_shell_that_did_not_start_lets_go_of_the_tree_and_attaches_again_over_a_fresh_link() {
+        let mut rig = Rig::new();
+        let (progress, progressed) = channel::<&'static str>();
+        let (go, goes) = channel::<()>();
+        let spec = InProcShellSpec::new("retries", move |mut link, context| {
+            link.attach(1).expect("the attach is sent");
+            read_until(link.as_mut(), attached_and_snapshotted);
+            progress.send("attached").expect("the test is waiting");
+            // The start failed after it attached: let go, and take the fresh link the next try attaches over.
+            goes.recv().map_err(|_| "the test went away")?;
+            let mut fresh = context.relink().ok_or("the compositor gave no fresh link")?;
+            progress.send("relinked").expect("the test is waiting");
+            goes.recv().map_err(|_| "the test went away")?;
+            fresh.attach(1).expect("the second attach is sent");
+            read_until(fresh.as_mut(), attached_and_snapshotted);
+            progress.send("reattached").expect("the test is waiting");
+            Ok(())
+        });
+        let shell = InProcShell::spawn(&rig.host, spec).expect("the shell starts");
+        let waited_for = |rig: &mut Rig, what: &'static str| {
+            rig.until(what, |_| progressed.try_recv().is_ok_and(|said| said == what));
+        };
+        waited_for(&mut rig, "attached");
+        assert!(rig.scene.holder_attached(), "the first attempt holds the tree");
+
+        go.send(()).expect("the shell waits");
+        waited_for(&mut rig, "relinked");
+        rig.until("the hold released", |rig| !rig.scene.holder_attached());
+        assert!(
+            rig.another_holder_may_attach(7),
+            "the window manager's turn: another holder may take the tree"
+        );
+
+        go.send(()).expect("the shell waits");
+        waited_for(&mut rig, "reattached");
+        assert!(
+            rig.scene.holder_attached(),
+            "the second attempt holds it over the fresh link"
+        );
+        assert_eq!(shell.stop(), ShellEnd::Returned);
+    }
+
+    #[test]
+    fn a_relink_is_refused_once_the_compositor_is_stopping() {
+        let mut rig = Rig::new();
+        let (answer, answered) = channel::<bool>();
+        let (go, goes) = channel::<()>();
+        let spec = InProcShellSpec::new("late", move |_link, context| {
+            goes.recv().map_err(|_| "the test went away")?;
+            answer.send(context.relink().is_some()).expect("the test is waiting");
+            Ok(())
+        });
+        let shell = InProcShell::spawn(&rig.host, spec).expect("the shell starts");
+        shell.stop.requested.store(true, Ordering::Release);
+        go.send(()).expect("the shell waits");
+        let mut relinked = None;
+        rig.until("the answer", |_| {
+            relinked = answered.try_recv().ok();
+            relinked.is_some()
+        });
+        assert_eq!(
+            relinked,
+            Some(false),
+            "a stopping compositor gives no link to try again over"
+        );
+        assert_eq!(shell.stop(), ShellEnd::Returned);
     }
 
     #[test]
