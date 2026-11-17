@@ -608,17 +608,8 @@ gnoblin.clients.addListener(new Tiler());
 
 // ---- example 3 in TypeScript: a shell on the generated std natives ----------------------------------------------------------------
 
-/// The two tests below (and the layouts one) are written and cannot pass yet: the JavaScript runtime drives the compositor's link
-/// itself (`tree_link_open`) and the std library works on the core's tree (`tree_attach`), which are two holders of one link. The
-/// core refuses the second with `E_BUSY`, which `a_typescript_shell_that_calls_the_std_natives_is_refused_...` holds, and a second link
-/// would be refused by a compositor that admits one holder. `design/modular-framework.md`, section 25.3, says what unblocks them.
-const BLOCKED: &str =
-    "the JavaScript runtime and the std library need one shared link to the compositor (design 25.3, B2)";
-
 #[test]
-#[ignore = "the JavaScript runtime and the std library need one shared link to the compositor (design 25.3, B2)"]
 fn example_3_a_typescript_shell_on_the_generated_std_natives_arranges_the_clients_of_a_workspace_in_columns() {
-    let _ = BLOCKED;
     let stage = stage();
     let run = scenario_in(
         &stage.with_std,
@@ -714,7 +705,6 @@ fn native_layouts() -> Run {
 }
 
 #[test]
-#[ignore = "the JavaScript runtime and the std library need one shared link to the compositor (design 25.3, B2)"]
 fn the_built_in_layouts_from_typescript_give_the_rectangles_of_the_native_shell() {
     let stage = stage();
     let native = native_layouts();
@@ -749,7 +739,7 @@ fn the_built_in_layouts_from_typescript_give_the_rectangles_of_the_native_shell(
 }
 
 #[test]
-fn a_typescript_shell_that_calls_the_std_natives_is_refused_while_the_runtime_drives_the_link_itself() {
+fn a_typescript_shell_on_the_std_natives_and_the_engine_share_one_tree_and_nothing_is_refused() {
     let stage = stage();
     let run = scenario_in(
         &stage.with_std,
@@ -757,14 +747,8 @@ fn a_typescript_shell_that_calls_the_std_natives_is_refused_while_the_runtime_dr
         "example06",
         &example("03-typescript-std/shell.ts"),
     );
-    // The natives are there and the library opens (the import did not fail), and the first call that needs the tree says why it
-    // cannot have it: the runtime holds the compositor's link.
+    assert_eq!(run.code, 0, "{}", run.dump());
     let text = format!("{}{}", run.stdout, run.stderr);
-    assert!(!text.contains("is not installed"), "{}", run.dump());
-    assert!(text.contains("E_BUSY"), "{}", run.dump());
-    assert!(
-        text.contains("tree_attach: this shell drives the compositor's link itself (tree_link_open)"),
-        "{}",
-        run.dump()
-    );
+    assert!(!text.contains("E_BUSY"), "{}", run.dump());
+    assert!(!text.contains("tree_attach"), "{}", run.dump());
 }

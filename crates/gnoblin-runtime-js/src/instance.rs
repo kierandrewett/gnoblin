@@ -293,6 +293,16 @@ pub(crate) fn report_ended(ctx: GnoblinCtx, message: &str) {
     }
 }
 
+/// Runs `f` with the way into the generation that serves, from outside the runtime's turn: the host's own dispatch, which drains the
+/// core's queue after the turn, calls the library's callbacks too. `None` when no shell is running or the turn holds it.
+pub(crate) fn with_enter<R>(f: impl FnOnce(&dyn crate::std_native::Enter) -> R) -> Option<R> {
+    INSTANCE.with(|slot| {
+        let slot = slot.try_borrow().ok()?;
+        let instance = slot.as_ref()?;
+        Some(f(&RoleEnter(&instance.role)))
+    })
+}
+
 /// How a callback of the std library enters the running generation: the engine's own entry, under the listener budget.
 struct RoleEnter<'a>(&'a JsRole);
 

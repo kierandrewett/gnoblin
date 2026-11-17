@@ -75,6 +75,25 @@ pub fn set_budget_limits(limits: crate::budget::BudgetLimits) {
     crate::budget::set_limits(limits);
 }
 
+/// Opens an active generation of this thread's shell instance, for a host that runs a shell's engine in its own process and so has no
+/// module to load: the tests of the JavaScript engine, which drive it over this core and the std library. `label` names it in the log.
+///
+/// # Errors
+///
+/// The generation could not be activated.
+pub fn open_generation(label: &str, language: u32) -> Result<GnoblinCtx, String> {
+    let ctx = crate::registry::new_context(label, language, 0, false);
+    crate::registry::activate(ctx)?;
+    Ok(ctx)
+}
+
+/// Ends a generation [`open_generation`] made: its shutdown hooks run and everything it registered is removed. Returns how many
+/// registrations were removed.
+pub fn close_generation(ctx: GnoblinCtx) -> usize {
+    crate::registry::run_shutdown_hooks(ctx);
+    crate::registry::finish_retire(ctx)
+}
+
 /// How many module libraries are kept mapped after retirement, abandonment or a failed load.
 pub fn retired_libraries() -> usize {
     LOADER.retained_libraries()

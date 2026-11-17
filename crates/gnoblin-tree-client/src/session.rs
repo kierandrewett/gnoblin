@@ -296,6 +296,15 @@ impl TreeSession {
         true
     }
 
+    /// Moves this session's node ids and call tokens up to ranges of their own, for a shell that has a second maker of nodes on
+    /// the same link (a language runtime with a mirror of its own, relayed through the core): that maker counts from one, so this
+    /// side counts from `ids` and `tokens` and the two never give the compositor the same id or token. Never moves a counter
+    /// back.
+    pub fn share_ids(&mut self, ids: u64, tokens: u64) {
+        self.counter = self.counter.max(ids);
+        self.tokens = self.tokens.max(tokens);
+    }
+
     // ---- reads: the tree as this tick sees it --------------------------------------------------------------------
 
     /// Whether `node` is in the tree as this tick sees it.

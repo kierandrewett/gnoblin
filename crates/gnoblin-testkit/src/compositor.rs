@@ -1197,6 +1197,16 @@ impl FakeCompositor {
         }));
     }
 
+    /// The id of the live claim whose call text is `text`, or `None`.
+    pub fn find_claim(&self, text: &str) -> Option<i64> {
+        self.0
+            .borrow()
+            .claims
+            .iter()
+            .find(|claim| claim.text == text)
+            .map(|claim| claim.id)
+    }
+
     /// The id of the live claim whose call text is `text` (a device and a line feed when scoped).
     pub fn claim_id(&self, text: &str) -> i64 {
         let c = self.0.borrow();

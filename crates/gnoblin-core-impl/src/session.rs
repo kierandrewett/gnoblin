@@ -12,6 +12,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,6 +26,7 @@ use gnoblin_tree_client::tree_mirror::{LinkError, MirrorValue, NodeId, TreeIncom
 
 use crate::catalog;
 use crate::events::{AnswerNotice, ClaimNotice, ExitNotice, NodeNotice, ShellEvent, SignalDelivery};
+use crate::hub::{Hub, HubLink, SharedHub};
 use crate::log;
 use crate::values::OwnedValue;
 
@@ -50,6 +52,12 @@ pub trait TreeLinkProvider {
     /// The compositor cannot be reached.
     fn open(&self, mode: AttachMode) -> Result<Box<dyn TreeLink>, LinkError>;
 }
+
+/// Where the core's own node ids, call tokens and claim ids start when a runtime with an engine of its own shares the link: the
+/// engine counts from one, so the two never meet.
+const RELAY_IDS: u64 = 1 << 31;
+const RELAY_TOKENS: u64 = 1 << 40;
+const RELAY_CLAIMS: i64 = 1 << 40;
 
 /// The most state a shell may keep across reloads, per the ABI.
 const STATE_LIMIT: usize = abi::STATE_MAX_BYTES as usize;
@@ -108,9 +116,11 @@ struct SessionStageMark {
 pub(crate) struct Session {
     provider: Option<Box<dyn TreeLinkProvider>>,
     tree: Option<TreeSession>,
-    /// The link a language runtime drives itself (`tree_link_open`), instead of the core's own tree session. A shell has one of
-    /// the two.
-    relayed: Option<Box<dyn TreeLink>>,
+    /// The one holder of the compositor's link, once the shell attached or a runtime opened its view. The tree session reads and
+    /// writes through it, and a runtime that keeps a mirror of its own (`tree_link_open`) is a second reader of the same link.
+    hub: Option<SharedHub>,
+    /// Events a pump made before the shell's listeners could be told (the view's attach pumps), delivered by the next one.
+    stashed: Vec<ShellEvent>,
     processes: Processes,
     claims: BTreeMap<i64, ClaimRecord>,
     next_claim: i64,
@@ -139,7 +149,8 @@ impl Default for Session {
         Self {
             provider: None,
             tree: None,
-            relayed: None,
+            hub: None,
+            stashed: Vec::new(),
             processes: Processes::default(),
             claims: BTreeMap::new(),
             next_claim: 0,
@@ -227,72 +238,89 @@ impl Session {
     ///
     /// The ABI code and text: no provider, the link would not open, the compositor refused, or the snapshot did not arrive.
     pub(crate) fn attach(&mut self, mode: AttachMode) -> Result<(), (i32, String)> {
+        self.attach_as("tree_attach", mode)
+    }
+
+    fn attach_as(&mut self, what: &str, mode: AttachMode) -> Result<(), (i32, String)> {
         if self.tree.is_some() {
             return Ok(());
-        }
-        if self.relayed.is_some() {
-            return Err((
-                abi::E_BUSY,
-                "tree_attach: this shell drives the compositor's link itself (tree_link_open)".to_owned(),
-            ));
         }
         let Some(provider) = self.provider.as_ref() else {
             return Err((
                 abi::E_ERR,
-                "tree_attach: this core has no link to a compositor (the host gave it none)".to_owned(),
+                format!("{what}: this core has no link to a compositor (the host gave it none)"),
             ));
         };
-        let link = provider
-            .open(mode)
-            .map_err(|error| link_failure("tree_attach", &error.0))?;
-        let tree = TreeSession::attach(link, gnoblin_tree_client::session::BOOT_WAIT).map_err(|error| match error {
-            SessionError::NoAttach | SessionError::IncompleteSnapshot => {
-                (abi::E_TIMEOUT, format!("tree_attach: {error}"))
-            }
-            SessionError::Link(text) => link_failure("tree_attach", &text),
-            SessionError::Mirror(_) => (abi::E_ERR, format!("tree_attach: {error}")),
+        let link = provider.open(mode).map_err(|error| link_failure(what, &error.0))?;
+        let hub = Hub::new(link);
+        let tree = TreeSession::attach(
+            Box::new(HubLink::new(Rc::clone(&hub))),
+            gnoblin_tree_client::session::BOOT_WAIT,
+        )
+        .map_err(|error| match error {
+            SessionError::NoAttach | SessionError::IncompleteSnapshot => (abi::E_TIMEOUT, format!("{what}: {error}")),
+            SessionError::Link(text) => link_failure(what, &text),
+            SessionError::Mirror(_) => (abi::E_ERR, format!("{what}: {error}")),
         })?;
         self.tree = Some(tree);
+        self.hub = Some(hub);
         Ok(())
     }
 
-    /// Opens the link for a runtime that drives it as bytes. The core does not attach and keeps no mirror for it. A second open
-    /// in the same instance (a reload's generation) finds the link the first one opened and returns it as it is.
+    /// Opens the view of the tree a runtime that keeps a mirror of its own uses instead of the node functions
+    /// (`tree_link_open`). The core attaches as for `tree_attach` if it has not (the std library and the runtime's engine share
+    /// the tree this session holds), and moves its own node ids, call tokens and claim ids to ranges the engine does not count
+    /// in. A second open in the same instance (a reload's generation) finds the view the first one made.
     ///
     /// # Errors
     ///
-    /// The ABI code and text: the shell attached through `tree_attach`, there is no provider, or the link would not open.
+    /// The ABI code and text: there is no provider, the link would not open, or the snapshot did not arrive.
     pub(crate) fn open_relayed(&mut self, mode: AttachMode) -> Result<(), (i32, String)> {
-        if self.tree.is_some() {
-            return Err((
-                abi::E_BUSY,
-                "tree_link_open: this shell attached through tree_attach already".to_owned(),
-            ));
+        self.attach_as("tree_link_open", mode)?;
+        if let Some(tree) = self.tree.as_mut() {
+            tree.share_ids(RELAY_IDS, RELAY_TOKENS);
         }
-        if self.relayed.is_some() {
-            return Ok(());
-        }
-        let Some(provider) = self.provider.as_ref() else {
-            return Err((
-                abi::E_ERR,
-                "tree_link_open: this core has no link to a compositor (the host gave it none)".to_owned(),
-            ));
-        };
-        let link = provider
-            .open(mode)
-            .map_err(|error| link_failure("tree_link_open", &error.0))?;
-        self.relayed = Some(link);
+        self.next_claim = self.next_claim.max(RELAY_CLAIMS);
         Ok(())
     }
 
-    /// The relayed link, when a runtime opened it.
-    pub(crate) fn relayed(&mut self) -> Result<&mut Box<dyn TreeLink>, (i32, String)> {
-        self.relayed.as_mut().ok_or_else(|| {
-            (
+    /// The view's attach request: the runtime's engine boots from the core's mirror.
+    ///
+    /// # Errors
+    ///
+    /// The ABI code and text: the runtime has not opened the link.
+    pub(crate) fn attach_view(&mut self) -> Result<(), (i32, String)> {
+        // What the compositor sent with the snapshot (and what has arrived since) is applied to the core's mirror first, so the
+        // snapshot the engine boots from is the mirror as the next message continues it. The events that makes are the core's
+        // listeners' and wait for the next pump.
+        let events = self
+            .pump()
+            .map_err(|text| (abi::E_ERR, format!("tree_link_attach: {text}")))?;
+        self.stashed.extend(events);
+        let (Some(tree), Some(hub)) = (self.tree.as_ref(), self.hub.as_ref()) else {
+            return Err((
                 abi::E_ERR,
                 "the runtime has not opened the link: call tree_link_open first".to_owned(),
-            )
-        })
+            ));
+        };
+        hub.borrow_mut().attach_view(tree.mirror());
+        Ok(())
+    }
+
+    /// The hub, when the shell is attached.
+    pub(crate) fn hub(&self) -> Option<SharedHub> {
+        self.hub.as_ref().map(Rc::clone)
+    }
+
+    /// The hub the view reads and writes through.
+    pub(crate) fn view(&self) -> Result<SharedHub, (i32, String)> {
+        match self.hub.as_ref() {
+            Some(hub) if hub.borrow().has_view() => Ok(Rc::clone(hub)),
+            _ => Err((
+                abi::E_ERR,
+                "the runtime has not attached its view: call tree_link_attach first".to_owned(),
+            )),
+        }
     }
 
     /// The tree, when the shell has attached.
@@ -324,12 +352,13 @@ impl Session {
     ///
     /// The link failed or a change batch was missed: the tree is dropped (the shell must attach again) and the reason returned.
     pub(crate) fn pump(&mut self) -> Result<Vec<ShellEvent>, String> {
-        let mut events = Vec::new();
+        let mut events = std::mem::take(&mut self.stashed);
         if let Some(tree) = self.tree.as_mut() {
             let pumped = match tree.pump() {
                 Ok(pumped) => pumped,
                 Err(error) => {
                     self.tree = None;
+                    self.hub = None;
                     self.claims.clear();
                     self.flush_waiters.clear();
                     return Err(error.to_string());
@@ -378,6 +407,7 @@ impl Session {
             Ok(sent) => Ok(sent),
             Err(error) => {
                 self.tree = None;
+                self.hub = None;
                 self.claims.clear();
                 self.flush_waiters.clear();
                 Err(error.to_string())

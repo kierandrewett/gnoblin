@@ -36,7 +36,7 @@ clients().listen(EventKind.ADDED, 0, (event) => {
 
 class SwapWithFirst extends KeyBinding {
     override onPress(): void | false {
-        const focused = gnoblin.input.primary.focusedClient;
+        const focused = [...gnoblin.clients].find((client) => client.focused);
         const first = main.clients().members()[0];
         if (focused === undefined || first === undefined) {
             return false;

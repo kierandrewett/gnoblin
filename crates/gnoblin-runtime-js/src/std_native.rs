@@ -72,6 +72,11 @@ thread_local! {
     static ENTER: Cell<Option<*const dyn Enter>> = const { Cell::new(None) };
 }
 
+/// Gives the runtime the library it would otherwise open by name, for a host that holds it itself (`embed`).
+pub(crate) fn install_library(library: StdLib) {
+    LIBRARY.with(|slot| *slot.borrow_mut() = Some(Rc::new(library)));
+}
+
 /// Names the core generation the scripts that run now belong to.
 pub(crate) fn set_context(ctx: GnoblinCtx) {
     CONTEXT.with(|cell| cell.set(ctx));
@@ -113,12 +118,15 @@ pub(crate) fn with_enter<R>(enter: &dyn Enter, body: impl FnOnce() -> R) -> R {
     body()
 }
 
+/// Runs `f` with the way into the running generation: the turn's own (`with_enter`) when the dispatch that calls back is the
+/// runtime's, and the shell instance's when it is the host's (the host drains the core's queue after the runtime's turn).
 fn entered<R>(f: impl FnOnce(&dyn Enter) -> Result<R, String>) -> Result<R, String> {
-    let pointer = ENTER
-        .with(Cell::get)
-        .ok_or_else(|| "a std callback ran outside the runtime's turn".to_owned())?;
-    // SAFETY: set by `with_enter` for the length of the dispatch that is running this callback.
-    f(unsafe { &*pointer })
+    if let Some(pointer) = ENTER.with(Cell::get) {
+        // SAFETY: set by `with_enter` for the length of the dispatch that is running this callback.
+        return f(unsafe { &*pointer });
+    }
+    crate::instance::with_enter(f)
+        .unwrap_or_else(|| Err("a std callback ran while no JavaScript shell was running on this thread".to_owned()))
 }
 
 fn library() -> Result<Rc<StdLib>, String> {

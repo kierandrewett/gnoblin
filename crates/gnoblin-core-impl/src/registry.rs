@@ -92,7 +92,6 @@ pub(crate) fn activate(ctx: GnoblinCtx) -> Result<(), String> {
 }
 
 /// Runs every shutdown hook the context registered, in registration order. A hook runs once.
-#[cfg(test)]
 pub(crate) fn run_shutdown_hooks(ctx: GnoblinCtx) {
     if let Some(id) = decode(KIND_CTX, ctx) {
         HOST.run_shutdown_hooks(id);
@@ -101,7 +100,6 @@ pub(crate) fn run_shutdown_hooks(ctx: GnoblinCtx) {
 
 /// Retires a context: removes every registration it owns (running each `drop_user`), drops its queued posts, and marks it
 /// so every later call from it is refused. Returns how many registrations were removed.
-#[cfg(test)]
 pub(crate) fn finish_retire(ctx: GnoblinCtx) -> usize {
     decode(KIND_CTX, ctx).map_or(0, |id| HOST.finish_retire(id))
 }

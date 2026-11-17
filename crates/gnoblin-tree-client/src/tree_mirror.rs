@@ -489,6 +489,34 @@ impl TreeMirror {
         self.nodes.get(&id)
     }
 
+    /// The whole mirror as the snapshot nodes a compositor would send, in id order: what a second holder of the same view
+    /// boots from (`class` is the schema's name, `index` the node's place among its parent's children).
+    pub fn to_snapshot(&self) -> Vec<SnapshotNode> {
+        self.nodes
+            .iter()
+            .map(|(id, record)| {
+                let index = self
+                    .nodes
+                    .get(&record.parent)
+                    .and_then(|parent| parent.children.iter().position(|child| child == id))
+                    .map_or(0, |at| i64::try_from(at).unwrap_or(i64::MAX));
+                SnapshotNode {
+                    id: *id,
+                    parent: record.parent,
+                    index,
+                    class: wire_class(&record.class),
+                    title: String::new(),
+                    app_id: String::new(),
+                    props: record
+                        .props
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect(),
+                }
+            })
+            .collect()
+    }
+
     pub fn len(&self) -> usize {
         self.nodes.len()
     }
