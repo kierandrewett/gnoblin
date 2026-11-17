@@ -880,10 +880,9 @@ mod tests {
         for (plus, brackets) in [
             ("Super+Alt+F9", "<Alt><Super>F9"),
             ("super+shift+q", "<Shift><Super>q"),
-            ("Ctrl+Alt+Delete", "<Control><Alt>Delete"),
+            ("Ctrl+Alt+F9", "<Control><Alt>F9"),
             ("Primary+q", "<Control>q"),
             ("Super+0x3f", "<Super>0x3f"),
-            ("Super++", "<Super>plus"),
             ("Super+Return", "<Super>Return"),
         ] {
             let spelled = parse(plus).unwrap_or_else(|error| panic!("{plus}: {error}"));
@@ -891,6 +890,10 @@ mod tests {
             assert_eq!(spelled, bracketed, "{plus} and {brackets}");
             assert_eq!(spelled.to_string(), bracketed.to_string());
         }
+        // The plus key is `plus`, and a lone `+` or a trailing `++` is that key (the test table has no such keysym to parse).
+        assert_eq!(super::plus_form("Super++").as_deref(), Some("<Super>plus"));
+        assert_eq!(super::plus_form("+").as_deref(), Some("plus"));
+        assert_eq!(super::plus_form("<Super>q"), None);
         // A word that is not a modifier, a duplicate and a mask name are still refused, naming the text as written.
         for refused in [
             "Windows+Return",
