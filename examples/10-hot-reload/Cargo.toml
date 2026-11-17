@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-example-hot-reload"
+description = "Example 10: a shell that is rebuilt while it runs. Windows stay open on the same connection and surface across a reload; nodes are found by name, state is kept, and registrations never double."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "hot_reload"
+crate-type = ["cdylib"]
+
+# A shell depends on the core SDK and nothing else: it links the installed `libgnoblin-core.so.1` and carries no copy of the
+# compositor. (`gnoblin-core = "1"` outside this workspace.)
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+
+# A shell author writes no unsafe code: the workspace table forbids it, and the macro's expansion needs none.
+[lints]
+workspace = true

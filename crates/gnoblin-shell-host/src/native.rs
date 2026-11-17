@@ -399,6 +399,8 @@ impl<E: 'static> NativeLoader<E> {
         // SAFETY: calling the shell's `init` with the core's table and the context made for it, on this thread, which
         // becomes the shell thread. Panics cannot unwind out of the shell's `extern "C"` function, but a non-SDK shell may
         // declare it otherwise, so the call is contained.
+        // The text a failing `init` leaves must be its own, never an earlier failure's.
+        set_error(String::new());
         let outcome = catch_unwind(AssertUnwindSafe(|| unsafe {
             (entry.init)(core::ptr::from_ref(self.api), ctx)
         }));
@@ -416,7 +418,10 @@ impl<E: 'static> NativeLoader<E> {
             if code == abi::E_PANIC {
                 PANICS.fetch_add(1, Ordering::Relaxed);
             }
-            let message = last_error();
+            let mut message = last_error();
+            if message.is_empty() {
+                message = format!("init returned {} without saying why", code_name(code));
+            }
             self.host.finish_retire(generation);
             self.keep_mapped(handle as usize, path, &label, RetainedWhy::Failed, mapped_bytes);
             return Err(LoadError::Init {

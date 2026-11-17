@@ -365,6 +365,9 @@ pub(crate) fn stats(ctx: GnoblinCtx) -> Result<GnoblinStats, i32> {
 /// `report_panic`: logs a panic a shell caught, tagged with its generation. A report from a retired generation is still
 /// logged (marked as such): a panic is diagnostic output, not an action on the compositor.
 pub(crate) fn report_panic(ctx: GnoblinCtx, message: &str) -> i32 {
+    // A panic in `init` is reported here before the load fails, and the loader shows this text as the reason: the shell's own words,
+    // with where it happened.
+    set_error(message);
     let Some(index) = decode(KIND_CTX, ctx) else {
         log::error!("PANIC in a shell with an unknown context: {message}");
         return abi::E_STALE;

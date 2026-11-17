@@ -1508,6 +1508,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-hot-reload"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+]
+
+[[package]]
 name = "gnoblin-example-minimal-core-shell"
 version = "0.2.0-alpha.0"
 dependencies = [

@@ -24,9 +24,9 @@ macro_rules! out {
     }};
 }
 
-const SCREEN: u64 = 20;
-const SEAT: u64 = 21;
-const FIRST: u64 = 40;
+pub(crate) const SCREEN: u64 = 20;
+pub(crate) const SEAT: u64 = 21;
+pub(crate) const FIRST: u64 = 40;
 const SECOND: u64 = 41;
 const THIRD: u64 = 42;
 
@@ -38,9 +38,9 @@ impl TreeLinkProvider for Provider {
     }
 }
 
-/// A compositor with a 1000 by 800 screen, a seat and one window already open, and the shell loaded into the core over it.
-fn start(shell: &Path) -> Result<(FakeCompositor, Module), i32> {
-    out!("core_abi={}.{}", abi::ABI_MAJOR, abi::ABI_MINOR);
+/// A compositor with a 1000 by 800 screen, a seat and one window already open, behind the tree link the core's shell reaches. The
+/// shell instance is reset first, so a scenario starts from nothing.
+pub(crate) fn world() -> FakeCompositor {
     host::reset_session();
     let comp = FakeCompositor::new();
     let double = MirrorValue::Double;
@@ -59,6 +59,13 @@ fn start(shell: &Path) -> Result<(FakeCompositor, Module), i32> {
     comp.add_node(SEAT, ROOT, "seat", vec![("name", text("seat0"))]);
     comp.add_window(FIRST, "Terminal", "foot");
     host::set_tree_link_provider(Box::new(Provider(comp.clone())));
+    comp
+}
+
+/// [`world`], with the shell loaded into the core over it.
+fn start(shell: &Path) -> Result<(FakeCompositor, Module), i32> {
+    out!("core_abi={}.{}", abi::ABI_MAJOR, abi::ABI_MINOR);
+    let comp = world();
     let module = match host::load(shell, Copying::Unique, 0) {
         Ok(module) => module,
         Err(error) => {

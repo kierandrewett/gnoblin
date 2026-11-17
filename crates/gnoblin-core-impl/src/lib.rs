@@ -50,6 +50,9 @@ mod driver;
 #[cfg(feature = "test-driver")]
 mod driver_examples;
 
+#[cfg(feature = "test-driver")]
+mod driver_reload;
+
 pub use exports::{gnoblin_abi_version, gnoblin_catalog_hash, gnoblin_get_api, gnoblin_last_error};
 
 #[cfg(feature = "test-driver")]

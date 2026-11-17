@@ -337,3 +337,20 @@ fn node_adopt_refuses_what_cannot_be_adopted_and_says_why() {
     assert_eq!(rc, abi::E_RETIRED, "a retired generation adopts nothing");
     assert!(last_error().starts_with("E_RETIRED: generation "), "{}", last_error());
 }
+
+#[test]
+fn a_live_generations_request_for_a_reload_reaches_the_controller_once() {
+    let _serial = serial();
+    let rig = rig();
+    let _ = host::take_reload_request();
+    for _ in 0..2 {
+        // SAFETY: `request_reload` is a function of the core's table.
+        assert_eq!(unsafe { (api().request_reload)(rig.ctx()) }, abi::E_OK);
+    }
+    assert_eq!(
+        host::take_reload_request(),
+        Some(host::ReloadTrigger::Shell),
+        "two asks are one reload"
+    );
+    assert_eq!(host::take_reload_request(), None);
+}

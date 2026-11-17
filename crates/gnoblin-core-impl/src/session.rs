@@ -94,7 +94,7 @@ struct NamedNode {
 
 /// What a stage puts back when it is abandoned: everything a staged generation's `init` can change in the instance that is
 /// not a registration (those the generation host drops). Taken when the generation is made, forgotten when it takes over.
-struct StageMark {
+struct SessionStageMark {
     generation: GenerationId,
     /// This tick's writes at that moment, when the shell was attached.
     tick: Option<TickMark>,
@@ -122,7 +122,7 @@ pub(crate) struct Session {
     /// The nodes generations made under a name, by class and name: what `node_adopt` finds again.
     named: BTreeMap<(String, String), NamedNode>,
     /// The stage in progress, if a generation is staged.
-    stage: Option<StageMark>,
+    stage: Option<SessionStageMark>,
     clock: Arc<dyn Clock>,
 }
 
@@ -591,7 +591,7 @@ impl Session {
     /// back if the stage is abandoned.
     fn staged(&mut self, id: GenerationId) {
         self.processes.begin_stage();
-        self.stage = Some(StageMark {
+        self.stage = Some(SessionStageMark {
             generation: id,
             tick: self.tree.as_ref().map(TreeSession::mark_tick),
             named: self.named.clone(),

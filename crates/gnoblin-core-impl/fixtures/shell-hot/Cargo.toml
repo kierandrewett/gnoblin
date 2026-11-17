@@ -12,6 +12,14 @@ build = "build.rs"
 name = "shell_hot"
 crate-type = ["cdylib"]
 
+[features]
+# Test only: the library exports an entry descriptor built for ABI major 2 instead of the SDK's, which the loader refuses with
+# both versions named.
+wrong-abi = []
+# Test only: the library calls a symbol the core does not export, as a shell built against a newer core would; the dynamic
+# loader refuses it and the loader says which symbol is missing.
+newer-symbol = []
+
 [dependencies]
 gnoblin-core = { path = "../../../gnoblin-core" }
 

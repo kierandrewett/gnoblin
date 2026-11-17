@@ -1255,3 +1255,54 @@ What the RustSdk lane built against a fake compositor, where it differs from sec
   tests) needs a hung callback to be observable: `dispatch` runs callbacks inline, so the compositor edge must time them
   (`LOCK_UI_LEASE_MS`) from outside the shell thread. M3.6 (guardian) needs "attached" and "init done" signals: `tree_attach` success
   and `NativeLoader::load` returning. Observer attach mode is passed to the provider only; `TreeLink::attach` carries no mode.
+
+## 20. Implementation notes, M5.1 to M5.5 (library parts)
+
+What the Reload lane built against the fake compositor, where it differs from section 8, and what is still missing.
+
+- **The protocol.** `gnoblin-shell-host::reload::NativeShell` owns the running generation and runs a reload in the order of 8.1:
+  stage (unique copy, `dlopen`, `init` against a rollback mark), `end` the old generation (shutdown hooks and the entry's
+  `shutdown`), take over (`activate`: old claims released and new ones sent behind them in one transaction, programs adopted by
+  identical argv, timers and listeners live), then retire the old generation (registrations removed, `E_RETIRED` afterwards, the
+  library stays on the retire list). Any failure before the takeover is an abandon: the old generation is untouched. The retired
+  generations stay readable through `NativeShell::retired` (their last counters). `NativeModule::end` is new, so the hooks of the
+  old generation run before the new one takes over, and `retire` no longer runs them twice.
+- **The controller.** `ReloadController` is a cloneable, thread-safe handle: `request(trigger)` (never blocks, never reloads;
+  requests that arrive before the shell thread looks are one reload, the stronger trigger wins), `take_request`, `status()`
+  (running generation, reloads and failures, the retire list, the last reload's text, the last failed build). The core exposes it
+  as `host::reload_controller()`; the ABI's `request_reload` goes through it, `host::take_reload_request()` returns the trigger, and
+  `host::native_shell(path)` builds a `NativeShell` over the core's loader. The compositor edge calls `serve_requests` between
+  dispatches; `gnoblinctl shell reload` calls `request(User)` and `status()`. Neither is wired yet (Flip and Startup).
+- **Failure recovery (M5.3, example 18).** Every failure keeps the old generation and has one text: `reload of PATH failed, still
+running generation N: REASON`. Reasons, pinned by `crates/gnoblin-core-impl/tests/reload.rs`: `init failed (E_LOAD|E_PANIC): ...`
+  (a panic's text is the panic message and its place), `cannot load the shell library: file too short|invalid ELF header` (a
+  truncated or foreign file), `the shell library does not exist (...)`, `incompatible ABI: this shell was built for gnoblin ABI
+2.3; the installed core is 1.0` (a major mismatch, both versions named), `incompatible ABI: the shell needs the symbol `X`,
+which the installed core (ABI 1.0) does not provide ...` (a symbol the core lacks) and the same text naming `libgnoblin-core.so.N`
+  for a shell linked to another core major (unit test; no such library to build here), and the refusal at the retire limit
+  (before the copy). A failed build is `BuildStep::run_reporting`: the compiler's stderr goes to the log and `status`, nothing is
+  requested, the shell stays. The loader now clears the last-error text before `init`, and `report_panic` keeps its message as the
+  last error, so a failing `init` never shows an earlier failure's text.
+- **Retained state (M5.4).** A staged generation's `init` runs against the live instance, so the session takes a mark when the
+  generation is made: the tick's writes (`TreeSession::mark_tick`), the named nodes, and the state entries it replaces. Abandoning
+  puts them back (a stage that flushed in `init` cannot be unsent: it keeps its named nodes and logs a warning); the takeover
+  forgets the mark. New table function `node_adopt(ctx, class, name, flags, out)` (SDK `Gnoblin::adopt_node`,
+  `adopt_ephemeral_node`) finds the node a generation made under a name (the same id, children and values) or makes it; `ADOPTED`
+  tells which. An ephemeral node (`NODE_FLAG_EPHEMERAL`) that the next generation did not adopt in its `init` is destroyed at the
+  takeover. Nodes made by `write_create` and compositor-owned nodes are never touched. `state_put`/`state_get` stay by name with the
+  writer's version. A generation that wants what its predecessor writes in `on_shutdown` reads it in a `post` made in `init` (a
+  post of a staged generation runs after the takeover).
+- **Watching (M5.2, M5.5 library parts).** `ModuleWatch` watches the module file (and a launcher file's target, a symlink at both
+  ends) and turns a change into `ReloadTrigger::Files`; `watch::shell_files()` and `with_any_extension` are the widened relevance
+  sets (`.so`, `.py`, `.ts/.mts/.js/.mjs`, launcher `.toml`). `BuildStep::cargo(project)` is the build step. A `cargo xtask
+watch-shell` command and the compositor's `--watch` wiring are **not done** (Startup).
+- **Example 10 and its test.** `examples/10-hot-reload` is built twice from one source in a temporary project (the two constants
+  edited between the builds) and reloaded three times by the scenario driver (`gnoblin-fixture-launcher reload MODULE STEP...`,
+  `driver_reload.rs`): window ids, geometry and claims are untouched, no window is made or destroyed, the badge is the same node,
+  the toast is destroyed, the kept count continues (the next window uses the new step at the old count), a press counts once, the
+  helper program starts once, the retired generations' counters stand still and each dropped exactly what it registered.
+- **Missing for the real compositor (Flip/Validation).** The fake has no Wayland: the test proves the compositor-owned nodes are
+  neither destroyed nor made again, not that a client's socket survives. It also does not prove the shell-requested reload
+  (`request_reload` from a chord callback), which only the core unit test covers (the example's `Super+Shift+r` chord did not
+  deliver in the fake; not investigated). Needed: the in-process edge calling `serve_requests`, `gnoblinctl shell reload|status`
+  over the socket, `--watch` and the config's `max_retained`.

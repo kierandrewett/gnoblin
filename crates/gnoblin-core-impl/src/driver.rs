@@ -50,6 +50,9 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             level: "info".to_owned(),
         };
         let _log = init(ProcessRole::Compositor, &LogOptions::from_environment(&settings));
+        if args.get(1).map(String::as_str) == Some("reload") {
+            return crate::driver_reload::run(&args[2..]);
+        }
         let arg = |index: usize| args.get(index).map(PathBuf::from);
         match (args.get(1).map(String::as_str), arg(2), arg(3), arg(4)) {
             (Some("run"), Some(shell), _, _) => run(&shell),
@@ -66,7 +69,7 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             (Some("example08"), Some(shell), _, _) => crate::driver_examples::tiler(&shell),
             _ => {
                 out!(
-                    "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|retain|unload|example01|example08> MODULE..."
+                    "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|retain|unload|reload|example01|example08> MODULE..."
                 );
                 2
             }

@@ -129,7 +129,7 @@ impl fmt::Display for ReloadStatus {
 }
 
 #[derive(Default)]
-struct Shared {
+struct ControllerState {
     status: ReloadStatus,
 }
 
@@ -141,7 +141,7 @@ struct Shared {
 /// reload.
 #[derive(Clone, Default)]
 pub struct ReloadController {
-    shared: Arc<Mutex<Shared>>,
+    shared: Arc<Mutex<ControllerState>>,
 }
 
 impl fmt::Debug for ReloadController {
@@ -158,7 +158,7 @@ impl ReloadController {
         Self::default()
     }
 
-    fn lock(&self) -> MutexGuard<'_, Shared> {
+    fn lock(&self) -> MutexGuard<'_, ControllerState> {
         self.shared.lock().unwrap_or_else(PoisonError::into_inner)
     }
 

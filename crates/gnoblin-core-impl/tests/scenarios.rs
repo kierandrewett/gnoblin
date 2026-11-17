@@ -586,7 +586,7 @@ fn a_library_that_is_not_a_shell_and_a_missing_file_and_a_non_library_are_refuse
     let (stdout, _, code) = run(&stage.dir, &["load"], &[&missing]);
     assert_eq!(code, 1);
     assert!(
-        stdout.contains("cannot make a private copy") && stdout.contains("does-not-exist.so"),
+        stdout.contains("the shell library does not exist") && stdout.contains("does-not-exist.so"),
         "{stdout}"
     );
 

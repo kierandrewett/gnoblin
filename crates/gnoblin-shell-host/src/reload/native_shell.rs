@@ -102,6 +102,9 @@ pub struct NativeShell<E: 'static> {
     loader: &'static NativeLoader<E>,
     path: PathBuf,
     current: Option<NativeModule<E>>,
+    /// The generations that retired, oldest first. Their libraries are mapped for good, so keeping the handles costs nothing,
+    /// and a test or `gnoblinctl shell status` can read each one's last counters.
+    retired: Vec<NativeModule<E>>,
     /// Reloads that committed: the new generation's `reload_count` is this plus one.
     committed: u32,
     controller: ReloadController,
@@ -115,6 +118,7 @@ impl<E: 'static> NativeShell<E> {
             loader,
             path: path.into(),
             current: None,
+            retired: Vec::new(),
             committed: 0,
             controller,
         }
@@ -133,6 +137,11 @@ impl<E: 'static> NativeShell<E> {
     /// The running generation, if the shell has started and not stopped.
     pub fn current(&self) -> Option<&NativeModule<E>> {
         self.current.as_ref()
+    }
+
+    /// The generations this shell retired, oldest first. Each is refused every call (`E_RETIRED`); its counters are readable.
+    pub fn retired(&self) -> &[NativeModule<E>] {
+        &self.retired
     }
 
     /// Runs one dispatch turn of the running generation, waiting up to `timeout_ms` for work. `None` when nothing runs.
@@ -225,7 +234,12 @@ impl<E: 'static> NativeShell<E> {
             return Err(self.failed(trigger, running, ReloadError::Commit(message)));
         }
         let (previous, removed) = match self.current.take() {
-            Some(old) => (Some(old.generation()), old.retire()),
+            Some(old) => {
+                let removed = old.retire();
+                let id = old.generation();
+                self.retired.push(old);
+                (Some(id), removed)
+            }
             None => (None, 0),
         };
         let generation = staged.generation();
@@ -253,7 +267,11 @@ impl<E: 'static> NativeShell<E> {
 
     /// Ends the shell: the running generation's shutdown hooks run and it retires. Returns how many registrations it had.
     pub fn stop(&mut self) -> usize {
-        let removed = self.current.take().map_or(0, |module| module.retire());
+        let removed = self.current.take().map_or(0, |module| {
+            let removed = module.retire();
+            self.retired.push(module);
+            removed
+        });
         self.controller.record_stopped();
         removed
     }

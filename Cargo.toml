@@ -102,6 +102,7 @@ members = [
     "crates/xdg-desktop-portal-gnoblin",
     "examples/01-minimal-core-shell",
     "examples/08-no-workspaces",
+    "examples/10-hot-reload",
     "xtask",
 ]
 # `extensions/` packages are separate workspaces with their own lockfiles and target dirs (design/xr-extension.md).
