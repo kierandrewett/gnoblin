@@ -1393,6 +1393,7 @@ New core tests:
 - `portal::provider` tests `NoUi`, in both builds.
 - `ipc::portal::no_ui_tests` runs the service over `NoUi`, in both builds.
 - `xwayland::core_tests` runs an X11 window's open, close and role over `NullWm`, in both builds.
+
 ## 22. Implementation notes, M7.1 to M7.5 (StdNative, first part)
 
 What the StdNative lane built against the fake compositor, where it differs from sections 4, 5, 9 and 13, and what is not done.
@@ -1476,8 +1477,9 @@ dist-check` passes `--std-shell` for example 2 in all four trees. A tree without
   orientations), `GridLayout` (auto or fixed columns, row or column fill, gap) and `MonocleLayout`. They port
   `data/js/gnoblin-std/layouts/{master-stack,grid,monocle}.ts` line for line, including the flooring of every tile edge on its own.
   `the_native_tiling_layouts_match_the_typescript_std` switches four windows through six layouts and a close, over the TypeScript std and the
-  native one, and compares all rectangles: equal. **Not ported:** `dwindle`, `strip`, `arc` and `kiosk`: they keep a tree or a record of
-  who sits where and ship pointer-swap and resize triggers; they come with the tiling bindings below.
+  native one, and compares all rectangles: equal. **Not ported:** `dwindle`, `strip` and `arc`: the first two keep a tree or a record of
+  who sits where and ship split-resize triggers, the third answers with 3D transforms the native `Placement` has no field for. `KioskLayout` is
+  an alias of `MonocleLayout`, as it is in the TypeScript library.
 - **Example 6** (`examples/06-rust-layout`): a `Columns` layout over a workspace with gaps; windows open, a chord swaps two, one closes;
   every rectangle is asserted (`example_6_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_close`).
 
@@ -1492,9 +1494,14 @@ dist-check` passes `--std-shell` for example 2 in all four trees. A tree without
   three resizes including the stop at the smallest size, and a custom binding.
 - **Not done, with reasons.** Edge snapping of a dragged window into tiled zones (needs `gnoblin-std/snap`, which has no native
   counterpart); the frame inset in the move constraint (not in the std ABI); the window's own min and max size in the resize (not read);
-  floating bounds remembered after a drag; the tiling swap and split-resize bindings (`bindings/tiling.ts`, which the unported layouts
-  need); a gesture binding class over `Gnoblin::bind_gesture` (the core call exists and works, the std class does not); the competition
+  floating bounds remembered after a drag; the split-resize binding of `bindings/tiling.ts` (the layouts that have a split to move are
+  the unported ones); a gesture binding class over `Gnoblin::bind_gesture` (the core call exists and works, the std class does not); the competition
   between several bindings on one trigger (the SDK keeps one binding per claim). The work area is the output's rectangle.
+- `ClientSwapBinding` (`Super+Button1` on a tiled window) trades places with the tile it is dropped on, decided by the release, not the
+  last motion; tested on the layouts fixture (`the_native_tiling_layouts_match_the_typescript_std`, the `swapped` and `dropped_nowhere` steps).
+- **Example 9** (a std shell linked to the installed libraries): `example_9_a_std_shell_links_the_installed_libraries_and_ldd_is_clean` runs `ldd`
+  on the shell with the prefix as the only search path (both libraries resolve into it, nothing missing) and again without it (the std library is
+  the one `ldd` reports not found); the single core mapping while std and the shell are loaded is asserted by the example 2 test.
 - **Example 7** (a chord claimed in a script that runs a script closure) is TypeScript and Python by definition. What the native side
   offers it is already in the core (`bind`, `bind_pointer`) and in the layout vtable; the script bindings of std (`Binding` classes over
   the table) wait for the runtimes (M6).

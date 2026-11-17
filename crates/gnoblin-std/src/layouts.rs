@@ -5,7 +5,7 @@
 //! monocle}.ts`, which are the reference: the same arithmetic, the same clamps, the same flooring of every tile edge, so a workspace
 //! lays the same windows out the same way whichever language the shell is written in (the parity test of this crate holds them to it).
 //!
-//! The dwindle, strip, arc and kiosk layouts of the TypeScript library keep a tree or a record of who sits where and ship with binding
+//! The dwindle, strip and arc layouts of the TypeScript library keep a tree or a record of who sits where and ship with binding
 //! triggers (swap and resize by pointer); they come with the bindings lane (M7.5) and are not here.
 
 use gnoblin_core::Rect;
@@ -299,3 +299,6 @@ impl Layout for MonocleLayout {
             .collect()
     }
 }
+
+/// The kiosk layout of the TypeScript library is a monocle by another name: one window fills the area and the rest are hidden.
+pub type KioskLayout = MonocleLayout;

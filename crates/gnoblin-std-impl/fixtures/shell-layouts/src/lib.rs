@@ -9,6 +9,12 @@ use gnoblin_std::prelude::*;
 /// What a chord does to the workspace.
 type Switch = Box<dyn Fn() -> gnoblin_std::Result<()>>;
 
+/// `Super+Button1` swaps a tiled window with the tile it is dropped on.
+fn std_swap(g: &Gnoblin) -> gnoblin_std::Result<()> {
+    g.std()?.bind_drag(gnoblin_std::ClientSwapBinding::new())?;
+    Ok(())
+}
+
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let main = Workspace::builder("main")?
@@ -56,6 +62,7 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
             }
         })?;
     }
+    std_swap(g)?;
     g.log("layouts shell is running");
     Ok(())
 }

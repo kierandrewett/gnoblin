@@ -59,8 +59,8 @@ mod workspace;
 
 pub use api::{Stats, Std};
 pub use bindings::{
-    ClientMoveBinding, ClientResizeBinding, DRAG_STRIP, DRAG_THRESHOLD, DragBinding, DragConstraint, DragEvent, Grip,
-    MIN_SIZE, Point, ResizeCorner, ResizeEdge, ResizeGrip, clamp_axis, constrain_rect, resized_rect,
+    ClientMoveBinding, ClientResizeBinding, ClientSwapBinding, DRAG_STRIP, DRAG_THRESHOLD, DragBinding, DragConstraint,
+    DragEvent, Grip, MIN_SIZE, Point, ResizeCorner, ResizeEdge, ResizeGrip, clamp_axis, constrain_rect, resized_rect,
 };
 pub use client::{AsClient, Client, FramePolicy};
 pub use collection::{ClientListener, Collection, CollectionListener, Member};
@@ -68,7 +68,7 @@ pub use desktop::{GnoblinStdExt, OutputPolicy, PerOutput, WorkspacePolicy};
 pub use emitter::{Emitter, Listener};
 pub use error::{Error, ErrorKind, Result};
 pub use layout::{FloatPlacement, FloatingLayout, IntoLayout, Layout, LayoutContext, Placement, inset_rect};
-pub use layouts::{Columns, GridFill, GridLayout, MasterStackLayout, MonocleLayout, Orientation};
+pub use layouts::{Columns, GridFill, GridLayout, KioskLayout, MasterStackLayout, MonocleLayout, Orientation};
 pub use output::Output;
 pub use query::{Query, QueryValue};
 pub use subscription::{ListenerHandle, ScopedListener, ScopedSubscription, Subscription};

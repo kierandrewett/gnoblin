@@ -584,6 +584,19 @@ fn the_native_tiling_layouts_match_the_typescript_std() {
         );
     }
     assert_eq!(reference.len(), 7);
+
+    // The swap binding: after the close the tiles are 40 (master), 42 and 43; dragging the bottom tile onto the master trades their
+    // places in the workspace's order, and a drop on nothing changes nothing.
+    assert_eq!(
+        step(&stdout, "swapped"),
+        [
+            (40, Some([503.0, 403.0, 485.0, 385.0])),
+            (42, Some([503.0, 12.0, 485.0, 385.0])),
+            (43, Some([12.0, 12.0, 485.0, 776.0])),
+        ],
+        "{stdout}"
+    );
+    assert_eq!(step(&stdout, "dropped_nowhere"), step(&stdout, "swapped"), "{stdout}");
     assert_eq!(num(&stdout, "core_stats", "panics"), 0, "{stdout}");
 }
 
@@ -643,4 +656,44 @@ fn pointer_drags_move_and_resize_windows_and_a_binding_of_the_shells_own_runs() 
     assert!(stdout.contains("order_before=[20, 21, 40, 41]"), "{stdout}");
     assert!(stdout.contains("order_after=[20, 21, 41, 40]"), "{stdout}");
     assert_eq!(num(&stdout, "core_stats", "panics"), 0, "{stdout}");
+}
+
+// ---- example 9 --------------------------------------------------------------------------------------------------------------
+
+#[test]
+fn example_9_a_std_shell_links_the_installed_libraries_and_ldd_is_clean() {
+    let stage = stage();
+    // The loader's own answer, with the prefix as the only place to look: both libraries of ours resolve to the files of the prefix, and
+    // nothing is missing.
+    let output = std::process::Command::new("ldd")
+        .arg(&stage.std_shell)
+        .env("LD_LIBRARY_PATH", &stage.with_std)
+        .output()
+        .expect("ldd is needed for this test");
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "{text}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!text.contains("not found"), "{text}");
+    for library in [STD_FILE, CORE_FILE] {
+        let line = text
+            .lines()
+            .find(|line| line.trim_start().starts_with(library))
+            .unwrap_or_else(|| panic!("`{library}` is not in the shell's dependencies:\n{text}"));
+        assert!(line.contains(&stage.with_std.display().to_string()), "{line}");
+    }
+    // Without the prefix on the path the loader says what is missing, and it is the std library.
+    let output = std::process::Command::new("ldd")
+        .arg(&stage.std_shell)
+        .env_remove("LD_LIBRARY_PATH")
+        .output()
+        .expect("ldd is needed for this test");
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        text.lines()
+            .any(|line| line.contains(STD_FILE) && line.contains("not found")),
+        "{text}"
+    );
 }

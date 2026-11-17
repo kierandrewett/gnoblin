@@ -27,6 +27,7 @@ use gnoblin_core::{DragPhase, PointerDrag, Rect, Subscription};
 use crate::api::Std;
 use crate::client::Client;
 use crate::error::Result;
+use crate::workspace::Workspace;
 
 /// How far a pointer travels before a press becomes a drag, in logical pixels.
 pub const DRAG_THRESHOLD: f64 = 4.0;
@@ -422,6 +423,97 @@ impl DragBinding for ClientResizeBinding {
         if let Some((client, start, _, _)) = self.drag.take() {
             let _ = client.set_bounds(start);
         }
+    }
+}
+
+/// Whether `client` sits in a tile: tiled by its layout, not floating, not a dialog, and draggable.
+fn in_tile(client: &Client) -> bool {
+    client.is_tiled().unwrap_or(false)
+        && !client.is_floating().unwrap_or(false)
+        && client.parent_window().ok().flatten().is_none()
+        && draggable(client)
+}
+
+/// The tile of `workspace` that holds `at`, other than `except`: the first in the workspace's order that is shown.
+fn tile_at(workspace: &Workspace, at: Point, except: &Client) -> Option<Client> {
+    let clients = workspace.clients().ok()?.to_vec().ok()?;
+    clients.into_iter().find(|client| {
+        let Ok(rect) = client.bounds() else {
+            return false;
+        };
+        client.window().id() != except.window().id()
+            && in_tile(client)
+            && !client.window().is_minimised().unwrap_or(false)
+            && client.is_visible().unwrap_or(true)
+            && at.x >= rect.x
+            && at.x < rect.x + rect.width
+            && at.y >= rect.y
+            && at.y < rect.y + rect.height
+    })
+}
+
+/// Swaps a tiled window with the tile it is dropped on: the pointer takes hold of a tile and the release decides, not the last motion.
+#[derive(Debug)]
+pub struct ClientSwapBinding {
+    trigger: String,
+    drag: Option<(Client, Workspace)>,
+}
+
+impl Default for ClientSwapBinding {
+    fn default() -> ClientSwapBinding {
+        ClientSwapBinding {
+            trigger: "Super+Button1".to_owned(),
+            drag: None,
+        }
+    }
+}
+
+impl ClientSwapBinding {
+    /// A swap binding on `Super+Button1`.
+    pub fn new() -> ClientSwapBinding {
+        ClientSwapBinding::default()
+    }
+
+    /// The pointer chord that starts the swap.
+    #[must_use]
+    pub fn trigger(mut self, trigger: impl Into<String>) -> ClientSwapBinding {
+        self.trigger = trigger.into();
+        self
+    }
+}
+
+impl DragBinding for ClientSwapBinding {
+    fn trigger(&self) -> String {
+        self.trigger.clone()
+    }
+
+    fn on_start(&mut self, event: &DragEvent) -> bool {
+        let Some(client) = event.client.clone().filter(in_tile) else {
+            return false;
+        };
+        let Some(workspace) = client.workspace().ok().flatten() else {
+            return false;
+        };
+        self.drag = Some((client, workspace));
+        true
+    }
+
+    fn on_update(&mut self, _event: &DragEvent) {}
+
+    fn on_end(&mut self, event: &DragEvent) {
+        let Some((dragged, workspace)) = self.drag.take() else {
+            return;
+        };
+        // The release decides: the pointer may have moved since the last sample.
+        if let Some(over) = tile_at(&workspace, event.position, &dragged)
+            && dragged.workspace().ok().flatten().as_ref() == Some(&workspace)
+        {
+            let _ = workspace.swap(&dragged, &over);
+        }
+    }
+
+    fn on_cancel(&mut self, _event: &DragEvent) {
+        self.drag = None;
     }
 }
 

@@ -319,6 +319,32 @@ pub(crate) fn std_layouts(shell: &Path) -> i32 {
     for id in [FIRST, SECOND, THIRD, FOURTH] {
         geometry(&comp, id);
     }
+    // A tile dragged onto another swaps places with it: the bottom tile of the stack onto the master.
+    drag(
+        &comp,
+        &module,
+        "Super+Button1",
+        (600.0, 600.0),
+        &[(400.0, 400.0), (200.0, 300.0)],
+        "end",
+    );
+    out!("step=swapped");
+    for id in [FIRST, THIRD, FOURTH] {
+        geometry(&comp, id);
+    }
+    // Dropped on nothing, it stays where it is.
+    drag(
+        &comp,
+        &module,
+        "Super+Button1",
+        (600.0, 600.0),
+        &[(5000.0, 5000.0)],
+        "end",
+    );
+    out!("step=dropped_nowhere");
+    for id in [FIRST, THIRD, FOURTH] {
+        geometry(&comp, id);
+    }
     finish(&comp, &module);
     0
 }
