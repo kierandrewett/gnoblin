@@ -34,10 +34,17 @@
 //! mechanism that does not implement that gesture must not accept the chord, which
 //! is why the grammar refuses it for pointer chords.
 //!
+//! # The plus form
+//!
+//! `Super+Alt+F9`, `Ctrl+q` and `Super+Button1` are read as `<Super><Alt>F9`, `<Control>q` and `<Super>Button1`: the words
+//! before the last plus must be the modifiers above (no brackets, any case), and a key that is the plus sign is `plus`
+//! (`Super++`). It is one grammar, so the Rust, Python and TypeScript SDKs and the configuration all read a chord the same way.
+//! The bracket form stays the written form (`Display`), and a chord with both brackets and plus signs is refused.
+//!
 //! # Refused forms
 //!
-//! Everything else is an error that names the form to write. Notably: plus signs
-//! and spaces (`Super+Alt+F9`), an unknown `<Windows>` modifier, a modifier after
+//! Everything else is an error that names the form to write. Notably: spaces and dashes
+//! (`Super Alt F9`, `ctrl-q`), an unknown `<Windows>` modifier, a modifier after
 //! the key, two keys, an empty `<>`, a duplicate modifier, a trailing modifier with
 //! no key, a key code outside `0x01` to `0xff`, and a pointer chord with no
 //! modifier.
@@ -282,8 +289,12 @@ impl Chord {
             });
         }
 
+        // The plus form (`Super+Alt+F9`, `Ctrl+q`) is the same chord as `<Super><Alt>F9`: it is spelled with brackets and read as
+        // that, so every language that hands a chord over reads it one way. Errors still quote the text as it was written.
+        let spelled = plus_form(text);
+        let body = spelled.as_deref().unwrap_or(text);
         let mut modifiers = Modifiers::NONE;
-        let mut rest = text;
+        let mut rest = body;
         while let Some(stripped) = rest.strip_prefix('<') {
             let Some(end) = stripped.find('>') else {
                 return Err(fail(Reason::UnclosedModifier));
@@ -653,6 +664,33 @@ fn resolve(keysyms: &dyn Keysyms, name: &str) -> Option<Symbol> {
     keysyms.resolve(&format!("XF86{name}"))
 }
 
+/// The bracket form of a plus-form chord (`Super+Alt+F9` is `<Super><Alt>F9`), or `None` for text that is not one: it has an angle
+/// bracket, no plus, or a word before the last plus that is not a modifier (the parser then refuses it as it always did, with the
+/// form to write). A key that is the plus sign is written `plus`, and `Super++` is read as `Super` and that key.
+fn plus_form(text: &str) -> Option<String> {
+    if text.contains('<') || !text.contains('+') {
+        return None;
+    }
+    let (modifiers, key) = match text.strip_suffix('+') {
+        Some("") => ("", "plus"),
+        Some(head) => (head.strip_suffix('+')?, "plus"),
+        None => text.rsplit_once('+')?,
+    };
+    let mut spelled = String::with_capacity(text.len() + 8);
+    if !modifiers.is_empty() {
+        for word in modifiers.split('+') {
+            // `<Mod4>` and the like are refused in brackets with a reason of their own: leave them to that path.
+            let (_, hint) = modifier_named(&word.to_ascii_lowercase())?;
+            hint.is_none().then_some(())?;
+            spelled.push('<');
+            spelled.push_str(word);
+            spelled.push('>');
+        }
+    }
+    spelled.push_str(key);
+    Some(spelled)
+}
+
 /// The chord a copy-pasted `Super+Alt+F9`, `ctrl-q` or `ctrl alt q` means, if any.
 ///
 /// This exists only to turn a common mistake into a message that shows the form to
@@ -838,12 +876,36 @@ mod tests {
     }
 
     #[test]
+    fn the_plus_form_is_the_same_chord_as_the_bracket_form() {
+        for (plus, brackets) in [
+            ("Super+Alt+F9", "<Alt><Super>F9"),
+            ("super+shift+q", "<Shift><Super>q"),
+            ("Ctrl+Alt+Delete", "<Control><Alt>Delete"),
+            ("Primary+q", "<Control>q"),
+            ("Super+0x3f", "<Super>0x3f"),
+            ("Super++", "<Super>plus"),
+            ("Super+Return", "<Super>Return"),
+        ] {
+            let spelled = parse(plus).unwrap_or_else(|error| panic!("{plus}: {error}"));
+            let bracketed = parse(brackets).unwrap_or_else(|error| panic!("{brackets}: {error}"));
+            assert_eq!(spelled, bracketed, "{plus} and {brackets}");
+            assert_eq!(spelled.to_string(), bracketed.to_string());
+        }
+        // A word that is not a modifier, a duplicate and a mask name are still refused, naming the text as written.
+        for refused in [
+            "Windows+Return",
+            "Super+Super+q",
+            "Mod4+q",
+            "Return+Super",
+            "Super+Alt+",
+        ] {
+            let error = parse(refused).expect_err(refused);
+            assert!(error.message().contains(refused), "{}", error.message());
+        }
+    }
+
+    #[test]
     fn the_message_shows_the_form_to_write() {
-        let error = parse("Super+Alt+F9").expect_err("plus signs");
-        assert_eq!(
-            error.message(),
-            "\"Super+Alt+F9\" is not a chord: put each modifier in angle brackets before the key. Write <Alt><Super>F9"
-        );
         let error = parse("ctrl-q").expect_err("dashes");
         assert_eq!(
             error.message(),

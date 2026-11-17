@@ -107,6 +107,17 @@ fn a_hung_callback_lets_the_lock_lease_lapse_and_the_card_takes_over_within_the_
         "locked",
         "the session stays locked while the shell hangs"
     );
+    // The budget saw it too: a callback that never returns is a strike the moment it passes two seconds, while it still runs.
+    session.wait_log("the budget counts the hung callback", |line| {
+        line.contains("timer_add of generation")
+            && line.contains("ran past its")
+            && line.contains("strike 1 within 30 s")
+    });
+    let (_, status) = shell_status(&session);
+    assert!(
+        status.contains("1 strike(s)") && status.contains("has not returned"),
+        "{status}"
+    );
     assert!(
         session.exited().is_none(),
         "the compositor runs on:\n{}",
@@ -249,4 +260,62 @@ fn a_shell_that_cannot_load_is_logged_with_its_reason_and_the_session_runs_witho
         !placed_by_the_shell(window, 0)
     });
     assert!(session.exited().is_none(), "{}", session.log_text());
+}
+
+/// `gnoblinctl shell status` against the session's socket: its code and what it printed.
+fn shell_status(session: &Gnoblin) -> (u8, String) {
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let code = gnoblinctl::run(
+        ["shell", "status"].into_iter().map(std::ffi::OsString::from),
+        gnoblinctl::SocketConnection::at(session.ipc()),
+        &mut out,
+        &mut err,
+    );
+    (
+        code,
+        format!("{}{}", String::from_utf8_lossy(&out), String::from_utf8_lossy(&err)),
+    )
+}
+
+#[test]
+fn callbacks_past_the_two_second_budget_strike_and_three_in_thirty_seconds_degrade_the_shell() {
+    let mut session = started(Start::Compositor, &[]);
+    let (_, before) = shell_status(&session);
+    assert!(before.contains("0 strike(s)"), "{before}");
+
+    // A callback that returns after 2.4 s: logged once, a strike while it still runs, and the shell goes on afterwards.
+    session.command("slow", "2400");
+    let first = session.wait_log("the first strike is logged", |line| {
+        line.contains("timer_add of generation") && line.contains("strike 1 within 30 s")
+    });
+    assert!(first.text.contains("budget"), "{}", first.text);
+    session.wait_log("the late callback is noted when it returns", |line| {
+        line.contains("returned after")
+    });
+    let (_, one) = shell_status(&session);
+    assert!(one.contains("1 strike(s)"), "{one}");
+    assert!(!one.contains("DEGRADED"), "{one}");
+
+    session.command("slow", "2400");
+    session.wait_log("the second strike", |line| line.contains("strike 2 within 30 s"));
+    session.wait_log("the second late callback returned", |line| {
+        line.contains("returned after") && line.contains("generation")
+    });
+    session.command("slow", "2400");
+    session.wait_log("the third strike latches the degraded state", |line| {
+        line.contains("strike 3 within 30 s") && line.contains("DEGRADED")
+    });
+
+    // The status the operator reads says so, and the shell still serves (its timer runs).
+    let (code, degraded) = shell_status(&session);
+    assert_eq!(code, 0, "{degraded}");
+    assert!(degraded.contains("3 strike(s)"), "{degraded}");
+    assert!(degraded.contains("DEGRADED"), "{degraded}");
+    assert!(degraded.contains("timer_add of generation"), "{degraded}");
+    assert!(
+        session.exited().is_none(),
+        "the compositor runs on:\n{}",
+        session.log_text()
+    );
 }

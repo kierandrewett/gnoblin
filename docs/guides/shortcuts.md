@@ -89,7 +89,9 @@ accelerators of the compositor socket.
 - `Super` alone, with no angle brackets, is a chord only where the page for that mechanism says so.
 - A pointer chord ends with a button, `Button1` to `Button9`, for example `<Super>Button1`. It needs at least one
   modifier, except `Button8` and `Button9`.
-- A chord has no spaces, and a chord with plus signs is refused with the form to write.
+- The plus form is the same chord: `Super+Alt+F9` is `<Super><Alt>F9`, `Ctrl+q` is `<Control>q`, and `Super++` is `<Super>`
+  and the plus key (`plus`). Write whichever you like; both spellings are read the same way, in the configuration and in a
+  shell's `bind`. A chord with brackets and plus signs together, or with spaces or dashes, is refused with the form to write.
 
 ## Media keys
 

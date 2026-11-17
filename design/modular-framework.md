@@ -2245,3 +2245,63 @@ The Python runtime's `exports.map` makes PyO3's `PyInit__gnoblin_core` and `PyIn
 Each asserts what the compositor's tree holds, what the process maps and what it logs.
 
 Found on the way: a Python chord written `Super+Right` is refused by the seat (the compositor's syntax is `<Super>Right`, as example 8 of the flip already uses); example 7 in Python and the Python docs now spell the chords the compositor's way. `examples/03-python-std` still binds `Super+1`, which the fake compositor of the runtime tests accepts and a real seat does not (lane SdkGenStd).
+## 31. Implementation notes, the callback budget and the SDK's spelling (lane RustSdkLeft)
+
+What the lane built of the leftovers of M3.x and the reload edge (sections 19, 20 and 26), what it chose, and what it left.
+
+### 31.1 The callback budget (section 5.4)
+
+- **Where it is measured.** A native callback cannot be interrupted, so a watchdog thread of the core (`crates/gnoblin-core-impl/src/budget.rs`)
+  watches it. Every callback of the shell goes through the registry's choke points (`on_signal`, every registration made through
+  `registry::subscribe`, `on_shutdown`, `post`), which hold a `budget::Guard` while the shell's function runs. The watchdog sleeps until
+  something is watched, wakes at the earliest limit, and counts a **strike** against the generation the moment a callback passes 2 s, while
+  it is still running, so a callback that never returns is counted. It is logged once, with the registration (`timer_add`,
+  `on_signal window.request`) and the generation, and once more when it returns (`returned after ...`). The bookkeeping is `Tracker`,
+  pure over a `Clock`, tested with a clock the test moves (eight unit tests).
+- **The policy** is `gnoblin_shell_host::supervisor::StrikeSupervisor`, the one the script runtimes use: three strikes in 30 s latch
+  `Degraded`, a deliberate reload clears it, and it lapses after five minutes.
+- **What Degraded changes for a native shell.** The script policy restages a faulted generation from disk; a native shell cannot be
+  restaged by the host, so the rule is stated for what the host can do. While degraded, a reload the shell asked for itself
+  (`request_reload`) is refused and the running generation, the last good one, keeps serving; `gnoblinctl shell reload` and a rebuilt
+  library the watcher saw are deliberate retries and clear the strikes. A generation whose `init` held the shell thread past the init
+  budget (5 s, the boot wait) is abandoned by a reload instead of replacing the generation that was serving
+  (`LifecycleObserver::vet`, asked by `NativeShell::reload`); the first generation has no predecessor, so it only strikes.
+  `LifecycleObserver` gained `init_begun`, `init_ended` and `vet` (default no-ops) for this.
+- **Visible** in the log, in `host::budget_status()` and in the summary of `gnoblinctl shell status` (`callback budget 2s: N strike(s) in the
+last 30 s ...; DEGRADED ...; <callback> has run for 3.1s and has not returned`).
+- **Proved** by `crates/gnoblin/tests/native_shell_failures.rs` against the real binary: a hung callback is a strike while it runs and
+  shows as not returned in the status; three callbacks of 2.4 s latch DEGRADED, and the status says so.
+- **Not done.** The init budget is proved by unit tests of the tracker, not by a reload test with a shell whose `init` sleeps 5 s. The limits
+  are the design's and are not configurable in a session (`host::set_budget_limits` is for tests).
+
+### 31.2 The SDK's spelling
+
+- **Chords are read one way, in the compositor.** `gnoblin-input`'s parser accepts the plus form (`Super+Return`, `Ctrl+Alt+Delete`,
+  `Super+Button1`, `Super++`) as the bracket form (`<Super>Return`), so the Rust, Python and TypeScript SDKs, the configuration and the
+  std library's own bindings (`Super+Button1` of `ClientMoveBinding`) all work with either spelling; `Display` still writes the bracket
+  form. The Rust SDK also canonicalises with `gnoblin_core::normalize_chord` before it claims, so a shell that claims one chord in two
+  spellings across a reload holds one claim text (the core compares claim texts). That is a convenience, not the contract: the
+  contract is the parser. Not done: a real-session claim test of the plus form (the unit test `the_plus_form_is_the_same_chord_as_the_bracket_form`
+  and the fake-compositor example test prove the parse and the claim text).
+- Every `on_*`, `bind*`, `after` and `every` callback may return `()` or a `Result` (`CallbackResult`); an `Err` is logged as a warning that
+  names the subscription. `#[gnoblin::main]` already took `fn main(g: &Gnoblin)` with no result and with any `Result<T, E: Display>`.
+- `on_output_created`, `on_output_destroyed`, `on_output_changed` and `outputs()` join `on_client_*`.
+- **The spec's section 3.1 shell** is `examples/02-std-prelude/examples/spec_text.rs`, run against the fake compositor by
+  `example_2_spec_text_shell_places_windows_on_its_workspace_and_a_plus_form_chord_starts_a_terminal`. It cannot be the text _as written_:
+  `Workspace::new` is fallible (the result is unwrapped), a closure the compositor calls later cannot borrow `workspace` from the entry
+  frame (`move`), and the two registering calls return a `Result`. Everything else is the text.
+
+### 31.3 Not done here, and why
+
+- **`wake_fd` and the verbs (`call`, `subscribe` of the `gnoblin` namespace)** are not implemented. `wake_fd` needs an epoll set over an
+  eventfd, a timerfd and the link's descriptor, written from `publish` and `post` and drained by `dispatch`; the design of it is in the
+  notes of this lane but no code is left in the tree. The verbs need a `VerbLink` over the owner socket (`gnoblin_client::Client`) and a
+  feed of its answers and signals into the mailbox; the catalog already carries `gnoblin.session` and its signals, but not the signals'
+  field names, so the feed needs them first.
+- **G6, layer surfaces**: the compositor draws no layer-shell surface at all (`surface_shell.rs`, `design/node-core.md`: "the compositor
+  does not draw layer surfaces; their buffers are not in the scene"), so a rectangle the shell sets is configured, published and used for
+  the work area and the surface's popups, and never drawn. This was established by reading the composer and the layer-shell module, not by
+  a test of pixels, and no fix was made: drawing them needs the layer's buffer in the frame (below the windows for `background` and
+  `bottom`, above them for `top` and `overlay`), damage on commit, frame callbacks and pointer picking, which is a lane of its own.
+- **State retention and adoption across two reloads in a real session (M5.4)** was not run against the real binary. The fake-compositor
+  test of example 10 remains the proof (section 20).
