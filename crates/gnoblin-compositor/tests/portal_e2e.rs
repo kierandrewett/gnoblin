@@ -12,6 +12,7 @@
 //! session ends.
 //!
 //! Each test owns its bus, its compositor and its sockets, so the tests run concurrently.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod support;
 

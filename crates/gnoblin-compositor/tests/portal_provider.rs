@@ -44,6 +44,7 @@
 //!    releases a slot, and when it claims, answers, declines or offers a request, and nothing it
 //!    sent settles the owner's request: `a_connection_that_is_not_the_owner_cannot_claim_or_release_a_slot`,
 //!    `a_connection_that_is_not_the_owner_cannot_claim_answer_decline_or_offer_a_request`.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod support;
 

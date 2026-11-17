@@ -12,6 +12,8 @@
 //! 4. A hidden popup that holds a grab is dismissed.
 //! 5. A locked session ignores the shell's placement, and gives it back at the unlock.
 
+mod stock;
+
 mod session;
 
 use std::sync::Arc;

@@ -10,6 +10,7 @@
 //! taken, or in a directory another account could reach; a peer with the wrong
 //! version; a peer that dies; a frame that does not decode. The happy path — a shell
 //! listing, watching and calling through `gnoblinctl` — is `end_to_end.rs`.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod support;
 

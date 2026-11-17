@@ -31,6 +31,7 @@
 //! arrangement: the compositor is one process and the client is another. The worker
 //! talks to the session through the control handle, which is `Send`, exactly as a
 //! test kit would.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 

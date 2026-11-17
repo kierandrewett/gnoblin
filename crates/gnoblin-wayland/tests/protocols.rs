@@ -28,6 +28,7 @@
 //!   `a_window_remembers_its_layout`,
 //!   `a_keyboard_repeat_committed_after_start_reaches_the_client`,
 //!   `a_layout_committed_after_start_reaches_the_client` — `keyboard`
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 

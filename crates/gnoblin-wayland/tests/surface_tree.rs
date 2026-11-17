@@ -13,6 +13,7 @@
 //! The ordering and placement tests run on the software path and on the GLES path, as `tests/render.rs` does: a
 //! popup hanging past a window's edge, or a layer behind its parent, is the kind of thing one renderer can get wrong
 //! that the frame the composer describes does not show.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 

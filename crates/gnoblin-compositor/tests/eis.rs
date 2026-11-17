@@ -3,6 +3,7 @@
 //!
 //! Each test starts a headless session, connects a real `reis` client to the endpoint
 //! beside the IPC socket and reads what a real Wayland client received.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod support;
 

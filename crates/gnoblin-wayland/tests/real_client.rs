@@ -16,6 +16,7 @@
 //!
 //! The tests below are the crate's "failure modes first" list, one to an item; the
 //! crate documentation names which test covers which mode.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 

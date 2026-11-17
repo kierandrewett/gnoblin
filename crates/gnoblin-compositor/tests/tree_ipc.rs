@@ -4,6 +4,7 @@
 //! frames the compositor sends after them. Only one shell holds the tree: a second connection's
 //! attach is refused until the holder detaches or its connection closes. A holder that attaches
 //! again on the same connection (the mirror's gap recovery) gets a fresh epoch and snapshot.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod support;
 

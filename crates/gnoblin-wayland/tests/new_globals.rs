@@ -19,6 +19,7 @@
 //!
 //! Smithay posts a protocol error by closing the offending connection. The refusal test
 //! reads the error code the client receives and checks a second client still connects.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod stock;
 

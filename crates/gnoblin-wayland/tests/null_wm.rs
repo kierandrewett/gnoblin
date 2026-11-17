@@ -4,6 +4,7 @@
 //! first output at the size the client drew, keeps the order windows arrived in, and has no focus policy. It still
 //! applies a request nobody else decides, and a holder attached to the tree decides in its place, as it does over
 //! the stock provider.
+#![cfg_attr(not(feature = "std-providers"), allow(dead_code, unused_imports, unused_variables))]
 
 mod session;
 mod stock;
