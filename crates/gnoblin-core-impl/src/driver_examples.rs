@@ -121,14 +121,20 @@ fn compositor_spelling(chord: &str) -> String {
     }
 }
 
-/// The chord claim whose text is `chord` (as written, or in the compositor's spelling when the shell wrote the plus form and the SDK
-/// rewrote it), pressed.
-pub(crate) fn press(comp: &FakeCompositor, module: &Module, chord: &str) {
-    let text = if comp.claimed().iter().any(|claimed| claimed == chord) {
+/// `chord` as the live claim spells it: as written when a claim has that text, otherwise in the compositor's spelling (the SDK rewrites
+/// the plus form before it claims, for a pointer chord as for a key chord).
+fn claimed_spelling(comp: &FakeCompositor, chord: &str) -> String {
+    if comp.claimed().iter().any(|claimed| claimed == chord) {
         chord.to_owned()
     } else {
         compositor_spelling(chord)
-    };
+    }
+}
+
+/// The chord claim whose text is `chord` (as written, or in the compositor's spelling when the shell wrote the plus form and the SDK
+/// rewrote it), pressed.
+pub(crate) fn press(comp: &FakeCompositor, module: &Module, chord: &str) {
+    let text = claimed_spelling(comp, chord);
     let claim = comp.claim_id(&text);
     comp.chord(claim, &text, "press");
     pump(module);
@@ -407,6 +413,8 @@ pub(crate) fn drag(
     path: &[(f64, f64)],
     last: &str,
 ) {
+    let chord = claimed_spelling(comp, chord);
+    let chord = chord.as_str();
     let claim = comp.claim_id(chord);
     comp.pointer_chord(claim, chord, "start", from, from);
     pump(module);
