@@ -41,16 +41,6 @@ pub fn snake(name: &str) -> String {
     out
 }
 
-/// `portal_ui` as `portalUi`.
-pub fn camel(name: &str) -> String {
-    let pascal = pascal(name);
-    let mut chars = pascal.chars();
-    match chars.next() {
-        Some(first) => first.to_lowercase().chain(chars).collect(),
-        None => String::new(),
-    }
-}
-
 const RUST_KEYWORDS: &[&str] = &[
     "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false", "fn",
     "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self",
@@ -177,11 +167,6 @@ impl CodeWriter {
         }
     }
 
-    /// Text that is already indented and newline-terminated, appended as it is.
-    pub fn raw(&mut self, text: &str) {
-        self.text.push_str(text);
-    }
-
     /// One level deeper.
     pub fn indent(&mut self) {
         self.level += 1;
@@ -236,11 +221,6 @@ pub fn doc_lines(doc: &str) -> Vec<String> {
     lines
 }
 
-/// `lines` joined into one paragraph, for a one-line comment.
-pub fn one_line(lines: &[String]) -> String {
-    lines.join(" ")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,7 +231,7 @@ mod tests {
         assert_eq!(pascal("gnoblin.session"), "GnoblinSession");
         assert_eq!(snake("PortalUi"), "portal_ui");
         assert_eq!(snake("GnoblinStdEvent"), "gnoblin_std_event");
-        assert_eq!(camel("app_id"), "appId");
+
         assert_eq!(rust_ident("type"), "type_");
         assert_eq!(python_ident("from"), "from_");
         assert_eq!(ts_ident("default"), "default_");

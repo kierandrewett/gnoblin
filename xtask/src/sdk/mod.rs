@@ -133,8 +133,11 @@ fn format_rust(source: &str, config: &Path) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|error| format!("rustfmt wrote invalid UTF-8: {error}"))
 }
 
+/// A target with the files it rendered: `(path, full text)` pairs, banners included.
+pub type Rendered = (Box<dyn Target>, Vec<(String, String)>);
+
 /// Renders every selected target to `(path, full text)` pairs, banners included.
-pub fn render(spec: &SdkSpec, only: Option<&str>) -> Result<Vec<(Box<dyn Target>, Vec<(String, String)>)>, String> {
+pub fn render(spec: &SdkSpec, only: Option<&str>) -> Result<Vec<Rendered>, String> {
     let mut rendered = Vec::new();
     for target in targets() {
         if only.is_some_and(|only| only != target.name()) {
@@ -200,7 +203,7 @@ fn files_under(root: &Path, dir: &str) -> Vec<String> {
 }
 
 /// Compares the rendered files with the tree.
-pub fn drift(root: &Path, rendered: &[(Box<dyn Target>, Vec<(String, String)>)]) -> Drift {
+pub fn drift(root: &Path, rendered: &[Rendered]) -> Drift {
     let mut changed = Vec::new();
     let mut stale = Vec::new();
     for (target, files) in rendered {
@@ -222,7 +225,7 @@ pub fn drift(root: &Path, rendered: &[(Box<dyn Target>, Vec<(String, String)>)])
 }
 
 /// Writes the rendered files, removing stale ones from the owned directories. Returns the paths written.
-pub fn write(root: &Path, rendered: &[(Box<dyn Target>, Vec<(String, String)>)]) -> Result<Vec<String>, String> {
+pub fn write(root: &Path, rendered: &[Rendered]) -> Result<Vec<String>, String> {
     let report = drift(root, rendered);
     for path in &report.stale {
         fs::remove_file(root.join(path)).map_err(|error| format!("cannot remove {path}: {error}"))?;

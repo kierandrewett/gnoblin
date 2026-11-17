@@ -81,7 +81,7 @@ class ValueKind(enum.IntEnum):
     TEXTS = 8
     """`GnoblinValue.kind`: a list of strings: `ptr` points at `len` `GnoblinStr`s."""
     EFFECTS = 9
-    """`GnoblinValue.kind`: a list of effect records (a later minor defines the record)."""
+    """`GnoblinValue.kind`: a list of effects: `ptr` points at `len` `GnoblinEffect`s (a node's `effects`). Only a write carries it."""
     BYTES = 10
     """`GnoblinValue.kind`: opaque bytes in `ptr` and `len`."""
     SECRET = 11
@@ -90,6 +90,16 @@ class ValueKind(enum.IntEnum):
     """`GnoblinValue.kind`: a record value (a struct-like object reference); `ptr` points at `len` `GnoblinValue`s,"""
     OWNED = 1
     """`GnoblinValue.flags`: `ptr` was allocated by the core and is freed with `value_free`."""
+
+class EffectKind(enum.IntEnum):
+    """`EFFECT_*` constants of the ABI."""
+
+    BLUR = 1
+    """`GnoblinEffect.kind`: a backdrop blur."""
+    SHADOW = 2
+    """`GnoblinEffect.kind`: a drop shadow."""
+    BORDER = 3
+    """`GnoblinEffect.kind`: a border stroke."""
 
 class MemberKind(enum.IntEnum):
     """`MEMBER_*` constants of the ABI."""

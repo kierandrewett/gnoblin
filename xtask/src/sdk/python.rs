@@ -402,7 +402,7 @@ mod tests {
         let spec = spec();
         let files = PythonTarget.generate(&spec).expect("renders");
         let abi = find(&files, "abi.py");
-        assert!(abi.contains("class Error(enum.IntEnum):"));
+        assert!(abi.contains("class ErrorKind(enum.IntEnum):"));
         assert!(abi.contains("NO_SUCH_NODE = -8"));
         assert!(abi.contains("ERR = -1"));
     }

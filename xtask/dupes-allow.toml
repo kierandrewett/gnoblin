@@ -2339,6 +2339,8 @@ left = "gnoblin-render::Scene"
 right = "gnoblin-std::Scene"
 kind = "same-name"
 reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
+
+[[allow]]
 left = "gnoblin-backend-drm::Screen"
 right = "gnoblin-core::Screen"
 kind = "same-name"
@@ -2391,3 +2393,21 @@ left = "gnoblin-core::View"
 right = "gnoblin-render-frame::View"
 kind = "same-name"
 reason = "gnoblin-core's `View` is the schema class `view` as a typed node wrapper (generated); the frame crate's is a renderer view description"
+
+[[allow]]
+left = "gnoblin-core::View"
+right = "gnoblin-std::View"
+kind = "same-name"
+reason = "gnoblin-core's `View` is the schema class `view` as a typed node wrapper (generated); the std SDK's is its scene view of a node"
+
+[[allow]]
+left = "gnoblin-std-impl::Scalar"
+right = "xtask::Scalar"
+kind = "same-name"
+reason = "the SDK generator's `Scalar` is an ABI number or handle type; the std library's is a style scalar value"
+
+[[allow]]
+left = "gnoblin-std::Shape"
+right = "xtask::Shape"
+kind = "same-name"
+reason = "the SDK generator's `Shape` is what an ABI record field is to a script; the std SDK's is a layout geometry"

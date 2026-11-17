@@ -76,7 +76,7 @@ export const ValueKind = {
     LIST: 7,
     /** `GnoblinValue.kind`: a list of strings: `ptr` points at `len` `GnoblinStr`s. */
     TEXTS: 8,
-    /** `GnoblinValue.kind`: a list of effect records (a later minor defines the record). */
+    /** `GnoblinValue.kind`: a list of effects: `ptr` points at `len` `GnoblinEffect`s (a node's `effects`). Only a write carries it. */
     EFFECTS: 9,
     /** `GnoblinValue.kind`: opaque bytes in `ptr` and `len`. */
     BYTES: 10,
@@ -88,6 +88,17 @@ export const ValueKind = {
     OWNED: 1,
 } as const;
 export type ValueKind = (typeof ValueKind)[keyof typeof ValueKind];
+
+/** `EFFECT_*` constants of the ABI. */
+export const EffectKind = {
+    /** `GnoblinEffect.kind`: a backdrop blur. */
+    BLUR: 1,
+    /** `GnoblinEffect.kind`: a drop shadow. */
+    SHADOW: 2,
+    /** `GnoblinEffect.kind`: a border stroke. */
+    BORDER: 3,
+} as const;
+export type EffectKind = (typeof EffectKind)[keyof typeof EffectKind];
 
 /** `MEMBER_*` constants of the ABI. */
 export const MemberKind = {

@@ -12,7 +12,7 @@
 //!   `__gnoblinStd` object (see `std_ts`).
 //!
 //! The hand-written part is the ergonomic layer on top (`Client`, `Collection` listeners and the rest of `gnoblin-std`'s
-//! public API), which is the subject of the migration plan in `design/modular-framework.md` section 24.
+//! public API), which is the subject of the migration plan in `design/modular-framework.md` section 25.
 
 use std::collections::BTreeSet;
 
