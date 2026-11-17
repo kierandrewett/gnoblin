@@ -784,6 +784,18 @@ impl LifecycleObserver for Lifecycle {
             with(|session| session.retired(id, was));
         }
     }
+
+    fn init_begun(&self, id: GenerationId) {
+        crate::budget::init_begun(id);
+    }
+
+    fn init_ended(&self, id: GenerationId) {
+        crate::budget::init_ended(id);
+    }
+
+    fn vet(&self, id: GenerationId) -> Result<(), String> {
+        crate::budget::vet(id).map_or(Ok(()), Err)
+    }
 }
 
 /// The ABI code and text for a failed link: a compositor that already has a holder is `E_BUSY`, a refusal `E_REFUSED`.

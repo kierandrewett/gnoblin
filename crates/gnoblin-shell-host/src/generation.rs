@@ -217,6 +217,21 @@ pub trait LifecycleObserver: Send + Sync {
     /// A generation retired, after every registration it owned was removed. `was` is its state before: a generation that was
     /// still staged was abandoned or failed its `init`.
     fn retired(&self, _id: GenerationId, _was: GenerationState, _on_shell_thread: bool) {}
+    /// The generation's `init` is about to run, on the shell thread. The loader calls it for a native generation, and
+    /// [`init_ended`](LifecycleObserver::init_ended) when `init` has returned or failed, so a host can time it.
+    fn init_begun(&self, _id: GenerationId) {}
+    /// The generation's `init` returned (or failed or panicked).
+    fn init_ended(&self, _id: GenerationId) {}
+    /// Whether a staged generation whose `init` returned may take over a reload: `Err` says why not, and the generation that is
+    /// serving keeps serving. Asked by `NativeShell::reload` before the old generation ends; the first start has no generation to
+    /// keep and does not ask.
+    ///
+    /// # Errors
+    ///
+    /// The reason the generation may not take over.
+    fn vet(&self, _id: GenerationId) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 impl<E> Default for GenerationHost<E> {
@@ -235,6 +250,33 @@ impl<E> GenerationHost<E> {
     /// host's identity: it is fixed at construction, so no generation can exist that it did not see.
     pub const fn with_observer(observer: &'static dyn LifecycleObserver) -> Self {
         Self::with_observer_slot(Some(observer))
+    }
+
+    /// Tells the observer that `id`'s `init` is about to run. The loader calls it on the shell thread.
+    pub fn init_begun(&self, id: GenerationId) {
+        if let Some(observer) = self.observer {
+            contained((), "lifecycle observer", || observer.init_begun(id));
+        }
+    }
+
+    /// Tells the observer that `id`'s `init` has returned, failed or panicked.
+    pub fn init_ended(&self, id: GenerationId) {
+        if let Some(observer) = self.observer {
+            contained((), "lifecycle observer", || observer.init_ended(id));
+        }
+    }
+
+    /// Asks the observer whether the staged generation `id` may take over a reload. A host without an observer, and an observer that
+    /// panics, allow it.
+    ///
+    /// # Errors
+    ///
+    /// The observer's reason.
+    pub fn vet(&self, id: GenerationId) -> Result<(), String> {
+        match self.observer {
+            Some(observer) => contained(Ok(()), "lifecycle observer", || observer.vet(id)),
+            None => Ok(()),
+        }
     }
 
     const fn with_observer_slot(observer: Option<&'static dyn LifecycleObserver>) -> Self {

@@ -137,6 +137,14 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
             note(&dir, "panicking", &ticks.get().to_string());
             panic!("the fixture was told to panic");
         }
+        if let Ok(text) = fs::read_to_string(dir.join("slow")) {
+            // A callback that returns, but late: it holds the shell thread for the milliseconds the file holds.
+            let _ = fs::remove_file(dir.join("slow"));
+            let ms: u64 = text.trim().parse().unwrap_or(0);
+            note(&dir, "slowing", &now_ms().to_string());
+            std::thread::sleep(Duration::from_millis(ms));
+            note(&dir, "slowed", &now_ms().to_string());
+        }
         if let Ok(text) = fs::read_to_string(dir.join("exit")) {
             let _ = fs::remove_file(dir.join("exit"));
             let code = text.trim().parse().unwrap_or(1);

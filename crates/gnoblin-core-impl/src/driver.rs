@@ -67,6 +67,7 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             (Some("unload"), Some(safe), Some(unsure), Some(plain)) => unload(&safe, &unsure, &plain),
             (Some("example01"), Some(shell), _, _) => crate::driver_examples::minimal(&shell),
             (Some("example02"), Some(shell), _, _) => crate::driver_examples::std_prelude(&shell),
+            (Some("example02_spec"), Some(shell), _, _) => crate::driver_examples::spec_text(&shell),
             (Some("example06"), Some(shell), _, _) => crate::driver_examples::rust_layout(&shell),
             (Some("example08"), Some(shell), _, _) => crate::driver_examples::tiler(&shell),
             (Some("std_layouts"), Some(shell), _, _) => crate::driver_examples::std_layouts(&shell),

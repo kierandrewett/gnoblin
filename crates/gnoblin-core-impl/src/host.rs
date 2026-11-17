@@ -60,6 +60,19 @@ pub fn set_clock(clock: std::sync::Arc<dyn gnoblin_shell_host::supervisor::Clock
 /// releases a connection's claims by itself). The provider and the clock stay. For a host that restarts its shell and for tests.
 pub fn reset_session() {
     crate::session::with(crate::session::Session::reset);
+    crate::budget::reset();
+}
+
+/// What the callback budget has seen: the limits, the strikes, whether the shell is degraded, and what ran past its limit last.
+/// The summary of `gnoblinctl shell status` carries the same text. See [`crate::budget`].
+pub fn budget_status() -> crate::budget::BudgetStatus {
+    crate::budget::status()
+}
+
+/// Replaces the callback budget's limits (the design's are 2 s for a callback and 5 s for an `init`): for the tests and the scenario
+/// driver, which want a budget that a test can pass in milliseconds. A session always has the design's.
+pub fn set_budget_limits(limits: crate::budget::Limits) {
+    crate::budget::set_limits(limits);
 }
 
 /// How many module libraries are kept mapped after retirement, abandonment or a failed load.

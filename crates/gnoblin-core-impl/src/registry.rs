@@ -30,7 +30,7 @@ use crate::guard::{PANICS, set_code_error, set_error};
 use crate::session::{self, Lifecycle};
 pub use crate::values::OwnedValue;
 use crate::values::RawScope;
-use crate::{catalog, log};
+use crate::{budget, catalog, log};
 
 /// The host's lifecycle hooks: they keep the session's programs and claims in step with the generations.
 static LIFECYCLE: Lifecycle = Lifecycle;
@@ -42,6 +42,13 @@ pub(crate) static HOST: GenerationHost<ShellEvent> = GenerationHost::with_observ
 /// descriptor the host sleeps on together with its mailbox, so a quiet turn is a short sleep; a post or a published signal wakes
 /// the mailbox at once.
 const LINK_POLL: Duration = Duration::from_millis(4);
+
+/// `window.request`: the name a signal registration goes by in the budget's log lines.
+fn signal_label(class: u32, signal: u32) -> String {
+    let class_name = catalog::class_label(class).unwrap_or_else(|| format!("class {class}"));
+    let signal_name = catalog::signal_name(class, signal).unwrap_or_else(|| format!("signal {signal}"));
+    format!("{class_name}.{signal_name}")
+}
 
 // ---- contexts ---------------------------------------------------------------------------------------------------------
 
@@ -213,6 +220,7 @@ pub(crate) fn register(
                 set_code_error(abi::E_NO_SUCH_MEMBER, format!("{what}: {message}"));
                 return 0;
             }
+            let label: Arc<str> = Arc::from(format!("on_signal {}", signal_label(class, signal)));
             HOST.register_listener(
                 owner,
                 Listener {
@@ -221,7 +229,10 @@ pub(crate) fn register(
                             if class == event.class && signal == event.signal && (node == 0 || node == event.node))
                     }),
                     call: Arc::new(move |event: &ShellEvent| match event {
-                        ShellEvent::Signal(delivery) => call_signal(cb, user, delivery),
+                        ShellEvent::Signal(delivery) => {
+                            let _watch = budget::watch(owner, &label);
+                            call_signal(cb, user, delivery)
+                        }
                         _ => CallbackOutcome::Handled,
                     }),
                 },
@@ -229,7 +240,9 @@ pub(crate) fn register(
             )
         }
         Registering::Shutdown { cb } => {
+            let label: Arc<str> = Arc::from("on_shutdown");
             let hook: Work = Box::new(move || {
+                let _watch = budget::watch(owner, &label);
                 // SAFETY: `cb` and `user` came from one `on_shutdown` call, and the host removes the registration before
                 // it runs the hook, so this is the only call it gets.
                 unsafe { cb(user as *mut c_void) };
@@ -276,6 +289,13 @@ pub(crate) fn subscribe(
             release();
         })),
     };
+    // Every callback of the shell is timed against the budget, whatever event it is for.
+    let label: Arc<str> = Arc::from(what);
+    let inner = call;
+    let call: Arc<dyn Fn(&ShellEvent) -> CallbackOutcome + Send + Sync> = Arc::new(move |event: &ShellEvent| {
+        let _watch = budget::watch(owner, &label);
+        inner(event)
+    });
     match HOST.register_listener(owner, Listener { matches, call }, release) {
         Ok(id) => Ok(id),
         Err((error, _unadopted)) => Err(error.report(what)),
@@ -334,7 +354,9 @@ pub(crate) fn post(ctx: GnoblinCtx, f: GnoblinPostFn, user: *mut c_void, drop_us
         Err(code) => return code,
     };
     let user = user as usize;
+    let label: Arc<str> = Arc::from("post");
     let work: Work = Box::new(move || {
+        let _watch = budget::watch(owner, &label);
         // SAFETY: `f` and `user` came from one `post` call; the host takes the post off the queue before it runs it, so
         // this is the only call it gets, and it consumes `user` (the shell's trampoline reclaims its box).
         unsafe { f(user as *mut c_void) };

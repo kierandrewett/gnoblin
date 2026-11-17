@@ -109,10 +109,28 @@ fn geometry(comp: &FakeCompositor, id: u64) {
     }
 }
 
-/// The chord claim whose text is `chord`, pressed.
+/// The chord as the compositor spells it (`Super+Return` is `<Super>Return`): what the SDK's `bind` claims for a plus-form chord.
+fn compositor_spelling(chord: &str) -> String {
+    match chord.rsplit_once('+') {
+        Some((modifiers, key)) if !chord.contains('<') => {
+            let mut spelled: String = modifiers.split('+').map(|modifier| format!("<{modifier}>")).collect();
+            spelled.push_str(key);
+            spelled
+        }
+        _ => chord.to_owned(),
+    }
+}
+
+/// The chord claim whose text is `chord` (as written, or in the compositor's spelling when the shell wrote the plus form and the SDK
+/// rewrote it), pressed.
 pub(crate) fn press(comp: &FakeCompositor, module: &Module, chord: &str) {
-    let claim = comp.claim_id(chord);
-    comp.chord(claim, chord, "press");
+    let text = if comp.claimed().iter().any(|claimed| claimed == chord) {
+        chord.to_owned()
+    } else {
+        compositor_spelling(chord)
+    };
+    let claim = comp.claim_id(&text);
+    comp.chord(claim, &text, "press");
     pump(module);
 }
 
@@ -252,6 +270,32 @@ pub(crate) fn std_prelude(shell: &Path) -> i32 {
         geometry(&comp, id);
     }
     press(&comp, &module, "<Super>Return");
+    out!("terminal_started={}", terminal_started());
+    finish(&comp, &module);
+    0
+}
+
+/// The shell of the specification's section 3.1 (`examples/02-std-prelude/examples/spec_text.rs`): one workspace, `main`, that every
+/// window opened after the shell started joins, and a plus-form chord that starts a terminal.
+pub(crate) fn spec_text(shell: &Path) -> i32 {
+    let (comp, module) = match start(shell) {
+        Ok(started) => started,
+        Err(code) => return code,
+    };
+    pump(&module);
+    out!("step=one");
+    geometry(&comp, FIRST);
+    comp.create_window(SECOND, "Files", "nautilus");
+    pump(&module);
+    comp.create_window(THIRD, "Editor", "code");
+    pump(&module);
+    out!("step=three");
+    for id in [FIRST, SECOND, THIRD] {
+        geometry(&comp, id);
+    }
+    // The chord was written `Super+Return`; the compositor reads `<Super>Return`, and that is what the shell claimed.
+    out!("claims={}", comp.claimed().join(","));
+    press(&comp, &module, "Super+Return");
     out!("terminal_started={}", terminal_started());
     finish(&comp, &module);
     0

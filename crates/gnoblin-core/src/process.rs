@@ -12,6 +12,7 @@ use std::sync::atomic::Ordering;
 
 use gnoblin_core_abi::{self as abi, GnoblinProc, GnoblinProcessExit, GnoblinSpawn, GnoblinStr};
 
+use crate::callback::CallbackResult;
 use crate::error::{CoreError, Result, check};
 use crate::events::Slot;
 use crate::gnoblin::{CALLS, CallbackSlot, Gnoblin, Subscription, copy_str, drop_slot};
@@ -379,26 +380,30 @@ impl Gnoblin {
     }
 
     /// Calls `f` once, on the shell thread, `ms` milliseconds from now. Remove the timer before it fires with
-    /// [`Subscription::unsubscribe`].
-    pub fn after<F>(&self, ms: u32, f: F) -> Result<Subscription>
+    /// [`Subscription::unsubscribe`]. `f` returns `()` or a `Result` (an `Err` is logged).
+    pub fn after<F, R>(&self, ms: u32, f: F) -> Result<Subscription>
     where
-        F: FnOnce() + 'static,
+        F: FnOnce() -> R + 'static,
+        R: CallbackResult,
     {
+        let g = self.clone();
         let mut f = Some(f);
         self.timer(ms, false, move || {
             if let Some(f) = f.take() {
-                f();
+                f().settle(&g, "after");
             }
         })
     }
 
     /// Calls `f` every `ms` milliseconds, until the subscription is removed or the generation retires. A shell that fell behind
-    /// is called once for the periods it missed, not once for each.
-    pub fn every<F>(&self, ms: u32, f: F) -> Result<Subscription>
+    /// is called once for the periods it missed, not once for each. `f` returns `()` or a `Result` (an `Err` is logged).
+    pub fn every<F, R>(&self, ms: u32, mut f: F) -> Result<Subscription>
     where
-        F: FnMut() + 'static,
+        F: FnMut() -> R + 'static,
+        R: CallbackResult,
     {
-        self.timer(ms, true, f)
+        let g = self.clone();
+        self.timer(ms, true, move || f().settle(&g, "every"))
     }
 
     fn timer<F>(&self, ms: u32, repeat: bool, f: F) -> Result<Subscription>

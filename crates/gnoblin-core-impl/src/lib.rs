@@ -31,6 +31,7 @@ gnoblin_log::logger!(pub(crate) log = "core");
 // modules reach them as `crate::guard`.
 use gnoblin_shell_host::guard;
 
+pub mod budget;
 mod catalog;
 mod events;
 mod exports;

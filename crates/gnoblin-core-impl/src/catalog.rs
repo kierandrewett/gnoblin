@@ -170,6 +170,12 @@ pub(crate) fn signal_def(class_id: u32, signal: u32) -> Option<&'static MemberDe
     let class = class(class_id)?;
     class.signals.get(usize::try_from(signal.checked_sub(1)?).ok()?)
 }
+/// The name of the signal of `class_id` with id `signal`, for log lines.
+pub(crate) fn signal_name(class_id: u32, signal: u32) -> Option<String> {
+    let class = class(class_id)?;
+    let def = class.signals.get(usize::try_from(signal.checked_sub(1)?).ok()?)?;
+    Some(def.name.to_owned())
+}
 
 #[cfg(test)]
 mod tests {

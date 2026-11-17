@@ -16,6 +16,8 @@ use std::sync::atomic::Ordering;
 
 use gnoblin_core_abi::{self as abi, GnoblinClaim, GnoblinClaimEvent, GnoblinStr};
 
+use crate::callback::CallbackResult;
+use crate::chord::normalize_chord;
 use crate::error::Result;
 use crate::events::Slot;
 use crate::gnoblin::{CALLS, Gnoblin, Subscription, drop_slot};
@@ -250,30 +252,39 @@ impl Gnoblin {
         }
     }
 
-    /// Claims the key chord `chord` (`<Super>Return`, `<Ctrl><Alt>Delete`: the compositor's syntax, each modifier in angle
-    /// brackets before the key) and calls `f` each time it is pressed. The compositor withholds the chord from every client.
+    /// Claims the key chord `chord` and calls `f` each time it is pressed. The compositor withholds the chord from every client.
     /// The chord is claimed on the shell's seat, for every keyboard.
     ///
+    /// `chord` is written either way: `Super+Return`, `Ctrl+Alt+Delete` (the spelling of the spec and of most shell authors) or the
+    /// compositor's own `<Super>Return`, `<Control><Alt>Delete`. The plus form is rewritten before the claim
+    /// ([`normalize_chord`](crate::normalize_chord)), since the compositor's parser refuses it. `f` returns `()` or a `Result`
+    /// (an `Err` is logged, see [`CallbackResult`](crate::CallbackResult)), so `|| g.spawn("foot")` is a whole callback.
+    ///
     /// ```ignore
-    /// g.bind("<Super>Return", || { g.spawn("foot").ok(); })?;
+    /// g.bind("Super+Return", || g.spawn("foot"))?;
     /// ```
-    pub fn bind<F>(&self, chord: &str, mut f: F) -> Result<Subscription>
+    pub fn bind<F, R>(&self, chord: &str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut() + 'static,
+        F: FnMut() -> R + 'static,
+        R: CallbackResult,
     {
+        let g = self.clone();
         self.bind_events(chord, move |event| {
             if event.state == ChordState::Press {
-                f();
+                f().settle(&g, "bind");
             }
         })
     }
 
-    /// Claims a key chord and calls `f` for each press, release and repeat of it.
-    pub fn bind_events<F>(&self, chord: &str, mut f: F) -> Result<Subscription>
+    /// Claims a key chord (either spelling, see [`bind`](Gnoblin::bind)) and calls `f` for each press, release and repeat of it.
+    pub fn bind_events<F, R>(&self, chord: &str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&ChordEvent) + 'static,
+        F: FnMut(&ChordEvent) -> R + 'static,
+        R: CallbackResult,
     {
-        let spec = Self::claim_spec(abi::CLAIM_CHORD, abi::CLAIM_FLAG_GRAB, 0, chord, "", 0);
+        let chord = normalize_chord(chord)?;
+        let spec = Self::claim_spec(abi::CLAIM_CHORD, abi::CLAIM_FLAG_GRAB, 0, &chord, "", 0);
+        let g = self.clone();
         self.claim_raw(
             &spec,
             Some(move |raw: &RawClaim<'_>| {
@@ -288,18 +299,22 @@ impl Gnoblin {
                 f(&ChordEvent {
                     chord: raw.text.to_owned(),
                     state,
-                });
+                })
+                .settle(&g, "bind");
             }),
         )
     }
 
-    /// Claims a pointer chord (a chord that ends in `Button1` to `Button9`: `<Super>Button1`) and calls `f` for each step of the
-    /// drag. With exactly the chord's modifiers held, the press is withheld from clients.
-    pub fn bind_pointer<F>(&self, chord: &str, mut f: F) -> Result<Subscription>
+    /// Claims a pointer chord (a chord that ends in `Button1` to `Button9`: `Super+Button1` or `<Super>Button1`) and calls `f` for
+    /// each step of the drag. With exactly the chord's modifiers held, the press is withheld from clients.
+    pub fn bind_pointer<F, R>(&self, chord: &str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&PointerDrag) + 'static,
+        F: FnMut(&PointerDrag) -> R + 'static,
+        R: CallbackResult,
     {
-        let spec = Self::claim_spec(abi::CLAIM_CHORD, 0, 0, chord, "", 0);
+        let chord = normalize_chord(chord)?;
+        let spec = Self::claim_spec(abi::CLAIM_CHORD, 0, 0, &chord, "", 0);
+        let g = self.clone();
         self.claim_raw(
             &spec,
             Some(move |raw: &RawClaim<'_>| {
@@ -315,21 +330,24 @@ impl Gnoblin {
                     button: raw.button,
                     modifiers: raw.text.to_owned(),
                     time: raw.time,
-                });
+                })
+                .settle(&g, "bind_pointer");
             }),
         )
     }
 
     /// Claims every touchpad gesture of `kind` with `fingers` contacts (2 to 5) and calls `f` for each step.
-    pub fn bind_gesture<F>(&self, kind: GestureKind, fingers: u8, mut f: F) -> Result<Subscription>
+    pub fn bind_gesture<F, R>(&self, kind: GestureKind, fingers: u8, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&GestureEvent) + 'static,
+        F: FnMut(&GestureEvent) -> R + 'static,
+        R: CallbackResult,
     {
         let name = match kind {
             GestureKind::Swipe => "swipe",
             GestureKind::Pinch => "pinch",
         };
         let spec = Self::claim_spec(abi::CLAIM_GESTURE, 0, i64::from(fingers), name, "", 0);
+        let g = self.clone();
         self.claim_raw(
             &spec,
             Some(move |raw: &RawClaim<'_>| {
@@ -344,18 +362,21 @@ impl Gnoblin {
                     dy: raw.dy,
                     scale: raw.scale,
                     rotation: raw.rotation,
-                });
+                })
+                .settle(&g, "bind_gesture");
             }),
         )
     }
 
     /// Claims every pointer button of the pointers that report `device` (a name from the seat's `device`) and calls `f` for each
     /// press and release: the buttons reach no client or node while the claim stands.
-    pub fn claim_pointer_buttons<F>(&self, device: &str, mut f: F) -> Result<Subscription>
+    pub fn claim_pointer_buttons<F, R>(&self, device: &str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&PointerButton) + 'static,
+        F: FnMut(&PointerButton) -> R + 'static,
+        R: CallbackResult,
     {
         let spec = Self::claim_spec(abi::CLAIM_POINTER, 0, 0, "", device, 0);
+        let g = self.clone();
         self.claim_raw(
             &spec,
             Some(move |raw: &RawClaim<'_>| {
@@ -368,7 +389,8 @@ impl Gnoblin {
                     x: raw.x,
                     y: raw.y,
                     time: raw.time,
-                });
+                })
+                .settle(&g, "claim_pointer_buttons");
             }),
         )
     }

@@ -34,6 +34,8 @@ struct Stage {
     layouts: PathBuf,
     /// The fixture with the move and resize bindings and a drag binding of its own.
     bindings: PathBuf,
+    /// The shell of the specification's section 3.1 (`examples/02-std-prelude/examples/spec_text.rs`), in the prefix with std.
+    spec_text: PathBuf,
     core_shell: PathBuf,
     /// The std shell as staged in the prefix without std.
     std_shell_alone: PathBuf,
@@ -70,6 +72,13 @@ fn build_stage() -> Result<Stage, String> {
         ],
         &[],
     )?;
+    // The spec's shell is an `example` target of the same package, and selecting one target leaves the rest unbuilt, so it is its own
+    // build into the same target directory.
+    cargo_build(
+        &target,
+        &["-p", "gnoblin-example-std-prelude", "--example", "spec_text"],
+        &[],
+    )?;
     let debug = target.join("debug");
     let with_std = base.join("with-std");
     let without_std = base.join("without-std");
@@ -97,6 +106,10 @@ fn build_stage() -> Result<Stage, String> {
         &debug.join("libshell_bindings.so"),
         &with_std.join("shells/libshell_bindings.so"),
     );
+    let spec_text = copy_to(
+        &debug.join("examples/libspec_text.so"),
+        &with_std.join("shells/libspec_text.so"),
+    );
     let std_library = copy_to(&debug.join("libgnoblin_std_impl.so"), &with_std.join(STD_FILE));
     let bin = base.join("bin");
     fs::create_dir_all(&bin).map_err(|error| error.to_string())?;
@@ -113,6 +126,7 @@ fn build_stage() -> Result<Stage, String> {
         rust_layout,
         layouts,
         bindings,
+        spec_text,
         core_shell,
         std_shell_alone,
         core_shell_alone,
@@ -307,6 +321,44 @@ fn example_2_gives_every_window_a_place_on_its_outputs_workspace_and_starts_a_te
     assert_eq!(num(&stdout, "maps", "core_copies"), 1, "{stdout}");
     assert_eq!(num(&stdout, "maps", "shell_mappings"), 1, "{stdout}");
     assert_eq!(num(&stdout, "maps", "std_mappings"), 1, "{stdout}");
+    assert_eq!(num(&stdout, "core_stats", "panics"), 0, "{stdout}");
+}
+
+// ---- the specification's section 3.1 -------------------------------------------------------------------------------------------
+
+#[test]
+fn example_2_spec_text_shell_places_windows_on_its_workspace_and_a_plus_form_chord_starts_a_terminal() {
+    let stage = stage();
+    let (stdout, stderr, code) = scenario_of(stage, &stage.with_std, "example02_spec", &stage.spec_text);
+    assert_eq!(code, 0, "{stdout}\n{stderr}");
+    assert!(stdout.contains("loaded label=gnoblin-example-std-prelude"), "{stdout}");
+    let screen = [0.0, 0.0, 1000.0, 800.0];
+
+    // The window that was open before the shell started is not the workspace's; the two that opened afterwards are, each placed
+    // inside the screen and clear of the other.
+    let three = step(&stdout, "three");
+    assert_eq!(three.len(), 3, "{stdout}");
+    let rects: Vec<[f64; 4]> = three[1..]
+        .iter()
+        .map(|(_, rect)| rect.expect("the window exists"))
+        .collect();
+    for rect in &rects {
+        assert!(inside(*rect, screen), "{rect:?} is off the screen: {stdout}");
+    }
+    assert!(!overlaps(rects[0], rects[1]), "{rects:?} overlap: {stdout}");
+    assert_eq!(
+        three[0],
+        step(&stdout, "one")[0],
+        "the first window did not move: {stdout}"
+    );
+
+    // `Super+Return` is the spec's spelling; the compositor's parser refuses it, so what the shell claimed is `<Super>Return`.
+    assert!(
+        stdout.lines().any(|line| line == "claims=<Super>Return"),
+        "the claim was not rewritten into the compositor's spelling: {stdout}"
+    );
+    assert!(stdout.contains("terminal_started=true"), "{stdout}");
+    assert!(!stderr.contains("callback failed"), "{stderr}");
     assert_eq!(num(&stdout, "core_stats", "panics"), 0, "{stdout}");
 }
 

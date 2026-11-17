@@ -86,9 +86,9 @@ impl IntoInit for () {
     }
 }
 
-impl<E: Display> IntoInit for Result<(), E> {
+impl<T, E: Display> IntoInit for Result<T, E> {
     fn into_init(self) -> Result<(), String> {
-        self.map_err(|error| error.to_string())
+        self.map(drop).map_err(|error| error.to_string())
     }
 }
 

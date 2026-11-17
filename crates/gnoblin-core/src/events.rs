@@ -14,8 +14,9 @@ use std::sync::atomic::Ordering;
 
 use gnoblin_core_abi::{self as abi, GnoblinNodeEvent};
 
+use crate::callback::CallbackResult;
 use crate::error::Result;
-use crate::generated::Window;
+use crate::generated::{Screen, Window};
 use crate::gnoblin::{CALLS, Gnoblin, Subscription, drop_slot};
 use crate::owned::Value;
 use crate::tree::Node;
@@ -202,147 +203,210 @@ impl Gnoblin {
     }
 
     /// Calls `f` with each window that appears: a client opened one. The callback reads the window as it will stay (its title, its
-    /// size), and what it writes leaves with the turn's other writes.
+    /// size), and what it writes leaves with the turn's other writes. `f` returns `()` or a `Result` (an `Err` is logged, see
+    /// [`CallbackResult`]), so `g.on_client_created(|client| workspace.add(client))` is a whole subscription.
     ///
     /// ```ignore
     /// g.on_client_created(|window| {
     ///     window.set_geometry(Rect::new(0.0, 0.0, 800.0, 600.0)).ok();
     /// })?;
     /// ```
-    pub fn on_client_created<F>(&self, mut f: F) -> Result<Subscription>
+    pub fn on_client_created<F, R>(&self, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&Window) + 'static,
+        F: FnMut(&Window) -> R + 'static,
+        R: CallbackResult,
     {
         let window = self.class("window")?;
-        self.on_node_created_raw(Some(window), move |g, notice| f(&Window::new(g.clone(), notice.node)))
+        self.on_node_created_raw(Some(window), move |g, notice| {
+            f(&Window::new(g.clone(), notice.node)).settle(g, "on_client_created");
+        })
     }
 
     /// Calls `f` with each window that goes: its client closed it. The window is already gone from the tree, so reading it fails
     /// with `NoSuchNode`; its id is what is left.
-    pub fn on_client_destroyed<F>(&self, mut f: F) -> Result<Subscription>
+    pub fn on_client_destroyed<F, R>(&self, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&Window) + 'static,
+        F: FnMut(&Window) -> R + 'static,
+        R: CallbackResult,
     {
         let window = self.class("window")?;
-        self.on_node_destroyed_raw(Some(window), move |g, notice| f(&Window::new(g.clone(), notice.node)))
+        self.on_node_destroyed_raw(Some(window), move |g, notice| {
+            f(&Window::new(g.clone(), notice.node)).settle(g, "on_client_destroyed");
+        })
     }
 
     /// Calls `f` with a window and its new title when a client changes it.
-    pub fn on_title_changed<F>(&self, mut f: F) -> Result<Subscription>
+    pub fn on_title_changed<F, R>(&self, f: F) -> Result<Subscription>
     where
-        F: FnMut(&Window, &str) + 'static,
+        F: FnMut(&Window, &str) -> R + 'static,
+        R: CallbackResult,
     {
-        self.on_window_text("title", move |window, text| f(window, text))
+        self.on_window_text("title", "on_title_changed", f)
     }
 
     /// Calls `f` with a window and its new application id when a client changes it.
-    pub fn on_app_id_changed<F>(&self, mut f: F) -> Result<Subscription>
+    pub fn on_app_id_changed<F, R>(&self, f: F) -> Result<Subscription>
     where
-        F: FnMut(&Window, &str) + 'static,
+        F: FnMut(&Window, &str) -> R + 'static,
+        R: CallbackResult,
     {
-        self.on_window_text("app_id", move |window, text| f(window, text))
+        self.on_window_text("app_id", "on_app_id_changed", f)
     }
 
-    fn on_window_text<F>(&self, property: &str, mut f: F) -> Result<Subscription>
+    fn on_window_text<F, R>(&self, property: &str, what: &'static str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&Window, &str) + 'static,
+        F: FnMut(&Window, &str) -> R + 'static,
+        R: CallbackResult,
     {
         let window = self.class("window")?;
         let property = self.member(window, MemberKind::Property, property)?;
         self.on_change_raw(None, window, property.id, move |g, notice| {
             if let Some(ShellValue::Text(text)) = &notice.value {
-                f(&Window::new(g.clone(), notice.node), text);
+                f(&Window::new(g.clone(), notice.node), text).settle(g, what);
             }
         })
     }
 
     /// Calls `f` with a window and the new value when its property `property` changes, whoever changed it (the compositor, or the
     /// shell itself). `property` is a schema name such as `focused`, `maximised`, `width`.
-    pub fn on_window_property_changed<F>(&self, property: &str, mut f: F) -> Result<Subscription>
+    pub fn on_window_property_changed<F, R>(&self, property: &str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&Window, &Value) + 'static,
+        F: FnMut(&Window, &Value) -> R + 'static,
+        R: CallbackResult,
     {
         let window = self.class("window")?;
         let property = self.member(window, MemberKind::Property, property)?;
         self.on_change_raw(None, window, property.id, move |g, notice| {
             if let Some(value) = notice.value.as_ref().and_then(Value::from_shell) {
-                f(&Window::new(g.clone(), notice.node), &value);
+                f(&Window::new(g.clone(), notice.node), &value).settle(g, "on_window_property_changed");
             }
         })
     }
 
     /// Calls `f` when a property of `node` changes, with the property's new value. `property` is a schema name.
-    pub fn on_property_changed<F>(&self, node: &Node, property: &str, mut f: F) -> Result<Subscription>
+    pub fn on_property_changed<F, R>(&self, node: &Node, property: &str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&Node, &Value) + 'static,
+        F: FnMut(&Node, &Value) -> R + 'static,
+        R: CallbackResult,
     {
         let class = node.class()?;
         let property = self.member(class, MemberKind::Property, property)?;
         self.on_change_raw(Some(node.id()), class, property.id, move |g, notice| {
             if let Some(value) = notice.value.as_ref().and_then(Value::from_shell) {
-                f(&Node::new(g.clone(), notice.node), &value);
+                f(&Node::new(g.clone(), notice.node), &value).settle(g, "on_property_changed");
             }
         })
     }
 
     /// Calls `f` with the window that has the keyboard (`None` when none does) each time it changes.
-    pub fn on_focus_changed<F>(&self, mut f: F) -> Result<Subscription>
+    pub fn on_focus_changed<F, R>(&self, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(Option<&Window>) + 'static,
+        F: FnMut(Option<&Window>) -> R + 'static,
+        R: CallbackResult,
     {
         let seat_class = self.class("seat")?;
         let property = self.member(seat_class, MemberKind::Property, "focus")?;
         self.on_change_raw(None, seat_class, property.id, move |g, notice| {
             if let Some(ShellValue::Node(node)) = &notice.value {
                 if *node == NodeId::NIL {
-                    f(None);
+                    f(None).settle(g, "on_focus_changed");
                 } else {
-                    f(Some(&Window::new(g.clone(), *node)));
+                    f(Some(&Window::new(g.clone(), *node))).settle(g, "on_focus_changed");
                 }
+            }
+        })
+    }
+
+    /// Calls `f` with each output (a `screen` node) that appears: a monitor was plugged in or enabled. Outputs that were in the
+    /// tree when the shell attached are not "created": list them with [`Gnoblin::outputs`] first, then listen.
+    pub fn on_output_created<F, R>(&self, mut f: F) -> Result<Subscription>
+    where
+        F: FnMut(&Screen) -> R + 'static,
+        R: CallbackResult,
+    {
+        let screen = self.class(Screen::CLASS)?;
+        self.on_node_created_raw(Some(screen), move |g, notice| {
+            f(&Screen::new(g.clone(), notice.node)).settle(g, "on_output_created");
+        })
+    }
+
+    /// Calls `f` with each output that goes: the monitor was unplugged or disabled. The node is already gone from reads; its id is
+    /// what is left.
+    pub fn on_output_destroyed<F, R>(&self, mut f: F) -> Result<Subscription>
+    where
+        F: FnMut(&Screen) -> R + 'static,
+        R: CallbackResult,
+    {
+        let screen = self.class(Screen::CLASS)?;
+        self.on_node_destroyed_raw(Some(screen), move |g, notice| {
+            f(&Screen::new(g.clone(), notice.node)).settle(g, "on_output_destroyed");
+        })
+    }
+
+    /// Calls `f` with an output and the new value when its property `property` changes (`width`, `scale`, `primary`, ...), whoever
+    /// changed it.
+    pub fn on_output_changed<F, R>(&self, property: &str, mut f: F) -> Result<Subscription>
+    where
+        F: FnMut(&Screen, &Value) -> R + 'static,
+        R: CallbackResult,
+    {
+        let screen = self.class(Screen::CLASS)?;
+        let property = self.member(screen, MemberKind::Property, property)?;
+        self.on_change_raw(None, screen, property.id, move |g, notice| {
+            if let Some(value) = notice.value.as_ref().and_then(Value::from_shell) {
+                f(&Screen::new(g.clone(), notice.node), &value).settle(g, "on_output_changed");
             }
         })
     }
 
     /// Calls `f` for every node of `class` (a schema name such as `screen`) that comes into the tree. The batch that made
     /// it has been applied, so the callback reads the node as it will stay.
-    pub fn on_node_created<F>(&self, class: &str, mut f: F) -> Result<Subscription>
+    pub fn on_node_created<F, R>(&self, class: &str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&Node) + 'static,
+        F: FnMut(&Node) -> R + 'static,
+        R: CallbackResult,
     {
         let class = self.class(class)?;
-        self.on_node_created_raw(Some(class), move |g, notice| f(&Node::new(g.clone(), notice.node)))
+        self.on_node_created_raw(Some(class), move |g, notice| {
+            f(&Node::new(g.clone(), notice.node)).settle(g, "on_node_created");
+        })
     }
 
     /// Calls `f` for every node of `class` that leaves the tree. The node is already gone from reads; its id is what is
     /// left.
-    pub fn on_node_destroyed<F>(&self, class: &str, mut f: F) -> Result<Subscription>
+    pub fn on_node_destroyed<F, R>(&self, class: &str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&Node) + 'static,
+        F: FnMut(&Node) -> R + 'static,
+        R: CallbackResult,
     {
         let class = self.class(class)?;
-        self.on_node_destroyed_raw(Some(class), move |g, notice| f(&Node::new(g.clone(), notice.node)))
+        self.on_node_destroyed_raw(Some(class), move |g, notice| {
+            f(&Node::new(g.clone(), notice.node)).settle(g, "on_node_destroyed");
+        })
     }
 
     /// Calls `f` with a node of `class` and its new value when its property `property` changes, whoever changed it. Both
     /// are schema names (`screen`, `primary`).
-    pub fn on_class_property_changed<F>(&self, class: &str, property: &str, mut f: F) -> Result<Subscription>
+    pub fn on_class_property_changed<F, R>(&self, class: &str, property: &str, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&Node, &Value) + 'static,
+        F: FnMut(&Node, &Value) -> R + 'static,
+        R: CallbackResult,
     {
         let class = self.class(class)?;
         let property = self.member(class, MemberKind::Property, property)?;
         self.on_change_raw(None, class, property.id, move |g, notice| {
             if let Some(value) = notice.value.as_ref().and_then(Value::from_shell) {
-                f(&Node::new(g.clone(), notice.node), &value);
+                f(&Node::new(g.clone(), notice.node), &value).settle(g, "on_class_property_changed");
             }
         })
     }
 
     /// Calls `f` when a window's client makes a request that policy decides (maximise, close, open its menu, ...). A request
     /// changes nothing until the shell answers it.
-    pub fn on_window_request<F>(&self, mut f: F) -> Result<Subscription>
+    pub fn on_window_request<F, R>(&self, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&Window, &WindowRequest) + 'static,
+        F: FnMut(&Window, &WindowRequest) -> R + 'static,
+        R: CallbackResult,
     {
         let g = self.clone();
         let window = self.class("window")?;
@@ -362,17 +426,22 @@ impl Gnoblin {
                     x: event.x,
                     y: event.y,
                 },
-            );
+            )
+            .settle(&g, "on_window_request");
         })
     }
 
     /// Calls `f` for each input event sent to `node`: the keys, buttons, motion and wheel a node that holds an input grab hears, or
     /// the pointer over a node of the shell's own.
-    pub fn on_node_event<F>(&self, node: &Node, mut f: F) -> Result<Subscription>
+    pub fn on_node_event<F, R>(&self, node: &Node, mut f: F) -> Result<Subscription>
     where
-        F: FnMut(&NodeEvent) + 'static,
+        F: FnMut(&NodeEvent) -> R + 'static,
+        R: CallbackResult,
     {
-        self.on_tree_event(Some(node.id()), move |event, _request| f(event))
+        let g = self.clone();
+        self.on_tree_event(Some(node.id()), move |event, _request| {
+            f(event).settle(&g, "on_node_event");
+        })
     }
 
     fn on_tree_event<F>(&self, node: Option<NodeId>, mut f: F) -> Result<Subscription>

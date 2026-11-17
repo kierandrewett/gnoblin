@@ -36,6 +36,8 @@ compile_error!(
      [profile.*] section that builds this crate."
 );
 
+mod callback;
+mod chord;
 mod error;
 mod events;
 // Written by `cargo xtask gen-sdks`, already formatted by the pinned rustfmt.
@@ -56,6 +58,8 @@ pub mod private;
 #[doc(hidden)]
 pub use private as __private;
 
+pub use callback::CallbackResult;
+pub use chord::normalize_chord;
 pub use error::{CoreError, ErrorKind, Result};
 pub use events::{NodeEvent, WindowRequest};
 pub use generated::*;

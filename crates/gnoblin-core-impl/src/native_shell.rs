@@ -74,7 +74,24 @@ pub(crate) fn status_of(status: &ReloadStatus) -> ShellStatus {
         build_failures: status.build_failures,
         pending: status.pending.is_some(),
         last: status.last.as_ref().map(|record| record.outcome.clone()),
-        summary: status.to_string(),
+        summary: format!("{status}{}", crate::budget::status()),
+    }
+}
+
+/// Applies the callback budget's rule to the request that waits for the shell thread's next turn: while the shell is degraded, a
+/// reload the shell asked for itself is refused (the last good generation keeps running), and a reload somebody asked for (the
+/// user, or the watcher seeing a rebuilt library) is a retry that clears the strikes.
+fn gate_reload(controller: &ReloadController) {
+    match controller.status().pending {
+        Some(ReloadTrigger::Shell) if crate::budget::degraded() => {
+            controller.take_request();
+            log::warn!(
+                "the shell asked for a reload while it is degraded by the callback budget: refused, the running generation \
+                 keeps serving (`gnoblinctl shell reload` is a deliberate retry)"
+            );
+        }
+        Some(ReloadTrigger::User | ReloadTrigger::Files(_)) => crate::budget::user_reload(),
+        _ => {}
     }
 }
 
@@ -227,6 +244,7 @@ fn turn_until_done(shell: &mut host::NativeShell, stopped: &dyn Fn() -> bool) ->
         }
         // A reload the shell asked for (or the watcher, or `gnoblinctl shell reload`): the controller stages, commits or abandons it
         // and logs the outcome; a failed one leaves the running generation as it was.
+        gate_reload(&host::reload_controller());
         if let Some(reloaded) = shell.serve_requests() {
             match reloaded {
                 Ok(reloaded) => log::info!("the shell reloaded: {reloaded:?}"),

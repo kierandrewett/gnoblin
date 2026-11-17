@@ -243,6 +243,18 @@ impl<E: 'static> NativeShell<E> {
                 ReloadError::Commit(format!("generation {} is {state:?}, not staged", staged.generation())),
             ));
         }
+        // The host may refuse a generation whose `init` misbehaved (it held the shell thread past its budget). The generation that is
+        // serving is the last good one, and it keeps serving; the staged one is abandoned as for any failure before the commit.
+        if running.is_some()
+            && let Err(reason) = self.loader.host().vet(staged.generation())
+        {
+            staged.abandon();
+            return Err(self.failed(
+                trigger,
+                running,
+                ReloadError::Commit(format!("generation {} {reason}", staged.generation())),
+            ));
+        }
         // The old generation finishes first: its hooks may write what its successor reads, and it must not be called again
         // once the new one has its chords.
         if let Some(old) = &self.current {

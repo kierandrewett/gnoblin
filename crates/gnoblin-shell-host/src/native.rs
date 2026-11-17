@@ -598,9 +598,11 @@ impl<E: 'static> NativeLoader<E> {
         // declare it otherwise, so the call is contained.
         // The text a failing `init` leaves must be its own, never an earlier failure's.
         set_error(String::new());
+        self.host.init_begun(generation);
         let outcome = catch_unwind(AssertUnwindSafe(|| unsafe {
             (entry.init)(core::ptr::from_ref(self.api), ctx)
         }));
+        self.host.init_ended(generation);
         let code = match outcome {
             Ok(code) => code,
             Err(payload) => {

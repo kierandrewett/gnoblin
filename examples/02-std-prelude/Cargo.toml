@@ -11,6 +11,11 @@ publish.workspace = true
 name = "std_prelude"
 crate-type = ["cdylib"]
 
+# The shell of the specification's section 3.1 (`examples/spec_text.rs`), built beside the example as a library of its own.
+[[example]]
+name = "spec_text"
+crate-type = ["cdylib"]
+
 # A std shell depends on the std SDK and the core SDK, and nothing else: it links the installed `libgnoblin-std.so.1`, which in turn
 # links `libgnoblin-core.so.1`, and carries no copy of either. (`gnoblin-core = "1"` and `gnoblin-std = "1"` outside this workspace.)
 [dependencies]

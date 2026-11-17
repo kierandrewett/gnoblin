@@ -18,7 +18,7 @@ use std::sync::atomic::Ordering;
 use gnoblin_core_abi::{self as abi, GnoblinAnswer, GnoblinNodes, GnoblinPending, GnoblinStr, GnoblinValue};
 
 use crate::error::{CoreError, ErrorKind, Result, check};
-use crate::generated::Window;
+use crate::generated::{Screen, Window};
 use crate::gnoblin::{CALLS, CallbackSlot, Gnoblin, copy_str, drop_slot};
 use crate::owned::Value;
 use crate::value::{Class, MemberKind, NodeId};
@@ -471,24 +471,40 @@ impl Gnoblin {
     /// not by walking the root's children (`design/node-core.md`, 3.2). The order is the order the windows opened in; the
     /// compositor's stacking is not in the tree, and a shell that wants an order of its own keeps it.
     pub fn windows(&self) -> Result<Vec<Window>> {
-        let window = self.class("window")?;
+        Ok(self
+            .class_node_ids("window")?
+            .into_iter()
+            .map(|id| Window(Node::new(self.clone(), id)))
+            .collect())
+    }
+
+    /// Every output (`screen` node) the compositor has published, in the order they came into the tree. Attaches to the tree if
+    /// this generation has not.
+    pub fn outputs(&self) -> Result<Vec<Screen>> {
+        Ok(self
+            .class_node_ids(Screen::CLASS)?
+            .into_iter()
+            .map(|id| Screen(Node::new(self.clone(), id)))
+            .collect())
+    }
+
+    /// The ids of every node of the class called `name` that the compositor has published, by id.
+    fn class_node_ids(&self, name: &str) -> Result<Vec<NodeId>> {
+        let class = self.class(name)?;
         self.attach()?;
         let mut nodes = GnoblinNodes {
             ptr: core::ptr::null(),
             len: 0,
         };
         // SAFETY: `class_nodes` fills `nodes`, a live local; the array it points at is copied before the next ABI call.
-        check(unsafe { (self.api().class_nodes)(self.ctx(), window.0, &mut nodes) })?;
+        check(unsafe { (self.api().class_nodes)(self.ctx(), class.0, &mut nodes) })?;
         let ids: &[u64] = if nodes.ptr.is_null() {
             &[]
         } else {
             // SAFETY: the core lends `len` ids at `ptr` until the next ABI call on this thread.
             unsafe { std::slice::from_raw_parts(nodes.ptr, nodes.len) }
         };
-        Ok(ids
-            .iter()
-            .map(|id| Window(Node::new(self.clone(), NodeId(*id))))
-            .collect())
+        Ok(ids.iter().map(|id| NodeId(*id)).collect())
     }
 
     /// The window with this id, if it is one.
