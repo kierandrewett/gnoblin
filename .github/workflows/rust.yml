@@ -17,6 +17,7 @@ on:
       - "deny.toml"
       - ".cargo/**"
       - "tests/parity/**"
+      - "tests/modular/**"
       - "scripts/ci-install-system-libraries.sh"
       - ".github/workflows/rust.yml"
   pull_request:
@@ -35,6 +36,7 @@ on:
       - "deny.toml"
       - ".cargo/**"
       - "tests/parity/**"
+      - "tests/modular/**"
       - "scripts/ci-install-system-libraries.sh"
       - ".github/workflows/rust.yml"
   workflow_dispatch:
@@ -176,3 +178,49 @@ jobs:
         run: rustup show active-toolchain
       - name: Build the core with no std crate and test a session with no provider
         run: just core-only
+
+  # The ABI contract (design/modular-framework.md 5.8, M8.3): `abi.lock` of the core and of std against their declarations, and the
+  # golden shells of example 12 (`tests/modular/golden`) against their recorded hashes and dynamic facts. The workspace gate runs it
+  # too; this job is the one that names it, and it starts after a few minutes of xtask compile instead of the whole workspace.
+  abi:
+    name: ABI lock and golden shells
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Install system libraries
+        run: scripts/ci-install-system-libraries.sh
+      - name: Show the pinned toolchain
+        run: rustup show active-toolchain
+      - name: Check the ABI locks and the golden shells
+        run: just abi-check
+
+  # The modular framework's sessions (M8.2, M8.3, M8.4): the shipped binary on a headless backend with native shells: examples 1, 8 and
+  # 17, and example 12, the stored golden shells run unchanged on libraries of the next ABI minor and refused by a core of another major.
+  # It stages the core and std libraries first (the binary finds them through its run path).
+  modular:
+    name: Modular framework sessions and the ABI upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Install system libraries
+        run: scripts/ci-install-system-libraries.sh
+      - name: Show the pinned toolchain
+        run: rustup show active-toolchain
+      - name: Run the modular sessions
+        run: just modular

@@ -87,9 +87,26 @@ dupes:
 dupes-warn:
     cargo xtask dupes --warn
 
-# Fail when the C ABI and its lock files disagree (crates/gnoblin-*-abi/abi.lock).
+# Fail when the C ABI and its lock files disagree (crates/gnoblin-*-abi/abi.lock), or when a golden shell of example 12
+# (tests/modular/golden) is not the binary golden.lock records or has stopped looking like a shell.
 abi-check:
     cargo xtask abi-check
+
+# Ask whether the stored golden shells are what this machine's toolchain builds from the current SDK sources. Informational: a
+# different toolchain or linker may differ, and only an owner replaces them (tests/modular/golden/regenerate.sh).
+golden-check:
+    tests/modular/golden/regenerate.sh --check
+
+# The modular framework's real-session suites (design/modular-framework.md 12, M8.2 to M8.4): stage the core and std libraries, then
+# run the shipped binary with native shells. `abi_upgrade` is example 12 (the golden shells on the next minor, refused on another
+# major) and the dependency validation (`readelf -d`, `nm -D`, `ldd`, `/proc/PID/maps`). Add a suite here when it joins the 18.
+modular:
+    cargo xtask stage
+    cargo test --locked -p gnoblin --test abi_upgrade --test native_shell --test native_shell_failures --test std_providers
+
+# Fail on a -sys crate whose system package the CI install list lacks (scripts/ci-install-system-libraries.sh).
+native-libs:
+    cargo xtask native-libs
 
 # Write every language SDK from the schema catalog and the ABI crates; see docs/sdk-generator.md.
 gen-sdks:
@@ -192,7 +209,7 @@ js-check:
     git ls-files -z '*.ts' '*.d.ts' | xargs -0 npx --yes prettier@3.9.6 --check
 
 # The root workspace's whole gate, in the order that fails fastest.
-workspace-ci: js-check fmt-check build clippy test deps logging layout dupes docs-parity abi-check gen-sdks-check deny
+workspace-ci: js-check fmt-check build clippy test deps logging layout dupes docs-parity abi-check native-libs gen-sdks-check deny
 
 # Everything CI runs: the root workspace, the extension workspace and the core build with no std providers.
 ci: workspace-ci ext-ci core-only

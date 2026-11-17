@@ -1,0 +1,142 @@
+# ABI compatibility
+
+A shell built against Gnoblin ABI 1.0 keeps running when the core and std libraries are upgraded to a later 1.x, with no recompile. This page
+is the policy: what the version numbers mean, which changes keep that promise, what an upgrade is, and how the project checks the
+promise on every change.
+
+## The version numbers
+
+`libgnoblin-core` and `libgnoblin-std` are versioned apart, each as `<major>.<minor>.<patch>`. The file on disk carries all three; the
+name a shell records carries the major only:
+
+```text
+lib/libgnoblin-core.so.1.2.0     the file (major 1, minor 2, patch 0)
+lib/libgnoblin-core.so.1         the SONAME link: what a shell lists as NEEDED
+lib/libgnoblin-core.so           the linker name, for a developer's build
+```
+
+| Number | Changes when                                                | A shell built earlier                                            |
+| ------ | ----------------------------------------------------------- | ---------------------------------------------------------------- |
+| major  | an existing call is reordered, retyped, removed or re-meant | is refused at load, with both versions named; it needs a rebuild |
+| minor  | a function, constant, export or catalog member is added     | runs unchanged; it cannot call what it was not built with        |
+| patch  | nothing in the interface changes                            | runs unchanged                                                   |
+
+A shell built against a later minor than the core it finds still loads. The wrapper for a function the older core lacks returns
+`Unsupported`, so a shell chooses to degrade and does not fail at start. Example 12 tests this both ways.
+
+## Which changes are compatible
+
+The rules of `design/modular-framework.md` section 5.8, as a developer reads them:
+
+| Change                                     | Allowed in a minor? | How it is done                                                                                                          |
+| ------------------------------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| a new function in the table                | yes                 | appended to `GnoblinApi` (or `GnoblinStdApi`); `size` grows; the SDK asks `table_has` before it calls it                |
+| a new class, property, method or signal    | yes                 | the catalog grows and its hash changes; an old SDK ignores what it does not know                                        |
+| a new error code, `kind` value or flag bit | yes                 | a caller treats an unknown code as an error and an unknown kind as unsupported                                          |
+| a new exported symbol                      | rarely              | appended to `exports.txt` and `abi.lock`; a shell that names it fails to load on an older core, so prefer a table field |
+| reorder, resize, retype or remove a field  | no                  | a removed function keeps its slot as a stub that returns `E_UNSUPPORTED` until the next major                           |
+| change what an existing call means         | no                  |                                                                                                                         |
+
+A change that is not allowed in a minor is a new major: a new SONAME (`libgnoblin-core.so.2`) that installs beside the old one, so
+shells built for each keep loading the library they were built for.
+
+## What a shell sees
+
+Both libraries answer `gnoblin_abi_version` (`gnoblin_std_abi_version` for std) with their major, minor and patch. The SDK asks for the
+table with `gnoblin_get_api(major, minor_built, &table)`, and the loader compares the major the shell was built for with the core's:
+
+- the major is the one the shell was built for: the table comes back, and its `size` says how many functions it holds;
+- the major differs: the load fails with `incompatible ABI: this shell was built for gnoblin ABI 1.0; the installed core is 2.0`, and
+  for std `incompatible ABI: this shell was built for gnoblin std ABI 1.0; the installed libgnoblin-std is 2.0`. The compositor logs the
+  text and goes on without the shell, as it does for any shell that cannot load.
+
+In Rust, `gnoblin::installed_abi()` and `gnoblin_std::installed_abi()` return the numbers of the libraries the shell found, and
+`gnoblin::ABI_MINOR` is the minor it was built against.
+
+## Upgrading the libraries
+
+Replace the library files, keep the SONAME links, and restart the session. A shell binary is not touched:
+
+1. Install the new `libgnoblin-core.so.1.<minor>.<patch>` and move the `libgnoblin-core.so.1` link to it. Do the same for
+   `libgnoblin-std` if it is installed. They upgrade independently: std is a client of the core's ABI and runs on any core of that major.
+2. Leave `bin/gnoblin` and the installed shells as they are. A package manager does this by replacing the library package.
+3. Start the session again. A running compositor keeps the library it started with mapped (both libraries are linked `-z nodelete`,
+   because a retired shell generation may still hold pointers into them), and a shell reload replaces the shell, not the libraries.
+
+## How the promise is checked
+
+| Check                                                  | Runs                              | What it catches                                                                                                                |
+| ------------------------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `cargo xtask abi-check` (`just abi-check`)             | every CI run, `just workspace-ci` | an entry of `abi.lock` that changed or went away; a stale lock after an addition; a golden shell that is not the recorded file |
+| `crates/gnoblin/tests/abi_upgrade.rs` (`just modular`) | every CI run, the `modular` job   | example 12 below, and the dependency validation                                                                                |
+| `cargo xtask dist-check` (`just dist-check`)           | every CI run                      | the libraries' SONAME, exports and run paths                                                                                   |
+
+`abi.lock` is one file per library (`crates/gnoblin-*-abi/abi.lock`). It records every export, constant, callback type, struct layout and
+field offset, with the ABI version that introduced it.
+
+- A removal or change of an entry of a released version fails the check, with no way to bless it inside the major.
+- An addition is recorded with `cargo xtask abi-check --update`, in the same commit.
+- Until the first release the lock says `released none`: the ABI may still change, and the lock only says what it is.
+
+### Example 12: the golden shells
+
+`tests/modular/golden/bin/` holds two shells built once against ABI 1.0 and stored as binaries: `libgolden_core_shell.so` (core only) and
+`libgolden_std_shell.so` (core and std). Each logs the ABI it was built for and the one it finds installed, and places windows. The
+test never rebuilds them. It starts the shipped `gnoblin` from a private prefix whose libraries are:
+
+- the libraries of this tree (the baseline), and the shells report `installed core ABI 1.0.0`;
+- libraries built with the test knob `next-minor`: ABI 1.1, patch 1, one function appended to each table. The same binaries load, run,
+  place windows and report `installed core ABI 1.1.1`; `/proc/PID/maps` shows one core mapping, and one std mapping with the std shell, all
+  in the prefix;
+- a core built with `next-major`: it answers major 2 under the file name `.so.1`. The loader refuses both shells with the text above, the
+  compositor keeps serving clients and exits normally on a signal; a std library built the same way refuses the std shell alone;
+- in the other direction, a shell built for 1.1 on the 1.0 core: it loads, and the function the core lacks reports `None`.
+
+The dependency validation runs on the golden shells and on freshly built ones: `readelf -d` names the core (and std for the std shell)
+and no other library of ours, a shell carries no run path, `nm -D --defined-only` lists `gnoshell_entry_v1` alone, `ldd` resolves the libraries
+into the prefix, and the process maps no copy of the core or std from anywhere else.
+
+`cargo xtask abi-check` checks the goldens too: each file against the sha256 and size in `tests/modular/golden/golden.lock`, the
+dynamic facts above, and that the ABI the lock names is one the tree has.
+
+## For a maintainer
+
+### Adding a function to a table
+
+1. Append the field to `GnoblinApi` in `crates/gnoblin-core-abi/src/types.rs` (or `GnoblinStdApi` in `gnoblin-std-abi`), with its
+   documentation; never between two fields.
+2. Implement it in the library's `table.rs` and set the field in the static table.
+3. Give the SDK a wrapper that checks the table's `size` with `table_has` and returns `Unsupported` (`None` for a getter) on a table that is too short.
+4. Run `cargo xtask abi-check --update` and `cargo xtask gen-sdks`, and commit the lock and the generated files with the change. Raise the
+   minor in `ABI_MINOR` when the change ships in a release.
+5. Add the function to the upgrade test only when it needs behaviour of its own. The test knob already appends one.
+
+A change the table above does not allow is a new major, which is a decision for the owners and a design note first.
+
+### The test knobs
+
+The ABI crates carry two features that exist only for the upgrade tests, `next-minor` and `next-major`. The libraries and the core SDK
+forward them. They never go on in a build that ships, and `cargo xtask abi-check` refuses a build that has them on.
+
+- `next-minor` makes the version 1.1 at patch 1 and appends `uptime_ms` to each table.
+- `next-major` makes the major 2 and leaves the SONAME alone, so the same prefix layout carries a library of another major.
+
+### Replacing the golden shells
+
+Only an owner does this, and rarely: when the golden set must start over (the first ABI commit) or when the toolchain makes the stored
+files unusable. A failing upgrade test means the new library broke an old shell; the answer is to fix the library or make it a new major, never
+to rebuild the golden.
+
+```sh
+GNOBLIN_GOLDEN_OWNER=yes tests/modular/golden/regenerate.sh   # build, write bin/ and golden.lock
+tests/modular/golden/regenerate.sh --check                    # does this toolchain build the stored files?
+```
+
+The recipe is in the header of the script:
+
+- a workspace of its own, release profile, size optimised, symbols stripped from the file and not from the dynamic table;
+- the repository's `Cargo.lock` for the dependency versions;
+- path prefixes and the build id removed, so the file does not name the machine that made it.
+
+Two builds on one toolchain give the same bytes. Another linker may not, which is why the check verifies the stored hash and does not rebuild.
+After a release, a golden of the new minor is added beside these with the same recipe, and the old ones stay.

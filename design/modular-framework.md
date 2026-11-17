@@ -2111,3 +2111,101 @@ The UI provider is a vtable, not a node-tree description. The trait has seventee
 
 - The ABI is `1.0` and unreleased (D18), so the provider vtables are not yet frozen; the first release freezes them.
 - A script shell run by path (`gnoblin ./x.ts`) registers std's providers only when it imports std (its `open`). That follows from the rule that a core-only shell never loads std, and is not a gap, but a user who runs a core-only script shell gets `NullWm`.
+
+## 29. Implementation notes, M8.3 and M8.4 (lane AbiUpgrade)
+
+Example 12 and the dependency validation of spec section 10, in a real session. The tests are `crates/gnoblin/tests/abi_upgrade.rs`;
+the stored binaries are `tests/modular/golden/`; the policy page is `docs/abi-compatibility.md`.
+
+### 29.1 The golden shells
+
+- Two shells, built once against ABI 1.0: `tests/modular/golden/core-shell` (core only; a cascade of window places) and `std-shell` (std:
+  `workspace_per_output`, a client watcher). Each logs `built for ABI x.y; installed core ABI a.b.c` (the std one adds std), which is how a
+  test sees which library served it.
+- They are a workspace of their own (`tests/modular/golden/Cargo.toml`), outside the repository's, so a repository build never rebuilds them.
+  The binaries are in `bin/` (about 300 KB each: release, `opt-level = "s"`, fat LTO, symbols stripped from the file and kept in the dynamic
+  table), and `golden.lock` records the ABI each was built for, the commit and schema catalog hash of the SDK sources it was compiled from, the
+  toolchain, and a sha256 and size per file.
+- `regenerate.sh` is the one recipe (header documents it). It refuses to write without `GNOBLIN_GOLDEN_OWNER=yes`; `--check` rebuilds into a
+  scratch directory and compares. Two builds from different checkout paths on one box gave the same bytes: the build remaps the checkout and
+  cargo home, removes the build id and fixes `SOURCE_DATE_EPOCH`. That is repeatability on one toolchain and not a promise across
+  linkers, so the guard verifies the stored hash and does not rebuild.
+- `cargo xtask abi-check` verifies the goldens on every run (`xtask/src/golden.rs`): hash and size against the lock, the dynamic facts of a
+  core-only or std shell (reusing `dist_check::check_core_only_shell` and `check_std_shell`), no unlisted file in `bin/`, and that the ABI the
+  lock names is one this tree has (same major, a minor not above the current).
+
+### 29.2 The test knobs
+
+- `next-minor` existed for the core. It now also moves the patch level (1.1 patch 1, so the file is `libgnoblin-core.so.1.1.1`), and std got the
+  same feature: ABI 1.1, patch 1, one function (`uptime_ms`) appended to `GnoblinStdApi`. `gnoblin-std-impl` and `gnoblin-core-impl` forward
+  them.
+- `next-major` (new, both ABI crates, forwarded by the two impl crates and the core SDK) makes `ABI_MAJOR` 2 and leaves the SONAME `.1`. The
+  library of another major is therefore found by shells that record `libgnoblin-core.so.1`, and the loader's own comparison does the
+  refusing, which is what a real 2.0 core installed under that name would produce.
+- `cargo xtask abi-check` refuses a build with any of the four switches on, naming the crate and the feature.
+
+### 29.3 The upgrade test
+
+- The baseline prefix is the staged tree (`cargo xtask stage`) copied into a temporary prefix as an install lays it out: `bin/gnoblin` (a copy of
+  the binary under test), `lib/libgnoblin-core.so.1.<minor>.<patch>` as a real file, the SONAME link and the linker name, and the std library the
+  same. The binary finds `../lib` through its run path, so a prefix holds the only libraries a process can map.
+- The std shell has no run path: a shell is found by its package, and an install under `/usr` has the loader's own path. The session sets
+  `LD_LIBRARY_PATH` to the prefix's `lib`, as the other std session tests do.
+- The new libraries are built into `CARGO_TARGET_TMPDIR/abi-upgrade-libs` and not into the shared target directory: a build with a knob would
+  replace `libgnoblin_core_impl.so`, which the staged SONAME link points at. The cost is a second compile of the core's dependencies on a clean box
+  (the first run took about four minutes of the box's two cores and 3 GB of its 12).
+- The builds are `next-minor` for core and std together with the 1.1 fixture shell, and `next-major` for the core alone and for std alone. Std asks the
+  core for major 1, so the two knobs are never in one build.
+- Seven tests, each a real session where it starts one:
+    - the golden shells on the baseline (they report 1.0.0);
+    - the golden shells on the next minor: they report 1.1.1, the maps show `libgnoblin-core.so.1.1.1` and `libgnoblin-std.so.1.1.1` once each, and every
+      `libgnoblin*` mapping lives in the prefix;
+    - the reverse: a shell built for 1.1 on the 1.0 core prints `uptime_ms=None`, on the 1.1 core `Some(..)`, and the 1.0 build of it runs on 1.1;
+    - a core of major 2 refuses both golden shells with `incompatible ABI: this shell was built for gnoblin ABI 1.0; the installed core is 2.0`;
+    - a std library of major 2 refuses the std shell with `E_ABI: incompatible ABI: this shell was built for gnoblin std ABI 1.0; the installed
+libgnoblin-std is 2.0`;
+    - the static dependency checks, and the `ldd` resolution (section 29.4).
+- A refusal ends as the loader's other failures do: logged, the tree detached, the session served on by the core's own window management (a client
+  maps and is seen), no panic. The process ends on a signal only by the SIGTERM the test sends.
+
+### 29.4 Dependency validation
+
+`readelf -d` and `nm -D` run on the golden shells and on a freshly built core-only and std shell (examples 1 and 2):
+
+- NEEDED holds the core exactly once, std exactly for a std shell, and no other library of ours; there is no run path.
+- `gnoshell_entry_v1` is the only defined symbol, and every undefined `gnoblin_` symbol is one the core exports (or a `gnoblin_std_` one, for a
+  std shell).
+
+The libraries, in the shipped build and in both knob builds:
+
+- The SONAME is `.so.1`; the core needs nothing of ours, and std needs the core and finds it through `$ORIGIN`.
+- The 1.1 core and std export exactly the symbols the 1.0 ones do: an ABI minor adds a table field, not an export.
+
+Resolution and mappings:
+
+- `ldd` with `LD_LIBRARY_PATH` clear resolves the launcher's core and std's core into the prefix. With the prefix on the library path both
+  shells resolve there.
+- `/proc/PID/maps` shows one core mapping and no std in a core-only session, and one of each with the std shell. Every `libgnoblin*` mapping lives
+  in the prefix.
+
+### 29.5 CI
+
+- `just abi-check` was in `workspace-ci` already and now also checks the goldens. New `abi` job (names it, and starts after the xtask build alone).
+- `just modular` stages the libraries and runs `abi_upgrade`, `native_shell`, `native_shell_failures` and `std_providers`; the `modular` job runs it.
+  The suites also run in `just test`, so the workflow does them twice; the job exists for a clear name and a short feedback loop.
+- `just native-libs` is new and part of `workspace-ci` (the xtask check existed and nothing ran it). The Python system library of M8.4 was
+  already in `scripts/ci-install-system-libraries.sh` (`libpython3-dev`). `dist-check` stays a step of the `workspace` job, which built the
+  tree it reuses; making it a job of its own would build the workspace a second time for nothing.
+- `tests/modular/**` is in the workflow path filters.
+
+### 29.6 Not done, and why
+
+- The golden set is the one of ABI 1.0, which is unreleased (D18). If the 1.0 table grows before the release, the goldens still pass (a table
+  only grows) and prove the older table works on the newer core, which is the claim; the release commit may add a golden of the final
+  1.0 and keep these.
+- Example 12 is in `crates/gnoblin/tests/abi_upgrade.rs`, a file of its own, and not `tests/modular/12_abi_upgrade.rs` of the one `modular` test
+  target of section 12: that target does not exist yet. The `modular` recipe names the suites it runs and moves when they merge.
+- Only the Rust SDK is covered by the golden. A script runtime is a library of ours loaded by the core, not a shell binary built against the
+  ABI, so the "old binary, new libraries" claim has no counterpart for it: the language runtimes are rebuilt with the core.
+- `std` is exercised at its minor and major only through the test knob's one added function; there is no std SDK wrapper for `uptime_ms`
+  because nothing ships it.
