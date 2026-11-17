@@ -7,6 +7,12 @@
 //! core's contexts follow: the context of the generation that serves is the one the link and the log use, and it moves to the new
 //! one when the swap commits.
 //!
+//! The role owns what the socket role of the guardian owned: the configuration document (`owns_document`), each revision it commits is
+//! reported to the guardian through the core (`report_config`, which the core turns into the `autostart` lines and `config-accepted`
+//! the guardian reads), and `gnoblinctl config reload` is answered: the compositor raises `session.reload_requested`, the role asks
+//! the core for a reload, and the generation that results commits a revision (which answers the caller) or is refused
+//! (`config.reject`, and `report_config_rejected` for the guardian).
+//!
 //! A change to a file the script loaded is seen by the role's own watcher, which knows every module the generation imported.
 //! The role does not reload itself ([`JsRoleConfig::external_reload`]): the runtime asks the core for a reload
 //! (`request_reload`), and the host serves it between turns through the loader every language shares, which calls `start` with a
@@ -18,7 +24,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
-use gnoblin_js::{JsBytecodeCache, JsRole, JsRoleConfig, JsRoleLinks};
+use gnoblin_js::{JsBytecodeCache, JsCommitLog, JsRole, JsRoleConfig, JsRoleLinks, stock_search_path};
 
 use crate::link::{RelayedLink, Serving};
 use crate::table::{CoreTable, set_log_context};
@@ -39,6 +45,11 @@ struct Instance {
     role: JsRole,
     /// The context of the generation that serves.
     serving: Serving,
+    /// The documents the shell committed that the guardian has not been told of.
+    commits: JsCommitLog,
+    /// Whether a reload of the configuration the compositor asked for (`gnoblinctl config reload`) is waiting for its answer: a
+    /// commit, or a refusal.
+    answering: bool,
 }
 
 thread_local! {
@@ -49,24 +60,59 @@ fn environment(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
-/// The engine's configuration for the script at `script`: imports resolve under its directory, the cache is the runtime's, and the
-/// watcher asks the host to reload.
-fn role_config(script: &Path) -> JsRoleConfig {
+/// The engine's configuration for the script at `script`: imports resolve under its directory, the stock library is the installed
+/// data (`share/gnoblin/js`, found from the prefix the core and this process were installed in), the cache is the runtime's, the
+/// role owns the configuration document, and the watcher asks the host to reload.
+fn role_config(table: CoreTable, script: &Path, commits: &JsCommitLog) -> JsRoleConfig {
     let env = &environment;
     let dir = script.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-    let stock = env("GNOBLIN_JS_STOCK_DIR")
-        .filter(|dir| !dir.is_empty())
-        .map(PathBuf::from);
-    let mut config = JsRoleConfig::new(dir, stock);
+    let mut config = JsRoleConfig::new(dir, None);
+    let anchors: Vec<PathBuf> = [table.core_file(), std::env::current_exe().ok()]
+        .into_iter()
+        .flatten()
+        .collect();
+    config.shell.stock_dirs = stock_search_path(env, &anchors);
     config.entry = script.to_path_buf();
     config.watch = env("GNOBLIN_JS_WATCH").as_deref() != Some("0");
     config.external_reload = true;
+    config.owns_document = true;
+    config.commits = Some(commits.clone());
     config.shell.xr_declared = env("GNOBLIN_XR").as_deref() == Some("1");
     config.shell.js.cache = JsBytecodeCache::from_environment_for(VERSION, &|name| env(name));
     config.resolve_console(&|name| env(name));
     // Every generation gets `__gnoblinStd`, the table of `libgnoblin-std` for the scripts that import `gnoblin-std/native`.
     config.shell.js.natives.push(crate::std_native::native());
     config
+}
+
+/// Tells the guardian the revision the shell committed last since the previous call, and returns it. `None` when the shell
+/// committed nothing.
+///
+/// The core turns the report into the enabled `autostart` lines of the document and `config-accepted`. Only the last commit is
+/// reported when there were several: the guardian reconciles what it runs with the final document, and an intermediate one would
+/// start programs the next stops.
+fn publish(table: CoreTable, ctx: GnoblinCtx, commits: &JsCommitLog) -> Option<u64> {
+    let records = std::mem::take(&mut *commits.borrow_mut());
+    let last = records.last()?;
+    for notice in &last.notices {
+        table.log(ctx, abi::LOG_WARN, &format!("js: not applied: {notice}"));
+    }
+    if let Err(message) = table.report_config(ctx, last.revision, &last.document) {
+        table.log(
+            ctx,
+            abi::LOG_WARN,
+            &format!(
+                "js: the guardian could not be told of configuration revision {}: {message}",
+                last.revision
+            ),
+        );
+    }
+    table.log(
+        ctx,
+        abi::LOG_INFO,
+        &format!("js: configuration revision {} committed", last.revision),
+    );
+    Some(last.revision)
 }
 
 /// `start`: the first generation boots the shell, a later one is a reload.
@@ -104,30 +150,69 @@ fn boot(table: CoreTable, ctx: GnoblinCtx, script: &Path) -> Result<Instance, St
     let script = std::fs::canonicalize(script).map_err(|error| format!("cannot read {}: {error}", script.display()))?;
     let serving: Serving = Rc::new(std::cell::Cell::new(ctx));
     let link = RelayedLink::open(table, Rc::clone(&serving))?;
+    let commits = JsCommitLog::default();
     let role = JsRole::over_link(
         Box::new(link),
         JsRoleLinks::from_environment(&environment),
-        role_config(&script),
+        role_config(table, &script, &commits),
     )
     .map_err(|error| format!("the shell could not start: {error}"))?;
-    Ok(Instance { table, role, serving })
+    // The shell committed its document while it started. The guardian waits for the revision before it starts what reads the
+    // document, and the host reports the shell ready once this returns.
+    publish(table, ctx, &commits);
+    Ok(Instance {
+        table,
+        role,
+        serving,
+        commits,
+        answering: false,
+    })
 }
 
 /// A reload: the engine evaluates the script in a staging generation and swaps it in when it was clean. The core's context moves to
 /// the new generation only then, so a failed reload leaves the link, the log and the serving generation as they were.
+///
+/// A reload that commits a revision tells the guardian. One that does not evaluate, or whose document the compositor did not
+/// take, is refused: the guardian hears `config-rejected`, and the caller of `gnoblinctl config reload` (the compositor holds it
+/// until a commit or a refusal answers) reads the reason. The serving generation and the last accepted document stay.
 fn reload(instance: &mut Instance, ctx: GnoblinCtx) -> Result<(), String> {
+    let answering = std::mem::take(&mut instance.answering);
+    let seen = instance.role.diagnostics_reported();
     let report = instance.role.reload_now();
-    if !report.ok {
-        let mut reasons: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
-        reasons.extend(report.warnings.iter().cloned());
-        return Err(if reasons.is_empty() {
-            "the script did not evaluate".to_owned()
-        } else {
-            reasons.join("; ")
-        });
+    let committed = publish(instance.table, ctx, &instance.commits);
+    // A shell with no connection for its document has nothing to commit, and a reload that evaluated is a reload.
+    let refused = !report.ok || (committed.is_none() && instance.role.commits_document());
+    if !refused {
+        instance.serving.set(ctx);
+        return Ok(());
     }
-    instance.serving.set(ctx);
-    Ok(())
+    let mut reasons: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
+    reasons.extend(report.warnings.iter().cloned());
+    let later = instance.role.diagnostics_since(seen).join("; ");
+    if !later.is_empty() {
+        reasons.push(later);
+    }
+    if reasons.is_empty() {
+        reasons.push("nothing was committed".to_owned());
+    }
+    let reason = reasons.join("; ");
+    // The staged context is abandoned by the host; the one that serves is the one that can still speak.
+    let speaking = instance.serving.get();
+    if let Err(message) = instance.table.report_config_rejected(speaking, 0, &reason) {
+        instance.table.log(
+            speaking,
+            abi::LOG_WARN,
+            &format!("js: the guardian could not be told of the refused reload: {message}"),
+        );
+    }
+    if answering && let Err(error) = instance.role.reject_config_reload(&reason) {
+        instance.table.log(
+            speaking,
+            abi::LOG_WARN,
+            &format!("js: the caller of the reload could not be told why it was refused: {error}"),
+        );
+    }
+    Err(reason)
 }
 
 /// `shutdown`: the generation that serves ends the shell. An older one, already replaced by a reload, has nothing left to end.
@@ -175,14 +260,25 @@ pub(crate) fn turn(ctx: GnoblinCtx, timeout_ms: u32) -> Result<i32, String> {
             let enter = RoleEnter(&instance.role);
             crate::std_native::with_enter(&enter, || instance.table.dispatch(serving));
         }
-        if instance.role.take_reload_wanted() {
+        let watcher = instance.role.take_reload_wanted();
+        let requested = instance.role.take_config_reload_asked();
+        if watcher || requested {
             let code = instance.table.request_reload(instance.serving.get());
             if code != abi::E_OK {
                 instance.table.log(
                     ctx,
                     abi::LOG_WARN,
-                    &format!("the reload the watcher asked for was refused ({code})"),
+                    &format!("the reload that was asked for was refused ({code})"),
                 );
+                if requested {
+                    let reason = format!("the host refused the reload ({code})");
+                    if let Err(error) = instance.role.reject_config_reload(&reason) {
+                        instance.table.log(ctx, abi::LOG_WARN, &format!("js: {error}"));
+                    }
+                }
+            } else if requested {
+                // The caller of `gnoblinctl config reload` waits for the generation this request makes.
+                instance.answering = true;
             }
         }
         Ok(0)

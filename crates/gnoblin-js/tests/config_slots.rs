@@ -130,6 +130,10 @@ impl JsConfigLink for FakeDoc {
             notices: doc.notices.clone(),
         })
     }
+
+    fn reject(&mut self, _message: &str) -> Result<(), JsLinkError> {
+        Ok(())
+    }
 }
 
 fn json(text: &str) -> serde_json::Value {

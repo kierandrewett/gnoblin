@@ -238,6 +238,53 @@ fn build_runtimes() -> Result<PathBuf, String> {
     Ok(directory)
 }
 
+/// The environment a script shell's session needs beyond the harness's own: where the loader finds the runtimes, where the JavaScript
+/// runtime reads the stock library and the Python runtime its package, and no bytecode cache, so a test reads what its own files say.
+/// The repository's trees stand for an installed prefix's `share/gnoblin/`.
+pub fn script_environment() -> Vec<(&'static str, String)> {
+    let root = repo_root();
+    vec![
+        ("GNOBLIN_RUNTIME_DIR", runtimes().display().to_string()),
+        ("GNOBLIN_JS_STOCK_DIR", root.join("data/js").display().to_string()),
+        ("GNOBLIN_PYTHON_DIR", root.join("data/python").display().to_string()),
+        ("GNOBLIN_JS_CACHE", "0".to_owned()),
+    ]
+}
+
+/// A session that runs the script shell at `shell` in the compositor's process, as `gnoblin ./shell.ts` does. `overrides` replace
+/// or add to the script environment (a stock library with no std in it, a runtime directory with no Python in it).
+pub fn start_script(start: Start, shell: &Path, overrides: &[(&str, &str)]) -> Gnoblin {
+    start_script_with(None, start, shell, overrides)
+}
+
+/// [`start_script`] with the launcher at `binary` when one is given.
+pub fn start_script_with(binary: Option<&Path>, start: Start, shell: &Path, overrides: &[(&str, &str)]) -> Gnoblin {
+    let mut launch = match start {
+        Start::Compositor => Launch::compositor(&[]),
+        Start::Guardian => Launch::guardian(&[]),
+    };
+    launch.binary = binary.map(Path::to_path_buf);
+    launch.args.push(shell.into());
+    launch.env = script_environment()
+        .into_iter()
+        .filter(|(name, _)| !overrides.iter().any(|(over, _)| over == name))
+        .map(|(name, value)| (name.to_owned(), value))
+        .chain(
+            overrides
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
+        )
+        .collect();
+    Gnoblin::launch(Home::new(), launch)
+}
+
+pub fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("the repository root")
+}
+
 // ---- the process -----------------------------------------------------------------------------------------------------
 
 /// One line the process wrote, and when this test read it.
@@ -812,6 +859,11 @@ pub fn wait_for_window(
     }
 }
 
+/// The ids of the windows of the tree by their application id, for a test that asks whether they are the same windows.
+pub fn scene_ids(ipc: &Path) -> std::collections::BTreeMap<String, u64> {
+    super::ids(&super::scene(ipc))
+}
+
 // ---- typing --------------------------------------------------------------------------------------------------------------
 
 /// A keymap that compiles against the system's xkb data.
@@ -829,6 +881,10 @@ pub const KEY_ENTER: u32 = 28;
 pub const KEY_Q: u32 = 16;
 pub const KEY_M: u32 = 50;
 pub const KEY_R: u32 = 19;
+pub const KEY_T: u32 = 20;
+pub const KEY_X: u32 = 45;
+pub const KEY_RIGHT: u32 = 106;
+pub const KEY_DOWN: u32 = 108;
 
 /// The `Mod4` bit of an xkb modifier mask, which `pc+us` gives the Super keys.
 const MOD_SUPER: u32 = 1 << 6;

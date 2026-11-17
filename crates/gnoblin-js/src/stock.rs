@@ -1,39 +1,40 @@
-//! The stock library: the TypeScript every generation can import as the embedded `gnoblin-core` and `gnoblin-std`
-//! modules.
+//! The stock library: the TypeScript every generation can import as `gnoblin-core` and `gnoblin-std`, read from the installed data.
 //!
-//! The sources live in `data/js/gnoblin-core/` and `data/js/gnoblin-std/` and both directories are compiled into the
-//! binary (`build.rs` lists them). [`stock_modules`] strips their types once and returns the name to JavaScript map
-//! [`JsConfig::embed`](crate::JsConfig::embed) takes. The modules import one another by their embedded names
-//! (`gnoblin-std/layout`), because the loader resolves a relative import only against a file module.
+//! The sources live in `data/js/gnoblin-core/` and `data/js/gnoblin-std/` and are installed as data under
+//! `<prefix>/share/gnoblin/js/<package>/` (`cargo xtask dist`). Nothing is compiled into the engine or into the runtime library
+//! that hosts it: the loader finds a package by the directories of [`stock_search_path`], and a package that is in none of them is an
+//! import error that says where it looked (`gnoblin-std is not installed (looked in: ...)`). A shell that imports only `gnoblin-core`
+//! therefore runs on a prefix that has no std library, which is the point of the split.
+//!
+//! [`stock_sources_in`] reads the packages once and returns the name to TypeScript map [`JsConfig::embed_typescript`](crate::JsConfig)
+//! takes. The modules import one another by their package names (`gnoblin-std/layout`), because the loader resolves a relative import
+//! only against a file module. The import name of a file is its path under the library root without `.ts`, and the `index.ts` of a
+//! directory is that directory's name (`gnoblin-core/index.ts` is `gnoblin-core`), the rule TypeScript applies to a directory.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use crate::error::JsTsError;
 use crate::loader::JsTypeScriptModule;
 use crate::ts::strip_shared;
 
-/// The stock desktop, and the only description of it: `data/js/starter/shell.ts`. `gnoblinctl config init` writes this
-/// text byte for byte, and the shell runs the same text, as the embedded module [`STARTER_MODULE_NAME`], when there is
-/// no `shell.ts` (or it could not load). The examples in it are comments to switch on.
-pub const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
+/// The variable that names the one directory the stock library is read from, instead of searching for it: for a person working
+/// on the stock shell, and for a test that installs a library of its own.
+pub const STOCK_DIR_VARIABLE: &str = "GNOBLIN_JS_STOCK_DIR";
 
-/// The import name the shell runs [`STARTER_CONFIG`] under as the entry of a generation that has no user entry.
-pub(crate) const STARTER_MODULE_NAME: &str = "gnoblin-std/starter";
+/// The directory of the data prefix that holds the library: `<prefix>/share/gnoblin/js`.
+const INSTALLED: &str = "share/gnoblin/js";
 
-/// [`STARTER_CONFIG`] as the embedded TypeScript module [`STARTER_MODULE_NAME`], named by its path in the repository.
-pub(crate) fn starter_module() -> JsTypeScriptModule {
-    JsTypeScriptModule {
-        path: Path::new("data/js/starter/shell.ts").to_path_buf(),
-        source: Cow::Borrowed(STARTER_CONFIG),
-    }
-}
+/// Where a source tree keeps the library, and the starter beside it.
+const SOURCE_TREE: &str = "data/js";
 
-// `MODULES`: `(import name, file under data/js, source)` for every `.ts` file of the two package directories, written
-// by `build.rs` so a new module needs no edit here. A package's `index.ts` is the package entry (`gnoblin-core`,
-// `gnoblin-std`) and only re-exports the others; `<package>/host` is the part of it that needs the shell host.
-include!(concat!(env!("OUT_DIR"), "/stock_modules.rs"));
+/// The packaged default shell under a data directory (`share/gnoblin/default-shell/shell.ts`): the starter, as installed.
+const DEFAULT_SHELL: &str = "share/gnoblin/default-shell/shell.ts";
+
+/// The starter in a source tree: the file `cargo xtask dist` installs as the packaged default shell.
+const SOURCE_STARTER: &str = "data/js/starter/shell.ts";
 
 /// The package every shell needs: the machinery, with no desktop policy. Its entry is `gnoblin-core`.
 pub(crate) const CORE_PACKAGE: &str = "gnoblin-core";
@@ -42,7 +43,10 @@ pub(crate) const CORE_PACKAGE: &str = "gnoblin-core";
 pub(crate) const STD_PACKAGE: &str = "gnoblin-std";
 
 /// The packages of the library, core first.
-pub(crate) const PACKAGES: [&str; 2] = [CORE_PACKAGE, STD_PACKAGE];
+pub const PACKAGES: [&str; 2] = [CORE_PACKAGE, STD_PACKAGE];
+
+/// The import name the engine runs the starter under when a shell has no user entry (or its entry could not load), if it was given one.
+pub(crate) const STARTER_MODULE_NAME: &str = "gnoblin-std/starter";
 
 /// The import name of the object model of the `gnoblin` global (`gnoblin.clients`, `Client`, the listeners): the
 /// stock module `data/js/gnoblin-core/host.ts`, which the shell imports to build a generation and which the
@@ -52,69 +56,206 @@ pub(crate) const HOST_MODULE_NAME: &str = "gnoblin-core/host";
 
 /// What a package entry has beyond the stock index: the exports of the package's host module, so one import line
 /// reaches `Client` and `ClientListener` alike (`Workspace` and `startDecorations` for `gnoblin-std`). The stock
-/// sources stay as they are because their own tests embed them without a host (a host module is only evaluated when
-/// something imports it). The shell appends this to the index it embeds and [`editor_library`] appends it to the index
-/// an editor reads, so the two cannot disagree.
+/// sources stay as they are because a host module is only evaluated when something imports it. The shell appends this to the
+/// index it embeds and [`editor_library_in`] appends it to the index an editor reads, so the two cannot disagree.
 pub(crate) fn host_export(package: &str) -> String {
     format!("\nexport * from \"{package}/host\";\n")
 }
 
-/// The stock library as an editor and a type checker read it: `(path under data/js, TypeScript)` for every module in
-/// path order, so each starts with its package directory (`gnoblin-std/scene/node.ts`). These are the real sources,
-/// byte for byte, except the package entries (`gnoblin-core/index.ts`, `gnoblin-std/index.ts`), which are the modules
-/// the runtime builds (the stock index plus [`host_export`]). `gnoblinctl types init` writes them next to the user's
-/// config, so `import ... from "gnoblin-std/scene/node"` opens the file the shell runs.
-pub fn editor_library() -> Vec<(String, String)> {
-    MODULES
+/// The directories the stock library is looked for in, in order: `$GNOBLIN_JS_STOCK_DIR` alone when it is set and not empty; else
+/// `$XDG_DATA_HOME/gnoblin/js`, each `$XDG_DATA_DIRS` entry's `gnoblin/js`, and the library of the prefix `anchors` sit in
+/// (`share/gnoblin/js`, or `data/js` of a source tree) for each of an anchor's four nearest ancestors. An anchor is a file that
+/// is installed with the library: the runtime library, or the executable of a tool. A directory may not exist; the list is what a
+/// failed import names.
+pub fn stock_search_path(env: &dyn Fn(&str) -> Option<String>, anchors: &[PathBuf]) -> Vec<PathBuf> {
+    if let Some(dir) = env(STOCK_DIR_VARIABLE).filter(|dir| !dir.is_empty()) {
+        return vec![PathBuf::from(dir)];
+    }
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    for base in data_directories(env) {
+        dirs.push(base.join("gnoblin/js"));
+    }
+    for anchor in anchors {
+        for ancestor in anchor.ancestors().skip(1).take(4) {
+            dirs.push(ancestor.join(INSTALLED));
+            dirs.push(ancestor.join(SOURCE_TREE));
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    dirs.retain(|dir| seen.insert(dir.clone()));
+    dirs
+}
+
+/// The data directories of the XDG rule, user first: a relative or empty value is ignored, and the defaults are `$HOME/.local/share`
+/// and `/usr/local/share:/usr/share`.
+fn data_directories(env: &dyn Fn(&str) -> Option<String>) -> Vec<PathBuf> {
+    let absolute = |text: String| Some(PathBuf::from(text)).filter(|path| path.is_absolute());
+    let mut dirs = Vec::new();
+    match env("XDG_DATA_HOME").and_then(absolute) {
+        Some(home) => dirs.push(home),
+        None => dirs.extend(
+            env("HOME")
+                .and_then(absolute)
+                .map(|home| home.join(".local").join("share")),
+        ),
+    }
+    let system = env("XDG_DATA_DIRS")
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".to_owned());
+    dirs.extend(system.split(':').filter_map(|dir| absolute(dir.to_owned())));
+    dirs
+}
+
+/// The packaged default shell (`<prefix>/share/gnoblin/default-shell/shell.ts`, which is `data/js/starter/shell.ts` of a source
+/// tree) the way [`stock_search_path`] finds the library: through the prefix `anchors` sit in.
+pub fn default_shell_path(anchors: &[PathBuf]) -> Option<PathBuf> {
+    anchors
         .iter()
-        .map(|(name, file, source)| {
-            let mut text = (*source).to_owned();
-            if PACKAGES.contains(name) {
-                text.push_str(&host_export(name));
-            }
-            ((*file).to_owned(), text)
-        })
-        .collect()
+        .flat_map(|anchor| anchor.ancestors().skip(1).take(4))
+        .flat_map(|ancestor| [ancestor.join(DEFAULT_SHELL), ancestor.join(SOURCE_STARTER)])
+        .find(|path| path.is_file())
 }
 
-/// The stock modules by import name, as JavaScript, ready to embed in a [`JsConfig`](crate::JsConfig).
+/// A stock library that could not be read.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum StockError {
+    /// A package's directory is there, but a file of it could not be read.
+    #[error("cannot read the stock library file {path}: {reason}")]
+    Unreadable {
+        /// The file.
+        path: PathBuf,
+        /// What the operating system said.
+        reason: String,
+    },
+}
+
+/// The import name a script imports `file` (a path under the library root, with `/` separators) by.
+fn import_name(file: &str) -> String {
+    let stem = file.strip_suffix(".ts").unwrap_or(file);
+    stem.strip_suffix("/index").unwrap_or(stem).to_owned()
+}
+
+/// Every `.ts` file under `dir`, sorted, as paths relative to `root` with `/` separators.
+fn collect(root: &Path, dir: &Path, files: &mut Vec<String>) -> Result<(), StockError> {
+    let unreadable = |path: &Path, error: std::io::Error| StockError::Unreadable {
+        path: path.to_path_buf(),
+        reason: error.to_string(),
+    };
+    let entries = fs::read_dir(dir).map_err(|error| unreadable(dir, error))?;
+    for entry in entries {
+        let path = entry.map_err(|error| unreadable(dir, error))?.path();
+        if path.is_dir() {
+            collect(root, &path, files)?;
+        } else if path.extension().is_some_and(|extension| extension == "ts")
+            && let Ok(relative) = path.strip_prefix(root)
+        {
+            files.push(relative.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Ok(())
+}
+
+/// The first of `dirs` that holds `package` (its `index.ts` is there), if any.
+fn package_root<'a>(dirs: &'a [PathBuf], package: &str) -> Option<&'a Path> {
+    dirs.iter()
+        .map(PathBuf::as_path)
+        .find(|dir| dir.join(package).join("index.ts").is_file())
+}
+
+/// The stock library as the files of each package that `dirs` hold: `(path under the library root, import name)` in path order. A
+/// package no directory holds is absent, which is how a prefix with no std library reads.
+fn listing(dirs: &[PathBuf]) -> Result<Vec<(PathBuf, String, String)>, StockError> {
+    let mut found = Vec::new();
+    for package in PACKAGES {
+        let Some(root) = package_root(dirs, package) else {
+            continue;
+        };
+        let mut files = Vec::new();
+        collect(root, &root.join(package), &mut files)?;
+        files.sort();
+        for file in files {
+            let name = import_name(&file);
+            found.push((root.join(&file), file, name));
+        }
+    }
+    Ok(found)
+}
+
+/// The stock modules by import name as TypeScript, which is how the shell embeds them
+/// ([`JsConfig::embed_typescript`](crate::JsConfig)): nothing is stripped until a module is loaded, and a module the bytecode cache
+/// holds is never stripped at all. A package that none of `dirs` holds is not in the map.
 ///
-/// A source that fails to strip cannot happen for the files compiled in (a test imports every one), but a
-/// panic in a compositor-side process is worse than an error where it is used, so such a module becomes
-/// one that throws the reason when imported.
-pub fn stock_modules() -> HashMap<String, String> {
-    stock_modules_in(None)
+/// # Errors
+///
+/// A file of a package that is there cannot be read.
+pub fn stock_sources_in(dirs: &[PathBuf]) -> Result<HashMap<String, JsTypeScriptModule>, StockError> {
+    let mut modules = HashMap::new();
+    for (path, _, name) in listing(dirs)? {
+        let source = fs::read_to_string(&path).map_err(|error| StockError::Unreadable {
+            path: path.clone(),
+            reason: error.to_string(),
+        })?;
+        modules.insert(
+            name,
+            JsTypeScriptModule {
+                path,
+                source: Cow::Owned(source),
+            },
+        );
+    }
+    Ok(modules)
 }
 
-/// Like [`stock_modules`], reading each module from `dir` (laid out as `data/js`: one directory per package) when the
-/// file is there.
-/// A file that is missing, or that cannot be read, is the compiled-in module: a half-installed directory must
-/// not leave the shell without a stock library. A file that does not strip becomes a module that throws.
-pub fn stock_modules_in(dir: Option<&Path>) -> HashMap<String, String> {
-    stock_sources_in(dir)
+/// The stock library as an editor and a type checker read it: `(path under the library root, TypeScript)` for every module in
+/// path order, so each starts with its package directory (`gnoblin-std/scene/node.ts`). These are the real sources, byte for byte,
+/// except the package entries (`gnoblin-core/index.ts`, `gnoblin-std/index.ts`), which are the modules the runtime builds (the
+/// stock index plus [`host_export`]). `gnoblinctl types init` writes them next to the user's config, so
+/// `import ... from "gnoblin-std/scene/node"` opens the file the shell runs.
+///
+/// # Errors
+///
+/// A file of a package that is there cannot be read.
+pub fn editor_library_in(dirs: &[PathBuf]) -> Result<Vec<(String, String)>, StockError> {
+    let mut library = Vec::new();
+    for (path, file, name) in listing(dirs)? {
+        let mut text = fs::read_to_string(&path).map_err(|error| StockError::Unreadable {
+            path: path.clone(),
+            reason: error.to_string(),
+        })?;
+        if PACKAGES.contains(&name.as_str()) {
+            text.push_str(&host_export(&name));
+        }
+        library.push((file, text));
+    }
+    Ok(library)
+}
+
+/// The stock modules by import name, as JavaScript, ready to embed in a [`JsConfig`](crate::JsConfig). A file that does not strip
+/// becomes a module that throws the reason when imported.
+///
+/// # Errors
+///
+/// A file of a package that is there cannot be read.
+pub fn stock_modules_in(dirs: &[PathBuf]) -> Result<HashMap<String, String>, StockError> {
+    Ok(stock_sources_in(dirs)?
         .into_iter()
         .map(|(name, module)| {
             let javascript = javascript_of(&name, &module.path, &module.source);
             (name, javascript)
         })
-        .collect()
+        .collect())
 }
 
-/// The stock modules by import name as TypeScript, which is how the shell embeds them
-/// ([`JsConfig::embed_typescript`](crate::JsConfig::embed_typescript)): nothing is stripped until a module is
-/// loaded, and a module the bytecode cache holds is never stripped at all. `dir` is read as in [`stock_modules_in`].
-pub fn stock_sources_in(dir: Option<&Path>) -> HashMap<String, JsTypeScriptModule> {
-    MODULES
-        .iter()
-        .map(|(name, file, compiled)| {
-            let path = dir.map_or_else(|| Path::new("data/js").join(file), |dir| dir.join(file));
-            let source = match dir.and_then(|_| std::fs::read_to_string(&path).ok()) {
-                Some(text) => Cow::Owned(text),
-                None => Cow::Borrowed(*compiled),
-            };
-            ((*name).to_owned(), JsTypeScriptModule { path, source })
-        })
-        .collect()
+/// The starter as the embedded TypeScript module [`STARTER_MODULE_NAME`], read from `path`.
+pub(crate) fn starter_module(path: &Path) -> Result<JsTypeScriptModule, StockError> {
+    let source = fs::read_to_string(path).map_err(|error| StockError::Unreadable {
+        path: path.to_path_buf(),
+        reason: error.to_string(),
+    })?;
+    Ok(JsTypeScriptModule {
+        path: path.to_path_buf(),
+        source: Cow::Owned(source),
+    })
 }
 
 /// The JavaScript of the stock module `name`, whose TypeScript is `source` (read from `path`). The types are stripped
@@ -137,46 +278,40 @@ pub(crate) fn failing_module(name: &str, error: &JsTsError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
-    #[test]
-    fn every_stock_module_strips_to_javascript() {
-        let modules = stock_modules();
-        assert_eq!(modules.len(), MODULES.len());
-        for (name, source) in &modules {
-            assert!(!source.starts_with("throw new Error"), "{name}: {source}");
+    /// The library of the source tree, which is what a prefix's `share/gnoblin/js` is made from.
+    fn source_tree() -> Vec<PathBuf> {
+        vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")]
+    }
+
+    fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
+        let pairs: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect();
+        move |name| {
+            pairs
+                .iter()
+                .find(|(known, _)| known == name)
+                .map(|(_, value)| value.clone())
         }
     }
 
-    /// The table is generated from the directory, so a file cannot be left out; this holds the generator to it.
     #[test]
-    fn every_ts_file_under_the_stock_directory_is_embedded() {
-        fn walk(dir: &Path, found: &mut Vec<String>, root: &Path) {
-            for entry in std::fs::read_dir(dir).expect("the stock directory is readable") {
-                let path = entry.expect("a directory entry").path();
-                if path.is_dir() {
-                    walk(&path, found, root);
-                } else if path.extension().is_some_and(|extension| extension == "ts") {
-                    let relative = path.strip_prefix(root).expect("under the root");
-                    found.push(relative.to_string_lossy().replace('\\', "/"));
-                }
-            }
+    fn every_stock_module_strips_to_javascript() {
+        let modules = stock_modules_in(&source_tree()).expect("the source tree's library reads");
+        assert!(modules.len() > 100, "the library is read: {}", modules.len());
+        for (name, source) in &modules {
+            assert!(!source.starts_with("throw new Error"), "{name}: {source}");
         }
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js");
-        let mut on_disk = Vec::new();
-        for package in PACKAGES {
-            walk(&root.join(package), &mut on_disk, &root);
-        }
-        on_disk.sort();
-        let mut embedded: Vec<&str> = MODULES.iter().map(|(_, file, _)| *file).collect();
-        embedded.sort_unstable();
-        assert_eq!(embedded, on_disk);
     }
 
     /// The modules that import one another at run time (the stripped JavaScript has no type-only imports) form a
     /// tree of layers, never a loop: a loop makes the order modules evaluate in depend on which one was imported first.
     #[test]
     fn stock_modules_do_not_import_each_other_in_a_cycle() {
-        let modules = stock_modules();
+        let modules = stock_modules_in(&source_tree()).expect("the library reads");
         // The module a line of stripped JavaScript imports or re-exports, if it does.
         fn specifier(line: &str) -> Option<&str> {
             let line = line.trim_start();
@@ -230,15 +365,13 @@ mod tests {
 
     #[test]
     fn import_names_follow_the_path() {
-        let names: Vec<&str> = MODULES.iter().map(|(name, _, _)| *name).collect();
-        assert!(
-            names.contains(&"gnoblin-core"),
-            "the core index.ts is the package entry"
-        );
-        assert!(names.contains(&"gnoblin-std"), "the std index.ts is the package entry");
-        assert!(names.contains(&"gnoblin-std/layouts/arc"));
-        assert!(names.contains(&"gnoblin-core/host"));
-        assert!(names.contains(&"gnoblin-std/host"));
+        let sources = stock_sources_in(&source_tree()).expect("the library reads");
+        let names: BTreeSet<&str> = sources.keys().map(String::as_str).collect();
+        assert!(names.contains("gnoblin-core"), "the core index.ts is the package entry");
+        assert!(names.contains("gnoblin-std"), "the std index.ts is the package entry");
+        assert!(names.contains("gnoblin-std/layouts/arc"));
+        assert!(names.contains("gnoblin-core/host"));
+        assert!(names.contains("gnoblin-std/host"));
         // A module that sits beside a directory of the same name is that directory's one import path.
         for barrel in [
             "gnoblin-std/scene",
@@ -246,13 +379,13 @@ mod tests {
             "gnoblin-core/input",
             "gnoblin-std/ui",
         ] {
-            assert!(names.contains(&barrel), "{barrel}");
+            assert!(names.contains(barrel), "{barrel}");
         }
         // The `index.ts` of a subdirectory is that directory's import name, so the guarded XR entry keeps its path.
-        assert!(names.contains(&"gnoblin-std/extensions/xr"));
-        assert!(!names.contains(&"gnoblin-std/extensions/xr/index"));
+        assert!(names.contains("gnoblin-std/extensions/xr"));
+        assert!(!names.contains("gnoblin-std/extensions/xr/index"));
         assert!(
-            !names.contains(&"gnoblin-core/index"),
+            !names.contains("gnoblin-core/index"),
             "the package entry is the package name"
         );
         // The bare `gnoblin` specifier is gone: a script names the package it wants.
@@ -263,16 +396,18 @@ mod tests {
         );
     }
 
-    /// The editor reads the sources the shell embeds: the same files, the same bytes, and for a package entry the same
-    /// text the shell builds, so a type the editor shows is the type the runtime has.
+    /// The editor reads the sources the shell reads: the same files, the same bytes, and for a package entry the same text the shell
+    /// builds, so a type the editor shows is the type the runtime has.
     #[test]
-    fn the_editor_library_is_the_embedded_sources() {
-        let library = editor_library();
-        assert_eq!(library.len(), MODULES.len());
-        for ((name, file, source), (editor_file, text)) in MODULES.iter().zip(&library) {
-            assert_eq!(file, editor_file);
-            if PACKAGES.contains(name) {
-                assert_eq!(*text, format!("{source}{}", host_export(name)));
+    fn the_editor_library_is_the_installed_sources() {
+        let dirs = source_tree();
+        let sources = stock_sources_in(&dirs).expect("the library reads");
+        let library = editor_library_in(&dirs).expect("the library reads");
+        assert_eq!(library.len(), sources.len());
+        for (file, text) in &library {
+            let source = &sources[&import_name(file)].source;
+            if PACKAGES.contains(&import_name(file).as_str()) {
+                assert_eq!(*text, format!("{source}{}", host_export(&import_name(file))));
             } else {
                 assert_eq!(text, source, "{file}");
             }
@@ -317,18 +452,55 @@ mod tests {
     #[test]
     fn no_core_module_imports_a_std_module() {
         let mut found: Vec<(String, String)> = Vec::new();
-        for (name, _, source) in MODULES {
-            if !(*name == CORE_PACKAGE || name.starts_with("gnoblin-core/")) {
+        for (name, module) in stock_sources_in(&source_tree()).expect("the library reads") {
+            if !(name == CORE_PACKAGE || name.starts_with("gnoblin-core/")) {
                 continue;
             }
-            for target in specifiers(source) {
+            for target in specifiers(&module.source) {
                 if target == STD_PACKAGE || target.starts_with("gnoblin-std/") {
-                    found.push(((*name).to_owned(), target));
+                    found.push((name.clone(), target));
                 }
             }
         }
         found.sort();
         found.dedup();
         assert!(found.is_empty(), "core modules import std modules: {found:#?}");
+    }
+
+    #[test]
+    fn the_search_path_is_the_override_alone_or_the_data_directories_then_the_prefix() {
+        let anchor = PathBuf::from("/opt/gnoblin/lib64/gnoblin/libgnoblin-runtime-js.so");
+        let only = stock_search_path(
+            &env_of(&[(STOCK_DIR_VARIABLE, "/srv/stock")]),
+            std::slice::from_ref(&anchor),
+        );
+        assert_eq!(only, [PathBuf::from("/srv/stock")], "the override is exclusive");
+        let ignored = stock_search_path(&env_of(&[(STOCK_DIR_VARIABLE, "")]), &[]);
+        assert!(!ignored.is_empty(), "an empty override is no override");
+
+        let dirs = stock_search_path(
+            &env_of(&[
+                ("XDG_DATA_HOME", "/home/k/.local/share"),
+                ("XDG_DATA_DIRS", "/a:rel:/b"),
+            ]),
+            &[anchor],
+        );
+        assert_eq!(dirs[0], Path::new("/home/k/.local/share/gnoblin/js"));
+        assert_eq!(dirs[1], Path::new("/a/gnoblin/js"));
+        assert_eq!(dirs[2], Path::new("/b/gnoblin/js"), "a relative entry is ignored");
+        assert!(
+            dirs.contains(&PathBuf::from("/opt/gnoblin/share/gnoblin/js")),
+            "the prefix of the anchor is searched: {dirs:?}"
+        );
+    }
+
+    #[test]
+    fn a_package_no_directory_holds_is_absent() {
+        let scratch = tempfile::tempdir().expect("a directory");
+        let core = scratch.path().join("gnoblin-core");
+        fs::create_dir_all(&core).expect("the package directory");
+        fs::write(core.join("index.ts"), "export const x = 1;\n").expect("an index");
+        let sources = stock_sources_in(&[scratch.path().to_path_buf()]).expect("a core-only library reads");
+        assert_eq!(sources.keys().map(String::as_str).collect::<Vec<_>>(), ["gnoblin-core"]);
     }
 }

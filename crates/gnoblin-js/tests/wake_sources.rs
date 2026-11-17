@@ -16,8 +16,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gnoblin_js::STARTER_CONFIG;
-
 mod common;
 use common::policy::*;
 use common::*;
@@ -34,6 +32,9 @@ enum Part {
 }
 
 use Part::{Driven, State, Wakes};
+
+/// The starter, `data/js/starter/shell.ts`: what the packaged default shell is.
+const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
 
 /// Every field of `HostContext` (`data/js/gnoblin-core/host/context.ts`). A new field fails
 /// `every_subsystem_of_the_host_context_is_classified` until it has a row: decide whether it can change the tree or hold

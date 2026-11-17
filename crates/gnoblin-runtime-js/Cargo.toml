@@ -23,6 +23,8 @@ gnoblin-js = { path = "../gnoblin-js" }
 gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
 # The shell side of the tree protocol: the link trait the engine drives and the byte form the core relays it in.
 gnoblin-tree-client = { path = "../gnoblin-tree-client" }
+# `library_containing`: the runtime finds the installation it belongs to (the installed stock library) from the core it was loaded by.
+gnoblin-shell-host = { path = "../gnoblin-shell-host" }
 # The log is a per-library singleton; this library's events are forwarded to the core's.
 gnoblin-log = { path = "../gnoblin-log" }
 

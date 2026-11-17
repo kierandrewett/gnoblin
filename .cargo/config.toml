@@ -3,3 +3,9 @@
 # dependency-rule check has one spelling everywhere.
 [alias]
 xtask = "run --quiet --package xtask --"
+
+[env]
+# The stock JavaScript library of a source tree (`data/js`), for what runs from `target/`: the runtime, `gnoblinctl` and the tests
+# read `gnoblin-core` and `gnoblin-std` as installed data, and a build tree has no prefix. An environment that sets the variable
+# keeps its own value.
+GNOBLIN_JS_STOCK_DIR = { value = "data/js", relative = true }

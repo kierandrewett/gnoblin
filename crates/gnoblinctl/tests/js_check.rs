@@ -12,6 +12,9 @@ use gnoblin_client::Client;
 use gnoblin_client::unix::UnixTransport;
 use gnoblinctl::{ConnectFailure, Connection};
 
+/// The starter, `data/js/starter/shell.ts`: the packaged default shell.
+const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
+
 /// A connection that was never meant to be opened: a command that needs no session must not ask for one.
 struct NoSession;
 
@@ -471,7 +474,7 @@ fn config_init_writes_the_starter_and_the_editor_files_and_prints_three_next_ste
     let init = target.join("shell.ts");
     assert_eq!(
         fs::read_to_string(&init).expect("shell.ts is written"),
-        gnoblin_js::STARTER_CONFIG,
+        STARTER_CONFIG,
         "the starter is the one the runtime ships"
     );
     assert!(target.join(".gnoblin/gnoblin.d.ts").is_file(), "types init ran");
@@ -513,7 +516,7 @@ fn config_init_does_not_overwrite_a_config_unless_forced() {
     assert!(out.contains("shell.ts replaced"), "{out}");
     assert_eq!(
         fs::read_to_string(target.join("shell.ts")).expect("shell.ts"),
-        gnoblin_js::STARTER_CONFIG
+        STARTER_CONFIG
     );
 }
 
@@ -618,7 +621,7 @@ fn the_starter_passes_check_as_written_and_with_every_example_switched_on() {
     let target = dir.path().join("gnoblin");
     assert_eq!(config_init(&target, &[]).0, 0);
     let written = target.join("shell.ts");
-    let on = dir.write("on/shell.ts", &switched_on(gnoblin_js::STARTER_CONFIG));
+    let on = dir.write("on/shell.ts", &switched_on(STARTER_CONFIG));
 
     for file in [&written, &on] {
         // The in-process check: the file runs in the dry-run host, with no TypeScript compiler involved.

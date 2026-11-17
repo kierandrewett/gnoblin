@@ -58,6 +58,12 @@ impl CoreTable {
         api.map(|api| Self { api })
     }
 
+    /// The file of the core library this table belongs to: where the installation the runtime was started from is. The runtime's
+    /// own file is the loader's private copy, which says nothing about the prefix.
+    pub(crate) fn core_file(self) -> Option<std::path::PathBuf> {
+        gnoblin_shell_host::runtime::library_containing(self.api.log as *const ())
+    }
+
     /// Writes `text` to the core's log at `level` (`LOG_*`), tagged with the generation of `ctx`.
     pub(crate) fn log(self, ctx: GnoblinCtx, level: u32, text: &str) {
         // SAFETY: `text` is a live string for the call.
@@ -91,6 +97,24 @@ impl CoreTable {
     pub(crate) fn request_reload(self, ctx: GnoblinCtx) -> i32 {
         // SAFETY: the function takes only the context.
         unsafe { (self.api.request_reload)(ctx) }
+    }
+
+    /// Tells the host the shell committed `document` as configuration `revision`; the guardian hears it (`report_config`).
+    pub(crate) fn report_config(self, ctx: GnoblinCtx, revision: u64, document: &[u8]) -> Result<(), String> {
+        // SAFETY: `document` is a live slice for the call.
+        match unsafe { (self.api.report_config)(ctx, revision, document.as_ptr(), document.len()) } {
+            abi::E_OK => Ok(()),
+            code => Err(failure("report_config", code)),
+        }
+    }
+
+    /// Tells the host the shell refused a configuration revision (`report_config_rejected`).
+    pub(crate) fn report_config_rejected(self, ctx: GnoblinCtx, revision: u64, reason: &str) -> Result<(), String> {
+        // SAFETY: `reason` is a live string for the call.
+        match unsafe { (self.api.report_config_rejected)(ctx, revision, reason.as_ptr(), reason.len()) } {
+            abi::E_OK => Ok(()),
+            code => Err(failure("report_config_rejected", code)),
+        }
     }
 
     /// Opens the compositor's link as the shell.

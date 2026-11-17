@@ -43,6 +43,15 @@ pub fn stock_providers() -> gnoblin_compositor::providers::ProviderSlots {
 }
 pub mod native_shell;
 
+/// The stock JavaScript library of the source tree: what a prefix's `share/gnoblin/js` is made from. The tests that run the engine
+/// over a real compositor read it as the runtime does, from files.
+pub fn stock_dir() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")
+}
+
+/// The starter, `data/js/starter/shell.ts`: the file `cargo xtask dist` installs as the packaged default shell.
+pub const STARTER_CONFIG: &str = include_str!("../../../../data/js/starter/shell.ts");
+
 // ---- the scene, read as an observer ------------------------------------------------------------------------------
 
 fn version() -> Version {

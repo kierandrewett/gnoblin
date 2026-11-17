@@ -19,7 +19,7 @@ use gnoblin_cli_style::{
     ColorChoice, ErrorReport, LineOutcome, OutputEnvironment, OutputTheme, error_block, status_line,
 };
 use gnoblin_config::Environment;
-use gnoblin_js::{JsError, JsErrorKind, STARTER_CONFIG, editor_library};
+use gnoblin_js::{JsError, JsErrorKind, default_shell_path, editor_library_in, stock_search_path};
 use gnoblin_js_types::{
     GENERATED_DIR, GENERATED_TSCONFIG_FILE, JsWritten, TSCONFIG_FILE, TYPES_FILE, TsconfigOutcome, ensure_user_files,
 };
@@ -79,7 +79,32 @@ pub(crate) fn theme(is_terminal: bool) -> OutputTheme {
 /// A file that decides something from live state sees an empty world, as it does at first boot. Reading a count or
 /// walking a collection is fine; dereferencing the first window is a throw, as it is in a session with no windows.
 fn evaluate(file: &Path) -> Result<(), JsError> {
-    gnoblin_js::evaluate_document(file).map(drop)
+    gnoblin_js::evaluate_document(file, &stock_dirs()).map(drop)
+}
+
+/// Files installed with this executable, which is where the prefix is looked for from.
+fn anchors() -> Vec<PathBuf> {
+    std::env::current_exe().ok().into_iter().collect()
+}
+
+/// The directories the stock library is looked for in: `$GNOBLIN_JS_STOCK_DIR`, the data directories, and the prefix this
+/// executable is installed in (`share/gnoblin/js`), as the runtime looks.
+fn stock_dirs() -> Vec<PathBuf> {
+    stock_search_path(&|name| std::env::var(name).ok(), &anchors())
+}
+
+/// The starter, the text of the packaged default shell: the `starter/shell.ts` of a stock directory laid out as a source tree, else
+/// `<prefix>/share/gnoblin/default-shell/shell.ts`.
+fn starter_text() -> io::Result<String> {
+    let path = stock_dirs()
+        .into_iter()
+        .map(|dir| dir.join("starter").join("shell.ts"))
+        .find(|path| path.is_file())
+        .or_else(|| default_shell_path(&anchors()))
+        .ok_or_else(|| {
+            io::Error::other("the packaged default shell (share/gnoblin/default-shell/shell.ts) is not installed")
+        })?;
+    std::fs::read_to_string(&path).map_err(|error| io::Error::other(format!("cannot read {}: {error}", path.display())))
 }
 
 /// Loads `source` as a `shell.ts` in the dry-run host before a command writes it, so a file that would not load is said
@@ -380,7 +405,19 @@ const CHECK_TSCONFIG_FILE: &str = "check.tsconfig.json";
 /// Write the editor files into `dir`: the library as the shell embeds it, the global declarations and the tsconfigs.
 /// `types init`, `config init`, `migrate` and `check --types` all write the same files through this.
 pub(crate) fn write_editor_files(dir: &Path) -> io::Result<JsWritten> {
-    ensure_user_files(dir, &editor_library())
+    let dirs = stock_dirs();
+    let library = editor_library_in(&dirs).map_err(io::Error::other)?;
+    if library.is_empty() {
+        let looked = dirs
+            .iter()
+            .map(|dir| dir.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(io::Error::other(format!(
+            "the stock library is not installed (looked in: {looked})"
+        )));
+    }
+    ensure_user_files(dir, &library)
 }
 
 /// What the editor-file commands print after `written` was written into `dir`: the library, the declarations and what
@@ -512,6 +549,8 @@ pub(crate) fn rival_shell_file(dir: &Path, keep: &str) -> Option<PathBuf> {
 
 /// Writes the starter `shell.ts`, refusing to replace a file unless `force`.
 fn write_starter(dir: &Path, init: &Path, force: bool) -> io::Result<()> {
+    // Read first: a starter that is not installed must not leave an empty `shell.ts` behind.
+    let starter = starter_text()?;
     std::fs::create_dir_all(dir)?;
     let mut options = std::fs::OpenOptions::new();
     options.write(true);
@@ -520,7 +559,7 @@ fn write_starter(dir: &Path, init: &Path, force: bool) -> io::Result<()> {
     } else {
         options.create_new(true);
     }
-    options.open(init)?.write_all(STARTER_CONFIG.as_bytes())
+    options.open(init)?.write_all(starter.as_bytes())
 }
 
 /// `config init [DIR] [--force]`: write a short, commented `shell.ts` and the editor files (`types init`), and say what

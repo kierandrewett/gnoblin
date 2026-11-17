@@ -1960,6 +1960,7 @@ dependencies = [
  "gnoblin-core-abi",
  "gnoblin-js",
  "gnoblin-log",
+ "gnoblin-shell-host",
  "gnoblin-std-dyn",
  "gnoblin-tree-client",
 ]

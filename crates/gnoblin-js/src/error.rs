@@ -93,11 +93,19 @@ pub enum JsLoadError {
         /// The specifier as written.
         name: String,
     },
-    /// An embedded module name that the host did not register.
-    #[error("no embedded module named `{name}`")]
-    NoEmbedded {
+    /// A package of the stock library that is installed has no module of that name.
+    #[error("no module named `{name}` in the installed stock library")]
+    NoStockModule {
         /// The specifier as written.
         name: String,
+    },
+    /// A package of the stock library (`gnoblin-core`, `gnoblin-std`) that no directory searched holds.
+    #[error("{package} is not installed (looked in: {looked_in})")]
+    NotInstalled {
+        /// The package the specifier names.
+        package: String,
+        /// The directories searched, as one comma separated line.
+        looked_in: String,
     },
     /// A relative import from a module that is not a file, such as an embedded module.
     #[error("cannot import `{name}` relative to `{base}`, which is not a file in the config root")]

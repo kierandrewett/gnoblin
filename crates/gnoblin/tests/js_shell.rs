@@ -29,7 +29,7 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, PortalOutcome, PortalTicket};
 use gnoblin_compositor::{Compositor, InputTap, OutputTap, SessionConfig, StopHandle};
-use gnoblin_js::{FRAME_WAIT, JsRole, JsRoleConfig};
+use gnoblin_js::{JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
 use gnoblin_model::{Fields, Filter, Provider, RequestCompletion, TypeKey, Value};
 use gnoblin_proto::tree::op;
@@ -40,6 +40,9 @@ use gnoblin_types::{DeviceId, OutputId, Point, RequestId, Version};
 
 mod support;
 use support::{Mapper, Watcher, flag_of, ids, scene, screens, snapshot, spots};
+
+/// How long the shell's loop waits for something to arrive before it runs a frame: one display frame at 60 Hz.
+const FRAME_WAIT: Duration = Duration::from_millis(16);
 
 /// How long a test waits for a state before it fails. A passing run never waits this long: it is the margin a busy
 /// machine gets, so a failure is a state that never came and not a slow turn.
@@ -303,7 +306,7 @@ impl Shell {
                 let mut warnings = Vec::new();
                 let events = logged(|| {
                     let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-                    let mut config = JsRoleConfig::new(&dir, None);
+                    let mut config = JsRoleConfig::new(&dir, Some(support::stock_dir()));
                     config.shell.entry_budget = HONEST_BUDGET;
                     config.shell.frame_budget = HONEST_BUDGET;
                     config.shell.js.stage_budget = HONEST_BUDGET;
@@ -948,7 +951,7 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_w
     // user's key beside them.
     save(
         &config.path().join("shell.ts"),
-        &format!("{}{KEEPING_ADDITION}", gnoblin_js::STARTER_CONFIG),
+        &format!("{}{KEEPING_ADDITION}", support::STARTER_CONFIG),
     );
     wait_for(
         "the stock default is called again",
@@ -3762,8 +3765,8 @@ fn the_console_is_off_when_the_variable_says_so_and_its_socket_goes_with_the_she
             _ => None,
         }
     };
-    let mut disabled =
-        JsRole::connect(&off, JsRoleConfig::new(config.path(), None)).expect("the shell connects without a console");
+    let mut disabled = JsRole::connect(&off, JsRoleConfig::new(config.path(), Some(support::stock_dir())))
+        .expect("the shell connects without a console");
     disabled.tick().expect("a frame");
     assert!(
         !ipc_dir.join("js.sock").exists(),
@@ -3772,7 +3775,8 @@ fn the_console_is_off_when_the_variable_says_so_and_its_socket_goes_with_the_she
     drop(disabled);
 
     let on = move |name: &str| (name == "GNOBLIN_IPC_SOCKET").then(|| socket.clone());
-    let mut served = JsRole::connect(&on, JsRoleConfig::new(config.path(), None)).expect("the shell connects");
+    let mut served =
+        JsRole::connect(&on, JsRoleConfig::new(config.path(), Some(support::stock_dir()))).expect("the shell connects");
     served.tick().expect("a frame");
     assert!(ipc_dir.join("js.sock").exists(), "the console is on by default");
     drop(served);
@@ -3843,7 +3847,7 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
 
     // The starter as written is the stock default written out as a `shell.ts`, so it declares and binds what the
     // default did.
-    save(&init, gnoblin_js::STARTER_CONFIG);
+    save(&init, support::STARTER_CONFIG);
     wait_for("the starter is loaded", &session, &mut mapper, &shell, || {
         shell.generation() > zero_generation
     });
@@ -3861,8 +3865,8 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
     assert_eq!(ids(&scene(&ipc)), window, "the window kept its id through the reload");
 
     // Switched on: the examples are the second workspace, two keys and a style. Nothing else changes.
-    let on = switched_on(gnoblin_js::STARTER_CONFIG);
-    assert_ne!(on, gnoblin_js::STARTER_CONFIG, "the examples were switched on");
+    let on = switched_on(support::STARTER_CONFIG);
+    assert_ne!(on, support::STARTER_CONFIG, "the examples were switched on");
     save(&init, &on);
     wait_for("the examples are on", &session, &mut mapper, &shell, || {
         section(&shell.view(), "workspaces [") == format!("{STOCK_WORKSPACES},work:MasterStackLayout")
@@ -5671,7 +5675,7 @@ fn counting_config(user: &[Chord]) -> String {
         .iter()
         .map(|chord| format!("gnoblin.input.primary.bind(\"{}\", () => undefined);\n", chord.trigger))
         .collect();
-    format!("{COUNTING_PRELUDE}\n{}\n{keys}", gnoblin_js::STARTER_CONFIG)
+    format!("{COUNTING_PRELUDE}\n{}\n{keys}", support::STARTER_CONFIG)
 }
 
 /// How many times each binding's action ran in the running generation, by trigger.
@@ -6044,7 +6048,7 @@ fn a_script_sets_a_client_view_to_capture_and_sees_its_press_then_sets_forward_a
 fn role_over(session: &Session, dir: &Path) -> JsRole {
     let socket = session.ipc().to_str().expect("a UTF-8 socket path").to_owned();
     let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-    let mut config = JsRoleConfig::new(dir, None);
+    let mut config = JsRoleConfig::new(dir, Some(support::stock_dir()));
     config.shell.entry_budget = HONEST_BUDGET;
     config.shell.frame_budget = HONEST_BUDGET;
     config.shell.js.stage_budget = HONEST_BUDGET;

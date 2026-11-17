@@ -1,70 +1,16 @@
-//! Embed the stock library: every `.ts` file under `data/js/gnoblin-core` and `data/js/gnoblin-std`, as the table
-//! `stock.rs` strips and hands to the loader.
+//! Records which engine and type-stripper versions this build links, for the bytecode cache's directory name.
 //!
-//! The files are listed from the directories, not named in `stock.rs`, so a new module reaches the binary without an
-//! edit to a hand-kept array (whose length and entries used to be the thing a lane collided on). The import name is the
-//! path under `data/js` without its extension, so the package directory is the package name (`gnoblin-std/scene/node`);
-//! the `index.ts` of a directory is that directory's import name (`gnoblin-core/index.ts` is `gnoblin-core`,
-//! `gnoblin-std/extensions/xr/index.ts` is `gnoblin-std/extensions/xr`), the same rule TypeScript applies when it
-//! resolves a directory. The starter beside them (`data/js/starter`) is not a library module and is embedded by
-//! `stock.rs` on its own.
+//! The stock library is not embedded: it is installed data (`share/gnoblin/js`), read at run time (`src/stock.rs`).
 
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const JS_DIR: &str = "../../data/js";
-
-/// The packages of the stock library, one directory each under [`JS_DIR`].
-const PACKAGES: &[&str] = &["gnoblin-core", "gnoblin-std"];
-
 fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("[js] {error}");
-            ExitCode::FAILURE
-        }
-    }
-}
-
-fn run() -> Result<(), String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let js_dir = manifest.join(JS_DIR);
-    let out_dir = std::env::var_os("OUT_DIR")
-        .map(PathBuf::from)
-        .ok_or_else(|| "OUT_DIR is not set".to_owned())?;
-
-    // A file appearing or disappearing changes the directory and not the files already inside it, so the directories
-    // are watched as well as the files.
-    let mut files = Vec::new();
-    for package in PACKAGES {
-        collect(&js_dir.join(package), &mut files)?;
-    }
-    files.sort();
-    if files.is_empty() {
-        return Err(format!("no .ts files in the packages under {}", js_dir.display()));
-    }
-
-    let mut text = String::from("/// `(import name, file under data/js, source)`, in path order.\n");
-    text.push_str("const MODULES: &[(&str, &str, &str)] = &[\n");
-    for path in &files {
-        let file = path
-            .strip_prefix(&js_dir)
-            .ok()
-            .and_then(Path::to_str)
-            .ok_or_else(|| format!("{} is not a UTF-8 stock path", path.display()))?;
-        let full = path
-            .to_str()
-            .ok_or_else(|| format!("{} is not a UTF-8 path", path.display()))?;
-        let _ = writeln!(text, "    ({:?}, {file:?}, include_str!({full:?})),", import_name(file));
-    }
-    text.push_str("];\n");
-    fs::write(out_dir.join("stock_modules.rs"), text)
-        .map_err(|error| format!("cannot write stock_modules.rs: {error}"))?;
     println!("cargo:rustc-env=GNOBLIN_JS_TOOLCHAIN={}", toolchain(&manifest));
-    Ok(())
+    ExitCode::SUCCESS
 }
 
 /// The crates whose versions decide what bytecode a module compiles to: the engine, and the oxc crates that strip the
@@ -113,26 +59,4 @@ fn toolchain(manifest: &Path) -> String {
         let _ = write!(out, "{name}={version};");
         out
     })
-}
-
-/// The name a script imports `file` (a path under `data/js`, with `/` separators) by.
-fn import_name(file: &str) -> String {
-    let stem = file.strip_suffix(".ts").unwrap_or(file);
-    stem.strip_suffix("/index").unwrap_or(stem).to_owned()
-}
-
-fn collect(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    println!("cargo:rerun-if-changed={}", dir.display());
-    let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {}: {error}", dir.display()))?;
-    for entry in entries {
-        let path = entry
-            .map_err(|error| format!("cannot read {}: {error}", dir.display()))?
-            .path();
-        if path.is_dir() {
-            collect(&path, files)?;
-        } else if path.extension().and_then(|extension| extension.to_str()) == Some("ts") {
-            files.push(path);
-        }
-    }
-    Ok(())
 }

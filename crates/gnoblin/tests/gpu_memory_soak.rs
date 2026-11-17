@@ -211,7 +211,8 @@ impl Shell {
             .name("js-shell".to_owned())
             .spawn(move || {
                 let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-                let mut role = JsRole::connect(&env, JsRoleConfig::new(&dir, None)).expect("the shell connects");
+                let mut role = JsRole::connect(&env, JsRoleConfig::new(&dir, Some(support::stock_dir())))
+                    .expect("the shell connects");
                 while !stopped.load(Ordering::Relaxed) {
                     role.tick().expect("the shell runs");
                     std::thread::sleep(Duration::from_millis(5));

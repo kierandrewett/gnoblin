@@ -99,7 +99,7 @@ fn run(module: &ShellModule, link: Box<dyn TreeLink>, context: &InProcContext) -
         module,
         "in process",
         &|| context.stop.requested(),
-        context.reports.as_ref(),
+        Arc::clone(&context.reports),
     );
     // The tree is detached by the compositor when this thread returns; what belongs to the shell instance goes with it.
     host::reset_session();
@@ -180,8 +180,10 @@ pub(crate) fn serve(
     module: &ShellModule,
     placed: &str,
     stopped: &dyn Fn() -> bool,
-    reports: &dyn ShellReports,
+    reports: Arc<dyn ShellReports>,
 ) -> Result<(), ShellError> {
+    // `report_config` and `report_config_rejected` of a shell with a document of its own reach the guardian through these.
+    host::set_reports(Arc::clone(&reports));
     let mut shell = host::native_shell(&module.path);
     if let Some(language) = &module.language {
         shell = shell.with_language(language);
@@ -191,8 +193,16 @@ pub(crate) fn serve(
         "the shell {} serves {placed} (generation {generation})",
         module.path.display()
     );
-    reports.config_accepted(NO_DOCUMENT);
-    reports.ready(NO_DOCUMENT);
+    // A shell with a configuration document of its own told the guardian each revision it committed while it started
+    // (`report_config`); the guardian then has the revision in force, and only the readiness is left. A shell with none is
+    // revision zero.
+    match host::reported_revision() {
+        Some(revision) => reports.ready(revision),
+        None => {
+            reports.config_accepted(NO_DOCUMENT);
+            reports.ready(NO_DOCUMENT);
+        }
+    }
     let watching = Watching::start(module, host::reload_controller());
     let outcome = turn_until_done(&mut shell, stopped);
     drop(watching);

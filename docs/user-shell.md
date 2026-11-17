@@ -94,8 +94,8 @@ gnoblin.clients.addListener(new FocusLog());
 
 ## Examples
 
-Three small shells in `examples/` show the pieces, and a test in `crates/gnoblin-runtime-js/tests/shells.rs` runs each one
-as it is:
+Three small shells in `examples/` show the pieces, and the tests in `crates/gnoblin/tests/modular/` run each one as it is in a
+real session (`gnoblin ./shell.js`, `gnoblin ./shell.ts`), with a Wayland client that stays connected:
 
 - `examples/04-js-esm` is a JavaScript shell of ES modules. It imports `gnoblin-core` and `gnoblin-std`, adds one workspace
   with the stock master-stack layout, and binds its launcher keys in a module of its own (`./keys.js`).

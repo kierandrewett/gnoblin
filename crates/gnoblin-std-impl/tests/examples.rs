@@ -398,7 +398,8 @@ fn reference_run(comp: &FakeCompositor, source: &str, mut steps: impl FnMut(&Fak
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
     let clock = ManualClock::default();
-    let mut config = JsShellConfig::new(&root);
+    let mut config =
+        JsShellConfig::new(&root).with_stock(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js"));
     config.entry_budget = Duration::from_secs(5);
     config.frame_budget = Duration::from_secs(10);
     config.clock = std::sync::Arc::new(clock);

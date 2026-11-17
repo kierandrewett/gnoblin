@@ -45,11 +45,11 @@ const LIBDIR_TOKEN: &str = "@LIBDIR@";
 const LINK_PREFIX: &str = "symlink:";
 /// What cargo names the JavaScript runtime's `cdylib` (`libgnoblin_runtime_js.so`); dist installs it as
 /// `libgnoblin-runtime-js.so`, the name the loader looks for.
-const RUNTIME_JS_BUILT_NAME: &str = "libgnoblin_runtime_js.so";
+pub(crate) const RUNTIME_JS_BUILT_NAME: &str = "libgnoblin_runtime_js.so";
 
 /// What cargo names the Python runtime's `cdylib` (`libgnoblin_runtime_python.so`); dist installs it as
 /// `libgnoblin-runtime-python.so`, the name the loader looks for a `.py` shell's runtime under.
-const RUNTIME_PYTHON_BUILT_NAME: &str = "libgnoblin_runtime_python.so";
+pub(crate) const RUNTIME_PYTHON_BUILT_NAME: &str = "libgnoblin_runtime_python.so";
 
 /// What cargo names the core's `cdylib` (`libgnoblin_core_impl.so`); dist installs it under the SONAME's name.
 const CORE_BUILT_NAME: &str = "libgnoblin_core_impl.so";
@@ -267,9 +267,9 @@ const ITEMS: &[InstallItem] = &[
         kind: Generated::StdPkgConfig,
         requires_built: STD_BUILT_NAME,
     },
-    // The stock JavaScript library as installed data (`share/gnoblin/js/<package>/`). The runtime still embeds a copy and
-    // falls back to it, so these are read when the JavaScript runtime moves to the loader; they are installed now so the
-    // layout is the one of the design (`design/modular-framework.md` section 11) and a package ships them once.
+    // The stock JavaScript library as installed data (`share/gnoblin/js/<package>/`): the JavaScript runtime holds no copy and reads
+    // `gnoblin-core` and `gnoblin-std` from here (`design/modular-framework.md` sections 10.2 and 11), so a prefix without the std
+    // directory is a prefix whose scripts get the error of example 17 when they import it.
     InstallItem::Tree {
         from: "data/js/gnoblin-core",
         to: "share/gnoblin/js/gnoblin-core",
@@ -277,6 +277,14 @@ const ITEMS: &[InstallItem] = &[
     InstallItem::Tree {
         from: "data/js/gnoblin-std",
         to: "share/gnoblin/js/gnoblin-std",
+    },
+    // The starter is the packaged default shell (section 7.2, tier 7): what `gnoblin` runs on a fresh install, and what `gnoblinctl
+    // config init` writes.
+    InstallItem::File {
+        from: InstallSource::Repo("data/js/starter/shell.ts"),
+        to: "share/gnoblin/default-shell/shell.ts",
+        mode: FileMode::Data,
+        template: false,
     },
     // The Python package a `.py` shell imports (`from gnoblin import gnoblin`), with its type declarations. The runtime puts this
     // directory on the `sys.path` of its own interpreter, found from the prefix of the core library (`share/gnoblin/python`).
@@ -1573,6 +1581,16 @@ mod tests {
                 assert!(!entry.template);
             }
         }
+        // The starter is installed as the packaged default shell, which discovery runs on a fresh install (tier 7).
+        let shell = with
+            .iter()
+            .find(|entry| entry.to == "share/gnoblin/default-shell/shell.ts")
+            .expect("the packaged default shell is planned");
+        assert_eq!(
+            shell.content,
+            PlannedContent::File(repo_root().join("data/js/starter/shell.ts"))
+        );
+        assert_eq!(shell.mode, FileMode::Data);
     }
 
     #[test]

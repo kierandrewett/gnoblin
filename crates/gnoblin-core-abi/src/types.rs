@@ -1139,6 +1139,15 @@ abi_structs! {
         /// `E_NO_SUCH_MEMBER` for another key, `E_TYPE` for a value of the wrong kind, `E_REFUSED` with the reason for a
         /// value out of range. Any thread.
         pub setting_set: unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, value: *const GnoblinValue) -> i32,
+        // ---- the guardian's reports -----------------------------------------------------------------------------------
+        /// Tells the host the shell committed `document` (UTF-8 JSON, `len` bytes) as configuration `revision`, and the compositor
+        /// accepted it. The host tells the guardian: one `autostart` line for every enabled entry of the document, then the
+        /// revision accepted. A shell with no configuration document of its own never calls it (the host reports revision zero
+        /// for it). Shell thread.
+        pub report_config: unsafe extern "C" fn(ctx: GnoblinCtx, revision: u64, document: *const u8, len: usize) -> i32,
+        /// Tells the host the shell refused a configuration revision (`revision` is zero when the document never got that far),
+        /// with the reason as UTF-8 text. The guardian is told; the last accepted configuration stays in force. Shell thread.
+        pub report_config_rejected: unsafe extern "C" fn(ctx: GnoblinCtx, revision: u64, reason: *const u8, len: usize) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]

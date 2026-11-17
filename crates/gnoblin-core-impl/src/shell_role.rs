@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
 use gnoblin_client::{Client, Inherited, Reporter, UnixTransport, inherited_stream, privilege};
-use gnoblin_compositor::inproc_shell::{GuardianReports, ShellReports as _};
+use gnoblin_compositor::inproc_shell::{GuardianReports, ShellReports};
 use gnoblin_log::ProcessRole;
 use gnoblin_log::init::{LogOptions, LogSettings, init};
 use gnoblin_proto::Version;
@@ -37,10 +37,12 @@ pub(crate) fn serve_isolated(module: ShellModule) -> i32 {
             return EXIT_FAILED;
         }
     };
-    let reports = GuardianReports::new(Arc::new(Mutex::new(Reporter::new(|name| std::env::var(name).ok()))));
+    let reports: Arc<dyn ShellReports> = Arc::new(GuardianReports::new(Arc::new(Mutex::new(Reporter::new(|name| {
+        std::env::var(name).ok()
+    })))));
     host::reset_session();
     host::set_tree_link_provider(Box::new(OneLink(RefCell::new(Some(link)))));
-    let outcome = serve(&module, "in its own process", &|| false, &reports);
+    let outcome = serve(&module, "in its own process", &|| false, Arc::clone(&reports));
     host::reset_session();
     match outcome {
         Ok(()) => 0,

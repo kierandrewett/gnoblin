@@ -8,10 +8,10 @@ Registering. A *named subscription* is an attribute of ``gnoblin`` that register
     @gnoblin.on_client_created              # bare: the function is the callback, and it is returned unchanged
     def place(window): ...
 
-    @gnoblin.bind("Super+Return")           # parameters first: the call returns the decorator
+    @gnoblin.bind("<Super>Return")           # parameters first: the call returns the decorator
     def terminal(): gnoblin.spawn("foot")
 
-    sub = gnoblin.bind("Super+d", launcher)       # parameters and the function: returns the Subscription
+    sub = gnoblin.bind("<Super>d", launcher)       # parameters and the function: returns the Subscription
     sub = gnoblin.on_client_created.subscribe(place)   # a bare event's Subscription
 
 A registration belongs to the generation of the script that made it. A reload removes all of them and runs the script again, so

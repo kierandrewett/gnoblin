@@ -8,7 +8,7 @@ A shell is an ordinary script. Run it with ``gnoblin ./shell.py``; the shell rel
     def place(window):
         window.x, window.y = 0, 0
 
-    @gnoblin.bind("Super+Return")
+    @gnoblin.bind("<Super>Return")
     def terminal():
         gnoblin.spawn("foot")
 

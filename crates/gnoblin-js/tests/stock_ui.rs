@@ -6,11 +6,13 @@
 //! expected values; where the JavaScript shell differs the test says why. A key goes to the node that holds the seat's
 //! focus, a press to the node it lands on, as the real path delivers them.
 
-use gnoblin_js::STARTER_CONFIG;
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 mod common;
 use common::*;
+
+/// The starter, `data/js/starter/shell.ts`: what the packaged default shell is.
+const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
 
 const RIGHT: u64 = 273;
 const MIDDLE: u64 = 274;

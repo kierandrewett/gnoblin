@@ -51,7 +51,7 @@ use gnoblin_shell_host::supervisor::{Clock, SystemClock};
 use crate::bindings::{HostState, SharedState, StageMark};
 use crate::budget::{ENTRY_BUDGET, FRAME_BUDGET};
 use crate::dialogs::JsDialogs;
-use crate::error::JsError;
+use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_idle::JsIdle;
 use crate::stock::{HOST_MODULE_NAME, PACKAGES, STARTER_MODULE_NAME, host_export, starter_module, stock_sources_in};
@@ -77,6 +77,16 @@ pub use gnoblin_tree_client::gate::STALE_RETRIES;
 /// are compiled in that call, and a budget chosen to bound a user's entry must not starve them.
 const HOST_INSTALL_BUDGET: Duration = Duration::from_secs(5);
 
+/// The failure of reading the stock library, as the failure of a boot: the shell cannot run without it.
+fn stock_failure(error: crate::stock::StockError) -> JsShellError {
+    JsShellError::Js(JsError {
+        kind: JsErrorKind::Exception,
+        message: error.to_string(),
+        location: None,
+        stack: None,
+    })
+}
+
 /// What a shell is built from.
 #[derive(Debug, Clone)]
 pub struct JsShellConfig {
@@ -86,9 +96,14 @@ pub struct JsShellConfig {
     pub entry_budget: Duration,
     /// What one frame's dispatch may use, all listener calls together. Default [`FRAME_BUDGET`].
     pub frame_budget: Duration,
-    /// A directory to read the stock `gnoblin` modules from instead of the copies compiled in (the layout of
-    /// `data/js`). A module missing from it is the compiled-in one. `None` runs the compiled-in library.
-    pub stock_dir: Option<PathBuf>,
+    /// The directories the stock library (`gnoblin-core`, `gnoblin-std`) is read from, in order, each laid out as `data/js`: a
+    /// package is the one of the first directory that holds it. The library is installed data and nothing is compiled in, so a
+    /// shell with no directory here has no `gnoblin-core` to import and cannot boot. The runtime finds them with
+    /// [`stock_search_path`](crate::stock_search_path).
+    pub stock_dirs: Vec<PathBuf>,
+    /// The starter, the file the stock desktop is: a shell with no user entry, or whose entry could not load, runs it in the entry's
+    /// place ([`JsShell::load_default_config`]). `None` runs nothing in its place, and a failed entry is the failure of the load.
+    pub starter: Option<PathBuf>,
     /// Whether the session declared XR (`GNOBLIN_XR=1`). A config may then import `gnoblin-std/extensions/xr` before the
     /// headset's session has started; without it that import works only once the program's `xr` seat is in the tree.
     pub xr_declared: bool,
@@ -106,10 +121,23 @@ impl JsShellConfig {
             js: JsConfig::new(root),
             entry_budget: ENTRY_BUDGET,
             frame_budget: FRAME_BUDGET,
-            stock_dir: None,
+            stock_dirs: Vec::new(),
+            starter: None,
             xr_declared: false,
             clock: Arc::new(SystemClock),
         }
+    }
+
+    /// Reads the stock library from `stock_dir` (laid out as `data/js`), and takes the `starter/shell.ts` beside its packages, as a
+    /// source tree has it, as the starter. An installed library has no starter there: the packaged default shell is a shell of its
+    /// own (`share/gnoblin/default-shell/shell.ts`), not a fallback of the engine.
+    #[must_use]
+    pub fn with_stock(mut self, stock_dir: impl Into<PathBuf>) -> Self {
+        let stock_dir = stock_dir.into();
+        let starter = stock_dir.join("starter").join("shell.ts");
+        self.starter = starter.is_file().then_some(starter);
+        self.stock_dirs = vec![stock_dir];
+        self
     }
 }
 
@@ -201,6 +229,8 @@ pub struct JsShell {
     document_revision: u32,
     /// What decides whether a frame has anything to do (see `gate`).
     gate: gate::FrameGate,
+    /// Whether the shell was given a starter to run when it has no entry ([`JsShellConfig::starter`]).
+    has_starter: bool,
 }
 
 impl JsShell {
@@ -222,7 +252,8 @@ impl JsShell {
         // (`stock::host_export`, which `editor_library` appends to the index an editor reads too). A module the
         // caller embedded under a name stays: the caller knows what it wants. The library is embedded as TypeScript
         // and stripped only when a module is imported and the bytecode cache lacks it.
-        let mut stock = stock_sources_in(config.stock_dir.as_deref());
+        let mut stock = stock_sources_in(&config.stock_dirs).map_err(stock_failure)?;
+        js.stock_dirs = Arc::new(config.stock_dirs.clone());
         for package in PACKAGES {
             if let Some(index) = stock.get_mut(package) {
                 index.source.to_mut().push_str(&host_export(package));
@@ -232,9 +263,15 @@ impl JsShell {
             typescript.entry(name).or_insert(module);
         }
         // The stock desktop is the starter file itself, which a shell with no user entry runs as its entry.
-        typescript
-            .entry(STARTER_MODULE_NAME.to_owned())
-            .or_insert_with(starter_module);
+        let has_starter = match &config.starter {
+            Some(path) => {
+                typescript
+                    .entry(STARTER_MODULE_NAME.to_owned())
+                    .or_insert(starter_module(path).map_err(stock_failure)?);
+                true
+            }
+            None => false,
+        };
         // Generation 0 is the bare one (the host objects and no user code); the reloader numbers the ones it
         // stages from 1.
         let generation = JsGeneration::new(&js, 0)?;
@@ -258,6 +295,7 @@ impl JsShell {
             idle: JsIdle::new(),
             document_revision: 0,
             gate: gate::FrameGate::default(),
+            has_starter,
         })
     }
 
@@ -384,14 +422,22 @@ impl JsShell {
     }
 
     /// Runs the stock desktop as the generation's whole config, for a shell with no user entry (or whose entry could
-    /// not load): the embedded starter file (`data/js/starter/shell.ts`, the text `gnoblinctl config init` writes) is
-    /// the entry, so the default is a user's `shell.ts` that nobody wrote. Returns the failures of calls that ran
+    /// not load): the starter file ([`JsShellConfig::starter`], `data/js/starter/shell.ts`, the text `gnoblinctl config init`
+    /// writes) is the entry, so the default is a user's `shell.ts` that nobody wrote. Returns the failures of calls that ran
     /// while it loaded.
     ///
     /// # Errors
     ///
-    /// The starter threw (a bug in the library) or the link failed.
+    /// The shell has no starter, the starter threw (a bug in the library) or the link failed.
     pub fn load_default_config(&mut self) -> Result<Vec<String>, JsShellError> {
+        if !self.has_starter {
+            return Err(JsShellError::Js(JsError {
+                kind: JsErrorKind::Exception,
+                message: "the shell has no starter to run in the place of an entry".to_owned(),
+                location: None,
+                stack: None,
+            }));
+        }
         // A load, like `load_entry`, so it has the stage budget: it evaluates the whole starter, which took as long as
         // any config under load, and a listener call's budget would interrupt it.
         self.note_script_ran();

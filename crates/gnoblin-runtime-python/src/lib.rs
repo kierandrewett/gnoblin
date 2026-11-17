@@ -23,6 +23,8 @@
 //! Every entry point is contained: a panic is caught here, reported to the core, and returned as `E_PANIC`, because a panic that
 //! unwinds out of an `extern "C"` function aborts the compositor.
 #![allow(unsafe_code)]
+// The version script (`exports.map`) makes PyO3's `PyInit__gnoblin_core` local on purpose; lld notes that it overrides rustc's own list.
+#![allow(linker_messages)]
 
 mod callback;
 mod convert;

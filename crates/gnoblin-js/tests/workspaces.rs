@@ -8,7 +8,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, JsShell, stock_modules};
+use gnoblin_js::{JsConfig, JsGeneration, JsShell, stock_modules_in};
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 use tempfile::TempDir;
@@ -740,7 +740,9 @@ fn pure(body: &str) -> String {
     );
     fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
     let mut config = JsConfig::new(&root);
-    for (name, source) in stock_modules() {
+    for (name, source) in stock_modules_in(&[std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")])
+        .expect("the stock library reads")
+    {
         config = config.embed(name, source);
     }
     let generation = JsGeneration::new(&config, 1).expect("a generation");

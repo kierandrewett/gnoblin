@@ -173,7 +173,7 @@ impl Shell {
             .name("js-shell".to_owned())
             .spawn(move || {
                 let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
-                let mut config = JsRoleConfig::new(&dir, None);
+                let mut config = JsRoleConfig::new(&dir, Some(super::stock_dir()));
                 configure(&mut config);
                 let mut role = JsRole::connect(&env, config).expect("the shell attaches");
                 let mut problems = Vec::new();
@@ -501,7 +501,7 @@ impl Driven {
             inner: SocketTreeLink::new(stream).expect("the tree link"),
             forged: Rc::clone(&forged),
         };
-        let mut config = JsRoleConfig::new(dir, None);
+        let mut config = JsRoleConfig::new(dir, Some(super::stock_dir()));
         config.watch = false;
         config.console = JsConsoleSite::Off;
         config.shell.entry_budget = Duration::from_secs(30);

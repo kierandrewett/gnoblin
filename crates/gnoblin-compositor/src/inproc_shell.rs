@@ -119,9 +119,44 @@ pub trait ShellReports: Send + Sync {
     /// The shell serves, at configuration `revision`.
     fn ready(&self, _revision: u64) {}
 
+    /// The shell committed `document` (JSON) as configuration `revision` and the compositor accepted it: one `autostart` line for
+    /// every enabled entry of the document, then `config_accepted`, which is the order the guardian reads them in (it has the
+    /// entries by the time it learns the revision was accepted). A document that does not read back starts nothing, and is said.
+    fn config_committed(&self, revision: u64, document: &[u8]) {
+        for (name, command) in enabled_autostart_of(document) {
+            self.autostart(revision, &name, &command);
+        }
+        self.config_accepted(revision);
+    }
+
     /// The shell's thread ended. Called once, on the shell's thread for a return, an error or a panic, and on the stopping
     /// thread for an abandoned shell.
     fn ended(&self, _end: &ShellEnd) {}
+}
+
+/// The enabled autostart entries of a committed document, in name order. The shell validated the document before it committed
+/// it, so one that does not read back is a bug and starts nothing.
+fn enabled_autostart_of(document: &[u8]) -> Vec<(String, Vec<String>)> {
+    let config = match gnoblin_config::Config::from_json_bytes(document) {
+        Ok(config) => config,
+        Err(problems) => {
+            log::error!(
+                area = "inproc-shell",
+                "the committed document does not read back, so it starts nothing: {problems}"
+            );
+            return Vec::new();
+        }
+    };
+    match gnoblin_config::enabled_autostart(&config) {
+        Ok(entries) => entries
+            .into_iter()
+            .map(|(name, command)| (name.to_owned(), command.to_vec()))
+            .collect(),
+        Err(problem) => {
+            log::error!(area = "inproc-shell", "{problem}");
+            Vec::new()
+        }
+    }
 }
 
 /// The reports of a session that has no guardian to tell.

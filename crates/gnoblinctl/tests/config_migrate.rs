@@ -12,13 +12,16 @@ use std::time::Duration;
 
 use gnoblin_client::Client;
 use gnoblin_client::unix::UnixTransport;
-use gnoblin_js::{JsShell, JsShellConfig, STARTER_CONFIG};
+use gnoblin_js::{JsShell, JsShellConfig};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
 };
 use gnoblinctl::{ConnectFailure, Connection};
 use serde_json::{Value, json};
 use tempfile::TempDir;
+
+/// The starter, `data/js/starter/shell.ts`: the packaged default shell.
+const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
 
 /// A connection that was never meant to be opened: the command needs no session.
 struct NoSession;
@@ -244,7 +247,8 @@ fn world(init: &str, extra: &str) -> Value {
     let root = fs::canonicalize(dir.path()).expect("the directory exists");
     fs::write(root.join("pre.ts"), PRE).expect("pre.ts is written");
     fs::write(root.join("probe.ts"), probe(extra)).expect("probe.ts is written");
-    let mut config = JsShellConfig::new(root.clone());
+    let mut config = JsShellConfig::new(root.clone())
+        .with_stock(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js"));
     config.js.stage_budget = Duration::from_secs(10);
     config.entry_budget = Duration::from_secs(10);
     config.frame_budget = Duration::from_secs(10);

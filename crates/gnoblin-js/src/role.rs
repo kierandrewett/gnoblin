@@ -38,6 +38,7 @@ use gnoblin_tree_client::tree_mirror::TreeLink;
 use crate::config::{JsClientConfigLink, JsCommitLog, JsConfigLink, JsRecordingLink};
 use crate::console::{JsConsole, JsConsoleSite, console_enabled, console_socket_path};
 use crate::diagnostics::{DIAGNOSTICS_KEPT, Diagnostics};
+use crate::error::{JsError, JsErrorKind};
 use crate::generation::JsGeneration;
 use crate::host_idle::{JsClientIdleLink, JsIdleConnector, JsIdleLink};
 use crate::host_session::{JsClientSessionLink, JsSessionLink};
@@ -85,14 +86,18 @@ pub struct JsRoleConfig {
 }
 
 impl JsRoleConfig {
-    /// The config for the user's directory `dir`, with the stock library compiled in unless `stock_dir` names one.
+    /// The config for the user's directory `dir`, with the stock library read from `stock_dir` (laid out as `data/js`; `None` has no
+    /// library, and the shell cannot boot). A `starter/shell.ts` beside the library's packages, as a source tree has it, is the
+    /// starter the role runs in the place of an entry that is missing or does not load; a library with none (an installed one) makes
+    /// such an entry a failed start.
     pub fn new(dir: impl Into<PathBuf>, stock_dir: Option<PathBuf>) -> Self {
         let dir = dir.into();
-        // The file a new user creates, and the one the watcher then reloads. The runner replaces it with the file
-        // discovery selected when there is one.
+        // The file a new user creates, and the one the watcher then reloads.
         let entry = dir.join("shell.ts");
         let mut shell = JsShellConfig::new(dir);
-        shell.stock_dir = stock_dir;
+        if let Some(stock_dir) = stock_dir {
+            shell = shell.with_stock(stock_dir);
+        }
         Self {
             shell,
             entry,
@@ -202,6 +207,22 @@ impl JsRoleLinks {
     }
 }
 
+/// The failure of a first load that has no starter to fall back on: every reason the reload gave, on one line.
+fn first_load_failed(report: &ReloadReport) -> JsShellError {
+    let mut reasons: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
+    reasons.extend(report.warnings.iter().cloned());
+    JsShellError::Js(JsError {
+        kind: JsErrorKind::Exception,
+        message: if reasons.is_empty() {
+            "the shell did not evaluate".to_owned()
+        } else {
+            reasons.join("; ")
+        },
+        location: None,
+        stack: None,
+    })
+}
+
 /// The reloader's commit: it hands a generation that evaluated cleanly to the role, which swaps it into the
 /// shell once the reloader has finished.
 type Commit = Box<dyn FnMut(&JsGeneration) -> Result<(), String>>;
@@ -227,6 +248,8 @@ pub struct JsRole {
     external_reload: bool,
     /// A change the watcher saw that the host has not been told of.
     reload_wanted: bool,
+    /// A reload of the configuration the compositor asked for (`gnoblinctl config reload`) that the host has not been told of.
+    config_reload_asked: bool,
 }
 
 impl JsRole {
@@ -317,6 +340,7 @@ impl JsRole {
             console: None,
             external_reload: config.external_reload,
             reload_wanted: false,
+            config_reload_asked: false,
         };
         if let JsConsoleSite::At(site) = &config.console {
             // A shell without a console is still a shell: the reason is logged and the loop goes on.
@@ -325,13 +349,20 @@ impl JsRole {
                 Err(error) => log::warn!(area = "console", "the console is not served: {error}"),
             }
         }
+        let has_starter = config.shell.starter.is_some();
         if config.entry.is_file() {
-            if !role.reload_now().ok {
+            let report = role.reload_now();
+            if !report.ok {
+                if !has_starter {
+                    // With nothing to run in its place, a first load that failed is the failure of the start, at the line the
+                    // author wrote.
+                    return Err(first_load_failed(&report));
+                }
                 // The entry is broken at startup: the shell still has to work, so the stock config runs until the
                 // file is fixed (the watcher, or a reload, then swaps the user's generation in).
                 role.run_default_config();
             }
-        } else {
+        } else if has_starter {
             log::info!(
                 area = "shell-vm",
                 "no {} to load; the stock config runs until it exists",
@@ -339,6 +370,13 @@ impl JsRole {
             );
             role.run_default_config();
             role.rearm_watcher();
+        } else {
+            return Err(JsShellError::Js(JsError {
+                kind: JsErrorKind::Exception,
+                message: format!("{} does not exist", config.entry.display()),
+                location: None,
+                stack: None,
+            }));
         }
         Ok(role)
     }
@@ -387,6 +425,7 @@ impl JsRole {
             console.serve(&self.shell);
         }
         let frame = self.shell.frame()?;
+        self.config_reload_asked |= self.shell.take_config_reload_requested();
         for diagnostic in frame.diagnostics {
             log::warn!(area = "shell-vm", "{diagnostic}");
             self.diagnostics.push(diagnostic);
@@ -412,6 +451,27 @@ impl JsRole {
     /// sets it; the host answers it by reloading through its own lifecycle and calling [`reload_now`](Self::reload_now).
     pub fn take_reload_wanted(&mut self) -> bool {
         std::mem::take(&mut self.reload_wanted)
+    }
+
+    /// Whether the compositor asked for a reload of the configuration (`gnoblinctl config reload`, or a script's
+    /// `gnoblin.runtime.reloadConfig`) since the last call, once. The caller of the request is held until a commit answers it or
+    /// [`reject_config_reload`](Self::reject_config_reload) refuses it, so the host reloads and then does one of the two.
+    pub fn take_config_reload_asked(&mut self) -> bool {
+        std::mem::take(&mut self.config_reload_asked)
+    }
+
+    /// Whether the role has a connection for the configuration document, so that a reload which commits nothing was refused.
+    pub fn commits_document(&self) -> bool {
+        self.shell.has_config_link()
+    }
+
+    /// Refuses the reload the compositor asked for, with `message`: the running generation and the last accepted document stay.
+    ///
+    /// # Errors
+    ///
+    /// The connection to the compositor failed.
+    pub fn reject_config_reload(&mut self, message: &str) -> Result<(), JsShellError> {
+        self.shell.reject_config_reload(message)
     }
 
     /// Reloads from disk because the user asked (`gnoblinctl config reload`) or at startup. A deliberate retry

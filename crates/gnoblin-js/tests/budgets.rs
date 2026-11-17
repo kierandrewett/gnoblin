@@ -21,11 +21,13 @@ use std::time::{Duration, Instant};
 
 use gnoblin_js::{
     ENTRY_BUDGET, FRAME_BUDGET, JsConfig, JsErrorKind, JsShell, JsShellConfig, JsShellError, STAGE_BUDGET,
-    STARTER_CONFIG,
 };
 
 mod common;
 use common::*;
+
+/// The starter, `data/js/starter/shell.ts`: what the packaged default shell is.
+const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
 
 #[test]
 fn the_budgets_are_the_documented_constants() {
@@ -48,7 +50,8 @@ fn the_stock_default_config_is_a_load_and_runs_under_the_stage_budget() {
     let comp = FakeCompositor::new();
     populate(&comp, 3);
     let dir = tempfile::tempdir().expect("a temp dir");
-    let mut config = JsShellConfig::new(fs::canonicalize(dir.path()).expect("the temp dir exists"));
+    let mut config = JsShellConfig::new(fs::canonicalize(dir.path()).expect("the temp dir exists"))
+        .with_stock(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js"));
     config.js.stage_budget = Duration::from_micros(1);
     let mut shell = JsShell::new(Box::new(comp), config).expect("the library installs under its own floor");
     let error = shell
@@ -116,7 +119,7 @@ fn measure(label: &str, load_factor: usize) {
     fs::write(root.join("shell.ts"), STARTER_CONFIG).expect("shell.ts is written");
 
     // The budgets are the product's: `JsShellConfig::new`, the real clock, nothing loosened.
-    let config = JsShellConfig::new(&root);
+    let config = JsShellConfig::new(&root).with_stock(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js"));
     let started = Instant::now();
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots under the product budgets");
     let boot = started.elapsed();
@@ -128,7 +131,11 @@ fn measure(label: &str, load_factor: usize) {
     let load = started.elapsed();
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
-    let mut bare = JsShell::new(Box::new(comp.clone()), JsShellConfig::new(&root)).expect("a second shell boots");
+    let mut bare = JsShell::new(
+        Box::new(comp.clone()),
+        JsShellConfig::new(&root).with_stock(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")),
+    )
+    .expect("a second shell boots");
     let started = Instant::now();
     bare.load_default_config()
         .expect("the stock default loads under the stage budget");

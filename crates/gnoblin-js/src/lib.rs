@@ -12,9 +12,9 @@
 //!   author's `.ts` line; the host's supervisor counts interrupts and panics and decides between restaging and giving up
 //!   (`gnoblin-shell-host` holds the watcher, the strike policy, the process table and the reload protocol, which are the
 //!   same for every language).
-//! - [`stock_modules`] is the TypeScript stock library (`data/js/gnoblin-core/` and `data/js/gnoblin-std/`) as embedded
-//!   `gnoblin-core` and `gnoblin-std` modules, and
-//!   [`editor_library`] the same sources as the files an editor reads.
+//! - [`stock_sources_in`] reads the TypeScript stock library (`data/js/gnoblin-core/` and `data/js/gnoblin-std/`, installed as data
+//!   under `share/gnoblin/js/`) as the `gnoblin-core` and `gnoblin-std` modules, found by [`stock_search_path`]; nothing is compiled
+//!   in, and [`editor_library_in`] reads the same sources as the files an editor reads.
 //! - [`JsShell`] runs the shell over the compositor's tree: `gnoblin.clients` and the rest of the object
 //!   model in `data/js/gnoblin-core/host.ts` (the `gnoblin-core/host` module), over the host functions in `bindings`, with the
 //!   frame loop of `ShellVm`. A workspace is a script object: [`JsWorkspaceSnapshot`] carries which window was on
@@ -25,8 +25,6 @@
 //!   `shell.ts`, and owns the watcher, reloader and supervisor that swap a new generation in or keep the old one.
 //!   It holds the shell's two other owner connections: one for slots (the dialog observation of `gnoblin.dialogs`)
 //!   and one for the configuration document (what the device objects write to it).
-//! - [`JsRoleRunner`] is the whole runtime role: it locates the config, boots a [`JsRole`] that owns the
-//!   configuration document, reports to the guardian, and serves `config.reload`.
 //! - [`evaluate_document`] reads a config's document in a throwaway shell over an inert tree, with no session: the
 //!   dry run of `gnoblinctl check`.
 //! - [`JsBytecodeCache`] keeps what a module compiles to under the user's cache directory, so a start loads the stock
@@ -53,7 +51,6 @@ mod natives;
 mod output_apply;
 mod reload;
 mod role;
-mod runner;
 mod script_console;
 mod shell;
 mod stock;
@@ -86,9 +83,11 @@ pub use natives::{JsNative, ScriptIds};
 pub use reload::{JsDiagnostic, JsReloader, JsStager, ReloadReport};
 pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE};
 pub use rquickjs;
-pub use runner::{FRAME_WAIT, JsRoleError, JsRoleRunner, STOCK_DIR_VARIABLE, TEST_CRASH_VARIABLE, WATCH_VARIABLE};
 pub use script_console::{JsConsoleLevel, JsConsoleLine, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};
 pub use shell::{JsFrame, JsFrameStats, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
-pub use stock::{STARTER_CONFIG, editor_library, stock_modules, stock_modules_in, stock_sources_in};
+pub use stock::{
+    PACKAGES as STOCK_PACKAGES, STOCK_DIR_VARIABLE, StockError, default_shell_path, editor_library_in,
+    stock_modules_in, stock_search_path, stock_sources_in,
+};
 pub use ts::{JsStripped, strip_types};
 pub use workspaces::{JsKeptInset, JsKeptRect, JsKeptWindow, JsOutputShown, JsWorkspaceEntry, JsWorkspaceSnapshot};

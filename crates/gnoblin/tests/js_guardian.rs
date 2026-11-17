@@ -1,12 +1,10 @@
-//! `gnoblinctl config reload` reaching the JavaScript shell of a real session, as processes.
+//! `gnoblinctl config reload` and the configuration document of a JavaScript shell in a real session, as processes.
 //!
-//! The session is the shipped binary: a guardian that starts the compositor, the services role and the runtime
-//! role. The runtime role is the JavaScript one (`gnoblin_js::JsRoleRunner`) and nothing selects it. Unless a test is
-//! about the watcher, it is switched off
-//! (`GNOBLIN_JS_WATCH=0`), so a change to `shell.ts` takes effect only when the request comes through the
-//! compositor: `gnoblinctl config reload` is the real command line client, the compositor raises
-//! `session.reload_requested`, the runtime role reloads the shell and answers. Windows are mapped by a real
-//! Wayland client and the result is read back from the compositor's tree as an observer.
+//! The session is the shipped binary: a guardian that resolves the shell it finds (`shell.ts` in the config directory), starts the
+//! compositor with it in its process, and the services role. Unless a test is about the watcher, the watcher is switched off
+//! (`GNOBLIN_JS_WATCH=0`), so a change to `shell.ts` takes effect only when the request comes through the compositor:
+//! `gnoblinctl config reload` is the real command line client, the compositor asks the shell to reload and answers with what it
+//! committed. Windows are mapped by a real Wayland client and the result is read back from the compositor's tree as an observer.
 
 use std::ffi::OsString;
 use std::io::{BufRead as _, BufReader};
@@ -21,10 +19,8 @@ use rustix::process::{Pid, Signal};
 use tempfile::TempDir;
 
 mod support;
-use support::{Mapper, Watcher, ids, scene, spots};
-
-/// The binary under test, built by cargo for this test.
-const BIN: &str = env!("CARGO_BIN_EXE_gnoblin");
+use support::native_shell::{BIN, Prefix, script_environment};
+use support::{Mapper, ids, scene, spots};
 
 /// How long a test waits for a state before it fails.
 const PATIENCE: Duration = Duration::from_secs(60);
@@ -70,15 +66,18 @@ struct Session {
 }
 
 impl Session {
-    /// Starts a session over `$XDG_CONFIG_HOME/gnoblin` whose runtime role is the default one, with the config
-    /// watcher off. `init` is the `shell.ts` the shell finds there at boot.
+    /// Starts a session over `$XDG_CONFIG_HOME/gnoblin` with the config watcher off. `init` is the `shell.ts` the shell finds there at boot.
     fn start(init: &str) -> Self {
         Self::start_with(&[("shell.ts", init)], &[("GNOBLIN_JS_WATCH", "0")])
     }
 
-    /// Starts a session whose config directory holds `files`, with `env` added to the guardian's environment. The
-    /// runtime role is the JavaScript one whatever `env` says.
+    /// Starts a session whose config directory holds `files`, with `env` added to the guardian's environment.
     fn start_with(files: &[(&str, &str)], env: &[(&str, &str)]) -> Self {
+        Self::start_binary(Path::new(BIN), files, env)
+    }
+
+    /// [`Session::start_with`] with the launcher at `binary` (an installed prefix's, to see its packaged default).
+    fn start_binary(binary: &Path, files: &[(&str, &str)], env: &[(&str, &str)]) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).expect("the directory mode");
         let config_home = tempfile::tempdir().expect("a config home");
@@ -89,7 +88,7 @@ impl Session {
         let log = directory.path().join("session.log");
         let file = std::fs::File::create(&log).expect("the log file");
         let bus = Bus::start();
-        let mut command = Command::new(BIN);
+        let mut command = Command::new(binary);
         command
             .env("XDG_RUNTIME_DIR", directory.path())
             .env("XDG_CONFIG_HOME", config_home.path())
@@ -102,8 +101,8 @@ impl Session {
             // The session has to run headless however the machine that runs the test is set up: `auto` would nest in a
             // desktop that sets WAYLAND_DISPLAY, or take the seat of a login session.
             .env("GNOBLIN_BACKEND", "headless")
-            // The session must not inherit the machine's own choice of stock library.
-            .env_remove("GNOBLIN_JS_STOCK_DIR")
+            .env("GNOBLIN_LOG", "info")
+            .env("GNOBLIN_LOG_FORMAT", "plain")
             .env_remove("GNOBLIN_JS_WATCH")
             .env_remove("GNOBLIN_SHELL")
             // The compositor must run headless however the machine that runs the test is set up.
@@ -112,6 +111,10 @@ impl Session {
             .stdin(Stdio::null())
             .stdout(Stdio::from(file.try_clone().expect("a duplicated log")))
             .stderr(Stdio::from(file));
+        // Where the runtimes, the stock library and the Python package are: the source tree stands for an installed prefix.
+        for (name, value) in script_environment() {
+            command.env(name, value);
+        }
         for (name, value) in env {
             command.env(name, value);
         }
@@ -303,168 +306,7 @@ fn config_reload_reloads_the_javascript_shell_in_the_runtime_role_and_reports_a_
     });
 }
 
-/// The pid on the latest `started runtime (generation N, pid P)` line of the guardian's log.
-fn runtime_pid(log: &str) -> i32 {
-    log.lines()
-        .filter(|line| line.contains("started runtime ("))
-        .filter_map(|line| line.split("pid ").nth(1)?.split(')').next()?.trim().parse().ok())
-        .next_back()
-        .unwrap_or_else(|| panic!("no runtime pid in:\n{log}"))
-}
-
-#[test]
-fn killing_the_runtime_process_hands_the_windows_to_the_fallback_policy_until_the_restarted_shell_places_them_again() {
-    let session = Session::start(&init_at(111, 222));
-    session.wait_for_log("configuration revision 1 accepted");
-    let ipc = session.ipc();
-    // Attached before any window maps, so every place the compositor publishes is heard in order.
-    let watch = Watcher::attach(&ipc);
-    let mut mapper = session.mapper();
-    mapper.map_window("org.example.first", "First");
-    mapper.map_window("org.example.second", "Second");
-    let placed = |now: &std::collections::BTreeMap<String, (f64, f64)>| {
-        now.get("org.example.first") == Some(&(111.0, 222.0)) && now.get("org.example.second") == Some(&(111.0, 222.0))
-    };
-    wait_for("the shell places both windows", &session, &mut mapper, || {
-        placed(&spots(&watch.scene()))
-    });
-    let id = ids(&watch.scene());
-    let heard = (
-        watch.places("org.example.first").len(),
-        watch.places("org.example.second").len(),
-    );
-
-    // The shell's process dies, as a crash does. The compositor keeps serving, so the scene still answers, and the
-    // fallback policy has the windows back: each goes to the place it was given before the shell moved it. Then the
-    // guardian starts the runtime again, and its shell attaches, learns of both windows and places them again.
-    let pid = runtime_pid(&session.log());
-    rustix::process::kill_process(Pid::from_raw(pid).expect("a pid"), Signal::KILL).expect("the runtime is killed");
-    session.wait_for_log("started runtime (generation 2");
-    wait_for(
-        "the restarted shell places both windows again",
-        &session,
-        &mut mapper,
-        || {
-            let first = watch.places("org.example.first");
-            let second = watch.places("org.example.second");
-            first[heard.0..] == [(32.0, 32.0), (111.0, 222.0)] && second[heard.1..] == [(64.0, 64.0), (111.0, 222.0)]
-        },
-    );
-    assert_eq!(ids(&watch.scene()), id, "no window was re-created");
-    assert_eq!(
-        scene(&session.ipc()).len(),
-        2,
-        "the compositor answers a fresh connection"
-    );
-}
-
-// ---- the runtime process fails while the session is locked ---------------------------------------------------------
-
-/// The lock the compositor's tree holds, read as an observer.
-fn lock_view(session: &Session) -> support::lock_session::LockView {
-    support::lock_session::view(&session.ipc())
-}
-
-/// Whether the shell's lock screen is up: the session is locked, the shell has engaged the lock and its screen is
-/// painted in the tree.
-fn lock_screen_is_up(seen: &support::lock_session::LockView) -> bool {
-    seen.state == "locked" && seen.engaged && seen.texts.iter().any(|text| text == "Enter your password.")
-}
-
-/// Waits until the shell's lock screen is up, reading the lock at every step and failing on a session that is not locked.
-#[track_caller]
-fn wait_for_the_lock_screen(session: &Session, what: &str) {
-    let deadline = Instant::now() + PATIENCE;
-    loop {
-        let seen = lock_view(session);
-        assert_eq!(seen.state, "locked", "{what}: the session is not locked: {seen:?}");
-        if lock_screen_is_up(&seen) {
-            return;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "never reached: {what}; the lock is {seen:?}; the session said:\n{}",
-            session.log()
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-#[test]
-fn killing_the_runtime_process_while_the_session_is_locked_leaves_it_locked_and_the_restarted_shell_holds_the_screen_again()
- {
-    let session = Session::start(&init_at(111, 222));
-    session.wait_for_log("configuration revision 1 accepted");
-    support::take_lock(&session.ipc());
-    wait_for_the_lock_screen(&session, "the shell's lock screen comes up under the lock");
-
-    // The process dies as a crash does. The cover is the compositor's: the session is locked at every look from here until
-    // the guardian has started the runtime again and its shell holds the lock screen again.
-    let pid = runtime_pid(&session.log());
-    rustix::process::kill_process(Pid::from_raw(pid).expect("a pid"), Signal::KILL).expect("the runtime is killed");
-    let deadline = Instant::now() + PATIENCE;
-    loop {
-        let seen = lock_view(&session);
-        assert_eq!(
-            seen.state, "locked",
-            "the session is not locked after the shell was killed: {seen:?}"
-        );
-        if session.log().contains("started runtime (generation 2") && lock_screen_is_up(&seen) {
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "the restarted shell never held the lock screen; the lock is {seen:?}; the session said:\n{}",
-            session.log()
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-#[test]
-fn a_runtime_process_frozen_while_the_session_is_locked_leaves_it_locked_and_the_compositor_answering_with_its_socket_full()
- {
-    let session = Session::start(&init_at(111, 222));
-    session.wait_for_log("configuration revision 1 accepted");
-    let mut mapper = session.mapper();
-    mapper.map_window("org.example.noisy", "Noisy");
-    support::take_lock(&session.ipc());
-    wait_for_the_lock_screen(&session, "the shell's lock screen comes up under the lock");
-
-    // The process is stopped, not killed: its sockets stay open and nothing reads them. The window's title is set to a
-    // long one over and over, and every change is published to the shell that holds the tree, so what the compositor
-    // writes to it fills the socket's buffer (about 200 KB) in a second or two. The compositor must not wait for the
-    // shell to read: a second connection is answered all the while, and the session stays locked.
-    let pid = Pid::from_raw(runtime_pid(&session.log())).expect("a pid");
-    rustix::process::kill_process(pid, Signal::STOP).expect("the runtime is stopped");
-    let frozen = Instant::now();
-    let mut slowest = Duration::ZERO;
-    let mut round = 0_u32;
-    while frozen.elapsed() < Duration::from_secs(9) {
-        round += 1;
-        mapper.set_title(0, &format!("{round:>06} {}", "x".repeat(3500)));
-        let asked = Instant::now();
-        let seen = lock_view(&session);
-        slowest = slowest.max(asked.elapsed());
-        assert_eq!(
-            seen.state, "locked",
-            "the session is not locked while the shell is frozen: {seen:?}"
-        );
-        std::thread::sleep(Duration::from_millis(15));
-    }
-    eprintln!("a frozen shell: {round} titles of 3.5 KB set, the slowest read of the tree {slowest:?}");
-    assert!(
-        slowest < Duration::from_secs(2),
-        "a read of the tree took {slowest:?} while the shell was frozen: the compositor waited for it"
-    );
-
-    // The process is let go. Either it resumes and holds the screen, or the compositor dropped the connection that never
-    // read, and the guardian has started a shell that does. Either way the session was locked throughout.
-    rustix::process::kill_process(pid, Signal::CONT).expect("the runtime continues");
-    wait_for_the_lock_screen(&session, "a shell holds the lock screen after the freeze");
-}
-
-// ---- the JavaScript role owns the configuration -------------------------------------------------------------------
+// ---- the JavaScript shell owns the configuration -------------------------------------------------------------------
 
 /// The `document` of the configuration the compositor holds, and its revision, read through `gnoblinctl`.
 fn committed(session: &Session) -> (u64, serde_json::Value) {
@@ -507,23 +349,33 @@ fn delay_of(document: &serde_json::Value) -> &serde_json::Value {
 }
 
 #[test]
-fn the_default_session_runs_the_javascript_role_and_commits_init_ts() {
-    // The JavaScript role read `shell.ts`, validated the document and committed it.
+fn the_default_session_runs_shell_ts_in_the_compositor_and_commits_its_document() {
+    // The shell read `shell.ts`, validated the document and committed it.
     let session = Session::start_with(&[("shell.ts", &init_with_delay(32))], &[("GNOBLIN_JS_WATCH", "0")]);
     let document = wait_for_revision(&session, 1);
     assert_eq!(delay_of(&document), &serde_json::json!(32), "{document}");
     let log = session.log();
-    assert!(log.contains("runtime role: JavaScript"), "{log}");
+    assert!(log.contains("serves in process"), "{log}");
     assert!(!log.contains("gnoblinctl config migrate"), "{log}");
 }
 
 #[test]
-fn a_session_with_no_config_commits_the_stock_config_and_reports_ready() {
-    // First login: no `shell.ts` yet. The role runs the stock config and commits its (empty) document, so the guardian
-    // has a revision and the session comes up.
-    let session = Session::start_with(&[], &[("GNOBLIN_JS_WATCH", "0")]);
-    let document = wait_for_revision(&session, 1);
-    assert_eq!(document, serde_json::json!({}), "the stock config sets no document key");
+fn a_session_with_no_shell_of_the_users_runs_the_packaged_starter_and_commits_its_document() {
+    // First login: no `shell.ts` yet. The packaged default is the starter, which the launcher finds in the prefix it is installed
+    // in; its document is committed, so the guardian has a revision and the session comes up.
+    let prefix = Prefix::new();
+    std::fs::create_dir_all(prefix.default_shell_dir()).expect("the default shell's directory");
+    std::fs::copy(
+        support::native_shell::repo_root().join("data/js/starter/shell.ts"),
+        prefix.default_shell_dir().join("shell.ts"),
+    )
+    .expect("the starter, installed");
+    let session = Session::start_binary(&prefix.binary(), &[], &[("GNOBLIN_JS_WATCH", "0")]);
+    let (revision, _) = {
+        session.wait_for_log("configuration revision 1 accepted");
+        committed(&session)
+    };
+    assert_eq!(revision, 1);
     session.wait_for_log("[guardian] session ready");
 }
 
@@ -567,49 +419,6 @@ fn saving_init_ts_reloads_it_with_the_watcher_on_and_commits_a_new_revision() {
 }
 
 #[test]
-fn a_restarted_runtime_commits_what_the_file_says_and_not_what_its_predecessor_left() {
-    // The compositor keeps the last accepted document across a runtime restart. A role that laid its settings over
-    // it would carry a key the user has since deleted from `shell.ts` into the new session.
-    let session = Session::start(&init_with_delay(32));
-    let document = wait_for_revision(&session, 1);
-    assert_eq!(delay_of(&document), &serde_json::json!(32));
-    write_init(&session.config_dir(), &init_with("keyboard.repeatRate = 10;"));
-    let pid = runtime_pid(&session.log());
-    rustix::process::kill_process(Pid::from_raw(pid).expect("a pid"), Signal::KILL).expect("the runtime is killed");
-    let document = wait_for_revision(&session, 2);
-    assert!(
-        document["input"]["keyboard"].get("delay").is_none(),
-        "the deleted setting came back: {document}"
-    );
-    assert_eq!(document["input"]["keyboard"]["repeat-interval"], serde_json::json!(100));
-}
-
-#[test]
-fn an_init_lua_with_no_init_ts_runs_the_stock_config_and_says_once_how_to_migrate() {
-    // Nothing reads Lua, so the stock config runs; one warning names the file, the command and the page.
-    let session = Session::start_with(
-        &[("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n")],
-        &[("GNOBLIN_JS_WATCH", "0")],
-    );
-    let document = wait_for_revision(&session, 1);
-    assert_eq!(document, serde_json::json!({}), "the Lua file is not read: {document}");
-    let log = session.log();
-    let starts = log.matches("runtime role: JavaScript").count();
-    assert!(starts >= 1, "{log}");
-    // Once for each runtime process: the guardian restarts one whose stock config ran past its wall-clock budget on a
-    // machine under load, and the new process says it again. What must not happen is two warnings from one process.
-    assert_eq!(
-        log.matches("gnoblinctl config migrate").count(),
-        starts,
-        "one warning for each runtime start:\n{log}"
-    );
-    assert!(
-        log.contains("docs/migrating-from-lua.md"),
-        "the warning names the page:\n{log}"
-    );
-}
-
-#[test]
 fn a_shell_ts_beside_an_init_lua_wins_and_the_lua_file_is_not_read() {
     let session = Session::start_with(
         &[
@@ -621,7 +430,7 @@ fn a_shell_ts_beside_an_init_lua_wins_and_the_lua_file_is_not_read() {
     let document = wait_for_revision(&session, 1);
     assert_eq!(delay_of(&document), &serde_json::json!(32), "shell.ts won: {document}");
     let log = session.log();
-    assert!(log.contains("runtime role: JavaScript"), "{log}");
+    assert!(log.contains("serves in process"), "{log}");
     assert!(
         !log.contains("init.lua is a Lua config"),
         "no Lua notice when a shell runs:\n{log}"
@@ -631,7 +440,7 @@ fn a_shell_ts_beside_an_init_lua_wins_and_the_lua_file_is_not_read() {
 
 #[test]
 fn gnoblin_shell_vm_selects_nothing_any_more() {
-    // The variable that used to pick the Lua role is not read: a session that still sets it runs the JavaScript role.
+    // The variable that used to pick the Lua role is not read: a session that still sets it runs the JavaScript shell.
     let session = Session::start_with(
         &[("shell.ts", &init_with_delay(32))],
         &[("GNOBLIN_SHELL_VM", "lua"), ("GNOBLIN_JS_WATCH", "0")],
@@ -639,5 +448,5 @@ fn gnoblin_shell_vm_selects_nothing_any_more() {
     let document = wait_for_revision(&session, 1);
     assert_eq!(delay_of(&document), &serde_json::json!(32), "{document}");
     let log = session.log();
-    assert!(log.contains("runtime role: JavaScript"), "{log}");
+    assert!(log.contains("serves in process"), "{log}");
 }

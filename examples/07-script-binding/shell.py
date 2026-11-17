@@ -20,5 +20,5 @@ def nudge(dx, dy):
     return press
 
 
-gnoblin.bind("Super+Right", nudge(100, 0))
-gnoblin.bind("Super+Down", nudge(0, 100))
+gnoblin.bind("<Super>Right", nudge(100, 0))
+gnoblin.bind("<Super>Down", nudge(0, 100))

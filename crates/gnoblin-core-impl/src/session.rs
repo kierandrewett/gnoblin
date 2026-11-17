@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use gnoblin_compositor::inproc_shell::ShellReports;
 use gnoblin_core_abi as abi;
 use gnoblin_shell_host::generation::{GenerationId, GenerationState, LifecycleObserver};
 use gnoblin_shell_host::process::{ProcessError, ProcessExit, Processes, SpawnOptions, Started};
@@ -127,6 +128,10 @@ pub(crate) struct Session {
     /// The stage in progress, if a generation is staged.
     stage: Option<SessionStageMark>,
     clock: Arc<dyn Clock>,
+    /// Where the shell's reports to the guardian go, if the host has a guardian to tell.
+    reports: Option<Arc<dyn ShellReports>>,
+    /// The configuration revision the shell last reported accepted, if it reported one.
+    reported_revision: Option<u64>,
 }
 
 impl Default for Session {
@@ -148,6 +153,8 @@ impl Default for Session {
             named: BTreeMap::new(),
             stage: None,
             clock: Arc::new(SystemClock),
+            reports: None,
+            reported_revision: None,
         }
     }
 }
@@ -177,12 +184,33 @@ impl Session {
         self.clock = clock;
     }
 
+    /// Installs where the shell's reports to the guardian go. Like the provider, it outlives [`Self::reset`].
+    pub(crate) fn set_reports(&mut self, reports: Arc<dyn ShellReports>) {
+        self.reports = Some(reports);
+    }
+
+    /// The reports sink, if one is installed, for a caller that reports after the borrow of the session ends.
+    pub(crate) fn reports(&self) -> Option<Arc<dyn ShellReports>> {
+        self.reports.clone()
+    }
+
+    /// Notes the revision the shell reported accepted.
+    pub(crate) fn note_reported(&mut self, revision: u64) {
+        self.reported_revision = Some(revision);
+    }
+
+    /// The revision the shell last reported accepted.
+    pub(crate) fn reported_revision(&self) -> Option<u64> {
+        self.reported_revision
+    }
+
     /// Drops the tree and everything that belongs to it: the end of a shell instance. Claims are gone with the connection (the
     /// compositor releases them), and so are the pending flushes.
     pub(crate) fn reset(&mut self) {
         *self = Session {
             provider: self.provider.take(),
             clock: Arc::clone(&self.clock),
+            reports: self.reports.take(),
             ..Session::default()
         };
     }

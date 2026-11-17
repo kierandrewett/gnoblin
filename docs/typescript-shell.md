@@ -133,8 +133,7 @@ again: about 6 ms in place of about 40 ms for the stock library and a small `she
 ## Which shell runs
 
 This build runs TypeScript and JavaScript shells, and [Where the config lives](#where-the-config-lives) says which
-one. `GNOBLIN_SHELL_VM` is not read. To work on the stock library, point `GNOBLIN_JS_STOCK_DIR` at a directory to
-read it from instead of the copy built into the binary.
+one. `gnoblin ./shell.ts` runs a file you name, in the compositor's own process. `GNOBLIN_SHELL_VM` is not read.
 
 ### How a script is run
 
@@ -149,8 +148,33 @@ it evaluated cleanly, and logs `generation N active` as a native shell does.
   directories searched. `GNOBLIN_RUNTIME_DIR` names a directory to look in first.
 - **The engine is in the library.** QuickJS and the type stripper are not part of the `gnoblin` binary, so a session that
   runs no script never loads them.
-- **The shell is in the compositor's process.** `gnoblin ./shell.ts` loads the file there, and a script that hangs is
-  interrupted at its budget.
+- **The shell is in the compositor's process.** The runtime reaches the compositor's tree through the core library and keeps
+  its own copy of it, as the script runtime always has. A script that hangs is interrupted at its budget, as before.
+- **The runtime does what the old `runtime` role did.** It owns the configuration document: what the device objects write is
+  committed to the compositor as one revision, and the guardian is told each revision with its `autostart` entries.
+  `gnoblinctl config reload` is answered by the generation the reload makes, with the revision it committed or the reason
+  it was refused, and a refused reload leaves the revision in force. There is no separate `runtime` process any more.
+
+### The stock library is installed data
+
+`gnoblin-core` and `gnoblin-std` are TypeScript files, installed under `share/gnoblin/js/gnoblin-core/` and
+`share/gnoblin/js/gnoblin-std/`. Nothing of them is built into the runtime library. The runtime looks for them, in order, in:
+
+1. the one directory `GNOBLIN_JS_STOCK_DIR` names, when it is set and not empty (to work on the stock library, point it at
+   `data/js` of a source tree; a build tree's `cargo` environment does);
+2. `gnoblin/js` under `$XDG_DATA_HOME`, then under each directory of `$XDG_DATA_DIRS`;
+3. `share/gnoblin/js` (or `data/js` of a source tree) of the prefix the core library and the executable were installed in.
+
+A package is the one of the first directory that holds it. A prefix with no `gnoblin-std` directory runs a shell that
+imports only `gnoblin-core`, and refuses one that imports `gnoblin-std` with the text of the loader, which says where it
+looked:
+
+```text
+gnoblin-std is not installed (looked in: /home/you/.local/share/gnoblin/js, /usr/local/share/gnoblin/js, /usr/share/gnoblin/js)
+```
+
+The starter is the packaged default shell, `share/gnoblin/default-shell/shell.ts`: it is what `gnoblin` runs on a fresh
+install and what `gnoblinctl config init` writes.
 
 ### If you still have an `init.lua`
 
@@ -259,8 +283,9 @@ writes:
 - an alert with Wait and Force quit for a window that stops answering;
 - `Super+space` opens a launcher entry that starts what you type.
 
-Creating `shell.ts` later loads it at once. A `shell.ts` that fails to load when the shell starts is reported in the log,
-and the starter runs until the file is fixed.
+A `shell.ts` that fails to load when the shell starts is a failed start: the loader's text names the file, line and column in
+your `.ts` coordinates, and the session runs without a shell, on the compositor's own window management, until the file is
+fixed and the session started again. Run it with `gnoblin ./shell.ts` to see the text on your terminal.
 
 ## What it looks like
 
@@ -478,5 +503,6 @@ With no shell holding the tree:
 - a window that maps is placed by the compositor's own policy, a cascade from 32, 32;
 - windows the shell had moved go back to the places the compositor gave them.
 
-The session restarts the shell. It attaches again, learns of every window and applies the config again. No window changes
-its identity, and the file runs again, so what it starts, such as a `gnoblin.spawn` call, starts again.
+The shell runs on a thread of the compositor's process, so the compositor ends no session for it; the guardian is told, and
+the log says why. Starting the session again runs the file again, so what it starts, such as a `gnoblin.spawn` call, starts
+again, and no window changes its identity.

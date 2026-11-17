@@ -297,6 +297,11 @@ fn the_runtime_library_exports_its_entry_and_needs_the_core_and_libpython() {
     );
     let defined = defined_symbols(runtime);
     assert!(defined.contains("gnoruntime_entry_v1"), "{defined:?}");
+    assert_eq!(
+        defined.len(),
+        1,
+        "the runtime exports its entry and nothing else (a version script hides PyO3's `PyInit__gnoblin_core`): {defined:?}"
+    );
     let own: Vec<&String> = defined
         .iter()
         .filter(|symbol| symbol.starts_with("gnoblin_") || symbol.starts_with("gnoshell_"))
@@ -374,10 +379,10 @@ fn example_7_a_python_binding_moves_a_window_when_its_chord_is_pressed() {
             "pump",
             "mark:before",
             "dump",
-            "chord:Super+Right",
+            "chord:<Super>Right",
             "mark:right",
             "dump",
-            "chord:Super+Down",
+            "chord:<Super>Down",
             "mark:down",
             "dump",
             "stop",
@@ -397,7 +402,7 @@ fn example_7_a_python_binding_moves_a_window_when_its_chord_is_pressed() {
     );
     let tree = run.claims(&run.section("before"));
     assert!(
-        tree.contains("Super+Right") && tree.contains("Super+Down"),
+        tree.contains("<Super>Right") && tree.contains("<Super>Down"),
         "{}",
         run.dump()
     );

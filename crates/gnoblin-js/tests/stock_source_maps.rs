@@ -15,7 +15,9 @@ fn generation(body: &str) -> (tempfile::TempDir, JsGeneration) {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), body).expect("shell.ts is written");
     let mut config = JsConfig::new(&root);
-    for (name, module) in stock_sources_in(None) {
+    for (name, module) in stock_sources_in(&[std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")])
+        .expect("the stock library reads")
+    {
         config = config.embed_typescript(name, module);
     }
     let generation = JsGeneration::new(&config, 1).expect("a generation");

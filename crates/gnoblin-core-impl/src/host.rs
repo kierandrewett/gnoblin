@@ -8,6 +8,7 @@ use std::sync::{LazyLock, Mutex, PoisonError};
 
 use std::path::Path;
 
+use gnoblin_compositor::inproc_shell::ShellReports;
 use gnoblin_core_abi::{GnoblinApi, GnoblinCtx};
 use gnoblin_shell_host::native::NativeLoader;
 pub use gnoblin_shell_host::native::{Copying, LoadError, UnloadRefused};
@@ -163,6 +164,46 @@ pub(crate) fn request_exit(ctx: GnoblinCtx, code: i32) -> i32 {
         return rc;
     }
     *EXIT_REQUEST.lock().unwrap_or_else(PoisonError::into_inner) = Some(code);
+    gnoblin_core_abi::E_OK
+}
+
+/// Gives the shell thread where its reports to the guardian go: `report_config` and `report_config_rejected` of the table, and the
+/// host's own `ready`. Call it on the shell thread, as [`set_tree_link_provider`]. A shell run with no guardian to tell reports
+/// nothing.
+pub fn set_reports(reports: std::sync::Arc<dyn ShellReports>) {
+    crate::session::with(|session| session.set_reports(reports));
+}
+
+/// The configuration revision the shell of this thread reported accepted (`report_config`), if it reported one. A shell that has no
+/// configuration document of its own reports none.
+pub fn reported_revision() -> Option<u64> {
+    crate::session::with(|session| session.reported_revision())
+}
+
+/// `report_config`: the shell committed `document` as configuration `revision`, and the guardian is told.
+pub(crate) fn report_config(ctx: GnoblinCtx, revision: u64, document: &[u8]) -> i32 {
+    if let Err(code) = check_live(ctx, "report_config") {
+        return code;
+    }
+    // The report is written after the borrow of the session ends: the sink writes to a descriptor and may call anything.
+    let reports = crate::session::with(|session| {
+        session.note_reported(revision);
+        session.reports()
+    });
+    if let Some(reports) = reports {
+        reports.config_committed(revision, document);
+    }
+    gnoblin_core_abi::E_OK
+}
+
+/// `report_config_rejected`: the shell refused a configuration revision and the last accepted one stays in force.
+pub(crate) fn report_config_rejected(ctx: GnoblinCtx, revision: u64, reason: &str) -> i32 {
+    if let Err(code) = check_live(ctx, "report_config_rejected") {
+        return code;
+    }
+    if let Some(reports) = crate::session::with(|session| session.reports()) {
+        reports.config_rejected(revision, reason);
+    }
     gnoblin_core_abi::E_OK
 }
 

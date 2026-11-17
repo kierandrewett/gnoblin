@@ -96,6 +96,10 @@ impl JsConfigLink for JsRecordingLink {
         });
         Ok(committed)
     }
+
+    fn reject(&mut self, message: &str) -> Result<(), JsLinkError> {
+        self.inner.reject(message)
+    }
 }
 
 /// The shell's connection for the configuration document: the owner socket's `config.current` and
@@ -105,6 +109,9 @@ pub trait JsConfigLink {
     fn current(&mut self) -> Result<Option<Vec<u8>>, JsLinkError>;
     /// Commits `document` (JSON), which replaces the one in force.
     fn commit(&mut self, document: &[u8]) -> Result<JsConfigCommit, JsLinkError>;
+    /// Refuses the reload the compositor is holding a caller of `config reload` for: the caller is answered with `message` and the
+    /// document in force stays.
+    fn reject(&mut self, message: &str) -> Result<(), JsLinkError>;
 }
 
 /// [`JsConfigLink`] over a handshaken owner connection.
@@ -142,6 +149,12 @@ impl JsConfigLink for JsClientConfigLink {
             revision: committed.revision,
             notices: committed.notices.into_iter().map(|notice| notice.text).collect(),
         })
+    }
+
+    fn reject(&mut self, message: &str) -> Result<(), JsLinkError> {
+        self.client
+            .reject_config(message)
+            .map_err(|error| JsLinkError(error.to_string()))
     }
 }
 
@@ -187,6 +200,19 @@ impl ConfigState {
 
     pub(crate) fn set_link(&mut self, link: Box<dyn JsConfigLink>) {
         self.link = Some(link);
+    }
+
+    /// Whether the shell has a connection for the document, so that its commits reach the compositor.
+    pub(crate) fn has_link(&self) -> bool {
+        self.link.is_some()
+    }
+
+    /// Refuses the reload the compositor is holding (`config.reject`). Without a link there is nobody to tell, so it is `Ok`.
+    pub(crate) fn reject(&mut self, message: &str) -> Result<(), JsLinkError> {
+        match self.link.as_mut() {
+            Some(link) => link.reject(message),
+            None => Ok(()),
+        }
     }
 
     /// Whether `patch` would be refused. `Err` is the validator's problems, each as `path: reason`, joined; it is
@@ -467,6 +493,10 @@ mod tests {
                 revision: self.revisions.pop_front().unwrap_or(99),
                 notices: Vec::new(),
             })
+        }
+
+        fn reject(&mut self, _message: &str) -> Result<(), JsLinkError> {
+            Ok(())
         }
     }
 

@@ -39,6 +39,8 @@ pub struct JsConfig {
     pub embedded: Arc<HashMap<String, String>>,
     /// Modules the host embeds as TypeScript (the stock library), stripped when imported. A name in `embedded` wins.
     pub typescript: Arc<HashMap<String, JsTypeScriptModule>>,
+    /// The directories the stock library was looked for in. Only the error of a package that is not installed reads them.
+    pub stock_dirs: Arc<Vec<PathBuf>>,
     /// Where compiled modules are kept between starts. Disabled by default; the runtime role turns it on.
     pub cache: JsBytecodeCache,
     /// The CPU-time budget [`JsGeneration::eval_module`] gets for the import and its jobs.
@@ -61,6 +63,7 @@ impl JsConfig {
             root: root.into(),
             embedded: Arc::new(HashMap::new()),
             typescript: Arc::new(HashMap::new()),
+            stock_dirs: Arc::new(Vec::new()),
             cache: JsBytecodeCache::disabled(),
             stage_budget: STAGE_BUDGET,
             memory_limit: 64 << 20,
@@ -264,6 +267,7 @@ impl JsGeneration {
             &config.root,
             Arc::clone(&config.embedded),
             Arc::clone(&config.typescript),
+            Arc::clone(&config.stock_dirs),
             Rc::clone(&load),
         )
         .map_err(engine)?;

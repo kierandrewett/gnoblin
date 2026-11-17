@@ -8,10 +8,13 @@
 use std::fs;
 use std::path::Path;
 
-use gnoblin_js::{JsShell, STARTER_CONFIG};
+use gnoblin_js::JsShell;
 
 mod common;
 use common::*;
+
+/// The starter, `data/js/starter/shell.ts`: what the packaged default shell is.
+const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
 
 /// A screen of 1000 by 800, one seat, one lock and two windows (ids 3 and 4).
 fn populate(comp: &FakeCompositor) {

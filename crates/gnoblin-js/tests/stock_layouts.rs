@@ -10,7 +10,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, stock_modules};
+use gnoblin_js::{JsConfig, JsGeneration, stock_modules_in};
 
 /// The helpers every case shares. There is no `gnoblin` host: the cases call the library only. Plain JavaScript: embedded
 /// modules are not stripped.
@@ -62,7 +62,9 @@ fn run(body: &str) -> String {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), format!("{IMPORTS}\n{body}\n")).expect("shell.ts is written");
     let mut config = JsConfig::new(&root).embed("harness", HARNESS);
-    for (name, source) in stock_modules() {
+    for (name, source) in stock_modules_in(&[std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")])
+        .expect("the stock library reads")
+    {
         config = config.embed(name, source);
     }
     let generation = JsGeneration::new(&config, 1).expect("a generation");

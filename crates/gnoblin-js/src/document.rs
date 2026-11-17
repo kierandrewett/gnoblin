@@ -13,7 +13,7 @@
 //! **What it cannot read.** The tree is empty, so a config that decides a setting from live state (`gnoblin.outputs`,
 //! `gnoblin.clients`) sees none. A config that throws or needs more than [`DOCUMENT_BUDGET`] is an error.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gnoblin_tree_client::tree_mirror::{
@@ -86,13 +86,14 @@ impl TreeLink for InertTree {
 /// The document the config at `entry` commits, as JSON bytes: what its objects wrote to the document (the device
 /// settings). `{}` for a config that writes nothing there.
 ///
-/// The relative imports of `entry` resolve under its own directory, as they do in the shell.
+/// The relative imports of `entry` resolve under its own directory, as they do in the shell, and `gnoblin-core` and `gnoblin-std` are
+/// read from `stock_dirs` (see [`stock_search_path`](crate::stock_search_path)).
 ///
 /// # Errors
 ///
 /// The entry cannot be read, does not load (a syntax error, an import that does not resolve, a throw), or runs past
 /// [`DOCUMENT_BUDGET`]. The error says where, in the author's `.ts` coordinates.
-pub fn evaluate_document(entry: &Path) -> Result<Vec<u8>, JsError> {
+pub fn evaluate_document(entry: &Path, stock_dirs: &[PathBuf]) -> Result<Vec<u8>, JsError> {
     let unreadable = |reason: String| JsError {
         kind: JsErrorKind::Load,
         message: format!("cannot read {}: {reason}", entry.display()),
@@ -104,6 +105,7 @@ pub fn evaluate_document(entry: &Path) -> Result<Vec<u8>, JsError> {
         .parent()
         .ok_or_else(|| unreadable("it has no directory".to_owned()))?;
     let mut config = JsShellConfig::new(root);
+    config.stock_dirs = stock_dirs.to_vec();
     config.js.stage_budget = DOCUMENT_BUDGET;
     config.entry_budget = DOCUMENT_BUDGET;
     config.frame_budget = DOCUMENT_BUDGET;
@@ -128,12 +130,17 @@ pub fn evaluate_document(entry: &Path) -> Result<Vec<u8>, JsError> {
 mod tests {
     use super::*;
 
+    /// The library of the source tree, which is what an installed prefix's `share/gnoblin/js` is made from.
+    fn stock() -> Vec<PathBuf> {
+        vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")]
+    }
+
     /// The document of a config whose source is `source`, written to `shell.ts` in a directory of its own.
     fn document(source: &str) -> Result<serde_json::Value, JsError> {
         let dir = tempfile::tempdir().expect("a temp dir");
         let entry = dir.path().join("shell.ts");
         std::fs::write(&entry, source).expect("shell.ts is written");
-        evaluate_document(&entry).map(|bytes| serde_json::from_slice(&bytes).expect("the document is JSON"))
+        evaluate_document(&entry, &stock()).map(|bytes| serde_json::from_slice(&bytes).expect("the document is JSON"))
     }
 
     #[test]
@@ -156,7 +163,7 @@ mod tests {
             gnoblin.clients.style.cornerRadius = radius;"#,
         )
         .expect("shell.ts");
-        let bytes = evaluate_document(&dir.path().join("shell.ts")).expect("the config evaluates");
+        let bytes = evaluate_document(&dir.path().join("shell.ts"), &stock()).expect("the config evaluates");
         let document: serde_json::Value = serde_json::from_slice(&bytes).expect("JSON");
         assert_eq!(document, serde_json::json!({}));
     }
@@ -191,14 +198,17 @@ mod tests {
 
     #[test]
     fn the_starter_loads_and_has_an_empty_document() {
-        let document = document(crate::stock::STARTER_CONFIG).expect("the starter loads in the inert shell");
+        let starter =
+            std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js/starter/shell.ts"))
+                .expect("the starter is in the source tree");
+        let document = document(&starter).expect("the starter loads in the inert shell");
         assert_eq!(document, serde_json::json!({}), "the keyring keeps its default");
     }
 
     #[test]
     fn a_missing_entry_is_a_load_error() {
         let dir = tempfile::tempdir().expect("a temp dir");
-        let error = evaluate_document(&dir.path().join("shell.ts")).expect_err("no such file");
+        let error = evaluate_document(&dir.path().join("shell.ts"), &stock()).expect_err("no such file");
         assert!(error.to_string().contains("cannot read"), "{error}");
     }
 

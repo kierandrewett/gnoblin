@@ -190,6 +190,8 @@ pub struct JsResolver {
     root: PathBuf,
     embedded: Arc<HashMap<String, String>>,
     typescript: Arc<HashMap<String, JsTypeScriptModule>>,
+    /// The directories the stock library was looked for in, for the error of a package that is not installed.
+    looked_in: Arc<Vec<PathBuf>>,
     state: Rc<JsLoadState>,
 }
 
@@ -200,6 +202,7 @@ impl JsResolver {
         root: &Path,
         embedded: Arc<HashMap<String, String>>,
         typescript: Arc<HashMap<String, JsTypeScriptModule>>,
+        looked_in: Arc<Vec<PathBuf>>,
         state: Rc<JsLoadState>,
     ) -> Result<Self> {
         let root = fs::canonicalize(root)
@@ -208,6 +211,7 @@ impl JsResolver {
             root,
             embedded,
             typescript,
+            looked_in,
             state,
         })
     }
@@ -217,10 +221,22 @@ impl JsResolver {
         if !relative && !Path::new(name).is_absolute() {
             return if self.embedded.contains_key(name) || self.typescript.contains_key(name) {
                 Ok(name.to_owned())
-            } else if PACKAGES.iter().any(|package| {
-                name == *package || name.strip_prefix(*package).is_some_and(|rest| rest.starts_with('/'))
+            } else if let Some(package) = PACKAGES.iter().find(|package| {
+                name == **package || name.strip_prefix(**package).is_some_and(|rest| rest.starts_with('/'))
             }) {
-                Err(JsLoadError::NoEmbedded { name: name.to_owned() })
+                if self.typescript.contains_key(*package) || self.embedded.contains_key(*package) {
+                    Err(JsLoadError::NoStockModule { name: name.to_owned() })
+                } else {
+                    Err(JsLoadError::NotInstalled {
+                        package: (*package).to_owned(),
+                        looked_in: self
+                            .looked_in
+                            .iter()
+                            .map(|dir| dir.display().to_string())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    })
+                }
             } else {
                 Err(JsLoadError::Unresolvable { name: name.to_owned() })
             };

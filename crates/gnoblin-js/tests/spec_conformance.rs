@@ -39,6 +39,10 @@ impl JsConfigLink for AcceptingDocument {
             notices: Vec::new(),
         })
     }
+
+    fn reject(&mut self, _message: &str) -> Result<(), JsLinkError> {
+        Ok(())
+    }
 }
 
 /// The longest error text a table row keeps.
@@ -460,7 +464,9 @@ fn boot(files: &[(&str, String)], probe: Option<&str>, session_first: bool) -> R
         }
     })();
     let root_text = root.to_string_lossy().into_owned();
-    outcome.map_err(|text| text.replace(&root_text, "<root>"))
+    // The stock library is read from the source tree, and an error raised in it names the file by its path.
+    let stock_text = format!("{}/../../", env!("CARGO_MANIFEST_DIR"));
+    outcome.map_err(|text| text.replace(&root_text, "<root>").replace(&stock_text, ""))
 }
 
 /// The names each package of the library exports: `gnoblin-core`, `gnoblin-std`, and those of

@@ -1,0 +1,12 @@
+/* The one name this library exports: the loader finds the runtime through it (`gnoblin_core_abi::RUNTIME_ENTRY_SYMBOL`).
+   PyO3 also exports `PyInit__gnoblin_core` and `PyInit__gnoblin_std`, the initialisers of the built-in modules, and rustc's own version script lists them as
+   global. The interpreter reaches it through the inittab and nothing looks it up by name, so they are made local here: a name given
+   explicitly as local wins over the one rustc gave as global. `cargo xtask stage` and `dist-check` hold the library to this list. */
+{
+    global:
+        gnoruntime_entry_v1;
+    local:
+        PyInit__gnoblin_core;
+        PyInit__gnoblin_std;
+        *;
+};

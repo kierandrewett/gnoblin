@@ -33,10 +33,15 @@ pub const HONEST_BUDGET: Duration = Duration::from_secs(5);
 /// runaway one) must not be able to trip it. Such a test asserts that the script was interrupted, never when.
 pub const RUNAWAY_BUDGET: Duration = Duration::from_millis(500);
 
+/// The stock library of the source tree: what a prefix's `share/gnoblin/js` is made from.
+pub fn stock_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")
+}
+
 /// A shell config for a test whose scripts are honest: `root`, with call and frame budgets a loaded machine cannot
-/// exhaust, and the real clock.
+/// exhaust, and the real clock. The stock library is the source tree's.
 pub fn honest_config(root: impl Into<PathBuf>) -> JsShellConfig {
-    let mut config = JsShellConfig::new(root);
+    let mut config = JsShellConfig::new(root).with_stock(stock_dir());
     config.entry_budget = HONEST_BUDGET;
     config.frame_budget = HONEST_BUDGET * 2;
     config
@@ -52,7 +57,7 @@ pub fn timed_config(root: impl Into<PathBuf>) -> (JsShellConfig, ManualClock) {
 
 /// A runtime role over `root` for a test whose scripts are honest, with the budgets of [`honest_config`].
 pub fn honest_role_config(root: impl Into<PathBuf>) -> JsRoleConfig {
-    let mut config = JsRoleConfig::new(root, None);
+    let mut config = JsRoleConfig::new(root, Some(stock_dir()));
     config.shell.entry_budget = HONEST_BUDGET;
     config.shell.frame_budget = HONEST_BUDGET * 2;
     config

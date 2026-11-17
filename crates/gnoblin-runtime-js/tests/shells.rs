@@ -145,6 +145,12 @@ impl Run {
 }
 
 fn drive(script: &Path, steps: &[&str]) -> Run {
+    drive_in(script, steps, &repo_root().join("data/js"))
+}
+
+/// Like [`drive`], with the stock library read from `stock`: an installed prefix's `share/gnoblin/js`, which a test may make hold
+/// less than the source tree's.
+fn drive_in(script: &Path, steps: &[&str], stock: &Path) -> Run {
     let stage = stage();
     let mut all: Vec<PathBuf> = vec![PathBuf::from("reload"), script.to_owned()];
     all.extend(steps.iter().map(PathBuf::from));
@@ -154,6 +160,7 @@ fn drive(script: &Path, steps: &[&str]) -> Run {
         &refs,
         &[
             ("GNOBLIN_RUNTIME_DIR", stage.runtimes.as_path()),
+            ("GNOBLIN_JS_STOCK_DIR", stock),
             ("XDG_CACHE_HOME", stage.cache.as_path()),
             ("GNOBLIN_JS_CONSOLE", Path::new("0")),
         ],
@@ -174,6 +181,7 @@ fn scenario_in(dir: &Path, runtimes: &Path, name: &str, script: &Path) -> Run {
         &[name_path.as_path(), script],
         &[
             ("GNOBLIN_RUNTIME_DIR", runtimes),
+            ("GNOBLIN_JS_STOCK_DIR", repo_root().join("data/js").as_path()),
             ("XDG_CACHE_HOME", stage.cache.as_path()),
             ("GNOBLIN_JS_CONSOLE", Path::new("0")),
         ],

@@ -54,6 +54,10 @@ impl JsConfigLink for Doc {
             notices: Vec::new(),
         })
     }
+
+    fn reject(&mut self, _message: &str) -> Result<(), JsLinkError> {
+        Ok(())
+    }
 }
 
 struct World {

@@ -32,6 +32,9 @@ pub(crate) struct JsTrackEnd {
     pub(crate) tween: f64,
 }
 
+/// The signal the compositor raises on the `session` object when `gnoblinctl config reload` (or a script) asks for a reload.
+const RELOAD_REQUESTED: &str = "gnoblin.session.reload_requested";
+
 /// What the shell holds for the host API: the session connection, if it has one, the processes it started and the
 /// timed writes that ended since the last frame.
 #[derive(Default)]
@@ -39,6 +42,8 @@ pub(crate) struct JsHostApi {
     pub(crate) session: Option<Box<dyn JsSessionLink>>,
     pub(crate) processes: Processes,
     pub(crate) track_ends: Vec<JsTrackEnd>,
+    /// Whether the compositor raised `session.reload_requested` since the host last asked ([`Self::take_reload_request`]).
+    reload_requested: bool,
 }
 
 fn refusal(code: &str, message: &str) -> String {
@@ -50,6 +55,11 @@ fn process_refusal(error: &ProcessError) -> String {
 }
 
 impl JsHostApi {
+    /// Whether the compositor asked for a reload of the configuration since the last call, once.
+    pub(crate) fn take_reload_request(&mut self) -> bool {
+        std::mem::take(&mut self.reload_requested)
+    }
+
     /// Everything that happened outside the script since the last frame, as the events the module takes.
     pub(crate) fn poll(&mut self) -> Vec<Json> {
         let mut events = Vec::new();
@@ -66,6 +76,9 @@ impl JsHostApi {
                         }),
                     },
                     JsSessionEvent::Signal { name, object, fields } => {
+                        if name == RELOAD_REQUESTED {
+                            self.reload_requested = true;
+                        }
                         json!({ "kind": "signal", "name": name, "object": object, "fields": Json::Object(fields) })
                     }
                     JsSessionEvent::Lost(message) => json!({ "kind": "lost", "message": message }),

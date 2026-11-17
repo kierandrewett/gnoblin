@@ -81,6 +81,8 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     class_nodes: api_class_nodes,
     provider_register: api_provider_register,
     setting_set: api_setting_set,
+    report_config: api_report_config,
+    report_config_rejected: api_report_config_rejected,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -190,6 +192,32 @@ unsafe extern "C" fn api_request_reload(ctx: GnoblinCtx) -> i32 {
 
 unsafe extern "C" fn api_request_exit(ctx: GnoblinCtx, code: i32) -> i32 {
     guard(abi::E_PANIC, "request_exit", || crate::host::request_exit(ctx, code))
+}
+
+unsafe extern "C" fn api_report_config(ctx: GnoblinCtx, revision: u64, document: *const u8, len: usize) -> i32 {
+    guard(abi::E_PANIC, "report_config", || {
+        if len != 0 && document.is_null() {
+            set_code_error(abi::E_ERR, "report_config: a null document with a nonzero length");
+            return abi::E_ERR;
+        }
+        // SAFETY: the table's contract passes `document` as `len` readable bytes for the call; a zero length reads none.
+        let bytes = if len == 0 {
+            &[][..]
+        } else {
+            unsafe { slice::from_raw_parts(document, len) }
+        };
+        crate::host::report_config(ctx, revision, bytes)
+    })
+}
+
+unsafe extern "C" fn api_report_config_rejected(ctx: GnoblinCtx, revision: u64, reason: *const u8, len: usize) -> i32 {
+    guard(abi::E_PANIC, "report_config_rejected", || {
+        // SAFETY: the table's contract passes `reason` as `len` readable bytes for the call.
+        match unsafe { text(reason, len, "report_config_rejected") } {
+            Ok(reason) => crate::host::report_config_rejected(ctx, revision, reason),
+            Err(code) => code,
+        }
+    })
 }
 
 unsafe extern "C" fn api_buf_free(buf: *mut GnoblinBuf) -> i32 {

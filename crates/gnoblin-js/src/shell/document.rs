@@ -17,6 +17,33 @@ impl JsShell {
         self.state.borrow_mut().config.set_link(link);
     }
 
+    /// Refuses the reload of the configuration the compositor is holding a caller for, with `message`: the document in force stays and
+    /// the caller of `gnoblinctl config reload` reads the reason. A shell with no document connection has nobody to tell.
+    ///
+    /// # Errors
+    ///
+    /// The connection to the compositor failed.
+    pub fn reject_config_reload(&mut self, message: &str) -> Result<(), JsShellError> {
+        self.state
+            .borrow_mut()
+            .config
+            .reject(message)
+            .map_err(|error| JsShellError::Link(error.0))
+    }
+
+    /// Whether the shell has a connection for the configuration document: when it has, a load that commits nothing is a load whose
+    /// document the compositor did not take.
+    pub fn has_config_link(&self) -> bool {
+        self.state.borrow().config.has_link()
+    }
+
+    /// Whether the compositor asked for a reload of the configuration (`gnoblinctl config reload`, or a script's
+    /// `gnoblin.runtime.reloadConfig`) since the last call, once. The host answers it by reloading, which commits a revision or
+    /// is refused with [`reject_config_reload`](Self::reject_config_reload).
+    pub fn take_config_reload_requested(&mut self) -> bool {
+        self.state.borrow_mut().api.take_reload_request()
+    }
+
     /// Puts the running generation's document settings back after something else committed the document (the the retired shell
     /// host's own reload does, and its document has none of the shell's settings). The settings are laid over the
     /// document in force and committed; what the other commit set stays as it is.

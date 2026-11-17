@@ -2209,3 +2209,39 @@ Resolution and mappings:
   ABI, so the "old binary, new libraries" claim has no counterpart for it: the language runtimes are rebuilt with the core.
 - `std` is exercised at its minor and major only through the test knob's one added function; there is no std SDK wrapper for `uptime_ms`
   because nothing ships it.
+
+## 30. Implementation notes, M6.2 leftovers, M6.3 and M6.6 (lane JsCutover)
+
+What JsCutover built, where it differs from the text above, and why.
+
+### The role's duties move into the runtime (M6.2, M6.6)
+
+- **The document, the reports, the reload.** The in-process JS role keeps the configuration document the device objects write and commits it to the compositor through the in-process link. The guardian is told through two entries appended to the core's API table, `report_config(revision, document)` and `report_config_rejected(reason)` (the table is extensible and `abi.lock` records the growth: `GnoblinApi` 408 to 424 bytes). Both go to the `ShellReports` the compositor holds for an in-process shell, as the native shell's `ready` does. `gnoblinctl config reload` is answered by the generation the reload makes: with the revision it committed, or with `config-rejected` and the loader's text when the file does not load, and the revision in force stays.
+- **A failing shell is a failed start.** The old role ran the stock config when `shell.ts` threw. The in-process runtime reports the load failure with file, line and column and the session continues on the compositor's own window management; the docs say so.
+- **The old path is deleted, not shimmed.** `--role runtime`, `JsRoleRunner`, `JsRoleError`, `runner.rs` and the `gnoblin-js` entry of `BINARY_ROOTS` are gone. `js_runtime_role.rs` (which drove the runner on a thread) is replaced by `crates/gnoblin/tests/modular/document.rs`, which asserts the same duties on a real `gnoblin ./shell.ts` session (the process-level reload and starter scenarios are in `js_guardian.rs`): revision 1, `config.reload` answering revision 2, the refusal that keeps revision 1, a script that asks for its own reload, and the starter committing with no error in the log. `js_guardian.rs` keeps the guardian-session scenarios (`gnoblinctl config reload` reloading and refusing with the file position, the document committed as a revision, the watcher, the packaged starter as the default) on the real binary, with the shell in the compositor's process. The kill, freeze and lock-while-the-runtime-is-down scenarios of the old role have no counterpart there: the shell shares the compositor's process, and what happens when a shell fails, hangs or dies while the session is locked is `native_shell_failures.rs` and `js_lock*.rs`. The one thing the old role did that has no replacement yet is the notice that an `init.lua` with no `shell.ts` runs the stock config and names `gnoblinctl config migrate`: with no `shell.ts` the guardian now resolves no shell (or the packaged default), so the notice belongs to discovery (lane Startup).
+
+### The stock library is data (M6.3)
+
+`gnoblin-js` no longer embeds `data/js`. The loader serves `gnoblin-core/...` and `gnoblin-std/...` from the first directory of the stock search path that holds the package: `GNOBLIN_JS_STOCK_DIR`, then `$XDG_DATA_HOME/gnoblin/js` and `$XDG_DATA_DIRS/gnoblin/js`, then the `share/gnoblin/js` (or source-tree `data/js`) of the prefix of the core and of the executable. A missing package is `gnoblin-std is not installed (looked in: ...)`.
+
+The workspace `.cargo/config.toml` sets `GNOBLIN_JS_STOCK_DIR` for `cargo test` in a source tree. The starter (`data/js/starter/shell.ts`) is installed as `share/gnoblin/default-shell/shell.ts`, the discovery tier Startup added; `gnoblinctl config init` writes the same text.
+
+### Packaging
+
+`cargo xtask stage` builds the runtime libraries and puts them in `target/<profile>/runtimes/` (`GNOBLIN_RUNTIME_DIR` finds them); it refuses a Python runtime that exports more than `gnoruntime_entry_v1`. `dist-check` checks each runtime library for the entry symbol, the `NEEDED` set (the core, plus libpython for Python), no `SONAME` (the loader opens a unique copy) and the glibc ceiling.
+
+The Python runtime's `exports.map` makes PyO3's `PyInit__gnoblin_core` and `PyInit__gnoblin_std` local: a name given as local wins over the one rustc gave as global, and `#![allow(linker_messages)]` keeps lld's note about that from failing `clippy -D warnings`.
+
+### Real-session tests
+
+`crates/gnoblin/tests/modular/` is one test target with the examples that are scripts:
+
+- 4 (JS): ES modules tile real windows, bind a chord, and map only the runtime.
+- 5 (TS types): a shell of three files tiles, and an error is reported at its `.ts` line.
+- 7 (script binding): a binding in TS and one in Python move a real window; libpython is mapped.
+- 11 (hot reload): a shell and the module it imports reload in place in TS and Python, the client stays connected, no listener of an earlier generation fires, and a broken edit is reported at its line.
+- 17 (no std): a core-only shell runs; importing std is refused with the loader's text, for JS through a stock directory with no std in it and for Python through a prefix with the launcher and the core and no std beside them.
+
+Each asserts what the compositor's tree holds, what the process maps and what it logs.
+
+Found on the way: a Python chord written `Super+Right` is refused by the seat (the compositor's syntax is `<Super>Right`, as example 8 of the flip already uses); example 7 in Python and the Python docs now spell the chords the compositor's way. `examples/03-python-std` still binds `Super+1`, which the fake compositor of the runtime tests accepts and a real seat does not (lane SdkGenStd).

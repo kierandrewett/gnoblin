@@ -35,6 +35,19 @@ pub const USAGE: &str = "usage: cargo xtask stage [--release | --profile NAME] [
 const BUILT_NAME: &str = "libgnoblin_core_impl.so";
 /// The linker name of the core: what `-lgnoblin-core` finds in a directory named by `GNOBLIN_CORE_LIB_DIR`.
 const LINKER_NAME: &str = "libgnoblin-core.so";
+/// The directory of a build tree the runtimes are staged in, under the profile's directory.
+pub const RUNTIMES_DIR: &str = "runtimes";
+
+/// The language runtimes: what cargo names each `cdylib`, the name the loader looks it up by, and whether a tree without it is staged
+/// (the Python runtime links the system libpython, which a machine need not have).
+const RUNTIMES: [(&str, &str, bool); 2] = [
+    (crate::dist::RUNTIME_JS_BUILT_NAME, "libgnoblin-runtime-js.so", true),
+    (
+        crate::dist::RUNTIME_PYTHON_BUILT_NAME,
+        "libgnoblin-runtime-python.so",
+        false,
+    ),
+];
 /// What cargo names the std library's `cdylib`, and its linker name (`GNOBLIN_STD_LIB_DIR`).
 const STD_BUILT_NAME: &str = "libgnoblin_std_impl.so";
 const STD_LINKER_NAME: &str = "libgnoblin-std.so";
@@ -80,22 +93,31 @@ fn cargo_profile_args(profile: &str) -> Vec<String> {
 
 fn build(options: &StageOptions) -> Result<(), String> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    println!(
-        "[stage] cargo build -p gnoblin-core-impl -p gnoblin-std-impl {}",
-        cargo_profile_args(&options.profile).join(" ")
-    );
-    let status = Command::new(&cargo)
-        .args(["build", "-p", "gnoblin-core-impl", "-p", "gnoblin-std-impl"])
-        .args(cargo_profile_args(&options.profile))
-        .status()
-        .map_err(|error| format!("cannot run cargo: {error}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "`cargo build -p gnoblin-core-impl -p gnoblin-std-impl` failed ({status})"
-        ))
+    let run = |packages: &[&str]| -> Result<(), String> {
+        let named: Vec<&str> = packages.iter().flat_map(|package| ["-p", *package]).collect();
+        println!(
+            "[stage] cargo build {} {}",
+            named.join(" "),
+            cargo_profile_args(&options.profile).join(" ")
+        );
+        let status = Command::new(&cargo)
+            .arg("build")
+            .args(&named)
+            .args(cargo_profile_args(&options.profile))
+            .status()
+            .map_err(|error| format!("cannot run cargo: {error}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("`cargo build {}` failed ({status})", named.join(" ")))
+        }
+    };
+    run(&["gnoblin-core-impl", "gnoblin-std-impl", "gnoblin-runtime-js"])?;
+    // The Python runtime links the system libpython: a machine without its development files has a tree without that runtime.
+    if let Err(message) = run(&["gnoblin-runtime-python"]) {
+        println!("[stage] the Python runtime was not built, so `.py` shells have no runtime in this tree: {message}");
     }
+    Ok(())
 }
 
 /// Checks the library Cargo wrote in `dir` and links it under the SONAME and the linker name. Returns the SONAME link.
@@ -143,6 +165,32 @@ fn stage_std_dir(dir: &Path) -> Result<Option<PathBuf>, String> {
     Ok(Some(soname))
 }
 
+/// Checks each language runtime Cargo wrote in `dir` and links it into `dir/gnoblin/` under the name the loader looks for. Returns the
+/// links made. A runtime that was not built is skipped, which is how a tree without Python reads.
+fn stage_runtimes_dir(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut staged = Vec::new();
+    for (built_name, installed_name, _) in RUNTIMES {
+        let built = dir.join(built_name);
+        if !built.exists() {
+            continue;
+        }
+        let runtime = elf::read(&built).map_err(|error| format!("{}: {error}", built.display()))?;
+        let problems = dist_check::check_runtime(&runtime);
+        if !problems.is_empty() {
+            return Err(format!(
+                "{} is not a shippable runtime, so it is not staged:\n  {}",
+                built.display(),
+                problems.join("\n  ")
+            ));
+        }
+        let link = dir.join(RUNTIMES_DIR).join(installed_name);
+        std::fs::create_dir_all(dir.join(RUNTIMES_DIR)).map_err(|error| error.to_string())?;
+        crate::dist::write_link(&link, &format!("../{built_name}")).map_err(|error| error.to_string())?;
+        staged.push(link);
+    }
+    Ok(staged)
+}
+
 pub fn run(args: &[String]) -> ExitCode {
     let target_dir = std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| PathBuf::from("target"), PathBuf::from);
     let options = match parse(args, target_dir) {
@@ -162,10 +210,26 @@ pub fn run(args: &[String]) -> ExitCode {
         if options.build && std.is_none() {
             return Err(format!("{} was not built", dir.join(STD_BUILT_NAME).display()));
         }
-        Ok((core, std))
+        let runtimes = stage_runtimes_dir(&dir)?;
+        if options.build && runtimes.is_empty() {
+            return Err(format!(
+                "{} was not built",
+                dir.join(crate::dist::RUNTIME_JS_BUILT_NAME).display()
+            ));
+        }
+        Ok((core, std, runtimes))
     })();
     match staged {
-        Ok((soname, std)) => {
+        Ok((soname, std, runtimes)) => {
+            for runtime in runtimes {
+                println!(
+                    "[stage] {}: GNOBLIN_RUNTIME_DIR={} finds it",
+                    runtime.display(),
+                    runtime
+                        .parent()
+                        .map_or_else(String::new, |dir| dir.display().to_string())
+                );
+            }
             println!(
                 "[stage] {} -> {BUILT_NAME}: `gnoblin` in {} finds its core through $ORIGIN",
                 soname.display(),

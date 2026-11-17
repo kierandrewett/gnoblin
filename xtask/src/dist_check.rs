@@ -219,6 +219,60 @@ pub fn check_std_library(elf: &Elf) -> Vec<String> {
     problems
 }
 
+/// What a language runtime must satisfy (`libgnoblin-runtime-<language>.so`, which the loader opens by file name when a script of
+/// its language is selected): a module and not a library (no SONAME, so the loader's private copy cannot be taken for another
+/// library), the one export `gnoruntime_entry_v1`, the core it calls through the table and nothing else of ours (a runtime never
+/// loads std: a script that wants it reaches it through the installed library), and no symbol the core does not export. A runtime
+/// may need the system library of its language (`libpython3.N.so`), which is not ours.
+pub fn check_runtime(elf: &Elf) -> Vec<String> {
+    let mut problems = Vec::new();
+    if let Some(soname) = &elf.soname {
+        problems.push(format!(
+            "has the SONAME `{soname}`: a runtime is a module the loader opens by path, and a SONAME would let the dynamic loader take it for a library"
+        ));
+    }
+    if !elf.needed.iter().any(|needed| is_core(needed)) {
+        problems.push(format!(
+            "does not need `{}`: it calls the core through the table and one export (NEEDED: {:?})",
+            abi::SONAME,
+            elf.needed
+        ));
+    }
+    if let Some(other) = elf
+        .needed
+        .iter()
+        .find(|needed| needed.starts_with("libgnoblin") && !is_core(needed))
+    {
+        problems.push(format!(
+            "needs `{other}`: a runtime links the core and no other gnoblin library"
+        ));
+    }
+    let extra: Vec<&String> = elf
+        .defined
+        .iter()
+        .filter(|name| name.as_str() != abi::RUNTIME_ENTRY_SYMBOL)
+        .collect();
+    if !extra.is_empty() {
+        problems.push(format!(
+            "exports {extra:?}: a runtime exports only `{}` (a version script hides the rest)",
+            abi::RUNTIME_ENTRY_SYMBOL
+        ));
+    }
+    if !elf.defined.iter().any(|name| name == abi::RUNTIME_ENTRY_SYMBOL) {
+        problems.push(format!(
+            "does not export `{}`: it is not a gnoblin runtime",
+            abi::RUNTIME_ENTRY_SYMBOL
+        ));
+    }
+    let exports = core_exports();
+    for name in elf.undefined.iter().filter(|name| name.starts_with("gnoblin_")) {
+        if !exports.contains(name) {
+            problems.push(format!("references `{name}`, which the core does not export"));
+        }
+    }
+    problems
+}
+
 /// The newest glibc symbol version any of `files` requires, against an optional ceiling.
 pub fn check_glibc(files: &[(String, Elf)], ceiling: Option<(u32, u32)>) -> (Option<(u32, u32)>, Vec<String>) {
     let newest = files.iter().filter_map(|(_, elf)| elf.glibc).max();
@@ -318,6 +372,12 @@ pub fn check_layout(root: &Path, libdir: &str) -> Vec<String> {
             problems.push(format!("{dir}/ is missing"));
         }
     }
+    if !root.join("share/gnoblin/default-shell/shell.ts").is_file() {
+        problems.push(
+            "share/gnoblin/default-shell/shell.ts is missing: the starter is the packaged default shell (design section 7.2, tier 7)"
+                .to_owned(),
+        );
+    }
     for package in ["gnoblin-core", "gnoblin-std"] {
         let index = format!("share/gnoblin/js/{package}/index.ts");
         if !root.join(&index).is_file() {
@@ -327,6 +387,24 @@ pub fn check_layout(root: &Path, libdir: &str) -> Vec<String> {
         }
     }
     problems
+}
+
+/// The language runtimes in `dir` (`libgnoblin-runtime-<language>.so`, which sit directly in the core's `gnoblin/` directory), sorted.
+pub fn installed_runtimes(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("libgnoblin-runtime-") && name.ends_with(".so"))
+        })
+        .collect();
+    found.sort();
+    found
 }
 
 /// The shared objects under `dir` that a shell package installed, found recursively and sorted.
@@ -903,6 +981,20 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
                     check_core_only_shell(&shell)
                 };
                 outcome.report(&format!("installed shell {}", path.display()), &problems);
+            }
+        }
+    }
+
+    // The language runtimes the install carries (`<libdir>/gnoblin/libgnoblin-runtime-*.so`) and the ones a build tree has staged
+    // (`<profile>/runtimes/`, `cargo xtask stage`).
+    let runtime_dirs = libdir
+        .iter()
+        .map(|libdir| libdir.join("gnoblin"))
+        .chain(staged_dir.iter().map(|dir| dir.join(crate::stage::RUNTIMES_DIR)));
+    for dir in runtime_dirs {
+        for path in installed_runtimes(&dir) {
+            if let Some(runtime) = read_elf(&path, &mut outcome, &mut files) {
+                outcome.report(&format!("runtime {}", path.display()), &check_runtime(&runtime));
             }
         }
     }
