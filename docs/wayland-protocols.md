@@ -45,9 +45,19 @@ and keyboard interactivity, and Gnoblin answers as the protocol says:
   a maximised window is the space the bars leave. The zones of the surfaces on
   an output add up, and a surface that exits, or an output that is
   disconnected, gives its strip back.
+- A second bar on the same edge sits against the first. A surface with a zone
+  of `0` is placed in the space the bars leave, and one with a zone of `-1` is
+  placed against the whole output.
+- It draws the surface in its layer: `background` and `bottom` are under every
+  window, `top` and `overlay` above them, and a popup of a layer surface is
+  drawn above all of them. A surface that has not drawn a buffer is not drawn.
+- The pointer goes to the surface it is over, so a window under a bar hears
+  nothing of a click on the bar. A surface that is not drawn takes no pointer.
 - A surface on the `top` or `overlay` layer that asks for exclusive keyboard
   interactivity keeps the keyboard until it exits, even when a new window
-  would take focus. A surface on `background` or `bottom` does not.
+  would take focus. A surface on `background` or `bottom` does not. A surface
+  that asks for keyboard focus on demand gets it when you click it, and gives
+  it back when you click anything else.
 - A popup that belongs to a layer surface is placed against that surface, and
   a repositioned popup stays inside it.
 

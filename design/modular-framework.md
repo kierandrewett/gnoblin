@@ -2299,11 +2299,13 @@ last 30 s ...; DEGRADED ...; <callback> has run for 3.1s and has not returned`).
   notes of this lane but no code is left in the tree. The verbs need a `VerbLink` over the owner socket (`gnoblin_client::Client`) and a
   feed of its answers and signals into the mailbox; the catalog already carries `gnoblin.session` and its signals, but not the signals'
   field names, so the feed needs them first.
-- **G6, layer surfaces**: the compositor draws no layer-shell surface at all (`surface_shell.rs`, `design/node-core.md`: "the compositor
-  does not draw layer surfaces; their buffers are not in the scene"), so a rectangle the shell sets is configured, published and used for
-  the work area and the surface's popups, and never drawn. This was established by reading the composer and the layer-shell module, not by
-  a test of pixels, and no fix was made: drawing them needs the layer's buffer in the frame (below the windows for `background` and
-  `bottom`, above them for `top` and `overlay`), damage on commit, frame callbacks and pointer picking, which is a lane of its own.
+- **G6, layer surfaces** (resolved by lane LayerDraw): the compositor drew no layer-shell surface at all, so a rectangle the shell
+  set was configured, published and used for the work area and the surface's popups, and never drawn. The test of pixels that was
+  missing (`crates/gnoblin-wayland/tests/layer_draw.rs`: a real client's solid-colour buffer read back through the screenshot path)
+  failed on the tree before the change and passes after it. A layer surface is drawn at the protocol's rectangle and at the
+  shell's (`placement_override`), in the protocol's order, with damage, frame callbacks and pointer picking (`design/node-core.md`,
+  "Surface overrides"). Not done: the `closed` event when a surface's output goes, a fullscreen window above the `top` layer, and a
+  test of `wl_surface.enter` for a layer surface.
 - **State retention and adoption across two reloads in a real session (M5.4)** was not run against the real binary. The fake-compositor
   test of example 10 remains the proof (section 20).
 

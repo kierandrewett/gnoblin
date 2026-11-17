@@ -176,20 +176,23 @@ is additive and defaults to the protocol's own behaviour, so a shell that writes
   slide, resize) still keeps it on the monitor, and writes the place it settled on back to `x` and `y`. A popup whose
   positioner is _reactive_ is configured at the place (`xdg_popup.configure`), so the client's idea of its place is what
   is drawn. `xdg_popup` allows no configure after the first for a popup that is not reactive, so such a popup is drawn and
-  picked at the place without being told, as a subsurface is. A popup of a layer surface has no node.
+  picked at the place without being told, as a subsurface is. A popup of a layer surface is a child of the layer surface's node and is placed by the same rules, against the layer surface's own origin.
 - **Layer surface.** The node's `x`, `y`, `width` and `height` are the rectangle the protocol computed from the anchors,
   margins and size, published as the compositor places the surface. While `placement_override` is true they are the
   shell's: the surface is configured at that size (`zwlr_layer_surface_v1.configure` is still sent, and the client still
   has the anchors and size it asked for), the rectangle is the one its popups are constrained to and the session publishes,
   and `reserve` replaces the strip its exclusive zone takes out of the work area (`[0, 0, 0, 0]` takes none). A width or
-  height of 0 keeps the protocol's size on that axis. The compositor does not draw layer surfaces (their buffers are not in
-  the scene), so the node carries the rectangle and the shell draws or leaves them as it likes.
+  height of 0 keeps the protocol's size on that axis. The compositor draws the surface's buffer at the node's origin, at the
+  size the buffer has, in the order the protocol names the layers: `background` and `bottom` under every window and every node
+  of the shell's, `top` and `overlay` above them, and the popups of every layer surface above all of those. `visible` false
+  hides it.
 - **Restack and hide.** `stack` orders a popup or subsurface among the surfaces that hang from its parent, in the order
   the scene draws and the pointer finds them: a negative number is behind the parent's own pixels, a positive one in front,
   and equal numbers keep the protocol's order. A window with a surface the shell placed, restacked or hid is picked from
   that order and not from the protocol's tree, so the pointer reaches what is drawn. A hidden surface is neither drawn nor
   picked, and a hidden popup that holds a grab is dismissed (`popup_done`): a popup nobody can see must not keep the
-  keyboard and the pointer. Nothing else about a popup's grab changes.
+  keyboard and the pointer. Nothing else about a popup's grab changes. A layer surface's `stack` orders it among the surfaces
+  of its layer (higher is drawn and picked above), and a popup of a layer surface is above every layer surface.
 - **Not done.** A surface-level input region override falls out of none of the above, so there is none: the pointer still
   reaches a surface through the input region its client set.
 

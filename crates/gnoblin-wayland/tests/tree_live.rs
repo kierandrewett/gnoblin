@@ -1109,12 +1109,12 @@ impl ClassInfo for SurfaceTable {
 /// the placement back when the shell lets go of the tree.
 #[test]
 fn a_shells_transaction_places_a_layer_node_in_the_frame_and_the_detach_gives_it_back() {
-    use gnoblin_backend::render::compose::{LayerNodeInfo, LayerOverride};
+    use gnoblin_backend::render::compose::{LayerBand, LayerNodeInfo, LayerOverride};
 
     let mut composer = Composer::new();
     let info = LayerNodeInfo {
         namespace: "bar".to_owned(),
-        layer: "top",
+        layer: LayerBand::Top,
         anchor: vec!["top".to_owned()],
         margin: [0.0; 4],
         requested: [0.0, 30.0],

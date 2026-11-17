@@ -314,7 +314,7 @@ What is refused and when the overrides count:
 - `xdg_popup` allows no configure after the first for a popup that is not reactive. Such a popup is drawn and picked at the
   place without being told.
 - A hidden popup that holds a grab is dismissed, because a popup nobody can see must not keep the keyboard and the pointer.
-- A popup of a layer surface has no node.
+- A popup of a layer surface is a child of its layer surface's node. It is placed, restacked and hidden like any other popup.
 
 **Layer surfaces.** The node's `x`, `y`, `width` and `height` start as the rectangle the protocol computed from the anchors,
 margins and size.
@@ -325,12 +325,15 @@ margins and size.
 - The rectangle is also the one the surface's popups are placed against and the one the session reports.
 - `reserve` sets the strip the surface takes out of the work area. `[0, 0, 0, 0]` takes none, and an empty list keeps the
   strip the surface's own exclusive zone asks for.
-- The compositor does not draw layer surfaces. The node carries the rectangle, and the shell draws or ignores the surface.
+- The compositor draws the surface's buffer at the rectangle, in its layer: `background` and `bottom` under every window,
+  `top` and `overlay` above them. A popup of a layer surface is drawn above every layer.
 
 **Restack and hide.** The pointer reaches what is drawn and nothing that is hidden.
 
 - `stack` orders a popup or subsurface among the surfaces that hang from its parent.
 - A negative number is behind the parent's own pixels and a positive one in front. Equal numbers keep the protocol's order.
+- On a layer surface, `stack` orders it among the surfaces of its layer: a higher number is drawn and picked above a lower
+  one. Setting `visible` to `false` hides a layer surface, and its client is not answered frame callbacks while it is hidden.
 
 A surface-level input region override is not offered: the pointer still reaches a surface through the input region its
 client set.

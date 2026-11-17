@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
 use gnoblin_config::Protocols;
-use gnoblin_types::{DeviceId, Point};
+use gnoblin_types::{DeviceId, OutputId, Point};
 use gnoblin_wayland::{Config, ControlHandle, Ledger, LoopError, MemoryLimits, Server, SessionSnapshot, TreeHooks};
 use gnoblin_wayland::{NewWindowFocus, WmOptions};
 use wayland_client::backend::WaylandError;
@@ -132,6 +132,46 @@ impl Handle {
             button: BTN_LEFT,
             pressed: false,
         });
+    }
+
+    /// The only output's identity.
+    pub fn output(&self) -> OutputId {
+        *self
+            .windows()
+            .outputs()
+            .first()
+            .expect("a headless session starts with one output")
+    }
+
+    /// The pixels the output shows now, as the screenshot path reads them back.
+    pub fn screenshot(&self) -> gnoblin_render_frame::image::Image {
+        self.control
+            .screenshot(self.output())
+            .expect("the loop answers a screenshot request")
+    }
+
+    /// The colour the output shows at one point, as red, green, blue and alpha.
+    pub fn probe(&self, x: i32, y: i32) -> [u8; 4] {
+        self.screenshot()
+            .colour_at(x, y)
+            .unwrap_or_else(|| panic!("the probe at ({x}, {y}) is inside the output"))
+    }
+
+    /// Waits until the output shows `colour` at (`x`, `y`), and fails with the colour it showed last.
+    #[track_caller]
+    pub fn wait_for_pixel(&self, x: i32, y: i32, colour: [u8; 4]) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let shown = self.probe(x, y);
+            if shown == colour {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the output never showed {colour:?} at ({x}, {y}); the last frame showed {shown:?} there"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 
     /// Clicks the session's only window and returns the serial the button carried to `client`: a serial the session
@@ -303,6 +343,18 @@ impl Session {
             ..Config::default()
         };
         Self::launch(Box::new(Headless::new()), config)
+    }
+
+    /// Creates a session on a given headless backend (the software renderer or the GLES one), with a shell's tree
+    /// attached: the pixel tests run the same body on every renderer the machine offers.
+    pub fn start_on(backend: Headless, tree: TreeHooks) -> Self {
+        Self::create_with(Box::new(backend), Protocols::default(), WmOptions::default(), tree)
+    }
+
+    /// The session's control handle, for what a test sets before the session runs: a pixel test that reads what a
+    /// surface looks like once it has landed turns the motion off, so a window that maps is not still fading in.
+    pub fn control(&self) -> ControlHandle {
+        self.handle.control.clone()
     }
 
     /// Builds the session from `config`, on sockets of its own in a temporary directory.

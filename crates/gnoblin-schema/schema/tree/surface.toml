@@ -7,11 +7,12 @@ name = "surface"
 since = "0.2.0"
 base = "node"
 
-# `popup`, `subsurface`, `layer`, `lock`, `cursor`, or `drag`. A window's popups and subsurfaces are children of the
-# window's node that the compositor draws, so the tree can name them; the shell cannot reparent or destroy them. What it
-# may do with them is `placement_override`, `stack`, `visible` and, for a layer surface, `reserve` (below). The compositor
-# makes a node for each popup and subsurface of a window and for each layer-shell surface; a session lock, the cursor and
-# a drag icon have none, and the lock card and the compositor's own dialogs are never nodes.
+# `popup`, `subsurface`, `layer`, `lock`, `cursor`, or `drag`. The popups and subsurfaces of a window are children of the
+# window's node that the compositor draws, and those of a layer surface are children of its node, so the tree can name them;
+# the shell cannot reparent or destroy them. What it may do with them is `placement_override`, `stack`, `visible` and, for a
+# layer surface, `reserve` (below). The compositor makes a node for each popup and subsurface of a window or of a layer
+# surface and for each layer-shell surface, and draws the layer surface's pixels at its node; a session lock, the cursor and a
+# drag icon have none, and the lock card and the compositor's own dialogs are never nodes.
 [[object.property]]
 name = "role"
 type = "string"
@@ -52,10 +53,12 @@ type = "bool"
 since = "0.2.0"
 default = false
 
-# The paint and pick order of a popup or subsurface among the surfaces that hang from the same parent: lower is further
-# down. 0 (the default) is the order the protocol and the compositor give, and a negative number puts the surface behind
-# its parent's own pixels, a positive one in front. Surfaces with the same number keep the protocol's order. Read only
-# while `placement_override` is true. A layer surface is not drawn by the compositor, so the number has no effect on it.
+# The paint and pick order of a popup, subsurface or layer surface among its siblings: lower is further down. 0 (the default)
+# is the order the protocol and the compositor give. For a popup or a subsurface the siblings are the surfaces that hang from
+# the same parent, and a negative number puts the surface behind its parent's own pixels, a positive one in front. For a layer
+# surface they are the surfaces in its layer: the higher number is drawn and picked above the lower, and equal numbers keep
+# the order the surfaces were created in. A popup of a layer surface is above every layer surface, so its number orders it
+# among its own siblings only. Read only while `placement_override` is true.
 [[object.property]]
 name = "stack"
 type = "int"

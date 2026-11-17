@@ -214,6 +214,7 @@ mod frame_policy;
 mod gpu_memory;
 mod interactive;
 mod keyboard;
+mod layer_draw;
 mod liveness;
 mod lock_auth;
 mod lock_card;

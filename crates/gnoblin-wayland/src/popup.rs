@@ -27,6 +27,7 @@ use smithay::utils::{IsAlive, Logical, Point, SERIAL_COUNTER, Serial};
 use smithay::wayland::compositor::{get_parent, get_role, with_states};
 use smithay::wayland::shell::xdg::{PopupSurface, SurfaceCachedState, XDG_POPUP_ROLE, XdgPopupSurfaceData};
 
+use gnoblin_backend::render::compose::TreeOwner;
 use gnoblin_types::WindowId;
 
 use crate::State;
@@ -131,8 +132,8 @@ impl State {
         position: Point<f64, Logical>,
     ) -> Option<(WlSurface, Point<f64, Logical>)> {
         // A window with a surface the shell placed or hid is picked from the order the scene draws its surfaces in.
-        if self.window_has_surface_overrides(window) {
-            return self.shell_surface_under(window, position, true);
+        if self.owner_has_surface_overrides(TreeOwner::Window(window)) {
+            return self.shell_surface_under(TreeOwner::Window(window), position, true);
         }
         let root = self.windows.get(&window)?.surface.wl_surface()?;
         // The window's frame is its window geometry, and a popup is placed from the surface's own origin, which starts
@@ -169,10 +170,10 @@ impl State {
         self.window_of(&root)
     }
 
-    /// A window moved or changed size: its reactive popups are placed again against the new geometry, and the
-    /// client is told where they went. A popup that did not ask to be reactive stays where it was put.
-    pub(crate) fn reposition_reactive_popups(&mut self, window: WindowId) {
-        let Some(root) = self.windows.get(&window).and_then(|entry| entry.surface.wl_surface()) else {
+    /// A window or a layer surface moved or changed size: its reactive popups are placed again against the new geometry,
+    /// and the client is told where they went. A popup that did not ask to be reactive stays where it was put.
+    pub(crate) fn reposition_reactive_popups(&mut self, owner: TreeOwner) {
+        let Some(root) = self.tree_root_surface(owner) else {
             return;
         };
         for (popup, _) in PopupManager::popups_for_surface(&root) {
@@ -187,7 +188,7 @@ impl State {
                 log::debug!(area = "xdg", ?error, "a reactive popup could not be moved");
             }
         }
-        self.mark_surface_tree_dirty(window);
+        self.mark_surface_tree_dirty(owner);
     }
 
     /// An `xdg_popup.grab`: the popup takes the keyboard and the pointer follows its client.

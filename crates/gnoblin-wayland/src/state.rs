@@ -66,7 +66,7 @@ use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
 use gnoblin_backend::render::compose::{
-    BellFlash, Composer, Content, DecorationWanted, MainSeatPolicy, ScreenInfo, Setting,
+    BellFlash, Composer, Content, DecorationWanted, MainSeatPolicy, ScreenInfo, Setting, TreeOwner,
 };
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocol, Protocols, TitlebarAction};
@@ -81,6 +81,7 @@ use gnoblin_wm_api::{Open, Standing, WindowKind, WindowManager, WindowState, WmE
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::frame_policy::{CallbackPacer, Pacing};
 use crate::keyboard::KeyboardTables;
+use crate::layer_draw::LayerPick;
 use crate::modal::{Modal, ModalEvent};
 use crate::observation::{
     LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedWindow, Observer, PresentAnswer, SessionSnapshot,
@@ -1222,7 +1223,8 @@ impl State {
         let output_id = self
             .window_of(surface)
             .and_then(|window| self.wm.window(window))
-            .and_then(|window| window.output);
+            .and_then(|window| window.output)
+            .or_else(|| self.layers.entry_of(surface).and_then(|entry| entry.output));
         let entry = output_id
             .and_then(|output| self.outputs.iter().find(|entry| entry.backend == output))
             .or_else(|| self.outputs.first());
@@ -1377,7 +1379,9 @@ impl State {
         for entry in &mut self.outputs {
             entry.primary = layout.primary == Some(entry.backend);
         }
-
+        // A mode that changed moved the edges the layer surfaces are anchored to, and a surface made before the first output
+        // is placed on it now.
+        self.layers_follow_outputs();
         let shadows: Vec<crate::output_policy::OutputShadow> = connected
             .iter()
             .filter(|output| !real_ids.contains(&output.id))
@@ -1627,7 +1631,7 @@ impl State {
                 } => {
                     self.composer.place_window(window, geometry);
                     self.configure(window, geometry, state);
-                    self.reposition_reactive_popups(window);
+                    self.reposition_reactive_popups(TreeOwner::Window(window));
                 }
                 WmEffect::Visible { window, visible } => {
                     self.composer.set_window_visible(window, visible);
@@ -1841,6 +1845,11 @@ impl State {
         if self.lock.state() != LockState::Unlocked {
             log::debug!(area = "focus", ?focused, "withheld while the session is covered");
             return;
+        }
+        // A window that takes the focus takes it from a layer surface the user focused on demand: the protocol leaves that to
+        // the compositor's usual way of moving the focus, which clicking a window and mapping one are.
+        if focused.is_some() {
+            self.layers.on_demand = None;
         }
         // A keyboard-exclusive layer surface above the shell layer keeps the keyboard:
         // the protocol makes that promise for the top and overlay layers, so a bar's
@@ -2770,6 +2779,7 @@ impl State {
                     }
                 }
             }
+            self.answer_layer_frame_callbacks(time);
         }
         for surface in self.owner_mapped_lock_surfaces() {
             Self::done_frame_callbacks(&surface, time);
@@ -2849,7 +2859,7 @@ impl State {
     /// The callbacks of a subsurface or a popup are the client's to wait for exactly as a toplevel's are: they are
     /// part of the same frame, and a client that paces a subsurface or a menu by them would stall for ever on a
     /// compositor that answered the root alone.
-    fn done_frame_callbacks(surface: &WlSurface, time: u32) {
+    pub(crate) fn done_frame_callbacks(surface: &WlSurface, time: u32) {
         with_surface_tree_downward(
             surface,
             (),
@@ -3257,6 +3267,10 @@ impl State {
         if self.lock.state() != LockState::Unlocked || !self.composer.holder_attached() {
             return None;
         }
+        // A layer surface drawn above the shell's nodes covers them.
+        if self.layer_above_at(position) {
+            return None;
+        }
         self.composer.shell_node_at(PointF::new(position.x, position.y))
     }
 
@@ -3341,6 +3355,7 @@ impl State {
         match phase {
             TouchPhase::Down => {
                 // A press on a window asks for activation, as a pointer press does.
+                self.layer_press(location);
                 self.activate_at(location);
                 // A point that lands on nothing reaches no client.
                 let Some((surface, origin)) = self.surface_under(location) else {
@@ -3496,6 +3511,10 @@ impl State {
     /// picks, otherwise the window under the ray. A window's pointer edges are the shell's to read (its focus and
     /// raise policy follows them), and still reach the window's client as well.
     fn pointer_target(&self, position: SmithayPoint<f64, Logical>) -> Option<(NodeId, PointF)> {
+        // A layer surface drawn above the windows takes the pointer from the shell's nodes and every window beneath it.
+        if self.layer_above_at(position) {
+            return None;
+        }
         if let Some(pick) = self.shell_pick(position) {
             return Some(pick);
         }
@@ -3525,6 +3544,14 @@ impl State {
         if self.lock.state() != LockState::Unlocked {
             return self.lock_surface_under(position);
         }
+        // The popups of the layer surfaces are above everything, and the layers above the windows cover the shell's nodes
+        // and the windows both.
+        if let Some(hit) = self
+            .layer_surface_under(position, LayerPick::Popups)
+            .or_else(|| self.layer_surface_under(position, LayerPick::Above))
+        {
+            return Some(hit);
+        }
         // A shell node the ray picks covers the windows beneath it: the pointer goes to the shell.
         if self.shell_pick(position).is_some() {
             return None;
@@ -3535,10 +3562,13 @@ impl State {
         if let Some(popup) = self.popup_under(position, picked.as_ref().map(|(window, _)| *window)) {
             return Some(popup);
         }
-        let (window, local) = picked?;
+        // Nothing is over the layers beneath the windows at this point: they are what the pointer is over, if anything.
+        let Some((window, local)) = picked else {
+            return self.layer_surface_under(position, LayerPick::Below);
+        };
         // A window with a surface the shell placed or hid is picked from the order the scene draws its surfaces in.
-        if self.window_has_surface_overrides(window) {
-            return self.shell_surface_under(window, position, false);
+        if self.owner_has_surface_overrides(TreeOwner::Window(window)) {
+            return self.shell_surface_under(TreeOwner::Window(window), position, false);
         }
         let root = self.windows.get(&window)?.surface.wl_surface()?;
         // The scene picks the window by its node, which is the window geometry, so the point it reports is relative to
@@ -4195,6 +4225,7 @@ impl Host for State {
                     None => self.pointer_target(self.pointer_position),
                 };
                 if pressed && held.is_none() {
+                    self.layer_press(self.pointer_position);
                     self.shell_grab = target
                         .filter(|(node, local)| self.is_grabbable(*node, *local))
                         .map(|(node, _)| (node, button));

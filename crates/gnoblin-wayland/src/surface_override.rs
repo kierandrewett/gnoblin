@@ -47,9 +47,8 @@ use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::{TraversalAction, with_states, with_surface_tree_downward};
 use smithay::wayland::shell::xdg::PopupSurface;
 
-use gnoblin_backend::render::compose::TreeSurfaceRole;
+use gnoblin_backend::render::compose::{TreeOwner, TreeSurfaceRole};
 use gnoblin_lock::State as LockState;
-use gnoblin_types::WindowId;
 
 use crate::State;
 use crate::log;
@@ -105,8 +104,8 @@ impl State {
     pub(crate) fn follow_surface_overrides(&mut self) {
         self.follow_popup_overrides();
         self.follow_layer_overrides();
-        for window in self.composer.follow_surface_shell() {
-            self.mark_surface_tree_dirty(window);
+        for owner in self.composer.follow_surface_shell() {
+            self.mark_surface_tree_dirty(owner);
         }
         self.flush_surface_trees();
     }
@@ -123,11 +122,11 @@ impl State {
         }
         let kind = PopupKind::Xdg(popup.clone());
         let root = find_popup_root_surface(&kind).ok()?;
-        let window = self.window_of(&root)?;
+        let owner = self.root_owner(&root)?;
         let key = key_of(popup.wl_surface());
         let (x, y) = self
             .composer
-            .window_surface_shell(window)
+            .surface_shell(owner)
             .into_iter()
             .find(|surface| surface.key == key && surface.role == TreeSurfaceRole::Popup)?
             .placed?;
@@ -159,15 +158,11 @@ impl State {
         let apply = self.surface_overrides_apply();
         let mut seen = BTreeSet::new();
         let mut hidden = BTreeSet::new();
-        let windows: Vec<WindowId> = self.windows.keys().copied().collect();
-        for window in windows {
-            let shell = self.composer.window_surface_shell(window);
+        for (owner, root) in self.tree_roots() {
+            let shell = self.composer.surface_shell(owner);
             if shell.is_empty() && self.surface_overrides.popups.is_empty() {
                 continue;
             }
-            let Some(root) = self.windows.get(&window).and_then(|entry| entry.surface.wl_surface()) else {
-                continue;
-            };
             for (popup, _) in PopupManager::popups_for_surface(&root) {
                 let PopupKind::Xdg(xdg) = popup else {
                     continue;
@@ -197,7 +192,7 @@ impl State {
                     self.unplace_popup(&xdg, reactive)
                 };
                 if changed {
-                    self.mark_surface_tree_dirty(window);
+                    self.mark_surface_tree_dirty(owner);
                 }
             }
         }
@@ -244,24 +239,26 @@ impl State {
         true
     }
 
-    /// Whether the shell placed or hid a surface of this window, so its surfaces are picked from the scene.
-    pub(crate) fn window_has_surface_overrides(&self, window: WindowId) -> bool {
-        self.surface_overrides_apply() && !self.composer.window_surface_shell(window).is_empty()
+    /// Whether the shell placed or hid a surface of this owner's tree, so its surfaces are picked from the scene.
+    pub(crate) fn owner_has_surface_overrides(&self, owner: TreeOwner) -> bool {
+        self.surface_overrides_apply() && !self.composer.surface_shell(owner).is_empty()
     }
 
-    /// The surface of a window under a global position, found in the order the scene draws the window's surfaces in. With
-    /// `popups` it considers the popups and what hangs from them, otherwise everything else, the window's own surface
-    /// among it. The answer is in the shape [`State::surface_under`] gives: the surface and its origin in global
-    /// coordinates.
+    /// The surface of an owner's tree under a global position, found in the order the scene draws the owner's surfaces in. With
+    /// `popups` it considers the popups and what hangs from them, otherwise everything else, the root surface among it. The
+    /// answer is in the shape [`State::surface_under`] gives: the surface and its origin in global coordinates.
     pub(crate) fn shell_surface_under(
         &self,
-        window: WindowId,
+        owner: TreeOwner,
         position: Point<f64, Logical>,
         popups: bool,
     ) -> Option<(WlSurface, Point<f64, Logical>)> {
-        let root = self.windows.get(&window)?.surface.wl_surface()?;
-        let frame = self.composer.window_frame(window)?;
-        for candidate in self.composer.window_pick_order(window) {
+        let root = self.tree_root_surface(owner)?;
+        let frame = match owner {
+            TreeOwner::Window(window) => self.composer.window_frame(window)?,
+            TreeOwner::Layer(node) => self.composer.layer_frame(node)?,
+        };
+        for candidate in self.composer.pick_order(owner) {
             if candidate.popup != popups {
                 continue;
             }

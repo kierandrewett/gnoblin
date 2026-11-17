@@ -41,20 +41,20 @@ use smithay::wayland::compositor::{
     SubsurfaceCachedState, TraversalAction, get_children, get_parent, is_sync_subsurface, with_surface_tree_upward,
 };
 
-use gnoblin_backend::render::compose::{TreeSurface, TreeSurfaceRole};
+use gnoblin_backend::render::compose::{TreeOwner, TreeSurface, TreeSurfaceRole};
 use gnoblin_render_frame::frame::SurfaceSource;
-use gnoblin_types::WindowId;
+use gnoblin_types::NodeId;
 
 use crate::State;
 use crate::popup::popup_origin;
 use crate::protocols::wp_alpha_modifier_v1::committed_factor;
 use crate::state::committed_content;
 
-/// The windows whose surface trees are to be built again before the next frame, and the surfaces that committed
-/// since the last build.
+/// The surface trees that are to be built again before the next frame, and the surfaces that committed since the last
+/// build.
 #[derive(Debug, Default)]
 pub(crate) struct SurfaceTrees {
-    dirty: BTreeSet<WindowId>,
+    dirty: BTreeSet<TreeOwner>,
     committed: BTreeSet<u64>,
 }
 
@@ -74,8 +74,7 @@ fn add_synchronized_keys(surface: &WlSurface, keys: &mut BTreeSet<u64>) {
 }
 
 impl State {
-    /// A surface committed: its window's tree is built again before the next frame, with this surface's pixels
-    /// damaged.
+    /// A surface committed: its owner's tree is built again before the next frame, with this surface's pixels damaged.
     ///
     /// The commit of a surface that is not a synchronized subsurface applies, with its own, the commits the
     /// synchronized subsurfaces under it held back, so their pixels may have changed now: they are damaged too.
@@ -84,45 +83,84 @@ impl State {
         if !is_sync_subsurface(surface) {
             add_synchronized_keys(surface, &mut self.surface_trees.committed);
         }
-        if let Some(window) = self.tree_window_of(surface) {
-            self.surface_trees.dirty.insert(window);
+        if let Some(owner) = self.tree_owner_of(surface) {
+            self.surface_trees.dirty.insert(owner);
         }
     }
 
-    /// A window's tree changed in a way no commit says.
-    pub(crate) fn mark_surface_tree_dirty(&mut self, window: WindowId) {
-        self.surface_trees.dirty.insert(window);
+    /// An owner's tree changed in a way no commit says.
+    pub(crate) fn mark_surface_tree_dirty(&mut self, owner: TreeOwner) {
+        self.surface_trees.dirty.insert(owner);
     }
 
-    /// A surface or a popup went, and which window it belonged to is no longer known.
+    /// A surface or a popup went, and which owner it belonged to is no longer known.
     pub(crate) fn mark_all_surface_trees_dirty(&mut self) {
-        self.surface_trees.dirty.extend(self.windows.keys().copied());
+        let layers: Vec<NodeId> = self.layers.entries.iter().filter_map(|entry| entry.node).collect();
+        self.surface_trees
+            .dirty
+            .extend(self.windows.keys().map(|window| TreeOwner::Window(*window)));
+        self.surface_trees
+            .dirty
+            .extend(layers.into_iter().map(TreeOwner::Layer));
     }
 
-    /// The window a surface belongs to: the window of its root through its subsurface parents, or, for a popup or a
-    /// subsurface of one, the window its popup chain hangs from. `None` for a surface that is neither, such as a
-    /// layer surface's.
-    fn tree_window_of(&self, surface: &WlSurface) -> Option<WindowId> {
+    /// The owner a surface belongs to: the owner of its root through its subsurface parents, or, for a popup or a
+    /// subsurface of one, the owner its popup chain hangs from. `None` for a surface that is neither a window's nor a
+    /// layer surface's, such as a lock surface.
+    pub(crate) fn tree_owner_of(&self, surface: &WlSurface) -> Option<TreeOwner> {
         let mut root = surface.clone();
         while let Some(parent) = get_parent(&root) {
             root = parent;
         }
-        if let Some(window) = self.window_of(&root) {
-            return Some(window);
+        if let Some(owner) = self.root_owner(&root) {
+            return Some(owner);
         }
         let popup = self.popups.find_popup(&root)?;
-        self.window_of(&find_popup_root_surface(&popup).ok()?)
+        self.root_owner(&find_popup_root_surface(&popup).ok()?)
     }
 
-    /// Hands the composer the tree of every window marked since the last frame.
+    /// The owner whose root surface is `root`: a window, or a layer surface.
+    pub(crate) fn root_owner(&self, root: &WlSurface) -> Option<TreeOwner> {
+        self.window_of(root)
+            .map(TreeOwner::Window)
+            .or_else(|| self.layers.node_of(root).map(TreeOwner::Layer))
+    }
+
+    /// The root surface of an owner's tree, or `None` when the owner is gone or has no Wayland surface (an X11 window).
+    pub(crate) fn tree_root_surface(&self, owner: TreeOwner) -> Option<WlSurface> {
+        match owner {
+            TreeOwner::Window(window) => self.windows.get(&window)?.surface.wl_surface(),
+            TreeOwner::Layer(node) => Some(self.layers.entry_of_node(node)?.surface.wl_surface().clone()),
+        }
+    }
+
+    /// Every owner of a surface tree that has a Wayland root surface, with the surface: the windows, then the layer
+    /// surfaces.
+    pub(crate) fn tree_roots(&self) -> Vec<(TreeOwner, WlSurface)> {
+        let windows = self
+            .windows
+            .iter()
+            .filter_map(|(window, entry)| Some((TreeOwner::Window(*window), entry.surface.wl_surface()?)));
+        let layers = self
+            .layers
+            .entries
+            .iter()
+            .filter_map(|entry| Some((TreeOwner::Layer(entry.node?), entry.surface.wl_surface().clone())));
+        windows.chain(layers).collect()
+    }
+
+    /// Hands the composer the tree of every owner marked since the last frame.
     pub(crate) fn flush_surface_trees(&mut self) {
         let trees = std::mem::take(&mut self.surface_trees);
-        for window in trees.dirty {
-            let Some(root) = self.windows.get(&window).and_then(|entry| entry.surface.wl_surface()) else {
+        for owner in trees.dirty {
+            let Some(root) = self.tree_root_surface(owner) else {
                 continue;
             };
             let surfaces = surfaces_of(&root, &trees.committed);
-            self.composer.set_window_surfaces(window, surfaces);
+            match owner {
+                TreeOwner::Window(window) => self.composer.set_window_surfaces(window, surfaces),
+                TreeOwner::Layer(node) => self.composer.set_layer_surfaces(node, surfaces),
+            }
         }
     }
 }

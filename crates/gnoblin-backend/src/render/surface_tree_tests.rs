@@ -142,7 +142,7 @@ fn node_of(composer: &Composer, window: WindowId) -> NodeId {
 
 /// The node of the surface `key` of `window`.
 fn tree_node(composer: &Composer, window: WindowId, key: u64) -> NodeId {
-    composer.windows[&window].tree_nodes[&key].node
+    composer.windows[&window].tree.nodes[&key].node
 }
 
 #[test]
@@ -298,7 +298,7 @@ fn a_surface_whose_parent_is_not_in_the_list_is_not_drawn() {
         RED,
         "a surface with no parent is not drawn over the window"
     );
-    assert!(composer.windows[&window].tree_nodes.is_empty());
+    assert!(composer.windows[&window].tree.nodes.is_empty());
 }
 
 #[test]
@@ -577,7 +577,7 @@ fn a_hidden_window_draws_no_popup_and_draws_it_again_when_shown() {
         BACKGROUND,
         "a hidden window's popup is hidden with it"
     );
-    assert!(composer.windows[&window].tree_nodes.is_empty());
+    assert!(composer.windows[&window].tree.nodes.is_empty());
 
     composer.set_window_visible(window, true);
     let image = shown(&mut composer, output);
@@ -596,7 +596,7 @@ fn a_tree_given_before_the_window_has_a_node_is_built_with_it() {
     composer.insert_window(window, WINDOW);
     composer.set_window_surfaces(window, vec![popup(10, (90, 90), (40, 40), BLUE)]);
     assert!(
-        composer.windows[&window].tree_nodes.is_empty(),
+        composer.windows[&window].tree.nodes.is_empty(),
         "no node yet, so no surface nodes"
     );
 
@@ -1314,7 +1314,7 @@ fn a_subsurface_the_shell_placed_is_drawn_where_it_wrote_and_where_the_client_pu
     );
     assert_eq!(
         composer.follow_surface_shell(),
-        vec![window],
+        vec![TreeOwner::Window(window)],
         "the window is told it changed"
     );
     let image = shown(&mut composer, output);
@@ -1322,7 +1322,7 @@ fn a_subsurface_the_shell_placed_is_drawn_where_it_wrote_and_where_the_client_pu
     assert_eq!(probe(&image, 165, 165), BLUE, "and is where the shell wrote");
     assert_eq!(
         composer.follow_surface_shell(),
-        Vec::<WindowId>::new(),
+        Vec::<TreeOwner>::new(),
         "a change is noticed once"
     );
 
@@ -1395,7 +1395,7 @@ fn a_popup_stays_where_the_protocol_configured_it_because_the_protocol_engine_mo
         "a popup moves with its configure, not with the node"
     );
     assert_eq!(
-        composer.window_surface_shell(window),
+        composer.surface_shell(TreeOwner::Window(window)),
         vec![SurfaceShell {
             key: 10,
             role: TreeSurfaceRole::Popup,
@@ -1437,7 +1437,7 @@ fn the_shells_stack_orders_surfaces_that_share_a_parent_and_a_negative_one_goes_
     composer.follow_surface_shell();
     let image = shown(&mut composer, output);
     assert_eq!(probe(&image, 115, 115), BLUE, "stack 1 raises it over the other");
-    let order = composer.window_pick_order(window);
+    let order = composer.pick_order(TreeOwner::Window(window));
     assert_eq!(
         order.iter().map(|surface| surface.key).collect::<Vec<_>>(),
         vec![Some(10), Some(11), None],
@@ -1452,7 +1452,7 @@ fn the_shells_stack_orders_surfaces_that_share_a_parent_and_a_negative_one_goes_
         GREEN,
         "a negative stack is behind its parent, and the other is over the window"
     );
-    let order = composer.window_pick_order(window);
+    let order = composer.pick_order(TreeOwner::Window(window));
     assert_eq!(
         order.iter().map(|surface| surface.key).collect::<Vec<_>>(),
         vec![Some(11), None, Some(10)],
@@ -1477,7 +1477,7 @@ fn a_surface_the_shell_hid_is_not_drawn_or_picked_and_nor_is_anything_that_hangs
     assert_eq!(probe(&image, 118, 118), RED, "and so is the one under it");
     assert_eq!(
         composer
-            .window_pick_order(window)
+            .pick_order(TreeOwner::Window(window))
             .iter()
             .map(|surface| surface.key)
             .collect::<Vec<_>>(),
@@ -1485,7 +1485,7 @@ fn a_surface_the_shell_hid_is_not_drawn_or_picked_and_nor_is_anything_that_hangs
         "the pointer reaches neither"
     );
     assert_eq!(
-        composer.window_surface_shell(window),
+        composer.surface_shell(TreeOwner::Window(window)),
         vec![SurfaceShell {
             key: 10,
             role: TreeSurfaceRole::Subsurface,
@@ -1509,7 +1509,7 @@ fn the_pick_order_is_the_draw_order_with_popups_above_everything() {
     below.behind = true;
     let above = subsurface(11, (5, 5), (10, 10), GREEN);
     composer.set_window_surfaces(window, vec![below, above, popup(12, (90, 90), (40, 40), BLUE)]);
-    let order = composer.window_pick_order(window);
+    let order = composer.pick_order(TreeOwner::Window(window));
     assert_eq!(
         order,
         vec![
@@ -1564,7 +1564,7 @@ fn a_layer_surfaces_node_carries_its_request_and_is_the_shells_to_place() {
     let (mut composer, _output, _window) = drawing();
     let info = LayerNodeInfo {
         namespace: "bar".to_owned(),
-        layer: "top",
+        layer: LayerBand::Top,
         anchor: vec!["top".to_owned(), "left".to_owned(), "right".to_owned()],
         margin: [1.0, 2.0, 3.0, 4.0],
         requested: [0.0, 30.0],

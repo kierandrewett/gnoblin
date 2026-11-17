@@ -525,11 +525,11 @@ impl Composer {
         }
     }
 
-    /// The pixels each node of `nodes` draws from, with their size: a window's surface or a canvas. A window's buffer
-    /// is shared, not read, so a GPU renderer samples the client's own memory and a GPU buffer needs no readback.
-    pub(super) fn view_sources(&self, nodes: &BTreeSet<NodeId>) -> BTreeMap<NodeId, ViewPixels> {
-        let mut pictures = BTreeMap::new();
-        for entry in self.windows.values() {
+    /// The pixels every surface a View can draw is made of: each window's own surface and the surfaces of its tree, and each
+    /// layer surface's own and the surfaces of its tree. Each comes with the node that draws it and, when the picture does
+    /// not start at the node's corner, where it lies in the node and the node's rectangle.
+    fn drawn_sources(&self) -> impl Iterator<Item = (NodeId, &SurfaceSource, Option<(Rect, Rect)>)> {
+        let windows = self.windows.values().flat_map(|entry| {
             let placement = Self::own_placement(entry);
             let own = entry
                 .node
@@ -537,29 +537,47 @@ impl Composer {
                 .map(|(node, source)| (node, source, placement));
             let below = entry
                 .tree
+                .list
                 .iter()
-                .filter_map(|surface| Some((entry.tree_nodes.get(&surface.key)?.node, &surface.source, None)));
-            for (node, source, placement) in own.into_iter().chain(below) {
-                let (true, Some(size)) = (nodes.contains(&node), source_size(source)) else {
-                    continue;
-                };
-                let crop = match placement {
-                    None => None,
-                    Some((local, frame)) => match view_crop(local, frame, size) {
-                        Some(crop) => Some(crop),
-                        // The buffer lies wholly outside the window geometry: nothing of it is the window.
-                        None => continue,
-                    },
-                };
-                pictures.insert(
-                    node,
-                    ViewPixels {
-                        source: source.clone(),
-                        size,
-                        crop,
-                    },
-                );
-            }
+                .filter_map(|surface| Some((entry.tree.nodes.get(&surface.key)?.node, &surface.source, None)));
+            own.into_iter().chain(below)
+        });
+        let layers = self.layer_nodes.iter().flat_map(|(node, layer)| {
+            let own = layer.source.as_ref().map(|source| (*node, source, None));
+            let below = layer
+                .tree
+                .list
+                .iter()
+                .filter_map(|surface| Some((layer.tree.nodes.get(&surface.key)?.node, &surface.source, None)));
+            own.into_iter().chain(below)
+        });
+        windows.chain(layers)
+    }
+
+    /// The pixels each node of `nodes` draws from, with their size: a window's or a layer surface's, or a canvas. A buffer
+    /// is shared, not read, so a GPU renderer samples the client's own memory and a GPU buffer needs no readback.
+    pub(super) fn view_sources(&self, nodes: &BTreeSet<NodeId>) -> BTreeMap<NodeId, ViewPixels> {
+        let mut pictures = BTreeMap::new();
+        for (node, source, placement) in self.drawn_sources() {
+            let (true, Some(size)) = (nodes.contains(&node), source_size(source)) else {
+                continue;
+            };
+            let crop = match placement {
+                None => None,
+                Some((local, frame)) => match view_crop(local, frame, size) {
+                    Some(crop) => Some(crop),
+                    // The buffer lies wholly outside the window geometry: nothing of it is the window.
+                    None => continue,
+                },
+            };
+            pictures.insert(
+                node,
+                ViewPixels {
+                    source: source.clone(),
+                    size,
+                    crop,
+                },
+            );
         }
         for (node, picture) in &self.canvases {
             if let (true, Some(image)) = (nodes.contains(node), picture.image.as_ref()) {
@@ -586,28 +604,17 @@ impl Composer {
         reader: &mut ReadDmabuf<'_>,
     ) -> BTreeMap<NodeId, Image> {
         let mut pictures: BTreeMap<NodeId, Image> = BTreeMap::new();
-        for entry in self.windows.values() {
-            let placement = Self::own_placement(entry);
-            let own = entry
-                .node
-                .zip(entry.buffer.as_ref())
-                .map(|(node, source)| (node, source, placement));
-            let below = entry
-                .tree
-                .iter()
-                .filter_map(|surface| Some((entry.tree_nodes.get(&surface.key)?.node, &surface.source, None)));
-            for (node, source, placement) in own.into_iter().chain(below) {
-                let Some(image) = nodes.contains(&node).then(|| source_picture(source, reader)).flatten() else {
-                    continue;
-                };
-                // A window's own picture is the part of its buffer inside the window geometry, which is what the
-                // node's rectangle is.
-                let image = match placement {
-                    Some((local, frame)) => geometry_crop(&image, local, frame),
-                    None => image,
-                };
-                pictures.insert(node, image);
-            }
+        for (node, source, placement) in self.drawn_sources() {
+            let Some(image) = nodes.contains(&node).then(|| source_picture(source, reader)).flatten() else {
+                continue;
+            };
+            // A window's own picture is the part of its buffer inside the window geometry, which is what the
+            // node's rectangle is.
+            let image = match placement {
+                Some((local, frame)) => geometry_crop(&image, local, frame),
+                None => image,
+            };
+            pictures.insert(node, image);
         }
         // A View of a subtree that holds canvases draws them too. The view renderer blends straight alpha and a
         // canvas picture is premultiplied, as every snapshot is.
