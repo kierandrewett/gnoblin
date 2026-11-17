@@ -20,7 +20,7 @@ use crate::callback::traceback_text;
 use crate::module::_gnoblin_core;
 
 #[repr(C)]
-struct DlInfo {
+struct AddressInfo {
     fname: *const c_char,
     fbase: *mut c_void,
     sname: *const c_char,
@@ -28,7 +28,7 @@ struct DlInfo {
 }
 
 unsafe extern "C" {
-    fn dladdr(addr: *const c_void, info: *mut DlInfo) -> c_int;
+    fn dladdr(addr: *const c_void, info: *mut AddressInfo) -> c_int;
     fn dlopen(path: *const c_char, flags: c_int) -> *mut c_void;
 }
 
@@ -38,7 +38,7 @@ const RTLD_GLOBAL: c_int = 0x100;
 
 /// The library that holds the code at `address`, as the dynamic loader knows it.
 fn library_of(address: *const c_void) -> Option<PathBuf> {
-    let mut info = DlInfo {
+    let mut info = AddressInfo {
         fname: core::ptr::null(),
         fbase: core::ptr::null_mut(),
         sname: core::ptr::null(),

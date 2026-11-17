@@ -39,6 +39,7 @@ libraries=(
     "mesa-vulkan-drivers|mesa-vulkan-drivers" # lavapipe, the software Vulkan device the renderer's 38 tests run on
     "libwayland-dev|wayland-devel"            # wayland-sys probes wayland-client and wayland-server with pkg-config unless its dlopen feature is on
     "libdrm-dev|libdrm-devel"                 # drm-sys and smithay's DRM backend: pkg-config libdrm
+    "libpython3-dev|python3-devel"            # gnoblin-runtime-python: pyo3 finds python3 and links -lpython3.N
 )
 
 # scripts/wlcs.sh builds Canonical's wlcs with cmake against the Wayland development files.

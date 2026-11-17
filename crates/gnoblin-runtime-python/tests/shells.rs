@@ -468,6 +468,9 @@ fn example_11_editing_the_shell_and_a_module_it_imports_reloads_it_in_place_with
             "mark:three",
             "dump",
             "stats",
+            // The programs the listeners started run on their own clock: give them time before the shell ends.
+            "sleep:300",
+            "pump",
             "stop",
         ],
     );

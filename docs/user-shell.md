@@ -7,7 +7,7 @@ Your `shell.ts` replaces the default: it is the whole configuration, and what it
 `gnoblinctl config init` to start from the full default as code you can read and cut down. This page shows how to grow an
 `shell.ts` from a few lines into your own shell.
 
-New to the file? Start with the [TypeScript shell](typescript-shell.md), which writes a first `shell.ts`.
+New to the file? Start with the [TypeScript shell](typescript-shell.md), which writes a first `shell.ts`. A shell may be a Python script too: see the [Python shell](python-shell.md).
 
 ## The two packages
 

@@ -19,10 +19,10 @@ use gnoblin_core_abi::{GnoblinApi, GnoblinCtx};
 use pyo3::prelude::*;
 
 use crate::errors::to_py;
-use crate::watch::Watch;
+use crate::watch::FileWatch;
 
 /// Everything the runtime keeps for the shell thread.
-pub(crate) struct State {
+pub(crate) struct ShellState {
     pub(crate) api: &'static GnoblinApi,
     /// The handle of each generation that has not ended.
     pub(crate) handles: HashMap<GnoblinCtx, Gnoblin>,
@@ -36,7 +36,7 @@ pub(crate) struct State {
     processes: HashMap<u64, (GnoblinCtx, Process)>,
     next_token: u64,
     /// The files of the serving generation, and what to do when one changes.
-    pub(crate) watch: Watch,
+    pub(crate) watch: FileWatch,
     /// The files of the staged generation, which become the watch when it is activated.
     pub(crate) pending_watch: Option<Vec<(String, i128, u64, u64)>>,
     /// What builds a `gnoblin.Node` from an id, for a value that is a node.
@@ -44,7 +44,7 @@ pub(crate) struct State {
 }
 
 thread_local! {
-    static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
+    static STATE: RefCell<Option<ShellState>> = const { RefCell::new(None) };
 }
 
 /// The poster of the generation that serves (or, before one does, the one that evaluates): callable from any thread.
@@ -55,7 +55,7 @@ pub(crate) const WRONG_THREAD: &str =
     "gnoblin calls run on the shell thread; from another thread, hand the work to `gnoblin.post(fn)`";
 
 /// Runs `f` on the state, or returns `None` when this thread has none (not the shell thread, or no shell is running).
-pub(crate) fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> Option<R> {
+pub(crate) fn with_state<R>(f: impl FnOnce(&mut ShellState) -> R) -> Option<R> {
     STATE.with(|slot| slot.borrow_mut().as_mut().map(f))
 }
 
@@ -64,7 +64,7 @@ pub(crate) fn init(api: &'static GnoblinApi) {
     STATE.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.is_none() {
-            *slot = Some(State {
+            *slot = Some(ShellState {
                 api,
                 handles: HashMap::new(),
                 current: 0,
@@ -73,7 +73,7 @@ pub(crate) fn init(api: &'static GnoblinApi) {
                 subscriptions: HashMap::new(),
                 processes: HashMap::new(),
                 next_token: 1,
-                watch: Watch::default(),
+                watch: FileWatch::default(),
                 pending_watch: None,
                 node_factory: None,
             });
@@ -160,9 +160,10 @@ pub(crate) fn poster() -> Option<Poster> {
 
 /// Writes a line to the core's log, from any thread.
 pub(crate) fn log(level: LogLevel, text: &str) {
-    match poster() {
-        Some(poster) => poster.log_at(level, text),
-        None => eprintln!("gnoblin python: {text}"),
+    // Before a generation exists there is no core handle to log through; the one place that can happen is a failed boot, whose
+    // reason also goes back to the host as the failure of `start`.
+    if let Some(poster) = poster() {
+        poster.log_at(level, text);
     }
 }
 

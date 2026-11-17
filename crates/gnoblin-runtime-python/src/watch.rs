@@ -47,14 +47,14 @@ impl Stamp {
 
 /// The files of the serving generation and the state of the request for a reload.
 #[derive(Default)]
-pub(crate) struct Watch {
+pub(crate) struct FileWatch {
     files: Vec<(PathBuf, Stamp)>,
     last: Option<Instant>,
     /// Whether a reload was asked for and has not started yet.
     requested: bool,
 }
 
-impl Watch {
+impl FileWatch {
     /// Watches `files`, each with the stamp the loader read it at.
     pub(crate) fn replace(&mut self, files: Vec<(String, i128, u64, u64)>) {
         self.files = files

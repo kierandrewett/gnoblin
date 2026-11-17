@@ -47,6 +47,10 @@ const LINK_PREFIX: &str = "symlink:";
 /// `libgnoblin-runtime-js.so`, the name the loader looks for.
 const RUNTIME_JS_BUILT_NAME: &str = "libgnoblin_runtime_js.so";
 
+/// What cargo names the Python runtime's `cdylib` (`libgnoblin_runtime_python.so`); dist installs it as
+/// `libgnoblin-runtime-python.so`, the name the loader looks for a `.py` shell's runtime under.
+const RUNTIME_PYTHON_BUILT_NAME: &str = "libgnoblin_runtime_python.so";
+
 /// What cargo names the core's `cdylib` (`libgnoblin_core_impl.so`); dist installs it under the SONAME's name.
 const CORE_BUILT_NAME: &str = "libgnoblin_core_impl.so";
 
@@ -227,6 +231,12 @@ const ITEMS: &[InstallItem] = &[
         name: RUNTIME_JS_BUILT_NAME,
         to: "@LIBDIR@/gnoblin/libgnoblin-runtime-js.so",
     },
+    // The Python runtime, the same way: optional, opened when a `.py` shell is selected. It links the system libpython, so a package of
+    // it depends on the distribution's Python of the version it was built against.
+    InstallItem::BuiltIfPresent {
+        name: RUNTIME_PYTHON_BUILT_NAME,
+        to: "@LIBDIR@/gnoblin/libgnoblin-runtime-python.so",
+    },
     InstallItem::Generated {
         to: "include/gnoblin/core.h",
         kind: Generated::CoreHeader,
@@ -267,6 +277,12 @@ const ITEMS: &[InstallItem] = &[
     InstallItem::Tree {
         from: "data/js/gnoblin-std",
         to: "share/gnoblin/js/gnoblin-std",
+    },
+    // The Python package a `.py` shell imports (`from gnoblin import gnoblin`), with its type declarations. The runtime puts this
+    // directory on the `sys.path` of its own interpreter, found from the prefix of the core library (`share/gnoblin/python`).
+    InstallItem::Tree {
+        from: "data/python",
+        to: "share/gnoblin/python",
     },
     // The two places a shell package installs into: launcher files under `share`, the modules they name under the core's
     // library directory (`module` in a launcher file is relative to it; `$libdir/gnoblin/` is also where the runtime
@@ -759,6 +775,10 @@ fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), DistError> 
     for path in entries {
         let kind = fs::symlink_metadata(&path).map_err(io_at(&path))?.file_type();
         if kind.is_dir() {
+            // Python's bytecode cache, which a run of a source tree leaves beside the package, is not part of it.
+            if path.file_name().is_some_and(|name| name == "__pycache__") {
+                continue;
+            }
             collect_files(&path, files)?;
         } else if kind.is_file() {
             files.push(path);
@@ -1317,6 +1337,29 @@ mod tests {
             .expect("the runtime is planned");
         assert_eq!(runtime.mode, FileMode::Program);
         assert!(matches!(runtime.content, PlannedContent::File(_)));
+    }
+
+    #[test]
+    fn the_python_runtime_and_its_package_are_installed_where_the_loader_and_the_runtime_look() {
+        let dir = scratch("dist-plan-runtime-python");
+        let built = fake_build(&dir, None, None);
+        let without = plan(&repo_root(), &built.join("release"), "lib64").unwrap();
+        assert!(without.iter().all(|entry| !entry.to.contains("runtime-python")));
+        fs::write(built.join("release").join(RUNTIME_PYTHON_BUILT_NAME), b"fake runtime").unwrap();
+        let with = plan(&repo_root(), &built.join("release"), "lib64").unwrap();
+        let runtime = with
+            .iter()
+            .find(|entry| entry.to == "lib64/gnoblin/libgnoblin-runtime-python.so")
+            .expect("the runtime is planned");
+        assert_eq!(runtime.mode, FileMode::Program);
+        for wanted in [
+            "share/gnoblin/python/gnoblin/__init__.py",
+            "share/gnoblin/python/gnoblin/__init__.pyi",
+            "share/gnoblin/python/gnoblin/_loader.py",
+            "share/gnoblin/python/_gnoblin_core.pyi",
+        ] {
+            assert!(with.iter().any(|entry| entry.to == wanted), "{wanted} is installed");
+        }
     }
 
     #[test]

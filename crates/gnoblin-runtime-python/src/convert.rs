@@ -83,10 +83,10 @@ pub(crate) fn from_python(value: &Bound<'_, PyAny>, kind: Option<u32>) -> PyResu
         return Ok(Value::Bytes(bytes.as_bytes().to_vec()));
     }
     if value.is_instance_of::<PyList>() || value.is_instance_of::<PyTuple>() {
-        if let Ok(texts) = value.extract::<Vec<String>>() {
-            if !texts.is_empty() {
-                return Ok(Value::Texts(texts));
-            }
+        if let Ok(texts) = value.extract::<Vec<String>>()
+            && !texts.is_empty()
+        {
+            return Ok(Value::Texts(texts));
         }
         return Ok(Value::List(value.extract::<Vec<f64>>().map_err(|_| {
             PyTypeError::new_err("a list written to the tree holds numbers only, or strings only")

@@ -1669,3 +1669,88 @@ version string; the engine linked into a binary keeps an empty one.
   `gnoblin-core` runs, which is the part of the example this lane can show; `gnoblin-std is not installed (looked in: ...)` belongs with the
   step that makes the installed directory the source.
 - **`dist-check`** does not yet check the runtime library (one export `gnoruntime_entry_v1`, `NEEDED` the core only).
+
+## 24. Implementation notes, M6.5 (PyRuntime)
+
+What the PyRuntime lane built, where it differs from sections 6, 8.2 and 10.1, and what is still missing.
+
+### 24.1 The binding approach, and what it costs
+
+- **PyO3 0.30 against the system libpython** (the first row of the table in 10.1), in `crates/gnoblin-runtime-python`, a `cdylib` that exports
+  `gnoruntime_entry_v1` and nothing else of ours. No `abi3`: an embedding host links one concrete libpython, and `abi3` would not remove
+  that. PyO3 and its four helper crates (`pyo3-ffi`, `pyo3-build-config`, `pyo3-macros`, `pyo3-macros-backend`) are the new dependencies,
+  with `target-lexicon` and `heck`; the licence is `MIT OR Apache-2.0`, both on the `deny.toml` list. None is named `-sys`, so
+  `native-libs` has nothing to classify; the system need is `libpython3-dev` (`python3-devel`), added to
+  `scripts/ci-install-system-libraries.sh`, because `cargo build --workspace` now links `-lpython3.N`. The build needs a `python3` on the
+  `PATH` (or `PYO3_PYTHON`); the tests ran on the box's Debian 12 Python 3.11.
+- **The runtime is written on the SDK**, like std. It makes a `Gnoblin` for each generation with `gnoblin_core::private::gnoblin_for(ctx)` and calls
+  the node, event, input, process and state functions of the table through it: no mirror, no relay. This differs from the JavaScript runtime
+  (23.2), which keeps the engine's own mirror and relays the compositor's link, because that engine is a shell of 15 thousand lines. The
+  Python surface is small and is exactly the SDK's, so the runtime has no copy of the tree and no compositor logic.
+- **`_gnoblin_core` is a built-in module of the interpreter** (registered with `append_to_inittab!` before `Py_Initialize`), under that name and not
+  `gnoblin._core`: a dotted name cannot be a PyO3 module name. The package imports it through `gnoblin/_native.py`, which turns the
+  failure outside a shell into one sentence that says what to do. It is generic by name (a class, property, method or signal is named as the
+  catalog names it), so the typed classes need no line of Rust.
+- **libpython is made global at start.** The loader opens the runtime `RTLD_LOCAL`, so its `NEEDED` libpython would stay private and a C
+  extension module (`import math`, `_json`, numpy) would fail on its first unresolved symbol. `interp.rs` finds the library with `dladdr` on
+  `Py_IsInitialized` and reopens it `RTLD_NOLOAD | RTLD_GLOBAL`, which changes its visibility and maps nothing.
+- **The package is found without a registry:** `$GNOBLIN_PYTHON_DIR`, then `share/gnoblin/python` (and `data/python` of a source tree) under
+  each of the four nearest ancestors of the core library this process mapped (`dladdr` on a table function, which is not the runtime's
+  unlinked private copy) and of the executable, then `$XDG_DATA_HOME` and `$XDG_DATA_DIRS`. It is put on the `sys.path` of the embedded
+  interpreter only. `xtask dist` installs the runtime to `<libdir>/gnoblin/libgnoblin-runtime-python.so` when the build made it, and the
+  package to `share/gnoblin/python/`.
+
+### 24.2 Generations, reload and isolation
+
+- **Staged and committed by the loader.** `start` imports the script into a fresh namespace beside the serving one and leaves it staged;
+  the runtime exports `activate` and `abandon` (the optional two of 23.1), because a staged script has real state to make serving or to
+  undo. `shutdown` of a replaced generation only forgets its handles; the core removes its registrations (the callbacks' `drop_user` drops the Python
+  references), which is the whole of "no listener twice".
+- **The loader is `gnoblin/_loader.py`.** Before a generation runs, the modules the previous one imported from beside the script are taken
+  out of `sys.modules`; a meta-path finder, put in front of the path finder, finds them under the script's directory and gives them a
+  loader that compiles the source every time and never reads a `.pyc` (the `.pyc` check is the source's size and its time in whole seconds,
+  so an edit that keeps the size within a second would otherwise run the old code: the test edits exactly that). `__main__` is the
+  generation's script while it runs. A failure of any kind (a syntax error, an exception, `SystemExit`) puts the previous modules,
+  `__main__` and finder back, so the serving generation and its later `import` statements see exactly what they had. Libraries outside the
+  script's directory are shared, and what a script patches in them is not undone.
+- **Failure text.** The loader returns `FILE:LINE: Type: message` for the innermost frame in the shell's directory (the `SyntaxError`'s own
+  place for a syntax error), which the host prints in its `reload ... failed, still running generation N` line, and the runtime logs the whole traceback.
+  A callback's exception is logged the same way and the callback returns `E_PANIC` to the core (the SDK trampoline turns an unwind with a
+  payload no panic hook sees into that code), so it counts as a callback failure and the next event is still delivered.
+- **The watcher is the runtime's `turn`, on the real clock.** The files of the serving generation are recorded as the loader read them (time in
+  nanoseconds, size, inode: so an editor's write and rename is seen, and so is a file that goes away), looked at every 100 ms, and a change
+  becomes `request_reload`. After a failed reload the watch is the serving generation's files, the failed attempt's, and the script's
+  directory, so a module created later is noticed and an unchanged broken file is not retried. `turn` also runs the core's dispatch with the interpreter's
+  lock released, waiting at most 50 ms, so a script's own threads run while the shell waits and the host's loop is not spun.
+- **Threads.** Every call goes through a thread-local on the shell thread, so another thread gets a `GnoblinError` that names `gnoblin.post`.
+  `log` and `post` use a `Poster` and are the only calls that work anywhere.
+
+### 24.3 The generated classes
+
+The owner's steer to this lane: language SDKs are generated from the native definitions, not written per class. The Python surface is therefore the generic
+`_gnoblin_core`, a hand-written base (`gnoblin/_base.py`: `Node`, `Property`, `Method`, `Signal`, which read, call and listen by name) and the typed
+classes in `gnoblin/_generated/classes.py` and `.pyi`, which the SdkGen lane's `cargo xtask gen-sdks` writes from the `tree` namespace of
+`gnoblin-schema`. Until that generator's first push the file is a stub of three classes. The named subscriptions of the `gnoblin` object
+(`on_client_created`, `on_title_changed`, ...) are one-line aliases over `on_node_created("window")` and `on_class_property_changed("window", "title")`; they are the Python
+spelling of the SDK's named subscriptions and are the part SdkGen may generate from the core table.
+
+### 24.4 Tests and examples
+
+`crates/gnoblin-runtime-python/tests/shells.rs` builds the core, the launcher and the runtime and drives them over the fake compositor, as the
+JavaScript tests do: the runtime's ELF (the core and libpython needed, nothing of ours exported but the entry); example 8 in Python
+(`examples/08-no-workspaces-py`, the same rectangles, order, terminal and "no node of its own" as the Rust example, through the launcher's
+own `example08` scenario); example 7 in Python (`examples/07-script-binding/shell.py`); example 11 in Python (edit the shell and a module it
+imports, the edit keeping its size: the new module is in force, the same windows, each listener ran for exactly the windows it should, one claim,
+nothing mapped; a syntax error and an import-time exception each reported at their file and line with the traceback, the serving generation placing windows
+through both, and a fix that loads as the next generation); a callback that raises; the tree, timers and kept state by name; example 17's core-only half and std's
+`ImportError` text; and the stubs against the module's real function list (`tests/check_stubs.py`).
+
+### 24.5 What is not done, and why
+
+- **Example 3 and the std half of example 17 (M7.7).** `gnoblin.std` is not bound. It is to be generated from the tables of `libgnoblin-std.so.1`
+  (`gnoblin-std-abi`) by the SdkGen lane; until then the module refuses the import with the text of example 17 when the library is absent and says
+  the binding is missing when it is present. Python `Layout` and `Binding` subclasses (the vtable trampolines of 10.1) come with it.
+- **`libpython` mapped and `gnoblin ./shell.py`** as a session test (`crates/gnoblin/tests/modular`) need the compositor's in-process shell, which the Flip lane owns.
+- **`dist-check` does not yet check the runtime library** (one export, `NEEDED` the core and libpython only); the unit test of the install plan covers
+  where it and the package go. The runtime also exports `PyInit__gnoblin_core` (PyO3's own symbol for the built-in module); hiding it is a linker version script.
+- **Python sub-interpreters are not used** (D12): a reload is a new namespace in the one interpreter, so a C extension that keeps global state keeps it.
