@@ -252,7 +252,7 @@ fn a_shell_that_cannot_load_is_logged_with_its_reason_and_the_session_runs_witho
         line.contains("init failed") && line.contains("the fixture was told to fail its init")
     });
     session.wait_log("the guardian is told", |line| {
-        line.contains("[guardian] configuration revision 0 rejected: the shell failed:")
+        line.contains("[guardian] configuration revision 0 rejected: the shell failed to start:")
     });
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("window", "Window");
