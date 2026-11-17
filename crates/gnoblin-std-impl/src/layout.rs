@@ -22,8 +22,8 @@ use std::rc::Rc;
 use gnoblin_core::{Gnoblin, Rect};
 use gnoblin_core_abi::{self as abi, GnoblinDropFn};
 use gnoblin_std_abi::{
-    GnoblinStdLayoutContext, GnoblinStdLayoutVtable, GnoblinStdPlacement, GnoblinStdRect, STD_PLACEMENT_BOUNDS,
-    STD_PLACEMENT_HIDDEN, STD_PLACEMENT_OFFSET, STD_PLACEMENT_TILED,
+    GnoblinStdLayoutContext, GnoblinStdLayoutVtable, GnoblinStdPlacement, GnoblinStdRect, GnoblinStdSplit,
+    STD_PLACEMENT_BOUNDS, STD_PLACEMENT_HIDDEN, STD_PLACEMENT_OFFSET, STD_PLACEMENT_TILED,
 };
 
 use crate::error::{Fail, Res};
@@ -350,6 +350,60 @@ impl LayoutObj {
         {
             // SAFETY: `hook` and `user` are the shell's.
             let _ = catch_unwind(AssertUnwindSafe(|| unsafe { hook(foreign.user, a, b) }));
+        }
+    }
+
+    /// The divider a drag that pressed `client` at (`x`, `y`) would move: `None` when the layout has none there. A layout with no
+    /// `find_split` has no dividers.
+    pub(crate) fn find_split(&self, client: NodeId, x: f64, y: f64) -> Option<GnoblinStdSplit> {
+        let Kind::Foreign(foreign) = &self.kind else {
+            return None;
+        };
+        let find = foreign.vtable.find_split?;
+        let mut out = GnoblinStdSplit {
+            size: size_of::<GnoblinStdSplit>() as u32,
+            flags: 0,
+            token: 0,
+            axis: 0,
+            direction: 1,
+            span: 0.0,
+            min: 0.0,
+            max: 0.0,
+            ratio: 0.0,
+            cross_axis: 0,
+            cross_direction: 1,
+            cross_span: 0.0,
+            cross_min: 0.0,
+            cross_max: 0.0,
+            cross_ratio: 0.0,
+        };
+        // SAFETY: `find` and `user` are the shell's, live for the layout's life; `out` is a live local of the size it says.
+        let found = catch_unwind(AssertUnwindSafe(|| unsafe {
+            find(foreign.user, client, x, y, &mut out)
+        }))
+        .ok()?;
+        (found == 1).then_some(out)
+    }
+
+    /// Moves the dividers of the drag `token`.
+    pub(crate) fn set_split(&self, token: u64, ratio: f64, cross_ratio: f64) {
+        if let Kind::Foreign(foreign) = &self.kind
+            && let Some(hook) = foreign.vtable.set_split
+        {
+            // SAFETY: `hook` and `user` are the shell's.
+            let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
+                hook(foreign.user, token, ratio, cross_ratio)
+            }));
+        }
+    }
+
+    /// Puts the dividers of the drag `token` back as they were.
+    pub(crate) fn reset_split(&self, token: u64) {
+        if let Kind::Foreign(foreign) = &self.kind
+            && let Some(hook) = foreign.vtable.reset_split
+        {
+            // SAFETY: `hook` and `user` are the shell's.
+            let _ = catch_unwind(AssertUnwindSafe(|| unsafe { hook(foreign.user, token) }));
         }
     }
 }

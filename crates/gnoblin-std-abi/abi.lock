@@ -48,6 +48,16 @@ const | STD_OUTPUTS_DUPLICATE | u32 = 1 | 1.0
 const | STD_OUTPUTS_EXTEND | u32 = 2 | 1.0
 const | STD_WORKSPACES_MANUAL | u32 = 0 | 1.0
 const | STD_WORKSPACES_PER_OUTPUT | u32 = 1 | 1.0
+const | STD_AXIS_X | u32 = 0 | 1.0
+const | STD_AXIS_Y | u32 = 1 | 1.0
+const | STD_SPLIT_CROSS | u32 = 1 | 1.0
+const | STD_CLIENT_HAS_FLOATING | u32 = 1 | 1.0
+const | STD_CLIENT_HAS_MIN | u32 = 2 | 1.0
+const | STD_CLIENT_HAS_MAX | u32 = 4 | 1.0
+const | STD_SNAP_NONE | u32 = 0 | 1.0
+const | STD_SNAP_LEFT | u32 = 1 | 1.0
+const | STD_SNAP_RIGHT | u32 = 2 | 1.0
+const | STD_SNAP_TOP | u32 = 3 | 1.0
 
 alias | GnoblinStdReg | u64 | 1.0
 alias | GnoblinStdCollection | u64 | 1.0
@@ -60,6 +70,9 @@ callback | GnoblinStdAreaHookFn | unsafe extern "C" fn(user: *mut c_void, old: *
 callback | GnoblinStdSwapHookFn | unsafe extern "C" fn(user: *mut c_void, a: GnoblinNode, b: GnoblinNode) | 1.0
 callback | GnoblinStdRevisionFn | unsafe extern "C" fn(user: *mut c_void) -> u64 | 1.0
 callback | GnoblinStdEmitFn | unsafe extern "C" fn(sink: *mut c_void, placement: *const GnoblinStdPlacement) -> i32 | 1.0
+callback | GnoblinStdFindSplitFn | unsafe extern "C" fn(user: *mut c_void, client: GnoblinNode, x: f64, y: f64, out: *mut GnoblinStdSplit) -> i32 | 1.0
+callback | GnoblinStdSetSplitFn | unsafe extern "C" fn(user: *mut c_void, token: u64, ratio: f64, cross_ratio: f64) | 1.0
+callback | GnoblinStdResetSplitFn | unsafe extern "C" fn(user: *mut c_void, token: u64) | 1.0
 
 struct | GnoblinStdRect | size 32 align 8 fixed | 1.0
 
@@ -67,6 +80,41 @@ field | GnoblinStdRect.x | f64 @0 +8 | 1.0
 field | GnoblinStdRect.y | f64 @8 +8 | 1.0
 field | GnoblinStdRect.width | f64 @16 +8 | 1.0
 field | GnoblinStdRect.height | f64 @24 +8 | 1.0
+
+struct | GnoblinStdSplit | size 96 align 8 extensible | 1.0
+
+field | GnoblinStdSplit.size | u32 @0 +4 | 1.0
+field | GnoblinStdSplit.flags | u32 @4 +4 | 1.0
+field | GnoblinStdSplit.token | u64 @8 +8 | 1.0
+field | GnoblinStdSplit.axis | u32 @16 +4 | 1.0
+field | GnoblinStdSplit.direction | i32 @20 +4 | 1.0
+field | GnoblinStdSplit.span | f64 @24 +8 | 1.0
+field | GnoblinStdSplit.min | f64 @32 +8 | 1.0
+field | GnoblinStdSplit.max | f64 @40 +8 | 1.0
+field | GnoblinStdSplit.ratio | f64 @48 +8 | 1.0
+field | GnoblinStdSplit.cross_axis | u32 @56 +4 | 1.0
+field | GnoblinStdSplit.cross_direction | i32 @60 +4 | 1.0
+field | GnoblinStdSplit.cross_span | f64 @64 +8 | 1.0
+field | GnoblinStdSplit.cross_min | f64 @72 +8 | 1.0
+field | GnoblinStdSplit.cross_max | f64 @80 +8 | 1.0
+field | GnoblinStdSplit.cross_ratio | f64 @88 +8 | 1.0
+
+struct | GnoblinStdClientState | size 144 align 8 extensible | 1.0
+
+field | GnoblinStdClientState.size | u32 @0 +4 | 1.0
+field | GnoblinStdClientState.flags | u32 @4 +4 | 1.0
+field | GnoblinStdClientState.inset_top | f64 @8 +8 | 1.0
+field | GnoblinStdClientState.inset_right | f64 @16 +8 | 1.0
+field | GnoblinStdClientState.inset_bottom | f64 @24 +8 | 1.0
+field | GnoblinStdClientState.inset_left | f64 @32 +8 | 1.0
+field | GnoblinStdClientState.min_width | f64 @40 +8 | 1.0
+field | GnoblinStdClientState.min_height | f64 @48 +8 | 1.0
+field | GnoblinStdClientState.max_width | f64 @56 +8 | 1.0
+field | GnoblinStdClientState.max_height | f64 @64 +8 | 1.0
+field | GnoblinStdClientState.floating | GnoblinStdRect @72 +32 | 1.0
+field | GnoblinStdClientState.snap_zone | u32 @104 +4 | 1.0
+field | GnoblinStdClientState.reserved | u32 @108 +4 | 1.0
+field | GnoblinStdClientState.snap_floating | GnoblinStdRect @112 +32 | 1.0
 
 struct | GnoblinStdEvent | size 80 align 8 extensible | 1.0
 
@@ -124,7 +172,7 @@ field | GnoblinStdLayoutContext.focused | GnoblinNode @80 +8 | 1.0
 field | GnoblinStdLayoutContext.sink | *mut c_void @88 +8 | 1.0
 field | GnoblinStdLayoutContext.emit | GnoblinStdEmitFn @96 +8 | 1.0
 
-struct | GnoblinStdLayoutVtable | size 56 align 8 extensible | 1.0
+struct | GnoblinStdLayoutVtable | size 80 align 8 extensible | 1.0
 
 field | GnoblinStdLayoutVtable.size | u32 @0 +4 | 1.0
 field | GnoblinStdLayoutVtable.reserved | u32 @4 +4 | 1.0
@@ -134,6 +182,9 @@ field | GnoblinStdLayoutVtable.client_removed | Option<GnoblinStdClientHookFn> @
 field | GnoblinStdLayoutVtable.area_changed | Option<GnoblinStdAreaHookFn> @32 +8 | 1.0
 field | GnoblinStdLayoutVtable.clients_swapped | Option<GnoblinStdSwapHookFn> @40 +8 | 1.0
 field | GnoblinStdLayoutVtable.revision | Option<GnoblinStdRevisionFn> @48 +8 | 1.0
+field | GnoblinStdLayoutVtable.find_split | Option<GnoblinStdFindSplitFn> @56 +8 | 1.0
+field | GnoblinStdLayoutVtable.set_split | Option<GnoblinStdSetSplitFn> @64 +8 | 1.0
+field | GnoblinStdLayoutVtable.reset_split | Option<GnoblinStdResetSplitFn> @72 +8 | 1.0
 
 struct | GnoblinStdLayoutSpec | size 48 align 8 extensible | 1.0
 
@@ -203,7 +254,7 @@ field | GnoblinStdStats.registrations | u64 @32 +8 | 1.0
 field | GnoblinStdStats.layout_passes | u64 @40 +8 | 1.0
 field | GnoblinStdStats.computes | u64 @48 +8 | 1.0
 
-struct | GnoblinStdApi | size 280 align 8 extensible | 1.0
+struct | GnoblinStdApi | size 336 align 8 extensible | 1.0
 
 field | GnoblinStdApi.size | u32 @0 +4 | 1.0
 field | GnoblinStdApi.major | u32 @4 +4 | 1.0
@@ -242,3 +293,10 @@ field | GnoblinStdApi.workspace_walk | unsafe extern "C" fn(ctx: GnoblinCtx, wor
 field | GnoblinStdApi.policy_outputs | unsafe extern "C" fn(ctx: GnoblinCtx, policy: *const GnoblinStdOutputPolicy) -> i32 @256 +8 | 1.0
 field | GnoblinStdApi.policy_workspaces | unsafe extern "C" fn(ctx: GnoblinCtx, policy: *const GnoblinStdWorkspacePolicy) -> i32 @264 +8 | 1.0
 field | GnoblinStdApi.output_workspace | unsafe extern "C" fn(ctx: GnoblinCtx, output: GnoblinNode, out: *mut GnoblinStdWorkspace) -> i32 @272 +8 | 1.0
+field | GnoblinStdApi.client_state | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStdClientState) -> i32 @280 +8 | 1.0
+field | GnoblinStdApi.client_set_state | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, state: *const GnoblinStdClientState) -> i32 @288 +8 | 1.0
+field | GnoblinStdApi.client_snap | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, zone: u32, area: *const GnoblinStdRect, edge_tiling: u32) -> i32 @296 +8 | 1.0
+field | GnoblinStdApi.client_unsnap | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, forget: u32) -> i32 @304 +8 | 1.0
+field | GnoblinStdApi.workspace_find_split | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, x: f64, y: f64, out: *mut GnoblinStdSplit) -> i32 @312 +8 | 1.0
+field | GnoblinStdApi.workspace_set_split | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, token: u64, ratio: f64, cross_ratio: f64) -> i32 @320 +8 | 1.0
+field | GnoblinStdApi.workspace_reset_split | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, token: u64) -> i32 @328 +8 | 1.0

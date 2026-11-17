@@ -35,7 +35,7 @@ use crate::workspace::check_gap;
 // ---- the shape of a call ---------------------------------------------------------------------------------------------------
 
 /// Runs one table function: contains a panic, records a failure, returns the code.
-fn call(name: &'static str, body: impl FnOnce() -> Res<i32>) -> i32 {
+pub(crate) fn call(name: &'static str, body: impl FnOnce() -> Res<i32>) -> i32 {
     match catch_unwind(AssertUnwindSafe(body)) {
         Ok(Ok(code)) => code,
         Ok(Err(fail)) => record(&fail),
@@ -67,7 +67,7 @@ fn std_of(ctx: GnoblinCtx) -> Res<Rc<Std>> {
 }
 
 /// Runs `f` over the generation's state, then posts a turn: whatever it changed is laid out and announced with the next dispatch.
-fn mutate<R>(ctx: GnoblinCtx, f: impl FnOnce(&mut State) -> Res<R>) -> Res<R> {
+pub(crate) fn mutate<R>(ctx: GnoblinCtx, f: impl FnOnce(&mut State) -> Res<R>) -> Res<R> {
     let std = std_of(ctx)?;
     let result = f(&mut std.st.borrow_mut());
     schedule(&std);
@@ -75,7 +75,7 @@ fn mutate<R>(ctx: GnoblinCtx, f: impl FnOnce(&mut State) -> Res<R>) -> Res<R> {
 }
 
 /// Runs `f` over the generation's state without changing it.
-fn read<R>(ctx: GnoblinCtx, f: impl FnOnce(&State) -> Res<R>) -> Res<R> {
+pub(crate) fn read<R>(ctx: GnoblinCtx, f: impl FnOnce(&State) -> Res<R>) -> Res<R> {
     let std = std_of(ctx)?;
     f(&std.st.borrow())
 }
@@ -112,7 +112,7 @@ unsafe fn owned(text: &GnoblinStr) -> Res<String> {
 ///
 /// `ptr` must be null or point at a struct of type `T` whose first field is the `u32` size, readable for that many bytes, and every
 /// field of `T` must be valid when all-zero (integers, floats, raw pointers and `Option` of a function pointer).
-unsafe fn read_ext<T: Copy>(ptr: *const T, what: &str) -> Res<T> {
+pub(crate) unsafe fn read_ext<T: Copy>(ptr: *const T, what: &str) -> Res<T> {
     if ptr.is_null() {
         return Err(Fail::err(format!("{what}: a null pointer")));
     }
@@ -136,7 +136,7 @@ unsafe fn read_ext<T: Copy>(ptr: *const T, what: &str) -> Res<T> {
 /// # Safety
 ///
 /// `out` must be null or point at a writable struct of type `T` whose first field is the `u32` size the caller set.
-unsafe fn fill_out<T: Copy>(out: *mut T, value: &T, what: &str) -> Res<()> {
+pub(crate) unsafe fn fill_out<T: Copy>(out: *mut T, value: &T, what: &str) -> Res<()> {
     if out.is_null() {
         return Err(Fail::err(format!("{what}: a null output pointer")));
     }
@@ -157,7 +157,7 @@ unsafe fn fill_out<T: Copy>(out: *mut T, value: &T, what: &str) -> Res<()> {
 /// # Safety
 ///
 /// `out` must be null or point at a writable `T`.
-unsafe fn put<T>(out: *mut T, value: T) -> Res<()> {
+pub(crate) unsafe fn put<T>(out: *mut T, value: T) -> Res<()> {
     // SAFETY: the caller guarantees `out` is null or writable.
     match unsafe { out.as_mut() } {
         Some(out) => {
@@ -230,17 +230,19 @@ unsafe fn layout_spec(spec: *const GnoblinStdLayoutSpec) -> Res<Layout> {
             if spec.vtable.is_null() {
                 return Err(Fail::type_error("a foreign layout needs a vtable"));
             }
-            // SAFETY: the vtable's `compute` is a function pointer that must be non-null, so the table is read as it is, and only
-            // when it is as long as this library's layout (a longer one, from a later minor, is read as far as it is known).
+            // SAFETY: the vtable's `compute` is a function pointer that must be non-null, so the table is read only when it holds
+            // every field up to the optional dividers (the layout's first minor); a shorter tail is read as absent functions, and a
+            // longer one, from a later minor, as far as this library knows it.
             let size = unsafe { spec.vtable.cast::<u32>().read_unaligned() } as usize;
-            if size < size_of::<GnoblinStdLayoutVtable>() {
+            if size < core::mem::offset_of!(GnoblinStdLayoutVtable, find_split) {
                 return Err(Fail::new(
                     abi::E_ABI,
                     "the layout's vtable is shorter than this library's: it was built for an earlier layout",
                 ));
             }
-            // SAFETY: the table is readable for `size >= size_of::<GnoblinStdLayoutVtable>()` bytes.
-            let vtable = unsafe { spec.vtable.read_unaligned() };
+            // SAFETY: the table is readable for `size` bytes, which covers the fields that are not optional; the fields past `size`
+            // are read as zero, which is `None` for each.
+            let vtable = unsafe { read_ext(spec.vtable, "layout vtable") }?;
             Ok(Layout::Foreign {
                 vtable,
                 user: spec.user,
@@ -928,4 +930,25 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     policy_outputs,
     policy_workspaces,
     output_workspace,
+    client_state: crate::client_state::client_state,
+    client_set_state: crate::client_state::client_set_state,
+    client_snap: crate::client_state::client_snap,
+    client_unsnap: crate::client_state::client_unsnap,
+    workspace_find_split: crate::splits::workspace_find_split,
+    workspace_set_split: crate::splits::workspace_set_split,
+    workspace_reset_split: crate::splits::workspace_reset_split,
 };
+
+#[cfg(test)]
+mod split_table_tests {
+    use super::*;
+
+    #[test]
+    fn the_optional_dividers_end_the_required_part_of_the_layout_vtable() {
+        // A vtable built before the dividers existed ends at `revision`; this library must still take it.
+        assert_eq!(
+            core::mem::offset_of!(GnoblinStdLayoutVtable, find_split),
+            core::mem::offset_of!(GnoblinStdLayoutVtable, revision) + size_of::<usize>()
+        );
+    }
+}

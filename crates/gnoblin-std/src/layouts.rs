@@ -1,20 +1,41 @@
-//! The library's tiling layouts: [`MasterStackLayout`], [`GridLayout`] and [`MonocleLayout`].
+//! The library's tiling layouts: [`MasterStackLayout`], [`GridLayout`], [`MonocleLayout`], [`DwindleLayout`], [`StripLayout`],
+//! [`ArcLayout`] and [`Carousel3dLayout`].
 //!
 //! Each is a [`Layout`] like any a shell writes: it runs through the same C table, so the library's pass cannot tell it from a shell's
-//! own, and a shell may read this file as the model for one. They are ports of `data/js/gnoblin-std/layouts/{master-stack,grid,
-//! monocle}.ts`, which are the reference: the same arithmetic, the same clamps, the same flooring of every tile edge, so a workspace
-//! lays the same windows out the same way whichever language the shell is written in (the parity test of this crate holds them to it).
+//! own, and a shell may read this file as the model for one. They are ports of `data/js/gnoblin-std/layouts/*.ts`, which are the
+//! reference: the same arithmetic, the same clamps, the same flooring of every tile edge, so a workspace lays the same windows out the
+//! same way whichever language the shell is written in (the parity tests of `gnoblin-std-impl` hold them to it).
 //!
-//! The dwindle, strip and arc layouts of the TypeScript library keep a tree or a record of who sits where and ship with binding
-//! triggers (swap and resize by pointer); they come with the bindings lane (M7.5) and are not here.
+//! The dwindle and the strip keep a record of who sits where; they are handles, so a shell keeps a clone for the actions that change
+//! the record (`toggle_split`, `focus_left`, ...) and gives the other to the workspace. The dwindle also answers
+//! [`Layout::find_split`](crate::Layout::find_split) for the split-resize drag. The arc and the carousel answer with the 3D fields of
+//! a [`Placement`] (depth, rotation, offset).
 
 use gnoblin_core::Rect;
 
+use crate::bindings::Point;
+use crate::client::Client;
 use crate::layout::{Layout, LayoutContext, Placement, inset_rect};
+use crate::split::{Divider, Split, SplitAxis};
+
+mod arc;
+mod carousel;
+mod dwindle;
+mod strip;
+
+pub use arc::ArcLayout;
+pub use carousel::{Carousel3dLayout, RingOptions, RingSlot, ring};
+pub use dwindle::{DwindleLayout, DwindleOptions, ForceSplit, PointerSource, Preselect, SplitBias, SplitMode};
+pub use strip::StripLayout;
 
 /// The smallest and largest share of the span the master column may take.
 const MIN_RATIO: f64 = 0.1;
 const MAX_RATIO: f64 = 0.9;
+
+/// `value` limited to `low..=high`, as the TypeScript library's `clamp`: `low` must not be above `high`.
+pub(crate) fn clamp(value: f64, low: f64, high: f64) -> f64 {
+    low.max(high.min(value))
+}
 
 /// The rectangle a tiling layout fills and the gap between its tiles: the area inset by the workspace's outer gap, and the layout's own
 /// gap when it has one, else the workspace's inner gap.
@@ -48,6 +69,7 @@ pub struct MasterStackLayout {
     master_count: usize,
     gap: Option<f64>,
     orientation: Orientation,
+    split: SplitState,
 }
 
 impl Default for MasterStackLayout {
@@ -57,6 +79,7 @@ impl Default for MasterStackLayout {
             master_count: 1,
             gap: None,
             orientation: Orientation::Left,
+            split: SplitState::default(),
         }
     }
 }
@@ -93,6 +116,22 @@ impl MasterStackLayout {
     pub fn orientation(mut self, orientation: Orientation) -> MasterStackLayout {
         self.orientation = orientation;
         self
+    }
+}
+
+/// What the master-stack divider needs between a compute and a drag: the windows of the last compute, how many are master, the span
+/// the master and the stack divide, and the drag in flight. Layouts compare equal whatever it holds.
+#[derive(Clone, Debug, Default)]
+struct SplitState {
+    last: Option<(Vec<u64>, usize, f64)>,
+    drag: Option<(u64, f64)>,
+    token: u64,
+    revision: u64,
+}
+
+impl PartialEq for SplitState {
+    fn eq(&self, _other: &SplitState) -> bool {
+        true
     }
 }
 
@@ -139,6 +178,11 @@ impl Layout for MasterStackLayout {
         } else {
             (area.width, area.height)
         };
+        self.split.last = Some((
+            cx.children.iter().map(|client| client.window().id().0).collect(),
+            self.master_count,
+            span - gap,
+        ));
         let frames = master_stack_frames(span, across, cx.children.len(), self.master_count, ratio, gap);
         cx.children
             .iter()
@@ -153,6 +197,57 @@ impl Layout for MasterStackLayout {
                 Placement::tile(client, area.x + rx, area.y + ry, rw, rh)
             })
             .collect()
+    }
+
+    /// The divider between the master and the stack, for any tile of the last compute: dragging the pointer along the master's axis
+    /// moves it by as far, whichever side the master is on. With no master or no stack there is none.
+    fn find_split(&mut self, client: &Client, _point: Point) -> Option<Split> {
+        let (nodes, master, span) = self.split.last.as_ref()?;
+        if !nodes.contains(&client.window().id().0) || *span <= 0.0 || *master == 0 || *master >= nodes.len() {
+            return None;
+        }
+        let sideways = matches!(self.orientation, Orientation::Top | Orientation::Bottom);
+        // The master grows as the pointer moves away from the edge it sits on.
+        let direction = if matches!(self.orientation, Orientation::Left | Orientation::Top) {
+            1.0
+        } else {
+            -1.0
+        };
+        let divider = Divider {
+            axis: if sideways { SplitAxis::Y } else { SplitAxis::X },
+            span: *span,
+            direction,
+            min: MIN_RATIO,
+            max: MAX_RATIO,
+            ratio: clamp(self.ratio, MIN_RATIO, MAX_RATIO),
+        };
+        self.split.token += 1;
+        self.split.drag = Some((self.split.token, self.ratio));
+        Some(Split {
+            token: self.split.token,
+            divider,
+            cross: None,
+        })
+    }
+
+    fn set_split(&mut self, token: u64, ratio: f64, _cross_ratio: Option<f64>) {
+        if self.split.drag.is_some_and(|(held, _)| held == token) {
+            self.ratio = ratio;
+            self.split.revision += 1;
+        }
+    }
+
+    fn reset_split(&mut self, token: u64) {
+        if let Some((held, original)) = self.split.drag
+            && held == token
+        {
+            self.ratio = original;
+            self.split.revision += 1;
+        }
+    }
+
+    fn revision(&self) -> u64 {
+        self.split.revision
     }
 }
 

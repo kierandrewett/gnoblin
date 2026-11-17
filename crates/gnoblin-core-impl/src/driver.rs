@@ -71,6 +71,7 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             (Some("example08"), Some(shell), _, _) => crate::driver_examples::tiler(&shell),
             (Some("std_layouts"), Some(shell), _, _) => crate::driver_examples::std_layouts(&shell),
             (Some("std_bindings"), Some(shell), _, _) => crate::driver_examples::std_bindings(&shell),
+            (Some("std_script"), Some(shell), _, _) => crate::driver_script::run(&shell),
             _ => {
                 out!(
                     "usage: gnoblin-fixture-launcher <run|panic|hot|abandon|dup|upgrade|thread|load|retain|unload|reload|example01|example02|example06|example08|std_layouts|std_bindings> MODULE..."

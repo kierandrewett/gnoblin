@@ -79,6 +79,15 @@ pub(crate) struct ClientRec {
     pub(crate) lost: u8,
     /// The geometry changed since the listeners were last told.
     pub(crate) geometry_pending: bool,
+    /// The room the client's frame takes round its content (`client_set_state`).
+    pub(crate) inset: crate::floating::Inset,
+    /// The least and the most the client may be resized to, when the shell said.
+    pub(crate) min: Option<(f64, f64)>,
+    pub(crate) max: Option<(f64, f64)>,
+    /// The rectangle the client floats at, when the shell kept one.
+    pub(crate) float_rect: Option<Rect>,
+    /// Where the client is snapped, and the rectangle it floated at before.
+    pub(crate) snap: Option<crate::client_state::Snap>,
 }
 
 /// A change that is waiting to be told to the shell's listeners.

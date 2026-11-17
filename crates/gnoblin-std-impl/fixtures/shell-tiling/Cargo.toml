@@ -1,0 +1,19 @@
+[package]
+name = "gnoblin-fixture-shell-tiling"
+description = "Test fixture: a std shell whose chords switch its one workspace between the library's tiling, strip and 3D layouts and run their actions, with the pointer bindings each layout brings, so a test can hold them to the TypeScript library."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "shell_tiling"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+gnoblin-std = { path = "../../../gnoblin-std" }
+
+[lints]
+workspace = true

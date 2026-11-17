@@ -38,7 +38,9 @@ use gnoblin_std_abi::{
 };
 
 use crate::api::Std;
+use crate::bindings::Point;
 use crate::client::Client;
+use crate::split::Split;
 use crate::workspace::Workspace;
 
 /// How a floating layout places a window when it joins the workspace.
@@ -283,6 +285,21 @@ pub trait Layout: 'static {
     fn hands_focus_on_removal(&self) -> bool {
         false
     }
+
+    /// The divider that a drag which pressed `client` at `point` would move, or `None` when the layout has none there. A layout with
+    /// dividers answers from the geometry of its last compute; the [`SplitResizeBinding`](crate::SplitResizeBinding) drives what it
+    /// returns.
+    fn find_split(&mut self, _client: &Client, _point: Point) -> Option<Split> {
+        None
+    }
+
+    /// Moves the dividers of the drag that [`find_split`](Layout::find_split) named `token`: the first to `ratio` and, when the split
+    /// has a second divider, the second to `cross_ratio`. The layout holds each to its range and changes
+    /// [`revision`](Layout::revision), so the workspace computes again.
+    fn set_split(&mut self, _token: u64, _ratio: f64, _cross_ratio: Option<f64>) {}
+
+    /// Puts the dividers of the drag named `token` back as they were when `find_split` returned them: the drag was cancelled.
+    fn reset_split(&mut self, _token: u64) {}
 }
 
 /// Anything a workspace takes as its layout: [`FloatingLayout`], or any [`Layout`].
@@ -475,6 +492,50 @@ unsafe extern "C" fn revision_tramp(user: *mut c_void) -> u64 {
     catch_unwind(AssertUnwindSafe(|| boxed.layout.borrow().revision())).unwrap_or(0)
 }
 
+unsafe extern "C" fn find_split_tramp(
+    user: *mut c_void,
+    client: u64,
+    x: f64,
+    y: f64,
+    out: *mut abi::GnoblinStdSplit,
+) -> i32 {
+    // SAFETY: as for `compute_tramp`; `out` is the library's local for this call.
+    let (Some(boxed), Some(out)) = (unsafe { user.cast::<Boxed>().as_ref() }, unsafe { out.as_mut() }) else {
+        return core_abi::E_ERR;
+    };
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        let client = Client::new(&boxed.std, boxed.std.gnoblin().window_handle(NodeId(client)));
+        match boxed.layout.borrow_mut().find_split(&client, Point { x, y }) {
+            Some(split) => {
+                *out = split.to_raw();
+                1
+            }
+            None => 0,
+        }
+    }));
+    outcome.unwrap_or(core_abi::E_PANIC)
+}
+
+unsafe extern "C" fn set_split_tramp(user: *mut c_void, token: u64, ratio: f64, cross_ratio: f64) {
+    // SAFETY: as for `compute_tramp`.
+    let Some(boxed) = (unsafe { user.cast::<Boxed>().as_ref() }) else {
+        return;
+    };
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        // A NaN says the split has no second divider.
+        let cross = (!cross_ratio.is_nan()).then_some(cross_ratio);
+        boxed.layout.borrow_mut().set_split(token, ratio, cross);
+    }));
+}
+
+unsafe extern "C" fn reset_split_tramp(user: *mut c_void, token: u64) {
+    // SAFETY: as for `compute_tramp`.
+    let Some(boxed) = (unsafe { user.cast::<Boxed>().as_ref() }) else {
+        return;
+    };
+    let _ = catch_unwind(AssertUnwindSafe(|| boxed.layout.borrow_mut().reset_split(token)));
+}
+
 /// Frees the layout behind a `user` pointer. The library calls it exactly once, when the layout is replaced or the generation retires.
 unsafe extern "C" fn drop_boxed(user: *mut c_void) {
     // SAFETY: `user` is the `Box<Boxed>` leaked by `RawLayout::new` and the library calls this exactly once.
@@ -491,6 +552,9 @@ const BASE: GnoblinStdLayoutVtable = GnoblinStdLayoutVtable {
     area_changed: Some(area_changed_tramp),
     clients_swapped: Some(clients_swapped_tramp),
     revision: Some(revision_tramp),
+    find_split: Some(find_split_tramp),
+    set_split: Some(set_split_tramp),
+    reset_split: Some(reset_split_tramp),
 };
 
 /// The table of a layout that does not hand the keyboard on itself.

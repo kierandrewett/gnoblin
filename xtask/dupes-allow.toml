@@ -2105,3 +2105,45 @@ left = "gnoblin-tree-client::Decoder"
 right = "gnoblin-client::FrameReader"
 kind = "same-shape"
 reason = "the relay's decoder walks the bytes of one relayed link message and the owner socket's frame reader walks the bytes of one frame; each is a slice and a position, and the two formats and error types share nothing"
+
+[[allow]]
+left = "gnoblin-backend::RawTouchpadPhase"
+right = "gnoblin-std::GestureStage"
+kind = "same-shape"
+reason = "the four steps of a gesture (begin, update, end, cancel) as the SDK tells a binding; the compositor-side type names the steps of its own input pipeline, and the SDK tier cannot depend on it"
+
+[[allow]]
+left = "gnoblin-input::ContactPhase"
+right = "gnoblin-std::GestureStage"
+kind = "same-shape"
+reason = "the four steps of a gesture (begin, update, end, cancel) as the SDK tells a binding; the compositor-side type names the steps of its own input pipeline, and the SDK tier cannot depend on it"
+
+[[allow]]
+left = "gnoblin-input::GestureEvent"
+right = "gnoblin-std::GestureStage"
+kind = "same-shape"
+reason = "the four steps of a gesture (begin, update, end, cancel) as the SDK tells a binding; the compositor-side type names the steps of its own input pipeline, and the SDK tier cannot depend on it"
+
+[[allow]]
+left = "gnoblin-input::TouchpadPhase"
+right = "gnoblin-std::GestureStage"
+kind = "same-shape"
+reason = "the four steps of a gesture (begin, update, end, cancel) as the SDK tells a binding; the compositor-side type names the steps of its own input pipeline, and the SDK tier cannot depend on it"
+
+[[allow]]
+left = "gnoblin-std::FrameInset"
+right = "gnoblin-std-impl::Inset"
+kind = "same-shape"
+reason = "four sides of room round a rectangle: the SDK type is the frame a window keeps round its content, the library type is the same room inside the library, which the SDK cannot share; the render type is how far an effect reaches past its node"
+
+[[allow]]
+left = "gnoblin-render::EffectExtent"
+right = "gnoblin-std::FrameInset"
+kind = "same-shape"
+reason = "four sides of room round a rectangle: the SDK type is the frame a window keeps round its content, the library type is the same room inside the library, which the SDK cannot share; the render type is how far an effect reaches past its node"
+
+[[allow]]
+left = "gnoblin-input::GesturePhase"
+right = "gnoblin-std::GestureStage"
+kind = "same-shape"
+reason = "the four steps of a gesture (begin, update, end, cancel) as the SDK tells a binding; the compositor-side type names the steps of its own input pipeline, and the SDK tier cannot depend on it"

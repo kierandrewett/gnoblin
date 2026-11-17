@@ -14,11 +14,12 @@
 //! std.bind_drag(ClientResizeBinding::new().trigger("Alt+Button3"))?;
 //! ```
 //!
-//! What the TypeScript bindings do that these do not, and why: `ClientMoveBinding`'s edge snapping into tiled zones needs the library's
-//! snap zones (the std library has none yet), the window's frame inset is not in the std ABI (a window's frame is kept inside the work
-//! area by its content rectangle here), a window's own minimum and maximum size are not read (the resize keeps the TypeScript's 100 by
-//! 80 floor), the dragged window's floating bounds are not remembered, and the work area is the output's rectangle. They are listed in
-//! `design/modular-framework.md` section 22.
+//! What the bindings do beyond a plain drag, all of it the TypeScript bindings' (`data/js/gnoblin-std/bindings/*.ts`): a moved window
+//! keeps its whole frame (the content and the [frame inset](crate::Client::frame_inset) round it) inside the work area; a drop within a
+//! few pixels of a screen edge snaps the window to a half or all of the work area when the seat's `edge_tiling` is on
+//! ([`Client::snap`]); a resize stops at the window's own [minimum and maximum size](crate::Client::min_size) and a move or resize
+//! remembers the rectangle the window floats at ([`Client::floating_bounds`]); and [`SplitResizeBinding`] drags the divider of a
+//! tiling layout that has one. The work area is the rectangle of the output the press was on.
 //!
 //! Trigger spelling is the core's: `Super+Button1`, where the TypeScript says `Super+MouseLeft+Drag`.
 
@@ -26,7 +27,9 @@ use gnoblin_core::{DragPhase, PointerDrag, Rect, Subscription};
 
 use crate::api::Std;
 use crate::client::Client;
+use crate::client_state::{SNAP_MARGIN, edge_zone};
 use crate::error::Result;
+use crate::split::Split;
 use crate::workspace::Workspace;
 
 /// How far a pointer travels before a press becomes a drag, in logical pixels.
@@ -71,6 +74,8 @@ pub struct DragEvent {
     pub work_area: Option<Rect>,
     /// The seat's drag constraint.
     pub constraint: DragConstraint,
+    /// The seat's `edge_tiling`: whether a drop on a screen edge tiles the window.
+    pub edge_tiling: bool,
 }
 
 /// A pointer drag of the shell's own, claimed with [`Std::bind_drag`]. Only [`trigger`](DragBinding::trigger) and
@@ -138,10 +143,12 @@ fn draggable(client: &Client) -> bool {
     !client.window().is_fullscreen().unwrap_or(false) && !client.window().is_maximised().unwrap_or(false)
 }
 
-/// Drags the window under the pointer with it. Held inside the work area as the seat's constraint says.
+/// Drags the window under the pointer with it. The window's frame is held inside the work area as the seat's constraint says, and a
+/// drop on a screen edge snaps the window there when the seat's `edge_tiling` is on.
 #[derive(Debug)]
 pub struct ClientMoveBinding {
     trigger: String,
+    snap: Option<f64>,
     drag: Option<(Client, Point, Rect)>,
 }
 
@@ -149,6 +156,7 @@ impl Default for ClientMoveBinding {
     fn default() -> ClientMoveBinding {
         ClientMoveBinding {
             trigger: "Super+Button1".to_owned(),
+            snap: Some(SNAP_MARGIN),
             drag: None,
         }
     }
@@ -166,6 +174,21 @@ impl ClientMoveBinding {
         self.trigger = trigger.into();
         self
     }
+
+    /// How near a screen edge, in pixels, the pointer must be for a drop to snap the window (left and right take half the work area,
+    /// top all of it). Default [`SNAP_MARGIN`]. Only when the seat's `edge_tiling` is on; off, a drop is just a move.
+    #[must_use]
+    pub fn snap_margin(mut self, margin: f64) -> ClientMoveBinding {
+        self.snap = Some(margin.max(0.0));
+        self
+    }
+
+    /// Never snaps: a drop is just a move.
+    #[must_use]
+    pub fn no_snap(mut self) -> ClientMoveBinding {
+        self.snap = None;
+        self
+    }
 }
 
 impl DragBinding for ClientMoveBinding {
@@ -180,6 +203,8 @@ impl DragBinding for ClientMoveBinding {
         let Ok(bounds) = client.bounds() else {
             return false;
         };
+        // A snapped window the user takes hold of is no longer tiled to its zone.
+        let _ = client.forget_snap();
         self.drag = Some((client, event.origin, bounds));
         true
     }
@@ -194,14 +219,28 @@ impl DragBinding for ClientMoveBinding {
             start.width,
             start.height,
         );
-        let bounds = event
-            .work_area
-            .map_or(target, |area| constrain_rect(target, area, event.constraint));
+        // The frame (the content with its frame around it) is what stays in the work area: a titlebar dragged off the top could not be
+        // grabbed again. Without a work area there is nothing to keep it in.
+        let bounds = event.work_area.map_or(target, |area| {
+            let inset = client.frame_inset().unwrap_or_default();
+            let content = inset.shrink(constrain_rect(inset.grow(target), area, event.constraint));
+            Rect::new(content.x, content.y, target.width, target.height)
+        });
         let _ = client.set_bounds(bounds);
     }
 
-    fn on_end(&mut self, _event: &DragEvent) {
-        self.drag = None;
+    fn on_end(&mut self, event: &DragEvent) {
+        let Some((client, _, _)) = self.drag.take() else {
+            return;
+        };
+        if let Ok(bounds) = client.bounds() {
+            let _ = client.set_floating_bounds(Some(bounds));
+        }
+        if let (Some(margin), true, Some(area)) = (self.snap, event.edge_tiling, event.work_area)
+            && let Some(zone) = edge_zone(event.position.x, event.position.y, area, margin)
+        {
+            let _ = client.snap(zone, area, true);
+        }
     }
 
     fn on_cancel(&mut self, _event: &DragEvent) {
@@ -412,11 +451,18 @@ impl DragBinding for ClientResizeBinding {
             x: event.position.x - origin.x,
             y: event.position.y - origin.y,
         };
-        let _ = client.set_bounds(resized_rect(*start, *grip, delta, MIN_SIZE, None));
+        // The window's own limits, else the smallest size every resize leaves.
+        let min = client.min_size().ok().flatten().unwrap_or(MIN_SIZE);
+        let max = client.max_size().ok().flatten();
+        let _ = client.set_bounds(resized_rect(*start, *grip, delta, min, max));
     }
 
     fn on_end(&mut self, _event: &DragEvent) {
-        self.drag = None;
+        if let Some((client, ..)) = self.drag.take()
+            && let Ok(bounds) = client.bounds()
+        {
+            let _ = client.set_floating_bounds(Some(bounds));
+        }
     }
 
     fn on_cancel(&mut self, _event: &DragEvent) {
@@ -517,6 +563,105 @@ impl DragBinding for ClientSwapBinding {
     }
 }
 
+/// What a split-resize drag keeps from its start.
+#[derive(Debug)]
+struct SplitDrag {
+    workspace: Workspace,
+    split: Split,
+    start: Point,
+    ratio: f64,
+    cross_ratio: Option<f64>,
+}
+
+/// Moves the divider of a tiling layout nearest the press by as far as the pointer travels, so the tiles on both sides follow it while
+/// the pointer is down. The layout decides which divider that is and how its ratio is held ([`Layout::find_split`](crate::Layout::find_split));
+/// a layout with no divider (a grid, a monocle) has none, and this declines. The ratio is live, so a release keeps it and a cancel puts
+/// it back. A window that is not tiled, or is fullscreen or maximised, declines. When the layout hands back a second divider on the other
+/// axis, the same drag moves both, each by the pointer's travel along its own axis.
+#[derive(Debug)]
+pub struct SplitResizeBinding {
+    trigger: String,
+    drag: Option<SplitDrag>,
+}
+
+impl Default for SplitResizeBinding {
+    fn default() -> SplitResizeBinding {
+        SplitResizeBinding {
+            trigger: "Super+Button3".to_owned(),
+            drag: None,
+        }
+    }
+}
+
+impl SplitResizeBinding {
+    /// A split-resize binding on `Super+Button3`.
+    pub fn new() -> SplitResizeBinding {
+        SplitResizeBinding::default()
+    }
+
+    /// The pointer chord that starts the resize.
+    #[must_use]
+    pub fn trigger(mut self, trigger: impl Into<String>) -> SplitResizeBinding {
+        self.trigger = trigger.into();
+        self
+    }
+}
+
+impl DragBinding for SplitResizeBinding {
+    fn trigger(&self) -> String {
+        self.trigger.clone()
+    }
+
+    fn on_start(&mut self, event: &DragEvent) -> bool {
+        let Some(client) = event.client.clone().filter(in_tile) else {
+            return false;
+        };
+        let Some(workspace) = client.workspace().ok().flatten() else {
+            return false;
+        };
+        let Some(split) = workspace
+            .find_split(&client, event.position)
+            .ok()
+            .flatten()
+            .filter(|split| split.divider.span > 0.0)
+        else {
+            return false;
+        };
+        let cross = split.cross.filter(|cross| cross.span > 0.0);
+        self.drag = Some(SplitDrag {
+            workspace,
+            ratio: split.divider.ratio,
+            cross_ratio: cross.map(|cross| cross.ratio),
+            split: Split { cross, ..split },
+            start: event.position,
+        });
+        true
+    }
+
+    fn on_update(&mut self, event: &DragEvent) {
+        let Some(drag) = &self.drag else {
+            return;
+        };
+        let ratio = drag.split.divider.follow(drag.ratio, drag.start, event.position);
+        let cross = drag
+            .split
+            .cross
+            .zip(drag.cross_ratio)
+            .map(|(cross, start)| cross.follow(start, drag.start, event.position));
+        let _ = drag.workspace.set_split(&drag.split, ratio, cross);
+    }
+
+    fn on_end(&mut self, _event: &DragEvent) {
+        self.drag = None;
+    }
+
+    fn on_cancel(&mut self, _event: &DragEvent) {
+        if let Some(drag) = self.drag.take() {
+            let _ = drag.workspace.reset_split(&drag.split);
+        }
+    }
+}
+
 /// One press and what became of it.
 struct Press {
     origin: Point,
@@ -540,7 +685,7 @@ enum PressState {
 
 impl Std {
     /// The topmost window whose rectangle holds `at`, not minimised: what a press lands on.
-    fn window_at(&self, at: Point) -> Option<(Client, Rect)> {
+    pub(crate) fn window_at(&self, at: Point) -> Option<(Client, Rect)> {
         let windows = self.gnoblin().windows().ok()?;
         windows.into_iter().rev().find_map(|window| {
             if window.is_minimised().unwrap_or(false) {
@@ -580,6 +725,21 @@ impl Std {
             Ok(DragConstraint::WorkArea)
         };
         read().unwrap_or_default()
+    }
+
+    /// The seat's `edge_tiling`: whether a window dropped on a screen edge snaps there.
+    fn edge_tiling(&self) -> bool {
+        let read = || -> Result<bool> {
+            let g = self.gnoblin();
+            let seat = g.class("seat")?;
+            for node in g.root()?.children()? {
+                if node.class()? == seat {
+                    return Ok(node.get_bool("edge_tiling")?);
+                }
+            }
+            Ok(false)
+        };
+        read().unwrap_or(false)
     }
 
     /// Claims the binding's chord and runs its drags. The claim lasts for the life of the generation, or until the returned
@@ -666,5 +826,6 @@ fn event_of(std: &Std, press: &Press, position: Point) -> DragEvent {
         button: press.button,
         work_area: press.work_area,
         constraint: std.drag_constraint(),
+        edge_tiling: std.edge_tiling(),
     }
 }

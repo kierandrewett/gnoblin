@@ -70,7 +70,7 @@ pub(crate) fn world() -> FakeCompositor {
 }
 
 /// [`world`], with the shell loaded into the core over it.
-fn start(shell: &Path) -> Result<(FakeCompositor, Module), i32> {
+pub(crate) fn start(shell: &Path) -> Result<(FakeCompositor, Module), i32> {
     out!("core_abi={}.{}", abi::ABI_MAJOR, abi::ABI_MINOR);
     let comp = world();
     let module = match host::load(shell, Copying::Unique, 0) {
@@ -89,7 +89,7 @@ fn start(shell: &Path) -> Result<(FakeCompositor, Module), i32> {
 }
 
 /// Runs the shell's turns until the tree has settled: callbacks, the transaction they write, and the compositor's answer.
-fn pump(module: &Module) {
+pub(crate) fn pump(module: &Module) {
     for _ in 0..4 {
         module.dispatch(0);
     }
@@ -110,7 +110,7 @@ fn geometry(comp: &FakeCompositor, id: u64) {
 }
 
 /// The chord claim whose text is `chord`, pressed.
-fn press(comp: &FakeCompositor, module: &Module, chord: &str) {
+pub(crate) fn press(comp: &FakeCompositor, module: &Module, chord: &str) {
     let claim = comp.claim_id(chord);
     comp.chord(claim, chord, "press");
     pump(module);
@@ -136,7 +136,7 @@ fn new_nodes(comp: &FakeCompositor) -> usize {
     comp.ops().iter().filter(|op| matches!(op, TxOp::New { .. })).count()
 }
 
-fn finish(comp: &FakeCompositor, module: &Module) {
+pub(crate) fn finish(comp: &FakeCompositor, module: &Module) {
     out!("new_nodes={}", new_nodes(comp));
     out!("claims={:?}", comp.claimed());
     crate::driver::maps_line();
@@ -356,7 +356,14 @@ pub(crate) fn std_layouts(shell: &Path) -> i32 {
 
 /// One whole pointer drag of the claimed chord `chord`: the press at `from`, the motion through `path`, and the release at the last
 /// point (or `phase` as the last step instead, `cancel` to have the compositor end it).
-fn drag(comp: &FakeCompositor, module: &Module, chord: &str, from: (f64, f64), path: &[(f64, f64)], last: &str) {
+pub(crate) fn drag(
+    comp: &FakeCompositor,
+    module: &Module,
+    chord: &str,
+    from: (f64, f64),
+    path: &[(f64, f64)],
+    last: &str,
+) {
     let claim = comp.claim_id(chord);
     comp.pointer_chord(claim, chord, "start", from, from);
     pump(module);
@@ -370,7 +377,7 @@ fn drag(comp: &FakeCompositor, module: &Module, chord: &str, from: (f64, f64), p
     pump(module);
 }
 
-fn place(comp: &FakeCompositor, module: &Module, id: u64, rect: (f64, f64, f64, f64)) {
+pub(crate) fn place(comp: &FakeCompositor, module: &Module, id: u64, rect: (f64, f64, f64, f64)) {
     for (key, value) in [("x", rect.0), ("y", rect.1), ("width", rect.2), ("height", rect.3)] {
         comp.external_set(id, key, MirrorValue::Double(value));
     }

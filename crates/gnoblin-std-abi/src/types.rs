@@ -47,6 +47,14 @@ abi_callbacks! {
     /// The sink a layout's `compute` gives its placements to: `sink` is `GnoblinStdLayoutContext.sink`. Returns `E_OK`, or
     /// `E_TYPE` for a placement that names no client of the workspace or holds a rectangle that is not finite.
     pub type GnoblinStdEmitFn = unsafe extern "C" fn(sink: *mut c_void, placement: *const GnoblinStdPlacement) -> i32;
+    /// A layout's `find_split`: the divider that a drag which pressed `client` at (`x`, `y`) would move, written to `out`. Returns 1
+    /// when there is one, 0 when the layout has none there, or a failure code.
+    pub type GnoblinStdFindSplitFn = unsafe extern "C" fn(user: *mut c_void, client: GnoblinNode, x: f64, y: f64, out: *mut GnoblinStdSplit) -> i32;
+    /// A layout's `set_split`: moves the dividers of the drag that `find_split` named `token`, to `ratio` and, when the split had a
+    /// second divider, `cross_ratio` (NaN when there is none). The layout holds the ratios to their range.
+    pub type GnoblinStdSetSplitFn = unsafe extern "C" fn(user: *mut c_void, token: u64, ratio: f64, cross_ratio: f64);
+    /// A layout's `reset_split`: puts the dividers of the drag named `token` back as they were when `find_split` returned them.
+    pub type GnoblinStdResetSplitFn = unsafe extern "C" fn(user: *mut c_void, token: u64);
 }
 
 abi_consts! {
@@ -124,6 +132,29 @@ abi_consts! {
     /// `GnoblinStdWorkspacePolicy.mode`: the library adds one workspace for every output that appears and removes it when the
     /// output goes, its windows moving to a workspace that stays.
     pub const STD_WORKSPACES_PER_OUTPUT: u32 = 1;
+
+    /// `GnoblinStdSplit.axis` and `.cross_axis`: the divider is carried by the pointer's horizontal travel.
+    pub const STD_AXIS_X: u32 = 0;
+    /// `GnoblinStdSplit.axis` and `.cross_axis`: the divider is carried by the pointer's vertical travel.
+    pub const STD_AXIS_Y: u32 = 1;
+    /// `GnoblinStdSplit.flags`: a second divider on the other axis moves with the same drag (the `cross_*` fields).
+    pub const STD_SPLIT_CROSS: u32 = 1;
+
+    /// `GnoblinStdClientState.flags`: `floating` holds the rectangle the client floats at.
+    pub const STD_CLIENT_HAS_FLOATING: u32 = 1;
+    /// `GnoblinStdClientState.flags`: `min_width` and `min_height` hold the least size the client may be resized to.
+    pub const STD_CLIENT_HAS_MIN: u32 = 2;
+    /// `GnoblinStdClientState.flags`: `max_width` and `max_height` hold the most the client may be resized to.
+    pub const STD_CLIENT_HAS_MAX: u32 = 4;
+
+    /// `client_snap` zone and `GnoblinStdClientState.snap_zone`: the client is not snapped.
+    pub const STD_SNAP_NONE: u32 = 0;
+    /// A snap zone: the left half of the work area.
+    pub const STD_SNAP_LEFT: u32 = 1;
+    /// A snap zone: the right half of the work area.
+    pub const STD_SNAP_RIGHT: u32 = 2;
+    /// A snap zone: all of the work area.
+    pub const STD_SNAP_TOP: u32 = 3;
 }
 
 abi_structs! {
@@ -137,6 +168,75 @@ abi_structs! {
         pub width: f64,
         /// Height.
         pub height: f64,
+    }
+
+    /// A divider a drag moves, as a layout describes it: dragging the pointer `span` pixels along `axis` moves `ratio` by one, in
+    /// the direction `direction` says. The layout holds `ratio` to `min` and `max`.
+    pub struct GnoblinStdSplit {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_SPLIT_*` flags.
+        pub flags: u32,
+        /// Names this drag's dividers in `set_split` and `reset_split`. Valid until the next `find_split` of the layout.
+        pub token: u64,
+        /// `STD_AXIS_X` or `STD_AXIS_Y`.
+        pub axis: u32,
+        /// 1 when moving the pointer right or down grows `ratio`, -1 when it shrinks it.
+        pub direction: i32,
+        /// Pixels of pointer travel that change `ratio` by 1. Above zero.
+        pub span: f64,
+        /// Lowest ratio the layout allows.
+        pub min: f64,
+        /// Highest ratio the layout allows.
+        pub max: f64,
+        /// The divider's position as a ratio.
+        pub ratio: f64,
+        /// With `STD_SPLIT_CROSS`: the axis of the second divider.
+        pub cross_axis: u32,
+        /// With `STD_SPLIT_CROSS`: the direction of the second divider.
+        pub cross_direction: i32,
+        /// With `STD_SPLIT_CROSS`: the pointer travel that changes the second ratio by 1.
+        pub cross_span: f64,
+        /// With `STD_SPLIT_CROSS`: the lowest ratio of the second divider.
+        pub cross_min: f64,
+        /// With `STD_SPLIT_CROSS`: the highest ratio of the second divider.
+        pub cross_max: f64,
+        /// With `STD_SPLIT_CROSS`: the second divider's position as a ratio.
+        pub cross_ratio: f64,
+    }
+
+    /// What the library remembers about a client beyond the tree: the room its frame takes, the sizes it allows itself, the
+    /// rectangle it floats at and the zone it is snapped to. `client_state` fills it; `client_set_state` takes the first four
+    /// groups and ignores the snap fields (`client_snap` and `client_unsnap` change those).
+    pub struct GnoblinStdClientState {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_CLIENT_HAS_*` flags.
+        pub flags: u32,
+        /// The room the frame takes above the content, in logical pixels.
+        pub inset_top: f64,
+        /// The room the frame takes to the right of the content.
+        pub inset_right: f64,
+        /// The room the frame takes below the content.
+        pub inset_bottom: f64,
+        /// The room the frame takes to the left of the content.
+        pub inset_left: f64,
+        /// With `STD_CLIENT_HAS_MIN`: the least width a resize leaves the client.
+        pub min_width: f64,
+        /// With `STD_CLIENT_HAS_MIN`: the least height.
+        pub min_height: f64,
+        /// With `STD_CLIENT_HAS_MAX`: the most width.
+        pub max_width: f64,
+        /// With `STD_CLIENT_HAS_MAX`: the most height.
+        pub max_height: f64,
+        /// With `STD_CLIENT_HAS_FLOATING`: the rectangle the client floats at.
+        pub floating: GnoblinStdRect,
+        /// A `STD_SNAP_*` zone: where the client is snapped. Read only.
+        pub snap_zone: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The rectangle `client_unsnap` puts a snapped client back to. Read only.
+        pub snap_floating: GnoblinStdRect,
     }
 
     /// One collection event, delivered to a `GnoblinStdEventFn`. Valid until the callback returns; the fields a kind does not
@@ -265,6 +365,12 @@ abi_structs! {
         pub clients_swapped: Option<GnoblinStdSwapHookFn>,
         /// The layout's revision: absent means the layout never changes by itself and the shell calls `workspace_invalidate`.
         pub revision: Option<GnoblinStdRevisionFn>,
+        /// The divider a drag that pressed a client at a point would move. Absent: the layout has no dividers.
+        pub find_split: Option<GnoblinStdFindSplitFn>,
+        /// Moves the dividers `find_split` returned.
+        pub set_split: Option<GnoblinStdSetSplitFn>,
+        /// Puts the dividers `find_split` returned back as they were.
+        pub reset_split: Option<GnoblinStdResetSplitFn>,
     }
 
     /// Which layout a workspace has: the argument of `workspace_set_layout`. A struct that starts with `size` may grow.
@@ -482,6 +588,27 @@ abi_structs! {
         pub policy_workspaces: unsafe extern "C" fn(ctx: GnoblinCtx, policy: *const GnoblinStdWorkspacePolicy) -> i32,
         /// Writes the workspace an output shows, or zero.
         pub output_workspace: unsafe extern "C" fn(ctx: GnoblinCtx, output: GnoblinNode, out: *mut GnoblinStdWorkspace) -> i32,
+
+        /// Writes what the library remembers about a client: frame inset, size limits, floating rectangle and snap.
+        pub client_state: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStdClientState) -> i32,
+        /// Sets the frame inset, the size limits and the floating rectangle of a client. A change of the inset makes the client's
+        /// workspace compute again.
+        pub client_set_state: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, state: *const GnoblinStdClientState) -> i32,
+        /// Tiles a client to `zone` (`STD_SNAP_*`) of `area`, less its frame inset: 1 when it snapped, 0 when it was refused
+        /// (`edge_tiling` is zero, or the zone does not tile). A maximised client floats first; a client keeps the rectangle it
+        /// first floated at while it stays snapped.
+        pub client_snap: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, zone: u32, area: *const GnoblinStdRect, edge_tiling: u32) -> i32,
+        /// Puts a snapped client back where it floated: 1 when it was snapped, 0 when it was not. With `forget` the snapped state
+        /// ends without moving the client.
+        pub client_unsnap: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, forget: u32) -> i32,
+
+        /// The divider that a drag which pressed `client` at (`x`, `y`) would move, from the layout of the workspace the client is
+        /// on: 1 when it wrote one to `out`, 0 when the layout has none there (or none at all).
+        pub workspace_find_split: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, x: f64, y: f64, out: *mut GnoblinStdSplit) -> i32,
+        /// Moves the dividers of the drag `token` of the workspace's layout and makes the workspace compute again.
+        pub workspace_set_split: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, token: u64, ratio: f64, cross_ratio: f64) -> i32,
+        /// Puts the dividers of the drag `token` back as they were and makes the workspace compute again.
+        pub workspace_reset_split: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, token: u64) -> i32,
     }
 }
 

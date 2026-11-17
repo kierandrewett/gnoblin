@@ -1,10 +1,12 @@
 //! Fitting a window to the work area it is in: after a workspace or output change. A maximised window fills the area and a floating
-//! one shrinks to fit and moves inside it; a fullscreen window covers its output. This is `host/fitting.ts` less the snapped-window
-//! and frame-inset cases, which belong to the window-state and decoration libraries that come with the later steps.
+//! one shrinks to fit and moves inside it, its frame (the content with the room the client's frame takes round it) staying inside; a
+//! snapped window tiles to its zone again; a fullscreen window covers its output. This is `host/fitting.ts`.
 
 use gnoblin_core::Rect;
 
+use crate::client_state::fit_content;
 use crate::desks::output_rect;
+use crate::floating::shrink;
 use crate::nodes;
 use crate::state::{NodeId, State};
 
@@ -56,8 +58,9 @@ impl State {
         }
     }
 
-    /// Fits a window to the work area it is now in: a maximised window fills it, a floating one shrinks to fit and moves inside it.
-    /// A fullscreen window covers its output.
+    /// Fits a window to the work area it is now in: a maximised window fills it, a snapped one tiles to its zone again, a floating one
+    /// shrinks to fit and moves inside it (its frame stays inside), and the rectangle it floats at follows. A fullscreen window
+    /// covers its output.
     pub(crate) fn refit_client(&mut self, client: NodeId, area: &Rect) {
         let g = self.g.clone();
         if nodes::flag(&g, client, "fullscreen") {
@@ -66,11 +69,20 @@ impl State {
             }
             return;
         }
+        let inset = self.inset_of(client);
+        let zone = self.rec.get(&client).and_then(|rec| rec.snap).map(|snap| snap.zone);
         if nodes::flag(&g, client, "maximised") {
-            nodes::write_rect(&g, client, area);
+            nodes::write_rect(&g, client, &shrink(area, &inset));
+        } else if let Some(zone) = zone {
+            self.snap_client(client, zone, area, true);
         } else {
             let own = nodes::rect_of(&g, client);
-            nodes::write_rect(&g, client, &fit_into(&own, area));
+            nodes::write_rect(&g, client, &fit_content(&own, &inset, area));
+        }
+        if let Some(rec) = self.rec.get_mut(&client)
+            && let Some(floating) = rec.float_rect
+        {
+            rec.float_rect = Some(fit_content(&floating, &inset, area));
         }
     }
 }

@@ -1518,6 +1518,48 @@ dist-check` passes `--std-shell` for example 2 in all four trees. A tree without
   compositor into `libgnoblin-core.so.1`; the parts most likely to differ are the refusal and resend of placements and the pointer's
   output for a new window.
 
+### 22.7 Dwindle, strip, arc, carousel, dividers, snapping and gestures (lane StdLayoutsBind)
+
+What the lane added to 22.4 and 22.5, and what it left. Everything is proven by `crates/gnoblin-std-impl/tests/tiling.rs`, which plays one script
+of events (a window opens, the keyboard moves, a chord is pressed, a pointer chord is dragged, a seat property changes) twice over the same fake
+compositor: to a TypeScript shell in the test process and, through the launcher's `std_script` scenario (`gnoblin-core-impl/src/driver_script.rs`),
+to the native shell `shell-tiling` over the real core and the real `libgnoblin-std.so.1`. After each `step` the rectangles and the placement
+properties (tiled, visible, depth, rotation, scale) of the named windows must be equal, exactly. 12 scenarios are equal; none is excused.
+
+- **Layouts** (`gnoblin-std/src/layouts/`, ports of `data/js/gnoblin-std/layouts/*.ts`): `DwindleLayout` (the whole of the TypeScript one: every
+  option, the tree, `preselect`, `toggle_split`, `swap_split`, `rotate_split`, `move_to_root`, `split_ratio`, `pseudotile`, the divider for a
+  drag), `StripLayout` (column order, centring, `scroll_to`, `focus_left` and `focus_right`, the keyboard handed to a neighbour when a column
+  closes), `ArcLayout` and `Carousel3dLayout` with `ring` (depth, rotation and offset in `Placement`). The dwindle and the strip are handles over
+  one shared record, because their actions are called after the layout was given to a workspace. An action that changes the record calls
+  `Workspace::invalidate`: the library's pass runs when something schedules it, not when a layout's own counter changes (the parity test
+  found this: a toggle did nothing until the next unrelated change). `KioskLayout` stays an alias of the monocle.
+- **Dividers.** `Layout` gained `find_split`, `set_split` and `reset_split`; the std ABI gained the three function types as optional tail fields
+  of `GnoblinStdLayoutVtable` (a vtable of the earlier length is still taken, the tail reads as absent), `GnoblinStdSplit`, and
+  `workspace_find_split`, `workspace_set_split` and `workspace_reset_split`. The library only forwards and marks the workspace dirty.
+  `MasterStackLayout` offers its master and stack divider; `SplitResizeBinding` drives any divider (`Super+Button3`), moves a second divider on
+  the other axis with the same drag when the layout offers one (the dwindle with `smart_resizing` off), and puts both back on a cancel.
+- **Client state, snapping, frame inset, size limits** (`client_state.rs` in the library and the SDK): the table functions `client_state`,
+  `client_set_state`, `client_snap` and `client_unsnap` keep, per client, the frame inset, the minimum and maximum size, the rectangle it floats
+  at and the snap zone. `ClientMoveBinding` keeps the whole frame inside the work area, remembers the floating rectangle and snaps a drop within 4
+  pixels of an edge when the seat's `edge_tiling` is on (`Client::snap`, `edge_zone`); `ClientResizeBinding` stops at the client's own limits
+  and remembers the floating rectangle; the library's refit to a new work area honours the inset, tiles a snapped window to its zone again and
+  moves the remembered floating rectangle with it. A frame provider supplies the inset and the limits (`Client::set_frame_inset`,
+  `set_min_size`, `set_max_size`): nothing in the tree carries them, in the TypeScript library either.
+- **Gestures** (`gesture.rs`): `GestureBinding` (`trigger` spelled `Swipe3`, `Swipe4Left`, `Pinch2In`; `on_start` may decline, then `on_update`,
+  `on_end`, `on_cancel`) and `Std::bind_gesture` over `Gnoblin::bind_gesture`, with the TypeScript matcher's rules: a directed binding waits for
+  12 units of swipe or 0.1 of scale, then starts only if the gesture went its way; `progress` counts 400 units or 0.5 of scale in the trigger's
+  own direction. Typed `GestureEvent`, `GesturePhase`, `GestureDirection`. Covered by unit tests of the rules; **not** held to the TypeScript
+  matcher by a scripted scenario.
+- **Not done, with reasons.** (1) The algorithms of the new layouts live in the Rust SDK, like the master and stack, grid and monocle of
+  22.4, not in `libgnoblin-std`; the owner's later steer (one generated surface for every language) wants them in the library behind a
+  declarative built-in layout kind (`STD_LAYOUT_BUILTIN` with an options struct and a `workspace_layout_action` function). The pure cores
+  (`Core` of `layouts/dwindle.rs` and `layouts/strip.rs`) are written over window ids and rectangles only and move as they are; the move was
+  designed and not started. (2) Two bindings on one trigger, with priorities and decline, are not built: `bind_drag` and `bind_gesture` take one
+  claim each, so the TypeScript layout-bound bindings are emulated by the fixture, which rebinds when it switches layout kind. (3) A gesture
+  cancelled when the window under it closes. (4) `WorkspaceSlideBinding` (it needs the animation lane's transitions and timers). (5) The floating
+  layout's first placement ignores the frame inset. (6) Frame inset, size limits and snap are tested natively (unit tests, and the move, resize and
+  snap scenarios without an inset), not against the TypeScript library, whose host takes them from the decorations module.
+
 ## 23. Implementation notes, M6.1 to M6.4
 
 What the JsRuntime lane built, where it differs from sections 5.10, 6, 8.2 and 10.2, and what is still missing.

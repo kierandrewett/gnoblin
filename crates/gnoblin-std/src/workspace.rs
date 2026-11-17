@@ -157,6 +157,10 @@ impl Workspace {
         self.id
     }
 
+    pub(crate) fn std(&self) -> &Std {
+        &self.std
+    }
+
     /// Makes a workspace with the default floating layout and adds it to the list, in the generation that is running (see
     /// [`Std::current`]).
     ///

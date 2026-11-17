@@ -26,6 +26,7 @@
 //! it as a Rust library (`impl-sealed`): a shell that does carries a second copy of the object model, which is the failure
 //! `cargo xtask dist-check` exists to catch.
 
+mod client_state;
 mod collection;
 mod desks;
 mod error;
@@ -35,6 +36,7 @@ mod fit;
 mod floating;
 mod layout;
 mod nodes;
+mod splits;
 mod state;
 mod table;
 mod turn;

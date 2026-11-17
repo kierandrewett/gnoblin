@@ -32,7 +32,8 @@
 //!   with a [`Query`]) and listeners (`on_added`, `on_title_changed`, [`ClientListener`]).
 //! - [`Workspace`]: membership, layout, gaps, showing on an output.
 //! - [`Layout`]: the trait a shell implements for its own layout; [`FloatingLayout`] is the library's, and
-//!   [`MasterStackLayout`], [`GridLayout`] and [`MonocleLayout`] are tiling layouts written on the trait.
+//!   [`MasterStackLayout`], [`GridLayout`], [`MonocleLayout`], [`DwindleLayout`], [`StripLayout`], [`ArcLayout`] and
+//!   [`Carousel3dLayout`] are tiling layouts written on the trait.
 //! - [`ClientMoveBinding`], [`ClientResizeBinding`] and [`DragBinding`]: pointer drags, claimed with [`Std::bind_drag`].
 //! - [`Emitter`]: events of the shell's own.
 //!
@@ -45,14 +46,17 @@
 mod api;
 mod bindings;
 mod client;
+mod client_state;
 mod collection;
 mod desktop;
 mod emitter;
 mod error;
+mod gesture;
 mod layout;
 mod layouts;
 mod output;
 mod query;
+mod split;
 mod subscription;
 mod sys;
 mod workspace;
@@ -60,17 +64,28 @@ mod workspace;
 pub use api::{Stats, Std};
 pub use bindings::{
     ClientMoveBinding, ClientResizeBinding, ClientSwapBinding, DRAG_STRIP, DRAG_THRESHOLD, DragBinding, DragConstraint,
-    DragEvent, Grip, MIN_SIZE, Point, ResizeCorner, ResizeEdge, ResizeGrip, clamp_axis, constrain_rect, resized_rect,
+    DragEvent, Grip, MIN_SIZE, Point, ResizeCorner, ResizeEdge, ResizeGrip, SplitResizeBinding, clamp_axis,
+    constrain_rect, resized_rect,
 };
 pub use client::{AsClient, Client, FramePolicy};
+pub use client_state::{FrameInset, SNAP_MARGIN, SnapZone, edge_zone};
 pub use collection::{ClientListener, Collection, CollectionListener, Member};
 pub use desktop::{GnoblinStdExt, OutputPolicy, PerOutput, WorkspacePolicy};
 pub use emitter::{Emitter, Listener};
 pub use error::{Error, ErrorKind, Result};
+pub use gesture::{
+    GestureBinding, GestureDirection, GestureInfo, GestureStage, GestureTrigger, PINCH_COMMIT, PINCH_DECIDE,
+    PINCH_TRAVEL, SWIPE_COMMIT, SWIPE_DECIDE, SWIPE_TRAVEL,
+};
 pub use layout::{FloatPlacement, FloatingLayout, IntoLayout, Layout, LayoutContext, Placement, inset_rect};
-pub use layouts::{Columns, GridFill, GridLayout, KioskLayout, MasterStackLayout, MonocleLayout, Orientation};
+pub use layouts::{
+    ArcLayout, Carousel3dLayout, Columns, DwindleLayout, DwindleOptions, ForceSplit, GridFill, GridLayout, KioskLayout,
+    MasterStackLayout, MonocleLayout, Orientation, PointerSource, Preselect, RingOptions, RingSlot, SplitBias,
+    SplitMode, StripLayout, ring,
+};
 pub use output::Output;
 pub use query::{Query, QueryValue};
+pub use split::{Divider, Split, SplitAxis};
 pub use subscription::{ListenerHandle, ScopedListener, ScopedSubscription, Subscription};
 pub use workspace::{ShowOptions, Workspace, WorkspaceBuilder, WorkspaceInfo};
 
@@ -96,9 +111,10 @@ pub mod prelude {
     pub use gnoblin_core::{Gnoblin, NodeId, Rect, Window};
 
     pub use crate::{
-        AsClient, Client, ClientListener, ClientMoveBinding, ClientResizeBinding, Collection, CollectionListener,
-        Columns, DragBinding, DragEvent, Emitter, FloatingLayout, FramePolicy, GnoblinStdExt, GridFill, GridLayout,
-        Layout, LayoutContext, MasterStackLayout, MonocleLayout, Orientation, Output, OutputPolicy, Placement, Query,
-        ShowOptions, Std, Workspace, WorkspacePolicy,
+        ArcLayout, AsClient, Carousel3dLayout, Client, ClientListener, ClientMoveBinding, ClientResizeBinding,
+        ClientSwapBinding, Collection, CollectionListener, Columns, DragBinding, DragEvent, DwindleLayout, Emitter,
+        FloatingLayout, FrameInset, FramePolicy, GnoblinStdExt, GridFill, GridLayout, Layout, LayoutContext,
+        MasterStackLayout, MonocleLayout, Orientation, Output, OutputPolicy, Placement, Preselect, Query, ShowOptions,
+        SnapZone, SplitResizeBinding, Std, StripLayout, Workspace, WorkspacePolicy,
     };
 }
