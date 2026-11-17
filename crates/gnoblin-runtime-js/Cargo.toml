@@ -10,9 +10,10 @@ build = "build.rs"
 
 [lib]
 name = "gnoblin_runtime_js"
-# The library the loader opens by file name (`libgnoblin-runtime-js.so`, installed from `libgnoblin_runtime_js.so`). Nothing links it
-# as a Rust library (`impl-sealed`).
-crate-type = ["cdylib"]
+# The library the loader opens by file name (`libgnoblin-runtime-js.so`, installed from `libgnoblin_runtime_js.so`). The rlib exists for
+# the tests of the engine, which run it over the core and the std library in their own process (`embed`); nothing else links it as a
+# Rust library (`impl-sealed`).
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Only the ABI's types: the runtime reaches the core through the table `start` hands it.

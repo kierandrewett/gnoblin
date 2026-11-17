@@ -167,6 +167,7 @@ pub fn next_generation(rig: &Rig, config: &str) -> Rig {
         comp: rig.comp.clone(),
         load_diagnostics,
         clock,
+        core: None,
         _dir: dir,
     }
 }

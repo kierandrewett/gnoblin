@@ -32,7 +32,7 @@ use gnoblin_core_abi::{E_OK, E_PANIC, E_TYPE, E_UNSUPPORTED};
 pub use arena::Arena;
 pub use convert::MapReader;
 pub use generated::{FUNCTIONS, FunctionInfo};
-pub use library::StdLib;
+pub use library::{GetApiFn, LastErrorFn, StdLib};
 
 /// A value that crosses between a script and the library.
 ///

@@ -12,6 +12,7 @@ use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 use tempfile::TempDir;
 
+pub mod native;
 pub mod policy;
 
 pub use gnoblin_testkit::compositor::*;
@@ -92,6 +93,9 @@ pub struct Rig {
     pub comp: FakeCompositor,
     pub load_diagnostics: Vec<String>,
     pub clock: ManualClock,
+    /// The core and the std library the shell runs over, for a rig made by [`rig_native`]. A frame of the rig is then the engine's
+    /// and the core's.
+    pub core: Option<native::NativeCore>,
     pub _dir: TempDir,
 }
 
@@ -105,16 +109,28 @@ impl Rig {
     /// Runs frames until the shell is quiet. See [`go_quiet`].
     #[track_caller]
     pub fn quiet(&mut self) {
-        go_quiet(&mut self.shell);
+        for _ in 0..12 {
+            if !self.next_frame_runs() {
+                return;
+            }
+        }
+        panic!("the shell never went quiet: {:?}", self.shell.frame_stats());
     }
 
     /// Whether the next frame did its work. See [`frame_runs`].
     pub fn next_frame_runs(&mut self) -> bool {
-        frame_runs(&mut self.shell)
+        let before = self.shell.frame_stats().run;
+        self.frame();
+        self.shell.frame_stats().run > before
     }
 
+    /// One frame: the engine's, then, over a core, the core's dispatch (the library's turn).
     pub fn frame(&mut self) -> Vec<String> {
-        self.shell.frame().expect("a frame").diagnostics
+        let diagnostics = self.shell.frame().expect("a frame").diagnostics;
+        if let Some(core) = &self.core {
+            core.dispatch(&self.shell);
+        }
+        diagnostics
     }
 
     /// Runs frames until the shell and the compositor have nothing left to say, and returns every diagnostic.
@@ -180,6 +196,27 @@ pub fn rig_configured(
         comp,
         load_diagnostics,
         clock,
+        core: None,
+        _dir: dir,
+    }
+}
+
+/// Like [`rig_setup`], over a core with the std library loaded (`native`): the same scenario, through a core generation.
+pub fn rig_native(imports: &str, init_body: &str, setup: impl FnOnce(&FakeCompositor)) -> Rig {
+    let comp = FakeCompositor::new();
+    setup(&comp);
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    fs::write(root.join("shell.ts"), format!("{imports}{init_body}\n")).expect("shell.ts is written");
+    let (config, clock) = timed_config(&root);
+    let (mut shell, core) = native::shell_over_core(&comp, Arc::new(clock.clone()), config);
+    let load_diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
+    Rig {
+        shell,
+        comp,
+        load_diagnostics,
+        clock,
+        core: Some(core),
         _dir: dir,
     }
 }

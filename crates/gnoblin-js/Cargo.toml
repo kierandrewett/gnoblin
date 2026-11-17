@@ -71,3 +71,13 @@ gnoblin-paint.workspace = true
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # The fake compositor behind the tree link, shared with the native shell core's tests.
 gnoblin-testkit = { path = "../gnoblin-testkit" }
+
+# The tests that touch the desktop library run the shell over the real core and the real std library, in the test's own process: the
+# core's implementation is the host of a generation (`gnoblin-core-impl`'s `host`), the std library is a guest of it, and the runtime's
+# `embed` module is what makes the engine's link a view of the core's tree and installs `__gnoblinStd`. A development dependency is
+# what `impl-sealed` allows: a test target may load the implementation, and that edge cannot ship.
+gnoblin-core-impl = { path = "../gnoblin-core-impl" }
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-std-impl = { path = "../gnoblin-std-impl" }
+gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
+gnoblin-runtime-js = { path = "../gnoblin-runtime-js" }

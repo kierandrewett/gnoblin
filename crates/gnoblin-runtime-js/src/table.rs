@@ -46,6 +46,11 @@ pub(crate) struct CoreTable {
 }
 
 impl CoreTable {
+    /// The table of a core this process holds (`embed`).
+    pub(crate) fn new(api: &'static GnoblinApi) -> Self {
+        Self { api }
+    }
+
     /// The table a runtime's `start` was handed.
     ///
     /// # Safety

@@ -32,8 +32,8 @@ struct DlInfo {
 
 const RTLD_NOW: c_int = 2;
 
-type LastErrorFn = unsafe extern "C" fn(buf: *mut u8, cap: usize) -> usize;
-type GetApiFn = unsafe extern "C" fn(want_major: u32, built_minor: u32, out: *mut *const GnoblinStdApi) -> i32;
+pub type LastErrorFn = unsafe extern "C" fn(buf: *mut u8, cap: usize) -> usize;
+pub type GetApiFn = unsafe extern "C" fn(want_major: u32, built_minor: u32, out: *mut *const GnoblinStdApi) -> i32;
 
 /// The text of the last `dlerror`, if any.
 fn dl_error() -> String {
@@ -138,6 +138,16 @@ impl StdLib {
                 core::mem::transmute::<*mut c_void, LastErrorFn>(last_error),
             )
         };
+        Self::from_entry_points(get_api, last_error)
+    }
+
+    /// The library behind the two entry points it exports, for a process that holds it by other means than `dlopen` (a test that links
+    /// the implementation into its own binary, together with the core it is a guest of).
+    ///
+    /// # Errors
+    ///
+    /// The library is of another ABI major, or is older than this layer needs.
+    pub fn from_entry_points(get_api: GetApiFn, last_error: LastErrorFn) -> Result<StdLib, String> {
         let mut table: *const GnoblinStdApi = core::ptr::null();
         // SAFETY: `get_api` writes one pointer through the pointer it is given, a live local.
         let code = unsafe { get_api(ABI_MAJOR, ABI_MINOR, &raw mut table) };
