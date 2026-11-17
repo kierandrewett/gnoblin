@@ -82,6 +82,10 @@ const SECONDS_ALLOWED: &[(&str, &str)] = &[
         "the lock screen's message tells a person the wait in seconds; the placeholder is text, not a parameter",
     ),
     ("getSeconds", "`Date.getSeconds`, the clock widget's seconds field"),
+    (
+        "a `write_set` may carry `seconds`",
+        "the generated ABI constants quote the C ABI's own doc of `GnoblinMember.flags`; a script never calls `write_set`",
+    ),
 ];
 
 /// Whether `line` names a unit of time other than milliseconds: the word `seconds`, an identifier that ends in

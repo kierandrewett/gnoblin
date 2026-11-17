@@ -102,6 +102,7 @@ members = [
     "crates/gnoblin-std-wm",
     "crates/gnoblin-std",
     "crates/gnoblin-std-abi",
+    "crates/gnoblin-std-dyn",
     "crates/gnoblin-std-impl",
     "crates/gnoblin-testkit",
     "crates/gnoblin-tree-client",

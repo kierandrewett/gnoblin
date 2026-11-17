@@ -163,7 +163,7 @@ impl JsStaging {
     /// starts its spawns over: what an interrupted generation spawned does not count for the one that replaces it.
     pub fn prepare(&self, generation: &JsGeneration) -> Result<(), JsError> {
         self.state.borrow_mut().api.processes.restage();
-        install_host(generation, &self.state, self.js.stage_budget)
+        install_host(generation, &self.state, &self.js, self.js.stage_budget)
     }
 }
 
@@ -238,7 +238,7 @@ impl JsShell {
         // Generation 0 is the bare one (the host objects and no user code); the reloader numbers the ones it
         // stages from 1.
         let generation = JsGeneration::new(&js, 0)?;
-        install_host(&generation, &state, js.stage_budget)?;
+        install_host(&generation, &state, &js, js.stage_budget)?;
 
         Ok(Self {
             link,
@@ -333,6 +333,20 @@ impl JsShell {
     /// The id of the generation that runs.
     pub fn generation_id(&self) -> u64 {
         self.generation.id()
+    }
+
+    /// Runs `f` in the running generation under the listener budget, as a listener would run. A library that calls script back from
+    /// outside a frame (the std library's layouts and listeners, driven by the core's dispatch) enters the generation this way.
+    ///
+    /// # Errors
+    ///
+    /// The script threw, or ran past its budget.
+    pub fn call_script<R>(
+        &self,
+        f: impl for<'js> FnOnce(&rquickjs::Ctx<'js>) -> rquickjs::Result<R>,
+    ) -> Result<R, JsError> {
+        self.note_script_ran();
+        self.generation.call_budgeted(self.entry_budget, f)
     }
 
     /// The name of every embedded module the running generation loaded, sorted: the import log of the stock library.
@@ -581,9 +595,18 @@ impl SwapHost for ShellSwap<'_> {
 
 /// Installs the host functions in `generation` and loads `gnoblin-core/host`, under `budget` or
 /// [`HOST_INSTALL_BUDGET`], whichever is longer.
-fn install_host(generation: &JsGeneration, state: &SharedState, budget: Duration) -> Result<(), JsError> {
+fn install_host(
+    generation: &JsGeneration,
+    state: &SharedState,
+    config: &JsConfig,
+    budget: Duration,
+) -> Result<(), JsError> {
     generation.call_budgeted(budget.max(HOST_INSTALL_BUDGET), |ctx| {
         bindings::install(ctx, state)?;
+        let ids = crate::natives::ScriptIds::new(state);
+        for native in &config.natives {
+            native.install(ctx, &ids)?;
+        }
         Module::import(ctx, HOST_MODULE_NAME)?.finish::<Value<'_>>().map(drop)
     })
 }

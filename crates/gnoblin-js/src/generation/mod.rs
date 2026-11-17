@@ -50,6 +50,8 @@ pub struct JsConfig {
     /// The clock the generation's `console` counts its rate limit on. The shell sets it to its own clock, so a test
     /// that moves that clock moves this one; the real clock otherwise.
     pub clock: Arc<dyn Clock>,
+    /// The native objects the host library gives every generation, installed beside `__gnoblinHost`.
+    pub natives: Vec<crate::natives::JsNative>,
 }
 
 impl JsConfig {
@@ -64,6 +66,7 @@ impl JsConfig {
             memory_limit: 64 << 20,
             max_stack_size: 512 << 10,
             clock: Arc::new(SystemClock),
+            natives: Vec::new(),
         }
     }
 

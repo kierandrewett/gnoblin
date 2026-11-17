@@ -231,6 +231,37 @@ leaves the running file in place.
 Some settings of the older configuration have no object in the API, so a file cannot set them. [Settings with no
 object](js-settings.md) lists them.
 
+## The native std binding: `gnoblin-std/native`
+
+`import { ... } from "gnoblin-std/native"` is the **generated** binding of `libgnoblin-std.so.1`: the same collections, workspaces,
+layouts, bindings, transitions, styles and scene nodes the Rust and Python SDKs have, written by `cargo xtask gen-sdks` from the
+library's function table ([the generator](sdk-generator.md)) and calling it through `__gnoblinStd`, which the JavaScript runtime
+library installs. A shell that imports it fails at the import, naming `libgnoblin-std.so.1`, when the library is not installed.
+
+```ts
+import { EventKind, GridLayout, clients, createWorkspace, insetArea, tile } from "gnoblin-std/native";
+import type { Layout, LayoutContext } from "gnoblin-std/native";
+
+class Columns implements Layout {
+    compute(cx: LayoutContext) {
+        const area = insetArea(cx);
+        const width = area.width / Math.max(cx.children.length, 1);
+        return cx.children.map((client, i) => tile(client, area.x + i * width, area.y, width, area.height));
+    }
+}
+
+const main = createWorkspace("main", { layout: new Columns(), gaps: [10, 20] });
+clients().listen(EventKind.ADDED, 0, (event) => console.log(`client ${event.member} opened`));
+
+const other = createWorkspace("other");
+new GridLayout({ columns: 3 }).attach(other); // a built-in layout: the algorithm is the library's
+```
+
+Records use camelCase (`gapInner`), a record you give may leave out the fields it wants zero, and a layout may leave out the hooks it
+does not need. `examples/03-typescript-std/` has the shells the tests run. The hand-written part of the binding is `gnoblin-std/native`
+itself (`clients()`, `tile`, `createWorkspace`); `gnoblin-std` (the stock library of this page) is still its own, hand-written
+implementation, which is moving onto this binding module by module (see `design/modular-framework.md`, section 25).
+
 ## With no `shell.ts`
 
 A session with no `shell.ts` is not a bare shell. It runs the starter, the same file `gnoblinctl config init`

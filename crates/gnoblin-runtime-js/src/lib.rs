@@ -18,6 +18,7 @@
 
 mod instance;
 mod link;
+mod std_native;
 mod table;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};

@@ -548,6 +548,18 @@ impl JsRole {
         self.reloader.health()
     }
 
+    /// Runs `f` in the running generation as a listener would run: see [`JsShell::call_script`].
+    ///
+    /// # Errors
+    ///
+    /// The script threw, or ran past its budget.
+    pub fn call_script<R>(
+        &self,
+        f: impl for<'js> FnOnce(&rquickjs::Ctx<'js>) -> rquickjs::Result<R>,
+    ) -> Result<R, crate::JsError> {
+        self.shell.call_script(f)
+    }
+
     /// The shell, for a caller that evaluates a probe in it.
     pub fn shell_mut(&mut self) -> &mut JsShell {
         &mut self.shell

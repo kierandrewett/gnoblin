@@ -20,6 +20,9 @@ use support::*;
 struct Stage {
     dir: PathBuf,
     runtimes: PathBuf,
+    /// The same prefix with `libgnoblin-std.so.1` beside the core: the one a std shell runs in.
+    with_std: PathBuf,
+    with_std_runtimes: PathBuf,
     cache: PathBuf,
 }
 
@@ -37,6 +40,10 @@ fn build_stage() -> Result<Stage, String> {
             "gnoblin-fixture-launcher",
             "-p",
             "gnoblin-runtime-js",
+            "-p",
+            "gnoblin-std-impl",
+            "-p",
+            "gnoblin-fixture-shell-layouts",
             "--features",
             "gnoblin-core-impl/test-driver",
         ],
@@ -50,10 +57,30 @@ fn build_stage() -> Result<Stage, String> {
         &debug.join("libgnoblin_runtime_js.so"),
         &runtimes.join("libgnoblin-runtime-js.so"),
     );
+    // The same files with the std library beside the core, where `gnoblin-std/native` finds it.
+    let with_std = base.join("core10-std");
+    copy_to(&debug.join("libgnoblin_core_impl.so"), &with_std.join(CORE_FILE));
+    copy_to(&debug.join(LAUNCHER), &with_std.join(LAUNCHER));
+    let with_std_runtimes = with_std.join("runtimes");
+    copy_to(
+        &debug.join("libgnoblin_runtime_js.so"),
+        &with_std_runtimes.join("libgnoblin-runtime-js.so"),
+    );
+    copy_to(
+        &debug.join("libgnoblin_std_impl.so"),
+        &with_std.join("libgnoblin-std.so.1"),
+    );
+    // The native Rust shell of the same layouts, which the scripts are held to.
+    copy_to(
+        &debug.join("libshell_layouts.so"),
+        &with_std.join("shells/libshell_layouts.so"),
+    );
     Ok(Stage {
         cache: base.join("cache"),
         dir,
         runtimes,
+        with_std,
+        with_std_runtimes,
     })
 }
 
@@ -136,6 +163,46 @@ fn drive(script: &Path, steps: &[&str]) -> Run {
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         code: output.status.code().unwrap_or(-1),
     }
+}
+
+/// Runs a named scenario of the launcher over `script` in the prefix `dir`, whose runtime library is in `runtimes`.
+fn scenario_in(dir: &Path, runtimes: &Path, name: &str, script: &Path) -> Run {
+    let stage = stage();
+    let name_path = PathBuf::from(name);
+    let output = scenario_with_env(
+        dir,
+        &[name_path.as_path(), script],
+        &[
+            ("GNOBLIN_RUNTIME_DIR", runtimes),
+            ("XDG_CACHE_HOME", stage.cache.as_path()),
+            ("GNOBLIN_JS_CONSOLE", Path::new("0")),
+        ],
+    );
+    Run {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        code: output.status.code().unwrap_or(-1),
+    }
+}
+
+/// The rectangles printed under `step=<name>`: the window id and its rectangle (`None` for a window that is gone).
+fn step(stdout: &str, name: &str) -> Vec<(u64, Option<[f64; 4]>)> {
+    let marker = format!("step={name}");
+    let mut inside = false;
+    let mut found = Vec::new();
+    for line in stdout.lines() {
+        if line.starts_with("step=") {
+            inside = line == marker;
+        } else if inside && let Some(rest) = line.strip_prefix("window id=") {
+            let mut parts = rest.split_whitespace();
+            let id = parts.next().unwrap().parse().unwrap();
+            let numbers: Vec<f64> = parts
+                .filter_map(|part| part.split_once('=').and_then(|(_, value)| value.parse().ok()))
+                .collect();
+            found.push((id, <[f64; 4]>::try_from(numbers).ok()));
+        }
+    }
+    found
 }
 
 fn example(name: &str) -> PathBuf {
@@ -529,4 +596,167 @@ gnoblin.clients.addListener(new Tiler());
     }
     // The shell is core only: it made no node of its own, so none of std's scene or canvases exist.
     assert!(run.stdout.contains("made_canvases=0"), "{}", run.dump());
+}
+
+// ---- example 3 in TypeScript: a shell on the generated std natives ----------------------------------------------------------------
+
+/// The two tests below (and the layouts one) are written and cannot pass yet: the JavaScript runtime drives the compositor's link
+/// itself (`tree_link_open`) and the std library works on the core's tree (`tree_attach`), which are two holders of one link. The
+/// core refuses the second with `E_BUSY`, which `a_typescript_shell_that_calls_the_std_natives_is_refused_...` holds, and a second link
+/// would be refused by a compositor that admits one holder. `design/modular-framework.md`, section 25.3, says what unblocks them.
+const BLOCKED: &str =
+    "the JavaScript runtime and the std library need one shared link to the compositor (design 25.3, B2)";
+
+#[test]
+#[ignore = "the JavaScript runtime and the std library need one shared link to the compositor (design 25.3, B2)"]
+fn example_3_a_typescript_shell_on_the_generated_std_natives_arranges_the_clients_of_a_workspace_in_columns() {
+    let _ = BLOCKED;
+    let stage = stage();
+    let run = scenario_in(
+        &stage.with_std,
+        &stage.with_std_runtimes,
+        "example06",
+        &example("03-typescript-std/shell.ts"),
+    );
+    assert_eq!(run.code, 0, "{}", run.dump());
+    // The same rectangles the native Rust shell of example 6 and the Python shell of example 3 produce.
+    assert_eq!(
+        step(&run.stdout, "one"),
+        [(40, Some([20.0, 20.0, 960.0, 760.0]))],
+        "{}",
+        run.dump()
+    );
+    assert_eq!(
+        step(&run.stdout, "two"),
+        [
+            (40, Some([20.0, 20.0, 475.0, 760.0])),
+            (41, Some([505.0, 20.0, 475.0, 760.0]))
+        ],
+        "{}",
+        run.dump()
+    );
+    assert_eq!(
+        step(&run.stdout, "three"),
+        [
+            (40, Some([20.0, 20.0, 313.0, 760.0])),
+            (41, Some([343.0, 20.0, 313.0, 760.0])),
+            (42, Some([666.0, 20.0, 314.0, 760.0])),
+        ],
+        "{}",
+        run.dump()
+    );
+    assert_eq!(
+        step(&run.stdout, "swapped"),
+        [
+            (40, Some([666.0, 20.0, 314.0, 760.0])),
+            (41, Some([343.0, 20.0, 313.0, 760.0])),
+            (42, Some([20.0, 20.0, 313.0, 760.0])),
+        ],
+        "{}",
+        run.dump()
+    );
+    assert_eq!(
+        step(&run.stdout, "closed"),
+        [
+            (40, Some([505.0, 20.0, 475.0, 760.0])),
+            (41, None),
+            (42, Some([20.0, 20.0, 475.0, 760.0])),
+        ],
+        "{}",
+        run.dump()
+    );
+    assert_eq!(num(&run.stdout, "maps", "core_copies"), 1, "{}", run.dump());
+    assert_eq!(num(&run.stdout, "maps", "std_mappings"), 1, "{}", run.dump());
+    assert_eq!(num(&run.stdout, "core_stats", "panics"), 0, "{}", run.dump());
+}
+
+#[test]
+fn example_17_a_typescript_shell_that_imports_std_native_without_the_library_fails_naming_it() {
+    let stage = stage();
+    let run = scenario_in(
+        &stage.dir,
+        &stage.runtimes,
+        "example06",
+        &example("03-typescript-std/shell.ts"),
+    );
+    assert_ne!(run.code, 0, "{}", run.dump());
+    let text = format!("{}{}", run.stdout, run.stderr);
+    assert!(
+        text.contains("gnoblin-std is not installed (looked for libgnoblin-std.so.1 in "),
+        "{}",
+        run.dump()
+    );
+}
+
+/// The native Rust shell of the layouts (`gnoblin-std-impl/fixtures/shell-layouts`) over the same scenario: the reference.
+fn native_layouts() -> Run {
+    let stage = stage();
+    let shell = stage.with_std.join("shells/libshell_layouts.so");
+    let name = PathBuf::from("std_layouts");
+    let output = scenario_with_env(
+        &stage.with_std,
+        &[name.as_path(), shell.as_path()],
+        &[("LD_LIBRARY_PATH", stage.with_std.as_path())],
+    );
+    Run {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        code: output.status.code().unwrap_or(-1),
+    }
+}
+
+#[test]
+#[ignore = "the JavaScript runtime and the std library need one shared link to the compositor (design 25.3, B2)"]
+fn the_built_in_layouts_from_typescript_give_the_rectangles_of_the_native_shell() {
+    let stage = stage();
+    let native = native_layouts();
+    assert_eq!(native.code, 0, "{}", native.dump());
+    let script = scenario_in(
+        &stage.with_std,
+        &stage.with_std_runtimes,
+        "std_layouts",
+        &example("03-typescript-std/layouts.ts"),
+    );
+    assert_eq!(script.code, 0, "{}", script.dump());
+    for name in [
+        "Super+1",
+        "Super+2",
+        "Super+3",
+        "Super+4",
+        "Super+5",
+        "Super+6",
+        "closed",
+        "swapped",
+        "dropped_nowhere",
+    ] {
+        let expected = step(&native.stdout, name);
+        assert!(
+            !expected.is_empty(),
+            "the native run has no step {name}: {}",
+            native.dump()
+        );
+        assert_eq!(step(&script.stdout, name), expected, "step {name}\n{}", script.dump());
+    }
+    assert_eq!(num(&script.stdout, "core_stats", "panics"), 0, "{}", script.dump());
+}
+
+#[test]
+fn a_typescript_shell_that_calls_the_std_natives_is_refused_while_the_runtime_drives_the_link_itself() {
+    let stage = stage();
+    let run = scenario_in(
+        &stage.with_std,
+        &stage.with_std_runtimes,
+        "example06",
+        &example("03-typescript-std/shell.ts"),
+    );
+    // The natives are there and the library opens (the import did not fail), and the first call that needs the tree says why it
+    // cannot have it: the runtime holds the compositor's link.
+    let text = format!("{}{}", run.stdout, run.stderr);
+    assert!(!text.contains("is not installed"), "{}", run.dump());
+    assert!(text.contains("E_BUSY"), "{}", run.dump());
+    assert!(
+        text.contains("tree_attach: this shell drives the compositor's link itself (tree_link_open)"),
+        "{}",
+        run.dump()
+    );
 }

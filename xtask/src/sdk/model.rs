@@ -14,9 +14,6 @@
 //!
 //! Nothing here knows a language. A target turns a [`SdkSpec`] into files; `docs/sdk-generator.md` is the contract.
 
-// The std half of the model (records, callbacks, the function table, objects) is classified and tested but has no renderer yet:
-// the Python and TypeScript std bindings are the plan in design/modular-framework.md, section 25.2.
-#![allow(dead_code)]
 use std::path::Path;
 
 use gnoblin_core_abi::reflect::{ConstDef, Reflection};
@@ -145,6 +142,43 @@ pub struct Library {
     pub records: Vec<StructDef>,
     /// The function table's entries, in table order.
     pub functions: Vec<Function>,
+    /// The records one of whose fields (`kind`) says which of the others hold the value.
+    pub tagged: Vec<Tagged>,
+}
+
+/// A record with a `kind` that picks the fields in use (`GnoblinStdProp`, `GnoblinStdStyleEntry`).
+#[derive(Clone, Debug)]
+pub struct Tagged {
+    /// The record.
+    pub record: String,
+    /// The name languages give the group's type (`PropKind`).
+    pub type_name: String,
+    /// One per kind, in the group's order.
+    pub variants: Vec<Variant>,
+}
+
+/// One kind of a [`Tagged`] record.
+#[derive(Clone, Debug)]
+pub struct Variant {
+    /// The constant's short name (`NUMBER`).
+    pub short: String,
+    /// The fields the kind reads, in the record's order of mention.
+    pub fields: Vec<String>,
+    /// The constant's doc.
+    pub doc: Vec<String>,
+}
+
+/// The transition shape: `begin`, a script closure, and `commit` or `abort`.
+#[derive(Clone, Debug)]
+pub struct Bracket {
+    /// The object (`transition`).
+    pub object: String,
+    /// Indexes of the three functions in the table.
+    pub begin: usize,
+    /// The one that ends staging and returns the result.
+    pub commit: usize,
+    /// The one that ends staging and drops what was staged.
+    pub abort: usize,
 }
 
 /// An integer constant.
@@ -217,16 +251,6 @@ impl Prim {
             _ => return None,
         })
     }
-
-    /// True for `f64`.
-    pub fn is_float(self) -> bool {
-        self == Prim::F64
-    }
-
-    /// True when a JavaScript number (a double) cannot hold every value: 64-bit integers.
-    pub fn is_wide(self) -> bool {
-        matches!(self, Prim::U64 | Prim::I64 | Prim::Usize)
-    }
 }
 
 /// A scalar a script can pass or receive: a number or a handle.
@@ -249,8 +273,27 @@ pub enum Shape {
     Record(String),
     /// A callback typedef (optional or not).
     Callback(String),
+    /// `*const Record`, null when absent: an optional nested record.
+    RecordPtr(String),
+    /// A pointer and the count of what it points at, as two fields (`children` and `n_children`, or `ptr` and `len`): a
+    /// list the library lends for the call.
+    Array(Elem),
+    /// `sink: *mut c_void` and `emit: Callback`, as two fields: the callee gives each result to `emit(sink, result)`.
+    Sink(String),
+    /// `vtable: *const Record`, `user: *mut c_void` and `drop_user: Option<DropFn>`, as three fields: an object whose
+    /// methods the library calls (the record names the functions), and the destructor of the object.
+    Vtable(String),
     /// A pointer that is not part of a recognised pair: scripts cannot represent it.
     Pointer(String),
+}
+
+/// What an [`Shape::Array`] holds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Elem {
+    /// Numbers or handles.
+    Scalar(Scalar),
+    /// Records, by value.
+    Record(String),
 }
 
 /// One field of a record.
@@ -262,6 +305,8 @@ pub struct FieldDef {
     pub shape: Shape,
     /// The doc comment.
     pub doc: Vec<String>,
+    /// A callback that may be absent (`Option<Fn>`).
+    pub optional: bool,
 }
 
 /// A `repr(C)` record.
@@ -275,8 +320,13 @@ pub struct StructDef {
     pub fields: Vec<FieldDef>,
     /// True when the first field is `size: u32`: the caller sets it and the library fills what the size covers.
     pub extensible: bool,
-    /// True when every field is something a script can hold (no raw pointer, no callback).
+    /// True when every field is something a script can hold: a scalar, text, a record that is, a list, a sink or a vtable.
+    /// A callback or a raw pointer that is not part of a recognised pair is not.
     pub plain: bool,
+    /// The record is nothing but a pointer and its count (`GnoblinStdMembers`): a script sees the list, not the record.
+    pub list_of: Option<Elem>,
+    /// Every field after `size` and `reserved` is a callback: the record is the table of functions of a [`Shape::Vtable`].
+    pub vtable: bool,
 }
 
 impl StructDef {
@@ -293,8 +343,6 @@ impl StructDef {
 pub struct Callback {
     /// `GnoblinStdEventFn`.
     pub name: String,
-    /// The doc comment.
-    pub doc: Vec<String>,
     /// The parameters after the leading `user` pointer.
     pub params: Vec<CallbackParam>,
     /// What it returns.
@@ -308,6 +356,8 @@ pub struct CallbackParam {
     pub name: String,
     /// What it is: a record pointer is a record, a scalar a scalar.
     pub shape: Shape,
+    /// A `*mut Record`: the script does not receive it, the callback fills it from what the script answers.
+    pub out: bool,
 }
 
 /// What a callback returns.
@@ -338,6 +388,14 @@ pub enum Arg {
     Out { name: String, ty: Scalar },
     /// `*mut Record`: a record the library fills; the call returns it.
     OutRecord { name: String, record: String },
+    /// `*mut Record` with room for `count` of them (the doc says "room for `count`"): the call returns the list.
+    OutRecords {
+        name: String,
+        record: String,
+        count: String,
+    },
+    /// `*mut GnoblinStr`: text the library lends; the call returns a copy.
+    OutText { name: String },
     /// `(Callback, *mut c_void user, Option<DropFn> drop_user)`: a closure the library keeps.
     Callback { name: String, callback: String },
     /// Anything else: the function is native-only.
@@ -355,6 +413,8 @@ impl Arg {
             | Arg::Records { name, .. }
             | Arg::Out { name, .. }
             | Arg::OutRecord { name, .. }
+            | Arg::OutRecords { name, .. }
+            | Arg::OutText { name }
             | Arg::Callback { name, .. }
             | Arg::Raw { name, .. } => Some(name),
         }
@@ -362,7 +422,10 @@ impl Arg {
 
     /// True for the arguments a caller passes in (everything but the context and the outs).
     pub fn is_input(&self) -> bool {
-        !matches!(self, Arg::Ctx | Arg::Out { .. } | Arg::OutRecord { .. })
+        !matches!(
+            self,
+            Arg::Ctx | Arg::Out { .. } | Arg::OutRecord { .. } | Arg::OutRecords { .. } | Arg::OutText { .. }
+        )
     }
 }
 
@@ -396,8 +459,12 @@ pub struct Function {
     pub verb: String,
     /// The argument that is the receiver: the input scalar named like the object (`collection`).
     pub receiver: Option<usize>,
-    /// True when no argument is [`Arg::Raw`] and every record it names is plain: a script runtime can bind it.
+    /// True when no argument is [`Arg::Raw`], every record it names is plain and every callback it takes is scriptable: a
+    /// script runtime can bind it.
     pub scriptable: bool,
+    /// A status the doc says is 1 or 0 (`1 when it moved, 0 when it was refused`): a script sees a boolean, or, when the call
+    /// has an out, the out or nothing.
+    pub flag: bool,
 }
 
 impl Function {
@@ -408,9 +475,12 @@ impl Function {
 
     /// The values the call hands back besides the return: the outs.
     pub fn outs(&self) -> impl Iterator<Item = &Arg> {
-        self.args
-            .iter()
-            .filter(|arg| matches!(arg, Arg::Out { .. } | Arg::OutRecord { .. }))
+        self.args.iter().filter(|arg| {
+            matches!(
+                arg,
+                Arg::Out { .. } | Arg::OutRecord { .. } | Arg::OutRecords { .. } | Arg::OutText { .. }
+            )
+        })
     }
 }
 
@@ -441,9 +511,29 @@ impl Library {
         self.handles.iter().find(|handle| handle.name == name)
     }
 
-    /// The prefix this library's constants carry (`STD_` for std, empty for the core).
-    pub fn const_prefix(&self) -> &'static str {
-        if self.name == "std" { "STD_" } else { "" }
+    /// The `begin` / `commit` / `abort` triples of the table: a script wraps its closure in them.
+    pub fn brackets(&self) -> Vec<Bracket> {
+        let find = |object: &str, verb: &str| {
+            self.functions
+                .iter()
+                .position(|function| function.object.as_deref() == Some(object) && function.verb == verb)
+        };
+        self.objects()
+            .into_iter()
+            .filter_map(|object| {
+                Some(Bracket {
+                    begin: find(&object.name, "begin")?,
+                    commit: find(&object.name, "commit")?,
+                    abort: find(&object.name, "abort")?,
+                    object: object.name,
+                })
+            })
+            .collect()
+    }
+
+    /// The tagged record called `name`.
+    pub fn tagged_record(&self, name: &str) -> Option<&Tagged> {
+        self.tagged.iter().find(|tagged| tagged.record == name)
     }
 
     /// The table's functions grouped by the object their name starts with, in first-appearance order. Functions with no
@@ -513,7 +603,7 @@ impl Library {
         let callbacks = reflection
             .callbacks
             .iter()
-            .map(|callback| ctx.callback(callback.name, callback.ty, callback.doc))
+            .map(|callback| ctx.callback(callback.name, callback.ty))
             .collect::<Result<Vec<_>, String>>()?;
         let mut records = Vec::new();
         let mut functions = Vec::new();
@@ -528,19 +618,23 @@ impl Library {
         }
         // A record is plain when every field is, and a nested record is plain when it is: settle that to a fixed point.
         loop {
-            let plain: Vec<(String, bool)> = records
+            let plain: Vec<bool> = records
                 .iter()
                 .map(|record| {
-                    let ok = record.fields.iter().all(|field| match &field.shape {
-                        Shape::Scalar(_) | Shape::Text => true,
-                        Shape::Record(inner) => records.iter().any(|other| &other.name == inner && other.plain),
+                    let is_plain = |name: &str| records.iter().any(|other| other.name == name && other.plain);
+                    record.fields.iter().all(|field| match &field.shape {
+                        Shape::Scalar(_) | Shape::Text | Shape::Sink(_) => true,
+                        Shape::Record(inner) | Shape::RecordPtr(inner) | Shape::Array(Elem::Record(inner)) => {
+                            is_plain(inner)
+                        }
+                        Shape::Array(Elem::Scalar(_)) => true,
+                        Shape::Vtable(inner) => records.iter().any(|other| other.name == *inner && other.vtable),
                         Shape::Callback(_) | Shape::Pointer(_) => false,
-                    });
-                    (record.name.clone(), ok)
+                    })
                 })
                 .collect();
             let mut changed = false;
-            for (record, (_, ok)) in records.iter_mut().zip(plain) {
+            for (record, ok) in records.iter_mut().zip(plain) {
                 if record.plain != ok {
                     record.plain = ok;
                     changed = true;
@@ -550,15 +644,41 @@ impl Library {
                 break;
             }
         }
-        for function in &mut functions {
-            function.scriptable = function.args.iter().all(|arg| match arg {
-                Arg::Raw { .. } => false,
-                Arg::Record { record, .. } | Arg::Records { record, .. } | Arg::OutRecord { record, .. } => {
-                    records.iter().any(|other| &other.name == record && other.plain)
-                }
-                _ => true,
-            });
+        resolve_receivers(&mut functions);
+        let unscriptable: Vec<bool> = records
+            .iter()
+            .map(|record| {
+                record
+                    .fields
+                    .iter()
+                    .any(|field| matches!(&field.shape, Shape::Vtable(inner) if !vtable_scriptable(&callbacks, &records, inner)))
+            })
+            .collect();
+        for (record, bad) in records.iter_mut().zip(unscriptable) {
+            if bad {
+                record.plain = false;
+            }
         }
+        let scriptable: Vec<bool> = functions
+            .iter()
+            .map(|function| {
+                function.args.iter().all(|arg| match arg {
+                    Arg::Raw { .. } => false,
+                    Arg::Record { record, .. }
+                    | Arg::Records { record, .. }
+                    | Arg::OutRecord { record, .. }
+                    | Arg::OutRecords { record, .. } => {
+                        records.iter().any(|other| &other.name == record && other.plain)
+                    }
+                    Arg::Callback { callback, .. } => callback_scriptable(&callbacks, &records, callback),
+                    _ => true,
+                })
+            })
+            .collect();
+        for (function, ok) in functions.iter_mut().zip(scriptable) {
+            function.scriptable = ok;
+        }
+        let tagged = tagged_records(&groups, &records);
         Ok(Library {
             name: name.to_owned(),
             soname: reflection.soname.to_owned(),
@@ -569,8 +689,121 @@ impl Library {
             callbacks,
             records,
             functions,
+            tagged,
         })
     }
+}
+
+/// A callback a script can answer: every parameter is a number, text or a plain record.
+fn callback_scriptable(callbacks: &[Callback], records: &[StructDef], name: &str) -> bool {
+    callbacks.iter().any(|callback| {
+        callback.name == name
+            && callback.params.iter().all(|param| match &param.shape {
+                Shape::Scalar(_) | Shape::Text => true,
+                Shape::Record(record) => records.iter().any(|other| &other.name == record && other.plain),
+                _ => false,
+            })
+    })
+}
+
+/// A vtable record a script can stand in for: every function it holds is a callback a script can answer.
+fn vtable_scriptable(callbacks: &[Callback], records: &[StructDef], name: &str) -> bool {
+    records.iter().any(|record| {
+        record.name == name
+            && record.vtable
+            && record.fields.iter().all(|field| match &field.shape {
+                Shape::Callback(callback) => callback_scriptable(callbacks, records, callback),
+                _ => true,
+            })
+    })
+}
+
+/// A function whose receiver is not named like its object still has one when its first handle argument is the type the object's
+/// other functions take as receiver (`collection_where(parent)` of `collection_len(collection)`).
+fn resolve_receivers(functions: &mut [Function]) {
+    let mut types: Vec<(String, Scalar)> = Vec::new();
+    for function in functions.iter() {
+        if let (Some(object), Some(at)) = (&function.object, function.receiver)
+            && let Arg::Value { ty, .. } = &function.args[at]
+            && !types.iter().any(|(name, _)| name == object)
+        {
+            types.push((object.clone(), ty.clone()));
+        }
+    }
+    for function in functions.iter_mut() {
+        let (None, Some(object)) = (function.receiver, function.object.as_ref()) else {
+            continue;
+        };
+        let Some((_, ty)) = types.iter().find(|(name, _)| name == object) else {
+            continue;
+        };
+        let first = function.args.iter().position(|arg| arg.is_input());
+        if let Some(at) = first
+            && matches!(&function.args[at], Arg::Value { ty: found, .. } if found == ty && matches!(found, Scalar::Handle(_)))
+        {
+            function.receiver = Some(at);
+        }
+    }
+}
+
+/// The records whose `kind` field a constant group names (`STD_PROP_*` for `GnoblinStdProp`), and which fields each kind
+/// reads. The constants' docs say it: "`GnoblinStdProp.kind`: a number in `a`".
+fn tagged_records(groups: &[ConstGroup], records: &[StructDef]) -> Vec<Tagged> {
+    let mut tagged = Vec::new();
+    for group in groups {
+        // Every member's doc opens with the field it is a value of: `GnoblinStdProp.kind`.
+        let owner = |member: &Const| -> Option<String> {
+            let doc = member.doc.join(" ");
+            let at = doc.find(".kind")?;
+            let start = doc[..at].rfind('`')? + 1;
+            Some(doc[start..at].to_owned())
+        };
+        let Some(first) = group.members.first().and_then(owner) else {
+            continue;
+        };
+        if !group
+            .members
+            .iter()
+            .all(|member| owner(member).as_deref() == Some(first.as_str()))
+        {
+            continue;
+        }
+        let Some(record) = records
+            .iter()
+            .find(|record| record.name == first && record.fields.iter().any(|field| field.name == "kind"))
+        else {
+            continue;
+        };
+        let variants = group
+            .members
+            .iter()
+            .map(|member| {
+                let doc = member.doc.join(" ");
+                // The backticked words after the opening `Record.kind`.
+                let rest = doc.find(".kind").map_or("", |at| &doc[at + 5..]);
+                let mut fields: Vec<String> = Vec::new();
+                for word in rest.split('`').skip(2).step_by(2) {
+                    if word != "kind"
+                        && record.fields.iter().any(|field| field.name == word)
+                        && !fields.iter().any(|seen| seen == word)
+                    {
+                        fields.push(word.to_owned());
+                    }
+                }
+                Variant {
+                    short: member.short.clone(),
+                    fields,
+                    doc: member.doc.clone(),
+                }
+            })
+            .collect();
+        tagged.push(Tagged {
+            record: record.name.clone(),
+            type_name: group.type_name(),
+            variants,
+        });
+    }
+    tagged
 }
 
 /// The names the type classifier needs to tell a record from a handle from a callback.
@@ -626,7 +859,7 @@ impl Classifier {
         }
     }
 
-    fn callback(&self, name: &str, ty: &str, doc: &str) -> Result<Callback, String> {
+    fn callback(&self, name: &str, ty: &str) -> Result<Callback, String> {
         let Ty::Fn(sig) = abi_c::parse(ty)? else {
             return Err(format!("callback `{name}` is not a function type: {ty}"));
         };
@@ -638,16 +871,17 @@ impl Classifier {
         let params = params
             .enumerate()
             .map(|(index, (param, ty))| {
-                let shape = match self.pointee(ty) {
-                    Some((inner, _)) => match self.record_name(inner) {
-                        Some(record) => Shape::Record(record.to_owned()),
-                        None => self.shape(ty),
+                let (shape, out) = match self.pointee(ty) {
+                    Some((inner, mutable)) => match self.record_name(inner) {
+                        Some(record) => (Shape::Record(record.to_owned()), mutable),
+                        None => (self.shape(ty), false),
                     },
-                    None => self.shape(ty),
+                    None => (self.shape(ty), false),
                 };
                 CallbackParam {
                     name: param.clone().unwrap_or_else(|| format!("arg{index}")),
                     shape,
+                    out,
                 }
             })
             .collect();
@@ -661,10 +895,17 @@ impl Classifier {
         };
         Ok(Callback {
             name: name.to_owned(),
-            doc: doc_lines(doc),
             params,
             ret,
         })
+    }
+
+    /// What a pointer points at when it is a list's element: a number, a handle or a record.
+    fn elem(&self, ty: &Ty) -> Option<Elem> {
+        if let Some(scalar) = self.scalar(ty) {
+            return Some(Elem::Scalar(scalar));
+        }
+        self.record_name(ty).map(|record| Elem::Record(record.to_owned()))
     }
 
     fn record(
@@ -673,26 +914,95 @@ impl Classifier {
         doc: &str,
         fields: &[gnoblin_core_abi::reflect::FieldLayout],
     ) -> Result<StructDef, String> {
-        let fields = fields
+        let parsed = fields
             .iter()
-            .map(|field| {
-                let ty = abi_c::parse(field.ty)?;
-                Ok(FieldDef {
-                    name: field.name.to_owned(),
-                    shape: self.shape(&ty),
-                    doc: doc_lines(field.doc),
-                })
-            })
+            .map(|field| Ok((field, abi_c::parse(field.ty)?)))
             .collect::<Result<Vec<_>, String>>()?;
-        let extensible = fields
+        let mut out: Vec<FieldDef> = Vec::new();
+        let mut index = 0;
+        while index < parsed.len() {
+            let (field, ty) = &parsed[index];
+            let next = parsed.get(index + 1);
+            let after = parsed.get(index + 2);
+            let def = |name: &str, shape: Shape, doc: &str| FieldDef {
+                name: name.to_owned(),
+                shape,
+                doc: doc_lines(doc),
+                optional: false,
+            };
+            // `sink` and `emit`: the callee hands each result to the function.
+            if field.name == "sink"
+                && matches!(ty, Ty::Ptr { mutable: true, .. })
+                && let Some((emit, Ty::Named(callback))) = next
+                && self.callbacks.contains(callback)
+            {
+                out.push(def(emit.name, Shape::Sink(callback.clone()), emit.doc));
+                index += 2;
+                continue;
+            }
+            if let Ty::Ptr { mutable: false, to } = ty {
+                // A table of functions and the object they act on: `vtable`, `user`, `drop_user`.
+                if let Some(record) = self.record_name(to)
+                    && let Some((user, Ty::Ptr { mutable: true, .. })) = next
+                    && user.name == "user"
+                    && let Some((drop_user, Ty::Option(_))) = after
+                    && drop_user.name == "drop_user"
+                {
+                    out.push(def(field.name, Shape::Vtable(record.to_owned()), field.doc));
+                    index += 3;
+                    continue;
+                }
+                // A pointer and its count.
+                if let Some(elem) = self.elem(to)
+                    && let Some((count, Ty::Named(len))) = next
+                    && len == "usize"
+                    && ((field.name == "ptr" && count.name == "len") || count.name == format!("n_{}", field.name))
+                {
+                    let name = if field.name == "ptr" { "items" } else { field.name };
+                    out.push(def(name, Shape::Array(elem), field.doc));
+                    index += 2;
+                    continue;
+                }
+                // A record the field may point at.
+                if let Some(record) = self.record_name(to) {
+                    out.push(def(field.name, Shape::RecordPtr(record.to_owned()), field.doc));
+                    index += 1;
+                    continue;
+                }
+            }
+            let mut plain = def(field.name, self.shape(ty), field.doc);
+            plain.optional = matches!(ty, Ty::Option(_));
+            out.push(plain);
+            index += 1;
+        }
+        let extensible = out
             .first()
             .is_some_and(|field| field.name == "size" && field.shape == Shape::Scalar(Scalar::Prim(Prim::U32)));
+        let list_of = match out.as_slice() {
+            [
+                FieldDef {
+                    shape: Shape::Array(elem),
+                    ..
+                },
+            ] => Some(elem.clone()),
+            _ => None,
+        };
+        let vtable = {
+            let mut own = out
+                .iter()
+                .filter(|field| !(field.name == "reserved" || field.name == "size"));
+            let first = own.next();
+            first.is_some_and(|field| matches!(field.shape, Shape::Callback(_)))
+                && own.all(|field| matches!(field.shape, Shape::Callback(_)))
+        };
         Ok(StructDef {
             name: name.to_owned(),
             doc: doc_lines(doc),
-            fields,
+            fields: out,
             extensible,
             plain: true,
+            list_of,
+            vtable,
         })
     }
 
@@ -700,7 +1010,25 @@ impl Classifier {
         let Ty::Fn(sig) = abi_c::parse(ty)? else {
             return Err(format!("table entry `{name}` is not a function type: {ty}"));
         };
-        let args = self.args(&sig)?;
+        let mut args = self.args(&sig)?;
+        // A record the library fills "with room for `count`" is a list of that many.
+        for at in 0..args.len() {
+            if let Arg::OutRecord { name: out, record } = &args[at]
+                && let Some(from) = doc.find("room for `")
+            {
+                let count: String = doc[from + 10..].chars().take_while(|c| *c != '`').collect();
+                if args
+                    .iter()
+                    .any(|arg| matches!(arg, Arg::Value { name, ty: Scalar::Prim(Prim::Usize) } if *name == count))
+                {
+                    args[at] = Arg::OutRecords {
+                        name: out.clone(),
+                        record: record.clone(),
+                        count,
+                    };
+                }
+            }
+        }
         let ret = match sig.ret.as_deref() {
             None => Ret::Void,
             Some(ty) => match self.scalar(ty) {
@@ -718,6 +1046,7 @@ impl Classifier {
             args.iter()
                 .position(|arg| matches!(arg, Arg::Value { name, .. } if name == object))
         });
+        let flag = ret == Ret::Status && doc.contains("1 when");
         Ok(Function {
             name: name.to_owned(),
             doc: doc_lines(doc),
@@ -727,6 +1056,7 @@ impl Classifier {
             verb,
             receiver,
             scriptable: true,
+            flag,
         })
     }
 
@@ -786,7 +1116,9 @@ impl Classifier {
                     });
                 }
                 Some((pointee, true)) => {
-                    if let Some(record) = self.record_name(pointee) {
+                    if matches!(pointee, Ty::Named(text) if text == "GnoblinStr") {
+                        args.push(Arg::OutText { name });
+                    } else if let Some(record) = self.record_name(pointee) {
                         args.push(Arg::OutRecord {
                             name,
                             record: record.to_owned(),
@@ -848,7 +1180,16 @@ fn group_consts(consts: &[ConstDef], library_prefix: &str) -> (Vec<ConstGroup>, 
             continue;
         }
         let members: Vec<Const> = members.iter().map(|constant| build(constant, &prefix)).collect();
+        // The constants' docs name the field they are values of: a group of `.kind`, `.mode`, `.phase` or `.state` values is an
+        // enumeration even when its numbers happen to be distinct bits (`STD_LAYOUT_FLOATING` 1 and `STD_LAYOUT_FOREIGN` 2).
+        let enumerated = members.iter().all(|member| {
+            let doc = member.doc.join(" ");
+            [".kind`", ".mode`", ".phase`", ".state`"]
+                .iter()
+                .any(|field| doc.contains(field))
+        });
         let flags = members.len() >= 2
+            && !enumerated
             && members
                 .iter()
                 .all(|member| member.value > 0 && (member.value & (member.value - 1)) == 0)
@@ -988,5 +1329,105 @@ mod tests {
             .find(|group| group.name == "Placement")
             .expect("STD_PLACEMENT_*");
         assert!(placement.flags);
+    }
+
+    #[test]
+    fn the_three_record_shapes_and_the_tagged_values_are_named() {
+        let spec = spec();
+        let std = spec.library("std").expect("std is reflected");
+        // A pointer and its length is a list, whole (`GnoblinStdMembers`) or as a field (`children`).
+        let members = std.record("GnoblinStdMembers").expect("GnoblinStdMembers");
+        assert!(matches!(members.list_of, Some(Elem::Scalar(_))), "{members:?}");
+        let context = std.record("GnoblinStdLayoutContext").expect("GnoblinStdLayoutContext");
+        assert!(
+            context
+                .fields
+                .iter()
+                .any(|field| field.name == "children" && matches!(field.shape, Shape::Array(Elem::Scalar(_))))
+        );
+        // `sink` and `emit` are one field.
+        assert!(
+            context
+                .fields
+                .iter()
+                .any(|field| matches!(&field.shape, Shape::Sink(callback) if callback == "GnoblinStdEmitFn"))
+        );
+        assert!(context.fields.iter().all(|field| field.name != "sink"));
+        // A vtable, its `user` and its `drop_user` are one field, and the vtable record is a table of functions.
+        let layout = std.record("GnoblinStdLayoutSpec").expect("GnoblinStdLayoutSpec");
+        assert!(
+            layout
+                .fields
+                .iter()
+                .any(|field| matches!(&field.shape, Shape::Vtable(record) if record == "GnoblinStdLayoutVtable"))
+        );
+        assert!(
+            layout
+                .fields
+                .iter()
+                .all(|field| field.name != "user" && field.name != "drop_user")
+        );
+        assert!(std.record("GnoblinStdLayoutVtable").is_some_and(|record| record.vtable));
+        // Every record a script can build or read is plain.
+        for name in [
+            "GnoblinStdPlacement",
+            "GnoblinStdLayoutContext",
+            "GnoblinStdLayoutSpec",
+            "GnoblinStdWorkspaceSpec",
+        ] {
+            assert!(std.record(name).is_some_and(|record| record.plain), "{name}");
+        }
+        // The tagged values say which fields each kind reads.
+        let prop = std.tagged_record("GnoblinStdProp").expect("GnoblinStdProp is tagged");
+        assert_eq!(prop.type_name, "PropKind");
+        let triple = prop
+            .variants
+            .iter()
+            .find(|variant| variant.short == "TRIPLE")
+            .expect("TRIPLE");
+        assert_eq!(triple.fields, ["a", "b", "c"]);
+        let entry = std
+            .tagged_record("GnoblinStdStyleEntry")
+            .expect("GnoblinStdStyleEntry is tagged");
+        let border = entry
+            .variants
+            .iter()
+            .find(|variant| variant.short == "BORDER")
+            .expect("BORDER");
+        assert_eq!(border.fields, ["a", "b", "color", "inset"]);
+        assert!(std.tagged_record("GnoblinStdOption").is_some());
+    }
+
+    #[test]
+    fn the_transition_is_a_bracket_and_the_ring_is_a_list() {
+        let spec = spec();
+        let std = spec.library("std").expect("std is reflected");
+        let brackets = std.brackets();
+        let transition = brackets
+            .iter()
+            .find(|bracket| bracket.object == "transition")
+            .expect("transition");
+        assert_eq!(std.functions[transition.begin].name, "transition_begin");
+        assert_eq!(std.functions[transition.commit].name, "transition_commit");
+        assert_eq!(std.functions[transition.abort].name, "transition_abort");
+        let ring = std
+            .functions
+            .iter()
+            .find(|function| function.name == "layout_ring")
+            .expect("layout_ring");
+        assert!(
+            ring.args
+                .iter()
+                .any(|arg| matches!(arg, Arg::OutRecords { count, .. } if count == "count"))
+        );
+        assert!(ring.scriptable);
+        // Every function of the table is something a script can call.
+        let unreachable: Vec<&str> = std
+            .functions
+            .iter()
+            .filter(|function| !function.scriptable)
+            .map(|function| function.name.as_str())
+            .collect();
+        assert!(unreachable.is_empty(), "native only: {unreachable:?}");
     }
 }

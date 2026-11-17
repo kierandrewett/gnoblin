@@ -23,11 +23,12 @@ and every generated file names it in its banner.
 
 ## What is generated, and what is not
 
-| Target       | Generated                                                                                                                                                          | Written by hand                                                                      |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `rust`       | `crates/gnoblin-core/src/generated/`: schema name constants and the catalog hash, a typed wrapper per node class, `ErrorKind` with its code and symbol conversions | composites (`Window::geometry`), closures and trampolines, events, macros            |
-| `python`     | `data/python/gnoblin/_generated/`: `classes.py` and `classes.pyi` (a descriptor per member), `abi.py` (constants)                                                  | `_base.py` (`Node`, `Property`, `Method`, `Signal`), the loader, named subscriptions |
-| `typescript` | `data/js/gnoblin-core/generated/`: `schema.ts` (property, method and signal interfaces, the `TREE_CLASSES` table), `abi.ts`                                        | the class library of `gnoblin-core` and `gnoblin-std`                                |
+| Target       | Generated                                                                                                                                                                           | Written by hand                                                                                                       |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `rust`       | `crates/gnoblin-core/src/generated/`: schema name constants and the catalog hash, a typed wrapper per node class, `ErrorKind` with its code and symbol conversions                  | composites (`Window::geometry`), closures and trampolines, events, macros                                             |
+| `std-dyn`    | `crates/gnoblin-std-dyn/src/generated.rs`: the dynamic call of every std table function, the record readers and writers, the callback and vtable trampolines                        | `Dyn`, `StdLib` (`dlopen`), the arena, the conversions (`crates/gnoblin-std-dyn/src`)                                 |
+| `python`     | `data/python/gnoblin/_generated/`: `classes.py` and `classes.pyi` (a descriptor per member), `abi.py` (constants); `gnoblin/std.py` and `std.pyi`: the std table, typed             | `_base.py` (`Node`, `Property`, `Method`, `Signal`), `_std_base.py`, `_std_sugar.py`, the loader, named subscriptions |
+| `typescript` | `data/js/gnoblin-core/generated/`: `schema.ts` (property, method and signal interfaces, the `TREE_CLASSES` table), `abi.ts`; `data/js/gnoblin-std/generated/`: the std table, typed | `gnoblin-std/native.ts` (the spellings), the class library of `gnoblin-core` and `gnoblin-std`                        |
 
 A generated file starts with a banner that names the command and the catalog hash. Generated Rust passes through the pinned
 `rustfmt`; generated Python and TypeScript are excluded from ruff, prettier and the pre-commit hooks.
@@ -53,7 +54,37 @@ test `sdk::tests::the_committed_sdks_are_fresh` makes `cargo test -p xtask` fail
 
 The three targets above are the proof: they share the model and nothing else.
 
-## Not generated yet
+## The std binding
 
-The std ABI's function table is classified (`SdkSpec::library("std")`) but the Python and TypeScript std bindings over it are not
-written: see `design/modular-framework.md`, section 25.
+The std ABI's function table is the third source, and it is declarative enough that **no language hand-writes a binding of it**.
+The model (`xtask/src/sdk/model.rs`) classifies every table argument and every record field into the shapes a script runtime can
+marshal:
+
+| Shape                                  | Example                                                      | A script sees                             |
+| -------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- |
+| scalar, handle, text                   | `collection_len`, `workspace_by_id`                          | number, class, string                     |
+| record in / out, list of records       | `workspace_new(spec)`, `collection_where(terms)`             | dataclass or interface, list              |
+| pointer and count (`Array`)            | `GnoblinStdMembers`, the layout context's `children`         | a list                                    |
+| `sink` and `emit` (`Sink`)             | the layout context                                           | the list `compute` returns                |
+| vtable, `user`, `drop_user` (`Vtable`) | `GnoblinStdLayoutSpec`                                       | an object whose methods are the functions |
+| tagged record (`kind` and its fields)  | `GnoblinStdProp`, `GnoblinStdStyleEntry`, `GnoblinStdOption` | a record with a constructor per kind      |
+| `begin`, closure, `commit` or `abort`  | `transition_begin` and its two ends                          | `Transition.run(options, body)`           |
+| a record with room for `count`         | `layout_ring`                                                | a list                                    |
+
+From it the generator writes three things:
+
+1. **The call layer**, in Rust (`std-dyn`): `StdLib::call(ctx, "collection_len", &[Dyn])`. Each language runtime hand-writes only the
+   conversion of its values to and from `Dyn` (`gnoblin-runtime-python/src/std_native.rs`, `gnoblin-runtime-js/src/std_native.rs`) and
+   exposes one native, `gnoblin._std.call(name, *args)` and `__gnoblinStd.call(name, args)`. A function added to the table is callable
+   from both the day the generator runs.
+2. **The typed classes**: `gnoblin/std.py` and `std.pyi`, `data/js/gnoblin-std/generated/*.ts`: a class per handle type and per object
+   of the table, a record per `repr(C)` record, an enumeration per constant group.
+3. **The layouts and bindings**: one class per entry of `gnoblin_std_abi::layouts::{LAYOUT_KINDS, BINDING_KINDS}` with its options as
+   properties (defaults, bounds and enumerations from the table), its actions as methods, and `attach`/`start`.
+
+A hand-written layer remains, on purpose small: the spellings in `_std_sugar.py` and `gnoblin-std/native.ts` (`len(collection)`,
+`clients()`, the tile rounding of `Placement.tile`, a workspace in one call). Nothing in them is behaviour of the desktop.
+
+The proof is `crates/gnoblin-runtime-python/tests/shells.rs` and `crates/gnoblin-runtime-js/tests/shells.rs`: example 3 (a workspace with
+a layout of the shell's own, a listener on the clients, a chord) and the built-in layouts run through the real loader over the fake
+compositor and give the rectangles of the native Rust shells.

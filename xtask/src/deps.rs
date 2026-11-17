@@ -144,6 +144,7 @@ const SDK: &[&str] = &[
     "gnoblin-macros",
     "gnoblin-core",
     "gnoblin-std-abi",
+    "gnoblin-std-dyn",
     "gnoblin-std",
 ];
 
@@ -168,6 +169,7 @@ const STD: &[&str] = &[
     "gnoblin-a11y",
     "gnoblin-std",
     "gnoblin-std-abi",
+    "gnoblin-std-dyn",
     "gnoblin-std-impl",
     "gnoblin-std-wm",
 ];
@@ -207,6 +209,7 @@ const LINT_OPT_OUT: &[&str] = &[
     "gnoblin-render-vulkan",
     "gnoblin-shell-host",
     "gnoblin-std",
+    "gnoblin-std-dyn",
     "gnoblin-wayland",
     "gnoblin-wlcs",
     "pam-gnoblin-keyring",

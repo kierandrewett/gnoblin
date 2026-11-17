@@ -41,12 +41,14 @@ impl Target for PythonTarget {
             comment: Some(Comment::Hash),
             text,
         };
-        Ok(vec![
+        let mut files = vec![
             python("__init__.py", init()),
             python("classes.py", classes(spec, false)),
             python("classes.pyi", classes(spec, true)),
             python("abi.py", abi(spec)),
-        ])
+        ];
+        files.extend(super::python_std::files(spec)?);
+        Ok(files)
     }
 }
 

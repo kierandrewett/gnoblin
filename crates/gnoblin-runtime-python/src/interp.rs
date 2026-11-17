@@ -18,6 +18,7 @@ use pyo3::prelude::*;
 
 use crate::callback::traceback_text;
 use crate::module::_gnoblin_core;
+use crate::std_native::_gnoblin_std;
 
 #[repr(C)]
 struct AddressInfo {
@@ -124,6 +125,7 @@ fn boot_once(api: &GnoblinApi) -> Result<(), String> {
     })?;
     promote_libpython();
     pyo3::append_to_inittab!(_gnoblin_core);
+    pyo3::append_to_inittab!(_gnoblin_std);
     Python::initialize();
     Python::attach(|py| -> PyResult<()> {
         let path = py.import("sys")?.getattr("path")?;

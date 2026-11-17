@@ -2442,3 +2442,27 @@ left = "gnoblin-std::ResizeGrip"
 right = "gnoblin-std-impl::GripChoice"
 kind = "same-shape"
 reason = "the SDK's name for which side or corner a resize takes and the library's reading of it; the SDK cannot share a type with the library it links"
+
+[[allow]]
+left = "gnoblin-config-migrate::Needs"
+right = "xtask::Needs"
+kind = "same-name"
+reason = "a set of what a generator or a migration has to emit, found by walking its input; two unrelated tools of one name, neither can use the other's crate"
+
+[[allow]]
+left = "gnoblin-core-impl::Arena"
+right = "gnoblin-std-dyn::Arena"
+kind = "same-name"
+reason = "core-impl's arena owns the bytes it lends to a shell; the call layer's keeps the text, records and script objects one call to the std library points into. Different owners and lifetimes, and the call layer is below the implementation tier"
+
+[[allow]]
+left = "gnoblin-shell-host::DlInfo"
+right = "gnoblin-std-dyn::DlInfo"
+kind = "same-name"
+reason = "the C `Dl_info` that `dladdr` fills, declared where it is called; the shell host is the one loader and the call layer is an SDK crate that may name no workspace crate but the ABI ones"
+
+[[allow]]
+left = "gnoblin-std-dyn::StdError"
+right = "gnoblin-std-impl::Fail"
+kind = "same-shape"
+reason = "an ABI code and its text, the library's failure and the call layer's view of it; the call layer is an SDK crate and cannot name the implementation"

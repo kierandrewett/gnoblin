@@ -12,14 +12,19 @@
 //! | target       | writes                                                                                   |
 //! | ------------ | ---------------------------------------------------------------------------------------- |
 //! | `rust`       | `crates/gnoblin-core/src/generated/`: schema names, typed node classes, the error kinds   |
+//! | `std-dyn`    | `crates/gnoblin-std-dyn/src/generated.rs`: the dynamic call of every std table function     |
 //! | `python`     | `data/python/gnoblin/_generated/`: typed node classes and `.pyi`, ABI constants          |
 //! | `typescript` | `data/js/gnoblin-core/generated/`: node-class types and the schema table, ABI constants  |
 
+mod layouts;
 mod model;
 mod python;
+mod python_std;
 mod rust;
+mod std_dyn;
 mod text;
 mod typescript;
+mod typescript_std;
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -67,6 +72,7 @@ pub trait Target {
 pub fn targets() -> Vec<Box<dyn Target>> {
     vec![
         Box::new(rust::RustTarget),
+        Box::new(std_dyn::StdDynTarget),
         Box::new(python::PythonTarget),
         Box::new(typescript::TypeScriptTarget),
     ]
@@ -247,7 +253,7 @@ pub fn write(root: &Path, rendered: &[Rendered]) -> Result<Vec<String>, String> 
     Ok(written)
 }
 
-const USAGE: &str = "usage: cargo xtask gen-sdks [--check] [--target rust|python|typescript]";
+const USAGE: &str = "usage: cargo xtask gen-sdks [--check] [--target rust|std-dyn|python|typescript]";
 
 /// The `gen-sdks` subcommand.
 pub fn run(args: &[String]) -> ExitCode {

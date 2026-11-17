@@ -64,6 +64,8 @@ fn role_config(script: &Path) -> JsRoleConfig {
     config.shell.xr_declared = env("GNOBLIN_XR").as_deref() == Some("1");
     config.shell.js.cache = JsBytecodeCache::from_environment_for(VERSION, &|name| env(name));
     config.resolve_console(&|name| env(name));
+    // Every generation gets `__gnoblinStd`, the table of `libgnoblin-std` for the scripts that import `gnoblin-std/native`.
+    config.shell.js.natives.push(crate::std_native::native());
     config
 }
 
@@ -75,6 +77,10 @@ fn role_config(script: &Path) -> JsRoleConfig {
 /// evaluate (the running generation stays).
 pub(crate) fn start(table: CoreTable, ctx: GnoblinCtx, script: &Path) -> Result<(), String> {
     crate::table::remember(table);
+    crate::std_native::set_anchor(table.anchor());
+    // A script that evaluates now belongs to this generation of the core, which is not the serving one until the swap commits.
+    let before = crate::std_native::context();
+    crate::std_native::set_context(ctx);
     // Every line the engine logs from here is tagged with the generation being started.
     let previous = crate::table::log_context();
     set_log_context(ctx);
@@ -89,6 +95,7 @@ pub(crate) fn start(table: CoreTable, ctx: GnoblinCtx, script: &Path) -> Result<
     });
     if outcome.is_err() {
         set_log_context(previous);
+        crate::std_native::set_context(before);
     }
     outcome
 }
@@ -161,6 +168,13 @@ pub(crate) fn turn(ctx: GnoblinCtx, timeout_ms: u32) -> Result<i32, String> {
             *slot = None;
             return Err(text);
         }
+        // What the std library announces (a window opened, a layout is asked) is delivered by the core's dispatch, which this loop runs
+        // for it; a script that never imported std has nothing queued and the call is skipped.
+        if crate::std_native::used() {
+            let serving = instance.serving.get();
+            let enter = RoleEnter(&instance.role);
+            crate::std_native::with_enter(&enter, || instance.table.dispatch(serving));
+        }
         if instance.role.take_reload_wanted() {
             let code = instance.table.request_reload(instance.serving.get());
             if code != abi::E_OK {
@@ -180,5 +194,17 @@ pub(crate) fn report_ended(ctx: GnoblinCtx, message: &str) {
     if let Some(table) = crate::table::remembered() {
         table.set_last_error(ctx, message);
         table.log(ctx, abi::LOG_ERROR, message);
+    }
+}
+
+/// How a callback of the std library enters the running generation: the engine's own entry, under the listener budget.
+struct RoleEnter<'a>(&'a JsRole);
+
+impl crate::std_native::Enter for RoleEnter<'_> {
+    fn enter(
+        &self,
+        body: &mut dyn for<'js> FnMut(&gnoblin_js::rquickjs::Ctx<'js>) -> gnoblin_js::rquickjs::Result<()>,
+    ) -> Result<(), String> {
+        self.0.call_script(|ctx| body(ctx)).map_err(|error| error.to_string())
     }
 }

@@ -34,6 +34,7 @@ mod interp;
 mod load;
 mod module;
 mod process;
+mod std_native;
 mod table;
 mod tree;
 mod watch;

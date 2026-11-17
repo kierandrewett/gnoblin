@@ -43,11 +43,13 @@ impl Target for TypeScriptTarget {
             comment: Some(Comment::Slashes),
             text,
         };
-        Ok(vec![
+        let mut files = vec![
             file(CORE_DIR, "schema.ts", schema(spec)),
             file(CORE_DIR, "abi.ts", abi(spec)),
             file(CORE_DIR, "index.ts", core_index()),
-        ])
+        ];
+        files.extend(super::typescript_std::files(spec)?);
+        Ok(files)
     }
 }
 

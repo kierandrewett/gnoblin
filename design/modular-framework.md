@@ -1895,6 +1895,73 @@ makes them one renderer: `Library::functions`, `objects()`, records with `plain`
 5. The Rust runtimes' own tables (`gnoblin-js/src/bindings/props.rs`, the exception classes of `gnoblin-runtime-python`) become generated
    Rust files of the same generator.
 
+### 25.3 The std bindings, and the migration of the TypeScript std (lane SdkGenStd)
+
+What 25.2 listed as steps 1 to 3 is built; step 4 is blocked, and the blockers are named below.
+
+**Built.**
+
+1. **The model names the std shapes** (`xtask/src/sdk/model.rs`): a pointer and its count is `Shape::Array` (`GnoblinStdMembers` is a record that is
+   only a list; the layout context's `children` is a field), `sink` plus `emit` is `Shape::Sink`, a vtable with `user` and `drop_user` is
+   `Shape::Vtable` (and the vtable record knows its functions are required or optional), `layout_ring`'s out buffer is `Arg::OutRecords`, and
+   a record with a `kind` whose constants' docs say which fields each kind reads is a `Tagged` record (`GnoblinStdProp`,
+   `GnoblinStdStyleEntry`, `GnoblinStdOption`). `begin` / `commit` / `abort` of one object is a `Bracket` (the transition). The
+   `#![allow(dead_code)]` is gone. Every function of the table is `scriptable`; a unit test fails when one is not.
+2. **The call layer** is a new crate, `gnoblin-std-dyn` (SDK and std tier: it names only the two ABI crates): `StdLib::load` opens
+   `libgnoblin-std.so.1` with `dlopen` (by name, then beside the core), and `StdLib::call(ctx, "collection_len", &[Dyn])` calls any table
+   function. `generated.rs` (target `std-dyn`) holds a function per table entry, a reader and a writer per record, a trampoline per callback
+   typedef and per function of a vtable. A script object is a `Callable`; a failed registration frees its object (the arena), an adopted
+   one is freed by the library's `drop_user`. The runtimes convert only their own values: `gnoblin-runtime-python/src/std_native.rs`
+   (`gnoblin._std.call`) and `gnoblin-runtime-js/src/std_native.rs` (`__gnoblinStd.call`, a per-context table of references so a script
+   function stays in its own heap; `gnoblin-js` gained `JsNative`/`ScriptIds` and `JsShell::call_script` for it).
+3. **The typed classes**: `data/python/gnoblin/std.py` and `std.pyi` (the stub carries `Placement.tile`, `Workspace.create` and the
+   other spellings of `_std_sugar.py`), `data/js/gnoblin-std/generated/{native,constants,records,classes,layouts,index}.ts`, and, from
+   `gnoblin_std_abi::layouts::{LAYOUT_KINDS, BINDING_KINDS}`, one class per built-in layout and binding with its options as properties and its
+   actions as methods (`xtask/src/sdk/layouts.rs`). The Python `gnoblin.std` ImportError stub is gone: importing it opens the library
+   and raises `ImportError: gnoblin-std is not installed (looked for libgnoblin-std.so.1 in ...)` when it is not there.
+4. **The hand-written layer** is small and holds no behaviour: `_std_base.py`, `_std_sugar.py` and `gnoblin-std/native.ts`.
+
+**Proved** (`crates/gnoblin-runtime-python/tests/shells.rs`): example 3 (a Python shell with a `Layout` of its own, a listener on the clients and
+a chord) over the real loader and the fake compositor gives the rectangles of example 6, the native Rust shell, at every step; the six
+built-in layouts and the swap binding from Python give, step for step, the rectangles of the native `shell-layouts` fixture; a Python shell
+that imports std without the library fails naming it. For TypeScript the same shells exist (`examples/03-typescript-std/`), the
+natives load and open the library, and the import without the library fails naming it (`crates/gnoblin-runtime-js/tests/shells.rs`);
+the two scenarios that arrange windows are written and `#[ignore]`d on B2.
+
+**Blockers of the TypeScript half and of the migration.**
+
+- **B2: one holder, two links.** The JavaScript runtime drives the compositor's link itself (`tree_link_open`; it keeps its own mirror),
+  and the std library works on the core's tree (`tree_attach`). The core refuses the second with `E_BUSY` (`session.rs`), which a test holds.
+  Opening a second link is not the answer: the compositor admits one holder (`inproc_shell.rs`, "a second holder is refused"), and the
+  fake compositor of the tests gives every clone the one incoming queue, so two links starve each other (tried; the second link saw the
+  snapshot and no change). What unblocks it is a core change, outside this lane's files: either the JavaScript runtime moves onto the
+  node functions as Python did (the rewrite `JsRuntime` deferred, section 23), or the core serves a relayed shell and the std library from
+  one attached tree (the relayed API becomes a view of the core's mirror: a snapshot replayed from it, then its changes, and the
+  transactions sent through it).
+- **B1: the oracle cannot reach the native path.** 42 of the 49 files of `crates/gnoblin-js/tests` drive a `JsShell` over the in-memory
+  `FakeCompositor`; there is no core generation in that process, so no `__gnoblinStd`, and a TypeScript module that calls the native std
+  fails every one of those tests that touches it. The tests that exercise a module natively are scenario tests of the loader
+  (`runtime-js/tests/shells.rs`), so the oracle of a module has to be ported to scenarios, module by module, once B2 is gone.
+- **B3: public API.** `Workspace`, `Collection` and `Client` of `gnoblin-std` are classes with TypeScript-side state (`host/state.ts`,
+  the layout driver of `host/layout_driver.ts` that computes in TypeScript and writes through the host); a native-backed class keeps the
+  public members, and the TypeScript `Layout`/`DragBinding` base classes stay (they are the extension API). That is a rewrite of each
+  class on `gnoblin-std/native`, not a swap.
+
+**Order, and what remains hand-written** (all of `data/js/gnoblin-std`, 21,7 thousand lines; none moved, because every row waits for B1 and B2):
+
+| Module (TypeScript)                                                                                                                                                   | Native counterpart                                    | Also blocked by                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
+| `host/{members,membership,roots,snapshot,lifecycle}`: clients, collections, listeners                                                                                 | `collection_*`, `client_*`, `Collection.listen`       | the `gnoblin` object of `gnoblin-core` builds on the same mirror    |
+| `workspace.ts`, `host/{workspace,workspaces,desks,policy,displays,show}`                                                                                              | `workspace_*`, `policy_*`, `output_workspace`         | B3                                                                  |
+| `layouts/{floating,master-stack,grid,monocle,kiosk}`                                                                                                                  | `workspace_set_layout_kind`, floating spec            | the workspace above                                                 |
+| `layouts/{dwindle,strip,arc}`                                                                                                                                         | the same, with their actions                          | the workspace above; `dwindle.ts` options are Hyprland's names      |
+| `bindings/{move,resize,drag,tiling}`, `gestures`, `gesture_actions`                                                                                                   | `binding_builtin`, `binding_drag`, `binding_gesture`  | `DragBinding` stays as the extension class                          |
+| `transition/*`, `style/*`, `scene/*`, `display/camera2d`, `snap`                                                                                                      | `transition_*`, `style_*`, `scene_*`, `client_snap`   | the host's staging (`host/staging.ts`) and rollback of script state |
+| `frame/*`, `menus/*`, `ui/*`, `lock`, `alerts`, `widgets`, `panel`, `overview`, `titlebar`, `focus`, `window_state`, `reposition`, `display_manager`, `extensions/xr` | none: desktop UI and policy the library does not hold | not part of M7                                                      |
+
+**Still open from 25.2.** Step 5 (the runtimes' own tables, `gnoblin-js/src/bindings/props.rs` and the exception classes of
+`gnoblin-runtime-python`) is not done.
+
 ## 26. Implementation notes, M2.7, M2.10, M3.3, M3.5 and M3.6 (the flip)
 
 What the Flip lane built, where it differs from the text above, and why. The compositor now runs inside `libgnoblin-core.so.1`, a native shell can be run in it by path, and the failure and guardian cases of an in-process shell are tests of the real binary.

@@ -70,6 +70,17 @@ impl CoreTable {
         unsafe { (self.api.set_last_error)(ctx, text.as_ptr(), text.len()) };
     }
 
+    /// An address inside the core: where the core is, for finding the std library beside it.
+    pub(crate) fn anchor(self) -> *const std::ffi::c_void {
+        self.api.log as *const std::ffi::c_void
+    }
+
+    /// Runs what the core queued for the generation `ctx`: what the std library announces and what a layout is asked.
+    pub(crate) fn dispatch(self, ctx: GnoblinCtx) -> i32 {
+        // SAFETY: the function takes the context and a timeout; a zero timeout does not wait.
+        unsafe { (self.api.dispatch)(ctx, 0) }
+    }
+
     /// Reports a panic the runtime caught, so the core logs it with the generation.
     pub(crate) fn report_panic(self, ctx: GnoblinCtx, text: &str) {
         // SAFETY: `text` is a live string for the call.

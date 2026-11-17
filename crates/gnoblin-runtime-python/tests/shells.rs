@@ -21,6 +21,9 @@ use support::*;
 struct Stage {
     dir: PathBuf,
     runtimes: PathBuf,
+    /// The same prefix with `libgnoblin-std.so.1` beside the core: the one a std shell runs in.
+    with_std: PathBuf,
+    with_std_runtimes: PathBuf,
     /// A directory with a stand-in `foot`, which creates the file `GNOBLIN_TEST_MARKER` names.
     bin: PathBuf,
     runtime: PathBuf,
@@ -40,6 +43,10 @@ fn build_stage() -> Result<Stage, String> {
             "gnoblin-fixture-launcher",
             "-p",
             "gnoblin-runtime-python",
+            "-p",
+            "gnoblin-std-impl",
+            "-p",
+            "gnoblin-fixture-shell-layouts",
             "--features",
             "gnoblin-core-impl/test-driver",
         ],
@@ -53,6 +60,24 @@ fn build_stage() -> Result<Stage, String> {
         &debug.join("libgnoblin_runtime_python.so"),
         &runtimes.join("libgnoblin-runtime-python.so"),
     );
+    // A second prefix of the same files with the std library beside the core, where `gnoblin.std` finds it.
+    let with_std = base.join("core10-std");
+    copy_to(&debug.join("libgnoblin_core_impl.so"), &with_std.join(CORE_FILE));
+    copy_to(&debug.join(LAUNCHER), &with_std.join(LAUNCHER));
+    let with_std_runtimes = with_std.join("runtimes");
+    copy_to(
+        &debug.join("libgnoblin_runtime_python.so"),
+        &with_std_runtimes.join("libgnoblin-runtime-python.so"),
+    );
+    copy_to(
+        &debug.join("libgnoblin_std_impl.so"),
+        &with_std.join("libgnoblin-std.so.1"),
+    );
+    // The native Rust shell of the same layouts, which the scripts are held to.
+    copy_to(
+        &debug.join("libshell_layouts.so"),
+        &with_std.join("shells/libshell_layouts.so"),
+    );
     let bin = base.join("bin");
     fs::create_dir_all(&bin).map_err(|error| error.to_string())?;
     let foot = bin.join("foot");
@@ -61,6 +86,8 @@ fn build_stage() -> Result<Stage, String> {
     Ok(Stage {
         dir,
         runtimes,
+        with_std,
+        with_std_runtimes,
         bin,
         runtime,
     })
@@ -128,9 +155,14 @@ impl Run {
 
 /// The environment every run gets: the runtime library's directory, the Python package of this source tree, no bytecode written.
 fn environment(extra: &[(&'static str, PathBuf)]) -> Vec<(&'static str, PathBuf)> {
+    environment_in(&stage().runtimes, extra)
+}
+
+/// [`environment`] for the prefix whose runtime library is in `runtimes`.
+fn environment_in(runtimes: &Path, extra: &[(&'static str, PathBuf)]) -> Vec<(&'static str, PathBuf)> {
     let stage = stage();
     let mut env = vec![
-        ("GNOBLIN_RUNTIME_DIR", stage.runtimes.clone()),
+        ("GNOBLIN_RUNTIME_DIR", runtimes.to_owned()),
         ("GNOBLIN_PYTHON_DIR", repo_root().join("data/python")),
         ("PYTHONDONTWRITEBYTECODE", PathBuf::from("1")),
         (
@@ -166,12 +198,17 @@ fn drive(script: &Path, steps: &[&str]) -> Run {
 
 /// Runs a named scenario of the launcher (`example08`) over `script`, with the stand-in terminal's marker named after the scenario.
 fn scenario_of(name: &str, script: &Path) -> Run {
-    let marker = stage().dir.join(format!("marker-{name}"));
+    scenario_in(&stage().dir, &stage().runtimes, name, script)
+}
+
+/// [`scenario_of`] in the prefix `dir`, whose runtime library is in `runtimes`.
+fn scenario_in(dir: &Path, runtimes: &Path, name: &str, script: &Path) -> Run {
+    let marker = dir.join(format!("marker-{name}"));
     let _ = fs::remove_file(&marker);
-    let env = environment(&[("GNOBLIN_TEST_MARKER", marker)]);
+    let env = environment_in(runtimes, &[("GNOBLIN_TEST_MARKER", marker)]);
     let extra: Vec<(&str, &Path)> = env.iter().map(|(key, value)| (*key, value.as_path())).collect();
     let name_path = PathBuf::from(name);
-    finish(scenario_with_env(&stage().dir, &[name_path.as_path(), script], &extra))
+    finish(scenario_with_env(dir, &[name_path.as_path(), script], &extra))
 }
 
 fn example(name: &str) -> PathBuf {
@@ -822,4 +859,130 @@ fn the_stub_file_declares_every_public_name_of_the_package() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+// ---- example 3: a Python shell on gnoblin.std -------------------------------------------------------------------------------
+
+/// The scenario of example 6 over the Python shell of example 3: the same windows, the same chord, the same rectangles the native Rust
+/// shell of example 6 produces (`gnoblin-std-impl/tests/examples.rs`).
+fn std_scenario(script: &Path) -> Run {
+    let stage = stage();
+    scenario_in(&stage.with_std, &stage.with_std_runtimes, "example06", script)
+}
+
+#[test]
+fn example_3_a_python_shell_arranges_the_clients_of_a_workspace_in_columns_as_they_open_and_close() {
+    let run = std_scenario(&example("03-python-std/shell.py"));
+    assert_eq!(run.code, 0, "{}", run.dump());
+    assert!(run.stderr.contains("python std shell is running"), "{}", run.dump());
+
+    // The workspace fills the 1000 by 800 screen less the outer gap of 20 on each side, and the columns are 10 apart. Each edge is
+    // floored on its own: three columns of 313.33 start at 20, 343.33 and 666.67.
+    assert_eq!(
+        step(&run.stdout, "one"),
+        [(40, Some([20.0, 20.0, 960.0, 760.0]))],
+        "{}",
+        run.dump()
+    );
+    assert_eq!(
+        step(&run.stdout, "two"),
+        [
+            (40, Some([20.0, 20.0, 475.0, 760.0])),
+            (41, Some([505.0, 20.0, 475.0, 760.0]))
+        ],
+        "{}",
+        run.dump()
+    );
+    assert_eq!(
+        step(&run.stdout, "three"),
+        [
+            (40, Some([20.0, 20.0, 313.0, 760.0])),
+            (41, Some([343.0, 20.0, 313.0, 760.0])),
+            (42, Some([666.0, 20.0, 314.0, 760.0])),
+        ],
+        "{}",
+        run.dump()
+    );
+    // `Super+Tab` swapped the focused third window with the first: the layout was not told how, it read the new order.
+    assert_eq!(
+        step(&run.stdout, "swapped"),
+        [
+            (40, Some([666.0, 20.0, 314.0, 760.0])),
+            (41, Some([343.0, 20.0, 313.0, 760.0])),
+            (42, Some([20.0, 20.0, 313.0, 760.0])),
+        ],
+        "{}",
+        run.dump()
+    );
+    assert_eq!(
+        step(&run.stdout, "closed"),
+        [
+            (40, Some([505.0, 20.0, 475.0, 760.0])),
+            (41, None),
+            (42, Some([20.0, 20.0, 475.0, 760.0])),
+        ],
+        "{}",
+        run.dump()
+    );
+    // The listener on the collection of clients heard each window that opened after it (window 40 was there already).
+    for id in [41, 42] {
+        assert!(
+            run.stderr.contains(&format!("client {id} opened on main")),
+            "no listener line for {id}: {}",
+            run.dump()
+        );
+    }
+    assert!(!run.stderr.contains("Traceback"), "{}", run.dump());
+    // The process maps one core and one std library; the runtime is the extra mapping.
+    assert_eq!(num(&run.stdout, "maps", "core_copies"), 1, "{}", run.dump());
+    assert_eq!(num(&run.stdout, "maps", "std_mappings"), 1, "{}", run.dump());
+    assert_eq!(num(&run.stdout, "core_stats", "panics"), 0, "{}", run.dump());
+}
+
+/// The native Rust shell of the layouts (`gnoblin-std-impl/fixtures/shell-layouts`) over the same scenario: the reference.
+fn native_layouts() -> Run {
+    let stage = stage();
+    let shell = stage.with_std.join("shells/libshell_layouts.so");
+    let name = PathBuf::from("std_layouts");
+    finish(scenario_with_env(
+        &stage.with_std,
+        &[name.as_path(), shell.as_path()],
+        &[("LD_LIBRARY_PATH", stage.with_std.as_path())],
+    ))
+}
+
+#[test]
+fn the_built_in_layouts_from_python_give_the_rectangles_of_the_native_shell() {
+    let stage = stage();
+    let native = native_layouts();
+    assert_eq!(native.code, 0, "{}", native.dump());
+    let script = scenario_in(
+        &stage.with_std,
+        &stage.with_std_runtimes,
+        "std_layouts",
+        &example("03-python-std/layouts.py"),
+    );
+    assert_eq!(script.code, 0, "{}", script.dump());
+    assert!(script.stderr.contains("layouts shell is running"), "{}", script.dump());
+    for name in [
+        "Super+1",
+        "Super+2",
+        "Super+3",
+        "Super+4",
+        "Super+5",
+        "Super+6",
+        "closed",
+        "swapped",
+        "dropped_nowhere",
+    ] {
+        let expected = step(&native.stdout, name);
+        assert!(
+            !expected.is_empty(),
+            "the native run has no step {name}: {}",
+            native.dump()
+        );
+        assert_eq!(step(&script.stdout, name), expected, "step {name}\n{}", script.dump());
+    }
+    assert!(!script.stderr.contains("Traceback"), "{}", script.dump());
+    assert_eq!(num(&script.stdout, "core_stats", "panics"), 0, "{}", script.dump());
 }

@@ -49,6 +49,7 @@ mod host_session;
 mod input;
 mod loader;
 mod lock;
+mod natives;
 mod output_apply;
 mod reload;
 mod role;
@@ -81,6 +82,7 @@ pub use host_session::{
     JsClientSessionLink, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb,
 };
 pub use loader::{JsLoadState, JsLoader, JsResolver, JsTypeScriptModule};
+pub use natives::{JsNative, ScriptIds};
 pub use reload::{JsDiagnostic, JsReloader, JsStager, ReloadReport};
 pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE};
 pub use rquickjs;

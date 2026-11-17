@@ -177,12 +177,46 @@ An editor, `mypy` or `pyright` can check a shell without running it. The package
 
 Point the checker at `<prefix>/share/gnoblin/python`, or add it to `extraPaths`.
 
+## The desktop library: `gnoblin.std`
+
+`gnoblin.std` is the object model above the core: collections of clients, outputs and workspaces, layouts, pointer bindings,
+transitions, styles and scene nodes. It is **generated** from the function table of `libgnoblin-std.so.1` (`cargo xtask gen-sdks`;
+[the generator](sdk-generator.md)), so it has every function of the table and none the library lacks. `std.py` and its `std.pyi`
+are typed: a record is a dataclass, a constant group an `IntEnum` or `IntFlag`, a handle a class (`Collection`, `Workspace`,
+`Client`, `Transition`, `Registration`), and every call goes through one native function, `gnoblin._std.call`.
+
+```python
+from gnoblin import gnoblin
+from gnoblin.std import DwindleLayout, EventKind, Layout, Placement, Workspace, clients
+
+class Columns(Layout):                      # a layout of your own: the library calls compute() when the workspace changes
+    def compute(self, cx):
+        area = cx.inset_area()
+        width = area.width / max(len(cx.children), 1)
+        return [Placement.tile(c, area.x + i * width, area.y, width, area.height) for i, c in enumerate(cx.children)]
+
+main = Workspace.create("main", layout=Columns(), gaps=(10.0, 20.0))
+clients().on(EventKind.ADDED, lambda event: gnoblin.log(f"client {event.member} opened"))
+
+other = Workspace.create("other", gaps=(6.0, 12.0))
+dwindle = other.use(DwindleLayout(ratio=0.6))   # a built-in layout: the algorithm is the library's
+dwindle.toggle_split()                          # the actions of a kind are methods, its options are properties
+```
+
+- **Built-in layouts and bindings** (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `DwindleLayout`, `StripLayout`,
+  `ArcLayout`, `Carousel3dLayout`, `MoveBinding`, `ResizeBinding`, `SwapBinding`, `SplitResizeBinding`) are generated from the
+  library's own table of kinds, so each option, its default, its enumeration and each action is the library's.
+- **A layout of your own** is an object with `compute(cx)` that returns placements, and optionally `client_added`, `client_removed`,
+  `area_changed`, `clients_swapped`, `revision`, `find_split`, `set_split` and `reset_split`. `Layout` is the generated base class.
+- **Failures** are the exceptions of `gnoblin` (`RefusedError`, `StaleError`, ...), with the library's text.
+- The library is opened by `import gnoblin.std`. Where it is not installed the import raises `ImportError`: `gnoblin-std is not
+installed (looked for libgnoblin-std.so.1 in ...)`, which is the check a core-only install is meant to give. A shell on
+  `gnoblin` alone is complete: example 8 tiles windows with no workspace.
+- The only hand-written parts are `_std_base.py` (the native, handles, argument conversion) and `_std_sugar.py` (`len(collection)`,
+  `client.window`, `Placement.tile`, `Workspace.create`, `Workspace.use`).
+
 ## What is not here yet
 
-- **`gnoblin.std`.** Workspaces, layouts and the pointer bindings of the desktop library are not bound to Python yet. Importing
-  `gnoblin.std` raises `ImportError`: `gnoblin-std is not installed (looked for libgnoblin-std.so.1 in ...)` when the library is
-  absent, which is the check a core-only install is meant to give, and says that its binding is not generated yet when it is
-  present. A shell on `gnoblin` alone is complete: example 8 tiles windows with no workspace.
 - **`gnoblin ./shell.py` in the compositor's own process** arrives with the in-process shell (see
   `design/modular-framework.md`, section 24).
 
@@ -192,6 +226,8 @@ Three small shells in `examples/` show the pieces, and a test in `crates/gnoblin
 as it is:
 
 - `examples/07-script-binding/shell.py`: a key binding written entirely in Python that moves the focused window.
+- `examples/03-python-std/shell.py` (example 3) and `layouts.py`: a workspace with a layout of your own, a listener on the clients and a
+  chord, and the built-in layouts. The tests hold their rectangles to the ones the native Rust shells produce.
 - `examples/08-no-workspaces-py/`: a master-and-stack tiler of raw window nodes, in a shell file and a module it imports (edit
   `tiles.py` and the tiling changes without restarting).
 - The same test builds example 11 (edit the shell and a module it imports; no listener twice; a broken edit keeps the shell) and

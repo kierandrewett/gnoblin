@@ -19,6 +19,16 @@ pub fn pascal(name: &str) -> String {
     out
 }
 
+/// `portal_ui` as `portalUi`.
+pub fn camel(name: &str) -> String {
+    let pascal = pascal(name);
+    let mut chars = pascal.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 /// `PortalUi` as `portal_ui`, and `portal-ui` as `portal_ui`.
 pub fn snake(name: &str) -> String {
     let mut out = String::new();
@@ -228,6 +238,7 @@ mod tests {
     #[test]
     fn casing_follows_each_language() {
         assert_eq!(pascal("portal_ui"), "PortalUi");
+        assert_eq!(camel("gap_inner"), "gapInner");
         assert_eq!(pascal("gnoblin.session"), "GnoblinSession");
         assert_eq!(snake("PortalUi"), "portal_ui");
         assert_eq!(snake("GnoblinStdEvent"), "gnoblin_std_event");
