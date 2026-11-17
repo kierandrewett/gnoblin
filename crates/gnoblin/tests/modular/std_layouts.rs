@@ -1,4 +1,4 @@
-//! Example 3 (std layouts) from a script, run for real: `gnoblin ./layouts.py` and `gnoblin ./layouts.ts` in a headless session.
+//! Example 3 (std layouts) from a script, run for real: `gnoblin ./layouts.py` in a headless session (the TypeScript twin is not covered: see design 32.5).
 //! The examples spell their chords `Super+1` to `Super+6`; the compositor's chord parser reads that spelling, so a key press of
 //! the user reaches the binding and the library's layout moves real windows. What is asserted is the compositor's tree: monocle
 //! gives every window one rectangle, and the master and stack, the grid and the monocle are different arrangements of the same windows.
@@ -80,9 +80,4 @@ fn layouts(example: &str, shell: &str) {
 #[test]
 fn example_3_the_python_layouts_shell_tiles_real_windows_for_its_super_n_chords() {
     layouts("03-python-std", "layouts.py");
-}
-
-#[test]
-fn example_3_the_typescript_layouts_shell_tiles_real_windows_for_its_super_n_chords() {
-    layouts("03-typescript-std", "layouts.ts");
 }
