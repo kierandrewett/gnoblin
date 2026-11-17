@@ -8,8 +8,8 @@
 //!    first read of the tree (`tree_attach`, made by the SDK on the first call that needs the tree) opens it;
 //! 2. the module is loaded ([`host::load`], which copies it, `dlopen`s it and runs its `init`) and then activated;
 //! 3. the guardian is told the shell accepted its (empty) configuration and is ready ([`ShellReports`]);
-//! 4. the thread turns the dispatch loop until the compositor asks it to stop, the shell asks to exit, or the tree link
-//!    ends. Its end is the shell's end and nothing more: the compositor keeps serving with its fallback window manager.
+//! 4. the thread turns the dispatch loop, serving reload requests between turns, until the compositor asks it to stop, the shell
+//!    asks to exit, or the tree link ends. Its end is the shell's end and nothing more: the compositor keeps serving with its fallback window manager.
 //!
 //! A shell has no configuration document, so the revision it reports is `0`: the guardian records an accepted revision, which
 //! is what lets it note that the shell came up, and no autostart entry, which is what a shell that reads no document has.
@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use gnoblin_compositor::inproc_shell::{InProcContext, InProcShellSpec, ShellError};
 use gnoblin_tree_client::tree_mirror::{LinkError, TreeLink};
 
-use crate::host::{self, AttachMode, Copying, Module, TreeLinkProvider};
+use crate::host::{self, AttachMode, TreeLinkProvider};
 use crate::{guard, log};
 
 /// How long one turn of the dispatch loop waits for something to deliver. A stop is noticed within this, and a link that
@@ -62,29 +62,27 @@ fn run(path: &Path, link: Box<dyn TreeLink>, context: &InProcContext) -> Result<
 }
 
 fn serve(path: &Path, context: &InProcContext) -> Result<(), ShellError> {
-    let module = host::load(path, Copying::Unique, 0).map_err(|error| error.to_string())?;
-    module.activate()?;
+    let mut shell = host::native_shell(path);
+    let generation = shell.start().map_err(|error| error.to_string())?;
     log::info!(
-        shell = module.label(),
-        "the native shell {} serves in process (generation {})",
+        "the native shell {} serves in process (generation {generation})",
         path.display(),
-        module.generation()
     );
     context.reports.config_accepted(NO_DOCUMENT);
     context.reports.ready(NO_DOCUMENT);
-    let outcome = turn_until_done(&module, context);
+    let outcome = turn_until_done(&mut shell, context);
     // The shutdown hooks run, the registrations are removed and the library is kept mapped (D16), whatever ended the loop.
-    module.retire();
+    shell.stop();
     outcome
 }
 
 /// Turns the dispatch loop. `Ok` is a clean end (the compositor stopped, or the shell asked to exit with code zero).
-fn turn_until_done(module: &Module, context: &InProcContext) -> Result<(), ShellError> {
+fn turn_until_done(shell: &mut host::NativeShell, context: &InProcContext) -> Result<(), ShellError> {
     loop {
         if context.stop.requested() {
             return Ok(());
         }
-        let turn = module.dispatch(TURN_MS);
+        let turn = shell.dispatch(TURN_MS);
         if let Some(code) = host::take_exit_request() {
             return if code == 0 {
                 Ok(())
@@ -92,12 +90,15 @@ fn turn_until_done(module: &Module, context: &InProcContext) -> Result<(), Shell
                 Err(format!("the shell asked to exit with code {code}").into())
             };
         }
-        if host::take_reload_request() {
-            // Reloading a native shell in place is the reload protocol's work (design section 8.1), which this build does not
-            // have. It says so rather than ignoring the request.
-            log::warn!("the shell asked for a reload; native hot reload is not available yet, so it keeps running");
+        // A reload the shell asked for (or the watcher, or `gnoblinctl shell reload`): the controller stages, commits or abandons it
+        // and logs the outcome; a failed one leaves the running generation as it was.
+        if let Some(reloaded) = shell.serve_requests() {
+            match reloaded {
+                Ok(reloaded) => log::info!("the native shell reloaded: {reloaded:?}"),
+                Err(failure) => log::warn!("the native shell did not reload and keeps running: {failure}"),
+            }
         }
-        if turn < 0 {
+        if turn.is_none_or(|turn| turn < 0) {
             if context.stop.requested() {
                 return Ok(());
             }
