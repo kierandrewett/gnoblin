@@ -1,0 +1,17 @@
+[package]
+name = "gnoblin-golden-core-shell"
+description = "Golden shell of example 12, core only: places windows in a cascade and logs the ABI it was built for and the one it finds installed. Stored as a binary; see tests/modular/golden/regenerate.sh."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "golden_core_shell"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../../crates/gnoblin-core" }
+
+[lints.rust]
+unsafe_code = "forbid"

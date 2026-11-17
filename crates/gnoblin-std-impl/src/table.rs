@@ -983,7 +983,16 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     binding_drag: crate::bindings::binding_drag,
     binding_gesture: crate::bindings::binding_gesture,
     binding_builtin: crate::bindings::binding_builtin,
+    #[cfg(feature = "next-minor")]
+    uptime_ms: api_uptime_ms,
 };
+
+/// The one function a `next-minor` library appends (ABI 1.1, test builds only): milliseconds since the table was first read.
+#[cfg(feature = "next-minor")]
+unsafe extern "C" fn api_uptime_ms() -> u64 {
+    static START: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
+    catch_unwind(|| u64::try_from(START.elapsed().as_millis()).unwrap_or(u64::MAX)).unwrap_or(0)
+}
 
 #[cfg(test)]
 mod split_table_tests {

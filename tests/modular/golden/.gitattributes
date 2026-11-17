@@ -1,0 +1,2 @@
+# The golden shells are binaries: never diffed, never merged, never touched by line-ending or filter rules.
+bin/*.so binary

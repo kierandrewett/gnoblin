@@ -1,0 +1,11 @@
+# The golden shells of example 12: binaries built once against the ABI named here and run, unchanged, against every later
+# core and std library. Written by regenerate.sh; reviewed like source. `cargo xtask abi-check` verifies the hashes and the
+# dynamic facts of the files (NEEDED, exports) on every run, and the modular tests run them in real sessions.
+# A line is `shell <kind> <path> <sha256> <bytes>`.
+core-abi 1.0
+std-abi 1.0
+base 55128b286b1e1822e030db25725478d799a310a2
+catalog 0x8d9a5c8fd0c2c922
+toolchain rustc 1.99.1 (58cf8f9c3 2026-10-13)
+shell core-only bin/libgolden_core_shell.so 850ecdf2ba192d79c52473c04fc914369d07fa3b030ed6c60de3047d83dc227d 297752
+shell std bin/libgolden_std_shell.so 0fe44b86fd700723536098dc32b8bad685db3976122ea1bcd64e25a0ef518fd9 294360

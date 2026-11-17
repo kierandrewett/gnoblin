@@ -15,6 +15,9 @@
 //! The lock is plain text, one entry per line, `kind | key | detail | since`, so a reviewer reads the ABI diff in the pull
 //! request. Type text is canonical (see `abi_c`), so the compiler's pretty-printing never shows up as a diff.
 //!
+//! The same command also verifies the golden shells of example 12 (`tests/modular/golden`, see `golden`): the stored binaries
+//! built for ABI 1.0 match their recorded hash and still have the dynamic facts of a shell.
+//!
 //! `abi-header` renders `include/gnoblin/core.h` from the same declarations. Decision D18 keeps the ABI unstable until
 //! 0.2.0 ships: the lock's `released none` means everything may still change, and the release commit sets it to `1.0`.
 
@@ -72,6 +75,22 @@ pub const STD: AbiTarget = AbiTarget {
 
 /// Every ABI the workspace ships, core first.
 pub const TARGETS: [&AbiTarget; 2] = [&CORE, &STD];
+
+/// The test-only knobs of a target's ABI crate and whether this build has each on. A build with any of them on describes a
+/// hypothetical ABI, so the lock is never compared with it.
+fn test_features(target: &AbiTarget) -> [(&'static str, bool); 2] {
+    if target.name == "core" {
+        [
+            ("next-minor", gnoblin_core_abi::NEXT_MINOR_FEATURE),
+            ("next-major", gnoblin_core_abi::NEXT_MAJOR_FEATURE),
+        ]
+    } else {
+        [
+            ("next-minor", gnoblin_std_abi::NEXT_MINOR_FEATURE),
+            ("next-major", gnoblin_std_abi::NEXT_MAJOR_FEATURE),
+        ]
+    }
+}
 
 const USAGE: &str = "\
 usage: cargo xtask abi-check [--update]
@@ -412,11 +431,13 @@ pub fn initial(current: &[ManifestEntry], version: Version) -> AbiLock {
 /// Checks one library's lock against its declarations, or writes it with `update`.
 fn check_target(root: &Path, update: bool, target: &AbiTarget) -> Result<bool, String> {
     let reflection = (target.reflection)();
-    if target.name == "core" && gnoblin_core_abi::NEXT_MINOR_FEATURE {
-        return Err(
-            "gnoblin-core-abi was built with its test-only `next-minor` feature; the lock describes the real ABI"
-                .to_owned(),
-        );
+    for (feature, on) in test_features(target) {
+        if on {
+            return Err(format!(
+                "{} was built with its test-only `{feature}` feature; the lock describes the real ABI",
+                target.crate_name
+            ));
+        }
     }
     let lock_path = target.lock_path;
     let current = manifest(&reflection)?;
@@ -477,12 +498,37 @@ fn check_target(root: &Path, update: bool, target: &AbiTarget) -> Result<bool, S
     Ok(false)
 }
 
+/// Checks the golden shells of example 12 against `golden.lock` and the ABI this build declares (see `golden`). They are
+/// shipped binaries, so a core or std built with a test knob is not a build they are compared against.
+fn check_golden(root: &Path) -> Result<bool, String> {
+    let version = |target: &AbiTarget| {
+        let reflection = (target.reflection)();
+        (reflection.major, reflection.minor)
+    };
+    let (golden, problems) = crate::golden::problems(root, version(&CORE), version(&STD))?;
+    if problems.is_empty() {
+        println!(
+            "[abi-check] {} golden shell(s) match {}/golden.lock (built for core ABI {}, std ABI {})",
+            golden.shells.len(),
+            crate::golden::DIR,
+            version_text(golden.core_abi),
+            version_text(golden.std_abi)
+        );
+        return Ok(true);
+    }
+    for problem in &problems {
+        eprintln!("[abi-check] golden: {problem}");
+    }
+    Ok(false)
+}
+
 /// Checks every library's lock; the first failure decides the exit code, and the rest are still reported.
 fn check(root: &Path, update: bool) -> Result<ExitCode, String> {
     let mut all_match = true;
     for target in TARGETS {
         all_match &= check_target(root, update, target)?;
     }
+    all_match &= check_golden(root)?;
     Ok(if all_match {
         ExitCode::SUCCESS
     } else {

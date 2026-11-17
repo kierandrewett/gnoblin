@@ -30,14 +30,22 @@ pub use types::*;
 
 use gnoblin_core_abi::reflect::Reflection;
 
-/// The std ABI major version: the number in the SONAME `libgnoblin-std.so.1`.
-pub const ABI_MAJOR: u32 = 1;
+/// The std ABI major version: the number in the SONAME `libgnoblin-std.so.1`. With the test feature `next-major` it is 2 while the
+/// SONAME stays `.1` (see `gnoblin_core_abi::ABI_MAJOR`).
+pub const ABI_MAJOR: u32 = if cfg!(feature = "next-major") { 2 } else { 1 };
 
-/// The std ABI minor version: the count of additive revisions within the major.
-pub const ABI_MINOR: u32 = 0;
+/// The std ABI minor version: the count of additive revisions within the major. With the test feature `next-minor` it is 1 and the
+/// table carries one more function (`uptime_ms`).
+pub const ABI_MINOR: u32 = if cfg!(feature = "next-minor") { 1 } else { 0 };
 
-/// The library patch level: the `<patch>` of `libgnoblin-std.so.<major>.<minor>.<patch>`.
-pub const ABI_PATCH: u32 = 0;
+/// The library patch level: the `<patch>` of `libgnoblin-std.so.<major>.<minor>.<patch>`. A `next-minor` build is a patch ahead too.
+pub const ABI_PATCH: u32 = if cfg!(feature = "next-minor") { 1 } else { 0 };
+
+/// True when the crate was built with the test-only `next-minor` feature. `cargo xtask abi-check` refuses such a build.
+pub const NEXT_MINOR_FEATURE: bool = cfg!(feature = "next-minor");
+
+/// True when the crate was built with the test-only `next-major` feature. `cargo xtask abi-check` refuses such a build too.
+pub const NEXT_MAJOR_FEATURE: bool = cfg!(feature = "next-major");
 
 /// The SONAME of the std library, and so the name a std shell records as NEEDED.
 pub const SONAME: &str = "libgnoblin-std.so.1";
@@ -117,7 +125,9 @@ mod tests {
 
     #[test]
     fn the_soname_follows_the_core_naming_rule() {
-        assert_eq!(SONAME, format!("lib{LINK_NAME}.so.{ABI_MAJOR}"));
+        // The test knob `next-major` changes the version a library reports and not the file name shells record.
+        assert_eq!(SONAME, format!("lib{LINK_NAME}.so.1"));
+        assert_eq!(ABI_MAJOR, if NEXT_MAJOR_FEATURE { 2 } else { 1 });
     }
 
     #[test]

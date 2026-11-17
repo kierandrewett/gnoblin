@@ -14,6 +14,9 @@ build-support = []
 # Test only: the table of a hypothetical ABI 1.1, one function appended (`uptime_ms`). The upgrade tests build a core
 # and a shell with it. It is never on in a build that ships and `cargo xtask abi-check` refuses it.
 next-minor = []
+# Test only: the version of a hypothetical ABI 2.0 core (`ABI_MAJOR` is 2; the file is still named `.so.1`). The upgrade tests build
+# it to show a shell built for major 1 is refused. It is never on in a build that ships and `cargo xtask abi-check` refuses it.
+next-major = []
 
 # The workspace table forbids unsafe code. This crate has exactly one `unsafe impl` (the shell entry descriptor is a
 # `static` and holds a pointer to a label), so it sets its own levels and allows it in that one place.

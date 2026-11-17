@@ -1,0 +1,18 @@
+[package]
+name = "gnoblin-golden-std-shell"
+description = "Golden shell of example 12, on std: one workspace per output, and a log of the ABIs it was built for and the ones it finds installed. Stored as a binary; see tests/modular/golden/regenerate.sh."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "golden_std_shell"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../../../crates/gnoblin-std" }
+
+[lints.rust]
+unsafe_code = "forbid"

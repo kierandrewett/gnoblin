@@ -13,6 +13,7 @@ mod docs_parity;
 mod dupes;
 mod elf;
 mod gen_proto;
+mod golden;
 mod layout;
 mod logging;
 mod metadata;

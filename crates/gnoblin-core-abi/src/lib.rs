@@ -32,16 +32,21 @@ pub mod build_support;
 pub use types::*;
 
 /// The ABI major version: the number in the SONAME `libgnoblin-core.so.1`.
-pub const ABI_MAJOR: u32 = 1;
+///
+/// With the test feature `next-major` this is 2 while the SONAME stays `.1`: a core that answers `gnoblin_abi_version` with
+/// another major than the shells in the field were built for. The upgrade tests build it to show the loader refuses such a core's
+/// shells with both versions named.
+pub const ABI_MAJOR: u32 = if cfg!(feature = "next-major") { 2 } else { 1 };
 
 /// The ABI minor version: the count of additive revisions within the major.
 ///
 /// With the test feature `next-minor` this is 1 and the table carries one more function (`uptime_ms`); the upgrade
-/// tests build a core and a shell that way.
+/// tests build a core and a shell that way, and the patch level moves with it ([`ABI_PATCH`]).
 pub const ABI_MINOR: u32 = if cfg!(feature = "next-minor") { 1 } else { 0 };
 
-/// The library patch level: the `<patch>` of `libgnoblin-core.so.<major>.<minor>.<patch>`.
-pub const ABI_PATCH: u32 = 0;
+/// The library patch level: the `<patch>` of `libgnoblin-core.so.<major>.<minor>.<patch>`. A `next-minor` build is also a
+/// patch ahead, so the version it reports differs in both of the numbers a shell can read.
+pub const ABI_PATCH: u32 = if cfg!(feature = "next-minor") { 1 } else { 0 };
 
 /// The SONAME of the core library, and so the name a shell records as NEEDED.
 pub const SONAME: &str = "libgnoblin-core.so.1";
@@ -49,6 +54,9 @@ pub const SONAME: &str = "libgnoblin-core.so.1";
 /// True when the crate was built with the test-only `next-minor` feature. `cargo xtask abi-check` refuses such a build:
 /// the lock describes the ABI that ships.
 pub const NEXT_MINOR_FEATURE: bool = cfg!(feature = "next-minor");
+
+/// True when the crate was built with the test-only `next-major` feature. `cargo xtask abi-check` refuses such a build too.
+pub const NEXT_MAJOR_FEATURE: bool = cfg!(feature = "next-major");
 
 /// The name the linker is told to link (`-lgnoblin-core`).
 pub const LINK_NAME: &str = "gnoblin-core";
@@ -194,10 +202,20 @@ mod tests {
     }
 
     #[test]
+    fn the_test_knobs_move_the_version_and_nothing_else() {
+        assert_eq!(ABI_MAJOR, if NEXT_MAJOR_FEATURE { 2 } else { 1 });
+        assert_eq!(ABI_MINOR, u32::from(NEXT_MINOR_FEATURE));
+        assert_eq!(ABI_PATCH, u32::from(NEXT_MINOR_FEATURE));
+        // The file name a shell records does not change: that is what lets a library of another major be put in a prefix and
+        // found by shells built for the first.
+        assert_eq!(SONAME, "libgnoblin-core.so.1");
+    }
+
+    #[test]
     fn the_next_minor_table_is_one_function_longer() {
         let table = size_of::<GnoblinApi>();
-        // `class_nodes` is the last function of the ABI 1.0 table.
-        let base = offset_of!(GnoblinApi, class_nodes) + size_of::<unsafe extern "C" fn()>();
+        // `setting_set` is the last function of the ABI 1.0 table.
+        let base = offset_of!(GnoblinApi, setting_set) + size_of::<unsafe extern "C" fn()>();
         if cfg!(feature = "next-minor") {
             assert_eq!(ABI_MINOR, 1);
             assert_eq!(table, base + size_of::<usize>());

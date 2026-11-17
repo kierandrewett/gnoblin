@@ -1,0 +1,26 @@
+# The golden shells of example 12 (design/modular-framework.md, 5.8 and 12): two small shells built once against ABI 1.0 and
+# stored as binaries under `bin/`, so every later core and std library is run with shells that were NOT recompiled for it.
+#
+# This is a workspace of its own, outside the repository's, so a build of the repository never rebuilds them: the stored
+# binaries are the test subject. `regenerate.sh` is the one recipe that builds them (an owner runs it, see its header and
+# docs/abi-compatibility.md); `golden.lock` records what it produced.
+[workspace]
+resolver = "3"
+members = ["core-shell", "std-shell"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+publish = false
+
+# Small and plain: the binaries are committed. Symbols are stripped from the file but not from the dynamic table, so `nm -D` still
+# shows the one export, and the build carries no path of the machine that made it (`regenerate.sh` remaps the rest).
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+debug = false
+strip = "symbols"
+incremental = false
+panic = "unwind"

@@ -11,6 +11,12 @@ publish.workspace = true
 # The link-stub helper a `build.rs` calls (`build_support`). The std SDK turns it on for its build dependency only, so no
 # shell carries the code.
 build-support = ["gnoblin-core-abi/build-support"]
+# Test only: the table of a hypothetical std ABI 1.1 (one function appended, `uptime_ms`) at library patch 1. The upgrade tests build
+# `libgnoblin-std` with it. It is never on in a build that ships and `cargo xtask abi-check` refuses it.
+next-minor = []
+# Test only: a std library that reports ABI major 2 (its file is still `libgnoblin-std.so.1`), to show a std shell built for major 1
+# is refused. Same rules as `next-minor`.
+next-major = []
 
 [dependencies]
 # The handle types, the string and error conventions and the declaration macros the std table is written with.

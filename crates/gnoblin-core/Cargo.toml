@@ -11,6 +11,8 @@ build = "build.rs"
 [features]
 # Test only: the SDK of a hypothetical ABI 1.1 (one more function in the table). See `gnoblin-core-abi`.
 next-minor = ["gnoblin-core-abi/next-minor"]
+# Test only: the SDK of a hypothetical ABI 2.0, to build a shell the 1.x core must refuse. See `gnoblin-core-abi`.
+next-major = ["gnoblin-core-abi/next-major"]
 
 [dependencies]
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }

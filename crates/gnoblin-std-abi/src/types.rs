@@ -1102,6 +1102,10 @@ abi_structs! {
         /// Starts a pointer binding the library runs itself: `kind` is `STD_BINDING_*`, the options are those `layouts::BINDING_KINDS`
         /// declares for it (`trigger`, `priority`, and the kind's own). Zero on failure. `remove` ends it.
         pub binding_builtin: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize) -> GnoblinStdReg,
+
+        /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
+        #[cfg(feature = "next-minor")]
+        pub uptime_ms: unsafe extern "C" fn() -> u64,
     }
 }
 

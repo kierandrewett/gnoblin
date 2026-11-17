@@ -13,6 +13,12 @@ name = "gnoblin_std_impl"
 # The cdylib is the library. The rlib exists for this crate's own unit tests; nothing else may depend on it (`impl-sealed`).
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Test only: a std library of a hypothetical ABI 1.1 at patch 1 (one function appended to the table). See `gnoblin-std-abi`.
+next-minor = ["gnoblin-std-abi/next-minor"]
+# Test only: a std library that reports ABI major 2 (its file is still `libgnoblin-std.so.1`). See `gnoblin-std-abi`.
+next-major = ["gnoblin-std-abi/next-major"]
+
 [dependencies]
 # The std library acts on the compositor only through the installed core: it is a shell's guest, and holds the same handle on the
 # generation that the shell does (`gnoblin_core::private::gnoblin_for`). It names the core SDK and the two ABI crates, never the

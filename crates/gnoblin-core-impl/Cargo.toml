@@ -19,6 +19,8 @@ crate-type = ["cdylib", "rlib"]
 test-driver = ["dep:gnoblin-testkit"]
 # Test only: a core of a hypothetical ABI 1.1 (one function appended to the table). See `gnoblin-core-abi`.
 next-minor = ["gnoblin-core-abi/next-minor"]
+# Test only: a core that reports ABI major 2 (its file is still `libgnoblin-core.so.1`). See `gnoblin-core-abi`.
+next-major = ["gnoblin-core-abi/next-major"]
 
 [dependencies]
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
