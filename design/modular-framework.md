@@ -1851,6 +1851,7 @@ through both, and a fix that loads as the next generation); a callback that rais
 - **`dist-check` does not yet check the runtime library** (one export, `NEEDED` the core and libpython only); the unit test of the install plan covers
   where it and the package go. The runtime also exports `PyInit__gnoblin_core` (PyO3's own symbol for the built-in module); hiding it is a linker version script.
 - **Python sub-interpreters are not used** (D12): a reload is a new namespace in the one interpreter, so a C extension that keeps global state keeps it.
+
 ## 25. The SDK generator (lane SdkGen)
 
 One generator, `cargo xtask gen-sdks [--check]` (`xtask/src/sdk/`, contract in `docs/sdk-generator.md`), writes every language SDK from the
@@ -1893,7 +1894,6 @@ makes them one renderer: `Library::functions`, `objects()`, records with `plain`
    transition begin/commit shape that StdAnimStyle reported.
 5. The Rust runtimes' own tables (`gnoblin-js/src/bindings/props.rs`, the exception classes of `gnoblin-runtime-python`) become generated
    Rust files of the same generator.
-
 
 ## 26. Implementation notes, M2.7, M2.10, M3.3, M3.5 and M3.6 (the flip)
 
@@ -1955,5 +1955,5 @@ The examples had only run against the fake compositor, which modelled the tree d
 
 ### Not done here
 
-- **M2.11** (`gnoblin-std-impl`, provider registration through the table, deleting the `std-providers` feature): lane StdMove had not landed on `origin/rust-compositor`, so the plan stops before it, as the assignment says. The core still compiles the fallback window manager in behind its feature.
-- The `gnoblinctl shell reload` and watcher edges to the in-process shell (the controller is wired; nothing in the session asks it yet), the 2 s callback budget, `wake_fd`, verbs and `provider_register` (RustSdk and Reload lanes), `--shell`, `--watch`, `--isolate`, `--list-shells` and discovery on the command line (Startup lane).
+- **M2.11** (`gnoblin-std-impl` registering providers through `provider_register` and C vtables, deleting the `std-providers` feature and `gnoblin-compositor/src/std_providers`) is not done. Lane StdMove has landed, so it is reachable, but it is a lane of its own, not a step after the flip. What it needs, measured against `origin/rust-compositor` after the flip: (1) the core ABI has no `provider_register`, `provider_unregister`, `GnoblinWmVtable` or UI vtable at all (section 9.4 describes them; the table has no entry), so the ABI, `abi.lock`, the header, the generated SDKs and a `ForeignWm` adapter with panic containment (swap to `NullWm` after one log line) are new work; (2) the `WindowManager` trait has about twenty methods with the window, effect and rectangle types of `gnoblin-wm-api`, each needing a `repr(C)` mirror and a marshalling pair; (3) `UiProvider` (seventeen methods over `Dialog`, `Verdict`, `RequestId` and a pixel `Frame`) needs a wire form, and `std_providers/portal_ui.rs` (842 lines) moves into `gnoblin-std-impl`, so the types it shares with `portal/provider.rs` move to a crate both sides can name; (4) `std_providers::commit` re-derives `window-management`, `accessibility` and `compositor` sections from an accepted document, so the vtable (or a settings call) must carry those sections to std; (5) a session with no shell that loads std (`gnoblin --role compositor` in the session suites, and the compositor's own tests) would run `NullWm`, so the suites that assume the stock window manager either load std in process or take `gnoblin-std-wm` as a dev-dependency harness, as the StdMove `FocusOnMap` harness does for the opposite case. The core still compiles the stock providers in behind `std-providers`; the `std-below-core` rule still allows that one edge.
+- The `gnoblinctl shell reload` and watcher edges to the in-process shell: the shell thread serves `Reload` requests between dispatch turns (a shell's own `request_reload` and the chord-requested reload of example 10 reach it), but nothing in the session socket asks it yet, so `gnoblinctl shell reload` and the watcher still wait for the Startup lane's `--watch`. The 2 s callback budget, `wake_fd`, verbs, `--shell`, `--watch`, `--isolate`, `--list-shells` and discovery on the command line are the Startup and RustSdk lanes'.
