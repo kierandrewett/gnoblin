@@ -66,6 +66,12 @@ class PlacementFlags(IntFlag):
     TILED = 4
     OFFSET = 8
 
+class QueryFlags(IntFlag):
+    """The `STD_QUERY_*` constants."""
+
+    POINTER = 1
+    FOCUSED_SIZE = 2
+
 class OutputsKind(IntEnum):
     """The `STD_OUTPUTS_*` constants."""
 
@@ -425,6 +431,29 @@ class LayoutContext:
     @classmethod
     def _from_dyn(cls, data: dict[str, Any]) -> LayoutContext: ...
     def inset_area(self) -> Rect: ...
+
+@dataclass
+class LayoutQuery:
+    """What a built-in layout that belongs to no workspace is asked about: the clients it is to place, where, and what the shell
+    knows that the layout reads. A copy: the library keeps nothing of it past the call. The clients are ids the caller chooses
+    and keeps stable for as long as the layout lives (a layout that keeps a tree of them remembers which is which).
+    """
+
+    flags: int = ...
+    children: list[int] = ...
+    area: Rect = ...
+    gap_inner: float = ...
+    gap_outer: float = ...
+    focused: int = ...
+    pointer_x: float = ...
+    pointer_y: float = ...
+    focused_width: float = ...
+    focused_height: float = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> LayoutQuery: ...
 
 @dataclass
 class LayoutSpec:
@@ -1244,6 +1273,72 @@ class Binding:
         """Starts a pointer binding the library runs itself: `kind` is `STD_BINDING_*`, the options are those `layouts::BINDING_KINDS`
         declares for it (`trigger`, `priority`, and the kind's own). Zero on failure. `remove` ends it.
         """
+        ...
+
+class Builtin:
+    """A built-in layout that belongs to no workspace: one made by `builtin_new`, which computes what it is asked about and keeps
+    the state its kind keeps (a dwindle's tree). Owned by the generation that made it; `builtin_free` ends it, and the
+    generation's retirement ends the rest. Zero is nil.
+    """
+
+    handle: int
+    def __init__(self, handle: int | Builtin) -> None: ...
+
+    @staticmethod
+    def new(kind: int, options: Sequence[Option | dict[str, Any]]) -> Optional[Builtin]:
+        """Makes the built-in layout `kind` (`STD_BUILTIN_*`) with the options given, as `workspace_set_layout_kind` does, but for no
+        workspace, and writes its handle to `out`. `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong
+        type or out of range.
+        """
+        ...
+
+    def free(self) -> int:
+        """Frees a built-in layout, and the state its kind kept."""
+        ...
+
+    def set(self, option: Option | dict[str, Any]) -> int:
+        """Changes one option of the layout. The state the layout keeps (a dwindle's tree) is kept."""
+        ...
+
+    def get(self, name: str) -> Option:
+        """Writes one option of the layout to `out`."""
+        ...
+
+    def compute(self, query: LayoutQuery | dict[str, Any]) -> list[Placement]:
+        """Computes where the query's clients go and lends the placements, one for each client the layout places. A layout that keeps
+        a tree adds the clients it has not seen and drops the ones it no longer is given, as a workspace's layout does.
+        """
+        ...
+
+    def act(self, action: str, values: Sequence[Option | dict[str, Any]], query: LayoutQuery | dict[str, Any]) -> tuple[Optional[int], Option]:
+        """Runs an action of the layout with the arguments given, against the clients and the focus the query holds, and writes what
+        it answers to `out` (`STD_VALUE_NONE` when it answers nothing). A layout that hands the keyboard on writes the client that
+        is to get it to `focus` (zero when there is none).
+        """
+        ...
+
+    def client_removed(self, query: LayoutQuery | dict[str, Any], client: int) -> Optional[int]:
+        """Tells the layout that `client` left the workspace it lays out. Writes the client the layout hands the keyboard to (zero
+        when it hands it to none, or is not a layout that does).
+        """
+        ...
+
+    def clients_swapped(self, a: int, b: int) -> int:
+        """Tells the layout that two clients traded places in the workspace's order."""
+        ...
+
+    def find_split(self, client: int, x: float, y: float) -> Optional[Split]:
+        """The divider that a drag which pressed `client` at (`x`, `y`) would move, from the layout of its last compute: 1 when it
+        wrote one to `out`, 0 when the layout has none there (or none at all).
+        """
+        ...
+
+    def set_split(self, token: int, ratio: float, cross_ratio: float) -> int:
+        """Moves the dividers of the drag that `builtin_find_split` named `token`."""
+        ...
+
+    def reset_split(self, token: int) -> int:
+        """Puts the dividers of the drag named `token` back as they were when `builtin_find_split` returned them."""
         ...
 
 class Registration:

@@ -44,6 +44,8 @@ const | STD_PLACEMENT_BOUNDS | u32 = 1 | 1.0
 const | STD_PLACEMENT_HIDDEN | u32 = 2 | 1.0
 const | STD_PLACEMENT_TILED | u32 = 4 | 1.0
 const | STD_PLACEMENT_OFFSET | u32 = 8 | 1.0
+const | STD_QUERY_POINTER | u32 = 1 | 1.0
+const | STD_QUERY_FOCUSED_SIZE | u32 = 2 | 1.0
 const | STD_OUTPUTS_SEPARATE | u32 = 0 | 1.0
 const | STD_OUTPUTS_DUPLICATE | u32 = 1 | 1.0
 const | STD_OUTPUTS_EXTEND | u32 = 2 | 1.0
@@ -146,6 +148,7 @@ alias | GnoblinStdCollection | u64 | 1.0
 alias | GnoblinStdWorkspace | u64 | 1.0
 alias | GnoblinStdTransition | u64 | 1.0
 alias | GnoblinStdStyle | u64 | 1.0
+alias | GnoblinStdBuiltin | u64 | 1.0
 
 callback | GnoblinStdEventFn | unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinStdEvent) -> i32 | 1.0
 callback | GnoblinStdComputeFn | unsafe extern "C" fn(user: *mut c_void, cx: *const GnoblinStdLayoutContext) -> i32 | 1.0
@@ -257,6 +260,26 @@ field | GnoblinStdLayoutContext.gap_outer | f64 @72 +8 | 1.0
 field | GnoblinStdLayoutContext.focused | GnoblinNode @80 +8 | 1.0
 field | GnoblinStdLayoutContext.sink | *mut c_void @88 +8 | 1.0
 field | GnoblinStdLayoutContext.emit | GnoblinStdEmitFn @96 +8 | 1.0
+
+struct | GnoblinStdLayoutQuery | size 112 align 8 extensible | 1.0
+
+field | GnoblinStdLayoutQuery.size | u32 @0 +4 | 1.0
+field | GnoblinStdLayoutQuery.flags | u32 @4 +4 | 1.0
+field | GnoblinStdLayoutQuery.children | *const GnoblinNode @8 +8 | 1.0
+field | GnoblinStdLayoutQuery.n_children | usize @16 +8 | 1.0
+field | GnoblinStdLayoutQuery.area | GnoblinStdRect @24 +32 | 1.0
+field | GnoblinStdLayoutQuery.gap_inner | f64 @56 +8 | 1.0
+field | GnoblinStdLayoutQuery.gap_outer | f64 @64 +8 | 1.0
+field | GnoblinStdLayoutQuery.focused | GnoblinNode @72 +8 | 1.0
+field | GnoblinStdLayoutQuery.pointer_x | f64 @80 +8 | 1.0
+field | GnoblinStdLayoutQuery.pointer_y | f64 @88 +8 | 1.0
+field | GnoblinStdLayoutQuery.focused_width | f64 @96 +8 | 1.0
+field | GnoblinStdLayoutQuery.focused_height | f64 @104 +8 | 1.0
+
+struct | GnoblinStdPlacements | size 16 align 8 fixed | 1.0
+
+field | GnoblinStdPlacements.ptr | *const GnoblinStdPlacement @0 +8 | 1.0
+field | GnoblinStdPlacements.len | usize @8 +8 | 1.0
 
 struct | GnoblinStdLayoutVtable | size 80 align 8 extensible | 1.0
 
@@ -448,7 +471,7 @@ struct | GnoblinStdStyleEntries | size 16 align 8 fixed | 1.0
 field | GnoblinStdStyleEntries.ptr | *const GnoblinStdStyleEntry @0 +8 | 1.0
 field | GnoblinStdStyleEntries.len | usize @8 +8 | 1.0
 
-struct | GnoblinStdApi | size 616 align 8 extensible | 1.0
+struct | GnoblinStdApi | size 704 align 8 extensible | 1.0
 
 field | GnoblinStdApi.size | u32 @0 +4 | 1.0
 field | GnoblinStdApi.major | u32 @4 +4 | 1.0
@@ -529,3 +552,14 @@ field | GnoblinStdApi.layout_ring | unsafe extern "C" fn(ctx: GnoblinCtx, count:
 field | GnoblinStdApi.binding_drag | unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdBindingSpec, cb: GnoblinStdDragFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinStdReg @592 +8 | 1.0
 field | GnoblinStdApi.binding_gesture | unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdBindingSpec, cb: GnoblinStdGestureFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinStdReg @600 +8 | 1.0
 field | GnoblinStdApi.binding_builtin | unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize) -> GnoblinStdReg @608 +8 | 1.0
+field | GnoblinStdApi.builtin_new | unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize, out: *mut GnoblinStdBuiltin) -> i32 @616 +8 | 1.0
+field | GnoblinStdApi.builtin_free | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin) -> i32 @624 +8 | 1.0
+field | GnoblinStdApi.builtin_set | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, option: *const GnoblinStdOption) -> i32 @632 +8 | 1.0
+field | GnoblinStdApi.builtin_get | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, name: *const u8, len: usize, out: *mut GnoblinStdOption) -> i32 @640 +8 | 1.0
+field | GnoblinStdApi.builtin_compute | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, query: *const GnoblinStdLayoutQuery, out: *mut GnoblinStdPlacements) -> i32 @648 +8 | 1.0
+field | GnoblinStdApi.builtin_act | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, action: *const u8, len: usize, values: *const GnoblinStdOption, n_values: usize, query: *const GnoblinStdLayoutQuery, focus: *mut GnoblinNode, out: *mut GnoblinStdOption) -> i32 @656 +8 | 1.0
+field | GnoblinStdApi.builtin_client_removed | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, query: *const GnoblinStdLayoutQuery, client: GnoblinNode, focus: *mut GnoblinNode) -> i32 @664 +8 | 1.0
+field | GnoblinStdApi.builtin_clients_swapped | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, a: GnoblinNode, b: GnoblinNode) -> i32 @672 +8 | 1.0
+field | GnoblinStdApi.builtin_find_split | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, client: GnoblinNode, x: f64, y: f64, out: *mut GnoblinStdSplit) -> i32 @680 +8 | 1.0
+field | GnoblinStdApi.builtin_set_split | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64, ratio: f64, cross_ratio: f64) -> i32 @688 +8 | 1.0
+field | GnoblinStdApi.builtin_reset_split | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64) -> i32 @696 +8 | 1.0

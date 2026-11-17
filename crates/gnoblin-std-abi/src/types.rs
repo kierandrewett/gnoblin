@@ -31,6 +31,10 @@ abi_aliases! {
     pub type GnoblinStdTransition = u64;
     /// The style of one scope (a collection of clients, or one client), by the library's own id. Zero is nil.
     pub type GnoblinStdStyle = u64;
+    /// A built-in layout that belongs to no workspace: one made by `builtin_new`, which computes what it is asked about and keeps
+    /// the state its kind keeps (a dwindle's tree). Owned by the generation that made it; `builtin_free` ends it, and the
+    /// generation's retirement ends the rest. Zero is nil.
+    pub type GnoblinStdBuiltin = u64;
 }
 
 abi_callbacks! {
@@ -132,6 +136,11 @@ abi_consts! {
     /// `GnoblinStdPlacement.flags`: `offset_x` and `offset_y` move the rectangle (or, without `bounds`, the client's own size
     /// centred in the area).
     pub const STD_PLACEMENT_OFFSET: u32 = 8;
+
+    /// `GnoblinStdLayoutQuery.flags`: `pointer_x` and `pointer_y` hold the seat's pointer in the layout's coordinates.
+    pub const STD_QUERY_POINTER: u32 = 1;
+    /// `GnoblinStdLayoutQuery.flags`: `focused_width` and `focused_height` hold the size the focused client has with its frame.
+    pub const STD_QUERY_FOCUSED_SIZE: u32 = 2;
 
     /// `GnoblinStdOutputPolicy.mode`: every output shows a workspace of its own (the default).
     pub const STD_OUTPUTS_SEPARATE: u32 = 0;
@@ -536,6 +545,45 @@ abi_structs! {
         pub sink: *mut c_void,
         /// Gives one placement to the library. Valid for the `compute` call only.
         pub emit: GnoblinStdEmitFn,
+    }
+
+    /// What a built-in layout that belongs to no workspace is asked about: the clients it is to place, where, and what the shell
+    /// knows that the layout reads. A copy: the library keeps nothing of it past the call. The clients are ids the caller chooses
+    /// and keeps stable for as long as the layout lives (a layout that keeps a tree of them remembers which is which).
+    pub struct GnoblinStdLayoutQuery {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_QUERY_*` flags.
+        pub flags: u32,
+        /// The clients, in order.
+        pub children: *const GnoblinNode,
+        /// Number of children.
+        pub n_children: usize,
+        /// The rectangle the layout fills. A tiling layout insets it by `gap_outer` itself.
+        pub area: GnoblinStdRect,
+        /// The gap between tiles.
+        pub gap_inner: f64,
+        /// The gap between the tiles and the edge of the area.
+        pub gap_outer: f64,
+        /// The child that has the keyboard, or zero.
+        pub focused: GnoblinNode,
+        /// With `STD_QUERY_POINTER`: the pointer's x.
+        pub pointer_x: f64,
+        /// With `STD_QUERY_POINTER`: the pointer's y.
+        pub pointer_y: f64,
+        /// With `STD_QUERY_FOCUSED_SIZE`: the focused client's width with its frame.
+        pub focused_width: f64,
+        /// With `STD_QUERY_FOCUSED_SIZE`: the focused client's height with its frame.
+        pub focused_height: f64,
+    }
+
+    /// An array of placements the library lends for the call: `ptr` points at `len` placements, valid until the next call into the
+    /// library on this thread.
+    pub struct GnoblinStdPlacements {
+        /// First placement, or null when `len` is zero.
+        pub ptr: *const GnoblinStdPlacement,
+        /// Number of placements.
+        pub len: usize,
     }
 
     /// The functions of a layout the shell implements. Every function gets the layout's `user` first.
@@ -1102,6 +1150,36 @@ abi_structs! {
         /// Starts a pointer binding the library runs itself: `kind` is `STD_BINDING_*`, the options are those `layouts::BINDING_KINDS`
         /// declares for it (`trigger`, `priority`, and the kind's own). Zero on failure. `remove` ends it.
         pub binding_builtin: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize) -> GnoblinStdReg,
+
+        /// Makes the built-in layout `kind` (`STD_BUILTIN_*`) with the options given, as `workspace_set_layout_kind` does, but for no
+        /// workspace, and writes its handle to `out`. `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong
+        /// type or out of range.
+        pub builtin_new: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize, out: *mut GnoblinStdBuiltin) -> i32,
+        /// Frees a built-in layout, and the state its kind kept.
+        pub builtin_free: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin) -> i32,
+        /// Changes one option of the layout. The state the layout keeps (a dwindle's tree) is kept.
+        pub builtin_set: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, option: *const GnoblinStdOption) -> i32,
+        /// Writes one option of the layout to `out`.
+        pub builtin_get: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, name: *const u8, len: usize, out: *mut GnoblinStdOption) -> i32,
+        /// Computes where the query's clients go and lends the placements, one for each client the layout places. A layout that keeps
+        /// a tree adds the clients it has not seen and drops the ones it no longer is given, as a workspace's layout does.
+        pub builtin_compute: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, query: *const GnoblinStdLayoutQuery, out: *mut GnoblinStdPlacements) -> i32,
+        /// Runs an action of the layout with the arguments given, against the clients and the focus the query holds, and writes what
+        /// it answers to `out` (`STD_VALUE_NONE` when it answers nothing). A layout that hands the keyboard on writes the client that
+        /// is to get it to `focus` (zero when there is none).
+        pub builtin_act: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, action: *const u8, len: usize, values: *const GnoblinStdOption, n_values: usize, query: *const GnoblinStdLayoutQuery, focus: *mut GnoblinNode, out: *mut GnoblinStdOption) -> i32,
+        /// Tells the layout that `client` left the workspace it lays out. Writes the client the layout hands the keyboard to (zero
+        /// when it hands it to none, or is not a layout that does).
+        pub builtin_client_removed: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, query: *const GnoblinStdLayoutQuery, client: GnoblinNode, focus: *mut GnoblinNode) -> i32,
+        /// Tells the layout that two clients traded places in the workspace's order.
+        pub builtin_clients_swapped: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, a: GnoblinNode, b: GnoblinNode) -> i32,
+        /// The divider that a drag which pressed `client` at (`x`, `y`) would move, from the layout of its last compute: 1 when it
+        /// wrote one to `out`, 0 when the layout has none there (or none at all).
+        pub builtin_find_split: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, client: GnoblinNode, x: f64, y: f64, out: *mut GnoblinStdSplit) -> i32,
+        /// Moves the dividers of the drag that `builtin_find_split` named `token`.
+        pub builtin_set_split: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64, ratio: f64, cross_ratio: f64) -> i32,
+        /// Puts the dividers of the drag named `token` back as they were when `builtin_find_split` returned them.
+        pub builtin_reset_split: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]

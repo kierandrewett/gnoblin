@@ -76,6 +76,11 @@ impl NativeCore {
         self.embedded.link().expect("the core opens the link")
     }
 
+    /// `__gnoblinStd`, for a generation that is not a shell's (`JsConfig::natives`).
+    pub fn std_native(&self) -> gnoblin_js::JsNative {
+        self.embedded.std_native()
+    }
+
     /// Gives every generation of a shell `__gnoblinStd`.
     pub fn configure(&self, config: &mut JsShellConfig) {
         config.js.natives.push(self.embedded.std_native());

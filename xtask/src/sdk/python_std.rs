@@ -398,8 +398,9 @@ impl<'a> Renderer<'a> {
                     "None if self.{ident} is None else {}(self.{ident})",
                     adapter_class(inner)
                 ),
+                Shape::Array(Elem::Scalar(_)) => format!("list(self.{ident})"),
+                Shape::Array(Elem::Record(_)) => format!("[item._to_dyn() for item in self.{ident}]"),
                 // Lent by the library: a script does not write them.
-                Shape::Array(_) => continue,
                 Shape::Sink(_) | Shape::Callback(_) | Shape::Pointer(_) => continue,
             };
             self.code.line(format!("{:?}: {expr},", field.name));

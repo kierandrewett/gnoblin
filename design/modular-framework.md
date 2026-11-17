@@ -2549,3 +2549,64 @@ checks. The scripts that were to run them are `lanes/Validation-tools/box/gates1
 - Not done, from the notes above: the shader pass (D20); a reload of an isolated shell from the socket and a watch on a launcher
   file (27.6); timers and chords for a shell that runs its own loop inside `init` (33.1); verbs that need a power backend (33.5);
   frozen provider vtables (the ABI is unreleased); a golden shell for any language but Rust.
+
+- **`wake_fd` and the verbs (`call`, `subscribe` of the `gnoblin` namespace)** are not implemented. `wake_fd` needs an epoll set over an
+  eventfd, a timerfd and the link's descriptor, written from `publish` and `post` and drained by `dispatch`; the design of it is in the
+  notes of this lane but no code is left in the tree. The verbs need a `VerbLink` over the owner socket (`gnoblin_client::Client`) and a
+  feed of its answers and signals into the mailbox; the catalog already carries `gnoblin.session` and its signals, but not the signals'
+  field names, so the feed needs them first.
+- **G6, layer surfaces**: the compositor draws no layer-shell surface at all (`surface_shell.rs`, `design/node-core.md`: "the compositor
+  does not draw layer surfaces; their buffers are not in the scene"), so a rectangle the shell sets is configured, published and used for
+  the work area and the surface's popups, and never drawn. This was established by reading the composer and the layer-shell module, not by
+  a test of pixels, and no fix was made: drawing them needs the layer's buffer in the frame (below the windows for `background` and
+  `bottom`, above them for `top` and `overlay`), damage on commit, frame callbacks and pointer picking, which is a lane of its own.
+- **State retention and adoption across two reloads in a real session (M5.4)** was not run against the real binary. The fake-compositor
+  test of example 10 remains the proof (section 20).
+
+### 25.4 TypeScript std onto the native one (lane TsStdNative)
+
+**B2 is resolved, with option (b).** The core attaches as the one holder and keeps the one mirror; the JavaScript engine's mirror becomes a
+_view_ of it. Option (a), moving the engine onto the node functions, would rewrite the 15 thousand lines of the engine and the suite
+that pins them (section 23.2); (b) leaves one source of truth in the core and changes none of the engine. `gnoblin-core-impl/src/hub.rs`
+owns the link; the core's `TreeSession` reads and writes through `HubLink`, and the engine through `tree_link_*`:
+
+- `tree_link_attach` answers the engine from the core's mirror (`TreeMirror::to_snapshot`), after applying what had arrived with the
+  snapshot; every later message is copied to both readers.
+- One transaction is on the wire at a time across both readers (each side's gate already keeps one in flight); the compositor answers in
+  order, so the hub remembers who sent each and hands the reply to that side only. A transaction that changed no node advances the other
+  reader's serial through an empty batch, which is what kept the second mirror from reading the next batch as a missed one.
+- Node ids, call tokens and claim ids of the core are counted from ranges of their own (`TreeSession::share_ids`, `RELAY_*`), so the
+  two makers never give the compositor the same one.
+- The library's callbacks also run when the host drains the core's queue after the runtime's turn (`instance::with_enter`).
+
+`crates/gnoblin-core-impl/src/tree_tests/relay.rs` holds the core-level tests; `crates/gnoblin-runtime-js/tests/shells.rs` runs examples 3,
+4, 7 and the layouts for real with the two tests that were `#[ignore]`d on B2 now passing.
+
+**B1 is resolved.** `crates/gnoblin-js/tests/common/native.rs` links `gnoblin-core-impl` and `gnoblin-std-impl` into the test binary (a
+development edge `impl-sealed` allows), gives the core the fake compositor, and `gnoblin_runtime_js::embed` makes the engine's link the view
+of the core's tree and installs `__gnoblinStd`. `rig_native`, and every `rig_*` of `common`, run the engine frame and then the core's
+dispatch. Cost: every test binary of `gnoblin-js` now links the core (about 170 MB each in a debug build); run them one at a time on a
+small disk.
+
+**What moved.** The algorithms of `layouts/{master-stack,grid,monocle,kiosk}`: the std table gained `builtin_*` (a built-in layout of a
+kind with no workspace: `new`, `free`, `set`, `get`, `compute`, `act`, `client_removed`, `clients_swapped`, `find_split`, `set_split`,
+`reset_split`; records `GnoblinStdLayoutQuery`, `GnoblinStdPlacements`), implemented in `gnoblin-std-impl/src/standalone.rs` over the same
+`Builtin` a workspace's layout is, generated for Rust, Python and TypeScript (the generator learned to write array fields of input
+records), and the TypeScript classes extend `layouts/native.ts` (`NativeLayout`): own fields as options, the library's algorithm, errors
+and dividers. The tests that asserted the TypeScript implementation's error text were updated; the rectangle goldens are unchanged.
+
+**What did not move, and why.**
+
+| Module                                                                                                                                                                                              | Blocker                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `host/{members,membership,roots,snapshot,lifecycle,workspace,workspaces,desks,policy,show,placements,fitting,layout_driver}`, `workspace.ts`: clients, collections, listeners, workspaces, policies | B3, now named exactly: `gnoblin.clients`, `workspace.clients` and every collection are the _engine's_ reactive collections (`gnoblin-core/host/{collections,collection_state,collection_events,listeners}`: `queueFor`, `recompute`, `raiseSignal`, `where` selections), which `gnoblin-core` shells use with no std. A native-backed `Workspace` needs those collections to take their membership from the library's events, which is a rewrite of the core's TypeScript object model, not of std. |
+| `layouts/{dwindle,strip,arc}` and carousel                                                                                                                                                          | Native kinds exist (`builtin_*` computes them). The TypeScript classes carry public API the wrapper must reproduce: dwindle's `revision`, `preselect`/`pseudotile` actions taking a workspace source, `pointer` as a function, `FocusableNode` navigation of strip; `arc` follows a View's `content`. Not ported in this lane.                                                                                                                                                                      |
+| `layouts/floating`, `host/placements`, `host/fitting`                                                                                                                                               | The library's floating placement works on library-held client state; the TypeScript driver keeps its own (`std.floating`). Moves with the workspace row.                                                                                                                                                                                                                                                                                                                                            |
+| `bindings/{move,resize,drag,tiling}`, `gestures`, `gesture_actions`                                                                                                                                 | `binding_builtin` claims its chord and marks clients floating in the library's state (`client_set_floating`), which the TypeScript driver cannot see until the workspace row moves. `DragBinding` stays as the extension class.                                                                                                                                                                                                                                                                     |
+| `transition/*`, `style/*`, `scene/*`, `display/camera2d`, `snap`                                                                                                                                    | A TypeScript `requestTransition` stages the _engine's_ writes (`host/staging.ts`); the library stages writes made through the core's node functions. The engine's writes now reach the compositor through the hub but not through the core's tick builder, so they cannot be captured by a native transition. Needs the engine's write path on the node functions (option (a) of B2) or a hub that routes engine writes into the core's builder.                                                    |
+| `display_manager/*`, `display/*`                                                                                                                                                                    | No native counterpart in the table (logical displays, output profiles).                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `frame/*`, `menus/*`, `ui/*`, `lock`, `alerts`, `widgets`, `panel`, `overview`, `titlebar`, `focus`, `window_state`, `reposition`, `extensions/xr`                                                  | Desktop UI and policy the library does not hold; optional extensions stay TypeScript.                                                                                                                                                                                                                                                                                                                                                                                                               |
+
+**Declarations.** The type surface of the library is the TypeScript source (`gnoblin-js-types`); everything the generator writes
+(`gnoblin-std/generated/*`, now with `Builtin`, `LayoutQuery`, `Placements`) is the declaration of the native binding, and the migrated
+layout classes carry no hand-kept shape beyond their options.

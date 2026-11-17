@@ -58,6 +58,13 @@ export const PlacementFlags = {
 } as const;
 export type PlacementFlags = (typeof PlacementFlags)[keyof typeof PlacementFlags];
 
+/** The `STD_QUERY_*` constants. */
+export const QueryFlags = {
+  POINTER: 1,
+  FOCUSED_SIZE: 2,
+} as const;
+export type QueryFlags = (typeof QueryFlags)[keyof typeof QueryFlags];
+
 /** The `STD_OUTPUTS_*` constants. */
 export const OutputsKind = {
   SEPARATE: 0,
