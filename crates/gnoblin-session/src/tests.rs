@@ -15,7 +15,7 @@ use crate::{
 
 const COMPOSITOR: ChildId = ChildId::new(1);
 const SERVICES: ChildId = ChildId::new(2);
-const RUNTIME: ChildId = ChildId::new(3);
+const SHELL: ChildId = ChildId::new(3);
 const FRONT: ChildId = ChildId::new(4);
 const FIRST_APP: ChildId = ChildId::new(5);
 const SECOND_APP: ChildId = ChildId::new(6);
@@ -159,7 +159,7 @@ fn up() -> Guardian {
     guardian.apply(at(0, EventKind::Start));
     ready(&mut guardian, COMPOSITOR, 1);
     ready(&mut guardian, SERVICES, 2);
-    ready(&mut guardian, RUNTIME, 3);
+    ready(&mut guardian, SHELL, 3);
     ready(&mut guardian, FRONT, 4);
     assert_eq!(guardian.session(), SessionState::Up);
     guardian
@@ -181,7 +181,7 @@ fn up_without_display() -> Guardian {
         },
     ));
     ready(&mut guardian, SERVICES, 2);
-    ready(&mut guardian, RUNTIME, 3);
+    ready(&mut guardian, SHELL, 3);
     ready(&mut guardian, FRONT, 4);
     assert_eq!(guardian.session(), SessionState::Up);
     guardian
@@ -227,16 +227,16 @@ fn stop_all(guardian: &mut Guardian) {
 }
 
 #[test]
-fn a_crash_looping_runtime_stops_and_degrades_the_session() {
+fn a_crash_looping_shell_stops_and_degrades_the_session() {
     let mut guardian = up();
     let mut now = 100;
     for attempt in 1..=5u32 {
-        let effects = exited(&mut guardian, RUNTIME, ExitStatus::Exited(1), now);
-        assert_eq!(guardian.status(RUNTIME).expect("runtime").restarts, attempt);
-        assert_eq!(state(&guardian, RUNTIME), ChildState::Backoff);
+        let effects = exited(&mut guardian, SHELL, ExitStatus::Exited(1), now);
+        assert_eq!(guardian.status(SHELL).expect("shell").restarts, attempt);
+        assert_eq!(state(&guardian, SHELL), ChildState::Backoff);
         let message = messages(&effects)
             .into_iter()
-            .find(|message| message.contains("restarting runtime"))
+            .find(|message| message.contains("restarting shell"))
             .expect("a restart is announced");
         let expected = [250u64, 500, 1000, 2000, 4000][usize::try_from(attempt - 1).expect("attempt fits")];
         assert!(
@@ -245,13 +245,13 @@ fn a_crash_looping_runtime_stops_and_degrades_the_session() {
         );
         now += 5000;
         let restarted = spawns(actions(tick(&mut guardian, now)));
-        assert_eq!(restarted, vec![(RUNTIME, u64::from(attempt + 1))]);
+        assert_eq!(restarted, vec![(SHELL, u64::from(attempt + 1))]);
     }
 
     // The sixth crash is one too many: no spawn, ever again, and the session says
     // it is degraded instead of pretending to be healthy.
-    let effects = exited(&mut guardian, RUNTIME, ExitStatus::Exited(1), now);
-    assert_eq!(state(&guardian, RUNTIME), ChildState::Failed);
+    let effects = exited(&mut guardian, SHELL, ExitStatus::Exited(1), now);
+    assert_eq!(state(&guardian, SHELL), ChildState::Failed);
     assert_eq!(guardian.session(), SessionState::Degraded);
     assert_eq!(
         level_of(&effects, "the session is degraded"),
@@ -288,7 +288,7 @@ fn up_with_xr() -> Guardian {
     guardian.apply(at(0, EventKind::Start));
     ready(&mut guardian, COMPOSITOR, 1);
     ready(&mut guardian, SERVICES, 2);
-    ready(&mut guardian, RUNTIME, 3);
+    ready(&mut guardian, SHELL, 3);
     ready(&mut guardian, FRONT, 4);
     assert_eq!(guardian.session(), SessionState::Up);
     guardian
@@ -303,7 +303,7 @@ fn the_xr_extension_starts_with_no_readiness_to_wait_for() {
     guardian.apply(at(0, EventKind::Start));
     ready(&mut guardian, COMPOSITOR, 1);
     ready(&mut guardian, SERVICES, 2);
-    ready(&mut guardian, RUNTIME, 3);
+    ready(&mut guardian, SHELL, 3);
     let effects = ready(&mut guardian, FRONT, 4);
     assert_eq!(
         spawns(actions(effects)),
@@ -371,7 +371,7 @@ fn a_crash_looping_xr_extension_gives_up_once_and_leaves_the_session_up() {
             "a failed extension is never spawned again"
         );
     }
-    for other in [SERVICES, RUNTIME, FRONT, XR_FIRST_APP] {
+    for other in [SERVICES, SHELL, FRONT, XR_FIRST_APP] {
         assert_eq!(state(&guardian, other), ChildState::Running, "{other:?} keeps running");
     }
 }
@@ -411,7 +411,7 @@ fn the_xr_extension_stops_after_the_applications_and_before_the_front() {
             reason: ShutdownReason::Logout,
         },
     )));
-    for child in [XR_SECOND_APP, XR_FIRST_APP, XR, FRONT, RUNTIME, SERVICES, COMPOSITOR] {
+    for child in [XR_SECOND_APP, XR_FIRST_APP, XR, FRONT, SHELL, SERVICES, COMPOSITOR] {
         now += 100;
         let instance = generation(&guardian, child);
         order.extend(signals(guardian.apply(at(
@@ -510,7 +510,7 @@ fn dependants_stop_before_the_compositor() {
             reason: ShutdownReason::Logout,
         },
     )));
-    for child in [SECOND_APP, FIRST_APP, FRONT, RUNTIME, SERVICES, COMPOSITOR] {
+    for child in [SECOND_APP, FIRST_APP, FRONT, SHELL, SERVICES, COMPOSITOR] {
         now += 100;
         let instance = generation(&guardian, child);
         let effects = guardian.apply(at(
@@ -525,7 +525,7 @@ fn dependants_stop_before_the_compositor() {
     }
     assert_eq!(
         order,
-        vec![SECOND_APP, FIRST_APP, FRONT, RUNTIME, SERVICES, COMPOSITOR],
+        vec![SECOND_APP, FIRST_APP, FRONT, SHELL, SERVICES, COMPOSITOR],
         "a client is stopped before the server it talks to"
     );
     assert_eq!(guardian.session(), SessionState::Ended);
@@ -549,7 +549,7 @@ fn a_compositor_that_exits_with_the_logout_code_ends_the_session_as_a_logout() {
         "the compositor is never restarted"
     );
     let mut order = signals(effects);
-    for child in [SECOND_APP, FIRST_APP, FRONT, RUNTIME, SERVICES] {
+    for child in [SECOND_APP, FIRST_APP, FRONT, SHELL, SERVICES] {
         now += 100;
         let instance = generation(&guardian, child);
         let effects = guardian.apply(at(
@@ -564,7 +564,7 @@ fn a_compositor_that_exits_with_the_logout_code_ends_the_session_as_a_logout() {
     }
     assert_eq!(
         order,
-        vec![SECOND_APP, FIRST_APP, FRONT, RUNTIME, SERVICES],
+        vec![SECOND_APP, FIRST_APP, FRONT, SHELL, SERVICES],
         "every client is stopped before the server it talks to, in the logout order"
     );
     assert_eq!(guardian.session(), SessionState::Ended);
@@ -635,9 +635,9 @@ fn backoff_saturates_instead_of_overflowing() {
     assert_eq!(secs(u64::MAX), Tick::new(u64::MAX));
     assert_eq!(Tick::new(u64::MAX).saturating_add(1), Tick::new(u64::MAX));
     let mut guardian = up();
-    exited(&mut guardian, RUNTIME, ExitStatus::Exited(1), 1);
+    exited(&mut guardian, SHELL, ExitStatus::Exited(1), 1);
     let effects = spawns(actions(tick(&mut guardian, u64::MAX)));
-    assert_eq!(effects, vec![(RUNTIME, 2)]);
+    assert_eq!(effects, vec![(SHELL, 2)]);
     assert_eq!(guardian.session(), SessionState::Up);
 }
 
@@ -721,7 +721,7 @@ fn a_front_that_dies_before_the_session_is_up_does_not_block_it() {
     guardian.apply(at(0, EventKind::Start));
     ready(&mut guardian, COMPOSITOR, 1);
     ready(&mut guardian, SERVICES, 2);
-    ready(&mut guardian, RUNTIME, 3);
+    ready(&mut guardian, SHELL, 3);
     assert_eq!(state(&guardian, FRONT), ChildState::Starting);
 
     exited(&mut guardian, FRONT, ExitStatus::Exited(1), 10);
@@ -829,7 +829,7 @@ fn safe_mode_is_requested_after_the_configured_failed_starts() {
     // configuration is accepted again.
     ready(&mut next, COMPOSITOR, 1);
     ready(&mut next, SERVICES, 2);
-    ready(&mut next, RUNTIME, 3);
+    ready(&mut next, SHELL, 3);
     ready(&mut next, FRONT, 4);
     assert_eq!(next.session(), SessionState::Up);
     assert_eq!(next.recovery().failed_starts, 0);
@@ -1032,7 +1032,7 @@ fn a_display_published_after_ready_reaches_later_children() {
         },
     )));
     ready(&mut guardian, SERVICES, 2);
-    ready(&mut guardian, RUNTIME, 3);
+    ready(&mut guardian, SHELL, 3);
     ready(&mut guardian, FRONT, 4);
     assert_eq!(guardian.session(), SessionState::Up);
     assert_eq!(guardian.environment().get("DISPLAY"), None);
@@ -1170,24 +1170,24 @@ fn events_after_the_session_ended_change_nothing() {
 #[test]
 fn a_stable_child_gets_its_restart_budget_back() {
     let mut guardian = up();
-    exited(&mut guardian, RUNTIME, ExitStatus::Exited(1), 100);
+    exited(&mut guardian, SHELL, ExitStatus::Exited(1), 100);
     tick(&mut guardian, 350);
-    ready(&mut guardian, RUNTIME, 400);
-    assert_eq!(guardian.status(RUNTIME).expect("runtime").restarts, 1);
+    ready(&mut guardian, SHELL, 400);
+    assert_eq!(guardian.status(SHELL).expect("shell").restarts, 1);
 
     tick(&mut guardian, 60_400);
     assert_eq!(
-        guardian.status(RUNTIME).expect("runtime").restarts,
+        guardian.status(SHELL).expect("shell").restarts,
         0,
         "a minute of uptime resets the ladder"
     );
 
-    let effects = exited(&mut guardian, RUNTIME, ExitStatus::Exited(1), 60_500);
-    assert_eq!(guardian.status(RUNTIME).expect("runtime").restarts, 1);
+    let effects = exited(&mut guardian, SHELL, ExitStatus::Exited(1), 60_500);
+    assert_eq!(guardian.status(SHELL).expect("shell").restarts, 1);
     assert!(
         messages(&effects)
             .iter()
-            .any(|message| message.contains("restarting runtime in 250 ms")),
+            .any(|message| message.contains("restarting shell in 250 ms")),
         "the ladder starts at its first rung again: {}",
         messages(&effects).join(" | ")
     );
@@ -1202,7 +1202,7 @@ fn restart_policies_match_the_plan() {
         Restart::Backoff(Backoff::guardian())
     );
     assert_eq!(
-        plan.spec(RUNTIME).expect("runtime").restart,
+        plan.spec(SHELL).expect("shell").restart,
         Restart::Backoff(Backoff::guardian())
     );
     assert_eq!(plan.spec(FRONT).expect("front").restart, Restart::Never);
@@ -1212,18 +1212,18 @@ fn restart_policies_match_the_plan() {
     // The plan refuses the orders that would leave a child without its display.
     let no_compositor = Plan::new(vec![crate::ChildSpec::new(
         ChildId::new(1),
-        crate::ChildKind::Runtime,
-        "runtime",
+        crate::ChildKind::Shell,
+        "shell",
     )]);
     assert_eq!(no_compositor, Err(crate::PlanError::MissingCompositor));
     let late_compositor = Plan::new(vec![
-        crate::ChildSpec::new(ChildId::new(1), crate::ChildKind::Runtime, "runtime"),
+        crate::ChildSpec::new(ChildId::new(1), crate::ChildKind::Shell, "shell"),
         crate::ChildSpec::new(ChildId::new(2), crate::ChildKind::Compositor, "compositor"),
     ]);
     assert_eq!(late_compositor, Err(crate::PlanError::CompositorNotFirst));
     let duplicate = Plan::new(vec![
         crate::ChildSpec::new(ChildId::new(1), crate::ChildKind::Compositor, "compositor"),
-        crate::ChildSpec::new(ChildId::new(1), crate::ChildKind::Runtime, "runtime"),
+        crate::ChildSpec::new(ChildId::new(1), crate::ChildKind::Shell, "shell"),
     ]);
     assert_eq!(duplicate, Err(crate::PlanError::DuplicateId(ChildId::new(1))));
 }

@@ -150,6 +150,16 @@ pub struct GuardianReports {
 }
 
 impl GuardianReports {
+    /// Reports over `reporter`, and to nobody else. The isolated shell host (`gnoblin --role shell`) is a process that has the
+    /// guardian's report descriptor itself and uses this to speak on it as the in-process shell does.
+    #[must_use]
+    pub fn new(reporter: Arc<Mutex<gnoblin_client::Reporter>>) -> Self {
+        Self {
+            reporter,
+            then: Arc::new(NoReports),
+        }
+    }
+
     fn write(&self, text: &str) {
         self.reporter.lock().unwrap_or_else(PoisonError::into_inner).write(text);
     }
@@ -185,6 +195,20 @@ impl ShellReports for GuardianReports {
         }
         self.then.ended(end);
     }
+}
+
+/// What the session's socket can ask of the in-process shell: reload it, and say how it is doing.
+///
+/// The shell's host (`libgnoblin-core.so.1`, which this crate cannot name) implements it over its reload controller and
+/// hands it in with [`InProcShellSpec::with_control`]. Both methods are called from the IPC dispatcher's thread and must not
+/// block: a reload is a request the shell thread takes between its dispatches, and its outcome is read back with
+/// [`status`](Self::status).
+pub trait ShellControl: Send + Sync {
+    /// Asks for a reload and returns the status as it was when the request was taken (`pending` is set).
+    fn reload(&self) -> gnoblin_client::wire::ShellStatus;
+
+    /// The shell's generation and how its reloads went.
+    fn status(&self) -> gnoblin_client::wire::ShellStatus;
 }
 
 /// A request, from the compositor, that the shell stop. The shell's link reports it too (its descriptor turns readable and
@@ -243,6 +267,7 @@ pub struct InProcShellSpec {
     name: String,
     entry: ShellEntry,
     reports: Arc<dyn ShellReports>,
+    control: Option<Arc<dyn ShellControl>>,
     limits: MailboxLimits,
     grace: Duration,
 }
@@ -257,9 +282,23 @@ impl InProcShellSpec {
             name: name.into(),
             entry: Box::new(entry),
             reports: Arc::new(NoReports),
+            control: None,
             limits: MailboxLimits::default(),
             grace: STOP_GRACE,
         }
+    }
+
+    /// What `shell.reload` and `shell.status` on the session's socket reach, instead of nothing.
+    #[must_use]
+    pub fn with_control(mut self, control: Arc<dyn ShellControl>) -> Self {
+        self.control = Some(control);
+        self
+    }
+
+    /// The control the socket's shell members reach, if the shell has one.
+    #[must_use]
+    pub fn control(&self) -> Option<Arc<dyn ShellControl>> {
+        self.control.clone()
     }
 
     /// Where the shell reports to the guardian, instead of nowhere.

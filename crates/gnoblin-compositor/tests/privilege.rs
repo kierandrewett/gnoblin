@@ -77,7 +77,7 @@ fn the_owner_connection_is_served_the_privileged_members() {
     // member it calls, so its commit or read fails. Every connection the owner's uid makes is
     // an owner connection (`requires_owner`). The refusal of a connection from another uid is
     // the compositor's unit test `config_members_require_the_owner_connection`.
-    let (session, _ends) = Session::start_privileged(&["runtime", "services"]);
+    let (session, _ends) = Session::start_privileged(&["shell", "services"]);
     let mut client = socket_client(&session);
     let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
     assert_eq!(client.commit_config(&document).expect("the owner commits"), 1);
@@ -241,7 +241,7 @@ fn a_restarted_runtime_is_served_on_a_fresh_pair() {
     // compositor refuses it because the role already connected. The guardian gives every spawn
     // its own socket pair, so the restarted runtime's handshake arrives on a stream the compositor
     // has never served. The role keeps the document it committed.
-    let (session, mut ends) = Session::start_privileged(&["runtime"]);
+    let (session, mut ends) = Session::start_privileged(&["shell"]);
     let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
     let (_role, stream) = ends.pop().expect("the runtime's end");
 
@@ -254,7 +254,7 @@ fn a_restarted_runtime_is_served_on_a_fresh_pair() {
     );
     // The child dies: its end closes, and the compositor observes the stream ending.
     drop(first);
-    let restarted = session.spawn_child("runtime");
+    let restarted = session.spawn_child("shell");
     let mut again = Client::connect(UnixTransport::from_stream(restarted).expect("a transport"), version())
         .expect("the restarted runtime handshakes on its own pair");
     assert_eq!(
@@ -313,9 +313,9 @@ fn a_dropped_privileged_stream_does_not_wedge_the_control_thread() {
 fn each_spawn_is_served_on_its_own_pair() {
     // The guardian gives every spawn a fresh pair, so a second child is served while the first
     // child's end is still open. Nothing about the first child's stream is reused for the second.
-    let (session, _ends) = Session::start_privileged(&["runtime"]);
+    let (session, _ends) = Session::start_privileged(&["shell"]);
     let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
-    let first_stream = session.spawn_child("runtime");
+    let first_stream = session.spawn_child("shell");
     let mut first = Client::connect(
         UnixTransport::from_stream(first_stream).expect("a transport"),
         version(),
@@ -323,7 +323,7 @@ fn each_spawn_is_served_on_its_own_pair() {
     .expect("the first child handshakes");
     assert_eq!(first.commit_config(&document).expect("the commit"), 1);
     // The first child stays connected: the second spawn must not depend on it going away.
-    let second_stream = session.spawn_child("runtime");
+    let second_stream = session.spawn_child("shell");
     let mut second = Client::connect(
         UnixTransport::from_stream(second_stream).expect("a transport"),
         version(),
@@ -342,15 +342,15 @@ fn stale_partial_bytes_never_reach_the_new_peer() {
     // A child that dies mid-frame leaves half a handshake on its own pair. The guardian never
     // hands that pair to the next child, so the next child starts from an empty stream: its
     // handshake succeeds and the session shows exactly what a fresh start shows.
-    let (session, _ends) = Session::start_privileged(&["runtime"]);
-    let mut dying = session.spawn_child("runtime");
+    let (session, _ends) = Session::start_privileged(&["shell"]);
+    let mut dying = session.spawn_child("shell");
     let frame = gnoblin_proto::Handshake::hello(version()).encode();
     {
         use std::io::Write as _;
         dying.write_all(&frame[..frame.len() / 2]).expect("half a handshake");
     }
     drop(dying);
-    let fresh = session.spawn_child("runtime");
+    let fresh = session.spawn_child("shell");
     let mut client = Client::connect(UnixTransport::from_stream(fresh).expect("a transport"), version())
         .expect("the new child handshakes with no stale bytes in front of it");
     assert_eq!(
@@ -389,8 +389,8 @@ fn the_owner_reload_reaches_the_runtime_which_commits_the_answer() {
     // compositor commits on the runtime's behalf. The CLI's reload blocks until the runtime
     // answers, so it runs on its own thread while the runtime watches the session for the
     // request and commits.
-    let (session, mut ends) = Session::start_privileged(&["runtime"]);
-    let mut runtime = role_client(&mut ends, "runtime");
+    let (session, mut ends) = Session::start_privileged(&["shell"]);
+    let mut runtime = role_client(&mut ends, "shell");
     runtime.subscribe(Filter::All).expect("the snapshot");
 
     let socket = session.socket().to_path_buf();
@@ -434,8 +434,8 @@ fn a_runtime_rejection_answers_the_owner_reload_and_leaves_the_document_in_force
     // The failure this prevents: a document the runtime refuses is still committed, or the
     // owner's reload reports success. The reject carries the runtime's diagnostic back to
     // the CLI, and the last accepted document is still the one in force.
-    let (session, mut ends) = Session::start_privileged(&["runtime"]);
-    let mut runtime = role_client(&mut ends, "runtime");
+    let (session, mut ends) = Session::start_privileged(&["shell"]);
+    let mut runtime = role_client(&mut ends, "shell");
     runtime.subscribe(Filter::All).expect("the snapshot");
 
     let socket = session.socket().to_path_buf();

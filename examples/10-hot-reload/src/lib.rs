@@ -17,8 +17,8 @@
 //! 4. **Start-up work is done once.** The windows open when the shell first starts are placed by the first generation; a
 //!    generation that finds kept state leaves them alone.
 //!
-//! What it does, so that a test can see each of the above: new windows cascade by `STEP` pixels; `Super+n` counts a press on the
-//! badge's `z`; a 50 ms timer counts on its `y`; `Super+Shift+r` asks for a reload; a helper program is started once.
+//! What it does, so that a test can see each of the above: new windows cascade by `STEP` pixels; `<Super>n` counts a press on the
+//! badge's `z`; a 50 ms timer counts on its `y`; `<Super>r` asks for a reload; a helper program is started once.
 //!
 //! The test of this example (`crates/gnoblin-core-impl/tests/reload.rs`) builds it twice from the same source, once as it is and
 //! once with the two constants below edited, exactly as a developer's edit-and-rebuild loop does, and loads one after the other.
@@ -87,7 +87,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         g.adopt_ephemeral_node("canvas", "reload-toast")?;
     }
 
-    // Habit 3: registrations belong to the generation. `Super+n` counts on the badge's `z`, and the count is kept state too, so
+    // Habit 3: registrations belong to the generation. `<Super>n` counts on the badge's `z`, and the count is kept state too, so
     // it goes on from where the last generation left it.
     let presses = Rc::new(Cell::new(
         g.kept_state("presses")?
@@ -97,7 +97,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     {
         let badge = badge.node.clone();
         let presses = Rc::clone(&presses);
-        g.bind("Super+n", move || {
+        g.bind("<Super>n", move || {
             presses.set(presses.get() + 1);
             let result = badge
                 .set("z", f64::from(presses.get()))
@@ -107,7 +107,7 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
             }
         })?;
     }
-    g.bind("Super+Shift+r", move || {
+    g.bind("<Super>r", move || {
         if let Err(error) = g.request_reload() {
             g.log(&format!("cannot ask for a reload: {error}"));
         }

@@ -500,6 +500,7 @@ impl Compositor {
                 gnoblin_config::Config::from_json_bytes(b"{}").expect("the empty document is valid")
             }),
             config.polkit_helper.take(),
+            config.shell.as_ref().and_then(inproc_shell::InProcShellSpec::control),
         )
         .map_err(Error::Ipc)?;
 

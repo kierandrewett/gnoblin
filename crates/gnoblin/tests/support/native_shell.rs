@@ -95,6 +95,144 @@ fn build_shells() -> Result<Shells, String> {
     })
 }
 
+// ---- example 10, built as a developer builds it -----------------------------------------------------------------------
+
+/// Example 10 (`examples/10-hot-reload`) as the libraries a reload test swaps in. One source, edited and rebuilt in a project of
+/// its own, exactly as an edit-and-rebuild loop does.
+pub struct Hot {
+    /// As it is: `VERSION` 1, a 40 pixel cascade, a toast it makes and does not keep.
+    pub v1: PathBuf,
+    /// The two constants edited: `VERSION` 2 and an 80 pixel cascade.
+    pub v2: PathBuf,
+    /// A replacement whose `init` returns an error after it has registered a listener.
+    pub bad: PathBuf,
+    /// A replacement whose `init` panics.
+    pub panics: PathBuf,
+}
+
+/// Builds example 10 four times from its one source. Built once per test binary.
+pub fn hot() -> &'static Hot {
+    static HOT: LazyLock<Result<Hot, String>> = LazyLock::new(build_hot);
+    match &*HOT {
+        Ok(hot) => hot,
+        Err(message) => panic!("cannot build example 10: {message}"),
+    }
+}
+
+fn build_hot() -> Result<Hot, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let scratch = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("hot-{}", std::process::id()));
+    let project = scratch.join("project");
+    fs::create_dir_all(project.join("src")).map_err(|error| error.to_string())?;
+    let source =
+        fs::read_to_string(root.join("examples/10-hot-reload/src/lib.rs")).map_err(|error| error.to_string())?;
+    fs::write(
+        project.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"hot-reload-project\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n\n\
+             [lib]\nname = \"hot_reload\"\ncrate-type = [\"cdylib\"]\n\n\
+             [dependencies]\ngnoblin-core = {{ path = \"{}\" }}\n\n[workspace]\n",
+            root.join("crates/gnoblin-core").display()
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::copy(root.join("Cargo.lock"), project.join("Cargo.lock")).map_err(|error| error.to_string())?;
+    // The shells' own target directory: the SDK is compiled once for all of them.
+    let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("native-shells");
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let out = scratch.join("out");
+    fs::create_dir_all(&out).map_err(|error| error.to_string())?;
+
+    let build = |name: &str, edited: &str| -> Result<PathBuf, String> {
+        // Cargo compares modification times, so let a second pass between two writes of the one file.
+        std::thread::sleep(Duration::from_millis(1100));
+        fs::write(project.join("src/lib.rs"), edited).map_err(|error| error.to_string())?;
+        let output = Command::new(&cargo)
+            .current_dir(&project)
+            .args(["build", "--offline"])
+            .env("CARGO_TARGET_DIR", &target)
+            .output()
+            .map_err(|error| format!("cannot run cargo: {error}"))?;
+        if !output.status.success() {
+            return Err(format!("{name}: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+        let built = out.join(format!("{name}.so"));
+        fs::copy(target.join("debug/libhot_reload.so"), &built).map_err(|error| error.to_string())?;
+        Ok(built)
+    };
+    let v1 = build("v1", &source)?;
+    let v2_source = source
+        .replace("const VERSION: u32 = 1;", "const VERSION: u32 = 2;")
+        .replace("const STEP: f64 = 40.0;", "const STEP: f64 = 80.0;");
+    if v2_source == source {
+        return Err("example 10 no longer has the two constants this test edits".to_owned());
+    }
+    let v2 = build("v2", &v2_source)?;
+    let entry = "fn main(g: &Gnoblin) -> gnoblin::Result<()> {\n";
+    if !source.contains(entry) {
+        return Err("example 10's entry function changed shape".to_owned());
+    }
+    // Registers a listener first, as a real replacement would, and then fails: nothing of it may be left behind.
+    let bad_source = v2_source.replace(
+        entry,
+        &format!("{entry}    g.bind(\"Super+x\", || {{}})?;\n    g.adopt_node(\"no-such-class\", \"x\")?;\n"),
+    );
+    let bad = build("bad", &bad_source)?;
+    let panic_source = v2_source.replace(
+        entry,
+        &format!("{entry}    panic!(\"simulated panic in init (example 18)\");\n"),
+    );
+    let panics = build("panics", &panic_source)?;
+    Ok(Hot { v1, v2, bad, panics })
+}
+
+// ---- the language runtimes ----------------------------------------------------------------------------------------------
+
+/// A directory of the runtime libraries the loader opens by name (`libgnoblin-runtime-js.so`, `libgnoblin-runtime-python.so`),
+/// for `GNOBLIN_RUNTIME_DIR`: what an installed prefix has in `<libdir>/gnoblin/`. Built once per test binary.
+pub fn runtimes() -> &'static Path {
+    static RUNTIMES: LazyLock<Result<PathBuf, String>> = LazyLock::new(build_runtimes);
+    match &*RUNTIMES {
+        Ok(directory) => directory,
+        Err(message) => panic!("cannot build the language runtimes: {message}"),
+    }
+}
+
+fn build_runtimes() -> Result<PathBuf, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("native-shells");
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = Command::new(cargo)
+        .current_dir(&root)
+        .args(["build", "--locked", "--manifest-path"])
+        .arg(root.join("Cargo.toml"))
+        .args(["-p", "gnoblin-runtime-js", "-p", "gnoblin-runtime-python"])
+        .env("CARGO_TARGET_DIR", &target)
+        .output()
+        .map_err(|error| format!("cannot run cargo: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "cargo build of the runtimes failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("runtimes");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    for language in ["js", "python"] {
+        let link = directory.join(format!("libgnoblin-runtime-{language}.so"));
+        let _ = fs::remove_file(&link);
+        std::os::unix::fs::symlink(target.join(format!("debug/libgnoblin_runtime_{language}.so")), &link)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(directory)
+}
+
 // ---- the process -----------------------------------------------------------------------------------------------------
 
 /// One line the process wrote, and when this test read it.
@@ -144,10 +282,231 @@ impl Drop for Bus {
     }
 }
 
+/// The private directory a session runs in, and the places discovery looks in, all under it so a test never reads the
+/// developer's own.
+///
+/// ```text
+/// <root>/config   $XDG_CONFIG_HOME   (the `gnoblin` directory is `config/gnoblin`)
+/// <root>/data     $XDG_DATA_HOME     (installed shells: `data/gnoblin/shells`)
+/// <root>/share    $XDG_DATA_DIRS     (system shells: `share/gnoblin/shells`)
+/// <root>/home     $HOME
+/// <root>/fixture  $GNOBLIN_FIXTURE_DIR
+/// <root>/bin      a stand-in terminal, first on the PATH
+/// ```
+pub struct Home {
+    directory: tempfile::TempDir,
+}
+
+impl Home {
+    pub fn new() -> Self {
+        // Canonical, so the paths a test expects are the paths the launcher prints.
+        let directory = tempfile::Builder::new()
+            .prefix("gnoblin-home-")
+            .tempdir_in(fs::canonicalize(std::env::temp_dir()).expect("the temporary directory resolves"))
+            .expect("a temporary directory");
+        fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).expect("the directory mode");
+        for name in ["fixture", "bin", "config", "data", "share", "home"] {
+            fs::create_dir(directory.path().join(name)).expect("a session directory");
+        }
+        Self { directory }
+    }
+
+    pub fn root(&self) -> &Path {
+        self.directory.path()
+    }
+
+    /// `$XDG_CONFIG_HOME/gnoblin`.
+    pub fn config(&self) -> PathBuf {
+        self.root().join("config/gnoblin")
+    }
+
+    /// `$XDG_DATA_HOME/gnoblin/shells`.
+    pub fn user_shells(&self) -> PathBuf {
+        self.root().join("data/gnoblin/shells")
+    }
+
+    /// The one `$XDG_DATA_DIRS` entry's `gnoblin/shells`.
+    pub fn system_shells(&self) -> PathBuf {
+        self.root().join("share/gnoblin/shells")
+    }
+
+    /// Writes `text` to `relative` under the root, making the directories, and returns the path.
+    pub fn write(&self, relative: &str, text: &str) -> PathBuf {
+        let path = self.root().join(relative);
+        fs::create_dir_all(path.parent().expect("a parent")).expect("the directories");
+        fs::write(&path, text).expect("the file");
+        path
+    }
+
+    /// Copies `from` to `relative` under the root and returns the path.
+    pub fn copy(&self, from: &Path, relative: &str) -> PathBuf {
+        let path = self.root().join(relative);
+        fs::create_dir_all(path.parent().expect("a parent")).expect("the directories");
+        fs::copy(from, &path).expect("the copy");
+        path
+    }
+
+    /// The environment every `gnoblin` of this home runs under: the places it looks in are the home's, the backend is
+    /// headless however the machine is set up, and nothing of the developer's shell choice reaches it.
+    pub fn environment(&self) -> Vec<(&'static str, PathBuf)> {
+        let root = self.root();
+        vec![
+            ("XDG_RUNTIME_DIR", root.to_path_buf()),
+            ("XDG_STATE_HOME", root.join("state")),
+            ("XDG_CONFIG_HOME", root.join("config")),
+            ("XDG_DATA_HOME", root.join("data")),
+            ("XDG_DATA_DIRS", root.join("share")),
+            ("XDG_CACHE_HOME", root.join("cache")),
+            ("HOME", root.join("home")),
+            ("GNOBLIN_IPC_SOCKET", root.join("ipc.sock")),
+            ("GNOBLIN_FIXTURE_DIR", root.join("fixture")),
+        ]
+    }
+
+    /// A `gnoblin` command for this home, ready to run to completion for its exit code and text (`--list-shells`, a refused
+    /// start). Not a session: nothing waits for it to serve.
+    pub fn command(&self, binary: &Path) -> Command {
+        let mut command = Command::new(binary);
+        for (key, value) in self.environment() {
+            command.env(key, value);
+        }
+        command
+            .env("GNOBLIN_BACKEND", "headless")
+            .env("GNOBLIN_LOG", "info")
+            .env("GNOBLIN_LOG_FORMAT", "plain")
+            .env_remove("WAYLAND_DISPLAY")
+            .env_remove("LD_LIBRARY_PATH")
+            .env_remove("GNOBLIN_SHELL")
+            .stdin(Stdio::null());
+        command
+    }
+}
+
+impl Default for Home {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// An installed layout of the launcher in a private prefix: `<prefix>/bin/gnoblin` (a copy of the one under test), the core
+/// library linked in `<prefix>/lib`, and the places a shell can be installed: `lib/gnoblin/shells` (where a launcher's `module`
+/// is relative to) and `share/gnoblin/default-shell` (the packaged default, tier 7).
+///
+/// The launcher finds the packaged default from where it is installed, so a test that needs to see it, or to prove there is
+/// none, runs this copy instead of the binary in `target/`.
+pub struct Prefix {
+    directory: tempfile::TempDir,
+}
+
+impl Prefix {
+    pub fn new() -> Self {
+        let directory = tempfile::Builder::new()
+            .prefix("gnoblin-prefix-")
+            .tempdir_in(fs::canonicalize(std::env::temp_dir()).expect("the temporary directory resolves"))
+            .expect("a temporary directory");
+        let root = directory.path();
+        fs::create_dir_all(root.join("bin")).expect("bin");
+        fs::create_dir_all(root.join("lib")).expect("lib");
+        let built = Path::new(BIN).parent().expect("the binary's directory");
+        fs::copy(BIN, root.join("bin/gnoblin")).expect("a copy of the binary");
+        std::os::unix::fs::symlink(
+            built.join("libgnoblin-core.so.1"),
+            root.join("lib/libgnoblin-core.so.1"),
+        )
+        .expect("the core, linked: `cargo xtask stage` puts it beside the binary");
+        Self { directory }
+    }
+
+    pub fn root(&self) -> &Path {
+        self.directory.path()
+    }
+
+    /// The installed launcher.
+    pub fn binary(&self) -> PathBuf {
+        self.root().join("bin/gnoblin")
+    }
+
+    /// `<prefix>/lib/gnoblin/shells`: where a launcher file's `module` key is relative to.
+    pub fn module_dir(&self) -> PathBuf {
+        self.root().join("lib/gnoblin/shells")
+    }
+
+    /// `<prefix>/share/gnoblin/default-shell`: the packaged default's directory.
+    pub fn default_shell_dir(&self) -> PathBuf {
+        self.root().join("share/gnoblin/default-shell")
+    }
+
+    /// Installs `from` under `directory` as `name`.
+    pub fn install(&self, from: &Path, directory: &Path, name: &str) -> PathBuf {
+        fs::create_dir_all(directory).expect("the install directory");
+        let path = directory.join(name);
+        fs::copy(from, &path).expect("the installed file");
+        path
+    }
+}
+
+impl Default for Prefix {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// How a session is started.
+#[derive(Clone, Debug, Default)]
+pub struct Launch {
+    /// The launcher to run; the one under test when unset.
+    pub binary: Option<PathBuf>,
+    /// Its arguments.
+    pub args: Vec<std::ffi::OsString>,
+    /// Whether it is the guardian (it needs a private bus and the fast numbers).
+    pub guardian: bool,
+    /// More environment.
+    pub env: Vec<(String, String)>,
+    /// Files (and what is in them) in the fixture directory before the shell loads.
+    pub prepared: Vec<(String, String)>,
+}
+
+impl Launch {
+    pub fn guardian(args: &[&str]) -> Self {
+        Self {
+            args: args.iter().map(std::ffi::OsString::from).collect(),
+            guardian: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn compositor(args: &[&str]) -> Self {
+        let mut launch = Self::guardian(args);
+        launch.guardian = false;
+        launch
+            .args
+            .splice(0..0, ["--role", "compositor"].map(std::ffi::OsString::from));
+        launch
+    }
+
+    #[must_use]
+    pub fn with_binary(mut self, binary: PathBuf) -> Self {
+        self.binary = Some(binary);
+        self
+    }
+
+    #[must_use]
+    pub fn with_arg(mut self, arg: impl Into<std::ffi::OsString>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_env(mut self, key: &str, value: &str) -> Self {
+        self.env.push((key.to_owned(), value.to_owned()));
+        self
+    }
+}
+
 /// A running `gnoblin`, its log and the directories it owns. Killed on drop.
 pub struct Gnoblin {
     child: Option<Child>,
-    directory: tempfile::TempDir,
+    home: Home,
     fixture: PathBuf,
     lines: Arc<Mutex<Vec<Line>>>,
     _bus: Option<Bus>,
@@ -157,57 +516,48 @@ impl Gnoblin {
     /// Starts `gnoblin` with `shell` as `start` says. `extra` is added to the environment, and `prepared` names files (and what
     /// is in them) that are in the fixture directory before the shell loads, for a command it must find at its start.
     pub fn start(start: Start, shell: &Path, extra: &[(&str, &str)], prepared: &[(&str, &str)]) -> Self {
-        let directory = tempfile::tempdir().expect("a temporary directory");
-        fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).expect("the directory mode");
-        let fixture = directory.path().join("fixture");
-        fs::create_dir(&fixture).expect("the fixture directory");
-        for (name, text) in prepared {
+        let mut launch = match start {
+            Start::Compositor => Launch::compositor(&[]),
+            Start::Guardian => Launch::guardian(&[]),
+        };
+        launch.args.push(shell.into());
+        launch.env = extra
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect();
+        launch.prepared = prepared
+            .iter()
+            .map(|(name, text)| ((*name).to_owned(), (*text).to_owned()))
+            .collect();
+        Self::launch(Home::new(), launch)
+    }
+
+    /// Starts `gnoblin` as `launch` says, in `home`.
+    pub fn launch(home: Home, launch: Launch) -> Self {
+        let fixture = home.root().join("fixture");
+        for (name, text) in &launch.prepared {
             fs::write(fixture.join(name), text).expect("a prepared command");
         }
         // A stand-in terminal: the shells start `foot`, and the test finds out that they did.
-        let bin = directory.path().join("bin");
-        fs::create_dir(&bin).expect("the bin directory");
-        let foot = bin.join("foot");
+        let foot = home.root().join("bin/foot");
         fs::write(&foot, "#!/bin/sh\n: > \"$GNOBLIN_FIXTURE_DIR/terminal\"\n").expect("the stand-in terminal");
         fs::set_permissions(&foot, fs::Permissions::from_mode(0o755)).expect("the stand-in's mode");
         let path = format!(
             "{}:{}",
-            bin.display(),
+            home.root().join("bin").display(),
             std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_owned())
         );
-        let mut command = Command::new(BIN);
-        match start {
-            Start::Compositor => {
-                command.args(["--role", "compositor"]).arg(shell);
-            }
-            Start::Guardian => {
-                command.arg(shell);
-            }
-        }
-        let bus = (start == Start::Guardian).then(Bus::start);
-        command
-            .env("XDG_RUNTIME_DIR", directory.path())
-            .env("XDG_STATE_HOME", directory.path().join("state"))
-            .env("XDG_CONFIG_HOME", directory.path().join("config"))
-            .env("GNOBLIN_IPC_SOCKET", directory.path().join("ipc.sock"))
-            // The session has to run headless however the machine that runs the test is set up.
-            .env("GNOBLIN_BACKEND", "headless")
-            .env("GNOBLIN_LOG", "info")
-            .env("GNOBLIN_LOG_FORMAT", "plain")
-            .env("GNOBLIN_FIXTURE_DIR", &fixture)
-            .env("PATH", path)
-            .env_remove("WAYLAND_DISPLAY")
-            .env_remove("LD_LIBRARY_PATH")
-            .env_remove("GNOBLIN_SHELL")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        let binary = launch.binary.clone().unwrap_or_else(|| PathBuf::from(BIN));
+        let mut command = home.command(&binary);
+        command.args(&launch.args);
+        let bus = launch.guardian.then(Bus::start);
+        command.env("PATH", path).stdout(Stdio::piped()).stderr(Stdio::piped());
         if let Some(bus) = &bus {
             command
                 .env("DBUS_SESSION_BUS_ADDRESS", &bus.address)
                 .env("GNOBLIN_TEST_FAST", "1");
         }
-        for (key, value) in extra {
+        for (key, value) in &launch.env {
             command.env(key, value);
         }
         let mut child = command.spawn().expect("gnoblin starts");
@@ -243,11 +593,16 @@ impl Gnoblin {
         }
         Self {
             child: Some(child),
-            directory,
+            home,
             fixture,
             lines,
             _bus: bus,
         }
+    }
+
+    /// The directory the session runs in.
+    pub fn home(&self) -> &Home {
+        &self.home
     }
 
     /// The process id of the process `gnoblin` was started as.
@@ -257,12 +612,12 @@ impl Gnoblin {
 
     /// The tree's socket.
     pub fn ipc(&self) -> PathBuf {
-        self.directory.path().join("ipc.sock")
+        self.home.root().join("ipc.sock")
     }
 
     /// The Wayland socket clients connect to.
     pub fn wayland(&self) -> PathBuf {
-        self.directory.path().join(gnoblin_wayland::DEFAULT_SOCKET_NAME)
+        self.home.root().join(gnoblin_wayland::DEFAULT_SOCKET_NAME)
     }
 
     /// The directory the test and the fixture shell command each other through.
@@ -468,6 +823,7 @@ pub const KEY_LEFTMETA: u32 = 125;
 pub const KEY_ENTER: u32 = 28;
 pub const KEY_Q: u32 = 16;
 pub const KEY_M: u32 = 50;
+pub const KEY_R: u32 = 19;
 
 /// The `Mod4` bit of an xkb modifier mask, which `pc+us` gives the Super keys.
 const MOD_SUPER: u32 = 1 << 6;

@@ -1,6 +1,6 @@
 [package]
 name = "gnoblin"
-description = "Session entry point: role dispatch for guardian, compositor, runtime and services."
+description = "Session entry point: shell discovery and role dispatch for guardian, compositor, shell and services."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -31,7 +31,10 @@ gnoblin-services = { path = "../gnoblin-services" }
 # The compat wiring: which adapters exist and how each process serves them. The binary
 # names this crate and no adapter; `xtask/src/deps.rs` enforces that.
 gnoblin-compat-host = { path = "../compat/gnoblin-compat-host" }
-# The role flag. One flag with a documented default, and `--version`.
+# Which shell runs: the seven discovery tiers, `--list-shells` and the error text. The guardian resolves the shell with it
+# before it starts anything.
+gnoblin-shell-discovery = { path = "../gnoblin-shell-discovery" }
+# The command line.
 clap.workspace = true
 
 [build-dependencies]

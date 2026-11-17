@@ -39,6 +39,12 @@ pub(crate) enum Verb {
     ConfigReload,
     /// Check a configuration document on disk, without connecting.
     ConfigValidate { path: PathBuf },
+    /// What the shell the compositor runs in its own process is doing.
+    ShellStatus,
+    /// Reload that shell and report how it went.
+    ShellReload,
+    /// Reload it each time its module is rebuilt.
+    ShellWatch { path: Option<PathBuf>, once: bool },
 }
 
 /// Run a verb that needs the compositor.
@@ -60,6 +66,9 @@ pub(crate) fn execute<T: Transport>(
         Verb::ConfigGet => config_get(client, json, out),
         Verb::ConfigReload => config_reload(client, json, out),
         Verb::ConfigValidate { path } => validate(path, json, out),
+        Verb::ShellStatus => crate::shell::status(client, json, out),
+        Verb::ShellReload => crate::shell::reload(client, json, out),
+        Verb::ShellWatch { path, once } => crate::shell::watch(client, path.as_deref(), *once, json, out, err),
     };
     match outcome {
         Ok(code) => code,

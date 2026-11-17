@@ -2,7 +2,7 @@
 //!
 //! This crate is the guardian of the process model in `design/rust-compositor.md`
 //! and the supervision policy of `design/lean-runtime.md`: one process lives for
-//! the login and owns the session, while the compositor, the runtime, the
+//! the login and owns the session, while the compositor, the shell, the
 //! services role, the front and the autostart applications are children it
 //! starts, watches and stops.
 //!
@@ -22,12 +22,12 @@
 //!   or `Backoff`, and every spawn increments its generation, so an `Exited` or
 //!   `Ready` from an earlier instance is recognised and ignored instead of
 //!   restarting a healthy child or counting one crash twice.
-//! - **Restarts are bounded and caller-driven.** The runtime and the services
+//! - **Restarts are bounded and caller-driven.** The shell and the services
 //!   role restart on [`Backoff`] with the C supervisor's ladder, and a child that
 //!   exhausts its budget fails once, is reported degraded, and is never spawned
 //!   again: no reachable state spins.
 //! - **A restartable child never ends the session.** Only the compositor and an
-//!   unusable start do. A services or runtime failure degrades the session and
+//!   unusable start do. A services or shell failure degrades the session and
 //!   leaves every working child alone, which is the property that lets a user
 //!   keep their windows while an agent restarts.
 //! - **Nothing starts before it can work.** Children start in plan order, one at
@@ -37,7 +37,7 @@
 //!   child that ignores the shutdown grace period, are killed, and a kill the
 //!   caller never reports does not hold the session open.
 //! - **The session ends in order.** Stop goes by rank in reverse start order
-//!   (autostart applications, front, runtime, services, compositor), so a
+//!   (autostart applications, front, shell, services, compositor), so a
 //!   client is always stopped before the server it talks to. Everything in one
 //!   rank is signalled together, so a desktop with ten autostart applications
 //!   does not pay ten grace periods.
@@ -50,9 +50,9 @@
 //! The plan's card, `design/startup-recovery.md`, `design/lean-runtime.md` and
 //! `src/session` give this list. Each entry names the test that covers it.
 //!
-//! 1. A runtime that crashes immediately is restarted forever and burns a core:
+//! 1. A shell that crashes immediately is restarted forever and burns a core:
 //!    the budget stops it and the session is reported degraded —
-//!    `a_crash_looping_runtime_stops_and_degrades_the_session`.
+//!    `a_crash_looping_shell_stops_and_degrades_the_session`.
 //! 2. A services crash takes the whole session down with it: the session stays up
 //!    and the child comes back —
 //!    `a_services_crash_does_not_end_the_session`.
@@ -60,7 +60,7 @@
 //!    dependants first —
 //!    `a_compositor_crash_stops_every_other_child`.
 //! 4. Stop order leaves a client talking to a dead server: autostart
-//!    applications and the front stop before the runtime, services and
+//!    applications and the front stop before the shell, services and
 //!    compositor they talk to —
 //!    `dependants_stop_before_the_compositor`.
 //! 5. A child never becomes ready: it is killed at its deadline and treated as
@@ -132,7 +132,7 @@ pub use ids::ChildId;
 pub use plan::{Backoff, ChildKind, ChildSpec, DEFAULT_READY_WITHIN, Plan, PlanError, Restart};
 pub use recovery::{ConfigRecovery, ConfigStatus, Recovery};
 pub use state::{ChildState, ChildStatus, SessionState, StopReason};
-pub use supervisor::{SupervisorConfig, SupervisorError, TEST_FAST_VARIABLE, run as run_guardian};
+pub use supervisor::{ShellPlan, SupervisorConfig, SupervisorError, TEST_FAST_VARIABLE, run as run_guardian};
 pub use time::Tick;
 
 gnoblin_log::logger!(log = "session");

@@ -61,6 +61,8 @@ pub(crate) enum Invocation {
     },
     /// Convert an `init.lua` to a `shell.ts`, for `config migrate`.
     ConfigMigrate { request: migrate::MigrateRequest },
+    /// Every shell discovery can see, for `shell list`.
+    ShellList { json: bool },
     /// A live prompt into the running JavaScript shell, or one expression of it.
     Console { eval: Option<String>, json: bool },
     /// A hand-written verb: the session's state, the version, or a config check.
@@ -464,6 +466,35 @@ fn verb_commands() -> Vec<Command> {
         Command::new("status").about("The session's state, its revision and the lock."),
         Command::new("lock").about("Lock the session and wait until the cover is up."),
         Command::new("version").about("The Gnoblin version and the IPC version this connection speaks."),
+        Command::new("shell")
+            .about("List the shells, and reload or watch the one that is running.")
+            .subcommand_required(true)
+            .arg_required_else_help(true)
+            .subcommand(
+                Command::new("list")
+                    .about("Every shell `gnoblin` can run, in precedence order, and the one that would run."),
+            )
+            .subcommand(Command::new("status").about("The running shell's generation and how its reloads went."))
+            .subcommand(
+                Command::new("reload")
+                    .about("Reload the shell and wait for the outcome; a failed reload leaves the old shell running."),
+            )
+            .subcommand(
+                Command::new("watch")
+                    .about("Reload the shell each time its module is rebuilt, until interrupted.")
+                    .arg(
+                        Arg::new("path")
+                            .value_name("PATH")
+                            .value_parser(value_parser!(PathBuf))
+                            .help("The module to watch; defaults to the shell discovery selects."),
+                    )
+                    .arg(
+                        Arg::new("once")
+                            .long("once")
+                            .action(ArgAction::SetTrue)
+                            .help("Exit after the first reload, with its exit code."),
+                    ),
+            ),
         Command::new("config")
             .about("Read or reload the configuration, or check a file against the runtime's parser.")
             .subcommand_required(true)
@@ -595,6 +626,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
             json,
         },
         "config" => config_invocation(sub, json)?,
+        "shell" => shell_invocation(sub, json)?,
         command => {
             let object = tree::CliObject::find(command).expect("every subcommand comes from the generated tree");
             object_invocation(object, sub, json)?
@@ -673,6 +705,22 @@ fn config_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usa
             });
         }
         other => unreachable!("clap refuses `config {other}`"),
+    };
+    Ok(Invocation::Verb { verb, json })
+}
+
+/// The `shell` subcommands. `list` reads the disk; the rest ask the session.
+fn shell_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
+    let (name, sub) = matches.subcommand().expect("a subcommand is required");
+    let verb = match name {
+        "list" => return Ok(Invocation::ShellList { json }),
+        "status" => verbs::Verb::ShellStatus,
+        "reload" => verbs::Verb::ShellReload,
+        "watch" => verbs::Verb::ShellWatch {
+            path: sub.get_one::<PathBuf>("path").cloned(),
+            once: sub.get_flag("once"),
+        },
+        other => unreachable!("clap refuses `shell {other}`"),
     };
     Ok(Invocation::Verb { verb, json })
 }

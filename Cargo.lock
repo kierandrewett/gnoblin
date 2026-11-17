@@ -1080,6 +1080,7 @@ dependencies = [
  "gnoblin-proto",
  "gnoblin-services",
  "gnoblin-session",
+ "gnoblin-shell-discovery",
  "gnoblin-shell-host",
  "gnoblin-tree-client",
  "gnoblin-types",
@@ -1488,10 +1489,12 @@ version = "0.2.0-alpha.0"
 name = "gnoblin-core-impl"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-client",
  "gnoblin-compat-host",
  "gnoblin-compositor",
  "gnoblin-core-abi",
  "gnoblin-log",
+ "gnoblin-proto",
  "gnoblin-schema",
  "gnoblin-services",
  "gnoblin-shell-host",

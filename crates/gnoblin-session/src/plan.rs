@@ -24,8 +24,9 @@ pub enum ChildKind {
     Compositor,
     /// `gnoblin --role services`: the D-Bus agents.
     Services,
-    /// `gnoblin --role runtime`: the retired configuration host.
-    Runtime,
+    /// `gnoblin --role shell PATH`: the shell host in a process of its own, which `--isolate` asks for. A session whose shell runs
+    /// in the compositor's process has no such child.
+    Shell,
     /// `xdg-desktop-portal-gnoblin`: the portal backend. The guardian starts it so its bus
     /// name exists before the front and autostart applications, and it is ready-gated for that.
     Portal,
@@ -142,7 +143,7 @@ pub struct ChildSpec {
     pub id: ChildId,
     /// What the child is.
     pub kind: ChildKind,
-    /// The name used in logs, such as `runtime` or `org.gnome.Terminal.desktop`.
+    /// The name used in logs, such as `shell` or `org.gnome.Terminal.desktop`.
     pub name: String,
     /// How long the child may take to report readiness, or `None` when it never
     /// reports any.
@@ -150,7 +151,7 @@ pub struct ChildSpec {
     /// What happens when its process ends.
     pub restart: Restart,
     /// The program and arguments an autostart application runs, directly without a
-    /// shell. Empty for every other kind, whose process the runtime or the session
+    /// shell. Empty for every other kind, whose process the shell or the session
     /// manager starts itself.
     pub command: Vec<String>,
 }
@@ -158,7 +159,7 @@ pub struct ChildSpec {
 impl ChildSpec {
     /// A child with the policy its kind implies.
     ///
-    /// The compositor ends the session when it exits; the runtime and services
+    /// The compositor ends the session when it exits; the shell and services
     /// restart with [`Backoff::guardian`]; the XR extension restarts with the same
     /// ladder but its failure is not the session's ([`Restart::Optional`]); the front and autostart
     /// applications are not restarted, because the session manager owns front
@@ -169,7 +170,7 @@ impl ChildSpec {
     pub fn new(id: ChildId, kind: ChildKind, name: impl Into<String>) -> Self {
         let restart = match kind {
             ChildKind::Compositor => Restart::EndsSession,
-            ChildKind::Runtime | ChildKind::Services | ChildKind::Portal => Restart::Backoff(Backoff::guardian()),
+            ChildKind::Shell | ChildKind::Services | ChildKind::Portal => Restart::Backoff(Backoff::guardian()),
             ChildKind::Xr => Restart::Optional(Backoff::guardian()),
             ChildKind::Front | ChildKind::Autostart => Restart::Never,
         };
@@ -274,13 +275,13 @@ impl Plan {
         Ok(Self { children })
     }
 
-    /// The session Gnoblin starts today: compositor, services, runtime, then the portal when
+    /// The session Gnoblin starts today: compositor, services, shell, then the portal when
     /// the session has one, then the front when the session manager asks for one, then the XR
     /// extension when the user opted in and it is installed, then each autostart entry in
     /// configuration order.
     ///
-    /// Services start before the runtime because the runtime's user scripts can
-    /// reach them during their own start, and because a session whose agents are
+    /// Services start before the shell because the shell's own start can
+    /// reach them, and because a session whose agents are
     /// missing must be visible before user policy runs. Identifiers are assigned
     /// `1..=n` in this order.
     pub fn standard(
@@ -294,7 +295,7 @@ impl Plan {
         for (kind, name) in [
             (ChildKind::Compositor, "compositor"),
             (ChildKind::Services, "services"),
-            (ChildKind::Runtime, "runtime"),
+            (ChildKind::Shell, "shell"),
         ] {
             children.push(ChildSpec::new(ChildId::new(next), kind, name));
             next += 1;
@@ -318,14 +319,14 @@ impl Plan {
         Self::new(children)
     }
 
-    /// This plan without its script runtime child: the plan of a session whose shell runs in the compositor's process.
+    /// This plan without its shell child: the plan of a session whose shell runs in the compositor's process.
     ///
-    /// A native shell is loaded by the compositor and reports on the compositor's descriptor, so nothing is left for a
-    /// `gnoblin --role runtime` child to do, and a second shell would find the tree already held. The other children keep their
+    /// An in-process shell is loaded by the compositor and reports on the compositor's descriptor, so there is no
+    /// `gnoblin --role shell` child to start, and a second shell would find the tree already held. The other children keep their
     /// identifiers: they are names the events use, not positions.
     #[must_use]
-    pub fn without_runtime(mut self) -> Self {
-        self.children.retain(|child| child.kind != ChildKind::Runtime);
+    pub fn without_shell(mut self) -> Self {
+        self.children.retain(|child| child.kind != ChildKind::Shell);
         self
     }
 
@@ -359,28 +360,28 @@ mod tests {
     }
 
     #[test]
-    fn a_session_with_a_native_shell_has_no_runtime_child_and_keeps_the_rest_in_order() {
+    fn a_session_with_an_in_process_shell_has_no_shell_child_and_keeps_the_rest_in_order() {
         let plan = Plan::standard(true, true, false, ["app.desktop".to_owned()])
             .expect("valid plan")
-            .without_runtime();
+            .without_shell();
         let names: Vec<&str> = plan.children().iter().map(|child| child.name.as_str()).collect();
         assert_eq!(names, ["compositor", "services", "portal", "front", "app.desktop"]);
         assert_eq!(plan.children()[0].kind, ChildKind::Compositor);
     }
 
     #[test]
-    fn the_portal_starts_after_the_runtime_and_before_the_front_and_autostart() {
+    fn the_portal_starts_after_the_shell_and_before_the_front_and_autostart() {
         let plan = Plan::standard(true, true, false, ["app.desktop".to_owned()]).expect("valid plan");
         assert_eq!(
             names(&plan),
-            ["compositor", "services", "runtime", "portal", "front", "app.desktop"]
+            ["compositor", "services", "shell", "portal", "front", "app.desktop"]
         );
     }
 
     #[test]
     fn without_a_portal_the_plan_is_the_session_it_was_before() {
         let plan = Plan::standard(false, false, false, Vec::new()).expect("valid plan");
-        assert_eq!(names(&plan), ["compositor", "services", "runtime"]);
+        assert_eq!(names(&plan), ["compositor", "services", "shell"]);
     }
 
     #[test]
@@ -391,7 +392,7 @@ mod tests {
             [
                 "compositor",
                 "services",
-                "runtime",
+                "shell",
                 "portal",
                 "front",
                 "xr",

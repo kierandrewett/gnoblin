@@ -74,14 +74,17 @@ Save the file. The shell reloads it after a short pause, and the windows you hav
 
 ## Where the config lives
 
-The shell reads one file. Gnoblin looks in these places in order and takes the first that names a shell:
+The shell reads one file. Gnoblin looks in seven places in order and takes the first that names exactly one shell; the whole
+list, the command line (`gnoblin PATH`, `--shell NAME`, `--list-shells`) and the errors are on
+[Start Gnoblin and choose a shell](/starting-gnoblin). For a TypeScript config the places that matter are:
 
 1. `GNOBLIN_SHELL`, when it is set and not empty. A value with a `/` is a path, relative to the directory you start
    Gnoblin from. Any other value is the name of an installed shell.
 2. The `[shell]` table of `config.toml` in the config directory: `default = "name"` names an installed shell, and
    `path = "..."` names a file, as an absolute path, one that starts with `~/`, or one relative to the directory that
    holds `config.toml`. Set one of them, not both.
-3. `shell.ts`, `shell.mts`, `shell.js` or `shell.mjs` in the config directory.
+3. `shell.ts`, `shell.mts`, `shell.js` or `shell.mjs` in the config directory (and `shell.py` or `shell.so`, which are a
+   [Python](python-shell.md) and a native shell).
 4. An installed shell, from the first of these places that has any:
     - `$XDG_DATA_HOME/gnoblin/shells`, or `~/.local/share/gnoblin/shells` without the variable.
     - `gnoblin/shells` under each directory of `XDG_DATA_DIRS`, in order.
@@ -89,14 +92,18 @@ The shell reads one file. Gnoblin looks in these places in order and takes the f
     An installed shell is a file such as `tiler.ts`, a directory that holds a `shell.ts`, or a launcher file `tiler.toml`
     that points at one. In one place a shell named `default` wins; with several others, you have to say which.
 
-5. The stock config, when nothing else names a shell.
+5. The packaged default, `<prefix>/share/gnoblin/default-shell/shell.ts`: the stock config, which a fresh install runs.
+
+The command line comes before all of these: `gnoblin ./shell.ts` and `gnoblin --shell tiler`.
 
 The config directory is `$XDG_CONFIG_HOME/gnoblin` when that is an absolute path, else `~/.config/gnoblin`. A relative
 `XDG_CONFIG_HOME`, `XDG_DATA_HOME` or `XDG_DATA_DIRS` entry is ignored, as the XDG specification says.
 
 Gnoblin never picks between equals. Two shells in one place (`shell.ts` and `shell.js` together, or `tiler.ts` and
-`tiler.js`) stop the start with a message that lists them, where it looked, and how to say which one you mean. A
-path or a name you gave that does not exist stops it too, rather than falling back to another shell.
+`tiler.js`) stop the start with a message that lists them, where it looked, and how to say which one you mean.
+
+A path or a name you gave that does not exist stops the start too, rather than falling back to another shell. With no shell at
+all, `gnoblin` says where it looked and exits 1; no compositor starts.
 
 A `config.toml` has one table:
 
@@ -117,8 +124,7 @@ path = "~/dev/tiler/shell.ts"
 description = "A tiling shell"
 ```
 
-`GNOBLIN_SHELL` with a `.lua` file is refused with the migrate command, and a Python or native shell is refused
-with a sentence that says this build runs only TypeScript and JavaScript.
+`GNOBLIN_SHELL` with a `.lua` file is refused with the migrate command.
 
 The shell runs the file from top to bottom against the live objects. What the file does not say, the session does not
 do: a `shell.ts` replaces the starter entirely. A statement you delete from `shell.ts` is gone after the next reload or
@@ -165,8 +171,6 @@ it evaluated cleanly, and logs `generation N active` as a native shell does.
   runs no script never loads them.
 - **The shell is in the compositor's process.** The runtime reaches the compositor's tree through the core library and keeps
   its own copy of it, as the script runtime always has. A script that hangs is interrupted at its budget, as before.
-
-The session still starts `shell.ts` as the runtime role of the guardian.
 
 Running a file inside the compositor with `gnoblin ./shell.ts` arrives with the compositor's in-process shell. The plan is
 in `design/modular-framework.md`, section 23.

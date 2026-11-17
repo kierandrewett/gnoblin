@@ -11,6 +11,13 @@
 //! has. Both are the shipped interfaces: a line this file looks for is a line an operator
 //! sees.
 //!
+//! # The shell is an isolated child
+//!
+//! Every session here runs its shell with `--isolate`: the shell is then a child of the guardian (`gnoblin --role shell`) with a
+//! privileged connection and a report descriptor of its own, which is the supervision these tests are about. A shell in the
+//! compositor's process is `tests/native_shell.rs`'s. The shell is a native example module, so a session needs no runtime
+//! library and no configuration directory.
+//!
 //! # Why every test sets `GNOBLIN_TEST_FAST`
 //!
 //! The guardian's shipped numbers are the C supervisor's: a 250 ms first restart, a ladder
@@ -29,6 +36,9 @@ use std::time::{Duration, Instant};
 use gnoblinctl::SocketConnection;
 use rustix::process::{Pid, Signal};
 use tempfile::TempDir;
+
+mod support;
+use support::native_shell::shells;
 
 /// The binary under test, built by cargo for this test.
 const BIN: &str = env!("CARGO_BIN_EXE_gnoblin");
@@ -97,6 +107,11 @@ impl Session {
 
     /// Start a session with extra environment for the guardian and its children.
     fn start_with(extra: &[(&str, &str)]) -> Session {
+        Session::start_shell(&shells().minimal, extra)
+    }
+
+    /// Start a session whose isolated shell is `shell`, with extra environment for the guardian and its children.
+    fn start_shell(shell: &std::path::Path, extra: &[(&str, &str)]) -> Session {
         let directory = tempfile::tempdir().expect("a temporary directory");
         std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).expect("the directory mode");
         let log = directory.path().join("session.log");
@@ -104,14 +119,18 @@ impl Session {
         let bus = Bus::start();
         let mut command = Command::new(BIN);
         command
+            .arg("--isolate")
+            .arg(shell)
             .env("XDG_RUNTIME_DIR", directory.path())
             // The portal child owns a name on the session bus, so the session gets a bus of its own: the
             // ambient one is another session's (or, on a build machine, there is none at all).
             .env("DBUS_SESSION_BUS_ADDRESS", bus.address())
             .env("XDG_STATE_HOME", directory.path().join("state"))
-            // The runtime role reads, and creates when it is missing, the config directory under this home, so the
-            // session must not use the machine's own.
+            // Discovery reads the config and data directories, so the session must not use the machine's own.
             .env("XDG_CONFIG_HOME", directory.path().join("config"))
+            .env("XDG_DATA_HOME", directory.path().join("data"))
+            .env("HOME", directory.path().join("home"))
+            .env_remove("GNOBLIN_SHELL")
             .env("GNOBLIN_IPC_SOCKET", directory.path().join("ipc.sock"))
             .env("GNOBLIN_TEST_FAST", "1")
             // The session has to run headless however the machine that runs the test is set up: `auto` would nest in a
@@ -188,6 +207,23 @@ impl Session {
             assert!(
                 Instant::now() < deadline,
                 "the session never logged `{text}`; it said:\n{log}"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// Wait until the log contains `text` at least `times` times, and return the whole log.
+    #[track_caller]
+    fn wait_for_times(&self, text: &str, times: usize) -> String {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let log = self.log();
+            if log.matches(text).count() >= times {
+                return log;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the session never logged `{text}` {times} times; it said:\n{log}"
             );
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -336,13 +372,13 @@ fn the_guardian_starts_a_session_a_client_can_use() {
     // real client: a session that answers it is a session whose three children are up.
     session.sessions();
     let log = session.log();
-    for child in ["compositor", "services", "runtime"] {
+    for child in ["compositor", "services", "shell"] {
         assert!(log.contains(&format!("started {child} (")), "no {child} in:\n{log}");
     }
-    // The runtime committed the document it validated, and the guardian recorded it.
+    // The shell reported that it accepted its (empty) configuration, and the guardian recorded it.
     assert!(
-        log.contains("configuration revision 1 accepted"),
-        "the commit is reported:\n{log}"
+        log.contains("configuration revision 0 accepted"),
+        "the shell's report is heard:\n{log}"
     );
 }
 
@@ -363,40 +399,43 @@ fn killing_the_services_child_restarts_it() {
 }
 
 #[test]
-fn a_killed_runtime_restarts_and_commits_again() {
-    // The property the whole privileged connection exists for: the runtime dies, a new one
-    // starts, and it rejoins the descriptor its role owns rather than being refused for the rest
-    // of the session. The second commit is revision 2, so the compositor kept the first document
-    // instead of starting the count over.
+fn a_killed_shell_restarts_and_reports_again() {
+    // The property the whole privileged connection exists for: the shell dies, a new one starts, and it rejoins the descriptor
+    // its role owns rather than being refused for the rest of the session, and loads the module again.
     let session = Session::start();
-    session.wait_for("configuration revision 1 accepted");
-    let first = session.pid("runtime");
+    session.wait_for("configuration revision 0 accepted");
+    let first = session.pid("shell");
     kill(first);
-    let log = session.wait_for("configuration revision 2 accepted");
+    let log = session.wait_for_times("configuration revision 0 accepted", 2);
     assert!(
-        log.contains("started runtime (generation 2"),
-        "the runtime came back:\n{log}"
+        log.contains("started shell (generation 2"),
+        "the shell came back:\n{log}"
     );
     assert!(
         !log.contains("GNOBLIN_IPC_FD is not set"),
-        "the restarted runtime was given its connection:\n{log}"
+        "the restarted shell was given its connection:\n{log}"
     );
     session.sessions();
 }
 
 #[test]
-fn a_crash_looping_runtime_is_cut_off_and_reported() {
-    // The runtime exits at once on every start, which is the crash loop the circuit breaker
-    // exists for. With the fast ladder it is three restarts and then a stop.
-    let session = Session::start_with(&[("GNOBLIN_TEST_RUNTIME_CRASH", "1")]);
+fn a_crash_looping_shell_is_cut_off_and_reported() {
+    // The shell exits at once on every start (the fault fixture fails its `init` when told to), which is the crash loop the
+    // circuit breaker exists for. With the fast ladder it is three restarts and then a stop.
+    let fixture = tempfile::tempdir().expect("a fixture directory");
+    std::fs::write(fixture.path().join("fail-init"), "").expect("the command file");
+    let session = Session::start_shell(
+        &shells().fault,
+        &[("GNOBLIN_FIXTURE_DIR", fixture.path().to_str().expect("a path"))],
+    );
     let log = session.wait_for("the session is degraded");
     assert!(
         log.contains("failed after 3 restarts"),
         "the breaker tripped after its budget:\n{log}"
     );
     // It stopped rather than burning a core: no start after the failure.
-    let starts = log.matches("started runtime (").count();
-    assert!(starts <= 4, "the runtime was started {starts} times:\n{log}");
+    let starts = log.matches("started shell (").count();
+    assert!(starts <= 4, "the shell was started {starts} times:\n{log}");
     // And the session is still usable: the compositor and the services role were left alone.
     session.sessions();
 }
@@ -441,32 +480,32 @@ fn a_termination_signal_stops_the_session_in_reverse_order() {
 #[test]
 fn a_privileged_descriptor_reaches_only_its_own_role() {
     let session = Session::start();
-    session.wait_for("configuration revision 1 accepted");
-    let runtime = session.pid("runtime");
+    session.wait_for("configuration revision 0 accepted");
+    let host = session.pid("shell");
     let services = session.pid("services");
 
     // Each privileged child was given a descriptor, and the two are different connections.
-    let runtime_fd = inherited(runtime, "GNOBLIN_IPC_FD").expect("the runtime was given a connection");
+    let host_fd = inherited(host, "GNOBLIN_IPC_FD").expect("the shell was given a connection");
     let services_fd = inherited(services, "GNOBLIN_IPC_FD").expect("the services role was given a connection");
-    let runtime_socket = socket_at(runtime, runtime_fd).expect("the runtime's connection is a descriptor");
+    let host_socket = socket_at(host, host_fd).expect("the shell's connection is a descriptor");
     let services_socket = socket_at(services, services_fd).expect("the services connection is a descriptor");
-    assert!(runtime_socket.starts_with("socket:["), "{runtime_socket}");
+    assert!(host_socket.starts_with("socket:["), "{host_socket}");
     assert_ne!(
-        runtime_socket, services_socket,
+        host_socket, services_socket,
         "the two roles were given the same connection"
     );
 
     // The failure this prevents: one role inherits the other's connection, so two processes
     // speak one IPC stream and both see the other's frames.
     assert!(
-        !socket_inodes(services).contains(&runtime_socket),
-        "the services role holds the runtime's connection: {:?}",
+        !socket_inodes(services).contains(&host_socket),
+        "the services role holds the shell's connection: {:?}",
         socket_inodes(services)
     );
     assert!(
-        !socket_inodes(runtime).contains(&services_socket),
-        "the runtime holds the services connection: {:?}",
-        socket_inodes(runtime)
+        !socket_inodes(host).contains(&services_socket),
+        "the shell holds the services connection: {:?}",
+        socket_inodes(host)
     );
 }
 
@@ -499,21 +538,21 @@ fn an_opted_in_xr_extension_is_given_a_wayland_socket_no_other_child_has() {
         ("GNOBLIN_XR", "1"),
         ("GNOBLIN_XR_PROGRAM", program.to_str().expect("a path")),
     ]);
-    session.wait_for("configuration revision 1 accepted");
+    session.wait_for("configuration revision 0 accepted");
     let xr = session.pid("xr");
-    let runtime = session.pid("runtime");
+    let host = session.pid("shell");
     let compositor = session.pid("compositor");
 
     let number = inherited(xr, "WAYLAND_SOCKET").expect("the extension was given a Wayland socket");
     let held = socket_at(xr, number).expect("the socket is a descriptor of the extension");
     assert!(held.starts_with("socket:["), "{held}");
     assert!(
-        inherited(runtime, "WAYLAND_SOCKET").is_none(),
+        inherited(host, "WAYLAND_SOCKET").is_none(),
         "only the extension is handed a connection"
     );
     assert!(
-        !socket_inodes(runtime).contains(&held),
-        "the runtime holds the extension's connection"
+        !socket_inodes(host).contains(&held),
+        "the shell holds the extension's connection"
     );
     assert!(
         !socket_inodes(compositor).contains(&held),
@@ -539,16 +578,18 @@ fn a_crash_looping_xr_extension_is_dropped_and_the_session_carries_on() {
         !log.contains("the session is degraded"),
         "an optional extension does not degrade the session:\n{log}"
     );
-    // The compositor, runtime and services are untouched, and the session still answers.
+    // The compositor, shell and services are untouched, and the session still answers.
     session.sessions();
     assert!(!session.log().contains("session stopping"), "{}", session.log());
 }
 
 #[test]
 fn the_guardian_refuses_to_start_without_a_runtime_directory() {
+    let shell = &shells().minimal;
     // A guardian with nowhere to put a socket is a session manager's configuration error, and
     // it says so instead of starting children that cannot connect.
     let output = Command::new(BIN)
+        .arg(shell)
         .env("XDG_RUNTIME_DIR", "")
         .env("GNOBLIN_IPC_SOCKET", "")
         .env("XDG_STATE_HOME", std::env::temp_dir())

@@ -6,18 +6,24 @@
 //! role that needs work done names the crate that does it, which is why this file is
 //! dispatch and nothing else.
 //!
-//! | role                  | what this build does                                              |
-//! | --------------------- | ----------------------------------------------------------------- |
-//! | none (the guardian)   | supervises the session: starts, restarts and stops every child      |
-//! | `--role compositor`   | runs the compositor in the foreground, until it is stopped         |
-//! | `--role runtime`      | runs the JavaScript role: loads the configuration and serves it   |
-//! | `--role services`     | runs the D-Bus agents: polkit, the keyring and slots               |
+//! | role                  | what this build does                                                                     |
+//! | --------------------- | ---------------------------------------------------------------------------------------- |
+//! | none (the guardian)   | resolves the shell, then supervises the session: starts, restarts and stops every child |
+//! | `--role compositor`   | runs the compositor in the foreground, with the shell in its process when given a PATH  |
+//! | `--role shell`        | runs the shell host in a process of its own (`--isolate`), over the compositor's socket |
+//! | `--role services`     | runs the D-Bus agents: polkit, the keyring and slots                                    |
 //!
-//! The compositor role is not in this executable. It is `libgnoblin-core.so.1`'s `gnoblin_main`
+//! The compositor and shell roles are not in this executable. They are `libgnoblin-core.so.1`'s `gnoblin_main`
 //! (`design/modular-framework.md`, M2.10): the launcher links the library through a stub, forwards
-//! the command line and exits with the library's code. An optional positional `PATH` names a native
-//! shell module (`gnoblin ./libshell.so`); the compositor role loads it in its own process, and the
-//! guardian, which starts no runtime child for it, passes it to the compositor it starts.
+//! the command line and exits with the library's code.
+//!
+//! # Which shell
+//!
+//! The guardian resolves the shell **once, before it starts anything** (`gnoblin-shell-discovery`, the seven tiers of
+//! design section 7), so a session that has no shell, or an ambiguous one, ends with the reason and exit 1 instead of a blank
+//! compositor. What it resolved is passed down: the compositor child loads exactly that file (`--role compositor PATH`), or,
+//! with `--isolate`, the shell child does (`--role shell PATH`). `gnoblin ./x.so` and `gnoblin` run the same code from there on;
+//! the only difference is which tier answered.
 //!
 //! The guardian is the default because that is the process a session manager starts: it is
 //! the one that lives for the login, and every other role is a child of it.
@@ -37,13 +43,14 @@
 //!    start is exit 1 with the reason; the compositor's own loop failure is exit 1
 //!    too, because the session is over either way and the message says which:
 //!    `tests/roles.rs::the_compositor_reports_a_refused_start`.
-//! 2. **A flag nobody documented appears in `--help`.** The only flags are `--role`,
-//!    `--version` and the positional shell path, and the test that walks the help checks that:
-//!    `tests/roles.rs::the_help_documents_only_the_flags_this_build_has`.
+//! 2. **A flag nobody documented appears in `--help`.** The test that walks the help checks every flag it shows against the
+//!    list this build has: `tests/roles.rs::the_help_documents_only_the_flags_this_build_has`.
 //! 3. **`--version` prints a partial version.** It prints the full triple the IPC
 //!    serves and the build it came from:
 //!    `tests/roles.rs::the_version_is_the_full_gnoblin_version`.
-//! 4. **A role name is accepted and silently ignored.** An unknown role is a command
+//! 4. **A session starts with no shell, or with the wrong one.** Discovery runs before the compositor does, and its
+//!    failures are the exit and the text of design 7.4: `tests/startup.rs`.
+//! 5. **A role name is accepted and silently ignored.** An unknown role is a command
 //!    line error (exit 2) naming the roles this build has:
 //!    `tests/roles.rs::an_unknown_role_is_a_command_line_error`.
 
@@ -89,11 +96,46 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<()
         }
     };
     let role = role::from_matches(&matches).map_err(|_| Exit(2))?;
-    let shell = shell_from_matches(&matches, role)?;
-    // The compositor installs no log here: it is the core library's, the log is one copy per library, and the records of the
-    // compositor are the library's to write.
+    check_flags(&matches, role)?;
+    // The compositor and the shell install no log here: they are the core library's, the log is one copy per library, and
+    // the records of those roles are the library's to write.
     let _log = log_role(&role).map(install_log);
-    dispatch(role, shell)
+    dispatch(role, &matches)
+}
+
+/// The flags that belong to the guardian's own command line, refused for the roles it starts children as, and the path
+/// refused for the roles that load no shell.
+fn check_flags(matches: &clap::ArgMatches, role: role::Role) -> Result<(), Exit> {
+    let refuse = |what: &str| {
+        eprintln!("gnoblin: {what} does not apply to `--role {}`", role.name());
+        Err(Exit(2))
+    };
+    if role != role::Role::Guardian {
+        for flag in ["list", "isolate"] {
+            if role::flag(matches, flag) {
+                return refuse(&format!("`--{}`", if flag == "list" { "list-shells" } else { flag }));
+            }
+        }
+        if role::name_from_matches(matches).is_some() {
+            return refuse("`--shell NAME`");
+        }
+    }
+    if !role.loads_shell() {
+        if role::path_from_matches(matches).is_some() {
+            return refuse("a shell path");
+        }
+        if role::flag(matches, "watch") {
+            return refuse("`--watch`");
+        }
+        if role::language_from_matches(matches).is_some() {
+            return refuse("`--language`");
+        }
+    }
+    if role == role::Role::Shell && role::path_from_matches(matches).is_none() {
+        eprintln!("gnoblin: `--role shell` needs the shell module's path");
+        return Err(Exit(2));
+    }
+    Ok(())
 }
 
 /// Installs the log of this process for `process` from the `logging` section and the environment.
@@ -112,35 +154,30 @@ fn install_log(process: gnoblin_log::ProcessRole) -> gnoblin_log::init::LogGuard
     guard
 }
 
-/// The shell module the command line names, made absolute, or `None` for none.
-///
-/// Only the guardian and the compositor serve one; the guardian passes it on to the compositor it starts. A path that is not
-/// a file ends the start here, with the reason, rather than as a compositor child that exits and a session that never comes up.
-fn shell_from_matches(matches: &clap::ArgMatches, role: role::Role) -> Result<Option<std::path::PathBuf>, Exit> {
-    let Some(path) = role::shell_from_matches(matches) else {
-        return Ok(None);
-    };
-    if !matches!(role, role::Role::Guardian | role::Role::Compositor) {
-        eprintln!(
-            "gnoblin: a shell path applies to the guardian and the compositor, not to `--role {}`",
-            role.name()
-        );
-        return Err(Exit(2));
+/// The command line the core's `gnoblin_main` serves for `role`: the program, the role, the shell's flags and its path.
+fn core_arguments(role: role::Role, matches: &clap::ArgMatches) -> Result<Vec<std::ffi::OsString>, Exit> {
+    let mut arguments: Vec<std::ffi::OsString> = vec!["gnoblin".into(), "--role".into(), role.name().into()];
+    if role::flag(matches, "watch") {
+        arguments.push("--watch".into());
     }
-    match std::path::absolute(&path) {
-        Ok(absolute) if absolute.is_file() => Ok(Some(absolute)),
-        _ => {
+    if let Some(language) = role::language_from_matches(matches) {
+        arguments.push("--language".into());
+        arguments.push(language.into());
+    }
+    if let Some(path) = role::path_from_matches(matches) {
+        // The core takes the path as given: the guardian already made it absolute, and a person who runs the role by hand
+        // names a file that is there or is told it is not.
+        let absolute = std::path::absolute(&path).map_err(|error| {
+            eprintln!("gnoblin: cannot resolve the shell module `{}`: {error}", path.display());
+            Exit(1)
+        })?;
+        if !absolute.is_file() {
             eprintln!("gnoblin: cannot find the shell module `{}`", path.display());
-            Err(Exit(1))
+            return Err(Exit(1));
         }
+        arguments.push(absolute.into_os_string());
     }
-}
-
-/// The command line the core's `gnoblin_main` serves: the program, the role and the shell path.
-fn core_arguments(shell: Option<&std::path::Path>) -> Vec<std::ffi::OsString> {
-    let mut arguments = vec!["gnoblin".into(), "--role".into(), "compositor".into()];
-    arguments.extend(shell.map(|path| path.as_os_str().to_owned()));
-    arguments
+    Ok(arguments)
 }
 
 /// The exit a code the core returned is.
@@ -152,11 +189,10 @@ fn core_exit(code: i32) -> Result<(), Exit> {
 }
 
 /// Runs one role.
-fn dispatch(role: role::Role, shell: Option<std::path::PathBuf>) -> Result<(), Exit> {
+fn dispatch(role: role::Role, matches: &clap::ArgMatches) -> Result<(), Exit> {
     match role {
-        role::Role::Compositor => core_exit(core_link::main(&core_arguments(shell.as_deref()))),
-        role::Role::Guardian => guardian(shell),
-        role::Role::Runtime => runtime(),
+        role::Role::Compositor | role::Role::Shell => core_exit(core_link::main(&core_arguments(role, matches)?)),
+        role::Role::Guardian => guardian(matches),
         role::Role::Services => services(),
     }
 }
@@ -164,9 +200,8 @@ fn dispatch(role: role::Role, shell: Option<std::path::PathBuf>) -> Result<(), E
 /// The process role this executable's own log records for `role`, or `None` for the compositor, which the core library logs.
 fn log_role(role: &role::Role) -> Option<gnoblin_log::ProcessRole> {
     match role {
-        role::Role::Compositor => None,
+        role::Role::Compositor | role::Role::Shell => None,
         role::Role::Guardian => Some(gnoblin_log::ProcessRole::Guardian),
-        role::Role::Runtime => Some(gnoblin_log::ProcessRole::Runtime),
         role::Role::Services => Some(gnoblin_log::ProcessRole::Services),
     }
 }
@@ -202,8 +237,65 @@ fn log_options(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogOptio
     options
 }
 
-/// Runs the guardian: the session's supervisor, until the session ends.
-fn guardian(shell: Option<std::path::PathBuf>) -> Result<(), Exit> {
+/// What discovery should look for, from the command line.
+fn request_from(matches: &clap::ArgMatches) -> gnoblin_shell_discovery::Request {
+    match (role::path_from_matches(matches), role::name_from_matches(matches)) {
+        (Some(path), _) => gnoblin_shell_discovery::Request::Path(path),
+        (None, Some(name)) => gnoblin_shell_discovery::Request::Name(name),
+        (None, None) => gnoblin_shell_discovery::Request::Discover,
+    }
+}
+
+/// The facts discovery reads: the environment, and the directory launcher files' `module` keys are relative to, which only
+/// the code that knows where the core library was mapped from can say.
+fn discovery_environment() -> gnoblin_shell_discovery::Environment {
+    let mut environment = gnoblin_shell_discovery::Environment::from_env();
+    environment.module_dir = core_link::core_directory().map(|directory| directory.join("gnoblin").join("shells"));
+    environment
+}
+
+/// Resolves the shell, once, before anything starts: the tiers of design section 7. A failure is printed as the one block it
+/// is (`gnoblin: ` before the text) and ends the start with exit 1; nothing has been started, so no compositor is left blank.
+fn resolve_shell(matches: &clap::ArgMatches) -> Result<gnoblin_session::ShellPlan, Exit> {
+    let environment = discovery_environment();
+    let selection = gnoblin_shell_discovery::discover(&environment, &request_from(matches)).map_err(|error| {
+        eprintln!("gnoblin: {error}");
+        Exit(1)
+    })?;
+    for warning in &selection.warnings {
+        log::warn!("{warning}");
+    }
+    log::info!(
+        "shell: {} ({}) {}, chosen by tier {} ({}), found in tier {}",
+        selection.name,
+        selection.language,
+        selection.path.display(),
+        selection.chosen_by.number(),
+        selection.chosen_by.as_str(),
+        selection.found_in.number()
+    );
+    let isolate = role::flag(matches, "isolate") || selection.isolate.unwrap_or(false);
+    Ok(gnoblin_session::ShellPlan {
+        path: selection.path,
+        language: Some(selection.language.as_str().to_owned()),
+        watch: role::flag(matches, "watch"),
+        isolate,
+    })
+}
+
+/// Prints every shell discovery can see and the one that would run.
+fn list_shells(matches: &clap::ArgMatches) -> Result<(), Exit> {
+    let listing = gnoblin_shell_discovery::list_shells(&discovery_environment(), &request_from(matches));
+    println!("{}", listing.render());
+    Ok(())
+}
+
+/// Runs the guardian: resolves the shell, then runs the session's supervisor until the session ends.
+fn guardian(matches: &clap::ArgMatches) -> Result<(), Exit> {
+    if role::flag(matches, "list") {
+        return list_shells(matches);
+    }
+    let shell = resolve_shell(matches)?;
     let program = std::env::current_exe().map_err(|error| {
         log::error!("cannot find this executable to start its children: {error}");
         Exit(1)
@@ -217,24 +309,6 @@ fn guardian(shell: Option<std::path::PathBuf>) -> Result<(), Exit> {
     match gnoblin_session::run_guardian(config) {
         Ok(0) => Ok(()),
         Ok(status) => Err(Exit(status)),
-        Err(error) => {
-            log::error!("{error}");
-            Err(Exit(1))
-        }
-    }
-}
-
-/// Runs the runtime, the JavaScript role, until the session ends.
-///
-/// The role locates and evaluates `shell.ts` (or `shell.js`) itself, commits the configuration document and serves
-/// `config.reload`. Nothing selects it: there is no other runtime role.
-///
-/// No signal handler: the guardian's `SIGTERM` ends this process, and a process that has
-/// gone is exactly what the compositor needs to see to release its connection.
-fn runtime() -> Result<(), Exit> {
-    log::info!("runtime role: JavaScript");
-    match gnoblin_js::JsRoleRunner::from_environment().run(never_stopped) {
-        Ok(()) => Ok(()),
         Err(error) => {
             log::error!("{error}");
             Err(Exit(1))

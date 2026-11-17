@@ -247,7 +247,7 @@ fn example_10_reloads_three_times_without_touching_a_client_and_keeps_its_state_
             // Version 1 runs: two clients open, the chord counts a press, the timer ticks.
             "open:50",
             "open:51",
-            "chord:Super+n",
+            "chord:<Super>n",
             "advance:50",
             "mark:one",
             "dump",
@@ -262,7 +262,7 @@ fn example_10_reloads_three_times_without_touching_a_client_and_keeps_its_state_
             // A client opens after the reload: the new behaviour (the step is 80, not 40) and the kept count (the fourth window).
             "mark:after-one",
             "open:52",
-            "chord:Super+n",
+            "chord:<Super>n",
             "advance:50",
             "dump",
             "stats",
@@ -274,7 +274,7 @@ fn example_10_reloads_three_times_without_touching_a_client_and_keeps_its_state_
             "request",
             "status",
             "serve",
-            "chord:Super+n",
+            "chord:<Super>n",
             "advance:50",
             "dump",
             "stats",
@@ -394,7 +394,7 @@ fn example_10_reloads_three_times_without_touching_a_client_and_keeps_its_state_
 
     // The claims: the chords are held once each, not twice (released and made again behind the release).
     assert!(
-        tree_after.contains(r#"claims=["Super+n", "Super+Shift+r"]"#),
+        tree_after.contains(r#"claims=["<Super>n", "<Super>r"]"#),
         "each chord held once after a reload: {tree_after}"
     );
 
@@ -844,11 +844,11 @@ fn example_10_asks_for_its_own_reload_with_a_chord_even_straight_after_a_reload(
         &[
             "request",
             "serve",
-            "chord:Super+Shift+r",
+            "chord:<Super>r",
             "mark:asked",
             "status",
             "serve",
-            "chord:Super+Shift+r",
+            "chord:<Super>r",
             "mark:again",
             "status",
         ],

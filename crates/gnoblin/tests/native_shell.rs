@@ -138,20 +138,20 @@ fn example_eight_tiles_real_windows_and_tiles_again_as_they_come_and_go() {
 }
 
 #[test]
-fn the_guardian_given_a_path_starts_no_runtime_and_hears_the_shell_accepted_and_ready() {
+fn the_guardian_given_a_path_starts_no_shell_child_and_hears_the_shell_accepted_and_ready() {
     let mut session = Gnoblin::start(Start::Guardian, &shells().minimal, &[], &[]);
     session.wait_log("the session is ready", |line| line.contains("[guardian] session ready"));
     session.wait_log("the shell accepted its (empty) configuration", |line| {
         line.contains("[guardian] configuration revision 0 accepted")
     });
     let log = session.log_text();
-    // The compositor is started with the shell and loads it; the services role starts as it always did; there is no runtime
+    // The compositor is started with the shell and loads it; the services role starts as it always did; there is no shell
     // child, which would find the tree held and a shell that is not its own.
     assert!(log.contains("started compositor ("), "{log}");
     assert!(log.contains("started services ("), "{log}");
     assert!(
-        !log.contains("started runtime ("),
-        "a native shell has no runtime child:\n{log}"
+        !log.contains("started shell ("),
+        "an in-process shell has no shell child:\n{log}"
     );
     assert!(log.contains("serves in process"), "{log}");
 
@@ -166,7 +166,9 @@ fn the_guardian_given_a_path_starts_no_runtime_and_hears_the_shell_accepted_and_
 #[test]
 fn a_path_that_is_not_a_file_ends_the_start_with_the_reason() {
     let missing = std::path::Path::new("/nonexistent/libshell.so");
-    let output = std::process::Command::new(BIN)
+    let home = Home::new();
+    let output = home
+        .command(std::path::Path::new(BIN))
         .arg(missing)
         .output()
         .expect("the binary runs");
@@ -177,8 +179,10 @@ fn a_path_that_is_not_a_file_ends_the_start_with_the_reason() {
         String::from_utf8_lossy(&output.stderr)
     );
     let message = String::from_utf8_lossy(&output.stderr);
-    assert!(message.contains("cannot find the shell module"), "{message}");
-    assert!(message.contains("/nonexistent/libshell.so"), "{message}");
+    assert!(
+        message.contains("/nonexistent/libshell.so: no such file (from the command line)"),
+        "{message}"
+    );
 }
 
 #[test]
@@ -196,7 +200,7 @@ fn a_shell_path_belongs_to_the_guardian_and_the_compositor_only() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("a shell path applies to the guardian and the compositor"),
+        String::from_utf8_lossy(&output.stderr).contains("a shell path does not apply to `--role services`"),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );

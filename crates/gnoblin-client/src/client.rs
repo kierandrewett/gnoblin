@@ -547,6 +547,37 @@ impl<T: Transport> Client<T> {
         committed(&payload, wire::member::CONFIG_RELOAD)
     }
 
+    /// What the shell the compositor runs in its own process is doing: its generation and how its reloads went.
+    ///
+    /// Needs the session owner's connection. A session whose shell is not in the compositor's process (none, or isolated) is
+    /// refused with [`crate::code::NO_SHELL`].
+    pub fn shell_status(&mut self) -> Result<wire::ShellStatus, ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::shell_status(correlation);
+        self.send(&frame)?;
+        let payload = self.await_reply(correlation)?;
+        wire::read_shell_status(&payload).map_err(|reason| ClientError::Protocol {
+            member: wire::member::SHELL_STATUS.to_owned(),
+            reason,
+        })
+    }
+
+    /// Ask the in-process shell to reload, and return its status as it was when the request was taken.
+    ///
+    /// The reload runs on the shell's own thread, between its dispatches, so this returns before it has run: the status
+    /// says `pending`, and [`Client::shell_status`] says when it has finished and how it went. Several requests before the
+    /// shell looks are one reload. Needs the session owner's connection.
+    pub fn reload_shell(&mut self) -> Result<wire::ShellStatus, ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::shell_reload(correlation);
+        self.send(&frame)?;
+        let payload = self.await_reply(correlation)?;
+        wire::read_shell_status(&payload).map_err(|reason| ClientError::Protocol {
+            member: wire::member::SHELL_RELOAD.to_owned(),
+            reason,
+        })
+    }
+
     /// Tell the compositor the runtime refused the reload, with the diagnostic that
     /// says where the document is wrong. Privileged, and the runtime's half of
     /// [`Client::reload_config`].

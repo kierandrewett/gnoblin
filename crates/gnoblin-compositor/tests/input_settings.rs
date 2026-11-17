@@ -36,7 +36,7 @@ fn wait_for_settings(tap: &OutputTap, device: DeviceId, expected: &[Setting]) {
 #[test]
 fn a_committed_document_configures_the_devices_and_a_removed_line_puts_them_back() {
     let tap = OutputTap::new();
-    let (_session, mut ends) = Session::start_privileged_configured(&["runtime"], {
+    let (_session, mut ends) = Session::start_privileged_configured(&["shell"], {
         let tap = tap.clone();
         move |config| config.output_tap = Some(tap)
     });

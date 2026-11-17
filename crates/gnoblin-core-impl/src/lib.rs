@@ -43,6 +43,7 @@ mod procs;
 mod registry;
 mod role;
 mod session;
+mod shell_role;
 mod table;
 mod tree;
 mod values;

@@ -35,6 +35,24 @@ See [Convert an init.lua](../gnoblinctl.md#convert-an-initlua).
 `config reload` also reloads the `shell.ts` of the [TypeScript shell](../typescript-shell.md), and exits 1 with
 `file:line:column` when that file fails to load.
 
+## Shell
+
+```sh
+gnoblinctl shell list
+gnoblinctl shell status
+gnoblinctl shell reload
+gnoblinctl shell watch [PATH] [--once]
+```
+
+- `shell list` prints the table `gnoblin --list-shells` prints and needs no session.
+- `shell status` says which generation of the shell runs and how its reloads went.
+- `shell reload` reloads the shell and waits for the outcome: exit 0 with `reloaded: generation N`, or exit 1 with the reason,
+  the old shell still running.
+- `shell watch` reloads the shell each time its module is rebuilt, until you interrupt it; `--once` exits after the first.
+
+`status`, `reload` and `watch` reach a shell that runs in the compositor's process (the default). See
+[Start Gnoblin and choose a shell](../starting-gnoblin.md#reload-and-watch).
+
 ## TypeScript configuration
 
 ```sh

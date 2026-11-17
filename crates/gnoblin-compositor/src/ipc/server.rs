@@ -232,6 +232,7 @@ impl IpcServer {
         owner_uid: Option<u32>,
         started_with: gnoblin_config::Config,
         polkit_helper: Option<std::path::PathBuf>,
+        shell: Option<Arc<dyn crate::inproc_shell::ShellControl>>,
     ) -> Result<IpcServer, IpcError> {
         let path = prepared.path().to_path_buf();
         let listener = UnixListener::bind(&path).map_err(|source| IpcError::Bind {
@@ -264,6 +265,7 @@ impl IpcServer {
             xwayland,
             power,
             consent: Consent::new(eis),
+            shell,
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
         // The guardian hands each privileged child's stream over the control socket, one
@@ -734,6 +736,8 @@ struct Dispatcher {
     requests: Requests,
     /// The `config.reload` requests waiting for the runtime to answer them.
     reload: Reload,
+    /// What `shell.reload` and `shell.status` reach: the shell the compositor runs in its own process, if it runs one.
+    shell: Option<Arc<dyn crate::inproc_shell::ShellControl>>,
     /// The documents each commit is compared with, to name the settings it accepts without applying.
     applied: StartedDocuments,
     /// The portal UI: admitted requests, their owners, and the open dialog.
@@ -868,6 +872,8 @@ impl Dispatcher {
             wire::member::CONFIG_CURRENT => self.configuration(client, envelope),
             wire::member::CONFIG_RELOAD => self.reload(client, envelope),
             wire::member::CONFIG_REJECT => self.reject(client, envelope),
+            wire::member::SHELL_RELOAD => self.shell_control(client, envelope, true),
+            wire::member::SHELL_STATUS => self.shell_control(client, envelope, false),
             wire::member::PORTAL_UI => self.portal_ui(client, envelope),
             wire::member::PORTAL_CANCEL => self.portal_cancel(client, envelope),
             wire::member::PORTAL_KEY => self.portal_key(client, envelope),
@@ -1476,6 +1482,31 @@ impl Dispatcher {
         let now = self.now();
         if let Some(generation) = self.reload.request(client, envelope.request_id, now) {
             self.store.request_reload(generation);
+        }
+    }
+
+    /// `shell.reload` and `shell.status`: the shell the compositor runs in its own process. The reload is a request the shell's
+    /// thread takes between dispatches, so both answer at once with the status; the caller reads the outcome back with
+    /// `shell.status`.
+    fn shell_control(&mut self, client: ClientId, envelope: &Envelope, reload: bool) {
+        let Some(shell) = &self.shell else {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::NO_SHELL,
+                "the compositor runs no shell in its own process, so it has none to reload; an isolated shell (`--isolate`) \
+                 reloads itself when its files change (`--watch`)",
+            );
+            return;
+        };
+        let status = if reload { shell.reload() } else { shell.status() };
+        if let Some(connection) = self.connections.get_mut(&client) {
+            connection.send(&Envelope::reply(
+                wire::NAMESPACE,
+                envelope.member.clone(),
+                envelope.request_id,
+                wire::shell_status_payload(&status),
+            ));
         }
     }
 
@@ -2799,6 +2830,8 @@ fn requires_owner(member: &str) -> bool {
             | wire::member::CONFIG_REJECT
             | wire::member::CONFIG_CURRENT
             | wire::member::CONFIG_RELOAD
+            | wire::member::SHELL_RELOAD
+            | wire::member::SHELL_STATUS
             | wire::member::OFFER
             | wire::member::CLAIM
             | wire::member::ANSWER

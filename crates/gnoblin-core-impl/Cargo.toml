@@ -29,6 +29,10 @@ gnoblin-log = { path = "../gnoblin-log", features = ["init"] }
 # services crate, and the shell it runs in process. The launcher reaches all of it only through `gnoblin_main` (M2.10).
 gnoblin-compositor = { path = "../gnoblin-compositor" }
 gnoblin-compat-host = { path = "../compat/gnoblin-compat-host" }
+# The isolated shell role (`--role shell`) is a client of the compositor's socket: the version handshake, the inherited
+# descriptor the guardian hands it and the readiness reports.
+gnoblin-client = { path = "../gnoblin-client" }
+gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-services = { path = "../gnoblin-services" }
 # The host: generations and their registrations, the dispatch loop, the loader and its retire list, panic containment.
 # This crate adds the C handles and the function table over it.

@@ -2466,3 +2466,9 @@ left = "gnoblin-std-dyn::StdError"
 right = "gnoblin-std-impl::Fail"
 kind = "same-shape"
 reason = "an ABI code and its text, the library's failure and the call layer's view of it; the call layer is an SDK crate and cannot name the implementation"
+
+[[allow]]
+left = "gnoblin-core-impl::CoreRole"
+right = "gnoblin-render::Actor"
+kind = "same-shape"
+reason = "the role the core serves in this process and the party that made a scene change both name the compositor and the shell; one is a command line, the other a tree rule, and the render crate cannot depend on the core"

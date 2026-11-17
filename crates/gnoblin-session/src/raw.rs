@@ -72,7 +72,7 @@ pub enum RawPolicy {
 /// captured only when `raw_services` is set.
 pub fn policy(role: &str, raw_services: bool) -> RawPolicy {
     match role {
-        "compositor" | "runtime" | "portal" | "xr" => RawPolicy::Redacted,
+        "compositor" | "shell" | "portal" | "xr" => RawPolicy::Redacted,
         "services" if raw_services => RawPolicy::Redacted,
         _ => RawPolicy::Off,
     }
@@ -408,7 +408,7 @@ mod tests {
     #[test]
     fn only_the_listed_roles_are_captured() {
         assert_eq!(policy("compositor", false), RawPolicy::Redacted);
-        assert_eq!(policy("runtime", false), RawPolicy::Redacted);
+        assert_eq!(policy("shell", false), RawPolicy::Redacted);
         assert_eq!(policy("portal", false), RawPolicy::Redacted);
         assert_eq!(policy("xr", false), RawPolicy::Redacted);
         assert_eq!(policy("services", false), RawPolicy::Off);

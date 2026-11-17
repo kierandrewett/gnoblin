@@ -11,7 +11,7 @@
 //! # One predicate: the owner connection
 //!
 //! A connection is either the *owner* or it is not. The owner is every connection the
-//! guardian handed over (the runtime, the services, the portal and input relays: all of them
+//! guardian handed over (the shell, the services, the portal and input relays: all of them
 //! are same-user helpers the guardian started), and every connection that reaches the
 //! ordinary socket from the session owner's uid, read from the kernel (`SO_PEERCRED`). A
 //! handover naming a role this build does not know is dropped with a warning rather than
@@ -36,7 +36,7 @@ use crate::log;
 ///
 /// A handover naming a role outside this list is dropped. Every role here is an owner
 /// connection; the list only says which names the guardian may use.
-pub const ROLES: [&str; 4] = ["input", "portal", "runtime", "services"];
+pub const ROLES: [&str; 4] = ["input", "portal", "services", "shell"];
 
 /// One privileged role this process serves.
 #[derive(Debug, Clone)]
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn the_roles_the_guardian_may_hand_over_are_the_declared_ones() {
-        for role in ["runtime", "services", "portal", "input"] {
+        for role in ["shell", "services", "portal", "input"] {
             assert!(ROLES.contains(&role), "`{role}` is a handover role");
         }
         for role in ["compositor", "invented", "guardian", "runtime2", ""] {
@@ -187,7 +187,7 @@ mod tests {
         )
         .expect("a control socket");
         let (stream, _peer) = std::os::unix::net::UnixStream::pair().expect("a stream");
-        for role in ["invented", privilege::VIEW_ROLE, "runtime"] {
+        for role in ["invented", privilege::VIEW_ROLE, "shell"] {
             privilege::send_handover(&guardian, role, &stream).expect("a handover");
         }
         drop(guardian);
@@ -195,10 +195,6 @@ mod tests {
         receive_handovers(&std::os::unix::net::UnixStream::from(compositor), |role, _| {
             adopted.push(role);
         });
-        assert_eq!(
-            adopted,
-            ["view", "runtime"],
-            "the unknown role never reaches the adopter"
-        );
+        assert_eq!(adopted, ["view", "shell"], "the unknown role never reaches the adopter");
     }
 }

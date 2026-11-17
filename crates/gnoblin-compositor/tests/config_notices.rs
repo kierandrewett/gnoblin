@@ -29,7 +29,7 @@ fn a_commit_names_what_the_running_compositor_cannot_apply_and_what_nothing_read
     // The failure this prevents: the renderer is chosen when the compositor starts, so a
     // document that changes it is accepted and the old renderer keeps drawing. The commit must
     // say so, and say it again on every later commit until the compositor restarts.
-    let (_session, mut ends) = Session::start_privileged(&["runtime"]);
+    let (_session, mut ends) = Session::start_privileged(&["shell"]);
     let mut runtime = runtime(&mut ends);
 
     let first = runtime
@@ -99,7 +99,7 @@ fn a_commit_names_what_the_running_compositor_cannot_apply_and_what_nothing_read
 fn gnoblinctl_config_reload_lists_the_settings_that_were_not_applied() {
     // The failure this prevents: `gnoblinctl config reload` prints `reloaded` for a document
     // whose renderer change cannot take effect until the compositor restarts.
-    let (session, mut ends) = Session::start_privileged(&["runtime"]);
+    let (session, mut ends) = Session::start_privileged(&["shell"]);
     let mut runtime = runtime(&mut ends);
     runtime.subscribe(Filter::All).expect("the snapshot");
 
@@ -162,7 +162,7 @@ fn gnoblinctl_config_reload_lists_the_settings_that_were_not_applied() {
 fn shortcuts_gestures_and_the_liveness_timeout_are_applied_so_a_commit_does_not_report_them() {
     // The failure this prevents: these were read only when the compositor started, so a first
     // commit that carried them had to say `restart required`. They are applied on commit now.
-    let (_session, mut ends) = Session::start_privileged(&["runtime"]);
+    let (_session, mut ends) = Session::start_privileged(&["shell"]);
     let mut runtime = runtime(&mut ends);
     let committed = runtime
         .commit_config_reporting(

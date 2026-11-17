@@ -33,6 +33,7 @@
 //! | `slot.release`                | client    | slot                                              |
 //! | `config.commit`               | privileged| document bytes                                    |
 //! | `config.current`              | privileged| nothing; the last accepted revision and document  |
+//! | `shell.reload`, `shell.status`| privileged| nothing; the in-process shell's status             |
 //!
 //! Every observation payload starts with its revision, so the client can enforce
 //! the same ordering rule the graph does and never has to infer it.
@@ -99,6 +100,11 @@ pub mod member {
     /// Privileged runtime to compositor: the reload it was asked for was refused. The
     /// message says where the document is wrong.
     pub const CONFIG_REJECT: &str = "config.reject";
+    /// Privileged client to compositor: reload the shell the compositor runs in its own process. Answered at once with
+    /// the shell's status; the reload itself runs on the shell's thread, and the status says when it has.
+    pub const SHELL_RELOAD: &str = "shell.reload";
+    /// Privileged client to compositor: what the in-process shell is doing: its generation, how its reloads went.
+    pub const SHELL_STATUS: &str = "shell.status";
     /// Privileged client to compositor: ask the built-in portal UI to decide a
     /// request. The answer comes later, as the reply to this request.
     pub const PORTAL_UI: &str = "portal.ui";
@@ -160,6 +166,8 @@ pub mod code {
     pub const CONFIG_REJECTED: &str = "config-rejected";
     /// No runtime role is connected, so nothing can reload the configuration.
     pub const NO_RUNTIME: &str = "no-runtime";
+    /// The session runs no shell in the compositor's process, so there is nothing here to reload.
+    pub const NO_SHELL: &str = "no-shell";
     /// The runtime did not answer the reload within its deadline.
     pub const RELOAD_TIMEOUT: &str = "reload-timeout";
     /// No provider claims the slot, so the request was not offered.
@@ -434,6 +442,85 @@ pub fn config_commit(request_id: u64, document: &[u8]) -> Envelope {
 /// the runtime owns the document, so the request names nothing to load.
 pub fn config_reload(request_id: u64) -> Envelope {
     Envelope::request(NAMESPACE, member::CONFIG_RELOAD, request_id, Vec::new())
+}
+
+/// A request to reload the shell the compositor runs in its own process. Privileged, and empty.
+pub fn shell_reload(request_id: u64) -> Envelope {
+    Envelope::request(NAMESPACE, member::SHELL_RELOAD, request_id, Vec::new())
+}
+
+/// A request for the status of the shell the compositor runs in its own process. Privileged, and empty.
+pub fn shell_status(request_id: u64) -> Envelope {
+    Envelope::request(NAMESPACE, member::SHELL_STATUS, request_id, Vec::new())
+}
+
+/// What an in-process shell reports about itself: the answer to `shell.status` and `shell.reload`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ShellStatus {
+    /// The running generation, `None` before the first load and after the shell ended.
+    pub generation: Option<u64>,
+    /// Reloads that committed.
+    pub reloads: u64,
+    /// Reloads that failed and left the running generation serving.
+    pub failures: u64,
+    /// Builds that failed since the last good one, as the developer loop reported them.
+    pub build_failures: u64,
+    /// Whether a reload was asked for and has not started.
+    pub pending: bool,
+    /// What the last reload came to: the generation that took over, or why it did not.
+    pub last: Option<Result<u64, String>>,
+    /// The whole status as the shell host prints it.
+    pub summary: String,
+}
+
+/// Encode the answer to `shell.status` and `shell.reload`.
+pub fn shell_status_payload(status: &ShellStatus) -> Vec<u8> {
+    let mut writer = Writer::new();
+    writer.u64(status.generation.unwrap_or(0));
+    writer.u64(status.reloads);
+    writer.u64(status.failures);
+    writer.u64(status.build_failures);
+    writer.u8(u8::from(status.pending));
+    match &status.last {
+        None => writer.u8(0),
+        Some(Ok(generation)) => {
+            writer.u8(1);
+            writer.u64(*generation);
+        }
+        Some(Err(message)) => {
+            writer.u8(2);
+            writer.text(message);
+        }
+    }
+    writer.text(&status.summary);
+    writer.finish()
+}
+
+/// Decode the answer to `shell.status` and `shell.reload`.
+pub fn read_shell_status(payload: &[u8]) -> Result<ShellStatus, WireError> {
+    let mut reader = FrameReader::new(payload);
+    let generation = reader.u64()?;
+    let reloads = reader.u64()?;
+    let failures = reader.u64()?;
+    let build_failures = reader.u64()?;
+    let pending = reader.u8()? != 0;
+    let last = match reader.u8()? {
+        0 => None,
+        1 => Some(Ok(reader.u64()?)),
+        2 => Some(Err(reader.text()?)),
+        other => return Err(WireError::Tag(other)),
+    };
+    let summary = reader.text()?;
+    reader.done()?;
+    Ok(ShellStatus {
+        generation: (generation != 0).then_some(generation),
+        reloads,
+        failures,
+        build_failures,
+        pending,
+        last,
+        summary,
+    })
 }
 
 /// A request telling the compositor the runtime refused the reload, with the reason.

@@ -9,7 +9,7 @@
 //!
 //! # What a child gets
 //!
-//! `gnoblin --role <role>`, started with no shell, in a process group of its own so a stop
+//! `gnoblin --role <role>` (the compositor with the shell's flags and path, or the isolated shell with them), in a process group of its own so a stop
 //! reaches its helpers, with the environment [`Effect::Spawn`] names. Descriptors beyond the
 //! standard three, when the child has a use for them:
 //!
@@ -28,7 +28,7 @@
 //!
 //! Each is an ordinary descriptor whose number travels in the environment. `FD_CLOEXEC` is
 //! cleared for one descriptor and one `spawn` at a time and restored immediately after,
-//! which is what keeps the runtime's connection out of the services role: nothing else in
+//! which is what keeps the shell's connection out of the services role: nothing else in
 //! this process ever has an inheritable descriptor, and the parent's copy of each end is
 //! closed once the child has it.
 //!
@@ -42,12 +42,12 @@
 //!
 //! 1. **A child that crashes immediately is restarted forever.** The policy's ladder and
 //!    circuit breaker bound it, the guardian reports the session degraded, and the loop keeps
-//!    running: `crates/gnoblin/tests/guardian.rs::a_crash_looping_runtime_is_cut_off_and_reported`.
+//!    running: `crates/gnoblin/tests/guardian.rs::a_crash_looping_shell_is_cut_off_and_reported`.
 //! 2. **A compositor crash leaves orphans.** Its exit begins the stop sequence, which signals
 //!    and then kills every other child: `crates/gnoblin/tests/guardian.rs::a_compositor_crash_ends_the_guardian_and_stops_every_child`.
 //! 3. **A descriptor leaks into an unrelated child.** Only the descriptor a child is given is
 //!    inheritable for that spawn, and the parent closes its copy afterwards, so the services
-//!    role never holds the runtime's connection:
+//!    role never holds the shell's connection:
 //!    `crates/gnoblin/tests/guardian.rs::a_privileged_descriptor_reaches_only_its_own_role`.
 //! 4. **The guardian's own `SIGTERM` is never noticed.** It becomes an event and the stop
 //!    sequence runs in reverse start order:
@@ -113,6 +113,51 @@ const XR_PROGRAM: &str = "gnoblin-xr";
 /// handed its `view` connection this way and has no other way to reach the compositor's display.
 const WAYLAND_SOCKET: &str = "WAYLAND_SOCKET";
 
+/// The shell the session runs: what the launcher's discovery resolved before anything started, and how.
+///
+/// The guardian resolves the shell once and passes it down (`design/modular-framework.md`, M4.4), so a session never starts
+/// a compositor it cannot give a shell to, and the compositor (or, isolated, the shell's own process) does not discover
+/// again: it loads exactly this file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShellPlan {
+    /// The module file to load, absolute.
+    pub path: PathBuf,
+    /// The language discovery named for it (`native`, `python`, `js`, `ts` or another), so a launcher file's `language =` is
+    /// honoured; `None` lets the loader detect it.
+    pub language: Option<String>,
+    /// Reload the shell when its files change (`--watch`).
+    pub watch: bool,
+    /// Run the shell in a process of its own instead of the compositor's (`--isolate` or `[shell] isolate`).
+    pub isolate: bool,
+}
+
+impl ShellPlan {
+    /// A shell to run in the compositor's process, detected by the loader and not watched.
+    #[must_use]
+    pub fn in_process(path: PathBuf) -> Self {
+        Self {
+            path,
+            language: None,
+            watch: false,
+            isolate: false,
+        }
+    }
+
+    /// The words that follow `--role compositor` or `--role shell`: the flags of this plan and then the path.
+    fn arguments(&self) -> Vec<std::ffi::OsString> {
+        let mut words: Vec<std::ffi::OsString> = Vec::new();
+        if self.watch {
+            words.push("--watch".into());
+        }
+        if let Some(language) = &self.language {
+            words.push("--language".into());
+            words.push(language.into());
+        }
+        words.push(self.path.clone().into());
+        words
+    }
+}
+
 /// How the guardian role runs.
 pub struct SupervisorConfig {
     /// The executable to start the children from, which is this binary.
@@ -122,9 +167,9 @@ pub struct SupervisorConfig {
     /// The XR extension binary, when the user opted in with [`XR_VARIABLE`] and it was found.
     /// Without it the plan has no `xr` child.
     pub xr_program: Option<PathBuf>,
-    /// The native shell module the compositor runs in its own process, from `gnoblin ./libshell.so`. The compositor child is
-    /// started with it, and the plan has no script runtime child.
-    pub shell: Option<PathBuf>,
+    /// The shell the session runs. In process, the compositor child is started with it and the plan has no shell child;
+    /// isolated, the compositor is started alone and the plan's `shell` child is started with it.
+    pub shell: ShellPlan,
     /// The children to supervise.
     pub plan: Plan,
     /// How the guardian behaves: the stop grace, the safe-mode threshold, the environment.
@@ -145,13 +190,14 @@ impl SupervisorConfig {
     /// The configuration the process finds: the standard plan, the C supervisor's numbers and
     /// the recovery state under `$XDG_STATE_HOME/gnoblin`.
     ///
-    /// With a `shell` the compositor loads it in process and the plan has no runtime child.
+    /// An in-process `shell` is loaded by the compositor and the plan has no shell child; an isolated one is the plan's `shell`
+    /// child.
     ///
     /// # Errors
     ///
     /// [`SupervisorError::Plan`] when the standard plan is not a valid plan, which would mean the crate
     /// and its own defaults disagree.
-    pub fn from_environment(program: PathBuf, shell: Option<PathBuf>) -> Result<SupervisorConfig, SupervisorError> {
+    pub fn from_environment(program: PathBuf, shell: ShellPlan) -> Result<SupervisorConfig, SupervisorError> {
         let prefix = std::env::var("GNOBLIN_PREFIX").unwrap_or_else(|_| "/usr".to_owned());
         let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_owned());
         let library_path = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
@@ -188,8 +234,8 @@ impl SupervisorConfig {
         };
         let mut plan = Plan::standard(false, portal_program.is_some(), xr_program.is_some(), Vec::new())
             .map_err(SupervisorError::Plan)?;
-        if shell.is_some() {
-            plan = plan.without_runtime();
+        if !shell.isolate {
+            plan = plan.without_shell();
         }
         let mut rules = Rules::standard(&inherited);
         let mut tick = Duration::from_millis(200);
@@ -572,15 +618,19 @@ impl Supervisor {
                     .expect("the xr child is planned only when its binary was found");
                 Command::new(program)
             }
-            ChildKind::Compositor | ChildKind::Runtime | ChildKind::Services | ChildKind::Front => {
+            ChildKind::Compositor | ChildKind::Shell | ChildKind::Services | ChildKind::Front => {
                 let mut command = Command::new(&self.config.program);
                 let role = self.role_name(spec).unwrap_or_else(|| "guardian".to_owned());
                 command.arg("--role").arg(role);
-                // The compositor loads a native shell in its own process, so it is the child that is told which.
-                if spec.kind == ChildKind::Compositor
-                    && let Some(shell) = &self.config.shell
-                {
-                    command.arg(shell);
+                // The shell is loaded by the compositor, in its process, unless it is isolated; then the shell's own process
+                // is the one that is told which.
+                let loads_shell = match spec.kind {
+                    ChildKind::Compositor => !self.config.shell.isolate,
+                    ChildKind::Shell => true,
+                    _ => false,
+                };
+                if loads_shell {
+                    command.args(self.config.shell.arguments());
                 }
                 command
             }
@@ -591,7 +641,7 @@ impl Supervisor {
     fn role_name(&self, spec: &ChildSpec) -> Option<String> {
         match spec.kind {
             ChildKind::Compositor => Some("compositor".to_owned()),
-            ChildKind::Runtime => Some("runtime".to_owned()),
+            ChildKind::Shell => Some("shell".to_owned()),
             ChildKind::Services => Some("services".to_owned()),
             ChildKind::Front => Some("front".to_owned()),
             ChildKind::Portal => Some("portal".to_owned()),
@@ -655,7 +705,7 @@ impl Supervisor {
 /// pair created for nothing is a descriptor a child cannot use. The table itself is the
 /// compositor's (`gnoblin-compositor`); this is the guardian's side of the same contract.
 fn privileged_role(role: &str) -> bool {
-    matches!(role, "runtime" | "services" | "portal")
+    matches!(role, "shell" | "services" | "portal")
 }
 
 /// The directories an optional child's binary is looked for in: beside the guardian, in the
@@ -1172,7 +1222,7 @@ mod xr_tests {
             program: PathBuf::from("/nonexistent/gnoblin"),
             portal_program: None,
             xr_program: Some(program),
-            shell: None,
+            shell: ShellPlan::in_process(PathBuf::from("/nonexistent/shell.so")),
             plan,
             rules: Rules::standard(&inherited),
             recovery: Recovery::default(),
@@ -1206,7 +1256,7 @@ mod xr_tests {
     }
 
     #[test]
-    fn the_compositor_is_started_with_the_native_shell_and_no_other_role_is() {
+    fn the_compositor_is_started_with_the_shell_and_no_other_role_is() {
         let (mut supervisor, _lines) = supervisor(PathBuf::from("/nonexistent/gnoblin-xr"));
         let arguments = |supervisor: &Supervisor, kind: ChildKind| -> Vec<String> {
             let spec = supervisor
@@ -1223,12 +1273,80 @@ mod xr_tests {
                 .map(|argument| argument.to_string_lossy().into_owned())
                 .collect()
         };
-        assert_eq!(arguments(&supervisor, ChildKind::Compositor), ["--role", "compositor"]);
-        supervisor.config.shell = Some(PathBuf::from("/shells/libshell.so"));
+        supervisor.config.shell = ShellPlan::in_process(PathBuf::from("/shells/libshell.so"));
         assert_eq!(
             arguments(&supervisor, ChildKind::Compositor),
             ["--role", "compositor", "/shells/libshell.so"]
         );
+        supervisor.config.shell = ShellPlan {
+            path: PathBuf::from("/shells/shell.py"),
+            language: Some("python".to_owned()),
+            watch: true,
+            isolate: false,
+        };
+        assert_eq!(
+            arguments(&supervisor, ChildKind::Compositor),
+            [
+                "--role",
+                "compositor",
+                "--watch",
+                "--language",
+                "python",
+                "/shells/shell.py"
+            ],
+            "the flags come before the path"
+        );
+    }
+
+    #[test]
+    fn an_isolated_shell_is_the_shell_childs_and_the_compositor_starts_alone() {
+        let inherited = InheritedEnvironment {
+            prefix: "/usr",
+            path: "/usr/bin:/bin",
+            library_path: "",
+            data_dirs: "/usr/share",
+        };
+        let plan = Plan::new(vec![
+            ChildSpec::new(COMPOSITOR, ChildKind::Compositor, "compositor"),
+            ChildSpec::new(ChildId::new(2), ChildKind::Shell, "shell"),
+        ])
+        .expect("a valid plan");
+        let config = SupervisorConfig {
+            program: PathBuf::from("/nonexistent/gnoblin"),
+            portal_program: None,
+            xr_program: None,
+            shell: ShellPlan {
+                path: PathBuf::from("/shells/libshell.so"),
+                language: None,
+                watch: false,
+                isolate: true,
+            },
+            plan,
+            rules: Rules::standard(&inherited),
+            recovery: Recovery::default(),
+            recovery_path: std::env::temp_dir().join(format!("gnoblin-iso-recovery-{}", std::process::id())),
+            tick: Duration::from_millis(10),
+            raw_services: false,
+        };
+        let (sink, _lines, _dropped) = raw::RawSink::channel();
+        let supervisor = Supervisor::new(config, sink);
+        let command = |kind: ChildKind| -> Vec<String> {
+            let spec = supervisor
+                .guardian
+                .plan()
+                .children()
+                .iter()
+                .find(|child| child.kind == kind)
+                .expect("the plan has the child")
+                .clone();
+            supervisor
+                .command(&spec)
+                .get_args()
+                .map(|argument| argument.to_string_lossy().into_owned())
+                .collect()
+        };
+        assert_eq!(command(ChildKind::Compositor), ["--role", "compositor"]);
+        assert_eq!(command(ChildKind::Shell), ["--role", "shell", "/shells/libshell.so"]);
     }
 
     #[test]

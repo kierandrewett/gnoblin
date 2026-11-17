@@ -46,9 +46,13 @@ fn an_unknown_role_is_a_command_line_error() {
     let output = gnoblin(&["--role", "daemon"]);
     assert_eq!(code(&output), 2, "a bad command line is exit 2");
     let message = stderr(&output);
-    for role in ["guardian", "compositor", "runtime", "services"] {
+    for role in ["guardian", "compositor", "shell", "services"] {
         assert!(message.contains(role), "the refusal lists `{role}`: {message}");
     }
+    assert!(
+        !message.contains("runtime"),
+        "the script runtime role is the shell role now: {message}"
+    );
 }
 
 #[test]
@@ -63,11 +67,85 @@ fn the_help_documents_only_the_flags_this_build_has() {
     let mut flags: Vec<&str> = help
         .split(|character: char| character.is_whitespace() || character == ',')
         .filter(|token| token.starts_with("--"))
-        .map(|token| token.split(' ').next().unwrap_or(token))
+        .map(|token| token.trim_end_matches(|character: char| !character.is_ascii_alphanumeric()))
         .collect();
     flags.sort_unstable();
     flags.dedup();
-    assert_eq!(flags, ["--help", "--role", "--version"], "{help}");
+    assert_eq!(
+        flags,
+        [
+            "--help",
+            "--isolate",
+            "--language",
+            "--list-shells",
+            "--role",
+            "--shell",
+            "--version",
+            "--watch"
+        ],
+        "{help}"
+    );
+    // The help says where the shell comes from: the tiers, in order, and what to do about an ambiguity.
+    for text in [
+        "PATH",
+        "GNOBLIN_SHELL",
+        "config.toml",
+        "shell.{so,py,js,mjs,ts,mts}",
+        "$XDG_DATA_HOME/gnoblin/shells/",
+        "$XDG_DATA_DIRS",
+        "default-shell",
+        "equally preferred",
+        "exits 1 before any compositor starts",
+    ] {
+        assert!(help.contains(text), "the help documents `{text}`:\n{help}");
+    }
+}
+
+#[test]
+fn a_path_and_a_name_together_are_a_usage_error() {
+    let output = gnoblin(&["--shell", "tiler", "./x.so"]);
+    assert_eq!(code(&output), 2, "{}", stderr(&output));
+    assert!(stderr(&output).contains("cannot be used with"), "{}", stderr(&output));
+}
+
+#[test]
+fn listing_shells_takes_no_flag_that_runs_one() {
+    for flag in ["--watch", "--isolate"] {
+        let output = gnoblin(&["--list-shells", flag]);
+        assert_eq!(code(&output), 2, "{flag}: {}", stderr(&output));
+    }
+}
+
+#[test]
+fn the_flags_of_the_guardian_are_refused_by_the_roles_it_starts() {
+    for arguments in [
+        &["--role", "compositor", "--isolate"][..],
+        &["--role", "compositor", "--list-shells"][..],
+        &["--role", "compositor", "--shell", "tiler"][..],
+        &["--role", "services", "./x.so"][..],
+        &["--role", "services", "--watch"][..],
+        &["--role", "services", "--language", "python"][..],
+        &["--role", "shell"][..],
+    ] {
+        let output = gnoblin(arguments);
+        assert_eq!(code(&output), 2, "{arguments:?}: {}", stderr(&output));
+        assert!(
+            stderr(&output).starts_with("gnoblin: "),
+            "{arguments:?}: {}",
+            stderr(&output)
+        );
+    }
+}
+
+#[test]
+fn a_shell_path_that_is_not_a_file_is_refused_before_the_compositor_starts() {
+    let output = gnoblin(&["--role", "compositor", "/nonexistent/libshell.so"]);
+    assert_eq!(code(&output), 1, "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("cannot find the shell module"),
+        "{}",
+        stderr(&output)
+    );
 }
 
 #[test]

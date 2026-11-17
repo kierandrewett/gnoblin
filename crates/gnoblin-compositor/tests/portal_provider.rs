@@ -705,12 +705,12 @@ fn assert_not_owner<T: std::fmt::Debug>(result: Result<T, ClientError>, what: &s
 /// The last client is such a non-owner connection.
 fn session_with_outsider() -> (Session, Wire, Wire, Client<UnixTransport>, Client<UnixTransport>) {
     let foreign = own_uid().wrapping_add(1);
-    let (session, mut ends) = Session::start_privileged_configured(&["portal", "input", "runtime"], |config| {
+    let (session, mut ends) = Session::start_privileged_configured(&["portal", "input", "shell"], |config| {
         config.ipc_owner_uid = Some(foreign);
     });
     let relay = take(&mut ends, "portal");
     let input = take(&mut ends, "input");
-    let mut shell = role_client(&mut ends, "runtime");
+    let mut shell = role_client(&mut ends, "shell");
     shell
         .claim_slot("portal.ui", Provider::Shell)
         .expect("the owner's connection claims portal.ui");

@@ -386,7 +386,7 @@ fn a_connection_that_is_not_the_owner_cannot_assert_the_users_consent() {
     // table test lists the seven members; this shows the dispatcher refuses them on a live socket, and that
     // the refusal recorded nothing the owner's later request could trip over.
     let foreign = own_uid().wrapping_add(1);
-    let (session, mut ends) = Session::start_privileged_configured(&["runtime"], |config| {
+    let (session, mut ends) = Session::start_privileged_configured(&["shell"], |config| {
         config.ipc_owner_uid = Some(foreign);
     });
     let (_, owner_end) = ends.remove(0);

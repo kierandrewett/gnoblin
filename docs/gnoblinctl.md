@@ -232,6 +232,34 @@ A document that is refused after the shell reloaded leaves the new shell config 
 and the shell cannot take its swap back. A session with no `shell.ts` has nothing to reload on the shell side, and the
 request reloads the document alone.
 
+## Shell
+
+- `gnoblinctl shell list` prints every shell `gnoblin` can run, in the order it looks, and marks the one that would run. It needs
+  no session, and it is the table `gnoblin --list-shells` prints.
+- `gnoblinctl shell status` prints the running shell's generation, how many reloads committed and failed, the last outcome and
+  the last failed build.
+- `gnoblinctl shell reload` asks the shell to reload and waits until it has: a reload runs on the shell's own thread between its
+  callbacks, so the command reads the status until one has finished.
+- `gnoblinctl shell watch [PATH] [--once]` reloads the shell each time its module (default: the one `gnoblin` finds) is rebuilt,
+  until interrupted; `--once` exits after the first reload, with that reload's exit code.
+
+```sh
+gnoblinctl shell reload
+```
+
+```text
+reloaded: generation 3
+```
+
+A reload that cannot take over leaves the running shell serving, exits 1 and prints the shell host's own text:
+
+```text
+gnoblinctl: reload-failed: reload of /home/me/dev/tiler/target/debug/libtiler.so failed, still running generation 2: /home/me/dev/tiler/target/debug/libtiler.so: cannot load the shell library: file too short
+```
+
+The shell members are the session owner's, as `config reload` is. A session whose shell is not in the compositor's process (none
+runs, or `--isolate`) answers `no-shell`.
+
 ### Write a starter config
 
 `gnoblinctl config init` writes a short, commented `shell.ts` into the config directory. That is `$XDG_CONFIG_HOME/gnoblin`

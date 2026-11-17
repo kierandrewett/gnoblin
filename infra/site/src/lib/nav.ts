@@ -39,6 +39,7 @@ export const NAV: NavSection[] = [
                 ],
             },
             { label: "Platform support", slug: "platform-support" },
+            { label: "Start Gnoblin", slug: "starting-gnoblin" },
             { label: "Choose a backend", slug: "backends" },
             { label: "Troubleshooting", slug: "troubleshooting" },
         ],
