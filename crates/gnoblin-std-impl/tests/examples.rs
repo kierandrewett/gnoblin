@@ -653,6 +653,24 @@ fn the_native_tiling_layouts_match_the_typescript_std() {
     assert_eq!(num(&stdout, "core_stats", "panics"), 0, "{stdout}");
 }
 
+/// `["Super+Button1", "<Alt>Button3"]` with every chord in the compositor's spelling (`<Super>Button1`, `<Alt>Button3`).
+fn canonical_chords(list: &str) -> Vec<String> {
+    list.trim_matches(|c| c == '[' || c == ']')
+        .split(", ")
+        .map(|chord| {
+            let chord = chord.trim_matches('"');
+            match chord.rsplit_once('+') {
+                Some((modifiers, key)) if !chord.contains('<') => {
+                    let mut spelled: String = modifiers.split('+').map(|modifier| format!("<{modifier}>")).collect();
+                    spelled.push_str(key);
+                    spelled
+                }
+                _ => chord.to_owned(),
+            }
+        })
+        .collect()
+}
+
 // ---- pointer bindings (M7.5) ------------------------------------------------------------------------------------------------
 
 #[test]
@@ -662,8 +680,15 @@ fn pointer_drags_move_and_resize_windows_and_a_binding_of_the_shells_own_runs() 
     assert_eq!(code, 0, "{stdout}\n{stderr}");
     assert!(stderr.contains("bindings shell is running"), "{stderr}");
     assert!(!stderr.contains("cannot"), "{stderr}");
-    assert!(
-        stdout.contains("claims=[\"Super+Button1\", \"Alt+Button3\", \"Super+Button2\"]"),
+    // The chords are claimed in either spelling (the SDK rewrites the plus form for a shell's own drag, the library's go as written),
+    // so they are compared in the compositor's.
+    let claims = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("claims="))
+        .unwrap_or_default();
+    assert_eq!(
+        canonical_chords(claims),
+        canonical_chords("[\"Super+Button1\", \"Alt+Button3\", \"Super+Button2\"]"),
         "{stdout}"
     );
     let first = |name: &str| {
