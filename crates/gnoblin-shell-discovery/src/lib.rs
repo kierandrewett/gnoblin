@@ -59,7 +59,9 @@ mod trace;
 
 pub use candidate::{Candidate, DEFAULT_NAME, Form, Target};
 pub use discover::{Selection, Warning, discover};
-pub use environment::{CONFIG_FILE_NAME, DEFAULT_SHELL_DIRECTORY, Environment, SHELL_STEM, SHELLS_DIRECTORY};
+pub use environment::{
+    CONFIG_FILE_NAME, DEFAULT_SHELL_DIRECTORY, Environment, LUA_CONFIG_FILE, SHELL_STEM, SHELLS_DIRECTORY,
+};
 pub use error::{DiscoveryError, Installed, Remedies, Searched};
 pub use language::{KNOWN_EXTENSIONS, Language};
 pub use list::{Listing, Row, list_shells};

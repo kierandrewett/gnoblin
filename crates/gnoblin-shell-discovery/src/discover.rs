@@ -25,7 +25,7 @@ use crate::candidate::{
     Candidate, DEFAULT_NAME, DirectoryProblem, PathOutcome, candidates_at, conventional_candidates,
     packaged_candidates, scan_shells_directory,
 };
-use crate::environment::Environment;
+use crate::environment::{Environment, LUA_CONFIG_FILE};
 use crate::error::{DiscoveryError, Installed, Remedies, Searched, nearest};
 use crate::language::Language;
 use crate::shell_config::{ConfigError, ShellConfig, read_shell_config};
@@ -44,6 +44,21 @@ pub struct Warning {
 impl std::fmt::Display for Warning {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "{}: {}", self.source.display(), self.message)
+    }
+}
+
+/// The notice for an `init.lua` that nothing reads: what runs instead, and the command that converts it.
+fn lua_config_warning(file: &Path, shell: &Candidate) -> Warning {
+    let instead = if shell.tier == Tier::Packaged {
+        "the stock desktop runs instead".to_owned()
+    } else {
+        format!("the shell `{}` runs instead", shell.name)
+    };
+    Warning {
+        source: file.to_path_buf(),
+        message: format!(
+            "this is a Lua config and Gnoblin no longer runs Lua, so {instead}; run `gnoblinctl config migrate` to convert it to shell.ts (see docs/migrating-from-lua.md)"
+        ),
     }
 }
 
@@ -69,8 +84,13 @@ pub struct Selection {
     pub location: PathBuf,
     /// `[shell] isolate` from `config.toml`, which is read whichever tier chose the shell.
     pub isolate: Option<bool>,
-    /// Things that did not stop the lookup: an unknown key, a `config.toml` that was ignored.
+    /// Things that did not stop the lookup: an unknown key, a `config.toml` that was ignored, an `init.lua` that nothing
+    /// reads any more.
     pub warnings: Vec<Warning>,
+    /// The `init.lua` of the config directory when nothing the user named chose the shell: Gnoblin does not read it, the
+    /// shell above runs instead, and [`warnings`](Self::warnings) says how to convert it. `None` when a shell that
+    /// something named (the command line, `GNOBLIN_SHELL`, `config.toml` or a `shell.*` of the config directory) won.
+    pub lua_config: Option<PathBuf>,
 }
 
 impl std::fmt::Display for Selection {
@@ -209,6 +229,17 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// The `init.lua` that is left unread: there is one in the config directory, and the shell was not chosen by the
+    /// user (tier 5 and below). A shell the user named, or a `shell.*` beside the Lua file, is the user's choice and
+    /// the Lua file is then simply an old file.
+    fn lua_config(&self, chosen_by: Tier) -> Option<PathBuf> {
+        if chosen_by < Tier::UserShells {
+            return None;
+        }
+        let file = self.environment.config_dir()?.join(LUA_CONFIG_FILE);
+        file.is_file().then_some(file)
+    }
+
     /// The warnings `config.toml` contributes. A broken file only warns when a higher tier chose the shell: then
     /// `isolate` could not be read, and nothing else depended on the file.
     fn config_warnings(&self, chosen_by: Tier) -> Vec<Warning> {
@@ -257,6 +288,10 @@ impl<'a> Context<'a> {
             source: warning_source.clone(),
             message: message.clone(),
         }));
+        let lua_config = self.lua_config(chosen_by);
+        if let Some(file) = &lua_config {
+            warnings.push(lua_config_warning(file, candidate));
+        }
         Ok(Selection {
             name: candidate.name.clone(),
             path: target.path.clone(),
@@ -268,6 +303,7 @@ impl<'a> Context<'a> {
             location: candidate.location.clone(),
             isolate: self.isolate(),
             warnings,
+            lua_config,
         })
     }
 

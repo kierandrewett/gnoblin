@@ -25,13 +25,9 @@
 
 use std::path::{Path, PathBuf};
 
-use gnoblin_shell_discovery::{DiscoveryError, Language as ShellLanguage, Request, discover};
+use gnoblin_shell_discovery::{DiscoveryError, LUA_CONFIG_FILE, Language as ShellLanguage, Request, discover};
 /// The environment a lookup reads, and the tier of the lookup that chose the file.
 pub use gnoblin_shell_discovery::{Environment, Tier};
-
-/// The file name a Lua configuration had. Nothing reads it; the lookup only reports that it is there, so the caller
-/// can tell the user how to convert it.
-const LUA_FILE_NAME: &str = "init.lua";
 
 /// The file a new user is told to create.
 const NEW_FILE_EXTENSION: &str = "ts";
@@ -158,10 +154,6 @@ impl std::error::Error for LocateError {}
 /// [`LocateError`] when discovery refuses, when there is no home to build the first-login path from, or when the
 /// selected shell is not TypeScript or JavaScript.
 pub fn locate(environment: &Environment) -> Result<ConfigPath, LocateError> {
-    let lua_file = environment
-        .config_dir()
-        .map(|dir| dir.join(LUA_FILE_NAME))
-        .filter(|file| file.is_file());
     match discover(environment, &Request::Discover) {
         Ok(selection) => {
             let language = match &selection.language {
@@ -177,8 +169,8 @@ pub fn locate(environment: &Environment) -> Result<ConfigPath, LocateError> {
                     });
                 }
             };
-            // A shell that something named is the user's choice; the Lua file only matters when nothing did.
-            let lua = lua_file.filter(|_| selection.chosen_by >= Tier::UserShells);
+            // Discovery says when a Lua file is left unread: nothing the user named chose the shell.
+            let lua = selection.lua_config.clone();
             Ok(ConfigPath {
                 tier: selection.chosen_by,
                 path: selection.path,
@@ -192,12 +184,16 @@ pub fn locate(environment: &Environment) -> Result<ConfigPath, LocateError> {
             let path = environment
                 .user_shell_file(NEW_FILE_EXTENSION)
                 .ok_or(LocateError::NoHome)?;
+            let lua = environment
+                .config_dir()
+                .map(|dir| dir.join(LUA_CONFIG_FILE))
+                .filter(|file| file.is_file());
             Ok(ConfigPath {
                 path,
                 tier: Tier::UserConfig,
                 exists: false,
                 language: Language::TypeScript,
-                lua: lua_file,
+                lua,
                 warnings: Vec::new(),
             })
         }
