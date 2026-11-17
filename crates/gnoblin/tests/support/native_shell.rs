@@ -878,6 +878,9 @@ const KEYMAP: &str = "xkb_keymap {\n\
 /// evdev codes of the keys the tests press.
 pub const KEY_LEFTMETA: u32 = 125;
 pub const KEY_ENTER: u32 = 28;
+pub const KEY_1: u32 = 2;
+pub const KEY_3: u32 = 4;
+pub const KEY_5: u32 = 6;
 pub const KEY_Q: u32 = 16;
 pub const KEY_M: u32 = 50;
 pub const KEY_R: u32 = 19;

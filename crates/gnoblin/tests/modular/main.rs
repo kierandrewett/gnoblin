@@ -20,6 +20,7 @@ mod js_esm;
 mod no_std;
 mod script_binding;
 mod script_reload;
+mod std_layouts;
 mod ts_types;
 
 use std::fs;
