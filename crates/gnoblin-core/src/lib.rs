@@ -38,6 +38,8 @@ compile_error!(
 
 mod error;
 mod events;
+// Written by `cargo xtask gen-sdks`, already formatted by the pinned rustfmt.
+mod generated;
 mod gnoblin;
 mod input;
 mod owned;
@@ -56,13 +58,14 @@ pub use private as __private;
 
 pub use error::{CoreError, ErrorKind, Result};
 pub use events::{NodeEvent, WindowRequest};
+pub use generated::*;
 pub use gnoblin::{CoreStats, Gnoblin, LogLevel, ModuleInfo, Poster, ScopedSubscription, Subscription};
 pub use gnoblin_macros::main;
 pub use input::{ChordEvent, ChordState, DragPhase, GestureEvent, GestureKind, GrabScope, PointerButton, PointerDrag};
 pub use owned::Value;
 pub use process::{Command, Process, ProcessExit, Signal, Stream};
 pub use timed::{Effect, EffectKind, Timing};
-pub use tree::{Adoption, Answer, Client, Node, PendingCall, Rect, Window};
+pub use tree::{Adoption, Answer, Client, Node, PendingCall, Rect};
 pub use value::{CatalogMember, Class, MemberKind, NodeId, ShellValue, SignalEvent};
 
 /// The ABI major version this SDK was built for. A core of another major refuses to load the shell.

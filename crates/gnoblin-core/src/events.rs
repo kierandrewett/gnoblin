@@ -15,9 +15,10 @@ use std::sync::atomic::Ordering;
 use gnoblin_core_abi::{self as abi, GnoblinNodeEvent};
 
 use crate::error::Result;
+use crate::generated::Window;
 use crate::gnoblin::{CALLS, Gnoblin, Subscription, drop_slot};
 use crate::owned::Value;
-use crate::tree::{Node, Window};
+use crate::tree::Node;
 use crate::value::{Class, MemberKind, NodeId, ShellValue, SignalEvent};
 
 /// A closure behind a `user` pointer, with the generation's handle to build nodes from.

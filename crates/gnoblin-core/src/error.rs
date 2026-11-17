@@ -10,63 +10,11 @@ use gnoblin_core_abi as abi;
 
 use crate::sys;
 
-/// Why a call failed. Mirrors the `E_*` codes; a code a newer core adds that this SDK does not know is [`Failed`].
-///
-/// [`Failed`]: ErrorKind::Failed
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ErrorKind {
-    /// A failure with no more specific code.
-    Failed,
-    /// A panic was caught at the boundary.
-    Panic,
-    /// The function or catalog member is not in the installed core (an older minor, or removed from the schema).
-    Unsupported,
-    /// The ABI major of the installed core is not the one this SDK was built for.
-    Abi,
-    /// A module failed to load or initialise.
-    Load,
-    /// A handle that was removed or never existed.
-    Stale,
-    /// The calling generation has been retired.
-    Retired,
-    /// A node id that is not in the tree.
-    NoSuchNode,
-    /// A class, property, method or signal that is not in the catalog.
-    NoSuchMember,
-    /// A value of the wrong kind.
-    Type,
-    /// The compositor refused the request.
-    Refused,
-    /// A shell-thread-only function was called from another thread.
-    Thread,
-    /// A single-holder resource is taken.
-    Busy,
-    /// A deadline passed.
-    Timeout,
-}
+pub use crate::generated::ErrorKind;
 
 impl ErrorKind {
-    /// The kind for a negative `E_*` code.
-    pub fn from_code(code: i32) -> ErrorKind {
-        match code {
-            abi::E_PANIC => ErrorKind::Panic,
-            abi::E_UNSUPPORTED => ErrorKind::Unsupported,
-            abi::E_ABI => ErrorKind::Abi,
-            abi::E_LOAD => ErrorKind::Load,
-            abi::E_STALE => ErrorKind::Stale,
-            abi::E_RETIRED => ErrorKind::Retired,
-            abi::E_NO_SUCH_NODE => ErrorKind::NoSuchNode,
-            abi::E_NO_SUCH_MEMBER => ErrorKind::NoSuchMember,
-            abi::E_TYPE => ErrorKind::Type,
-            abi::E_REFUSED => ErrorKind::Refused,
-            abi::E_THREAD => ErrorKind::Thread,
-            abi::E_BUSY => ErrorKind::Busy,
-            abi::E_TIMEOUT => ErrorKind::Timeout,
-            _ => ErrorKind::Failed,
-        }
-    }
-
+    /// The short text `Display` puts before the core's own. Exhaustive on purpose: an `E_*` code added to the ABI adds a
+    /// variant to the generated enum (`cargo xtask gen-sdks`), and this match is where the SDK has to say what it means.
     fn describe(self) -> &'static str {
         match self {
             ErrorKind::Failed => "failed",

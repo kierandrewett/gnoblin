@@ -59,45 +59,13 @@ impl Fail {
 
 impl From<CoreError> for Fail {
     fn from(error: CoreError) -> Fail {
-        let code = match error.kind() {
-            ErrorKind::Panic => abi::E_PANIC,
-            ErrorKind::Unsupported => abi::E_UNSUPPORTED,
-            ErrorKind::Abi => abi::E_ABI,
-            ErrorKind::Load => abi::E_LOAD,
-            ErrorKind::Stale => abi::E_STALE,
-            ErrorKind::Retired => abi::E_RETIRED,
-            ErrorKind::NoSuchNode => abi::E_NO_SUCH_NODE,
-            ErrorKind::NoSuchMember => abi::E_NO_SUCH_MEMBER,
-            ErrorKind::Type => abi::E_TYPE,
-            ErrorKind::Refused => abi::E_REFUSED,
-            ErrorKind::Thread => abi::E_THREAD,
-            ErrorKind::Busy => abi::E_BUSY,
-            ErrorKind::Timeout => abi::E_TIMEOUT,
-            _ => abi::E_ERR,
-        };
-        Fail::new(code, error.to_string())
+        Fail::new(error.kind().code(), error.to_string())
     }
 }
 
 /// The symbolic name of an error code, for the start of the last-error text.
 pub(crate) fn code_name(code: i32) -> &'static str {
-    match code {
-        abi::E_OK => "E_OK",
-        abi::E_PANIC => "E_PANIC",
-        abi::E_UNSUPPORTED => "E_UNSUPPORTED",
-        abi::E_ABI => "E_ABI",
-        abi::E_LOAD => "E_LOAD",
-        abi::E_STALE => "E_STALE",
-        abi::E_RETIRED => "E_RETIRED",
-        abi::E_NO_SUCH_NODE => "E_NO_SUCH_NODE",
-        abi::E_NO_SUCH_MEMBER => "E_NO_SUCH_MEMBER",
-        abi::E_TYPE => "E_TYPE",
-        abi::E_REFUSED => "E_REFUSED",
-        abi::E_THREAD => "E_THREAD",
-        abi::E_BUSY => "E_BUSY",
-        abi::E_TIMEOUT => "E_TIMEOUT",
-        _ => "E_ERR",
-    }
+    ErrorKind::from_code(code).symbol()
 }
 
 thread_local! {

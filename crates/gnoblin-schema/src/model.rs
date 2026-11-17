@@ -572,6 +572,70 @@ impl Catalog {
             .filter(move |schema| &schema.namespace == namespace)
             .map(|schema| schema.origin.as_str())
     }
+
+    /// A 64-bit fingerprint of everything the generated SDKs read from the catalog: every namespace, class, base, property
+    /// (type, default, read-only, animated, secret), method (parameters), signal (fields) and error code.
+    ///
+    /// The core library reports it as `gnoblin_catalog_hash`, and each generated SDK file records it in its header, so "does
+    /// this SDK match the core I am running on" is one integer comparison. It changes when a member is added, removed,
+    /// retyped or flagged differently, and not when a comment, the order of the schema files or a `since` version changes.
+    /// The hash is FNV-1a over a canonical text, so it is stable across platforms and toolchains.
+    pub fn fingerprint(&self) -> u64 {
+        use std::fmt::Write as _;
+        let mut text = String::new();
+        for namespace in self.namespaces() {
+            let _ = writeln!(text, "namespace {}", namespace.as_str());
+            for object in self.objects(&namespace) {
+                let _ = writeln!(
+                    text,
+                    "class {} base={} secret={} record={}",
+                    object.name,
+                    object.base.as_deref().unwrap_or("-"),
+                    object.secret,
+                    object.record
+                );
+                for property in &object.properties {
+                    let _ = writeln!(
+                        text,
+                        "p {} {} default={:?} ro={} anim={} secret={}",
+                        property.name,
+                        property.ty,
+                        property.default,
+                        property.readonly,
+                        property.animated,
+                        property.secret
+                    );
+                }
+                for method in &object.methods {
+                    let _ = write!(
+                        text,
+                        "m {} fn={} secret={}",
+                        method.name, method.function, method.secret
+                    );
+                    for param in &method.params {
+                        let _ = write!(text, " {}:{}:{}:{}", param.name, param.ty, param.optional, param.secret);
+                    }
+                    text.push('\n');
+                }
+                for signal in &object.signals {
+                    let _ = write!(text, "s {} secret={}", signal.name, signal.secret);
+                    for field in &signal.fields {
+                        let _ = write!(text, " {}:{}:{}", field.name, field.ty, field.secret);
+                    }
+                    text.push('\n');
+                }
+            }
+            for error in self.errors(&namespace) {
+                let _ = writeln!(text, "e {}", error.name);
+            }
+        }
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+        for byte in text.bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        hash
+    }
 }
 
 /// True for a member or object name: `[a-z][a-z0-9_]*`.

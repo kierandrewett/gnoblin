@@ -1794,3 +1794,45 @@ through both, and a fix that loads as the next generation); a callback that rais
 - **`dist-check` does not yet check the runtime library** (one export, `NEEDED` the core and libpython only); the unit test of the install plan covers
   where it and the package go. The runtime also exports `PyInit__gnoblin_core` (PyO3's own symbol for the built-in module); hiding it is a linker version script.
 - **Python sub-interpreters are not used** (D12): a reload is a new namespace in the one interpreter, so a C extension that keeps global state keeps it.
+## 25. The SDK generator (lane SdkGen)
+
+One generator, `cargo xtask gen-sdks [--check]` (`xtask/src/sdk/`, contract in `docs/sdk-generator.md`), writes every language SDK from the
+schema catalog and the two ABI crates. This section records what the lane decided, what it built and what is left.
+
+### 25.1 Decisions
+
+- **Sources.** The schema catalog, `gnoblin-core-abi` and `gnoblin-std-abi`. The ABI crates already reflect themselves as data
+  (`reflect`), and the std table is `object_verb`-named with the receiver as the argument named like the object, so the std object model
+  (`Collection`, `Client`, `Workspace`, `Policy`) is derived from the table and needs no second description. The generator lives in
+  `xtask` and not in a crate: it is build tooling, and a crate would need new dependency-rule entries for no reader.
+- **One model, thin targets.** `SdkSpec` classifies every table argument (text, record, records, out value, callback with its `user` and
+  `drop_user`, context) and every record field, and each target renders from that. No target parses a type string.
+- **Hash.** `Catalog::fingerprint` (in `gnoblin-schema`) is the one definition; `gnoblin-core-impl`'s build script reports it as
+  `gnoblin_catalog_hash`, and each generated file names it.
+- **Rust.** The SDK calls the table directly, so what is generated is names and shapes: `schema::*` constants, the typed node wrappers
+  (`Window`, `Seat`, ...; members the schema puts on `node` are written once on `Node`), and `ErrorKind`, which the std SDK and `gnoblin-std-impl`
+  now convert through (`from_symbol`, `code`, `symbol`) instead of three hand-written tables. Generated Rust is passed through the pinned
+  `rustfmt`, so it passes the same format check as hand-written code.
+- **Python and TypeScript.** Typed classes and `.pyi` for the node classes (`TreeNode` is the schema's `node`, so it does not hide the runtime's
+  own `Node`), `abi` constants as `IntEnum`/`IntFlag` and `as const` objects, TypeScript property, method and signal interfaces and the
+  `TREE_CLASSES` run-time table. Hand-written: `_base.py` and the class library of `gnoblin-core`/`gnoblin-std`.
+- **Freshness.** `gen-sdks --check` is in `just workspace-ci` and a unit test of `xtask`.
+
+### 25.2 Not done, with the plan
+
+The std bindings for Python and TypeScript are the owner's M7.7/M7.8 and are **not built**. What exists is the classification that
+makes them one renderer: `Library::functions`, `objects()`, records with `plain`, constant groups. The rest, in order:
+
+1. Record shapes the table needs and the model does not yet name: a pointer and its length (`GnoblinStdMembers`, the layout context's
+   `children`), a `sink` with its `emit`, and a vtable record with `user` and `drop_user` (`GnoblinStdLayoutSpec`). These three make
+   `collection_members`, `workspace_set_layout` and script layouts scriptable.
+2. A language-neutral dynamic layer in Rust (generated): `call(table, name, &[Dyn]) -> Dyn` over the std table, so each runtime hand-writes only a
+   `Dyn` to script value conversion. `gnoblin-runtime-python` and `gnoblin-runtime-js` then expose it as `gnoblin._std` and `__gnoblinStd`.
+3. Python `std.py` and TypeScript `gnoblin-std/generated/` classes over those natives.
+4. Migration of the TypeScript std onto the native one, oracle the existing TypeScript tests: clients and collections, listeners, workspaces,
+   floating and tiling layouts, move/resize/swap bindings (ported natively already), then layouts kinds (`LAYOUT_KINDS` of
+   `gnoblin-std-abi`, generated typed options and actions), animation, style, scene, lock card. Still hand-written TypeScript today: all of
+   `data/js/gnoblin-std` (about 21,700 lines); blockers are 2 and 3 above and, for animation and style, the tagged value structs and the
+   transition begin/commit shape that StdAnimStyle reported.
+5. The Rust runtimes' own tables (`gnoblin-js/src/bindings/props.rs`, the exception classes of `gnoblin-runtime-python`) become generated
+   Rust files of the same generator.

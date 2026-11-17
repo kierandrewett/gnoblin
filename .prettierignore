@@ -13,3 +13,7 @@ crates/gnoblin-js-types/tests/golden/
 # Generated pages: a formatter would change the text their generators compare against.
 design/adapter-support-matrices.md
 tests/native-probe/MATRIX.md
+
+# Written by `cargo xtask gen-sdks`; `--check` keeps them current, so they are not reformatted.
+data/js/gnoblin-core/generated/
+data/js/gnoblin-std/generated/

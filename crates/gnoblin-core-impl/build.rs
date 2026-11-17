@@ -72,16 +72,14 @@ fn stage_soname_link() {
     }
 }
 
-/// The static catalog source and the hash of its canonical text.
+/// The static catalog source and the catalog's fingerprint (`Catalog::fingerprint`, which the generated SDKs record too).
 fn render(catalog: &Catalog) -> (String, u64) {
     let mut source = String::from("pub(crate) static CLASSES: &[ClassDef] = &[\n");
-    let mut canonical = String::new();
     // The tree namespace first, so a bare class name resolves there (`Catalog::namespaces` is sorted by name).
     let mut namespaces = catalog.namespaces();
     namespaces.sort_by_key(|namespace| (namespace.as_str() != "tree", namespace.as_str().to_owned()));
     for namespace in &namespaces {
         for object in catalog.objects(namespace) {
-            let _ = writeln!(canonical, "class {}.{}", namespace.as_str(), object.name);
             let _ = writeln!(
                 source,
                 "    ClassDef {{ namespace: {:?}, name: {:?}, properties: &[",
@@ -93,7 +91,6 @@ fn render(catalog: &Catalog) -> (String, u64) {
                 let flags = flag(property.animated, abi::MEMBER_ANIMATED)
                     | flag(property.readonly, abi::MEMBER_READONLY)
                     | flag(property.secret, abi::MEMBER_SECRET);
-                let _ = writeln!(canonical, "p {} {kind} {flags}", property.name);
                 let _ = writeln!(
                     source,
                     "        MemberDef {{ name: {:?}, value_kind: {kind}, flags: {flags}, args: &[], default: {} }},",
@@ -109,7 +106,6 @@ fn render(catalog: &Catalog) -> (String, u64) {
                     .map(|field| value_kind(catalog, namespace, &field.ty, field.secret))
                     .collect();
                 let flags = flag(method.is_sensitive(), abi::MEMBER_SECRET);
-                let _ = writeln!(canonical, "m {} {flags} {args:?}", method.name);
                 let _ = writeln!(
                     source,
                     "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?}, default: DefaultDef::None }},",
@@ -124,7 +120,6 @@ fn render(catalog: &Catalog) -> (String, u64) {
                     .map(|field| value_kind(catalog, namespace, &field.ty, field.secret))
                     .collect();
                 let flags = flag(signal.is_sensitive(), abi::MEMBER_SECRET);
-                let _ = writeln!(canonical, "s {} {flags} {args:?}", signal.name);
                 let _ = writeln!(
                     source,
                     "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?}, default: DefaultDef::None }},",
@@ -135,7 +130,7 @@ fn render(catalog: &Catalog) -> (String, u64) {
         }
     }
     source.push_str("];\n");
-    (source, fnv1a64(canonical.as_bytes()))
+    (source, catalog.fingerprint())
 }
 
 /// The source of a property's default (`DefaultDef` in `catalog.rs`): what the property reads as before any write. A property
@@ -210,14 +205,4 @@ fn value_kind(catalog: &Catalog, namespace: &Namespace, ty: &Type, secret: bool)
             _ => abi::VALUE_LIST,
         },
     }
-}
-
-/// FNV-1a, 64 bit: a stable hash that needs no dependency.
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
 }

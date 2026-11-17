@@ -164,22 +164,7 @@ impl Std {
     /// the symbolic name of the code (`E_REFUSED: ...`).
     pub(crate) fn failure(&self) -> Error {
         let text = last_error_text();
-        let kind = match text.split_once(':').map_or("", |(name, _)| name) {
-            "E_PANIC" => ErrorKind::Panic,
-            "E_UNSUPPORTED" => ErrorKind::Unsupported,
-            "E_ABI" => ErrorKind::Abi,
-            "E_LOAD" => ErrorKind::Load,
-            "E_STALE" => ErrorKind::Stale,
-            "E_RETIRED" => ErrorKind::Retired,
-            "E_NO_SUCH_NODE" => ErrorKind::NoSuchNode,
-            "E_NO_SUCH_MEMBER" => ErrorKind::NoSuchMember,
-            "E_TYPE" => ErrorKind::Type,
-            "E_REFUSED" => ErrorKind::Refused,
-            "E_THREAD" => ErrorKind::Thread,
-            "E_BUSY" => ErrorKind::Busy,
-            "E_TIMEOUT" => ErrorKind::Timeout,
-            _ => ErrorKind::Failed,
-        };
+        let kind = ErrorKind::from_symbol(text.split_once(':').map_or("", |(name, _)| name));
         Error::new(kind, text)
     }
 

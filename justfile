@@ -86,6 +86,18 @@ dupes:
 dupes-warn:
     cargo xtask dupes --warn
 
+# Fail when the C ABI and its lock files disagree (crates/gnoblin-*-abi/abi.lock).
+abi-check:
+    cargo xtask abi-check
+
+# Write every language SDK from the schema catalog and the ABI crates; see docs/sdk-generator.md.
+gen-sdks:
+    cargo xtask gen-sdks
+
+# Fail when a generated SDK file is stale. Part of `just workspace-ci`.
+gen-sdks-check:
+    cargo xtask gen-sdks --check
+
 # Fail on a documented `gnoblin` name the implemented surface lacks, unless
 # `design/docs-parity/allow.toml` lists it.
 docs-parity:
@@ -179,7 +191,7 @@ js-check:
     git ls-files -z '*.ts' '*.d.ts' | xargs -0 npx --yes prettier@3.9.6 --check
 
 # The root workspace's whole gate, in the order that fails fastest.
-workspace-ci: js-check fmt-check build clippy test deps logging layout dupes docs-parity deny
+workspace-ci: js-check fmt-check build clippy test deps logging layout dupes docs-parity abi-check gen-sdks-check deny
 
 # Everything CI runs: the root workspace, the extension workspace and the core build with no std providers.
 ci: workspace-ci ext-ci core-only

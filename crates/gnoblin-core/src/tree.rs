@@ -12,13 +12,13 @@
 #![allow(unsafe_code)]
 
 use core::ffi::c_void;
-use std::ops::Deref;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::Ordering;
 
 use gnoblin_core_abi::{self as abi, GnoblinAnswer, GnoblinNodes, GnoblinPending, GnoblinStr, GnoblinValue};
 
 use crate::error::{CoreError, ErrorKind, Result, check};
+use crate::generated::Window;
 use crate::gnoblin::{CALLS, CallbackSlot, Gnoblin, copy_str, drop_slot};
 use crate::owned::Value;
 use crate::value::{Class, MemberKind, NodeId};
@@ -394,58 +394,14 @@ pub(crate) unsafe extern "C" fn answer_tramp(user: *mut c_void, answer: *const G
     }
 }
 
-/// A window: a node of class `window`, with the accessors a window manager needs. It dereferences to its [`Node`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Window(Node);
-
 /// A window an application owns, in the desktop's own word for it. The core API has one kind of window.
 pub type Client = Window;
 
-impl Deref for Window {
-    type Target = Node;
-
-    fn deref(&self) -> &Node {
-        &self.0
-    }
-}
+// `Window` itself, with its getters, setters and calls (`title`, `is_focused`, `set_maximised`, `close`, ...), is generated from
+// the schema (`generated::classes`). What follows is what the schema cannot say: the composite rectangle and the operations that
+// go through the seat and the tree.
 
 impl Window {
-    pub(crate) fn new(g: Gnoblin, id: NodeId) -> Window {
-        Window(Node::new(g, id))
-    }
-
-    /// The window made of `node`, if `node` is a window.
-    pub fn from_node(node: Node) -> Result<Window> {
-        let window = node.gnoblin().class("window")?;
-        if node.class()? == window {
-            Ok(Window(node))
-        } else {
-            Err(CoreError::new(
-                ErrorKind::Type,
-                format!(
-                    "node {} is a {}, not a window",
-                    node.id().0,
-                    node.class_name().unwrap_or_default()
-                ),
-            ))
-        }
-    }
-
-    /// The window's node.
-    pub fn node(&self) -> &Node {
-        &self.0
-    }
-
-    /// The window's title, as the application set it.
-    pub fn title(&self) -> Result<String> {
-        self.0.get_text("title")
-    }
-
-    /// The application id the window's client declared (`org.gnome.Nautilus`).
-    pub fn app_id(&self) -> Result<String> {
-        self.0.get_text("app_id")
-    }
-
     /// The window's rectangle: the part of its surface the user sees as the window.
     pub fn geometry(&self) -> Result<Rect> {
         Ok(Rect {
@@ -472,61 +428,6 @@ impl Window {
     pub fn set_size(&self, width: f64, height: f64) -> Result<()> {
         self.0.set("width", width)?;
         self.0.set("height", height)
-    }
-
-    /// Whether the window has the keyboard.
-    pub fn is_focused(&self) -> Result<bool> {
-        self.0.get_bool("focused")
-    }
-
-    /// Whether the window is maximised.
-    pub fn is_maximised(&self) -> Result<bool> {
-        self.0.get_bool("maximised")
-    }
-
-    /// Whether the window is fullscreen.
-    pub fn is_fullscreen(&self) -> Result<bool> {
-        self.0.get_bool("fullscreen")
-    }
-
-    /// Whether the window is minimised.
-    pub fn is_minimised(&self) -> Result<bool> {
-        self.0.get_bool("minimised")
-    }
-
-    /// Maximises or restores the window.
-    pub fn set_maximised(&self, maximised: bool) -> Result<()> {
-        self.0.set("maximised", maximised)
-    }
-
-    /// Makes the window fullscreen or restores it.
-    pub fn set_fullscreen(&self, fullscreen: bool) -> Result<()> {
-        self.0.set("fullscreen", fullscreen)
-    }
-
-    /// Minimises or restores the window.
-    pub fn set_minimised(&self, minimised: bool) -> Result<()> {
-        self.0.set("minimised", minimised)
-    }
-
-    /// Shows or hides the window.
-    pub fn set_visible(&self, visible: bool) -> Result<()> {
-        self.0.set("visible", visible)
-    }
-
-    /// Sets the window's opacity, 0 to 1.
-    pub fn set_opacity(&self, opacity: f64) -> Result<()> {
-        self.0.set("opacity", opacity)
-    }
-
-    /// Asks the client to close the window.
-    pub fn close(&self) -> Result<()> {
-        self.0.call("close", &[])
-    }
-
-    /// Ends the client's connection: for a window that does not answer `close`.
-    pub fn kill(&self) -> Result<()> {
-        self.0.call("kill", &[])
     }
 
     /// Gives the window the keyboard: writes it as its seat's `focus`.

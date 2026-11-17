@@ -19,6 +19,7 @@ mod metadata;
 mod native_libs;
 mod native_probe;
 mod profiles;
+mod sdk;
 mod stage;
 #[cfg(test)]
 mod test_fixtures;
@@ -57,7 +58,9 @@ subcommands:
   abi-check [--update]  fail when crates/gnoblin-core-abi/abi.lock or crates/gnoblin-std-abi/abi.lock and its ABI crate
                      disagree, or a released entry changed
   abi-header [--std] [--out FILE]  write the C header generated from the ABI crate (include/gnoblin/core.h, or std.h
-                     with --std)";
+                     with --std)
+  gen-sdks [--check] [--target NAME]  write every language SDK (Rust, Python, TypeScript) from the schema catalog and the two
+                     ABI crates, or with --check fail when a generated file is stale; see xtask/src/sdk/mod.rs";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -70,6 +73,7 @@ fn main() -> ExitCode {
         ("deps", []) => deps_command(),
         ("gen-proto", []) => gen_proto::run(),
         ("layout", []) => layout::run(),
+        ("gen-sdks", _) => sdk::run(&rest),
         ("logging", []) => logging::run(),
         ("native-libs", []) => native_libs::run(),
         ("stage", _) => stage::run(&rest),
