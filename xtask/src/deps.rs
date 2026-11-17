@@ -2321,7 +2321,6 @@ mod tests {
             "gnoblin-portal-core",
             "gnoblin-portal-ui",
             "gnoblin-types",
-            "egui",
         ] {
             assert_eq!(
                 edge_violations("gnoblin-std-portal", dep, "normal"),
@@ -2329,6 +2328,10 @@ mod tests {
                 "{dep}"
             );
         }
+        // The dialogs reach egui through `gnoblin-portal-ui` and the screens, never directly: the portal-crates allowlist
+        // (not the std-below-core rule) refuses it, so a direct egui edge here is a reviewed change.
+        let egui = edge_violations("gnoblin-std-portal", "egui", "normal");
+        assert!(egui.iter().any(|line| line.contains("[portal-crates]")), "{egui:?}");
         for dep in ["gnoblin-compositor", "gnoblin-wayland", "gnoblin-core-abi"] {
             let found = edge_violations("gnoblin-std-portal", dep, "normal");
             assert!(
