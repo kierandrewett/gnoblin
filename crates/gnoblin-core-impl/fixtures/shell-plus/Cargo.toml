@@ -1,0 +1,18 @@
+[package]
+name = "gnoblin-fixture-shell-plus"
+description = "Test fixture: a core-only shell that claims a chord in the plus form (`Super+Return`) exactly as written, so a test can show the compositor's parser reads it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "shell_plus"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+
+[lints]
+workspace = true

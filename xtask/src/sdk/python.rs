@@ -8,6 +8,7 @@
 //!   the schema derives them, with a `Property`, `Method` or `Signal` descriptor for every member the class adds. The `.pyi`
 //!   gives a type checker the real attribute types (`window.title` is a `str`, `window.maximised` assigns a `bool`).
 //! - `abi.py`: the ABI's constants as `IntEnum` and `IntFlag`, and one exception class per `E_*` code.
+//! - `verbs.py`: the compositor's `gnoblin` namespace, its verbs and signals (see `verbs`).
 //! - `std.py`: the std library's classes, records and constants, over the native `gnoblin._std` module.
 //!
 //! The generic descriptors (`Node`, `Property`, `Method`, `Signal`) are hand-written in `data/python/gnoblin/_base.py`: they are
@@ -46,6 +47,7 @@ impl Target for PythonTarget {
             python("classes.py", classes(spec, false)),
             python("classes.pyi", classes(spec, true)),
             python("abi.py", abi(spec)),
+            python("verbs.py", super::verbs::python(spec)),
         ];
         files.extend(super::python_std::files(spec)?);
         Ok(files)

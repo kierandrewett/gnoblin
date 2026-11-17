@@ -15,7 +15,7 @@ use crate::errors::core_error;
 use crate::generation::{current_ctx, handle, keep_subscription, take_subscription};
 
 /// Makes a registration with the current generation's handle and keeps it under a number.
-fn register(make: impl FnOnce(&Gnoblin) -> gnoblin_core::Result<Subscription>) -> PyResult<u64> {
+pub(crate) fn register(make: impl FnOnce(&Gnoblin) -> gnoblin_core::Result<Subscription>) -> PyResult<u64> {
     let g = handle()?;
     let subscription = make(&g).map_err(|e| core_error(&e))?;
     Ok(keep_subscription(current_ctx(), subscription))

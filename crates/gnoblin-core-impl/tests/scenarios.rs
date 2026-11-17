@@ -25,6 +25,8 @@ use support::*;
 struct Stage {
     dir: PathBuf,
     shell_min: PathBuf,
+    /// The shell with a poll loop of its own on `wake_fd`.
+    shell_wake: PathBuf,
     hot_v1: PathBuf,
     hot_v2: PathBuf,
     hot_bad: PathBuf,
@@ -68,6 +70,8 @@ fn build_stage() -> Result<Stage, String> {
             "gnoblin-fixture-launcher",
             "-p",
             "gnoblin-fixture-shell-min",
+            "-p",
+            "gnoblin-fixture-shell-wake",
             "--features",
             "gnoblin-core-impl/test-driver",
         ],
@@ -77,6 +81,10 @@ fn build_stage() -> Result<Stage, String> {
     copy_to(&debug.join("libgnoblin_core_impl.so"), &core_dir.join(CORE_FILE));
     copy_to(&debug.join(LAUNCHER), &core_dir.join(LAUNCHER));
     let shell_min = copy_to(&debug.join("libshell_min.so"), &core_dir.join("shells/libshell_min.so"));
+    let shell_wake = copy_to(
+        &debug.join("libshell_wake.so"),
+        &core_dir.join("shells/libshell_wake.so"),
+    );
 
     // The reload generations: one source, three labels.
     let mut hot = Vec::new();
@@ -119,6 +127,7 @@ fn build_stage() -> Result<Stage, String> {
     Ok(Stage {
         dir: core_dir,
         shell_min,
+        shell_wake,
         hot_v1: hot[0].clone(),
         hot_v2: hot[1].clone(),
         hot_bad: hot[2].clone(),
@@ -560,6 +569,35 @@ fn shell_thread_functions_refuse_another_thread_and_posted_work_runs_on_the_shel
     assert_eq!(num(&stdout, "dispatch_returned", "dispatch_returned"), 1);
     assert!(stdout.contains("posted_ran=true"), "{stdout}");
     assert!(stderr.contains("hello from another thread"), "{stderr}");
+}
+
+#[test]
+fn a_shell_with_a_poll_loop_of_its_own_serves_posts_from_threads_on_the_wake_descriptor_and_a_retired_poster_is_refused()
+ {
+    let stage = stage();
+    let (stdout, stderr, code) = run(&stage.dir, &["wake"], &[&stage.shell_wake]);
+    assert_eq!(code, 0, "{stdout}\n{stderr}");
+    // Two threads posted 40 closures; the loop slept in `poll(2)` on the descriptor, called `dispatch(0)` only when it was
+    // readable, ran every one of them, and found the descriptor quiet once they had run.
+    assert_eq!(num(&stdout, "[shell-wake]", "ran"), 40, "{stdout}");
+    assert_eq!(num(&stdout, "[shell-wake]", "callbacks"), 40, "{stdout}");
+    assert_eq!(
+        field(&stdout, "[shell-wake]", "quiet").as_deref(),
+        Some("true"),
+        "{stdout}"
+    );
+    let wakes = num(&stdout, "[shell-wake]", "wakes");
+    assert!(
+        (1..=41).contains(&wakes),
+        "a wake does not repeat once it is drained: {wakes} wakes for 40 posts\n{stdout}"
+    );
+    // The poster outlived the generation that made it: while the generation lived any thread could ask for a descriptor, and
+    // after it retired the core refused, with the kind the SDK names.
+    assert!(
+        stdout.contains("[shell-wake] stale poster refused kind=Retired"),
+        "{stdout}\n{stderr}"
+    );
+    assert!(stdout.contains("wake_done"), "{stdout}");
 }
 
 // ---- loader errors ----------------------------------------------------------------------------------------------------

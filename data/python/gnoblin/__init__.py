@@ -18,6 +18,7 @@ the package is a thin spelling of the core's C ABI and holds no compositor logic
 
 from ._base import CLASSES, Method, Node, Property, Signal
 from ._generated import classes as _classes
+from ._generated import verbs
 from ._generated.classes import *  # noqa: F401,F403
 from .api import Event, Gnoblin, gnoblin
 from .errors import (
@@ -72,5 +73,6 @@ __all__ = [
     "UnsupportedError",
     "WindowRequest",
     "gnoblin",
+    "verbs",
     *_classes.__all__,
 ]

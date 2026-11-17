@@ -51,6 +51,9 @@ pub mod std_host;
 mod table;
 mod tree;
 mod values;
+pub mod verbs;
+mod verbs_abi;
+mod wake;
 
 #[cfg(feature = "test-driver")]
 mod driver;
@@ -74,6 +77,9 @@ pub use driver::gnoblin_test_main;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod loop_tests;
 
 #[cfg(test)]
 mod tree_tests;

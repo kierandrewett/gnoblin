@@ -51,6 +51,14 @@ pub fn set_tree_link_provider(provider: Box<dyn TreeLinkProvider>) {
     crate::session::with(|session| session.set_provider(provider));
 }
 
+/// Gives the shell thread a way to reach the compositor's verbs (`call` and `subscribe` of the table): what opens the first time a
+/// shell calls a verb or subscribes to a signal of the `gnoblin` namespace. Call it on the shell thread, as
+/// [`set_tree_link_provider`]. The in-process compositor edge provides the owner socket ([`crate::verbs::OwnerSocket`]); a test
+/// provides a link that answers from a script.
+pub fn set_verb_link_provider(provider: Box<dyn crate::verbs::VerbLinkProvider>) {
+    crate::session::with(|session| session.set_verb_provider(provider));
+}
+
 /// Replaces the clock this thread's timers read. Tests give a manual one so that no assertion rests on how fast the machine is.
 pub fn set_clock(clock: std::sync::Arc<dyn gnoblin_shell_host::supervisor::Clock>) {
     crate::session::with(|session| session.set_clock(clock));

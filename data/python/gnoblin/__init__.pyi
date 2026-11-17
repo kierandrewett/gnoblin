@@ -5,6 +5,7 @@ from ._base import Method as Method
 from ._base import Node as Node
 from ._base import Property as Property
 from ._base import Signal as Signal
+from ._generated import verbs as verbs
 from ._generated.classes import *
 from .api import Event as Event
 from .api import Gnoblin as Gnoblin

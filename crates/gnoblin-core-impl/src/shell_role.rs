@@ -42,6 +42,7 @@ pub(crate) fn serve_isolated(module: ShellModule) -> i32 {
     })))));
     host::reset_session();
     host::set_tree_link_provider(Box::new(OneLink(RefCell::new(Some(link)))));
+    host::set_verb_link_provider(Box::new(crate::verbs::OwnerSocket::from_environment()));
     let outcome = serve(&module, "in its own process", &|| false, Arc::clone(&reports), None);
     host::reset_session();
     match outcome {

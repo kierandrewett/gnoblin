@@ -8,6 +8,7 @@
 //!   every node class (`WindowProperties`, `WindowMethods`, `WindowSignals`, each extending its base class's), and
 //!   `TREE_CLASSES`, the same facts as a table a script can read at run time (kind, read-only, animated, default);
 //! - `data/js/gnoblin-core/generated/abi.ts`: the core ABI's constants as `as const` objects with their value types;
+//! - `data/js/gnoblin-core/generated/verbs.ts`: the compositor's `gnoblin` namespace, its verbs and signals (see `verbs`);
 //! - `data/js/gnoblin-std/generated/`: the std library's constants, records, callback types and classes over the native
 //!   `__gnoblinStd` object (see `std_ts`).
 //!
@@ -46,6 +47,7 @@ impl Target for TypeScriptTarget {
         let mut files = vec![
             file(CORE_DIR, "schema.ts", schema(spec)),
             file(CORE_DIR, "abi.ts", abi(spec)),
+            file(CORE_DIR, "verbs.ts", super::verbs::typescript(spec)),
             file(CORE_DIR, "index.ts", core_index()),
         ];
         files.extend(super::typescript_std::files(spec)?);
@@ -57,6 +59,7 @@ fn core_index() -> String {
     let mut code = CodeWriter::new("    ");
     code.line("export * from \"gnoblin-core/generated/abi\";");
     code.line("export * from \"gnoblin-core/generated/schema\";");
+    code.line("export * from \"gnoblin-core/generated/verbs\";");
     code.finish()
 }
 

@@ -102,6 +102,10 @@ pub struct PendingCall {
 }
 
 impl PendingCall {
+    pub(crate) fn new(g: Gnoblin, pending: GnoblinPending) -> PendingCall {
+        PendingCall { g, pending }
+    }
+
     /// Stops waiting: the answer's callback never runs and is dropped now.
     pub fn cancel(self) -> Result<()> {
         // SAFETY: `cancel` takes only the pending handle.
@@ -352,7 +356,11 @@ impl Node {
 }
 
 /// Packs `values` as ABI structs that borrow from them and calls `f` with the array.
-fn with_raws<R>(values: &[Value], acc: &mut Vec<GnoblinValue>, f: &mut dyn FnMut(&[GnoblinValue]) -> R) -> R {
+pub(crate) fn with_raws<R>(
+    values: &[Value],
+    acc: &mut Vec<GnoblinValue>,
+    f: &mut dyn FnMut(&[GnoblinValue]) -> R,
+) -> R {
     match values.split_first() {
         None => f(acc),
         Some((first, rest)) => first.with_raw(|raw| {

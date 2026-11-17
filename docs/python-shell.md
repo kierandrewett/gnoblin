@@ -130,6 +130,30 @@ window.focus()                                       # a method of the schema
   generated class does not have yet.
 - `Window.closed(fn)` listens to a signal of every window; `window.closed(fn)` to one window's.
 
+### The compositor's own verbs and signals
+
+What is not a node is the `gnoblin` namespace: the session, the idle watch, the outputs. `gnoblin.verbs` has one object for each,
+generated from the schema like the node classes, with the parameters named and typed:
+
+```python
+from gnoblin import gnoblin, verbs
+
+verbs.idle.inhibit("my-shell", on_answer=lambda result, error: gnoblin.log("held" if error is None else error, "info"))
+
+def rang(count):                # the payload is the schema's field order
+    gnoblin.log("the bell has rung %d time(s)" % count, "info")
+
+verbs.session.on_bell(rang)
+```
+
+A verb sends the call and returns. `on_answer(result, error)` runs once on the shell thread when the compositor answers:
+
+- `result` is the operation's value as JSON bytes, empty for a bare "done".
+- `error` is the compositor's error code, or `None`.
+
+A signal method returns the `Subscription` that removes it, and a reload removes what a generation registered. A call with the
+wrong arguments raises `TypeError`. A session with no owner socket raises `GnoblinError` at the first call.
+
 ### Errors
 
 A failed call of the core is an exception: `GnoblinError` and its subclasses (`NodeGoneError`, `MemberError`, `RefusedError`,

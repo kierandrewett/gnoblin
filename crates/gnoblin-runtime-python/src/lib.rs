@@ -39,6 +39,7 @@ mod process;
 mod std_native;
 mod table;
 mod tree;
+mod verbs;
 mod watch;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};

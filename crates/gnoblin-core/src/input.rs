@@ -17,7 +17,6 @@ use std::sync::atomic::Ordering;
 use gnoblin_core_abi::{self as abi, GnoblinClaim, GnoblinClaimEvent, GnoblinStr};
 
 use crate::callback::CallbackResult;
-use crate::chord::normalize_chord;
 use crate::error::Result;
 use crate::events::Slot;
 use crate::gnoblin::{CALLS, Gnoblin, Subscription, drop_slot};
@@ -256,9 +255,9 @@ impl Gnoblin {
     /// The chord is claimed on the shell's seat, for every keyboard.
     ///
     /// `chord` is written either way: `Super+Return`, `Ctrl+Alt+Delete` (the spelling of the spec and of most shell authors) or the
-    /// compositor's own `<Super>Return`, `<Control><Alt>Delete`. The plus form is rewritten before the claim
-    /// ([`normalize_chord`](crate::normalize_chord)), since the compositor's parser refuses it. `f` returns `()` or a `Result`
-    /// (an `Err` is logged, see [`CallbackResult`](crate::CallbackResult)), so `|| g.spawn("foot")` is a whole callback.
+    /// compositor's own `<Super>Return`, `<Control><Alt>Delete`. It is claimed as it is written: the compositor's parser reads both
+    /// spellings as one chord. `f` returns `()` or a `Result` (an `Err` is logged, see [`CallbackResult`](crate::CallbackResult)), so
+    /// `|| g.spawn("foot")` is a whole callback.
     ///
     /// ```ignore
     /// g.bind("Super+Return", || g.spawn("foot"))?;
@@ -282,8 +281,7 @@ impl Gnoblin {
         F: FnMut(&ChordEvent) -> R + 'static,
         R: CallbackResult,
     {
-        let chord = normalize_chord(chord)?;
-        let spec = Self::claim_spec(abi::CLAIM_CHORD, abi::CLAIM_FLAG_GRAB, 0, &chord, "", 0);
+        let spec = Self::claim_spec(abi::CLAIM_CHORD, abi::CLAIM_FLAG_GRAB, 0, chord, "", 0);
         let g = self.clone();
         self.claim_raw(
             &spec,
@@ -312,8 +310,7 @@ impl Gnoblin {
         F: FnMut(&PointerDrag) -> R + 'static,
         R: CallbackResult,
     {
-        let chord = normalize_chord(chord)?;
-        let spec = Self::claim_spec(abi::CLAIM_CHORD, 0, 0, &chord, "", 0);
+        let spec = Self::claim_spec(abi::CLAIM_CHORD, 0, 0, chord, "", 0);
         let g = self.clone();
         self.claim_raw(
             &spec,

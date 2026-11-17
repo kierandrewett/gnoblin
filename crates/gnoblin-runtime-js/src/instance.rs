@@ -50,6 +50,10 @@ struct Instance {
     /// Whether a reload of the configuration the compositor asked for (`gnoblinctl config reload`) is waiting for its answer: a
     /// commit, or a refusal.
     answering: bool,
+    /// The core's wake descriptor, once a script has asked the core for something that is answered through its dispatch (a verb, a
+    /// signal, the std library): the turn sleeps on it beside the engine's connections, so an answer from another thread starts the
+    /// next frame at once and not at the end of the frame wait.
+    wake: Option<std::os::fd::OwnedFd>,
 }
 
 thread_local! {
@@ -82,6 +86,8 @@ fn role_config(table: CoreTable, script: &Path, commits: &JsCommitLog) -> JsRole
     config.resolve_console(&|name| env(name));
     // Every generation gets `__gnoblinStd`, the table of `libgnoblin-std` for the scripts that import `gnoblin-std/native`.
     config.shell.js.natives.push(crate::std_native::native());
+    // And `__gnoblinCore`, the core's verbs and signals of the compositor's `gnoblin` namespace (`verbs` of `gnoblin-core`).
+    config.shell.js.natives.push(crate::core_native::native());
     config
 }
 
@@ -166,6 +172,7 @@ fn boot(table: CoreTable, ctx: GnoblinCtx, script: &Path) -> Result<Instance, St
         serving,
         commits,
         answering: false,
+        wake: None,
     })
 }
 
@@ -237,6 +244,9 @@ pub(crate) fn turn(ctx: GnoblinCtx, timeout_ms: u32) -> Result<i32, String> {
         let Some(instance) = slot.as_mut() else {
             return Err("no JavaScript shell is running on this thread".to_owned());
         };
+        if instance.wake.is_none() && crate::std_native::used() {
+            instance.wake = instance.table.wake_fd(instance.serving.get());
+        }
         let limit = Duration::from_millis(u64::from(timeout_ms));
         let wait = instance
             .role
@@ -245,7 +255,7 @@ pub(crate) fn turn(ctx: GnoblinCtx, timeout_ms: u32) -> Result<i32, String> {
             .min(limit);
         let outcome = instance
             .role
-            .wait_for_input(None, wait)
+            .wait_for_input(instance.wake.as_ref().map(std::os::fd::AsFd::as_fd), wait)
             .map(drop)
             .and_then(|()| instance.role.tick());
         if let Err(error) = outcome {

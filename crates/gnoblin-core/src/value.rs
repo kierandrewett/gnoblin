@@ -64,6 +64,8 @@ pub struct CatalogMember {
     pub secret: bool,
     /// The `VALUE_*` kinds of a method's parameters or a signal's fields.
     pub args: Vec<u32>,
+    /// The names of those parameters or fields, in the same order, as the schema spells them.
+    pub arg_names: Vec<String>,
 }
 
 impl CatalogMember {
@@ -76,6 +78,11 @@ impl CatalogMember {
             // process, and `arg_count` is not zero.
             unsafe { std::slice::from_raw_parts(raw.arg_kinds, raw.arg_count as usize) }.to_vec()
         };
+        let arg_names = crate::gnoblin::copy_str(&raw.arg_names)
+            .split(' ')
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .collect();
         CatalogMember {
             id: raw.id,
             kind,
@@ -84,6 +91,7 @@ impl CatalogMember {
             readonly: raw.flags & abi::MEMBER_READONLY != 0,
             secret: raw.flags & abi::MEMBER_SECRET != 0,
             args,
+            arg_names,
         }
     }
 }

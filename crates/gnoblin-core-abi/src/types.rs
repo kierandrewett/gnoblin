@@ -418,6 +418,10 @@ abi_structs! {
         pub arg_count: u32,
         /// `arg_count` value kinds. Static storage owned by the core, valid for the life of the process.
         pub arg_kinds: *const u32,
+        /// The names of the `arg_count` arguments, in order, separated by single spaces: a method's parameter names and a
+        /// signal's field names, as the schema spells them. Empty for a property. Static storage owned by the core, valid for
+        /// the life of the process. A caller built before this field existed passes a shorter `size` and does not see it.
+        pub arg_names: GnoblinStr,
     }
 
     /// What the core knows about a generation context. Filled by `ctx_info`.
@@ -1148,6 +1152,26 @@ abi_structs! {
         /// Tells the host the shell refused a configuration revision (`revision` is zero when the document never got that far),
         /// with the reason as UTF-8 text. The guardian is told; the last accepted configuration stays in force. Shell thread.
         pub report_config_rejected: unsafe extern "C" fn(ctx: GnoblinCtx, revision: u64, reason: *const u8, len: usize) -> i32,
+
+        // ---- the shell's own event loop, and the compositor's verbs ----------------------------------------------------------
+
+        /// A descriptor that turns readable when `dispatch` has something to do: a post or an event is queued, a timer fell due,
+        /// or the compositor's link has bytes to read. It is level triggered and it never carries data: a shell that owns its
+        /// own event loop (tokio, calloop, GLib, an interpreter's) polls it beside its own sources and calls `dispatch(ctx, 0)`
+        /// when it is readable, which drains it. It is one descriptor for the whole shell instance, so a reload's generation
+        /// gets the same one. The caller owns the duplicate it is given and closes it. Any thread.
+        pub wake_fd: unsafe extern "C" fn(ctx: GnoblinCtx) -> i32,
+        /// Calls method `method` (its id in `class`'s catalog list) of an object of the compositor's `gnoblin` namespace (the
+        /// session, idle, outputs) over the shell's owner connection: `object` is the compositor's object identity, or zero for
+        /// the class's one object. The answer arrives through `cb` as `write_call`'s does: `E_OK` and the operation's value as
+        /// JSON text (empty for a bare `done`), or `E_REFUSED` and the compositor's error code as the text. Arguments are
+        /// checked against the method's parameters and sent by their schema names. A call that fails has not adopted `user`.
+        /// Shell thread.
+        pub call: unsafe extern "C" fn(ctx: GnoblinCtx, object: u64, class: u32, method: u32, args: *const GnoblinValue, n_args: usize, cb: Option<GnoblinAnswerFn>, user: *mut c_void, drop_user: Option<GnoblinDropFn>, out: *mut GnoblinPending) -> i32,
+        /// Calls `cb` for every `signal` that an object of the compositor's `gnoblin` namespace raises (`gnoblin.session`'s
+        /// `bell`, `lock_state_changed`, `reload_requested`), over the shell's owner connection, with the payload in the
+        /// signal's schema order. Zero on failure (no owner connection), with `user` not adopted. Shell thread.
+        pub subscribe: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, signal: u32, cb: GnoblinEventFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]

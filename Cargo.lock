@@ -1497,6 +1497,7 @@ dependencies = [
  "gnoblin-compositor",
  "gnoblin-core-abi",
  "gnoblin-log",
+ "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-provider-wire",
  "gnoblin-schema",
@@ -1505,6 +1506,7 @@ dependencies = [
  "gnoblin-testkit",
  "gnoblin-tree-client",
  "gnoblin-wm-api",
+ "rustix 1.1.6",
 ]
 
 [[package]]
@@ -1617,11 +1619,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-fixture-shell-plus"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+]
+
+[[package]]
 name = "gnoblin-fixture-shell-tiling"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",
  "gnoblin-std",
+]
+
+[[package]]
+name = "gnoblin-fixture-shell-verbs"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+]
+
+[[package]]
+name = "gnoblin-fixture-shell-wake"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "rustix 1.1.6",
 ]
 
 [[package]]

@@ -125,7 +125,17 @@ fn schema(spec: &SdkSpec) -> String {
                                     .filter(|method| !method.function)
                                     .map(|method| method.name.as_str()),
                             );
+                            names(
+                                code,
+                                "function",
+                                object
+                                    .methods
+                                    .iter()
+                                    .filter(|method| method.function)
+                                    .map(|method| method.name.as_str()),
+                            );
                             names(code, "signal", object.signals.iter().map(|signal| signal.name.as_str()));
+                            signal_fields(code, &object.signals);
                         },
                         "}",
                     );
@@ -154,6 +164,52 @@ fn names<'a>(code: &mut CodeWriter, kind: &str, names: impl Iterator<Item = &'a 
         },
         "}",
     );
+}
+
+/// The position of every field of every signal that has some, in the payload `SignalEvent::value` indexes: the schema's field order,
+/// which is the order the core builds a payload in. Nothing when no signal of the class carries a payload.
+fn signal_fields(code: &mut CodeWriter, signals: &[gnoblin_schema::Signal]) {
+    let carrying: Vec<&gnoblin_schema::Signal> = signals.iter().filter(|signal| !signal.fields.is_empty()).collect();
+    if carrying.is_empty() {
+        return;
+    }
+    code.line("/// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.");
+    code.block(
+        "pub mod fields {",
+        |code| {
+            for signal in carrying {
+                code.line(format!("/// The fields of `{}`.", signal.name));
+                code.block(
+                    format!("pub mod {} {{", rust_ident(&signal.name)),
+                    |code| {
+                        for (position, field) in signal.fields.iter().enumerate() {
+                            code.line(format!("/// `{}`: {}.", field.name, type_phrase(&field.ty)));
+                            code.line(format!(
+                                "pub const {}: usize = {position};",
+                                field.name.to_ascii_uppercase()
+                            ));
+                        }
+                    },
+                    "}",
+                );
+            }
+        },
+        "}",
+    );
+}
+
+/// A schema type in the words a doc comment uses.
+fn type_phrase(ty: &Type) -> String {
+    match ty {
+        Type::Bool => "a boolean".to_owned(),
+        Type::Int => "a signed integer".to_owned(),
+        Type::Uint => "an unsigned integer".to_owned(),
+        Type::Double => "a number".to_owned(),
+        Type::Text => "text".to_owned(),
+        Type::Bytes => "bytes".to_owned(),
+        Type::ObjectRef(name) => format!("a `{name}`"),
+        Type::List(inner) => format!("a list of {}", type_phrase(inner)),
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

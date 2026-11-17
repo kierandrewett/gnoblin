@@ -531,6 +531,14 @@ pub struct Poster {
 }
 
 impl Poster {
+    pub(crate) fn api(&self) -> &'static GnoblinApi {
+        self.api
+    }
+
+    pub(crate) fn ctx(&self) -> GnoblinCtx {
+        self.ctx
+    }
+
     /// Writes a line at `level` to the core's log.
     pub fn log_at(&self, level: LogLevel, message: &str) {
         // SAFETY: `log` reads `len` bytes at `msg` for the call and is callable from any thread.
@@ -572,7 +580,7 @@ struct PostSlot<F> {
     ctx: GnoblinCtx,
 }
 
-unsafe extern "C" fn event_tramp<F: FnMut(&SignalEvent<'_>) + 'static>(
+pub(crate) unsafe extern "C" fn event_tramp<F: FnMut(&SignalEvent<'_>) + 'static>(
     user: *mut c_void,
     event: *const GnoblinEvent,
 ) -> i32 {
@@ -635,6 +643,7 @@ fn blank_member() -> GnoblinMember {
         flags: 0,
         arg_count: 0,
         arg_kinds: core::ptr::null(),
+        arg_names: abi::GnoblinStr::EMPTY,
     }
 }
 

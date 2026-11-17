@@ -220,6 +220,119 @@ fn example_10_a_rebuilt_library_reloads_with_the_clients_connected_and_nothing_m
     );
 }
 
+/// The `z` of the reload badge: what `<Super>n` counts.
+fn badge_z(session: &Gnoblin) -> Option<f64> {
+    named(session, "canvas", "reload-badge").first().map(|badge| badge.3)
+}
+
+/// Types `<Super>n` until the badge's `z` reaches `wanted`. The new generation claims the chord when its `init` has run and the
+/// compositor has read the claim, so a press typed too early reaches a client and is lost; the typist tries again after it has
+/// looked, and never types once `z` is where it should be.
+#[track_caller]
+fn count_a_press(session: &mut Gnoblin, typist: &mut Typist, wanted: f64) {
+    session.wait_for(&format!("a press of `<Super>n` is counted (z = {wanted})"), |session| {
+        if badge_z(session).is_some_and(|z| (z - wanted).abs() < 0.5) {
+            return true;
+        }
+        typist.super_plus(KEY_N);
+        std::thread::sleep(Duration::from_millis(250));
+        badge_z(session).is_some_and(|z| (z - wanted).abs() < 0.5)
+    });
+    assert!(
+        badge_z(session).is_some_and(|z| (z - wanted).abs() < 0.5),
+        "exactly one listener counted it: z = {:?}\n{}",
+        badge_z(session),
+        session.log_text()
+    );
+}
+
+/// M5.4 in a real session: a shell reloaded twice by `gnoblinctl shell reload` keeps what it asked the core to keep, finds the nodes
+/// it adopted with the identity they had, is not called by the generations it replaced (a thread of a retired generation is refused
+/// with `Retired` and what it posted never runs), and the Wayland client is connected throughout.
+#[test]
+fn example_10_two_reloads_by_gnoblinctl_keep_state_and_node_identity_and_never_call_a_retired_generation() {
+    let mut run = running(&[]);
+    let before = named(&run.session, "canvas", "reload-badge");
+    assert_eq!(before.len(), 1, "generation 1 made the badge once: {before:?}");
+    let badge = before[0].0;
+    let mut typist = Typist::connect(&run.session.wayland());
+
+    // Generation 1 counts one press and keeps the count (`keep_state("presses")`); two windows are placed and counted (`opened`).
+    count_a_press(&mut run.session, &mut typist, 1.0);
+
+    // The first reload, of a rebuilt library (80 pixel cascade).
+    swap_in(&hot().v2, &run.live);
+    let (code, out, err) = ctl(&run.session, &["shell", "reload"]);
+    assert_eq!(
+        (code, out.as_str()),
+        (0, "reloaded: generation 2\n"),
+        "{err}\n{}",
+        run.session.log_text()
+    );
+    run.client.roundtrip();
+    run.client.map_window("third", "Third");
+    wait_for_window(
+        &mut run.session,
+        "generation 2 counts the third window on from the kept state, by its own step",
+        "third",
+        |window| at(window, 2, 80.0),
+    );
+
+    // The second reload, of the same file.
+    let (code, out, err) = ctl(&run.session, &["shell", "reload"]);
+    assert_eq!(
+        (code, out.as_str()),
+        (0, "reloaded: generation 3\n"),
+        "{err}\n{}",
+        run.session.log_text()
+    );
+    run.client.roundtrip();
+    run.client.map_window("fourth", "Fourth");
+    wait_for_window(
+        &mut run.session,
+        "generation 3 counts on from state two reloads old",
+        "fourth",
+        |window| at(window, 3, 80.0),
+    );
+
+    // The press count went through two reloads: generation 3 reads 1 and counts 2, and only one listener (its own) counted it.
+    count_a_press(&mut run.session, &mut typist, 2.0);
+
+    // The badge is the node generation 1 adopted, once, and the client's windows are the nodes they were.
+    let after = named(&run.session, "canvas", "reload-badge");
+    assert_eq!(after.len(), 1, "one badge after two reloads: {after:?}");
+    assert_eq!(after[0].0, badge, "the badge kept its node id through both reloads");
+    run.client.roundtrip();
+    let windows = support::scene(&run.session.ipc());
+    for (app, id) in [("first", run.ids[0]), ("second", run.ids[1])] {
+        let window = windows
+            .iter()
+            .find(|window| window.app_id == app)
+            .unwrap_or_else(|| panic!("`{app}` is gone: {windows:?}"));
+        assert_eq!(window.id, id, "`{app}` is the node it was");
+    }
+
+    // The retired generations: the thread each one started was refused with `Retired` once its generation was replaced, and the
+    // closure it posted then never ran. The generation that serves is not refused.
+    for generation in [1, 2] {
+        let wanted = format!("poster of generation {generation} refused (Retired): the refused closure ran: false");
+        run.session
+            .wait_log(&format!("the poster of generation {generation} is refused"), |line| {
+                line.contains(&wanted)
+            });
+    }
+    assert!(
+        count(&run.session, |line| line.contains("poster of generation 3 refused")) == 0,
+        "the serving generation's poster works: {}",
+        run.session.log_text()
+    );
+    let (code, status, _) = ctl(&run.session, &["shell", "status"]);
+    assert_eq!(code, 0);
+    assert!(status.contains("generation 3 is running"), "{status}");
+    assert!(status.contains("2 reload(s) committed, 0 failed"), "{status}");
+    assert!(run.session.exited().is_none(), "{}", run.session.log_text());
+}
+
 #[test]
 fn example_10_the_shell_asks_for_its_own_reload_with_a_chord() {
     let mut run = running(&[]);

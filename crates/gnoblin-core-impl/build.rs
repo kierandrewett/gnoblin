@@ -93,7 +93,7 @@ fn render(catalog: &Catalog) -> (String, u64) {
                     | flag(property.secret, abi::MEMBER_SECRET);
                 let _ = writeln!(
                     source,
-                    "        MemberDef {{ name: {:?}, value_kind: {kind}, flags: {flags}, args: &[], default: {} }},",
+                    "        MemberDef {{ name: {:?}, value_kind: {kind}, flags: {flags}, args: &[], arg_names: \"\", required: 0, default: {} }},",
                     property.name,
                     default_source(property.default.as_ref(), kind)
                 );
@@ -105,11 +105,15 @@ fn render(catalog: &Catalog) -> (String, u64) {
                     .iter()
                     .map(|field| value_kind(catalog, namespace, &field.ty, field.secret))
                     .collect();
+                let names: Vec<&str> = method.params.iter().map(|field| field.name.as_str()).collect();
+                // The optional parameters are the last of a method's: the arguments a call must give are those before the first.
+                let required = method.params.iter().take_while(|field| !field.optional).count();
                 let flags = flag(method.is_sensitive(), abi::MEMBER_SECRET);
                 let _ = writeln!(
                     source,
-                    "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?}, default: DefaultDef::None }},",
-                    method.name
+                    "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?}, arg_names: {:?}, required: {required}, default: DefaultDef::None }},",
+                    method.name,
+                    names.join(" ")
                 );
             }
             source.push_str("    ], signals: &[\n");
@@ -119,11 +123,14 @@ fn render(catalog: &Catalog) -> (String, u64) {
                     .iter()
                     .map(|field| value_kind(catalog, namespace, &field.ty, field.secret))
                     .collect();
+                let names: Vec<&str> = signal.fields.iter().map(|field| field.name.as_str()).collect();
                 let flags = flag(signal.is_sensitive(), abi::MEMBER_SECRET);
                 let _ = writeln!(
                     source,
-                    "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?}, default: DefaultDef::None }},",
-                    signal.name
+                    "        MemberDef {{ name: {:?}, value_kind: 0, flags: {flags}, args: &{args:?}, arg_names: {:?}, required: {}, default: DefaultDef::None }},",
+                    signal.name,
+                    names.join(" "),
+                    args.len()
                 );
             }
             source.push_str("    ] },\n");

@@ -30,7 +30,7 @@ use crate::guard::{PANICS, set_code_error, set_error};
 use crate::session::{self, Lifecycle};
 pub use crate::values::OwnedValue;
 use crate::values::RawScope;
-use crate::{budget, catalog, log};
+use crate::{budget, catalog, log, wake};
 
 /// The host's lifecycle hooks: they keep the session's programs and claims in step with the generations.
 static LIFECYCLE: Lifecycle = Lifecycle;
@@ -366,7 +366,10 @@ pub(crate) fn post(ctx: GnoblinCtx, f: GnoblinPostFn, user: *mut c_void, drop_us
         }
     });
     match HOST.post(owner, work, discard) {
-        Ok(()) => abi::E_OK,
+        Ok(()) => {
+            wake::signal();
+            abi::E_OK
+        }
         Err((error, _work, _discard)) => error.report("post"),
     }
 }
@@ -437,6 +440,14 @@ pub(crate) fn set_last_error(ctx: GnoblinCtx, message: &str) -> i32 {
 /// Queues a signal for the shell, waking its dispatch loop. The compositor side calls this from any thread.
 pub(crate) fn publish(delivery: SignalDelivery) {
     HOST.publish(ShellEvent::Signal(delivery));
+    wake::signal();
+}
+
+/// Queues any event for the shell, waking its dispatch loop: the verbs' answers, which a thread of the owner connection brings. Any
+/// thread.
+pub(crate) fn publish_event(event: ShellEvent) {
+    HOST.publish(event);
+    wake::signal();
 }
 
 /// How many events are waiting.
@@ -476,6 +487,8 @@ pub(crate) fn dispatch(ctx: GnoblinCtx, timeout_ms: u32) -> i32 {
     let mut called = 0usize;
     let mut failure: Option<String> = None;
     loop {
+        // Before the mailbox is taken, so a post that lands while this turn runs signals again and is not lost.
+        wake::drain();
         if let Err(text) = pump_into_host() {
             log::error!(generation = owner, "the tree link failed: {text}");
             failure = Some(text);
@@ -515,6 +528,7 @@ pub(crate) fn dispatch(ctx: GnoblinCtx, timeout_ms: u32) -> i32 {
             break;
         }
     }
+    sync_wake();
     if let Some(text) = failure {
         set_code_error(abi::E_ERR, format!("dispatch: the tree link failed: {text}"));
         if called == 0 {
@@ -522,6 +536,43 @@ pub(crate) fn dispatch(ctx: GnoblinCtx, timeout_ms: u32) -> i32 {
         }
     }
     i32::try_from(called).unwrap_or(i32::MAX)
+}
+
+/// Brings the wake descriptor in step with the shell thread's session: the next timer of an active generation and the tree link's
+/// descriptor. Shell thread. Free until a shell asks for the descriptor.
+pub(crate) fn sync_wake() {
+    session::with(|session| wake::sync(session.next_due_in(is_active), session.link_fd()));
+}
+
+/// `wake_fd`: a duplicate of the wake descriptor, for the shell to poll.
+pub(crate) fn wake_fd(ctx: GnoblinCtx) -> i32 {
+    let owner = match check_ctx(ctx, "wake_fd", false) {
+        Ok(owner) => owner,
+        Err(code) => return code,
+    };
+    let set = match wake::get() {
+        Ok(set) => set,
+        Err(text) => {
+            set_code_error(abi::E_ERR, format!("wake_fd: {text}"));
+            return abi::E_ERR;
+        }
+    };
+    // From the shell thread the set is brought in step before the shell first polls it; from another thread it is as the shell
+    // thread last left it, and the shell thread's own calls keep it so.
+    if HOST.check(owner, true).is_ok() {
+        sync_wake();
+        // Something may have been queued before the set existed.
+        if HOST.queued_events() > 0 {
+            wake::signal();
+        }
+    }
+    match set.duplicate() {
+        Ok(fd) => std::os::fd::IntoRawFd::into_raw_fd(fd),
+        Err(error) => {
+            set_code_error(abi::E_ERR, format!("wake_fd: cannot duplicate the descriptor: {error}"));
+            abi::E_ERR
+        }
+    }
 }
 
 /// A snapshot of the host's size, for the tests.

@@ -2280,10 +2280,8 @@ last 30 s ...; DEGRADED ...; <callback> has run for 3.1s and has not returned`).
 - **Chords are read one way, in the compositor.** `gnoblin-input`'s parser accepts the plus form (`Super+Return`, `Ctrl+Alt+Delete`,
   `Super+Button1`, `Super++`) as the bracket form (`<Super>Return`), so the Rust, Python and TypeScript SDKs, the configuration and the
   std library's own bindings (`Super+Button1` of `ClientMoveBinding`) all work with either spelling; `Display` still writes the bracket
-  form. The Rust SDK also canonicalises with `gnoblin_core::normalize_chord` before it claims, so a shell that claims one chord in two
-  spellings across a reload holds one claim text (the core compares claim texts). That is a convenience, not the contract: the
-  contract is the parser. Not done: a real-session claim test of the plus form (the unit test `the_plus_form_is_the_same_chord_as_the_bracket_form`
-  and the fake-compositor example test prove the parse and the claim text).
+  form. The Rust SDK used to canonicalise with `gnoblin_core::normalize_chord` before it claimed; section 33.4 removes it, so every SDK
+  claims the text as written and the contract is the parser alone.
 - Every `on_*`, `bind*`, `after` and `every` callback may return `()` or a `Result` (`CallbackResult`); an `Err` is logged as a warning that
   names the subscription. `#[gnoblin::main]` already took `fn main(g: &Gnoblin)` with no result and with any `Result<T, E: Display>`.
 - `on_output_created`, `on_output_destroyed`, `on_output_changed` and `outputs()` join `on_client_*`.
@@ -2294,11 +2292,11 @@ last 30 s ...; DEGRADED ...; <callback> has run for 3.1s and has not returned`).
 
 ### 31.3 Not done here, and why
 
-- **`wake_fd` and the verbs (`call`, `subscribe` of the `gnoblin` namespace)** are not implemented. `wake_fd` needs an epoll set over an
-  eventfd, a timerfd and the link's descriptor, written from `publish` and `post` and drained by `dispatch`; the design of it is in the
-  notes of this lane but no code is left in the tree. The verbs need a `VerbLink` over the owner socket (`gnoblin_client::Client`) and a
-  feed of its answers and signals into the mailbox; the catalog already carries `gnoblin.session` and its signals, but not the signals'
-  field names, so the feed needs them first.
+Section 33 did the first and the last of these (`wake_fd` and the verbs; state retention in a real session). This is what the lane
+left:
+
+- **`wake_fd` and the verbs (`call`, `subscribe` of the `gnoblin` namespace)** were not implemented. Section 33 builds them: an epoll
+  set for the descriptor, and a connection to the owner socket for the verbs.
 - **G6, layer surfaces** (resolved by lane LayerDraw): the compositor drew no layer-shell surface at all, so a rectangle the shell
   set was configured, published and used for the work area and the surface's popups, and never drawn. The test of pixels that was
   missing (`crates/gnoblin-wayland/tests/layer_draw.rs`: a real client's solid-colour buffer read back through the screenshot path)
@@ -2306,8 +2304,8 @@ last 30 s ...; DEGRADED ...; <callback> has run for 3.1s and has not returned`).
   shell's (`placement_override`), in the protocol's order, with damage, frame callbacks and pointer picking (`design/node-core.md`,
   "Surface overrides"). Not done: the `closed` event when a surface's output goes, a fullscreen window above the `top` layer, and a
   test of `wl_surface.enter` for a layer surface.
-- **State retention and adoption across two reloads in a real session (M5.4)** was not run against the real binary. The fake-compositor
-  test of example 10 remains the proof (section 20).
+- **State retention and adoption across two reloads in a real session (M5.4)** was not run against the real binary. Section 33.3 runs
+  it.
 
 ## 32. Implementation notes, tip repairs (lane TipRepair)
 
@@ -2343,3 +2341,109 @@ Four small defects of the tip, and the full-workspace gate run on the result.
 
 - `examples/03-python-std/layouts.py` and `examples/03-typescript-std/layouts.ts` bind `Super+1` to `Super+6`. The chord parser accepts that spelling since lane RustSdkLeft (section 31), and `crates/gnoblin/tests/modular/std_layouts.rs` runs `gnoblin ./layouts.py` in a headless session: three real windows tile, `Super+5` gives them one rectangle, `Super+3` leaves it, and `Super+1` restores the master and stack. Example 7 was already a real-session test (`modular/script_binding.rs`).
 - **Not done.** `gnoblin ./layouts.ts` (`examples/03-typescript-std`) did not reach `the script shell serves in process` in the same harness (it stayed in the failed start state); the cause was not found, and the test for it was removed rather than left failing.
+
+## 33. Implementation notes, `wake_fd`, the verbs and retention in a real session (lane RustSdkVerbs)
+
+What the lane built of the leftovers of section 31.3, where it differs from section 5.9, and what it proved against the real
+binary. The first pass at this work was never compiled. This pass compiled it, found two mistakes in the tests and none in the
+design, and added the real-session tests.
+
+### 33.1 `wake_fd` (section 5.4)
+
+The descriptor is an epoll set (`crates/gnoblin-core-impl/src/wake.rs`). An epoll descriptor is itself pollable and is readable
+while any member is, so a shell polls one number. The members are:
+
+- an eventfd, which `post` and every published signal or answer write, from any thread;
+- a timerfd, armed for the next timer of the active generation;
+- the tree link's own descriptor, while the shell is attached.
+
+All three are level triggered, so a wake that is not served is not lost.
+
+- **`dispatch` drains it** at the top of every turn, before it takes the mailbox. A post that lands while the turn runs signals
+  again instead of being lost, and costs one spurious wake whose `dispatch(ctx, 0)` returns zero.
+- **One set per process.** `wake_fd` hands every generation a duplicate of the same open file description, so a reload does not
+  change what a loop polls. A retired generation is refused with `E_RETIRED`, and any thread of a live one may ask.
+- **Only a shell that asked pays.** No set exists until the first `wake_fd`, and signalling before that is free.
+- **Rust.** `Gnoblin::wake_fd()` and `Poster::wake_fd()` return an `OwnedFd`.
+- **JavaScript.** The runtime asks for the descriptor once a script has used a verb, a signal or the std library. It hands it to
+  the engine's `wait_for_input` as the extra descriptor, so an answer starts the next frame at once, not after the 16 ms wait.
+- **Python.** The runtime sleeps inside the core's dispatch, which the same mailbox wakes.
+
+What is proved:
+
+- `loop_tests.rs` calls the table as a shell does: an external thread's post, a published signal, a timer that is not due and
+  then is, four threads posting into a `poll(2)` loop that never spins, and a retired generation.
+- `tests/scenarios.rs` runs the real cdylib with the fixture shell `shell-wake`. Its `init` is a `poll(2)` loop on the
+  descriptor, and two threads post 40 closures. All run, the descriptor is quiet afterwards, and the poster that outlived its
+  generation is refused with `Retired`.
+
+Not done: a loop that runs inside `init` serves the posts of a staged generation, but not its timers or chords, which belong to the
+active generation. A foreign-loop shell that wants timers must return from `init` and give the host the work. The host does not
+read `SHELL_FLAG_FOREIGN_LOOP` yet.
+
+### 33.2 The verbs (section 5.9)
+
+The table has `call(ctx, object, class, method, args, n, cb, user, drop, &pending)` and `subscribe(ctx, class, signal, cb, user, drop)`.
+
+- **Where it differs from 5.9.** The class is named as the catalog names it (`gnoblin.session`), not as a namespace and an object.
+  `object` is the compositor's identity of the object, or zero for a class that has one.
+- **Answers.** An answer reaches `cb` as `write_call`'s does: `E_OK` and the operation's value as JSON, or `E_REFUSED` and the
+  compositor's error code. It travels through the same mailbox, in arrival order. A generation that retires takes its pending calls
+  and subscriptions with it.
+- **The connection.** Verbs ride the owner socket, not the tree link, so the shell instance holds one more connection for them
+  (`verbs.rs`: `VerbLink`, a provider the compositor edge installs, and `OwnerSocketLink`, which connects to `$GNOBLIN_IPC_SOCKET`
+  and runs a thread of its own). It opens on the first call or subscription, and a session with no owner socket fails there.
+- **Holds.** A hold the shell makes (`idle.inhibit`) belongs to that connection, so the compositor gives it back when the shell ends.
+- **The catalog.** `GnoblinMember` gained `arg_names`: the parameter names of a method and the field names of a signal. A signal's
+  payload therefore has names and positions, and `gen-sdks` writes them as constants
+  (`schema::gnoblin::session::fields::bell::COUNT`) beside the function names.
+
+The SDKs:
+
+- Rust has `call_verb`, `call_verb_with`, `call_verb_on` and `subscribe`.
+- Python and TypeScript get typed verbs and signals _generated_ from the catalog (`xtask/src/sdk/verbs.rs`):
+  `verbs.session.on_bell(fn)` and `verbs.idle.inhibit("holder", on_answer=fn)` in `_generated/verbs.py`, and
+  `verbs.session.onBell(fn)` in `data/js/gnoblin-core/generated/verbs.ts`.
+- What each runtime adds by hand is generic and has no verb in it: `_gnoblin_core.verb_call` and `verb_subscribe` in Python, and
+  `__gnoblinCore.call`, `subscribe` and `unsubscribe` in the JavaScript runtime (`core_native.rs`). That module converts a script's
+  value to the kind the catalog gives the parameter, and enters the running generation to call back, as the std library does.
+
+What is proved against the real binary (`crates/gnoblin/tests/native_shell_verbs.rs`):
+
+- A Rust shell calls `idle.inhibit` and gets the compositor's `done`, and the compositor's own `idle` object counts the hold.
+- A verb on an object that does not exist is refused with the compositor's code, and a wrong argument list never leaves the shell.
+- A Wayland client ringing `xdg_system_bell_v1` reaches the shell's subscription with the count the compositor kept: 1, then 2.
+- The Python and the TypeScript shell do the same through their generated modules.
+
+No test calls a power verb: a session with a power backend would act on it. The answer of a verb that carries a value, rather than a
+bare `done`, is tested only over the scripted link of `loop_tests.rs`, because no verb of the namespace returns one that is safe to
+call in a test session.
+
+### 33.3 State retention in a real session (M5.4)
+
+Example 10 gained a fifth habit: a thread posts to the shell through a `Poster` every 50 ms and stops when it is refused.
+`reload_session.rs` runs the real binary with example 10, reloads it twice with `gnoblinctl shell reload`, and reads the compositor:
+
+- **Kept state.** The windows placed and the presses of `<Super>n` go through both reloads. The third and fourth windows are placed
+  by the next generations counting on from the first one's state, and a press after the second reload makes the badge's `z` 2.
+- **Identity.** The adopted badge is the same node, once, after two reloads. The Wayland client's connection answers a round trip
+  after each.
+- **No stale call.** The poster of generation 1, and then of generation 2, is refused with `Retired` when its generation is
+  replaced, and the closure it posted then never ran. The poster of generation 3, which serves, is not refused.
+- **No stale chord.** One press is counted by exactly one listener, so no chord of a retired generation runs.
+
+### 33.4 The SDK's spelling
+
+`gnoblin_core::normalize_chord` is deleted. The compositor's parser is the contract (section 31.2), so the Rust SDK claims a chord
+as the shell wrote it. A shell that wrote one chord in two spellings across a reload holds two claims for the length of the swap,
+as it does with any other registration.
+
+The fake-compositor driver (`driver_examples.rs`) no longer rewrites a plus-form chord into the bracket form.
+`crates/gnoblin/tests/native_shell_spelling.rs` proves the plus form in a real session for a Rust shell (the fixture `shell-plus`),
+a Python shell and a TypeScript shell. The chord typed on a virtual keyboard reaches the shell, which starts the stand-in terminal.
+
+### 33.5 Not done here
+
+- The verbs that need a power backend (`suspend`, `poweroff`, `reboot`, `hibernate`) were not called against a real session.
+- The TypeScript runtime's older `gnoblin.session` (the `begin(verb)` bridge over the owner socket) and the new `verbs.session` are
+  two doors to the same compositor objects. Moving the first onto the second is a cleanup for the lane that owns `gnoblin-js`.

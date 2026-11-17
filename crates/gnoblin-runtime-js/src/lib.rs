@@ -16,6 +16,7 @@
 //! `E_PANIC`, because a panic that unwinds out of an `extern "C"` function aborts the compositor.
 #![allow(unsafe_code)]
 
+mod core_native;
 pub mod embed;
 mod instance;
 mod link;

@@ -226,6 +226,85 @@ one. A node from `adopt_ephemeral_node` is removed at the next reload unless the
 
 - **The compositor does not reload.** The core library, its ABI version and the backends change when `gnoblin` restarts.
 
+## Call the compositor's verbs and hear its signals
+
+The tree holds windows and the nodes you make. The compositor also has objects that are not nodes: the session (log out, power
+off, the bell), the idle watch and the outputs. These are the `gnoblin` namespace.
+
+A shell reaches them with `call_verb` and `subscribe`. The first call opens a connection of its own to the compositor's owner
+socket, so a shell that never uses them pays nothing.
+
+```rust
+use gnoblin_core as gnoblin;
+use gnoblin_core::schema::gnoblin::{idle, session};
+use gnoblin_core::{Gnoblin, ShellValue, Value};
+
+#[gnoblin::main]
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
+    // Keep the session awake while this shell runs. The answer arrives later, on the shell thread.
+    g.call_verb_with(idle::CLASS, idle::method::INHIBIT, &[Value::Text("my-shell".into())], |answer| {
+        match &answer.error {
+            None => g.log("the session is held awake"),
+            Some(code) => g.log(&format!("the compositor refused: {code}")),
+        }
+    })?;
+
+    // Hear the bell. The payload is in the schema's order; `fields::bell::COUNT` names the position of `count`.
+    g.subscribe(session::CLASS, session::signal::BELL, |event| {
+        if let Some(ShellValue::Uint(count)) = event.value(session::fields::bell::COUNT) {
+            println!("the bell has rung {count} time(s)");
+        }
+    })?;
+    Ok(())
+}
+```
+
+- `call_verb(class, method, args)` sends the call and does not wait.
+- `call_verb_with` also takes a closure that runs once with the answer. `answer.result` is the operation's value as JSON text
+  (empty for a bare "done"). `answer.error` is the compositor's error code, such as `denied` or `unavailable`.
+- `call_verb_on(object, ...)` names one of several objects of a class, such as an output.
+
+The class, method and signal names are constants generated from the schema, and so are the positions of a signal's fields. A
+name that does not exist does not compile.
+
+Arguments are checked against the method's parameters before anything is sent: a wrong list is an `Err` from the call itself. A
+call that fails to start never runs its closure. A reload removes the subscriptions of the generation that made them, and a
+call that was still waiting for its answer is dropped with it.
+
+Python and TypeScript have the same two calls, generated from the same schema: `verbs.session.on_bell(fn)` and
+`verbs.idle.inhibit("holder", on_answer=fn)` in Python, `verbs.session.onBell(fn)` and `verbs.idle.inhibit("holder", answer =>
+...)` in TypeScript (`import { verbs } from "gnoblin-core/generated/verbs"`).
+
+## Run your own event loop
+
+A default shell never sees the loop: the host calls `dispatch` for it. A shell that already has a loop (tokio, calloop, GLib, an
+embedded interpreter) needs the opposite: something to poll beside its own sources. `wake_fd` is that descriptor:
+
+```rust
+use std::os::fd::AsFd;
+
+let fd = g.wake_fd()?;
+loop {
+    // ... poll `fd` together with your own descriptors ...
+    if readable(fd.as_fd()) {
+        g.dispatch(0)?; // never blocks; runs what is queued and drains the descriptor
+    }
+}
+```
+
+The descriptor is readable when:
+
+- a post or an event is queued, from any thread;
+- a timer is due;
+- the compositor's link has bytes to read.
+
+It is level triggered and carries no data. A wake can be spurious, and then `dispatch(0)` returns `0`.
+
+It is one descriptor for the whole shell, so a reload's new generation gets the same one. You own the copy you are given and
+close it by dropping it. A `Poster` has the same `wake_fd`, for a thread that is not the shell's.
+
+Only the shell thread may call `dispatch`.
+
 ## Link to the installed libraries
 
 A shell links the libraries the way any program does. Check what a built shell asks for:

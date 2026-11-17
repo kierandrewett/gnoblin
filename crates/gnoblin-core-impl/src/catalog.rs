@@ -8,7 +8,7 @@
 //! A bare class name (`window`) is a class of the `tree` namespace, the one a shell edits; any other namespace is written
 //! `namespace.object` (`gnoblin.session`).
 
-use gnoblin_core_abi::{self as abi, GnoblinMember};
+use gnoblin_core_abi::{self as abi, GnoblinMember, GnoblinStr};
 
 /// What a property reads as before anything wrote it, when the schema says (`opacity` is 1, a `scale` 1): the mirror holds only
 /// the properties that differ from their defaults.
@@ -31,6 +31,10 @@ pub(crate) struct MemberDef {
     pub value_kind: u32,
     pub flags: u32,
     pub args: &'static [u32],
+    /// The names of `args`, separated by single spaces: a method's parameters, a signal's fields.
+    pub arg_names: &'static str,
+    /// How many leading arguments a call must give; the rest are optional parameters.
+    pub required: usize,
     pub default: DefaultDef,
 }
 
@@ -83,6 +87,7 @@ fn describe(defs: &'static [MemberDef], position: usize, kind: u32) -> GnoblinMe
         flags: def.flags,
         arg_count: def.args.len() as u32,
         arg_kinds: def.args.as_ptr(),
+        arg_names: GnoblinStr::borrowed(def.arg_names),
     }
 }
 

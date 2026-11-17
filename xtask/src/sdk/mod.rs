@@ -13,8 +13,8 @@
 //! | ------------ | ---------------------------------------------------------------------------------------- |
 //! | `rust`       | `crates/gnoblin-core/src/generated/`: schema names, typed node classes, the error kinds   |
 //! | `std-dyn`    | `crates/gnoblin-std-dyn/src/generated.rs`: the dynamic call of every std table function     |
-//! | `python`     | `data/python/gnoblin/_generated/`: typed node classes and `.pyi`, ABI constants          |
-//! | `typescript` | `data/js/gnoblin-core/generated/`: node-class types and the schema table, ABI constants  |
+//! | `python`     | `data/python/gnoblin/_generated/`: typed node classes and `.pyi`, ABI constants, verbs   |
+//! | `typescript` | `data/js/gnoblin-core/generated/`: node-class types, the schema table, ABI constants, verbs |
 
 mod layouts;
 mod model;
@@ -25,6 +25,7 @@ mod std_dyn;
 mod text;
 mod typescript;
 mod typescript_std;
+mod verbs;
 
 use std::collections::BTreeSet;
 use std::fs;

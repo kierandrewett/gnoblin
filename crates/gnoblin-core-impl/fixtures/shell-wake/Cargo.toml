@@ -1,0 +1,20 @@
+[package]
+name = "gnoblin-fixture-shell-wake"
+description = "Test fixture: a core-only shell with an event loop of its own. It polls the descriptor `wake_fd` gives it, calls dispatch(0) when it is readable, and counts the work other threads post to it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "shell_wake"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+# A safe `poll(2)`: a shell author writes no unsafe, and neither does this one.
+rustix = { workspace = true, features = ["event", "time"] }
+
+[lints]
+workspace = true

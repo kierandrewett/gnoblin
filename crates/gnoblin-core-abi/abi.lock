@@ -200,7 +200,7 @@ field | GnoblinEvent.node | GnoblinNode @16 +8 | 1.0
 field | GnoblinEvent.values | *const GnoblinValue @24 +8 | 1.0
 field | GnoblinEvent.n_values | usize @32 +8 | 1.0
 
-struct | GnoblinMember | size 32 align 8 extensible | 1.0
+struct | GnoblinMember | size 48 align 8 extensible | 1.0
 
 field | GnoblinMember.size | u32 @0 +4 | 1.0
 field | GnoblinMember.id | u32 @4 +4 | 1.0
@@ -209,6 +209,7 @@ field | GnoblinMember.value_kind | u32 @12 +4 | 1.0
 field | GnoblinMember.flags | u32 @16 +4 | 1.0
 field | GnoblinMember.arg_count | u32 @20 +4 | 1.0
 field | GnoblinMember.arg_kinds | *const u32 @24 +8 | 1.0
+field | GnoblinMember.arg_names | GnoblinStr @32 +16 | 1.0
 
 struct | GnoblinCtxInfo | size 56 align 8 extensible | 1.0
 
@@ -475,7 +476,7 @@ field | GnoblinRuntimeEntry.activate | Option<unsafe extern "C" fn(ctx: GnoblinC
 field | GnoblinRuntimeEntry.abandon | Option<unsafe extern "C" fn(ctx: GnoblinCtx)> @88 +8 | 1.0
 field | GnoblinRuntimeEntry.turn | Option<unsafe extern "C" fn(ctx: GnoblinCtx, timeout_ms: u32) -> i32> @96 +8 | 1.0
 
-struct | GnoblinApi | size 440 align 8 extensible | 1.0
+struct | GnoblinApi | size 464 align 8 extensible | 1.0
 
 field | GnoblinApi.size | u32 @0 +4 | 1.0
 field | GnoblinApi.major | u32 @4 +4 | 1.0
@@ -534,3 +535,6 @@ field | GnoblinApi.provider_register | unsafe extern "C" fn(ctx: GnoblinCtx, kin
 field | GnoblinApi.setting_set | unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, value: *const GnoblinValue) -> i32 @416 +8 | 1.0
 field | GnoblinApi.report_config | unsafe extern "C" fn(ctx: GnoblinCtx, revision: u64, document: *const u8, len: usize) -> i32 @424 +8 | 1.0
 field | GnoblinApi.report_config_rejected | unsafe extern "C" fn(ctx: GnoblinCtx, revision: u64, reason: *const u8, len: usize) -> i32 @432 +8 | 1.0
+field | GnoblinApi.wake_fd | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @440 +8 | 1.0
+field | GnoblinApi.call | unsafe extern "C" fn(ctx: GnoblinCtx, object: u64, class: u32, method: u32, args: *const GnoblinValue, n_args: usize, cb: Option<GnoblinAnswerFn>, user: *mut c_void, drop_user: Option<GnoblinDropFn>, out: *mut GnoblinPending) -> i32 @448 +8 | 1.0
+field | GnoblinApi.subscribe | unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, signal: u32, cb: GnoblinEventFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg @456 +8 | 1.0

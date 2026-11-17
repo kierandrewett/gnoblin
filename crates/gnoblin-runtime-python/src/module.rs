@@ -2,7 +2,7 @@
 //!
 //! It is generic on purpose. A class, property, method or signal is named as the schema catalog names it, and the typed classes
 //! a script uses (`gnoblin.Window` and the rest) are generated from that catalog into the pure-Python package, so adding a property
-//! to the schema changes no line here. What is left is the verbs: read, write and call a node, listen, claim input, start a program,
+//! to the schema changes no line here. What is left is the verbs: read, write and call a node, call the compositor's own verbs and hear its signals, listen, claim input, start a program,
 //! keep state across a reload, log and post work to the shell thread.
 //!
 //! The module is registered with the interpreter before it starts ([`crate::interp`]), so `import _gnoblin_core` finds it in any
@@ -16,7 +16,7 @@ use pyo3::types::{PyBytes, PyDict};
 use crate::callback::{callable, fire};
 use crate::errors::{add_to, core_error, to_py};
 use crate::generation::{self, handle, poster, with_state};
-use crate::{events, input, process, tree};
+use crate::{events, input, process, tree, verbs};
 
 /// Writes a line to the core's log. `level` is `error`, `warn`, `info`, `debug` or `trace`. Callable from any thread.
 #[pyfunction]
@@ -146,6 +146,9 @@ pub(crate) fn _gnoblin_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(events::after, module)?)?;
     module.add_function(wrap_pyfunction!(events::every, module)?)?;
     module.add_function(wrap_pyfunction!(events::unsubscribe, module)?)?;
+    // The compositor's `gnoblin` namespace: verbs and signals.
+    module.add_function(wrap_pyfunction!(verbs::verb_call, module)?)?;
+    module.add_function(wrap_pyfunction!(verbs::verb_subscribe, module)?)?;
     // Input.
     module.add_function(wrap_pyfunction!(input::bind, module)?)?;
     module.add_function(wrap_pyfunction!(input::bind_events, module)?)?;

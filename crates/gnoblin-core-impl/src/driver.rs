@@ -63,6 +63,7 @@ pub unsafe extern "C" fn gnoblin_test_main(argc: c_int, argv: *const *const c_ch
             (Some("upgrade"), Some(shell), _, _) => upgrade(&shell),
             (Some("thread"), Some(shell), _, _) => threads(&shell),
             (Some("load"), Some(shell), _, _) => load_only(&shell),
+            (Some("wake"), Some(shell), _, _) => wake(&shell),
             (Some("retain"), Some(shell), limit, _) => retain(&shell, limit.as_deref()),
             (Some("unload"), Some(safe), Some(unsure), Some(plain)) => unload(&safe, &unsure, &plain),
             (Some("example01"), Some(shell), _, _) => crate::driver_examples::minimal(&shell),
@@ -213,6 +214,25 @@ fn load_only(shell: &std::path::Path) -> i32 {
         }
         Err(code) => code,
     }
+}
+
+/// A shell with an event loop of its own (`wake_fd`): load it (its `init` runs the loop), activate it, retire it, and give the
+/// threads it left behind time to find out that their generation is gone.
+fn wake(shell: &std::path::Path) -> i32 {
+    let module = match load_or_report(shell, Copying::Unique, 0) {
+        Ok(module) => module,
+        Err(code) => return code,
+    };
+    if let Err(message) = module.activate() {
+        out!("activate_failed {message}");
+        return 1;
+    }
+    pump(&module, 3);
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    module.retire();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    out!("wake_done");
+    0
 }
 
 /// Spike 4: a panic in a shell callback and in a core export is contained, logged, and the next event is delivered.

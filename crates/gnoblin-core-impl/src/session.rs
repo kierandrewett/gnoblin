@@ -29,6 +29,7 @@ use crate::events::{AnswerNotice, ClaimNotice, ExitNotice, NodeNotice, ShellEven
 use crate::hub::{Hub, HubLink, SharedHub};
 use crate::log;
 use crate::values::OwnedValue;
+use crate::verbs::{VerbLink, VerbLinkProvider};
 
 /// How a shell wants the tree.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -142,6 +143,9 @@ pub(crate) struct Session {
     reports: Option<Arc<dyn ShellReports>>,
     /// The configuration revision the shell last reported accepted, if it reported one.
     reported_revision: Option<u64>,
+    /// How to reach the compositor's verbs, and the connection once a shell asked for it.
+    verb_provider: Option<Box<dyn VerbLinkProvider>>,
+    verbs: Option<Box<dyn VerbLink>>,
 }
 
 impl Default for Session {
@@ -166,6 +170,8 @@ impl Default for Session {
             clock: Arc::new(SystemClock),
             reports: None,
             reported_revision: None,
+            verb_provider: None,
+            verbs: None,
         }
     }
 }
@@ -195,6 +201,35 @@ impl Session {
         self.clock = clock;
     }
 
+    /// Installs the way to reach the compositor's verbs, replacing any earlier one. Like the tree provider, it outlives
+    /// [`Self::reset`]; the connection is not opened until a shell calls a verb or subscribes to a signal.
+    pub(crate) fn set_verb_provider(&mut self, provider: Box<dyn VerbLinkProvider>) {
+        self.verb_provider = Some(provider);
+    }
+
+    /// The connection for verbs, opened through the provider the first time it is asked for.
+    ///
+    /// # Errors
+    ///
+    /// The ABI code and text: the host gave the core no way to reach the compositor's verbs, or it would not open.
+    pub(crate) fn verbs(&mut self) -> Result<&mut Box<dyn VerbLink>, (i32, String)> {
+        if self.verbs.is_none() {
+            let Some(provider) = self.verb_provider.as_ref() else {
+                return Err((
+                    abi::E_ERR,
+                    "this core has no owner connection to the compositor for verbs (the host gave it none)".to_owned(),
+                ));
+            };
+            let link = provider
+                .open()
+                .map_err(|text| (abi::E_ERR, format!("the compositor's verbs cannot be reached: {text}")))?;
+            self.verbs = Some(link);
+        }
+        self.verbs
+            .as_mut()
+            .ok_or_else(|| (abi::E_ERR, "the verbs connection is gone".to_owned()))
+    }
+
     /// Installs where the shell's reports to the guardian go. Like the provider, it outlives [`Self::reset`].
     pub(crate) fn set_reports(&mut self, reports: Arc<dyn ShellReports>) {
         self.reports = Some(reports);
@@ -222,6 +257,7 @@ impl Session {
             provider: self.provider.take(),
             clock: Arc::clone(&self.clock),
             reports: self.reports.take(),
+            verb_provider: self.verb_provider.take(),
             ..Session::default()
         };
     }
@@ -229,6 +265,12 @@ impl Session {
     /// Whether the shell is attached to the tree.
     pub(crate) fn attached(&self) -> bool {
         self.tree.is_some()
+    }
+
+    /// The descriptor the tree link becomes readable on, when the shell attached and the link has one (an in-memory link has
+    /// none). The relayed link is not here: its runtime reads it itself.
+    pub(crate) fn link_fd(&self) -> Option<std::os::fd::BorrowedFd<'_>> {
+        self.tree.as_ref().and_then(TreeSession::wait_fd)
     }
 
     /// Opens a link through the provider and attaches over it. A session that is attached already stays so: a reload's

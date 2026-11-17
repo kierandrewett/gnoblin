@@ -3,7 +3,7 @@
 //! Edit this file, build it (`cargo build`), and the running compositor loads the new library without a restart and without
 //! disturbing a single client: every window stays open on the same Wayland connection and surface, and the node ids the shell
 //! sees do not change. The reload protocol is `design/modular-framework.md` section 8.1; what makes this shell reload well is
-//! four habits, each a few lines below:
+//! five habits, each a few lines below:
 //!
 //! 1. **State goes through `keep_state`.** The count of windows placed so far lives in the kept state, under a name and a
 //!    version, and the next generation reads it back. The shell's own variables die with its generation.
@@ -16,6 +16,9 @@
 //!    by two generations is one program.
 //! 4. **Start-up work is done once.** The windows open when the shell first starts are placed by the first generation; a
 //!    generation that finds kept state leaves them alone.
+//! 5. **A thread reaches the shell through a [`Poster`](gnoblin_core::Poster), and stops when it is refused.** A poster belongs to
+//!    the generation that made it. Once that generation has been replaced the core refuses its posts with `Retired` and drops the
+//!    closure without running it, so a thread of the old build can never reach the new one by accident.
 //!
 //! What it does, so that a test can see each of the above: new windows cascade by `STEP` pixels; `<Super>n` counts a press on the
 //! badge's `z`; a 50 ms timer counts on its `y`; `<Super>r` asks for a reload; a helper program is started once.
@@ -25,6 +28,9 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use gnoblin_core as gnoblin;
 use gnoblin_core::{Gnoblin, Rect, Window};
@@ -130,6 +136,27 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     if let Err(error) = g.spawn("hot-reload-helper") {
         g.log(&format!("cannot start the helper: {error}"));
     }
+
+    // Habit 5: a thread of this generation posts to the shell every 50 ms. When a reload replaces the generation the core refuses
+    // the post (`Retired`), the closure of that post never runs, and the thread says so and ends.
+    let generation = g.info().map_or(0, |info| info.generation);
+    let poster = g.poster();
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::from_millis(50));
+            let ran = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&ran);
+            if let Err(error) = poster.post(move |_| flag.store(true, Ordering::SeqCst)) {
+                // The core's log refuses a retired generation, so the thread says it on standard output.
+                println!(
+                    "poster of generation {generation} refused ({:?}): the refused closure ran: {}",
+                    error.kind(),
+                    ran.load(Ordering::SeqCst)
+                );
+                return;
+            }
+        }
+    });
 
     let reloads = g.info().map_or(0, |info| info.reload_count);
     g.log(&format!(

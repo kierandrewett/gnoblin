@@ -480,6 +480,27 @@ The shell has more than windows:
 
 See [Session and runtime](/shell-api/session-runtime), [Processes](/shell-api/processes) and [Events](/events/).
 
+### Verbs and signals by name
+
+`gnoblin-core/generated/verbs` is the compositor's `gnoblin` namespace as the schema spells it (generated, like the node-class
+types), over the core's own `call` and `subscribe`. Each object of the namespace is a member of `verbs`:
+
+```ts
+import { verbs } from "gnoblin-core/generated/verbs";
+
+verbs.idle.inhibit("my-shell", (answer) => console.log(answer.error ?? "held"));
+verbs.session.onBell((count) => console.log(`the bell has rung ${count} time(s)`));
+```
+
+A verb sends the call and returns. The optional answer function runs once on the shell thread with `{ value, error }`:
+
+- `value` is the operation's value parsed from its JSON, or `undefined` for a bare "done".
+- `error` is the compositor's error code, or `null`.
+
+A signal method returns a `VerbSubscription` whose `unsubscribe()` removes it, and a reload removes what a generation
+registered. A wrong argument is a `TypeError` that names the parameter. The functions need the JavaScript runtime library; a
+shell host without it says so at the first call.
+
 ## Console and inspector
 
 `gnoblinctl console` opens a live prompt into the running shell, and `inspect.clients()`, `inspect.workspaces()`

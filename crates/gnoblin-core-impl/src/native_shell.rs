@@ -113,6 +113,7 @@ impl TreeLinkProvider for OneLink {
 fn run(module: &ShellModule, link: Box<dyn TreeLink>, context: &InProcContext) -> Result<(), ShellError> {
     host::reset_session();
     host::set_tree_link_provider(Box::new(OneLink(RefCell::new(Some(link)))));
+    host::set_verb_link_provider(Box::new(crate::verbs::OwnerSocket::from_environment()));
     let outcome = serve(
         module,
         "in process",

@@ -1,0 +1,18 @@
+[package]
+name = "gnoblin-fixture-shell-verbs"
+description = "Test fixture: a core-only shell that calls verbs of the compositor's gnoblin namespace and subscribes to a signal of it, and says what it saw on standard output."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "shell_verbs"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+
+[lints]
+workspace = true

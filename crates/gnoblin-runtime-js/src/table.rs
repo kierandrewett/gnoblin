@@ -6,7 +6,12 @@
 use std::cell::Cell;
 use std::os::fd::{FromRawFd as _, OwnedFd};
 
-use gnoblin_core_abi::{self as abi, GnoblinApi, GnoblinBuf, GnoblinCtx, LastErrorFn};
+use core::ffi::c_void;
+
+use gnoblin_core_abi::{
+    self as abi, GnoblinAnswerFn, GnoblinApi, GnoblinBuf, GnoblinCtx, GnoblinDropFn, GnoblinEventFn, GnoblinMember,
+    GnoblinPending, GnoblinReg, GnoblinStr, GnoblinValue, LastErrorFn,
+};
 
 unsafe extern "C" {
     fn gnoblin_last_error(buf: *mut u8, cap: usize) -> usize;
@@ -170,6 +175,110 @@ impl CoreTable {
         // SAFETY: `buf` is the buffer the core returned, freed once through its own function.
         unsafe { (self.api.buf_free)(&raw mut buf) };
         Ok(bytes)
+    }
+
+    /// The catalog's id of the class `name` (`gnoblin.session`), or `None` when the core has no such class.
+    pub(crate) fn class_id(self, ctx: GnoblinCtx, name: &str) -> Option<u32> {
+        // SAFETY: `name` is a live string for the call.
+        let id = unsafe { (self.api.catalog_class)(ctx, name.as_ptr(), name.len()) };
+        (id != 0).then_some(id)
+    }
+
+    /// The catalog's member `name` of `kind` (`MEMBER_*`) of `class`.
+    pub(crate) fn member(self, ctx: GnoblinCtx, class: u32, kind: u32, name: &str) -> Result<GnoblinMember, String> {
+        let mut member = GnoblinMember {
+            size: size_of::<GnoblinMember>() as u32,
+            id: 0,
+            kind: 0,
+            value_kind: 0,
+            flags: 0,
+            arg_count: 0,
+            arg_kinds: core::ptr::null(),
+            arg_names: GnoblinStr::EMPTY,
+        };
+        // SAFETY: `name` is a live string and `member` a live local the call fills in, both for the call.
+        match unsafe { (self.api.catalog_member)(ctx, class, kind, name.as_ptr(), name.len(), &raw mut member) } {
+            abi::E_OK => Ok(member),
+            code => Err(failure("catalog_member", code)),
+        }
+    }
+
+    /// Calls a verb of the compositor's `gnoblin` namespace (`call`). The core adopts `user` only when this returns `Ok`.
+    ///
+    /// # Safety
+    ///
+    /// `user` must be what `cb` and `drop_user` expect, and stay valid until the core calls `drop_user` or refuses the call.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) unsafe fn call(
+        self,
+        ctx: GnoblinCtx,
+        object: u64,
+        class: u32,
+        method: u32,
+        args: &[GnoblinValue],
+        cb: Option<GnoblinAnswerFn>,
+        user: *mut c_void,
+        drop_user: Option<GnoblinDropFn>,
+    ) -> Result<(), String> {
+        let mut pending: GnoblinPending = 0;
+        // SAFETY: `args` is a live slice for the call; `user` is the caller's, per the contract above.
+        let code = unsafe {
+            (self.api.call)(
+                ctx,
+                object,
+                class,
+                method,
+                args.as_ptr(),
+                args.len(),
+                cb,
+                user,
+                drop_user,
+                &raw mut pending,
+            )
+        };
+        if code < abi::E_OK {
+            Err(failure("call", code))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Calls `cb` for every `signal` of `class` the compositor raises (`subscribe`). The core adopts `user` only when this
+    /// returns `Ok`, and the registration it returns removes it.
+    ///
+    /// # Safety
+    ///
+    /// `user` must be what `cb` and `drop_user` expect, and stay valid until the core calls `drop_user` or refuses.
+    pub(crate) unsafe fn subscribe(
+        self,
+        ctx: GnoblinCtx,
+        class: u32,
+        signal: u32,
+        cb: GnoblinEventFn,
+        user: *mut c_void,
+        drop_user: Option<GnoblinDropFn>,
+    ) -> Result<GnoblinReg, String> {
+        // SAFETY: `user` is the caller's, per the contract above.
+        let reg = unsafe { (self.api.subscribe)(ctx, class, signal, cb, user, drop_user) };
+        if reg == 0 {
+            Err(failure("subscribe", abi::E_ERR))
+        } else {
+            Ok(reg)
+        }
+    }
+
+    /// Removes a registration the core returned.
+    pub(crate) fn remove(self, reg: GnoblinReg) -> i32 {
+        // SAFETY: the function takes only the registration.
+        unsafe { (self.api.remove)(reg) }
+    }
+
+    /// The core's wake descriptor, owned by the caller: readable when `dispatch` has something to do.
+    pub(crate) fn wake_fd(self, ctx: GnoblinCtx) -> Option<OwnedFd> {
+        // SAFETY: the function takes only the context.
+        let fd = unsafe { (self.api.wake_fd)(ctx) };
+        // SAFETY: a non-negative result is a duplicate the core made for the caller, who owns it.
+        (fd >= 0).then(|| unsafe { OwnedFd::from_raw_fd(fd) })
     }
 
     /// A descriptor that turns readable when the link has something to take, owned by the caller; `None` when the link has none.

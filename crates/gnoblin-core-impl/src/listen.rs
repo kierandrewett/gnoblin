@@ -334,6 +334,7 @@ pub(crate) fn timer_add(
     match registry::subscribe(ctx, "timer_add", subscription, user, drop_user) {
         Ok(id) => {
             reg.store(id, Ordering::Release);
+            registry::sync_wake();
             encode(KIND_REG, id)
         }
         Err(_) => {

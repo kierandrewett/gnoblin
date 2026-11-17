@@ -22,7 +22,7 @@ use gnoblin_core_abi::{
 use crate::guard::{guard, set_code_error};
 use crate::listen::{self, NodeFilter};
 use crate::registry::{self, Registering};
-use crate::{catalog, link, log, memory, procs, providers, tree, values};
+use crate::{catalog, link, log, memory, procs, providers, tree, values, verbs_abi};
 
 /// The table of this core, built at compile time. Its `size` is what lets a caller built against another minor probe it.
 pub(crate) static API: GnoblinApi = GnoblinApi {
@@ -83,6 +83,9 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     setting_set: api_setting_set,
     report_config: api_report_config,
     report_config_rejected: api_report_config_rejected,
+    wake_fd: api_wake_fd,
+    call: api_call,
+    subscribe: api_subscribe,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -729,6 +732,43 @@ unsafe extern "C" fn api_node_adopt(
             },
             Err(code) => code,
         }
+    })
+}
+
+/// `wake_fd`.
+unsafe extern "C" fn api_wake_fd(ctx: GnoblinCtx) -> i32 {
+    guard(abi::E_PANIC, "wake_fd", || registry::wake_fd(ctx))
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe extern "C" fn api_call(
+    ctx: GnoblinCtx,
+    object: u64,
+    class: u32,
+    method: u32,
+    args: *const GnoblinValue,
+    n_args: usize,
+    cb: Option<GnoblinAnswerFn>,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+    out: *mut GnoblinPending,
+) -> i32 {
+    // SAFETY: the table's contract passes `args` as `n_args` values and `out` as a writable handle, both valid for the call.
+    guard(abi::E_PANIC, "call", || unsafe {
+        verbs_abi::call(ctx, object, class, method, args, n_args, cb, user, drop_user, out)
+    })
+}
+
+unsafe extern "C" fn api_subscribe(
+    ctx: GnoblinCtx,
+    class: u32,
+    signal: u32,
+    cb: GnoblinEventFn,
+    user: *mut c_void,
+    drop_user: Option<GnoblinDropFn>,
+) -> GnoblinReg {
+    guard(0, "subscribe", || {
+        verbs_abi::subscribe(ctx, class, signal, cb, user, drop_user)
     })
 }
 

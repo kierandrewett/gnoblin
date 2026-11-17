@@ -26,6 +26,35 @@ pub mod gnoblin {
             /// `reloaded`.
             pub const RELOADED: &str = "reloaded";
         }
+        /// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.
+        pub mod fields {
+            /// The fields of `reload_failed`.
+            pub mod reload_failed {
+                /// `path`: text.
+                pub const PATH: usize = 0;
+                /// `error`: text.
+                pub const ERROR: usize = 1;
+                /// `sequence`: an unsigned integer.
+                pub const SEQUENCE: usize = 2;
+                /// `time`: an unsigned integer.
+                pub const TIME: usize = 3;
+            }
+            /// The fields of `reloaded`.
+            pub mod reloaded {
+                /// `path`: text.
+                pub const PATH: usize = 0;
+                /// `revision`: an unsigned integer.
+                pub const REVISION: usize = 1;
+                /// `warnings`: a list of text.
+                pub const WARNINGS: usize = 2;
+                /// `not_applied`: a list of text.
+                pub const NOT_APPLIED: usize = 3;
+                /// `sequence`: an unsigned integer.
+                pub const SEQUENCE: usize = 4;
+                /// `time`: an unsigned integer.
+                pub const TIME: usize = 5;
+            }
+        }
     }
     /// The `eis` class.
     pub mod eis {
@@ -66,6 +95,24 @@ pub mod gnoblin {
         pub mod signal {
             /// `completed`.
             pub const COMPLETED: &str = "completed";
+        }
+        /// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.
+        pub mod fields {
+            /// The fields of `completed`.
+            pub mod completed {
+                /// `operation_id`: an unsigned integer.
+                pub const OPERATION_ID: usize = 0;
+                /// `method`: text.
+                pub const METHOD: usize = 1;
+                /// `ok`: a boolean.
+                pub const OK: usize = 2;
+                /// `error`: text.
+                pub const ERROR: usize = 3;
+                /// `sequence`: an unsigned integer.
+                pub const SEQUENCE: usize = 4;
+                /// `time`: an unsigned integer.
+                pub const TIME: usize = 5;
+            }
         }
     }
     /// The `output` class.
@@ -118,6 +165,32 @@ pub mod gnoblin {
             pub const CHANGED: &str = "changed";
             /// `removed`.
             pub const REMOVED: &str = "removed";
+        }
+        /// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.
+        pub mod fields {
+            /// The fields of `added`.
+            pub mod added {
+                /// `output_id`: text.
+                pub const OUTPUT_ID: usize = 0;
+                /// `output`: a `output`.
+                pub const OUTPUT: usize = 1;
+            }
+            /// The fields of `changed`.
+            pub mod changed {
+                /// `output_id`: text.
+                pub const OUTPUT_ID: usize = 0;
+                /// `output`: a `output`.
+                pub const OUTPUT: usize = 1;
+                /// `changed`: a list of text.
+                pub const CHANGED: usize = 2;
+            }
+            /// The fields of `removed`.
+            pub mod removed {
+                /// `output_id`: text.
+                pub const OUTPUT_ID: usize = 0;
+                /// `last`: a `output`.
+                pub const LAST: usize = 1;
+            }
         }
     }
     /// The `portal_ui` class.
@@ -192,6 +265,33 @@ pub mod gnoblin {
             /// `finished`.
             pub const FINISHED: &str = "finished";
         }
+        /// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.
+        pub mod fields {
+            /// The fields of `offered`.
+            pub mod offered {
+                /// `request`: an unsigned integer.
+                pub const REQUEST: usize = 0;
+                /// `deadline`: an unsigned integer.
+                pub const DEADLINE: usize = 1;
+                /// `slot`: text.
+                pub const SLOT: usize = 2;
+                /// `title`: text.
+                pub const TITLE: usize = 3;
+                /// `message`: text.
+                pub const MESSAGE: usize = 4;
+                /// `subject`: bytes.
+                pub const SUBJECT: usize = 5;
+            }
+            /// The fields of `finished`.
+            pub mod finished {
+                /// `request`: an unsigned integer.
+                pub const REQUEST: usize = 0;
+                /// `completion`: text.
+                pub const COMPLETION: usize = 1;
+                /// `reason`: text.
+                pub const REASON: usize = 2;
+            }
+        }
     }
     /// The `session` class.
     pub mod session {
@@ -218,6 +318,19 @@ pub mod gnoblin {
             /// `backend`.
             pub const BACKEND: &str = "backend";
         }
+        /// The class's functions.
+        pub mod function {
+            /// `logout`.
+            pub const LOGOUT: &str = "logout";
+            /// `poweroff`.
+            pub const POWEROFF: &str = "poweroff";
+            /// `reboot`.
+            pub const REBOOT: &str = "reboot";
+            /// `suspend`.
+            pub const SUSPEND: &str = "suspend";
+            /// `hibernate`.
+            pub const HIBERNATE: &str = "hibernate";
+        }
         /// The class's signals.
         pub mod signal {
             /// `ready`.
@@ -228,6 +341,26 @@ pub mod gnoblin {
             pub const RELOAD_REQUESTED: &str = "reload_requested";
             /// `lock_state_changed`.
             pub const LOCK_STATE_CHANGED: &str = "lock_state_changed";
+        }
+        /// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.
+        pub mod fields {
+            /// The fields of `bell`.
+            pub mod bell {
+                /// `count`: an unsigned integer.
+                pub const COUNT: usize = 0;
+            }
+            /// The fields of `reload_requested`.
+            pub mod reload_requested {
+                /// `generation`: an unsigned integer.
+                pub const GENERATION: usize = 0;
+            }
+            /// The fields of `lock_state_changed`.
+            pub mod lock_state_changed {
+                /// `state`: text.
+                pub const STATE: usize = 0;
+                /// `revision`: an unsigned integer.
+                pub const REVISION: usize = 1;
+            }
         }
     }
     /// The `settings` class.
@@ -349,6 +482,38 @@ pub mod gnoblin {
             /// `menu_requested`.
             pub const MENU_REQUESTED: &str = "menu_requested";
         }
+        /// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.
+        pub mod fields {
+            /// The fields of `created`.
+            pub mod created {
+                /// `window`: a `window`.
+                pub const WINDOW: usize = 0;
+            }
+            /// The fields of `changed`.
+            pub mod changed {
+                /// `window_id`: an unsigned integer.
+                pub const WINDOW_ID: usize = 0;
+                /// `changed`: a list of text.
+                pub const CHANGED: usize = 1;
+                /// `window`: a `window`.
+                pub const WINDOW: usize = 2;
+            }
+            /// The fields of `menu_requested`.
+            pub mod menu_requested {
+                /// `x`: a signed integer.
+                pub const X: usize = 0;
+                /// `y`: a signed integer.
+                pub const Y: usize = 1;
+                /// `width`: an unsigned integer.
+                pub const WIDTH: usize = 2;
+                /// `height`: an unsigned integer.
+                pub const HEIGHT: usize = 3;
+                /// `source`: text.
+                pub const SOURCE: usize = 4;
+                /// `seat`: text.
+                pub const SEAT: usize = 5;
+            }
+        }
     }
     /// The `workspace` class.
     pub mod workspace {
@@ -365,6 +530,21 @@ pub mod gnoblin {
             pub const CREATED: &str = "created";
             /// `removed`.
             pub const REMOVED: &str = "removed";
+        }
+        /// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.
+        pub mod fields {
+            /// The fields of `created`.
+            pub mod created {
+                /// `workspace`: a `workspace`.
+                pub const WORKSPACE: usize = 0;
+            }
+            /// The fields of `removed`.
+            pub mod removed {
+                /// `workspace_id`: an unsigned integer.
+                pub const WORKSPACE_ID: usize = 0;
+                /// `last`: a `workspace`.
+                pub const LAST: usize = 1;
+            }
         }
     }
 }
@@ -722,6 +902,98 @@ pub mod tree {
             pub const ANSWER: &str = "answer";
             /// `track_ended`.
             pub const TRACK_ENDED: &str = "track_ended";
+        }
+        /// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.
+        pub mod fields {
+            /// The fields of `attached`.
+            pub mod attached {
+                /// `epoch`: an unsigned integer.
+                pub const EPOCH: usize = 0;
+                /// `root`: an unsigned integer.
+                pub const ROOT: usize = 1;
+                /// `serial`: an unsigned integer.
+                pub const SERIAL: usize = 2;
+            }
+            /// The fields of `snapshot`.
+            pub mod snapshot {
+                /// `serial`: an unsigned integer.
+                pub const SERIAL: usize = 0;
+                /// `chunk`: an unsigned integer.
+                pub const CHUNK: usize = 1;
+                /// `last`: a boolean.
+                pub const LAST: usize = 2;
+                /// `nodes`: a list of a `snapshot_node`.
+                pub const NODES: usize = 3;
+            }
+            /// The fields of `reply`.
+            pub mod reply {
+                /// `serial`: an unsigned integer.
+                pub const SERIAL: usize = 0;
+                /// `applied`: a boolean.
+                pub const APPLIED: usize = 1;
+                /// `failed_op`: a signed integer.
+                pub const FAILED_OP: usize = 2;
+                /// `code`: text.
+                pub const CODE: usize = 3;
+                /// `removed`: a list of an unsigned integer.
+                pub const REMOVED: usize = 4;
+            }
+            /// The fields of `changes`.
+            pub mod changes {
+                /// `serial`: an unsigned integer.
+                pub const SERIAL: usize = 0;
+                /// `changes`: a list of a `change`.
+                pub const CHANGES: usize = 1;
+            }
+            /// The fields of `event`.
+            pub mod event {
+                /// `frame`: an unsigned integer.
+                pub const FRAME: usize = 0;
+                /// `seq`: an unsigned integer.
+                pub const SEQ: usize = 1;
+                /// `node`: an unsigned integer.
+                pub const NODE: usize = 2;
+                /// `kind`: text.
+                pub const KIND: usize = 3;
+                /// `x`: a number.
+                pub const X: usize = 4;
+                /// `y`: a number.
+                pub const Y: usize = 5;
+                /// `button`: an unsigned integer.
+                pub const BUTTON: usize = 6;
+                /// `key`: text.
+                pub const KEY: usize = 7;
+                /// `text`: text.
+                pub const TEXT: usize = 8;
+                /// `dx`: a number.
+                pub const DX: usize = 9;
+                /// `dy`: a number.
+                pub const DY: usize = 10;
+                /// `request`: text.
+                pub const REQUEST: usize = 11;
+                /// `pressed`: a boolean.
+                pub const PRESSED: usize = 12;
+            }
+            /// The fields of `answer`.
+            pub mod answer {
+                /// `token`: an unsigned integer.
+                pub const TOKEN: usize = 0;
+                /// `result`: bytes.
+                pub const RESULT: usize = 1;
+                /// `error`: text.
+                pub const ERROR: usize = 2;
+            }
+            /// The fields of `track_ended`.
+            pub mod track_ended {
+                /// `node`: an unsigned integer.
+                pub const NODE: usize = 0;
+                /// `property`: text.
+                pub const PROPERTY: usize = 1;
+                /// `reason`: text.
+                pub const REASON: usize = 2;
+                /// `tween`: an unsigned integer.
+                pub const TWEEN: usize = 3;
+            }
         }
     }
     /// The `op` class.
@@ -1169,6 +1441,73 @@ pub mod tree {
             pub const POINTER_CHORD: &str = "pointer_chord";
             /// `pointer_button`.
             pub const POINTER_BUTTON: &str = "pointer_button";
+        }
+        /// The fields of the class's signals: the position of each in the payload `SignalEvent::value` takes.
+        pub mod fields {
+            /// The fields of `chord`.
+            pub mod chord {
+                /// `id`: a signed integer.
+                pub const ID: usize = 0;
+                /// `chord`: text.
+                pub const CHORD: usize = 1;
+                /// `state`: text.
+                pub const STATE: usize = 2;
+            }
+            /// The fields of `gesture`.
+            pub mod gesture {
+                /// `id`: a signed integer.
+                pub const ID: usize = 0;
+                /// `kind`: text.
+                pub const KIND: usize = 1;
+                /// `fingers`: a signed integer.
+                pub const FINGERS: usize = 2;
+                /// `phase`: text.
+                pub const PHASE: usize = 3;
+                /// `dx`: a number.
+                pub const DX: usize = 4;
+                /// `dy`: a number.
+                pub const DY: usize = 5;
+                /// `scale`: a number.
+                pub const SCALE: usize = 6;
+                /// `rotation`: a number.
+                pub const ROTATION: usize = 7;
+            }
+            /// The fields of `pointer_chord`.
+            pub mod pointer_chord {
+                /// `phase`: text.
+                pub const PHASE: usize = 0;
+                /// `claim`: a signed integer.
+                pub const CLAIM: usize = 1;
+                /// `x`: a number.
+                pub const X: usize = 2;
+                /// `y`: a number.
+                pub const Y: usize = 3;
+                /// `dx`: a number.
+                pub const DX: usize = 4;
+                /// `dy`: a number.
+                pub const DY: usize = 5;
+                /// `button`: a signed integer.
+                pub const BUTTON: usize = 6;
+                /// `modifiers`: text.
+                pub const MODIFIERS: usize = 7;
+                /// `time`: a signed integer.
+                pub const TIME: usize = 8;
+            }
+            /// The fields of `pointer_button`.
+            pub mod pointer_button {
+                /// `claim`: a signed integer.
+                pub const CLAIM: usize = 0;
+                /// `button`: a signed integer.
+                pub const BUTTON: usize = 1;
+                /// `state`: text.
+                pub const STATE: usize = 2;
+                /// `x`: a number.
+                pub const X: usize = 3;
+                /// `y`: a number.
+                pub const Y: usize = 4;
+                /// `time`: a signed integer.
+                pub const TIME: usize = 5;
+            }
         }
     }
     /// The `surface` class.

@@ -97,6 +97,18 @@ pub(crate) fn used() -> bool {
     USED.with(Cell::get)
 }
 
+/// Notes that a script has asked the core for something that is answered through its dispatch (a verb, a signal), so the runtime
+/// runs the dispatch every turn.
+pub(crate) fn mark_used() {
+    USED.with(|cell| cell.set(true));
+}
+
+/// Lets go of a reference of the table of references (`__gnoblinStdSupport`) at the next safe moment: `generation` is the
+/// token of the context that holds it.
+pub(crate) fn release_later(generation: u64, id: u64) {
+    RELEASED.with(|list| list.borrow_mut().push((generation, id)));
+}
+
 /// How to run script in the running generation, as seen by a callback.
 pub(crate) trait Enter {
     /// Runs `body` in it, under the listener budget.
@@ -120,7 +132,7 @@ pub(crate) fn with_enter<R>(enter: &dyn Enter, body: impl FnOnce() -> R) -> R {
 
 /// Runs `f` with the way into the running generation: the turn's own (`with_enter`) when the dispatch that calls back is the
 /// runtime's, and the shell instance's when it is the host's (the host drains the core's queue after the runtime's turn).
-fn entered<R>(f: impl FnOnce(&dyn Enter) -> Result<R, String>) -> Result<R, String> {
+pub(crate) fn entered<R>(f: impl FnOnce(&dyn Enter) -> Result<R, String>) -> Result<R, String> {
     if let Some(pointer) = ENTER.with(Cell::get) {
         // SAFETY: set by `with_enter` for the length of the dispatch that is running this callback.
         return f(unsafe { &*pointer });
@@ -197,7 +209,7 @@ impl Drop for JsCallable {
 }
 
 /// Lets go of what the library released, for the generation that runs now.
-fn release<'js>(support: &Object<'js>) -> rquickjs::Result<()> {
+pub(crate) fn release<'js>(support: &Object<'js>) -> rquickjs::Result<()> {
     let generation = token_of(support)?;
     let ours: Vec<u64> = RELEASED.with(|list| {
         let mut list = list.borrow_mut();
@@ -217,7 +229,7 @@ fn release<'js>(support: &Object<'js>) -> rquickjs::Result<()> {
 }
 
 /// The number that names this context's table of references.
-fn token_of<'js>(support: &Object<'js>) -> rquickjs::Result<u64> {
+pub(crate) fn token_of<'js>(support: &Object<'js>) -> rquickjs::Result<u64> {
     Ok(support.get::<_, f64>("token")? as u64)
 }
 

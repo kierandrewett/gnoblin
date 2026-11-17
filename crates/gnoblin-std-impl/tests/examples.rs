@@ -352,10 +352,10 @@ fn example_2_spec_text_shell_places_windows_on_its_workspace_and_a_plus_form_cho
         "the first window did not move: {stdout}"
     );
 
-    // `Super+Return` is the spec's spelling; the compositor's parser refuses it, so what the shell claimed is `<Super>Return`.
+    // `Super+Return` is the spec's spelling, and the SDK claims it as written: the compositor's parser reads the plus form.
     assert!(
-        stdout.lines().any(|line| line == "claims=<Super>Return"),
-        "the claim was not rewritten into the compositor's spelling: {stdout}"
+        stdout.lines().any(|line| line == "claims=Super+Return"),
+        "the claim is the text the shell wrote: {stdout}"
     );
     assert!(stdout.contains("terminal_started=true"), "{stdout}");
     assert!(!stderr.contains("callback failed"), "{stderr}");

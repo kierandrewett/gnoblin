@@ -37,7 +37,6 @@ compile_error!(
 );
 
 mod callback;
-mod chord;
 mod error;
 mod events;
 // Written by `cargo xtask gen-sdks`, already formatted by the pinned rustfmt.
@@ -50,6 +49,7 @@ mod sys;
 mod timed;
 mod tree;
 mod value;
+mod verbs;
 
 #[doc(hidden)]
 pub mod private;
@@ -59,7 +59,6 @@ pub mod private;
 pub use private as __private;
 
 pub use callback::CallbackResult;
-pub use chord::normalize_chord;
 pub use error::{CoreError, ErrorKind, Result};
 pub use events::{NodeEvent, WindowRequest};
 pub use generated::*;

@@ -48,7 +48,10 @@ pub(crate) fn attach(ctx: GnoblinCtx, mode: u32) -> i32 {
         }
     };
     match session::with(|session| session.attach(mode)) {
-        Ok(()) => abi::E_OK,
+        Ok(()) => {
+            crate::registry::sync_wake();
+            abi::E_OK
+        }
         Err(error) => fail("tree_attach", error),
     }
 }
@@ -412,7 +415,7 @@ pub(crate) unsafe fn set_timed(
 }
 
 /// Calls the shell's answer callback and, being one-shot, removes its own registration afterwards.
-fn answer_subscription(
+pub(crate) fn answer_subscription(
     token: u64,
     cb: GnoblinAnswerFn,
     user: usize,
