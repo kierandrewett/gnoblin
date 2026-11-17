@@ -1090,6 +1090,7 @@ dependencies = [
  "tempfile",
  "wayland-client",
  "wayland-protocols",
+ "wayland-protocols-misc",
 ]
 
 [[package]]
@@ -1487,9 +1488,12 @@ version = "0.2.0-alpha.0"
 name = "gnoblin-core-impl"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-compat-host",
+ "gnoblin-compositor",
  "gnoblin-core-abi",
  "gnoblin-log",
  "gnoblin-schema",
+ "gnoblin-services",
  "gnoblin-shell-host",
  "gnoblin-testkit",
  "gnoblin-tree-client",
@@ -1573,6 +1577,13 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",
  "gnoblin-std",
+]
+
+[[package]]
+name = "gnoblin-fixture-shell-fault"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
 ]
 
 [[package]]
