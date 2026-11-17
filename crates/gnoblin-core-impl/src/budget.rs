@@ -19,7 +19,7 @@
 //! Nothing here stops the callback: a hung callback keeps the shell thread, and only the shell's own events with it. The
 //! compositor never runs shell code (section 5.4), and the lock lease is what protects a locked session (`native_shell_failures.rs`).
 //!
-//! The bookkeeping is [`Tracker`], pure over a [`Clock`], so the strike counting is tested with a clock the test moves; the
+//! The bookkeeping is [`BudgetTracker`], pure over a [`Clock`], so the strike counting is tested with a clock the test moves; the
 //! watchdog thread only asks it to sweep.
 
 use std::collections::{HashMap, HashSet};
@@ -40,16 +40,16 @@ pub const CALLBACK_BUDGET: Duration = Duration::from_secs(2);
 /// boot wait of `tree_attach`.
 pub const INIT_BUDGET: Duration = Duration::from_secs(5);
 
-/// The two limits. [`Limits::default`] is the design's; tests and drivers give shorter ones.
+/// The two limits. [`BudgetLimits::default`] is the design's; tests and drivers give shorter ones.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Limits {
+pub struct BudgetLimits {
     /// A callback's limit.
     pub callback: Duration,
     /// A generation's `init` limit.
     pub init: Duration,
 }
 
-impl Default for Limits {
+impl Default for BudgetLimits {
     fn default() -> Self {
         Self {
             callback: CALLBACK_BUDGET,
@@ -59,7 +59,7 @@ impl Default for Limits {
 }
 
 /// One callback or `init` that is running now.
-struct Running {
+struct WatchedCall {
     token: u64,
     generation: u64,
     what: Arc<str>,
@@ -71,7 +71,7 @@ struct Running {
 
 /// A callback or `init` that ran past its limit, as the sweep saw it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Overrun {
+pub struct BudgetOverrun {
     /// The generation it ran in.
     pub generation: u64,
     /// What ran: `on_signal window.request`, `timer_add`, `init`.
@@ -88,7 +88,7 @@ pub struct Overrun {
     pub uncounted: bool,
 }
 
-impl fmt::Display for Overrun {
+impl fmt::Display for BudgetOverrun {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -100,7 +100,7 @@ impl fmt::Display for Overrun {
 
 /// How a callback that struck ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Finished {
+pub struct WatchEnded {
     /// How long it ran in all.
     pub ran: Duration,
     /// The generation it ran in.
@@ -115,7 +115,7 @@ pub struct Finished {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BudgetStatus {
     /// The limits in force.
-    pub limits: Limits,
+    pub limits: BudgetLimits,
     /// Whether the shell is degraded now: three strikes inside the window, and the cool-down has not passed.
     pub degraded: bool,
     /// The strikes inside the window now.
@@ -155,11 +155,11 @@ impl fmt::Display for BudgetStatus {
 }
 
 /// The bookkeeping: what is running, the strike policy and what has been counted.
-pub struct Tracker<C: Clock> {
+pub struct BudgetTracker<C: Clock> {
     clock: C,
-    limits: Limits,
+    limits: BudgetLimits,
     next_token: u64,
-    running: Vec<Running>,
+    running: Vec<WatchedCall>,
     supervisor: StrikeSupervisor<C>,
     overruns: u64,
     per_generation: HashMap<u64, u64>,
@@ -167,14 +167,14 @@ pub struct Tracker<C: Clock> {
     last: Option<String>,
 }
 
-impl<C: Clock + Clone> Tracker<C> {
+impl<C: Clock + Clone> BudgetTracker<C> {
     /// A tracker with nothing running and no strikes.
-    pub fn new(clock: C, limits: Limits) -> Self {
+    pub fn new(clock: C, limits: BudgetLimits) -> Self {
         Self::with_policy(clock, limits, StrikePolicy::default())
     }
 
-    /// [`Tracker::new`] with a strike policy of its own.
-    pub fn with_policy(clock: C, limits: Limits, policy: StrikePolicy) -> Self {
+    /// [`BudgetTracker::new`] with a strike policy of its own.
+    pub fn with_policy(clock: C, limits: BudgetLimits, policy: StrikePolicy) -> Self {
         Self {
             supervisor: StrikeSupervisor::new(policy, clock.clone()),
             clock,
@@ -189,7 +189,7 @@ impl<C: Clock + Clone> Tracker<C> {
     }
 
     /// Replaces the limits. A callback already running keeps the one it started under.
-    pub fn set_limits(&mut self, limits: Limits) {
+    pub fn set_limits(&mut self, limits: BudgetLimits) {
         self.limits = limits;
     }
 
@@ -197,7 +197,7 @@ impl<C: Clock + Clone> Tracker<C> {
     pub fn enter(&mut self, generation: u64, what: impl Into<Arc<str>>, init: bool) -> u64 {
         let token = self.next_token;
         self.next_token += 1;
-        self.running.push(Running {
+        self.running.push(WatchedCall {
             token,
             generation,
             what: what.into(),
@@ -210,10 +210,10 @@ impl<C: Clock + Clone> Tracker<C> {
     }
 
     /// Stops watching. `None` for a token that is not running.
-    pub fn leave(&mut self, token: u64) -> Option<Finished> {
+    pub fn leave(&mut self, token: u64) -> Option<WatchEnded> {
         let position = self.running.iter().position(|running| running.token == token)?;
         let running = self.running.swap_remove(position);
-        Some(Finished {
+        Some(WatchEnded {
             ran: self.clock.now().saturating_sub(running.since),
             generation: running.generation,
             what: running.what,
@@ -222,7 +222,7 @@ impl<C: Clock + Clone> Tracker<C> {
     }
 
     /// Counts a strike for every watched callback that has run past its limit and has not struck yet, and says what struck.
-    pub fn sweep(&mut self) -> Vec<Overrun> {
+    pub fn sweep(&mut self) -> Vec<BudgetOverrun> {
         let now = self.clock.now();
         let mut struck = Vec::new();
         for running in &mut self.running {
@@ -249,7 +249,7 @@ impl<C: Clock + Clone> Tracker<C> {
                 if init {
                     self.init_overran.insert(generation);
                 }
-                let overrun = Overrun {
+                let overrun = BudgetOverrun {
                     generation,
                     what,
                     limit,
@@ -328,21 +328,21 @@ impl<C: Clock + Clone> Tracker<C> {
 
 // ---- the process's one tracker and its watchdog ----------------------------------------------------------------------
 
-struct Shared {
-    tracker: Mutex<Tracker<SystemClock>>,
+struct BudgetShared {
+    tracker: Mutex<BudgetTracker<SystemClock>>,
     wake: Condvar,
 }
 
-static SHARED: LazyLock<Shared> = LazyLock::new(|| Shared {
-    tracker: Mutex::new(Tracker::new(SystemClock, Limits::default())),
+static SHARED: LazyLock<BudgetShared> = LazyLock::new(|| BudgetShared {
+    tracker: Mutex::new(BudgetTracker::new(SystemClock, BudgetLimits::default())),
     wake: Condvar::new(),
 });
 
-fn shared() -> &'static Shared {
+fn shared() -> &'static BudgetShared {
     &SHARED
 }
 
-fn tracker() -> MutexGuard<'static, Tracker<SystemClock>> {
+fn tracker() -> MutexGuard<'static, BudgetTracker<SystemClock>> {
     shared().tracker.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -387,7 +387,7 @@ fn watchdog() {
 }
 
 /// The log lines of one strike. Logged once per callback: the sweep marks it.
-fn report(overrun: &Overrun) {
+fn report(overrun: &BudgetOverrun) {
     let what = if overrun.init { "init" } else { "callback" };
     if overrun.uncounted {
         log::error!(
@@ -413,9 +413,9 @@ fn report(overrun: &Overrun) {
 
 /// Watches one callback or `init` until it is dropped.
 #[must_use = "the watch ends when the guard is dropped"]
-pub(crate) struct Guard(Option<u64>);
+pub(crate) struct BudgetWatch(Option<u64>);
 
-impl Drop for Guard {
+impl Drop for BudgetWatch {
     fn drop(&mut self) {
         let Some(token) = self.0.take() else { return };
         let finished = tracker().leave(token);
@@ -431,7 +431,7 @@ impl Drop for Guard {
     }
 }
 
-fn enter(generation: u64, what: &Arc<str>, init: bool) -> Guard {
+fn enter(generation: u64, what: &Arc<str>, init: bool) -> BudgetWatch {
     ensure_watchdog();
     let (token, first) = {
         let mut tracker = tracker();
@@ -441,16 +441,16 @@ fn enter(generation: u64, what: &Arc<str>, init: bool) -> Guard {
     if first {
         shared().wake.notify_one();
     }
-    Guard(Some(token))
+    BudgetWatch(Some(token))
 }
 
 /// Watches a callback of `generation` called `what` (`timer_add`, `on_signal window.request`).
-pub(crate) fn watch(generation: u64, what: &Arc<str>) -> Guard {
+pub(crate) fn watch(generation: u64, what: &Arc<str>) -> BudgetWatch {
     enter(generation, what, false)
 }
 
 /// The `init`s running now, by generation: the loader tells the lifecycle observer when each begins and ends.
-static INITS: LazyLock<Mutex<HashMap<u64, Guard>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static INITS: LazyLock<Mutex<HashMap<u64, BudgetWatch>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The `init` of `generation` begins: it is watched against the init limit until [`init_ended`].
 pub(crate) fn init_begun(generation: u64) {
@@ -489,7 +489,7 @@ pub(crate) fn vet(generation: u64) -> Option<String> {
 }
 
 /// Replaces the limits. For the tests and the scenario driver: the design's limits are the defaults and the only ones a session has.
-pub fn set_limits(limits: Limits) {
+pub fn set_limits(limits: BudgetLimits) {
     tracker().set_limits(limits);
     // A watch already in a long wait must look again at the shorter limit.
     shared().wake.notify_one();
@@ -506,17 +506,17 @@ mod tests {
 
     use gnoblin_shell_host::supervisor::ManualClock;
 
-    use super::{Limits, Tracker};
+    use super::{BudgetLimits, BudgetTracker};
 
     fn secs(n: u64) -> Duration {
         Duration::from_secs(n)
     }
 
-    fn tracker() -> (Tracker<ManualClock>, ManualClock) {
+    fn tracker() -> (BudgetTracker<ManualClock>, ManualClock) {
         let clock = ManualClock::default();
         // The manual clock reads zero until it is moved; start it a minute in so no strike is "older than the window" by accident.
         clock.advance(secs(60));
-        (Tracker::new(clock.clone(), Limits::default()), clock)
+        (BudgetTracker::new(clock.clone(), BudgetLimits::default()), clock)
     }
 
     #[test]

@@ -71,7 +71,7 @@ pub fn budget_status() -> crate::budget::BudgetStatus {
 
 /// Replaces the callback budget's limits (the design's are 2 s for a callback and 5 s for an `init`): for the tests and the scenario
 /// driver, which want a budget that a test can pass in milliseconds. A session always has the design's.
-pub fn set_budget_limits(limits: crate::budget::Limits) {
+pub fn set_budget_limits(limits: crate::budget::BudgetLimits) {
     crate::budget::set_limits(limits);
 }
 
