@@ -60,6 +60,14 @@ abi_callbacks! {
     pub type GnoblinStdSetSplitFn = unsafe extern "C" fn(user: *mut c_void, token: u64, ratio: f64, cross_ratio: f64);
     /// A layout's `reset_split`: puts the dividers of the drag named `token` back as they were when `find_split` returned them.
     pub type GnoblinStdResetSplitFn = unsafe extern "C" fn(user: *mut c_void, token: u64);
+    /// A pointer binding's callback: one step of a drag. For `STD_DRAG_START` the return value answers the question (1 takes the
+    /// drag, anything else declines it and leaves the press a press); for the other phases it is `E_OK`, or `E_PANIC` when the SDK
+    /// trampoline caught a panic. `event` is valid until the callback returns.
+    pub type GnoblinStdDragFn = unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinStdDragEvent) -> i32;
+    /// A gesture binding's callback: one step of a touchpad gesture. For `STD_GESTURE_BEGIN` the return value answers the question
+    /// (1 takes the gesture, anything else declines it); for the other phases it is `E_OK`, or `E_PANIC`. `event` is valid until the
+    /// callback returns.
+    pub type GnoblinStdGestureFn = unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinStdGestureEvent) -> i32;
 }
 
 abi_consts! {
@@ -279,6 +287,65 @@ abi_consts! {
     pub const STD_VALUE_NODE: u32 = 4;
     /// `GnoblinStdOption.kind`: text, in `text`.
     pub const STD_VALUE_TEXT: u32 = 5;
+
+    /// `binding_builtin` kind: drags the window under the pointer (`layouts::BINDING_KINDS`).
+    pub const STD_BINDING_MOVE: u32 = 1;
+    /// `binding_builtin` kind: resizes the window under the pointer.
+    pub const STD_BINDING_RESIZE: u32 = 2;
+    /// `binding_builtin` kind: swaps a tile with the tile it is dropped on.
+    pub const STD_BINDING_SWAP: u32 = 3;
+    /// `binding_builtin` kind: drags the divider of a tiling layout.
+    pub const STD_BINDING_SPLIT_RESIZE: u32 = 4;
+
+    /// `GnoblinStdDragEvent.phase` and the callback's question: the pointer went past the threshold and the binding is asked to take
+    /// the drag (answer 1 to take it, anything else declines).
+    pub const STD_DRAG_START: u32 = 1;
+    /// `GnoblinStdDragEvent.phase`: the pointer moved.
+    pub const STD_DRAG_UPDATE: u32 = 2;
+    /// `GnoblinStdDragEvent.phase`: the button was released.
+    pub const STD_DRAG_END: u32 = 3;
+    /// `GnoblinStdDragEvent.phase`: the compositor ended the drag, or the window under it closed. The binding undoes what it did.
+    pub const STD_DRAG_CANCEL: u32 = 4;
+    /// `GnoblinStdDragEvent.flags`: `local_x` and `local_y` hold the press in the window's own coordinates.
+    pub const STD_DRAG_HAS_LOCAL: u32 = 1;
+    /// `GnoblinStdDragEvent.flags`: `work_area` holds the rectangle windows are kept inside.
+    pub const STD_DRAG_HAS_WORK_AREA: u32 = 2;
+    /// `GnoblinStdDragEvent.flags`: the seat's `edge_tiling` is on.
+    pub const STD_DRAG_EDGE_TILING: u32 = 4;
+    /// `GnoblinStdDragEvent.constraint`: the window stays inside the work area.
+    pub const STD_CONSTRAINT_WORK_AREA: u32 = 0;
+    /// `GnoblinStdDragEvent.constraint`: the window may leave the work area but a strip of it stays reachable.
+    pub const STD_CONSTRAINT_MINIMUM_STRIP: u32 = 1;
+
+    /// `GnoblinStdGestureEvent.phase`: the gesture began (or, for a directed binding, went the right way): the binding is asked to
+    /// take it (answer 1 to take it, anything else declines).
+    pub const STD_GESTURE_BEGIN: u32 = 1;
+    /// `GnoblinStdGestureEvent.phase`: the fingers moved.
+    pub const STD_GESTURE_UPDATE: u32 = 2;
+    /// `GnoblinStdGestureEvent.phase`: the fingers lifted.
+    pub const STD_GESTURE_END: u32 = 3;
+    /// `GnoblinStdGestureEvent.phase`: the compositor ended the gesture, or the window under it closed.
+    pub const STD_GESTURE_CANCEL: u32 = 4;
+    /// `GnoblinStdGestureEvent.kind`: fingers moving together.
+    pub const STD_GESTURE_SWIPE: u32 = 1;
+    /// `GnoblinStdGestureEvent.kind`: fingers moving apart or together.
+    pub const STD_GESTURE_PINCH: u32 = 2;
+    /// `GnoblinStdGestureEvent.flags`: `x` and `y` hold where the pointer was when the gesture began.
+    pub const STD_GESTURE_HAS_POSITION: u32 = 1;
+    /// A way a gesture went (`direction`, `way`): none yet.
+    pub const STD_WAY_NONE: u32 = 0;
+    /// A way a gesture went: a swipe to the left.
+    pub const STD_WAY_LEFT: u32 = 1;
+    /// A way a gesture went: a swipe to the right.
+    pub const STD_WAY_RIGHT: u32 = 2;
+    /// A way a gesture went: a swipe up.
+    pub const STD_WAY_UP: u32 = 3;
+    /// A way a gesture went: a swipe down.
+    pub const STD_WAY_DOWN: u32 = 4;
+    /// A way a gesture went: a pinch that closes.
+    pub const STD_WAY_IN: u32 = 5;
+    /// A way a gesture went: a pinch that opens.
+    pub const STD_WAY_OUT: u32 = 6;
 }
 
 abi_structs! {
@@ -634,6 +701,90 @@ abi_structs! {
         pub z: f64,
     }
 
+    /// What a pointer binding is told at each step of a drag. The library runs the press, the threshold and the start-or-decline
+    /// rules itself; a binding sees only the steps of a drag it took.
+    pub struct GnoblinStdDragEvent {
+        /// Size of this struct, set by the library.
+        pub size: u32,
+        /// `STD_DRAG_START`, `STD_DRAG_UPDATE`, `STD_DRAG_END` or `STD_DRAG_CANCEL`.
+        pub phase: u32,
+        /// `STD_DRAG_*` flags.
+        pub flags: u32,
+        /// `STD_CONSTRAINT_*`: the seat's rule for how far a dragged window may leave the work area.
+        pub constraint: u32,
+        /// The chord's button number (1 left, 2 middle, 3 right).
+        pub button: i64,
+        /// The window the press landed on, or zero.
+        pub client: GnoblinNode,
+        /// Where the pointer is. On the start, where the press was.
+        pub x: f64,
+        /// Where the pointer is. On the start, where the press was.
+        pub y: f64,
+        /// Where the press was.
+        pub origin_x: f64,
+        /// Where the press was.
+        pub origin_y: f64,
+        /// With `STD_DRAG_HAS_LOCAL`: the press in the window's own coordinates.
+        pub local_x: f64,
+        /// With `STD_DRAG_HAS_LOCAL`: the press in the window's own coordinates.
+        pub local_y: f64,
+        /// With `STD_DRAG_HAS_WORK_AREA`: the rectangle of the output the press was on.
+        pub work_area: GnoblinStdRect,
+    }
+
+    /// What a gesture binding is told at each step of a touchpad gesture.
+    pub struct GnoblinStdGestureEvent {
+        /// Size of this struct, set by the library.
+        pub size: u32,
+        /// `STD_GESTURE_BEGIN`, `STD_GESTURE_UPDATE`, `STD_GESTURE_END` or `STD_GESTURE_CANCEL`.
+        pub phase: u32,
+        /// `STD_GESTURE_*` flags.
+        pub flags: u32,
+        /// `STD_GESTURE_SWIPE` or `STD_GESTURE_PINCH`.
+        pub kind: u32,
+        /// How many fingers, 2 to 5.
+        pub fingers: u32,
+        /// The way the binding's trigger names (`STD_WAY_*`), or `STD_WAY_NONE` for a trigger with no direction.
+        pub direction: u32,
+        /// The way the fingers have gone so far (the longer axis of a swipe; a pinch's scale from 1), or `STD_WAY_NONE` while they
+        /// have gone less than 12 touchpad units or 0.1 of scale.
+        pub way: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The window under the pointer when the gesture began, or zero.
+        pub client: GnoblinNode,
+        /// Horizontal travel of the fingers' centre since the begin, in touchpad units.
+        pub dx: f64,
+        /// Vertical travel.
+        pub dy: f64,
+        /// A pinch's scale: 1 at the begin.
+        pub scale: f64,
+        /// A pinch's rotation in degrees.
+        pub rotation: f64,
+        /// How far a directed gesture has gone, 0 to 1: 400 units of swipe, or a scale change of 0.5, in the trigger's own
+        /// direction. For a trigger with no direction, how far the fingers have gone in any way.
+        pub progress: f64,
+        /// With `STD_GESTURE_HAS_POSITION`: where the pointer was when the gesture began.
+        pub x: f64,
+        /// With `STD_GESTURE_HAS_POSITION`: where the pointer was when the gesture began.
+        pub y: f64,
+    }
+
+    /// A binding of the shell's own: the argument of `binding_drag` and `binding_gesture`.
+    pub struct GnoblinStdBindingSpec {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// For a drag, the pointer chord (`Super+Button1`); for a gesture, `Swipe3`, `Swipe4Left`, `Pinch2In` (any case).
+        pub trigger: GnoblinStr,
+        /// Among the bindings of one trigger the higher priority is asked first, and one that declines leaves the drag or gesture to
+        /// the next. Two bindings of one trigger and one priority are refused with `E_BUSY`.
+        pub priority: f64,
+        /// For a drag: how far the pointer must travel before the binding is asked to start; zero reads as 4 logical pixels.
+        pub threshold: f64,
+    }
+
     /// Counters the library keeps. Filled by `stats`.
     pub struct GnoblinStdStats {
         /// Size of this struct, set by the caller.
@@ -936,6 +1087,21 @@ abi_structs! {
         /// kind (`fov`, `card_width`, `card_height`), and writes one slot per card to `out`, which has room for `count` slots.
         /// `E_TYPE` when `focus` is not in `1..=count`.
         pub layout_ring: unsafe extern "C" fn(ctx: GnoblinCtx, count: usize, focus: usize, area: *const GnoblinStdRect, options: *const GnoblinStdOption, n_options: usize, out: *mut GnoblinStdRingSlot) -> i32,
+
+        /// Claims the spec's pointer chord and calls `cb` for each drag of it, as `GnoblinStdBindingSpec` and the callback describe.
+        /// Several bindings may share a chord (one claim serves them): the library asks them in the order of their priority and
+        /// then of their registration, and the first to take the drag has it. A drag in flight is cancelled when the window it
+        /// pressed closes or the binding is removed. Zero on failure (`E_BUSY` for a chord and a priority that are taken, or a chord
+        /// another shell claimed), with `user` not adopted. Never called inside this call. `remove` ends it.
+        pub binding_drag: unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdBindingSpec, cb: GnoblinStdDragFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinStdReg,
+        /// Claims the spec's touchpad gesture and calls `cb` for each gesture that matches, with the library's rules: a binding with a
+        /// direction waits until the fingers have one (12 touchpad units of swipe or 0.1 of scale) and is asked only if the gesture
+        /// went its way; one that declines leaves the gesture to the next. Bindings of one finger count share a claim. As for
+        /// `binding_drag` otherwise.
+        pub binding_gesture: unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdBindingSpec, cb: GnoblinStdGestureFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinStdReg,
+        /// Starts a pointer binding the library runs itself: `kind` is `STD_BINDING_*`, the options are those `layouts::BINDING_KINDS`
+        /// declares for it (`trigger`, `priority`, and the kind's own). Zero on failure. `remove` ends it.
+        pub binding_builtin: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize) -> GnoblinStdReg,
     }
 }
 

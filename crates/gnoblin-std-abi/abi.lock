@@ -58,6 +58,47 @@ const | STD_SNAP_NONE | u32 = 0 | 1.0
 const | STD_SNAP_LEFT | u32 = 1 | 1.0
 const | STD_SNAP_RIGHT | u32 = 2 | 1.0
 const | STD_SNAP_TOP | u32 = 3 | 1.0
+const | STD_EVENT_TRANSITION_FINISHED | u32 = 11 | 1.0
+const | STD_EASING_LINEAR | u32 = 0 | 1.0
+const | STD_EASING_EASE | u32 = 1 | 1.0
+const | STD_EASING_EASE_IN | u32 = 2 | 1.0
+const | STD_EASING_EASE_OUT | u32 = 3 | 1.0
+const | STD_EASING_EASE_IN_OUT | u32 = 4 | 1.0
+const | STD_PROP_UNSET | u32 = 0 | 1.0
+const | STD_PROP_NUMBER | u32 = 1 | 1.0
+const | STD_PROP_BOOL | u32 = 2 | 1.0
+const | STD_PROP_TRIPLE | u32 = 3 | 1.0
+const | STD_PROP_TEXT | u32 = 4 | 1.0
+const | STD_PROP_CORNERS | u32 = 5 | 1.0
+const | STD_PROP_NULL | u32 = 6 | 1.0
+const | STD_PROP_NODE | u32 = 7 | 1.0
+const | STD_TRANSITION_RUNNING | u32 = 0 | 1.0
+const | STD_TRANSITION_FINISHED | u32 = 1 | 1.0
+const | STD_TRANSITION_CANCELLED | u32 = 2 | 1.0
+const | STD_CONTROL_PLAY | u32 = 1 | 1.0
+const | STD_CONTROL_PAUSE | u32 = 2 | 1.0
+const | STD_CONTROL_REVERSE | u32 = 3 | 1.0
+const | STD_CONTROL_SEEK | u32 = 4 | 1.0
+const | STD_CONTROL_CANCEL | u32 = 5 | 1.0
+const | STD_STYLE_SCOPE_COLLECTION | u32 = 1 | 1.0
+const | STD_STYLE_SCOPE_CLIENT | u32 = 2 | 1.0
+const | STD_STYLE_OPACITY | u32 = 1 | 1.0
+const | STD_STYLE_CORNER_RADIUS | u32 = 2 | 1.0
+const | STD_STYLE_BACKGROUND | u32 = 3 | 1.0
+const | STD_STYLE_BORDERS | u32 = 4 | 1.0
+const | STD_STYLE_SHADOWS | u32 = 5 | 1.0
+const | STD_STYLE_FILTER | u32 = 6 | 1.0
+const | STD_STYLE_BACKDROP_FILTER | u32 = 7 | 1.0
+const | STD_ENTRY_BORDER | u32 = 1 | 1.0
+const | STD_ENTRY_SHADOW | u32 = 2 | 1.0
+const | STD_ENTRY_BLUR | u32 = 3 | 1.0
+const | STD_ENTRY_SATURATE | u32 = 4 | 1.0
+const | STD_ENTRY_BRIGHTNESS | u32 = 5 | 1.0
+const | STD_ENTRY_CONTRAST | u32 = 6 | 1.0
+const | STD_SCENE_NODE | u32 = 1 | 1.0
+const | STD_SCENE_VIEW | u32 = 2 | 1.0
+const | STD_SCENE_CAMERA3D | u32 = 3 | 1.0
+const | STD_SCENE_CAMERA2D | u32 = 4 | 1.0
 const | STD_BUILTIN_MASTER_STACK | u32 = 1 | 1.0
 const | STD_BUILTIN_GRID | u32 = 2 | 1.0
 const | STD_BUILTIN_MONOCLE | u32 = 3 | 1.0
@@ -71,10 +112,39 @@ const | STD_VALUE_NUMBER | u32 = 2 | 1.0
 const | STD_VALUE_ENUM | u32 = 3 | 1.0
 const | STD_VALUE_NODE | u32 = 4 | 1.0
 const | STD_VALUE_TEXT | u32 = 5 | 1.0
+const | STD_BINDING_MOVE | u32 = 1 | 1.0
+const | STD_BINDING_RESIZE | u32 = 2 | 1.0
+const | STD_BINDING_SWAP | u32 = 3 | 1.0
+const | STD_BINDING_SPLIT_RESIZE | u32 = 4 | 1.0
+const | STD_DRAG_START | u32 = 1 | 1.0
+const | STD_DRAG_UPDATE | u32 = 2 | 1.0
+const | STD_DRAG_END | u32 = 3 | 1.0
+const | STD_DRAG_CANCEL | u32 = 4 | 1.0
+const | STD_DRAG_HAS_LOCAL | u32 = 1 | 1.0
+const | STD_DRAG_HAS_WORK_AREA | u32 = 2 | 1.0
+const | STD_DRAG_EDGE_TILING | u32 = 4 | 1.0
+const | STD_CONSTRAINT_WORK_AREA | u32 = 0 | 1.0
+const | STD_CONSTRAINT_MINIMUM_STRIP | u32 = 1 | 1.0
+const | STD_GESTURE_BEGIN | u32 = 1 | 1.0
+const | STD_GESTURE_UPDATE | u32 = 2 | 1.0
+const | STD_GESTURE_END | u32 = 3 | 1.0
+const | STD_GESTURE_CANCEL | u32 = 4 | 1.0
+const | STD_GESTURE_SWIPE | u32 = 1 | 1.0
+const | STD_GESTURE_PINCH | u32 = 2 | 1.0
+const | STD_GESTURE_HAS_POSITION | u32 = 1 | 1.0
+const | STD_WAY_NONE | u32 = 0 | 1.0
+const | STD_WAY_LEFT | u32 = 1 | 1.0
+const | STD_WAY_RIGHT | u32 = 2 | 1.0
+const | STD_WAY_UP | u32 = 3 | 1.0
+const | STD_WAY_DOWN | u32 = 4 | 1.0
+const | STD_WAY_IN | u32 = 5 | 1.0
+const | STD_WAY_OUT | u32 = 6 | 1.0
 
 alias | GnoblinStdReg | u64 | 1.0
 alias | GnoblinStdCollection | u64 | 1.0
 alias | GnoblinStdWorkspace | u64 | 1.0
+alias | GnoblinStdTransition | u64 | 1.0
+alias | GnoblinStdStyle | u64 | 1.0
 
 callback | GnoblinStdEventFn | unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinStdEvent) -> i32 | 1.0
 callback | GnoblinStdComputeFn | unsafe extern "C" fn(user: *mut c_void, cx: *const GnoblinStdLayoutContext) -> i32 | 1.0
@@ -86,6 +156,8 @@ callback | GnoblinStdEmitFn | unsafe extern "C" fn(sink: *mut c_void, placement:
 callback | GnoblinStdFindSplitFn | unsafe extern "C" fn(user: *mut c_void, client: GnoblinNode, x: f64, y: f64, out: *mut GnoblinStdSplit) -> i32 | 1.0
 callback | GnoblinStdSetSplitFn | unsafe extern "C" fn(user: *mut c_void, token: u64, ratio: f64, cross_ratio: f64) | 1.0
 callback | GnoblinStdResetSplitFn | unsafe extern "C" fn(user: *mut c_void, token: u64) | 1.0
+callback | GnoblinStdDragFn | unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinStdDragEvent) -> i32 | 1.0
+callback | GnoblinStdGestureFn | unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinStdGestureEvent) -> i32 | 1.0
 
 struct | GnoblinStdRect | size 32 align 8 fixed | 1.0
 
@@ -274,6 +346,49 @@ field | GnoblinStdRingSlot.opacity | f64 @32 +8 | 1.0
 field | GnoblinStdRingSlot.rotation | f64 @40 +8 | 1.0
 field | GnoblinStdRingSlot.z | f64 @48 +8 | 1.0
 
+struct | GnoblinStdDragEvent | size 112 align 8 extensible | 1.0
+
+field | GnoblinStdDragEvent.size | u32 @0 +4 | 1.0
+field | GnoblinStdDragEvent.phase | u32 @4 +4 | 1.0
+field | GnoblinStdDragEvent.flags | u32 @8 +4 | 1.0
+field | GnoblinStdDragEvent.constraint | u32 @12 +4 | 1.0
+field | GnoblinStdDragEvent.button | i64 @16 +8 | 1.0
+field | GnoblinStdDragEvent.client | GnoblinNode @24 +8 | 1.0
+field | GnoblinStdDragEvent.x | f64 @32 +8 | 1.0
+field | GnoblinStdDragEvent.y | f64 @40 +8 | 1.0
+field | GnoblinStdDragEvent.origin_x | f64 @48 +8 | 1.0
+field | GnoblinStdDragEvent.origin_y | f64 @56 +8 | 1.0
+field | GnoblinStdDragEvent.local_x | f64 @64 +8 | 1.0
+field | GnoblinStdDragEvent.local_y | f64 @72 +8 | 1.0
+field | GnoblinStdDragEvent.work_area | GnoblinStdRect @80 +32 | 1.0
+
+struct | GnoblinStdGestureEvent | size 96 align 8 extensible | 1.0
+
+field | GnoblinStdGestureEvent.size | u32 @0 +4 | 1.0
+field | GnoblinStdGestureEvent.phase | u32 @4 +4 | 1.0
+field | GnoblinStdGestureEvent.flags | u32 @8 +4 | 1.0
+field | GnoblinStdGestureEvent.kind | u32 @12 +4 | 1.0
+field | GnoblinStdGestureEvent.fingers | u32 @16 +4 | 1.0
+field | GnoblinStdGestureEvent.direction | u32 @20 +4 | 1.0
+field | GnoblinStdGestureEvent.way | u32 @24 +4 | 1.0
+field | GnoblinStdGestureEvent.reserved | u32 @28 +4 | 1.0
+field | GnoblinStdGestureEvent.client | GnoblinNode @32 +8 | 1.0
+field | GnoblinStdGestureEvent.dx | f64 @40 +8 | 1.0
+field | GnoblinStdGestureEvent.dy | f64 @48 +8 | 1.0
+field | GnoblinStdGestureEvent.scale | f64 @56 +8 | 1.0
+field | GnoblinStdGestureEvent.rotation | f64 @64 +8 | 1.0
+field | GnoblinStdGestureEvent.progress | f64 @72 +8 | 1.0
+field | GnoblinStdGestureEvent.x | f64 @80 +8 | 1.0
+field | GnoblinStdGestureEvent.y | f64 @88 +8 | 1.0
+
+struct | GnoblinStdBindingSpec | size 40 align 8 extensible | 1.0
+
+field | GnoblinStdBindingSpec.size | u32 @0 +4 | 1.0
+field | GnoblinStdBindingSpec.reserved | u32 @4 +4 | 1.0
+field | GnoblinStdBindingSpec.trigger | GnoblinStr @8 +16 | 1.0
+field | GnoblinStdBindingSpec.priority | f64 @24 +8 | 1.0
+field | GnoblinStdBindingSpec.threshold | f64 @32 +8 | 1.0
+
 struct | GnoblinStdStats | size 56 align 8 extensible | 1.0
 
 field | GnoblinStdStats.size | u32 @0 +4 | 1.0
@@ -285,7 +400,54 @@ field | GnoblinStdStats.registrations | u64 @32 +8 | 1.0
 field | GnoblinStdStats.layout_passes | u64 @40 +8 | 1.0
 field | GnoblinStdStats.computes | u64 @48 +8 | 1.0
 
-struct | GnoblinStdApi | size 384 align 8 extensible | 1.0
+struct | GnoblinStdProp | size 64 align 8 extensible | 1.0
+
+field | GnoblinStdProp.size | u32 @0 +4 | 1.0
+field | GnoblinStdProp.kind | u32 @4 +4 | 1.0
+field | GnoblinStdProp.a | f64 @8 +8 | 1.0
+field | GnoblinStdProp.b | f64 @16 +8 | 1.0
+field | GnoblinStdProp.c | f64 @24 +8 | 1.0
+field | GnoblinStdProp.d | f64 @32 +8 | 1.0
+field | GnoblinStdProp.text | GnoblinStr @40 +16 | 1.0
+field | GnoblinStdProp.node | GnoblinNode @56 +8 | 1.0
+
+struct | GnoblinStdTransitionOptions | size 32 align 8 extensible | 1.0
+
+field | GnoblinStdTransitionOptions.size | u32 @0 +4 | 1.0
+field | GnoblinStdTransitionOptions.autoplay | u32 @4 +4 | 1.0
+field | GnoblinStdTransitionOptions.easing | u32 @8 +4 | 1.0
+field | GnoblinStdTransitionOptions.reserved | u32 @12 +4 | 1.0
+field | GnoblinStdTransitionOptions.duration_ms | f64 @16 +8 | 1.0
+field | GnoblinStdTransitionOptions.delay_ms | f64 @24 +8 | 1.0
+
+struct | GnoblinStdTransitionInfo | size 40 align 8 extensible | 1.0
+
+field | GnoblinStdTransitionInfo.size | u32 @0 +4 | 1.0
+field | GnoblinStdTransitionInfo.state | u32 @4 +4 | 1.0
+field | GnoblinStdTransitionInfo.id | u64 @8 +8 | 1.0
+field | GnoblinStdTransitionInfo.duration_ms | f64 @16 +8 | 1.0
+field | GnoblinStdTransitionInfo.progress | f64 @24 +8 | 1.0
+field | GnoblinStdTransitionInfo.paused | u32 @32 +4 | 1.0
+field | GnoblinStdTransitionInfo.reversed | u32 @36 +4 | 1.0
+
+struct | GnoblinStdStyleEntry | size 64 align 8 extensible | 1.0
+
+field | GnoblinStdStyleEntry.size | u32 @0 +4 | 1.0
+field | GnoblinStdStyleEntry.kind | u32 @4 +4 | 1.0
+field | GnoblinStdStyleEntry.inset | u32 @8 +4 | 1.0
+field | GnoblinStdStyleEntry.reserved | u32 @12 +4 | 1.0
+field | GnoblinStdStyleEntry.a | f64 @16 +8 | 1.0
+field | GnoblinStdStyleEntry.b | f64 @24 +8 | 1.0
+field | GnoblinStdStyleEntry.c | f64 @32 +8 | 1.0
+field | GnoblinStdStyleEntry.d | f64 @40 +8 | 1.0
+field | GnoblinStdStyleEntry.color | GnoblinStr @48 +16 | 1.0
+
+struct | GnoblinStdStyleEntries | size 16 align 8 fixed | 1.0
+
+field | GnoblinStdStyleEntries.ptr | *const GnoblinStdStyleEntry @0 +8 | 1.0
+field | GnoblinStdStyleEntries.len | usize @8 +8 | 1.0
+
+struct | GnoblinStdApi | size 616 align 8 extensible | 1.0
 
 field | GnoblinStdApi.size | u32 @0 +4 | 1.0
 field | GnoblinStdApi.major | u32 @4 +4 | 1.0
@@ -331,9 +493,38 @@ field | GnoblinStdApi.client_unsnap | unsafe extern "C" fn(ctx: GnoblinCtx, clie
 field | GnoblinStdApi.workspace_find_split | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, x: f64, y: f64, out: *mut GnoblinStdSplit) -> i32 @312 +8 | 1.0
 field | GnoblinStdApi.workspace_set_split | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, token: u64, ratio: f64, cross_ratio: f64) -> i32 @320 +8 | 1.0
 field | GnoblinStdApi.workspace_reset_split | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, token: u64) -> i32 @328 +8 | 1.0
-field | GnoblinStdApi.workspace_set_layout_kind | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, kind: u32, options: *const GnoblinStdOption, n_options: usize) -> i32 @336 +8 | 1.0
-field | GnoblinStdApi.workspace_layout_set | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, option: *const GnoblinStdOption) -> i32 @344 +8 | 1.0
-field | GnoblinStdApi.workspace_layout_get | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, name: *const u8, len: usize, out: *mut GnoblinStdOption) -> i32 @352 +8 | 1.0
-field | GnoblinStdApi.workspace_layout_act | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, action: *const u8, len: usize, args: *const GnoblinStdOption, n_args: usize, out: *mut GnoblinStdOption) -> i32 @360 +8 | 1.0
-field | GnoblinStdApi.workspace_layout_kind | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, out: *mut u32) -> i32 @368 +8 | 1.0
-field | GnoblinStdApi.layout_ring | unsafe extern "C" fn(ctx: GnoblinCtx, count: usize, focus: usize, area: *const GnoblinStdRect, options: *const GnoblinStdOption, n_options: usize, out: *mut GnoblinStdRingSlot) -> i32 @376 +8 | 1.0
+field | GnoblinStdApi.easing_sample | unsafe extern "C" fn(ctx: GnoblinCtx, easing: u32, t: f64, out: *mut f64) -> i32 @336 +8 | 1.0
+field | GnoblinStdApi.transition_begin | unsafe extern "C" fn(ctx: GnoblinCtx, options: *const GnoblinStdTransitionOptions) -> i32 @344 +8 | 1.0
+field | GnoblinStdApi.transition_set | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, value: *const GnoblinStdProp) -> i32 @352 +8 | 1.0
+field | GnoblinStdApi.transition_get | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, out: *mut GnoblinStdProp) -> i32 @360 +8 | 1.0
+field | GnoblinStdApi.transition_commit | unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinStdTransition) -> i32 @368 +8 | 1.0
+field | GnoblinStdApi.transition_abort | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @376 +8 | 1.0
+field | GnoblinStdApi.transition_animate | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, value: *const GnoblinStdProp, options: *const GnoblinStdTransitionOptions, out: *mut GnoblinStdTransition) -> i32 @384 +8 | 1.0
+field | GnoblinStdApi.transition_control | unsafe extern "C" fn(ctx: GnoblinCtx, transition: GnoblinStdTransition, op: u32, value: f64) -> i32 @392 +8 | 1.0
+field | GnoblinStdApi.transition_info | unsafe extern "C" fn(ctx: GnoblinCtx, transition: GnoblinStdTransition, out: *mut GnoblinStdTransitionInfo) -> i32 @400 +8 | 1.0
+field | GnoblinStdApi.transition_finished | unsafe extern "C" fn(ctx: GnoblinCtx, transition: GnoblinStdTransition, cb: GnoblinStdEventFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinStdReg @408 +8 | 1.0
+field | GnoblinStdApi.style_scope | unsafe extern "C" fn(ctx: GnoblinCtx, scope: u32, target: u64, out: *mut GnoblinStdStyle) -> i32 @416 +8 | 1.0
+field | GnoblinStdApi.style_set | unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32, value: *const GnoblinStdProp) -> i32 @424 +8 | 1.0
+field | GnoblinStdApi.style_set_list | unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32, entries: *const GnoblinStdStyleEntry, n: usize) -> i32 @432 +8 | 1.0
+field | GnoblinStdApi.style_unset | unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32) -> i32 @440 +8 | 1.0
+field | GnoblinStdApi.style_get | unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32, out: *mut GnoblinStdProp) -> i32 @448 +8 | 1.0
+field | GnoblinStdApi.style_list | unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, prop: u32, out: *mut GnoblinStdStyleEntries) -> i32 @456 +8 | 1.0
+field | GnoblinStdApi.style_computed | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, prop: u32, out: *mut GnoblinStdProp) -> i32 @464 +8 | 1.0
+field | GnoblinStdApi.style_computed_list | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, prop: u32, out: *mut GnoblinStdStyleEntries) -> i32 @472 +8 | 1.0
+field | GnoblinStdApi.style_origin | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, prop: u32, out: *mut GnoblinStr) -> i32 @480 +8 | 1.0
+field | GnoblinStdApi.style_notes | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStr) -> i32 @488 +8 | 1.0
+field | GnoblinStdApi.scene_new | unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, out: *mut GnoblinNode) -> i32 @496 +8 | 1.0
+field | GnoblinStdApi.scene_destroy | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode) -> i32 @504 +8 | 1.0
+field | GnoblinStdApi.scene_insert | unsafe extern "C" fn(ctx: GnoblinCtx, parent: GnoblinNode, node: GnoblinNode, index: i64) -> i32 @512 +8 | 1.0
+field | GnoblinStdApi.scene_root | unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinNode) -> i32 @520 +8 | 1.0
+field | GnoblinStdApi.scene_set | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, value: *const GnoblinStdProp) -> i32 @528 +8 | 1.0
+field | GnoblinStdApi.scene_get | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize, out: *mut GnoblinStdProp) -> i32 @536 +8 | 1.0
+field | GnoblinStdApi.workspace_set_layout_kind | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, kind: u32, options: *const GnoblinStdOption, n_options: usize) -> i32 @544 +8 | 1.0
+field | GnoblinStdApi.workspace_layout_set | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, option: *const GnoblinStdOption) -> i32 @552 +8 | 1.0
+field | GnoblinStdApi.workspace_layout_get | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, name: *const u8, len: usize, out: *mut GnoblinStdOption) -> i32 @560 +8 | 1.0
+field | GnoblinStdApi.workspace_layout_act | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, action: *const u8, len: usize, args: *const GnoblinStdOption, n_args: usize, out: *mut GnoblinStdOption) -> i32 @568 +8 | 1.0
+field | GnoblinStdApi.workspace_layout_kind | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, out: *mut u32) -> i32 @576 +8 | 1.0
+field | GnoblinStdApi.layout_ring | unsafe extern "C" fn(ctx: GnoblinCtx, count: usize, focus: usize, area: *const GnoblinStdRect, options: *const GnoblinStdOption, n_options: usize, out: *mut GnoblinStdRingSlot) -> i32 @584 +8 | 1.0
+field | GnoblinStdApi.binding_drag | unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdBindingSpec, cb: GnoblinStdDragFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinStdReg @592 +8 | 1.0
+field | GnoblinStdApi.binding_gesture | unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdBindingSpec, cb: GnoblinStdGestureFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinStdReg @600 +8 | 1.0
+field | GnoblinStdApi.binding_builtin | unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize) -> GnoblinStdReg @608 +8 | 1.0

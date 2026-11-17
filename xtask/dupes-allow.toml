@@ -2059,18 +2059,6 @@ kind = "same-shape"
 reason = "four names of sides: the backend's are the parts of a window frame, the SDK's where the master area sits"
 
 [[allow]]
-left = "gnoblin-backend::Part"
-right = "gnoblin-std::ResizeEdge"
-kind = "same-shape"
-reason = "four names of sides: the backend's are the parts of a window frame, the SDK's the edge a resize takes hold of"
-
-[[allow]]
-left = "gnoblin-std::Grip"
-right = "gnoblin-wayland::Edges"
-kind = "same-shape"
-reason = "four booleans for the sides of a window a resize moves; the SDK tier cannot depend on the compositor's crate"
-
-[[allow]]
 left = "gnoblin-std::Orientation"
 right = "gnoblin-types::Edge"
 kind = "same-shape"
@@ -2087,12 +2075,6 @@ left = "gnoblin-std::ResizeCorner"
 right = "gnoblin-types::Corner"
 kind = "same-shape"
 reason = "four corners: the SDK tier cannot depend on the compositor's foundation crate"
-
-[[allow]]
-left = "gnoblin-std::ResizeEdge"
-right = "gnoblin-types::Edge"
-kind = "same-shape"
-reason = "four edges: the SDK tier cannot depend on the compositor's foundation crate"
 
 [[allow]]
 left = "gnoblin-tree-client::Decoder"
@@ -2401,12 +2383,13 @@ kind = "same-name"
 reason = "the SDK generator's `Scalar` is an ABI number or handle type; the std library's is a style scalar value"
 
 [[allow]]
-left = "gnoblin-std::Shape"
+left = "gnoblin-std-impl::Shape"
 right = "xtask::Shape"
 kind = "same-name"
 reason = "the SDK generator's `Shape` is what an ABI record field is to a script; the std SDK's is a layout geometry"
 
 [[allow]]
+
 left = "gnoblin-std-impl::Pt"
 right = "gnoblin-types::PointF"
 kind = "same-shape"
@@ -2447,3 +2430,15 @@ left = "gnoblin-std::SplitMode"
 right = "gnoblin-std-impl::SplitDirMode"
 kind = "same-shape"
 reason = "the SDK's name for an option of the dwindle and the library's reading of it; the SDK cannot share a type with the library it links"
+
+[[allow]]
+left = "gnoblin-std-impl::Sides"
+right = "gnoblin-wayland::Edges"
+kind = "same-shape"
+reason = "four booleans for the sides of a window a resize moves; the compositor's edges name what a client asked to resize, the library's what its own resize drag moves, and neither can use the other's crate"
+
+[[allow]]
+left = "gnoblin-std::ResizeGrip"
+right = "gnoblin-std-impl::GripChoice"
+kind = "same-shape"
+reason = "the SDK's name for which side or corner a resize takes and the library's reading of it; the SDK cannot share a type with the library it links"

@@ -14,18 +14,20 @@
 //! | `Super+9`, `Super+0` | arc, carousel |
 //! | `Super+equal` | master and stack, master on the right, two masters |
 //! | `Super+space` | floating |
+//! | `Super+m` | the first window's size limits (150 by 120 to 500 by 400) |
 //! | `Super+F1` to `Super+F12` | the dwindle's actions |
 //! | `Super+Left`, `Super+Right`, `Super+Up`, `Super+Down` | strip focus, strip scroll, carousel rotation |
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gnoblin_core::Subscription;
+use gnoblin_core::NodeId;
 use gnoblin_std::prelude::*;
 use gnoblin_std::{
     ArcLayout, Carousel3dLayout, DwindleOptions, ForceSplit, Orientation, Point, PointerSource, Preselect, SplitBias,
-    SplitMode, StripLayout,
+    SplitMode, StripLayout, Subscription,
 };
+use gnoblin_std::{GestureBinding, GestureInfo};
 
 const CHORDS: &[&str] = &[
     "Super+1",
@@ -42,6 +44,7 @@ const CHORDS: &[&str] = &[
     "Super+equal",
     "Super+space",
     "Super+g",
+    "Super+m",
     "Super+F1",
     "Super+F2",
     "Super+F3",
@@ -178,6 +181,16 @@ impl TilingShell {
                 main.set_layout(FloatingLayout::new())?;
                 self.bind(Drags::Floating)
             }
+            "Super+m" => {
+                // The first window may not be resized below 150 by 120 or above 500 by 400.
+                for client in self.std.clients()?.to_vec()? {
+                    if client.window().id().0 == FIRST {
+                        client.set_min_size(Some((150.0, 120.0)))?;
+                        client.set_max_size(Some((500.0, 400.0)))?;
+                    }
+                }
+                Ok(())
+            }
             "Super+g" => {
                 main.set_layout(GridLayout::new())?;
                 self.bind(Drags::Tiling)
@@ -206,6 +219,142 @@ impl TilingShell {
     }
 }
 
+// ---- probes: bindings of the shell's own, for the binding scenarios ----------------------------------------------------------
+//
+// The library runs the matcher; these bindings only make what it decided visible. Each writes numbers into a window's rectangle (a
+// floating workspace leaves them alone), so a script's `step` shows which binding was asked, in what order and how it ended. The
+// TypeScript shell of `tests/tiling.rs` has the same bindings.
+
+/// The window the gesture probes write to: the first one.
+const FIRST: u64 = 40;
+
+fn number(g: &Gnoblin, id: u64, key: &str) -> f64 {
+    g.node(NodeId(id)).get_f64(key).unwrap_or(0.0)
+}
+
+fn put(g: &Gnoblin, id: u64, key: &str, value: f64) {
+    let _ = g.node(NodeId(id)).set(key, value);
+}
+
+fn bump(g: &Gnoblin, id: u64, key: &str, by: f64) {
+    put(g, id, key, number(g, id, key) + by);
+}
+
+/// What a gesture probe writes on each step, by the properties it uses: `starts` counts the starts, `x` follows the progress.
+struct GestureProbe {
+    g: Gnoblin,
+    trigger: &'static str,
+    starts: &'static str,
+    /// The sign and offset of the progress it writes.
+    sign: f64,
+    offset: f64,
+    end_by: f64,
+    cancel_by: f64,
+}
+
+impl GestureProbe {
+    fn follow(&self, event: &GestureInfo) {
+        put(
+            &self.g,
+            FIRST,
+            "x",
+            self.offset + self.sign * (event.progress * 1000.0).round(),
+        );
+    }
+}
+
+impl GestureBinding for GestureProbe {
+    fn trigger(&self) -> String {
+        self.trigger.to_owned()
+    }
+
+    fn on_start(&mut self, _event: &GestureInfo) -> bool {
+        bump(&self.g, FIRST, self.starts, 1.0);
+        true
+    }
+
+    fn on_update(&mut self, event: &GestureInfo) {
+        self.follow(event);
+    }
+
+    fn on_end(&mut self, event: &GestureInfo) {
+        self.follow(event);
+        bump(&self.g, FIRST, "y", self.end_by);
+    }
+
+    fn on_cancel(&mut self, _event: &GestureInfo) {
+        bump(&self.g, FIRST, "y", self.cancel_by);
+    }
+}
+
+/// A drag probe of `Super+Button2`. `A` has the higher priority and declines a window titled `B`; `B` takes what is left. `A` moves the
+/// window it pressed along x, `B` along y.
+struct DragProbe {
+    g: Gnoblin,
+    label: char,
+}
+
+impl DragBinding for DragProbe {
+    fn trigger(&self) -> String {
+        "Super+Button2".to_owned()
+    }
+
+    fn priority(&self) -> f64 {
+        if self.label == 'A' { 5.0 } else { 0.0 }
+    }
+
+    fn on_start(&mut self, event: &DragEvent) -> bool {
+        let Some(client) = &event.client else {
+            return false;
+        };
+        self.label == 'B' || client.window().title().unwrap_or_default() != "B"
+    }
+
+    fn on_update(&mut self, event: &DragEvent) {
+        let Some(client) = &event.client else {
+            return;
+        };
+        let (key, value) = if self.label == 'A' {
+            ("x", event.position.x)
+        } else {
+            ("y", event.position.y)
+        };
+        put(&self.g, client.window().id().0, key, value);
+    }
+
+    fn on_end(&mut self, event: &DragEvent) {
+        if let Some(client) = &event.client {
+            bump(&self.g, client.window().id().0, "width", 1.0);
+        }
+    }
+}
+
+fn bind_probes(std: &Std, g: &Gnoblin) -> gnoblin_std::Result<()> {
+    let gesture = |trigger, starts, sign, offset, end_by, cancel_by| GestureProbe {
+        g: g.clone(),
+        trigger,
+        starts,
+        sign,
+        offset,
+        end_by,
+        cancel_by,
+    };
+    std.bind_gesture(gesture("Swipe3Left", "width", 1.0, 0.0, 10.0, 1000.0))?;
+    std.bind_gesture(gesture("Swipe3Right", "height", -1.0, 5000.0, 20.0, 2000.0))?;
+    // No direction, four fingers: the gesture a window closes under.
+    std.bind_gesture(gesture("Swipe4", "width", 1.0, 10000.0, 30.0, 3000.0))?;
+    // Two bindings of one chord: the higher priority is asked first, and one that declines leaves the drag to the other.
+    std.bind_drag(DragProbe {
+        g: g.clone(),
+        label: 'B',
+    })?;
+    std.bind_drag(DragProbe {
+        g: g.clone(),
+        label: 'A',
+    })?;
+    Ok(())
+}
+
 #[gnoblin::main]
 fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
     let std = g.std()?;
@@ -220,6 +369,15 @@ fn main(g: &Gnoblin) -> gnoblin_std::Result<()> {
         bound: Cell::new(Drags::Nothing),
     });
     shell.bind(Drags::Tiling)?;
+    bind_probes(&shell.std, g)?;
+    // A second binding of one chord at one priority is refused: the matcher could not choose.
+    match shell.std.bind_drag(DragProbe {
+        g: g.clone(),
+        label: 'A',
+    }) {
+        Err(error) => g.log(&format!("duplicate binding refused: {error}")),
+        Ok(_) => g.log("duplicate binding accepted"),
+    }
     for chord in CHORDS {
         let shell = Rc::clone(&shell);
         g.bind(chord, move || {

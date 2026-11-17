@@ -771,7 +771,7 @@ mod tests {
                     abi::layouts::ValueShape::Enum(_) => Some(LayoutValue::Enum(number as u32)),
                     _ => Some(LayoutValue::Number(number)),
                 },
-                Initial::None => None,
+                Initial::None | Initial::Text(_) => None,
             };
             if let Some(declared) = declared {
                 assert_eq!(

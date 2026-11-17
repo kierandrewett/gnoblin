@@ -153,6 +153,8 @@ fn native(script: &str) -> Steps {
     assert_eq!(code, 0, "{stdout}\n{stderr}");
     assert!(stderr.contains("tiling shell is running"), "{stderr}");
     assert!(!stderr.contains("cannot"), "{stderr}");
+    assert!(stderr.contains("duplicate binding refused"), "{stderr}");
+    assert!(!stderr.contains("duplicate binding accepted"), "{stderr}");
     assert!(!stdout.contains("bad script line"), "{stdout}");
     assert_eq!(num(&stdout, "core_stats", "panics"), 0, "{stdout}");
     parse(&stdout)
@@ -189,6 +191,7 @@ fn world() -> FakeCompositor {
 /// The TypeScript shell with the chords of `shell-tiling`.
 const SOURCE: &str = r#"
 import "gnoblin-std";
+import { GestureBinding, PointerDragBinding } from "gnoblin-core";
 import {
     Workspace, MasterStackLayout, DwindleLayout, StripLayout, ArcLayout, Carousel3dLayout, FloatingLayout, GridLayout,
 } from "gnoblin-std";
@@ -233,7 +236,45 @@ g.chords = {
     "Super+Right": () => strip?.focusRight(ws),
     "Super+Up": () => strip?.scrollTo(300),
     "Super+Down": () => new Carousel3dLayout().rotate(ws, 1),
+    "Super+m": () => {
+        const c = ws.clients.at(0) as any;
+        c.minSize = { width: 150, height: 120 };
+        c.maxSize = { width: 500, height: 400 };
+    },
 };
+
+// Bindings of the shell's own, for the binding scenarios: each writes numbers into a window's rectangle (a floating workspace leaves
+// them alone), so a step shows which binding was asked, in what order and how it ended. `shell-tiling` has the same ones.
+const input = gnoblin.input.primary;
+const first = () => ws.clients.at(0) as any;
+const put = (client: any, patch: object) => { client.bounds = { ...client.bounds, ...patch }; };
+class GProbe extends GestureBinding {
+    starts: string; sign: number; offset: number; endBy: number; cancelBy: number;
+    constructor(trigger: string, starts: string, sign: number, offset: number, endBy: number, cancelBy: number) {
+        super({ id: trigger, trigger });
+        this.starts = starts; this.sign = sign; this.offset = offset; this.endBy = endBy; this.cancelBy = cancelBy;
+    }
+    follow(e: any) { put(first(), { x: this.offset + this.sign * Math.round(e.progress * 1000) }); }
+    onStart(_e: any) { const c = first(); put(c, { [this.starts]: c.bounds[this.starts] + 1 }); return {}; }
+    onUpdate(e: any) { this.follow(e); }
+    onEnd(e: any) { this.follow(e); const c = first(); put(c, { y: c.bounds.y + this.endBy }); }
+    onCancel() { const c = first(); put(c, { y: c.bounds.y + this.cancelBy }); }
+}
+input.bind("Swipe3Left", new GProbe("Swipe3Left", "width", 1, 0, 10, 1000));
+input.bind("Swipe3Right", new GProbe("Swipe3Right", "height", -1, 5000, 20, 2000));
+input.bind("Swipe4", new GProbe("Swipe4", "width", 1, 10000, 30, 3000));
+class DProbe extends PointerDragBinding {
+    label: string;
+    constructor(label: string, priority: number) {
+        super({ id: label, trigger: "Super+MouseMiddle+Drag", priority });
+        this.label = label;
+    }
+    onStart(e: any) { return e.client && (this.label === "B" || e.client.title !== "B") ? {} : false; }
+    onUpdate(e: any) { if (e.client) put(e.client, this.label === "A" ? { x: e.position.x } : { y: e.position.y }); }
+    onEnd(e: any) { if (e.client) put(e.client, { width: e.client.bounds.width + 1 }); }
+}
+input.bind("Super+MouseMiddle+Drag", new DProbe("B", 0));
+input.bind("Super+MouseMiddle+Drag", new DProbe("A", 5));
 "#;
 
 fn observe(comp: &FakeCompositor, id: u64) -> Obs {
@@ -352,6 +393,12 @@ fn reference(script: &str) -> Steps {
                     shell.frame().expect("a frame");
                 }
                 comp.pointer_chord(claim, &claim_text, last, from, at);
+                settle(&mut shell);
+            }
+            ["gesture", kind, fingers, phase, ..] => {
+                let fingers: i64 = fingers.parse().unwrap_or(3);
+                let claim = comp.gesture_claim(kind, fingers);
+                comp.gesture(claim, kind, fingers, phase, (real(4), real(5)), real(6), real(7));
                 settle(&mut shell);
             }
             ["place", ..] => {
@@ -578,4 +625,87 @@ fn a_window_moved_or_resized_by_the_pointer_matches_typescript() {
     script.push_str("drag Super+Button3 900,100 -4000,4000 end\nstep resized_min 40\n");
     script.push_str("drag Super+Button1 900,100 800,300 cancel\nstep cancelled 40\n");
     same(&script);
+}
+
+// ---- bindings of the shell's own: priorities, decline, gestures, a window that closes ------------------------------------------
+
+/// A floating workspace with the first window at the top left and a second one of the title `B` near the middle.
+fn floating_world() -> String {
+    String::from(
+        "focus 40\nchord Super+space\ncreate 41 B\nplace 40 0 0 200 200\nplace 41 400 400 200 200\nstep placed 40 41\n",
+    )
+}
+
+#[test]
+fn two_bindings_on_one_chord_are_asked_by_priority_and_a_decline_leaves_the_drag_to_the_next() {
+    let mut script = floating_world();
+    // The press is on window 40: `A` (priority 5) takes it and moves it along x; its end counts in the width.
+    script.push_str("drag Super+Button2 100,100 150,120 end\nstep a_takes 40 41\n");
+    // The press is on window 41, whose title `A` declines: `B` takes it and moves it along y.
+    script.push_str("drag Super+Button2 450,450 470,500 end\nstep b_takes 40 41\n");
+    // A drag that stays under the threshold starts nothing.
+    script.push_str("drag Super+Button2 100,100 102,101 end\nstep too_short 40 41\n");
+    // A drag that is cancelled is cancelled on the binding that took it, which does nothing of its own.
+    script.push_str("drag Super+Button2 100,100 160,120 cancel\nstep cancelled 40 41\n");
+    let steps = same(&script);
+    assert_eq!(
+        rect(&steps, "a_takes", 40).map(|r| (r[0], r[2])),
+        Some((150.0, 201.0)),
+        "A took it"
+    );
+    assert_eq!(
+        rect(&steps, "b_takes", 41).map(|r| (r[1], r[2])),
+        Some((500.0, 201.0)),
+        "B took it"
+    );
+}
+
+#[test]
+fn a_directed_gesture_starts_when_its_direction_is_known_and_only_the_matching_binding_runs() {
+    let mut script = floating_world();
+    script.push_str("seat pointer_x 50\nseat pointer_y 50\n");
+    // Under 12 units a swipe has no direction yet: nothing starts.
+    script.push_str("gesture swipe 3 begin 0 0 1 0\ngesture swipe 3 update -4 1 1 0\nstep undecided 40 41\n");
+    script.push_str("gesture swipe 3 update -20 2 1 0\nstep left_started 40 41\n");
+    script.push_str("gesture swipe 3 update -100 5 1 0\ngesture swipe 3 end -120 5 1 0\nstep left_end 40 41\n");
+    // Rightwards: the other binding, from the start.
+    script.push_str("gesture swipe 3 begin 0 0 1 0\ngesture swipe 3 update 30 0 1 0\ngesture swipe 3 end 40 0 1 0\nstep right_end 40 41\n");
+    // A gesture the compositor cancels ends on the binding that took it.
+    script.push_str("gesture swipe 3 begin 0 0 1 0\ngesture swipe 3 update -50 0 1 0\ngesture swipe 3 cancel -50 0 1 0\nstep cancelled 40 41\n");
+    let steps = same(&script);
+    let (x, y) = rect(&steps, "left_end", 40).map(|r| (r[0], r[1])).expect("window 40");
+    assert_eq!(
+        (x, y),
+        (300.0, 10.0),
+        "the left binding followed 0.3 of a swipe and ended"
+    );
+}
+
+#[test]
+fn a_gesture_is_cancelled_when_the_window_under_it_closes_as_in_typescript() {
+    let mut script = floating_world();
+    // The pointer is on window 41; four fingers, no direction: the binding takes the gesture at once.
+    script.push_str("seat pointer_x 450\nseat pointer_y 450\ngesture swipe 4 begin 0 0 1 0\ngesture swipe 4 update 100 0 1 0\nstep running 40 41\n");
+    script.push_str("destroy 41\nstep closed 40 41\n");
+    // What the fingers do after that reaches nobody.
+    script.push_str("gesture swipe 4 update 200 0 1 0\ngesture swipe 4 end 200 0 1 0\nstep after 40 41\n");
+    let steps = same(&script);
+    let y = rect(&steps, "after", 40).map(|r| r[1]).expect("window 40");
+    assert_eq!(y, 3000.0, "the cancel arrived once, and the end never did");
+}
+
+#[test]
+fn a_resize_stops_at_the_limits_the_client_has_as_in_typescript() {
+    let mut script =
+        String::from("focus 40\nchord Super+space\nplace 40 300 200 400 300\nchord Super+m\nstep limited 40\n");
+    // Grown past the largest size: the bottom right follows the pointer until 500 by 400.
+    script.push_str("drag Super+Button3 690,490 900,700 end\nstep capped 40\n");
+    // Shrunk past the smallest size.
+    script.push_str("drag Super+Button3 790,590 100,100 end\nstep floored 40\n");
+    // The top left corner stops at a limit too, and leaves the opposite corner where it was.
+    script.push_str("drag Super+Button3 305,205 0,0 end\nstep top_left_capped 40\n");
+    script.push_str("drag Super+Button3 100,100 600,500 end\nstep top_left_floored 40\n");
+    let steps = same(&script);
+    assert_eq!(rect(&steps, "capped", 40).map(|r| (r[2], r[3])), Some((500.0, 400.0)));
+    assert_eq!(rect(&steps, "floored", 40).map(|r| (r[2], r[3])), Some((150.0, 120.0)));
 }

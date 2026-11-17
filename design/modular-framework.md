@@ -1627,6 +1627,36 @@ the behaviour, which is unchanged (the 13 scenarios of `tiling.rs` are equal, ex
   `Std::ring` replaces the free function `ring`. The `Layout` trait and the vtable stay for layouts a shell writes. Unit tests of the SDK check
   that every name a wrapper sends is declared and that a default wrapper sends the table's defaults.
 
+- **Bindings, in the library too.** The press, threshold, start-or-decline and cancel rules of `bind_drag`, and the direction and progress
+  rules of `bind_gesture`, moved out of the SDK with the layouts (`crates/gnoblin-std-impl/src/bindings/`; ports of
+  `data/js/gnoblin-core/input/{pointer,gesture}.ts`). `binding_drag` and `binding_gesture` take a trigger, a priority and a callback;
+  `binding_builtin` starts a drag the library runs itself, `STD_BINDING_MOVE`, `RESIZE`, `SWAP` or `SPLIT_RESIZE`, with the options
+  `gnoblin_std_abi::layouts::BINDING_KINDS` declares (`trigger`, `priority`, `snap`, `snap_margin`, `grip`). `remove` ends any of them. The
+  frame-inset-aware move, the size-limit-aware resize, the floating rectangle, the edge snap, the tile swap and the divider drag are
+  therefore the library's, and so are the callbacks' events (`GnoblinStdDragEvent`, `GnoblinStdGestureEvent`, with `progress` and `way`).
+- **Two bindings on one trigger.** One claim serves every binding of a chord or of a finger count. They are asked by priority (higher first)
+  and then by registration; a binding that declines leaves the drag or gesture to the next, and one whose threshold is not reached yet makes
+  the ones after it wait; two of one trigger and one priority are refused with `E_BUSY`, as the TypeScript matcher refuses them.
+- **A window that closes.** A drag or gesture that pressed it is cancelled once, on the binding that took it; a binding that is removed
+  while it runs a drag is cancelled too. The TypeScript matcher does the same (`cancelOn`, `cancelBy`).
+- **The SDK.** `DragBinding` and `GestureBinding` stay the traits for bindings a shell writes; `Std::bind_drag` takes any `IntoDragBinding`
+  (the trait or one of the four library drags, whose types only name a kind and its options) and `Std::bind_gesture` is a trampoline over
+  `binding_gesture`. The algorithm functions the SDK used to export (`clamp_axis`, `constrain_rect`, `resized_rect`, `edge_zone`,
+  `SnapZone::rect`, the gesture trigger parser and the decision constants) are gone.
+- **Proof.** `tests/tiling.rs` holds 17 scenarios equal to the TypeScript std, exactly: the 13 of 22.7, now run on the library's bindings
+  and layouts; two bindings on one chord (priority, a decline falling through, a drag under the threshold, a cancel); a directed swipe
+  (undecided under 12 units, then the matching binding only, its end and a cancel); a gesture cancelled when the window under it closes;
+  and a resize stopped by the limits a client has (`Client::set_min_size` against `client.minSize`). The fixture also checks that a
+  duplicate binding is refused. Unit tests hold the library's own rules (wire checks, the gesture rules, the move, resize and divider
+  arithmetic, every kind's algorithm).
+- **Not done, with reasons.** (1) The TypeScript library activates a layout's bindings while the layout is the workspace's; here a shell binds
+  the drags it wants (the fixture rebinds when it switches kind), because a binding is not yet an attribute of a built-in layout kind.
+  (2) Frame inset is not compared with TypeScript: there the inset is the answer of its `Decorations` module, which draws the frames, and no
+  script can supply one without it; the native inset is held by the unit tests of `client_state.rs` and `fit.rs`, and the inset-aware move
+  by its arithmetic. (3) `WorkspaceSlideBinding` still waits for the animation lane's transitions to be reachable from a binding. (4) A
+  drag's click path (a press that never became a drag, which TypeScript hands to a click binding) has no native counterpart: no std
+  binding is a click.
+
 ## 23. Implementation notes, M6.1 to M6.4
 
 What the JsRuntime lane built, where it differs from sections 5.10, 6, 8.2 and 10.2, and what is still missing.

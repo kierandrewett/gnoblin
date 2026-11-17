@@ -71,21 +71,17 @@ pub use animation::{
 };
 pub use api::{Stats, Std};
 pub use bindings::{
-    ClientMoveBinding, ClientResizeBinding, ClientSwapBinding, DRAG_STRIP, DRAG_THRESHOLD, DragBinding, DragConstraint,
-    DragEvent, Grip, MIN_SIZE, Point, ResizeCorner, ResizeEdge, ResizeGrip, SplitResizeBinding, clamp_axis,
-    constrain_rect, resized_rect,
+    ClientMoveBinding, ClientResizeBinding, ClientSwapBinding, DRAG_THRESHOLD, DragBinding, DragConstraint, DragEvent,
+    IntoDragBinding, Point, ResizeCorner, ResizeGrip, SplitResizeBinding,
 };
 pub use builtin::{BuiltinLayout, LayoutValue};
 pub use client::{AsClient, Client, FramePolicy};
-pub use client_state::{FrameInset, SNAP_MARGIN, SnapZone, edge_zone};
+pub use client_state::{FrameInset, SnapZone};
 pub use collection::{ClientListener, Collection, CollectionListener, Member};
 pub use desktop::{GnoblinStdExt, OutputPolicy, PerOutput, WorkspacePolicy};
 pub use emitter::{Emitter, Listener};
 pub use error::{Error, ErrorKind, Result};
-pub use gesture::{
-    GestureBinding, GestureDirection, GestureInfo, GestureStage, GestureTrigger, PINCH_COMMIT, PINCH_DECIDE,
-    PINCH_TRAVEL, SWIPE_COMMIT, SWIPE_DECIDE, SWIPE_TRAVEL,
-};
+pub use gesture::{GestureBinding, GestureDirection, GestureInfo, GestureStage, PINCH_COMMIT, SWIPE_COMMIT};
 pub use layout::{FloatPlacement, FloatingLayout, IntoLayout, Layout, LayoutContext, Placement, inset_rect};
 pub use layouts::{
     ArcLayout, Carousel3dLayout, Columns, DwindleLayout, DwindleOptions, ForceSplit, GridFill, GridLayout, KioskLayout,

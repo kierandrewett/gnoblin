@@ -32,9 +32,10 @@
 //! `cargo xtask dist-check` exists to catch.
 
 mod animation;
-mod camera;
+mod bindings;
 mod builtin;
 mod builtin_api;
+mod camera;
 mod client_state;
 mod collection;
 mod desks;

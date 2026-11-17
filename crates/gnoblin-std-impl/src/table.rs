@@ -297,6 +297,12 @@ unsafe extern "C" fn remove(reg: GnoblinStdReg) -> i32 {
     call("remove", || {
         let std = state::owner_of(reg)
             .ok_or_else(|| Fail::stale(format!("registration {reg} was removed or never existed")))?;
+        if std.router.borrow().has(reg) {
+            // A binding: its drag in flight is cancelled and its `drop_user` runs now.
+            crate::bindings::remove(&std, reg);
+            std.drain();
+            return Ok(abi::E_OK);
+        }
         let data = {
             let mut st = std.st.borrow_mut();
             let data = st.regs.remove(&reg);
@@ -974,6 +980,9 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     workspace_layout_act: crate::builtin_api::workspace_layout_act,
     workspace_layout_kind: crate::builtin_api::workspace_layout_kind,
     layout_ring: crate::builtin_api::layout_ring,
+    binding_drag: crate::bindings::binding_drag,
+    binding_gesture: crate::bindings::binding_gesture,
+    binding_builtin: crate::bindings::binding_builtin,
 };
 
 #[cfg(test)]

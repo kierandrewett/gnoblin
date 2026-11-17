@@ -330,7 +330,11 @@ fn subscribe(std: &Rc<Std>, g: &Gnoblin) -> Res<()> {
     let created = Rc::clone(std);
     g.on_client_created(move |window| handle(&created, |st| st.client_created(window.id().0)))?;
     let destroyed = Rc::clone(std);
-    g.on_client_destroyed(move |window| handle(&destroyed, |st| st.client_destroyed(window.id().0)))?;
+    g.on_client_destroyed(move |window| {
+        handle(&destroyed, |st| st.client_destroyed(window.id().0));
+        // A drag or a gesture that pressed the window is cancelled once it is gone.
+        crate::bindings::client_closed(&destroyed, window.id().0);
+    })?;
     for property in WINDOW_PROPERTIES {
         let changed = Rc::clone(std);
         g.on_window_property_changed(property, move |window, value| {

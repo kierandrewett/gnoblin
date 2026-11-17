@@ -213,6 +213,9 @@ pub(crate) struct State {
 /// One generation's library state and the flags that decide what runs when.
 pub(crate) struct Std {
     pub(crate) st: RefCell<State>,
+    /// The pointer and gesture bindings, their claims and the drags in flight (`bindings/`). Kept apart from the state: a binding's
+    /// callback runs while a drag is being routed, and the state must be free for it.
+    pub(crate) router: RefCell<crate::bindings::BindingRouter>,
     /// A turn is posted and has not run.
     pub(crate) scheduled: Cell<bool>,
     /// Notices are being delivered.
@@ -223,6 +226,7 @@ impl Std {
     pub(crate) fn new(state: State) -> Std {
         Std {
             st: RefCell::new(state),
+            router: RefCell::new(crate::bindings::BindingRouter::default()),
             scheduled: Cell::new(false),
             draining: Cell::new(false),
         }
@@ -348,6 +352,8 @@ pub(crate) fn retire(ctx: GnoblinCtx) {
     let std = OPEN.with(|open| open.borrow_mut().remove(&ctx));
     RETIRED.with(|retired| retired.borrow_mut().insert(ctx));
     if let Some(std) = std {
+        // Each binding's `drop_user` runs while the shell's code is still mapped.
+        crate::bindings::retire(&std);
         let (regs, workspaces, graveyard) = {
             let mut st = std.st.borrow_mut();
             st.notices.clear();
@@ -374,7 +380,7 @@ pub(crate) fn owner_of(reg: Id) -> Option<Rc<Std>> {
     OPEN.with(|open| {
         open.borrow()
             .values()
-            .find(|std| std.st.borrow().regs.contains_key(&reg))
+            .find(|std| std.st.borrow().regs.contains_key(&reg) || std.router.borrow().has(reg))
             .cloned()
     })
 }

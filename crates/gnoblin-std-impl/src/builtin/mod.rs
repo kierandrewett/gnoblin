@@ -18,7 +18,7 @@ mod wire;
 
 use gnoblin_core::Rect;
 use gnoblin_std_abi::GnoblinStdSplit;
-use gnoblin_std_abi::layouts::{Initial, LayoutKindDesc, LowerBound, ValueDesc, ValueShape};
+use gnoblin_std_abi::layouts::{Initial, LayoutKindDesc, LowerBound, OptionDesc, ValueDesc, ValueShape};
 use gnoblin_std_abi::{STD_AXIS_X, STD_AXIS_Y, STD_SPLIT_CROSS};
 
 use crate::error::{Fail, Res};
@@ -26,7 +26,7 @@ use crate::layout::{LayoutContext, Placement};
 use crate::state::NodeId;
 
 pub(crate) use carousel::{RingShape, ring_slots};
-pub(crate) use wire::{encode_value, read_args, read_one, read_options, read_text};
+pub(crate) use wire::{encode_value, read_args, read_one, read_options, read_set, read_text};
 
 /// A value of an option, an argument or an answer.
 #[derive(Clone, Debug, PartialEq)]
@@ -36,41 +36,43 @@ pub(crate) enum Val {
     /// A number, a whole number, or the number of an enumeration member.
     Num(f64),
     Node(u64),
+    Text(String),
 }
 
-/// The values of a kind's options, in the order the table declares them.
+/// The values of the options of a kind of layout or binding, in the order the table declares them.
 #[derive(Clone, Debug)]
 pub(crate) struct OptionSet {
-    kind: &'static LayoutKindDesc,
+    owner: &'static str,
+    descs: &'static [OptionDesc],
     values: Vec<Val>,
 }
 
 impl OptionSet {
-    /// The defaults the table declares.
+    /// The defaults a layout kind declares.
+    #[cfg(test)]
     pub(crate) fn defaults(kind: &'static LayoutKindDesc) -> OptionSet {
-        let values = kind
-            .options
+        OptionSet::of(kind.name, kind.options)
+    }
+
+    /// The defaults the table declares for the options `descs` of `owner`.
+    pub(crate) fn of(owner: &'static str, descs: &'static [OptionDesc]) -> OptionSet {
+        let values = descs
             .iter()
             .map(|option| match option.default {
                 Initial::None => Val::None,
                 Initial::Bool(value) => Val::Bool(value),
                 Initial::Number(value) => Val::Num(value),
+                Initial::Text(value) => Val::Text(value.to_owned()),
             })
             .collect();
-        OptionSet { kind, values }
+        OptionSet { owner, descs, values }
     }
 
     fn index(&self, name: &str) -> usize {
-        self.kind
-            .options
+        self.descs
             .iter()
             .position(|option| option.name == name)
-            .unwrap_or_else(|| {
-                unreachable!(
-                    "{} has no option `{name}`: the algorithm and the table disagree",
-                    self.kind.name
-                )
-            })
+            .unwrap_or_else(|| unreachable!("{} has no option `{name}`: the code and the table disagree", self.owner))
     }
 
     /// Sets the option `name` to a value that is checked already.

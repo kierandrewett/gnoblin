@@ -10,15 +10,15 @@ use gnoblin_core::Rect;
 use gnoblin_core_abi::GnoblinStr;
 use gnoblin_std_abi::{
     GnoblinStdOption, GnoblinStdRect, GnoblinStdRingSlot, STD_VALUE_BOOL, STD_VALUE_ENUM, STD_VALUE_NODE,
-    STD_VALUE_NONE, STD_VALUE_NUMBER,
+    STD_VALUE_NONE, STD_VALUE_NUMBER, STD_VALUE_TEXT,
 };
 
 use crate::api::Std;
 use crate::error::{Error, ErrorKind, Result};
 use crate::workspace::Workspace;
 
-/// One value of a built-in layout's option, argument or answer.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// One value of a built-in layout's or binding's option, argument or answer.
+#[derive(Clone, Debug, PartialEq)]
 pub enum LayoutValue {
     /// Absent: an optional option that is not set, or an action that answers nothing.
     None,
@@ -30,10 +30,12 @@ pub enum LayoutValue {
     Enum(u32),
     /// A window, by node id.
     Node(u64),
+    /// Text (a binding's trigger).
+    Text(String),
 }
 
 impl LayoutValue {
-    fn record(self, name: &str) -> GnoblinStdOption {
+    pub(crate) fn record(&self, name: &str) -> GnoblinStdOption {
         let mut raw = GnoblinStdOption {
             size: size_of::<GnoblinStdOption>() as u32,
             kind: STD_VALUE_NONE,
@@ -48,19 +50,23 @@ impl LayoutValue {
             LayoutValue::None => {}
             LayoutValue::Bool(flag) => {
                 raw.kind = STD_VALUE_BOOL;
-                raw.flag = u32::from(flag);
+                raw.flag = u32::from(*flag);
             }
             LayoutValue::Number(number) => {
                 raw.kind = STD_VALUE_NUMBER;
-                raw.number = number;
+                raw.number = *number;
             }
             LayoutValue::Enum(member) => {
                 raw.kind = STD_VALUE_ENUM;
-                raw.number = f64::from(member);
+                raw.number = f64::from(*member);
             }
             LayoutValue::Node(node) => {
                 raw.kind = STD_VALUE_NODE;
-                raw.node = node;
+                raw.node = *node;
+            }
+            LayoutValue::Text(text) => {
+                raw.kind = STD_VALUE_TEXT;
+                raw.text = GnoblinStr::borrowed(text);
             }
         }
         raw
@@ -77,17 +83,17 @@ impl LayoutValue {
     }
 
     /// The number, when it is one.
-    pub fn number(self) -> Option<f64> {
+    pub fn number(&self) -> Option<f64> {
         match self {
-            LayoutValue::Number(number) => Some(number),
+            LayoutValue::Number(number) => Some(*number),
             _ => None,
         }
     }
 
     /// The boolean, when it is one.
-    pub fn flag(self) -> Option<bool> {
+    pub fn flag(&self) -> Option<bool> {
         match self {
-            LayoutValue::Bool(flag) => Some(flag),
+            LayoutValue::Bool(flag) => Some(*flag),
             _ => None,
         }
     }

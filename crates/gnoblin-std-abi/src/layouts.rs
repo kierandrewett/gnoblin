@@ -15,8 +15,9 @@
 //! Adding a kind, an option or an action is one entry here and the algorithm in `gnoblin-std-impl`; no SDK is touched.
 
 use crate::{
-    STD_BUILTIN_ARC, STD_BUILTIN_CAROUSEL, STD_BUILTIN_DWINDLE, STD_BUILTIN_GRID, STD_BUILTIN_MASTER_STACK,
-    STD_BUILTIN_MONOCLE, STD_BUILTIN_STRIP,
+    STD_BINDING_MOVE, STD_BINDING_RESIZE, STD_BINDING_SPLIT_RESIZE, STD_BINDING_SWAP, STD_BUILTIN_ARC,
+    STD_BUILTIN_CAROUSEL, STD_BUILTIN_DWINDLE, STD_BUILTIN_GRID, STD_BUILTIN_MASTER_STACK, STD_BUILTIN_MONOCLE,
+    STD_BUILTIN_STRIP,
 };
 
 /// One member of an enumeration option: its text name, the number that travels, and what it means.
@@ -43,6 +44,8 @@ pub enum ValueShape {
     Enum(&'static [EnumMember]),
     /// `STD_VALUE_NODE`: the id of a window.
     Node,
+    /// `STD_VALUE_TEXT`: UTF-8 text.
+    Text,
 }
 
 /// How low a number may go.
@@ -65,6 +68,8 @@ pub enum Initial {
     Bool(bool),
     /// A number, or the number of an enumeration member.
     Number(f64),
+    /// Text.
+    Text(&'static str),
 }
 
 /// The type of one option, argument or result.
@@ -642,6 +647,126 @@ impl LayoutKindDesc {
     }
 }
 
+/// How a resize drag picks the side or corner it takes hold of.
+pub const RESIZE_GRIP: &[EnumMember] = &[
+    member("quadrant", 0, "The corner of the quadrant the press landed in."),
+    member("nearest", 1, "The edge nearest the press."),
+    member("top_left", 2, "Always the top left corner."),
+    member("top_right", 3, "Always the top right corner."),
+    member("bottom_left", 4, "Always the bottom left corner."),
+    member("bottom_right", 5, "Always the bottom right corner."),
+];
+
+/// A pointer binding the library runs itself, so a shell of any language gets the same drags.
+#[derive(Clone, Copy, Debug)]
+pub struct BindingKindDesc {
+    /// The `STD_BINDING_*` number.
+    pub id: u32,
+    /// The name in `snake_case`.
+    pub name: &'static str,
+    /// What the binding does.
+    pub doc: &'static str,
+    /// The options. Every binding has `trigger` and `priority` first.
+    pub options: &'static [OptionDesc],
+}
+
+const fn text(default: &'static str) -> Initial {
+    Initial::Text(default)
+}
+
+/// Declares the options of a pointer binding: the chord it claims and where it stands among the bindings of that chord.
+macro_rules! binding_options {
+    ($trigger:literal $(, $more:expr)* $(,)?) => {
+        &[
+            option(
+                "trigger",
+                value(ValueShape::Text),
+                text($trigger),
+                "The pointer chord that starts the binding: modifiers and a button, `Super+Button1`.",
+            ),
+            option(
+                "priority",
+                value(ValueShape::Number),
+                Initial::Number(0.0),
+                "Among the bindings of one chord the higher priority is asked first, and one that declines the drag leaves it to \
+                 the next. Two bindings of one chord and one priority are refused.",
+            ),
+            $($more),*
+        ]
+    };
+}
+
+const MOVE: BindingKindDesc = BindingKindDesc {
+    id: STD_BINDING_MOVE,
+    name: "move",
+    doc: "Drags the window under the pointer with it. The window's frame is held inside the work area as the seat's \
+          `drag_constraint` says, the rectangle it floats at is remembered, and a drop on a screen edge snaps the window \
+          there when the seat's `edge_tiling` is on. A window that is fullscreen or maximised declines.",
+    options: binding_options!(
+        "Super+Button1",
+        option(
+            "snap",
+            value(ValueShape::Bool),
+            Initial::Bool(true),
+            "Whether a drop on a screen edge snaps the window (left and right take half the work area, top all of it).",
+        ),
+        option(
+            "snap_margin",
+            at_least(ValueShape::Number, 0.0),
+            Initial::Number(4.0),
+            "How near a screen edge, in pixels, the pointer must be for a drop to snap the window.",
+        ),
+    ),
+};
+
+const RESIZE: BindingKindDesc = BindingKindDesc {
+    id: STD_BINDING_RESIZE,
+    name: "resize",
+    doc: "Resizes the window under the pointer by the side or corner the grip names. A resize stops at the client's own minimum \
+          and maximum size (100 by 80 below when it has none) and the floating rectangle is remembered.",
+    options: binding_options!(
+        "Super+Button3",
+        option(
+            "grip",
+            value(ValueShape::Enum(RESIZE_GRIP)),
+            Initial::Number(0.0),
+            "Which side or corner a resize takes hold of.",
+        ),
+    ),
+};
+
+const SWAP: BindingKindDesc = BindingKindDesc {
+    id: STD_BINDING_SWAP,
+    name: "swap",
+    doc: "Swaps a tiled window with the tile it is dropped on: the pointer takes hold of a tile and the release decides.",
+    options: binding_options!("Super+Button1"),
+};
+
+const SPLIT_RESIZE: BindingKindDesc = BindingKindDesc {
+    id: STD_BINDING_SPLIT_RESIZE,
+    name: "split_resize",
+    doc: "Moves the divider of a tiling layout nearest the press by as far as the pointer travels, so the tiles on both sides \
+          follow it while the pointer is down. The layout decides which divider that is; one with no divider (a grid, a monocle) \
+          declines. A release keeps the ratio, a cancel puts it back. When the layout hands back a second divider on the other \
+          axis the same drag moves both.",
+    options: binding_options!("Super+Button3"),
+};
+
+/// Every pointer binding the library runs itself, in the order of its `STD_BINDING_*` number.
+pub const BINDING_KINDS: &[BindingKindDesc] = &[MOVE, RESIZE, SWAP, SPLIT_RESIZE];
+
+/// The binding kind with the number `id`.
+pub fn binding_kind(id: u32) -> Option<&'static BindingKindDesc> {
+    BINDING_KINDS.iter().find(|kind| kind.id == id)
+}
+
+impl BindingKindDesc {
+    /// The option called `name`.
+    pub fn option(&self, name: &str) -> Option<&'static OptionDesc> {
+        self.options.iter().find(|option| option.name == name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -650,6 +775,15 @@ mod tests {
     fn kinds_are_numbered_in_order_from_one() {
         for (index, kind) in LAYOUT_KINDS.iter().enumerate() {
             assert_eq!(kind.id as usize, index + 1, "{}", kind.name);
+        }
+    }
+
+    #[test]
+    fn bindings_are_numbered_from_one_and_start_with_a_trigger_and_a_priority() {
+        for (index, kind) in BINDING_KINDS.iter().enumerate() {
+            assert_eq!(kind.id as usize, index + 1, "{}", kind.name);
+            assert_eq!(kind.options[0].name, "trigger", "{}", kind.name);
+            assert_eq!(kind.options[1].name, "priority", "{}", kind.name);
         }
     }
 
@@ -687,7 +821,7 @@ mod tests {
                     (_, Initial::None) => {
                         assert!(option.value.optional, "{}.{} has no default", kind.name, option.name)
                     }
-                    (ValueShape::Bool, Initial::Bool(_)) => {}
+                    (ValueShape::Bool, Initial::Bool(_)) | (ValueShape::Text, Initial::Text(_)) => {}
                     (ValueShape::Number | ValueShape::Int, Initial::Number(n)) => match option.value.min {
                         LowerBound::Free => {}
                         LowerBound::AtLeast(min) => assert!(n >= min, "{}.{}", kind.name, option.name),

@@ -91,32 +91,6 @@ impl SnapZone {
             _ => None,
         }
     }
-
-    /// The rectangle a window tiles to in this zone of `area`. The halves are whole pixels.
-    pub fn rect(self, area: Rect) -> Rect {
-        let half = (area.width / 2.0).floor();
-        match self {
-            SnapZone::Left => Rect::new(area.x, area.y, half, area.height),
-            SnapZone::Right => Rect::new(area.x + half, area.y, area.width - half, area.height),
-            SnapZone::Top => area,
-        }
-    }
-}
-
-/// How near an edge the pointer must be to name it, in pixels.
-pub const SNAP_MARGIN: f64 = 4.0;
-
-/// The edge of `area` the pointer at (`x`, `y`) is within `margin` pixels of, if any. Left and right win over top at the corners.
-pub fn edge_zone(x: f64, y: f64, area: Rect, margin: f64) -> Option<SnapZone> {
-    if x - area.x <= margin {
-        Some(SnapZone::Left)
-    } else if area.x + area.width - x <= margin {
-        Some(SnapZone::Right)
-    } else if y - area.y <= margin {
-        Some(SnapZone::Top)
-    } else {
-        None
-    }
 }
 
 fn rect_out(rect: Rect) -> GnoblinStdRect {
@@ -350,24 +324,5 @@ mod tests {
             (96.0, 70.0, 306.0, 233.0)
         );
         assert_eq!(inset.shrink(frame), content);
-    }
-
-    #[test]
-    fn the_halves_of_the_work_area_are_whole_pixels() {
-        let area = Rect::new(0.0, 0.0, 1001.0, 800.0);
-        assert_eq!(SnapZone::Left.rect(area).width, 500.0);
-        assert_eq!(SnapZone::Right.rect(area).x, 500.0);
-        assert_eq!(SnapZone::Right.rect(area).width, 501.0);
-        assert_eq!(SnapZone::Top.rect(area), area);
-    }
-
-    #[test]
-    fn the_edge_nearest_the_pointer_names_the_zone_and_left_and_right_win_the_corners() {
-        let area = Rect::new(0.0, 0.0, 1000.0, 800.0);
-        assert_eq!(edge_zone(2.0, 400.0, area, SNAP_MARGIN), Some(SnapZone::Left));
-        assert_eq!(edge_zone(998.0, 400.0, area, SNAP_MARGIN), Some(SnapZone::Right));
-        assert_eq!(edge_zone(500.0, 3.0, area, SNAP_MARGIN), Some(SnapZone::Top));
-        assert_eq!(edge_zone(1.0, 1.0, area, SNAP_MARGIN), Some(SnapZone::Left));
-        assert_eq!(edge_zone(500.0, 400.0, area, SNAP_MARGIN), None);
     }
 }
