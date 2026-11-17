@@ -1,0 +1,24 @@
+[package]
+name = "gnoblin-fixture-runtime-test"
+description = "Test fixture: the smallest language runtime. It runs `.gnotest` scripts whose first line says what the runtime does, so the loader's dispatch, reload and error paths are proven without an interpreter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "runtime_test"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Only the ABI's types: a runtime reaches the core through the table it is handed, so it links nothing of it.
+gnoblin-core-abi = { path = "../../../gnoblin-core-abi" }
+
+# The workspace's lint table with `unsafe_code` at `deny`: the runtime's one export is a `#[no_mangle]` item and its entry points
+# call through the C table.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

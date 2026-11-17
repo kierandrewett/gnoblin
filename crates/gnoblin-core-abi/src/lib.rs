@@ -56,6 +56,16 @@ pub const LINK_NAME: &str = "gnoblin-core";
 /// The symbol a native shell exports.
 pub const SHELL_ENTRY_SYMBOL: &str = "gnoshell_entry_v1";
 
+/// The symbol a language runtime exports.
+pub const RUNTIME_ENTRY_SYMBOL: &str = "gnoruntime_entry_v1";
+
+/// The file name of the runtime for `extension` (`js`): `libgnoblin-runtime-js.so`. A runtime is found by this name, in the
+/// runtime directories, when no built-in extension names it.
+#[must_use]
+pub fn runtime_file_name(extension: &str) -> String {
+    format!("libgnoblin-runtime-{extension}.so")
+}
+
 /// The direct exports of the core library, one per line. The stub library, `dist-check` and the header read this.
 pub const EXPORTS_TEXT: &str = include_str!("../exports.txt");
 
@@ -186,8 +196,8 @@ mod tests {
     #[test]
     fn the_next_minor_table_is_one_function_longer() {
         let table = size_of::<GnoblinApi>();
-        // `node_adopt` is the last function of the ABI 1.0 table.
-        let base = offset_of!(GnoblinApi, node_adopt) + size_of::<unsafe extern "C" fn()>();
+        // `tree_link_fd` is the last function of the ABI 1.0 table.
+        let base = offset_of!(GnoblinApi, tree_link_fd) + size_of::<unsafe extern "C" fn()>();
         if cfg!(feature = "next-minor") {
             assert_eq!(ABI_MINOR, 1);
             assert_eq!(table, base + size_of::<usize>());

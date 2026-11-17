@@ -22,7 +22,7 @@ use gnoblin_core_abi::{
 use crate::guard::{guard, set_code_error};
 use crate::listen::{self, NodeFilter};
 use crate::registry::{self, Registering};
-use crate::{catalog, log, memory, procs, tree, values};
+use crate::{catalog, link, log, memory, procs, tree, values};
 
 /// The table of this core, built at compile time. Its `size` is what lets a caller built against another minor probe it.
 pub(crate) static API: GnoblinApi = GnoblinApi {
@@ -72,6 +72,11 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     state_put: api_state_put,
     state_get: api_state_get,
     node_adopt: api_node_adopt,
+    tree_link_open: api_tree_link_open,
+    tree_link_attach: api_tree_link_attach,
+    tree_link_send: api_tree_link_send,
+    tree_link_recv: api_tree_link_recv,
+    tree_link_fd: api_tree_link_fd,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -658,4 +663,28 @@ unsafe extern "C" fn api_uptime_ms() -> u64 {
 /// Logs that a table was handed out, once per request: useful when a shell fails to find a core of the right major.
 pub(crate) fn note_table_request(want_major: u32, built_minor: u32) {
     log::debug!("table requested for ABI {want_major}.{built_minor}");
+}
+
+unsafe extern "C" fn api_tree_link_open(ctx: GnoblinCtx, mode: u32) -> i32 {
+    guard(abi::E_PANIC, "tree_link_open", || link::open(ctx, mode))
+}
+
+unsafe extern "C" fn api_tree_link_attach(ctx: GnoblinCtx, version: u64) -> i32 {
+    guard(abi::E_PANIC, "tree_link_attach", || link::attach(ctx, version))
+}
+
+unsafe extern "C" fn api_tree_link_send(ctx: GnoblinCtx, bytes: *const u8, len: usize) -> i32 {
+    // SAFETY: the table's contract passes `bytes` as `len` readable bytes.
+    guard(abi::E_PANIC, "tree_link_send", || unsafe {
+        link::send(ctx, bytes, len)
+    })
+}
+
+unsafe extern "C" fn api_tree_link_recv(ctx: GnoblinCtx, out: *mut GnoblinBuf) -> i32 {
+    // SAFETY: the table's contract passes `out` as a writable buffer.
+    guard(abi::E_PANIC, "tree_link_recv", || unsafe { link::recv(ctx, out) })
+}
+
+unsafe extern "C" fn api_tree_link_fd(ctx: GnoblinCtx) -> i32 {
+    guard(-1, "tree_link_fd", || link::fd(ctx))
 }

@@ -26,24 +26,26 @@ use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _, OpenOptionsExt as 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
-use gnoblin_core_abi::{self as abi, GnoblinApi, GnoblinCtx, GnoblinShellEntry, GnoblinShellStats};
+use gnoblin_core_abi::{self as abi, GnoblinApi, GnoblinCtx, GnoblinShellEntry, GnoblinShellStats, GnoblinStr};
 
 use crate::generation::{GenerationHost, GenerationId, GenerationInfo, GenerationState};
 use crate::guard::{PANICS, code_name, last_error, payload_text, set_error};
 use crate::handle::{KIND_CTX, encode};
 use crate::log;
 use crate::retire::{Retained, RetainedStats, RetainedWhy, RetireList, RoomError};
+use crate::runtime::{self, LoadedRuntime, ModuleKind};
 
 unsafe extern "C" {
-    fn dlopen(path: *const c_char, flags: c_int) -> *mut c_void;
-    fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
+    pub(crate) fn dlopen(path: *const c_char, flags: c_int) -> *mut c_void;
+    pub(crate) fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
     fn dlclose(handle: *mut c_void) -> c_int;
     fn dlerror() -> *const c_char;
 }
 
-const RTLD_NOW: c_int = 2;
-const RTLD_LOCAL: c_int = 0;
+pub(crate) const RTLD_NOW: c_int = 2;
+pub(crate) const RTLD_LOCAL: c_int = 0;
 
 /// The optional export of a module that can say it is safe to unload: no thread, callback or TLS destructor of its own is
 /// still running. `extern "C" fn() -> u32`, non-zero for yes.
@@ -113,7 +115,28 @@ pub enum LoadError {
         /// The minor the module was built against.
         built_minor: u32,
     },
-    /// The module's `init` returned a failure.
+    /// The path is not a library and has no extension a runtime could be chosen by.
+    NoLanguage {
+        /// The path as asked for.
+        path: PathBuf,
+    },
+    /// The script's language has no runtime library in any runtime directory.
+    NoRuntime(Box<MissingRuntime>),
+    /// The library in a runtime directory exports no `gnoruntime_entry_v1`.
+    NotARuntime {
+        /// The library.
+        path: PathBuf,
+    },
+    /// The runtime was built for another ABI major.
+    RuntimeAbiMajor {
+        /// The library.
+        path: PathBuf,
+        /// The major it was built for.
+        built: u32,
+        /// The minor it was built against.
+        built_minor: u32,
+    },
+    /// The module's `init` (or the runtime's `start`) returned a failure.
     Init {
         /// The module path as asked for.
         path: PathBuf,
@@ -122,6 +145,19 @@ pub enum LoadError {
         /// The text the shell or the core left in the last-error slot.
         message: String,
     },
+}
+
+/// What a script's language needed and where it looked: the payload of [`LoadError::NoRuntime`], boxed so the error stays small.
+#[derive(Debug)]
+pub struct MissingRuntime {
+    /// The script as asked for.
+    pub path: PathBuf,
+    /// The language the extension or the caller chose.
+    pub language: String,
+    /// The file name looked for.
+    pub file: String,
+    /// The directories looked in, in order.
+    pub searched: Vec<PathBuf>,
 }
 
 impl From<RoomError> for LoadError {
@@ -183,6 +219,54 @@ impl fmt::Display for LoadError {
                 abi::ABI_MAJOR,
                 abi::ABI_MINOR
             ),
+            LoadError::NoLanguage { path } => write!(
+                f,
+                "{}: cannot tell how to run this file: it is not a shared library and has no extension. Known extensions: {}; \
+                 name the language with `language = \"...\"` in the launcher file",
+                path.display(),
+                runtime::known_extensions()
+            ),
+            LoadError::NoRuntime(missing) => {
+                let MissingRuntime {
+                    path,
+                    language,
+                    file,
+                    searched,
+                } = missing.as_ref();
+                let places = if searched.is_empty() {
+                    "no runtime directory is known".to_owned()
+                } else {
+                    searched
+                        .iter()
+                        .map(|dir| dir.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+                write!(
+                    f,
+                    "{}: no runtime for `{language}` scripts: `{file}` was not found in {places}. Known extensions: {}; \
+                     another language needs its runtime library in one of those directories, or name the language with \
+                     `language = \"...\"` in the launcher file",
+                    path.display(),
+                    runtime::known_extensions()
+                )
+            }
+            LoadError::NotARuntime { path } => write!(
+                f,
+                "{}: not a gnoblin runtime: the library exports no `gnoruntime_entry_v1`",
+                path.display()
+            ),
+            LoadError::RuntimeAbiMajor {
+                path,
+                built,
+                built_minor,
+            } => write!(
+                f,
+                "{}: incompatible ABI: this runtime was built for gnoblin ABI {built}.{built_minor}; the installed core is {}.{}",
+                path.display(),
+                abi::ABI_MAJOR,
+                abi::ABI_MINOR
+            ),
             LoadError::Init { path, code, message } => {
                 write!(f, "{}: init failed ({}): {message}", path.display(), code_name(*code))
             }
@@ -228,6 +312,8 @@ pub struct NativeLoader<E: 'static> {
     api: &'static GnoblinApi,
     retained: RetireList,
     copy_seq: AtomicU64,
+    /// The runtime libraries opened so far. A runtime stays open for the life of the process.
+    pub(crate) runtimes: Mutex<Vec<Arc<LoadedRuntime>>>,
 }
 
 impl<E: 'static> NativeLoader<E> {
@@ -238,6 +324,7 @@ impl<E: 'static> NativeLoader<E> {
             api,
             retained: RetireList::new(),
             copy_seq: AtomicU64::new(1),
+            runtimes: Mutex::new(Vec::new()),
         }
     }
 
@@ -305,7 +392,7 @@ impl<E: 'static> NativeLoader<E> {
     }
 
     /// Copies `path` to a fresh private file. `create_new` is `O_CREAT | O_EXCL`, so a planted file or symlink is an error.
-    fn unique_copy(&self, path: &Path) -> Result<PathBuf, LoadError> {
+    pub(crate) fn unique_copy(&self, path: &Path) -> Result<PathBuf, LoadError> {
         let dir = Self::scratch_dir()?;
         let name = path
             .file_name()
@@ -335,6 +422,116 @@ impl<E: 'static> NativeLoader<E> {
     /// [`LoadError`]: the retire list is full, the copy or `dlopen` failed, the file is not a shell or was built for
     /// another ABI major, or `init` failed.
     pub fn load(&'static self, path: &Path, copying: Copying, reload_count: u32) -> Result<NativeModule<E>, LoadError> {
+        self.load_as(path, None, copying, reload_count)
+    }
+
+    /// Loads the module at `path` into a staged generation, whatever it is: a native shell, or a script a runtime library runs
+    /// (`design/modular-framework.md` section 6). `language` is a language the caller named (the launcher file's `language =`),
+    /// which wins over what the file's content and extension say.
+    ///
+    /// A native shell is copied, opened and initialised as [`load`](Self::load) describes. A script's runtime library is found by
+    /// the script's extension, opened once and kept for the life of the process, and its `start` is called with the context made
+    /// for this generation: nothing of the script's is mapped, so a script generation adds nothing to the retire list however
+    /// often it reloads.
+    ///
+    /// # Errors
+    ///
+    /// [`LoadError`]: everything of [`load`](Self::load), and for a script that no runtime is installed for its language, that the
+    /// runtime library is not a runtime or was built for another ABI major, or that `start` failed.
+    pub fn load_as(
+        &'static self,
+        path: &Path,
+        language: Option<&str>,
+        copying: Copying,
+        reload_count: u32,
+    ) -> Result<NativeModule<E>, LoadError> {
+        let head = runtime::head_of(path);
+        match runtime::detect(path, &head, language) {
+            Err(_) => Err(LoadError::NoLanguage { path: path.to_owned() }),
+            Ok(ModuleKind::Native) => self.load_native(path, copying, reload_count),
+            Ok(ModuleKind::Script { language, extension }) => {
+                self.load_script(path, &language, &extension, reload_count)
+            }
+        }
+    }
+
+    /// Stages a generation of the script at `path` in the runtime of `language`.
+    fn load_script(
+        &'static self,
+        path: &Path,
+        language: &str,
+        extension: &str,
+        reload_count: u32,
+    ) -> Result<NativeModule<E>, LoadError> {
+        if matches!(fs::metadata(path), Err(error) if error.kind() == io::ErrorKind::NotFound) {
+            return Err(LoadError::Missing { path: path.to_owned() });
+        }
+        let runtime = self.runtime_for(language, path)?;
+        let generation = self.host.new_generation(GenerationInfo {
+            module_path: path.display().to_string(),
+            state_dir: String::new(),
+            language: runtime::language_constant(&runtime.name, extension),
+            reload_count,
+            isolate: false,
+        });
+        let ctx = encode(KIND_CTX, generation);
+        let text = path.as_os_str().as_bytes();
+        let script = GnoblinStr {
+            ptr: text.as_ptr(),
+            len: text.len(),
+        };
+        // The text a failing `start` leaves must be its own, never an earlier failure's.
+        set_error(String::new());
+        // SAFETY: calling the runtime's `start` with the core's table, the context made for it and the script's path, which
+        // lives through the call, on the thread that becomes the shell thread. A runtime written outside the SDK may unwind,
+        // so the call is contained.
+        let outcome = catch_unwind(AssertUnwindSafe(|| unsafe {
+            (runtime.entry().start)(core::ptr::from_ref(self.api), ctx, script)
+        }));
+        let code = match outcome {
+            Ok(code) => code,
+            Err(payload) => {
+                set_error(format!(
+                    "the runtime's start unwound across the ABI: {}",
+                    payload_text(payload.as_ref())
+                ));
+                PANICS.fetch_add(1, Ordering::Relaxed);
+                abi::E_PANIC
+            }
+        };
+        if code != abi::E_OK {
+            let mut message = last_error();
+            if message.is_empty() {
+                message = format!(
+                    "the {} runtime returned {} without saying why",
+                    runtime.name,
+                    code_name(code)
+                );
+            }
+            self.host.finish_retire(generation);
+            return Err(LoadError::Init {
+                path: path.to_owned(),
+                code,
+                message,
+            });
+        }
+        Ok(NativeModule {
+            loader: self,
+            generation,
+            ctx,
+            label: runtime.name.clone(),
+            backing: Backing::Script { runtime },
+            path: path.to_owned(),
+            ended: AtomicBool::new(false),
+        })
+    }
+
+    fn load_native(
+        &'static self,
+        path: &Path,
+        copying: Copying,
+        reload_count: u32,
+    ) -> Result<NativeModule<E>, LoadError> {
         self.retained.check_room()?;
         if matches!(fs::metadata(path), Err(error) if error.kind() == io::ErrorKind::NotFound) {
             return Err(LoadError::Missing { path: path.to_owned() });
@@ -434,26 +631,39 @@ impl<E: 'static> NativeLoader<E> {
             loader: self,
             generation,
             ctx,
-            handle: handle as usize,
-            entry,
+            backing: Backing::Native {
+                handle: handle as usize,
+                entry,
+                mapped_bytes,
+            },
             label,
             path: path.to_owned(),
-            mapped_bytes,
             ended: AtomicBool::new(false),
         })
     }
 }
 
-/// One loaded generation of a shell: a mapped library, its entry descriptor and its context.
+/// What a generation runs on.
+enum Backing {
+    /// A native shell: its own mapped library and entry descriptor.
+    Native {
+        handle: usize,
+        entry: &'static GnoblinShellEntry,
+        mapped_bytes: u64,
+    },
+    /// A script: the runtime library that runs it, shared by every generation of every script of its language.
+    Script { runtime: Arc<LoadedRuntime> },
+}
+
+/// One loaded generation of a shell: its context, and what runs it (a mapped library and its entry descriptor, or the
+/// runtime that runs its script).
 pub struct NativeModule<E: 'static> {
     loader: &'static NativeLoader<E>,
     generation: GenerationId,
     ctx: GnoblinCtx,
-    handle: usize,
-    entry: &'static GnoblinShellEntry,
+    backing: Backing,
     label: String,
     path: PathBuf,
-    mapped_bytes: u64,
     /// Whether the entry's `shutdown` and the shutdown hooks have run.
     ended: AtomicBool,
 }
@@ -481,7 +691,18 @@ impl<E: 'static> NativeModule<E> {
 
     /// The ABI minor the module says it was built against.
     pub fn built_minor(&self) -> u32 {
-        self.entry.abi_minor_built
+        match &self.backing {
+            Backing::Native { entry, .. } => entry.abi_minor_built,
+            Backing::Script { runtime } => runtime.entry().abi_minor_built,
+        }
+    }
+
+    /// The runtime that runs this generation's script, `None` for a native shell.
+    pub fn runtime(&self) -> Option<&LoadedRuntime> {
+        match &self.backing {
+            Backing::Native { .. } => None,
+            Backing::Script { runtime } => Some(runtime),
+        }
     }
 
     /// Where the generation is in its life.
@@ -498,16 +719,46 @@ impl<E: 'static> NativeModule<E> {
     ///
     /// The generation is not staged.
     pub fn activate(&self) -> Result<(), String> {
+        // A runtime makes its staged generation the serving one first: when it cannot, nothing of the generation is active.
+        if let Backing::Script { runtime } = &self.backing
+            && let Some(activate) = runtime.entry().activate
+        {
+            set_error(String::new());
+            // SAFETY: `activate` is the runtime's function, in a library that stays mapped, called with the context it was made for.
+            let code = catch_unwind(AssertUnwindSafe(|| unsafe { activate(self.ctx) })).unwrap_or_else(|payload| {
+                set_error(format!(
+                    "the runtime's activate unwound across the ABI: {}",
+                    payload_text(payload.as_ref())
+                ));
+                PANICS.fetch_add(1, Ordering::Relaxed);
+                abi::E_PANIC
+            });
+            if code != abi::E_OK {
+                let message = last_error();
+                return Err(if message.is_empty() {
+                    format!(
+                        "the {} runtime could not activate the generation ({})",
+                        runtime.name,
+                        code_name(code)
+                    )
+                } else {
+                    message
+                });
+            }
+        }
         self.loader.host.activate(self.generation)
     }
 
     /// The counters the shell keeps about itself, when it provides them.
     pub fn shell_stats(&self) -> Option<GnoblinShellStats> {
+        let Backing::Native { entry, .. } = &self.backing else {
+            return None;
+        };
         let end = core::mem::offset_of!(GnoblinShellEntry, stats) + size_of::<usize>();
-        if !abi::table_has(self.entry.size, end) {
+        if !abi::table_has(entry.size, end) {
             return None;
         }
-        let stats = self.entry.stats?;
+        let stats = entry.stats?;
         let mut out = GnoblinShellStats {
             registered: 0,
             calls: 0,
@@ -521,7 +772,32 @@ impl<E: 'static> NativeModule<E> {
 
     /// Runs queued posts and delivers queued events through the table, as the shell thread does. Returns the number of
     /// callbacks run, or a negative error code.
+    ///
+    /// A script whose runtime has its own loop (`turn`) gets the turn first, waiting up to `timeout_ms` for what the runtime owns,
+    /// and then the core's queue without waiting: posts, timers and published signals still run. A negative result from the
+    /// runtime is returned as it is, so the host's loop sees the shell end.
     pub fn dispatch(&self, timeout_ms: u32) -> i32 {
+        if let Backing::Script { runtime } = &self.backing
+            && let Some(turn) = runtime.entry().turn
+        {
+            // SAFETY: `turn` is the runtime's function, in a library that stays mapped, called on the shell thread with the
+            // context it was made for.
+            let ran =
+                catch_unwind(AssertUnwindSafe(|| unsafe { turn(self.ctx, timeout_ms) })).unwrap_or_else(|payload| {
+                    set_error(format!(
+                        "the runtime's turn unwound across the ABI: {}",
+                        payload_text(payload.as_ref())
+                    ));
+                    PANICS.fetch_add(1, Ordering::Relaxed);
+                    abi::E_PANIC
+                });
+            if ran < 0 {
+                return ran;
+            }
+            // SAFETY: `dispatch` is a function of the table this module was initialised with.
+            let queued = unsafe { (self.loader.api.dispatch)(self.ctx, 0) };
+            return if queued < 0 { queued } else { ran.saturating_add(queued) };
+        }
         // SAFETY: `dispatch` is a function of the table this module was initialised with.
         unsafe { (self.loader.api.dispatch)(self.ctx, timeout_ms) }
     }
@@ -536,8 +812,14 @@ impl<E: 'static> NativeModule<E> {
             return;
         }
         self.loader.host.run_shutdown_hooks(self.generation);
-        // SAFETY: `shutdown` is the entry's function, in code that is still mapped, called with the context it was made for.
-        let shutdown = catch_unwind(AssertUnwindSafe(|| unsafe { (self.entry.shutdown)(self.ctx) }));
+        // SAFETY: `shutdown` is the entry's function (a shell's, or the runtime's that runs the script), in code that is still
+        // mapped, called with the context it was made for.
+        let shutdown = catch_unwind(AssertUnwindSafe(|| unsafe {
+            match &self.backing {
+                Backing::Native { entry, .. } => (entry.shutdown)(self.ctx),
+                Backing::Script { runtime } => (runtime.entry().shutdown)(self.ctx),
+            }
+        }));
         if let Err(payload) = shutdown {
             PANICS.fetch_add(1, Ordering::Relaxed);
             log::error!(
@@ -549,22 +831,30 @@ impl<E: 'static> NativeModule<E> {
     }
 
     /// Retires the generation: [`end`](Self::end)s it if it has not ended, removes every registration (running each
-    /// `drop_user`), and marks it so every later call from its code returns `E_RETIRED`. The library stays mapped,
-    /// is put on the retire list, and the retirement is logged with the running count. Returns how many registrations
-    /// were removed; retiring twice does nothing the second time.
+    /// `drop_user`), and marks it so every later call from its code returns `E_RETIRED`. A native shell's library stays mapped,
+    /// is put on the retire list, and the retirement is logged with the running count; a script has no library of its own, so
+    /// nothing is kept. Returns how many registrations were removed; retiring twice does nothing the second time.
     pub fn retire(&self) -> usize {
         if self.state() == GenerationState::Retired {
             return 0;
         }
         self.end();
         let removed = self.loader.host.finish_retire(self.generation);
-        let stats = self.keep_mapped(RetainedWhy::Retired);
-        log::info!(
-            generation = self.generation,
-            "retired generation {} ({}): {removed} registration(s) removed, library NOT dlclosed; {stats}",
-            self.generation,
-            self.label
-        );
+        match self.keep_mapped(RetainedWhy::Retired) {
+            Some(stats) => log::info!(
+                generation = self.generation,
+                "retired generation {} ({}): {removed} registration(s) removed, library NOT dlclosed; {stats}",
+                self.generation,
+                self.label
+            ),
+            None => log::info!(
+                generation = self.generation,
+                "retired generation {} ({} script {}): {removed} registration(s) removed",
+                self.generation,
+                self.label,
+                self.path.display()
+            ),
+        }
         removed
     }
 
@@ -574,25 +864,54 @@ impl<E: 'static> NativeModule<E> {
         if self.state() == GenerationState::Retired {
             return 0;
         }
+        if let Backing::Script { runtime } = &self.backing
+            && let Some(abandon) = runtime.entry().abandon
+        {
+            // SAFETY: `abandon` is the runtime's function, in a library that stays mapped, called with the context it was made for.
+            if let Err(payload) = catch_unwind(AssertUnwindSafe(|| unsafe { abandon(self.ctx) })) {
+                PANICS.fetch_add(1, Ordering::Relaxed);
+                log::error!("abandon of {} panicked: {}", self.label, payload_text(payload.as_ref()));
+            }
+        }
         let removed = self.loader.host.finish_retire(self.generation);
-        let stats = self.keep_mapped(RetainedWhy::Abandoned);
-        log::info!(
-            generation = self.generation,
-            "abandoned generation {} ({}): {removed} registration(s) removed, library NOT dlclosed; {stats}",
-            self.generation,
-            self.label
-        );
+        match self.keep_mapped(RetainedWhy::Abandoned) {
+            Some(stats) => log::info!(
+                generation = self.generation,
+                "abandoned generation {} ({}): {removed} registration(s) removed, library NOT dlclosed; {stats}",
+                self.generation,
+                self.label
+            ),
+            None => log::info!(
+                generation = self.generation,
+                "abandoned generation {} ({} script {}): {removed} registration(s) removed",
+                self.generation,
+                self.label,
+                self.path.display()
+            ),
+        }
         removed
     }
 
-    fn keep_mapped(&self, why: RetainedWhy) -> RetainedStats {
-        self.loader
-            .keep_mapped(self.handle, &self.path, &self.label, why, self.mapped_bytes)
+    /// Puts a native shell's library on the retire list. A script's generation maps nothing of its own, so there is nothing to
+    /// keep and no stats to report.
+    fn keep_mapped(&self, why: RetainedWhy) -> Option<RetainedStats> {
+        match &self.backing {
+            Backing::Native {
+                handle, mapped_bytes, ..
+            } => Some(
+                self.loader
+                    .keep_mapped(*handle, &self.path, &self.label, why, *mapped_bytes),
+            ),
+            Backing::Script { .. } => None,
+        }
     }
 
-    /// The `dlopen` handle of the module's mapping, for a test that compares mappings.
+    /// The `dlopen` handle of the module's mapping (for a script, of its runtime's), for a test that compares mappings.
     pub fn library_handle(&self) -> usize {
-        self.handle
+        match &self.backing {
+            Backing::Native { handle, .. } => *handle,
+            Backing::Script { runtime } => runtime.handle(),
+        }
     }
 
     /// Unmaps the library of a retired generation, when it is provably unreachable. Off by default: the policy must allow
@@ -608,6 +927,10 @@ impl<E: 'static> NativeModule<E> {
     /// The module and the reason it stays mapped.
     pub fn try_unload(self) -> Result<RetainedStats, (Self, UnloadRefused)> {
         let refuse = |module: Self, why: UnloadRefused| Err((module, why));
+        // A script generation has no library of its own, and its runtime serves every other generation: nothing to unmap.
+        let Backing::Native { handle, .. } = self.backing else {
+            return refuse(self, UnloadRefused::NotProven);
+        };
         if !self.loader.retained.policy().allow_unload {
             return refuse(self, UnloadRefused::NotAllowed);
         }
@@ -618,17 +941,17 @@ impl<E: 'static> NativeModule<E> {
         if held > 0 {
             return refuse(self, UnloadRefused::StillHeld(held));
         }
-        if !self.reports_unload_safe() {
+        if !Self::reports_unload_safe(handle) {
             return refuse(self, UnloadRefused::NotProven);
         }
-        let Some(retained) = self.loader.retained.release(self.handle) else {
+        let Some(retained) = self.loader.retained.release(handle) else {
             // Not on the list: it never retired through this module (or was already given back).
             return refuse(self, UnloadRefused::NotRetired);
         };
         // SAFETY: the handle is a live `dlopen` handle of this module, the only one (a unique copy), and the generation
         // holds no registration, post, thread or TLS destructor by the module's own report. The module is consumed here,
         // so its entry descriptor is not used again.
-        let rc = unsafe { dlclose(self.handle as *mut c_void) };
+        let rc = unsafe { dlclose(handle as *mut c_void) };
         let stats = self.loader.retained.stats();
         log::info!(
             generation = self.generation,
@@ -640,9 +963,9 @@ impl<E: 'static> NativeModule<E> {
     }
 
     /// Whether the module exports `gnoshell_unload_safe` and it answers yes.
-    fn reports_unload_safe(&self) -> bool {
-        // SAFETY: `self.handle` is a live handle from `dlopen`, and the symbol name is a NUL-terminated literal.
-        let symbol = unsafe { dlsym(self.handle as *mut c_void, UNLOAD_SAFE_SYMBOL.as_ptr()) };
+    fn reports_unload_safe(handle: usize) -> bool {
+        // SAFETY: `handle` is a live handle from `dlopen`, and the symbol name is a NUL-terminated literal.
+        let symbol = unsafe { dlsym(handle as *mut c_void, UNLOAD_SAFE_SYMBOL.as_ptr()) };
         if symbol.is_null() {
             return false;
         }
@@ -654,7 +977,7 @@ impl<E: 'static> NativeModule<E> {
 }
 
 /// The text of the last `dlerror`.
-fn dl_error() -> String {
+pub(crate) fn dl_error() -> String {
     // SAFETY: `dlerror` returns null or a NUL-terminated string valid until the next `dl*` call on this thread.
     unsafe {
         let text = dlerror();

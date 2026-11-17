@@ -196,6 +196,7 @@ const LINT_OPT_OUT: &[&str] = &[
     "gnoblin-core",
     "gnoblin-core-abi",
     "gnoblin-fixture-launcher",
+    "gnoblin-fixture-runtime-test",
     "gnoblin-fixture-shell-hot",
     "gnoblin-js",
     "gnoblin-lock-auth",

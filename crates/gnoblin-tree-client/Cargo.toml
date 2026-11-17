@@ -18,6 +18,8 @@ gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-types.workspace = true
+# The byte form of the link a runtime library receives from the core (`relay`) carries effect records as their wire messages.
+prost.workspace = true
 
 [lints]
 workspace = true

@@ -24,6 +24,8 @@
 //! | `dump`          | the tree as the compositor holds it: windows, the shell's nodes, claims, how many nodes were made   |
 //! | `limit:N`       | the retire list refuses a load once `N` libraries are kept                                           |
 //! | `stats`         | the running generation's and every retired generation's counters, and the core's                    |
+//! | `sleep:MS`      | waits `MS` real milliseconds, for a file watcher that runs on the clock and not on the manual one    |
+//! | `writes:ID:KEY` | prints how many times a transaction set property `KEY` of node `ID` since the scene started          |
 //! | `stop`          | ends the shell                                                                                       |
 #![allow(unsafe_code)]
 
@@ -160,6 +162,18 @@ impl ReloadScene {
                 out!("limit {}", host::retired_libraries());
             }
             "stats" => self.stats(),
+            "sleep" => std::thread::sleep(Duration::from_millis(number(argument)?)),
+            "writes" => {
+                let (id, key) = argument.split_once(':').ok_or_else(|| fail("writes takes ID:KEY"))?;
+                let id = number(id)?;
+                let count = self
+                    .comp
+                    .ops()
+                    .iter()
+                    .filter(|op| matches!(op, TxOp::Set { node, key: set, .. } if *node == id && set == key))
+                    .count();
+                out!("writes id={id} key={key} count={count}");
+            }
             "stop" => {
                 let removed = self.shell.stop();
                 out!("stopped removed={removed}");

@@ -2099,3 +2099,9 @@ left = "gnoblin-std::ResizeEdge"
 right = "gnoblin-types::Edge"
 kind = "same-shape"
 reason = "four edges: the SDK tier cannot depend on the compositor's foundation crate"
+
+[[allow]]
+left = "gnoblin-tree-client::Decoder"
+right = "gnoblin-client::FrameReader"
+kind = "same-shape"
+reason = "the relay's decoder walks the bytes of one relayed link message and the owner socket's frame reader walks the bytes of one frame; each is a slice and a position, and the two formats and error types share nothing"

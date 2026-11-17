@@ -107,6 +107,9 @@ struct SessionStageMark {
 pub(crate) struct Session {
     provider: Option<Box<dyn TreeLinkProvider>>,
     tree: Option<TreeSession>,
+    /// The link a language runtime drives itself (`tree_link_open`), instead of the core's own tree session. A shell has one of
+    /// the two.
+    relayed: Option<Box<dyn TreeLink>>,
     processes: Processes,
     claims: BTreeMap<i64, ClaimRecord>,
     next_claim: i64,
@@ -131,6 +134,7 @@ impl Default for Session {
         Self {
             provider: None,
             tree: None,
+            relayed: None,
             processes: Processes::default(),
             claims: BTreeMap::new(),
             next_claim: 0,
@@ -198,6 +202,12 @@ impl Session {
         if self.tree.is_some() {
             return Ok(());
         }
+        if self.relayed.is_some() {
+            return Err((
+                abi::E_BUSY,
+                "tree_attach: this shell drives the compositor's link itself (tree_link_open)".to_owned(),
+            ));
+        }
         let Some(provider) = self.provider.as_ref() else {
             return Err((
                 abi::E_ERR,
@@ -216,6 +226,45 @@ impl Session {
         })?;
         self.tree = Some(tree);
         Ok(())
+    }
+
+    /// Opens the link for a runtime that drives it as bytes. The core does not attach and keeps no mirror for it. A second open
+    /// in the same instance (a reload's generation) finds the link the first one opened and returns it as it is.
+    ///
+    /// # Errors
+    ///
+    /// The ABI code and text: the shell attached through `tree_attach`, there is no provider, or the link would not open.
+    pub(crate) fn open_relayed(&mut self, mode: AttachMode) -> Result<(), (i32, String)> {
+        if self.tree.is_some() {
+            return Err((
+                abi::E_BUSY,
+                "tree_link_open: this shell attached through tree_attach already".to_owned(),
+            ));
+        }
+        if self.relayed.is_some() {
+            return Ok(());
+        }
+        let Some(provider) = self.provider.as_ref() else {
+            return Err((
+                abi::E_ERR,
+                "tree_link_open: this core has no link to a compositor (the host gave it none)".to_owned(),
+            ));
+        };
+        let link = provider
+            .open(mode)
+            .map_err(|error| link_failure("tree_link_open", &error.0))?;
+        self.relayed = Some(link);
+        Ok(())
+    }
+
+    /// The relayed link, when a runtime opened it.
+    pub(crate) fn relayed(&mut self) -> Result<&mut Box<dyn TreeLink>, (i32, String)> {
+        self.relayed.as_mut().ok_or_else(|| {
+            (
+                abi::E_ERR,
+                "the runtime has not opened the link: call tree_link_open first".to_owned(),
+            )
+        })
     }
 
     /// The tree, when the shell has attached.

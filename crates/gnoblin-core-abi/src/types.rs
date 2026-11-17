@@ -149,6 +149,9 @@ abi_consts! {
     pub const LANG_JS: u32 = 3;
     /// `GnoblinCtxInfo.language`: a TypeScript shell.
     pub const LANG_TS: u32 = 4;
+    /// `GnoblinCtxInfo.language`: a script of a language no other constant names, run by a runtime library that handles its
+    /// extension (`libgnoblin-runtime-<extension>.so`).
+    pub const LANG_OTHER: u32 = 5;
 
     /// `GnoblinShellEntry.flags`: the shell runs its own event loop and drives `dispatch` itself.
     pub const SHELL_FLAG_FOREIGN_LOOP: u32 = 1;
@@ -488,6 +491,43 @@ abi_structs! {
         pub label: GnoblinStr,
     }
 
+    /// What a language runtime exports through its one symbol, `gnoruntime_entry_v1`. A runtime is a library that runs scripts
+    /// of one language: the loader opens it once, by the script's extension, and calls `start` for each generation of each
+    /// script. The runtime keeps the interpreter; a reload is a new `start` with a new context while the old one still serves
+    /// (design section 8.2).
+    pub struct GnoblinRuntimeEntry {
+        /// Size of this struct, set by the runtime.
+        pub size: u32,
+        /// The ABI major the runtime was built against.
+        pub abi_major: u32,
+        /// The ABI minor the runtime was built against.
+        pub abi_minor_built: u32,
+        /// Zero.
+        pub flags: u32,
+        /// The runtime's name (`js`), valid for the life of the module.
+        pub name: GnoblinStr,
+        /// The extensions it runs, without dots, separated by spaces (`js mjs ts mts`), valid for the life of the module.
+        pub extensions: GnoblinStr,
+        /// The runtime's version string, with the versions of the engines baked into it. Caches the runtime makes key on it.
+        pub version: GnoblinStr,
+        /// Stages a generation of the script at `script`, on the shell thread, with the context made for it: the first
+        /// generation runs it and serves; a later one evaluates it beside the generation that serves and waits for `activate`.
+        /// Returns `E_OK` or an error code and says why through `set_last_error`; a failed `start` leaves the serving
+        /// generation as it was.
+        pub start: unsafe extern "C" fn(api: *const GnoblinApi, ctx: GnoblinCtx, script: GnoblinStr) -> i32,
+        /// Ends a generation: its listeners and timers are gone when this returns. Runs when the generation retires, after
+        /// its shutdown hooks and before its registrations are removed.
+        pub shutdown: unsafe extern "C" fn(ctx: GnoblinCtx),
+        /// Makes a staged generation the serving one. Absent for a runtime that serves from `start`.
+        pub activate: Option<unsafe extern "C" fn(ctx: GnoblinCtx) -> i32>,
+        /// Throws a staged generation away unserved. Absent for a runtime that has nothing to undo.
+        pub abandon: Option<unsafe extern "C" fn(ctx: GnoblinCtx)>,
+        /// One turn of the runtime's own loop: waits up to `timeout_ms` for work the runtime owns (its connections, its
+        /// timers), does it, and returns the number of callbacks run, or a negative error code when the runtime cannot go on.
+        /// Absent for a runtime that is driven by the core's `dispatch` alone.
+        pub turn: Option<unsafe extern "C" fn(ctx: GnoblinCtx, timeout_ms: u32) -> i32>,
+    }
+
     /// The versioned function table. `size` is the byte size of the table the core filled in; a field is present when
     /// `offset_of(field) + size_of(field) <= size`. Fields are appended in later minors, never moved, retyped or
     /// removed within a major.
@@ -644,6 +684,24 @@ abi_structs! {
         /// destroyed. Nodes made by `write_create`, and nodes the compositor owns (windows, screens, seats), are never
         /// destroyed by a reload. Shell thread.
         pub node_adopt: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, name: *const u8, name_len: usize, flags: u32, out: *mut GnoblinNode) -> i32,
+
+        // ---- the relayed link: a runtime that keeps its own mirror drives the compositor's link as bytes ---------------
+
+        /// Opens the compositor's link for a runtime that keeps its own mirror and replaces `tree_attach` for this shell:
+        /// `mode` is `ATTACH_HOLDER` or `ATTACH_OBSERVER`. The core does not attach; the runtime does, through
+        /// `tree_link_attach`. A shell that attached with `tree_attach` gets `E_BUSY`. Shell thread.
+        pub tree_link_open: unsafe extern "C" fn(ctx: GnoblinCtx, mode: u32) -> i32,
+        /// Sends the attach request over the opened link, with the protocol `version`. Shell thread.
+        pub tree_link_attach: unsafe extern "C" fn(ctx: GnoblinCtx, version: u64) -> i32,
+        /// Sends one transaction over the opened link: `bytes` is a `gnoblin_tree_client::relay` encoding. Shell thread.
+        pub tree_link_send: unsafe extern "C" fn(ctx: GnoblinCtx, bytes: *const u8, len: usize) -> i32,
+        /// Takes everything that arrived on the opened link since the last call, as one `gnoblin_tree_client::relay`
+        /// encoding in `out` (free it with `buf_free`); an empty batch is a valid encoding. It never waits. A failed link is
+        /// `E_ERR` with the reason. Shell thread.
+        pub tree_link_recv: unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinBuf) -> i32,
+        /// A descriptor that turns readable when the link has something to take, duplicated for the caller, who closes it;
+        /// negative when the link has none (and the caller polls). Shell thread.
+        pub tree_link_fd: unsafe extern "C" fn(ctx: GnoblinCtx) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]

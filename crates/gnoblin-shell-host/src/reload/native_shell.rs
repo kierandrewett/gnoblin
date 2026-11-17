@@ -101,6 +101,8 @@ pub struct Reloaded {
 pub struct NativeShell<E: 'static> {
     loader: &'static NativeLoader<E>,
     path: PathBuf,
+    /// The language the launcher file named for the module (`language = "..."`), which wins over its content and extension.
+    language: Option<String>,
     current: Option<NativeModule<E>>,
     /// The generations that retired, oldest first. Their libraries are mapped for good, so keeping the handles costs nothing,
     /// and a test or `gnoblinctl shell status` can read each one's last counters.
@@ -117,11 +119,20 @@ impl<E: 'static> NativeShell<E> {
         Self {
             loader,
             path: path.into(),
+            language: None,
             current: None,
             retired: Vec::new(),
             committed: 0,
             controller,
         }
+    }
+
+    /// Names the language of the module, as a launcher file's `language = "..."` does. Without it the content and the extension
+    /// decide (`runtime::detect`).
+    #[must_use]
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = Some(language.into());
+        self
     }
 
     /// The module path.
@@ -158,9 +169,12 @@ impl<E: 'static> NativeShell<E> {
         if let Some(current) = &self.current {
             return Ok(current.generation());
         }
-        let module = self.loader.load(&self.path, Copying::Unique, 0).inspect_err(|error| {
-            log::error!("{}: the shell did not start: {error}", self.path.display());
-        })?;
+        let module = self
+            .loader
+            .load_as(&self.path, self.language.as_deref(), Copying::Unique, 0)
+            .inspect_err(|error| {
+                log::error!("{}: the shell did not start: {error}", self.path.display());
+            })?;
         if let Err(message) = module.activate() {
             module.abandon();
             let error = LoadError::Init {
@@ -211,7 +225,12 @@ impl<E: 'static> NativeShell<E> {
     pub fn reload(&mut self, trigger: ReloadTrigger) -> Result<Reloaded, ReloadFailure> {
         let running = self.current.as_ref().map(NativeModule::generation);
         log::info!("reloading {} ({trigger})", self.path.display());
-        let staged = match self.loader.load(&self.path, Copying::Unique, self.committed + 1) {
+        let staged = match self.loader.load_as(
+            &self.path,
+            self.language.as_deref(),
+            Copying::Unique,
+            self.committed + 1,
+        ) {
             Ok(staged) => staged,
             Err(error) => return Err(self.failed(trigger, running, ReloadError::Load(error))),
         };

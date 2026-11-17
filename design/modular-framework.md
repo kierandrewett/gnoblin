@@ -1517,3 +1517,81 @@ dist-check` passes `--std-shell` for example 2 in all four trees. A tree without
 - **Real compositor.** Everything above is proven against the fake compositor. The examples run against the real one when Flip lands the
   compositor into `libgnoblin-core.so.1`; the parts most likely to differ are the refusal and resend of placements and the pointer's
   output for a new window.
+
+## 23. Implementation notes, M6.1 to M6.4
+
+What the JsRuntime lane built, where it differs from sections 5.10, 6, 8.2 and 10.2, and what is still missing.
+
+### 23.1 Runtime dispatch in the loader (M6.1)
+
+- **The descriptor.** `GnoblinRuntimeEntry` (`gnoblin-core-abi`) is what `gnoruntime_entry_v1` returns: `abi_major`, `abi_minor_built`, a `name`
+  (`js`), the `extensions` it runs (`js mjs ts mts`, space separated), a `version` string, and `start(api, ctx, script)`, `shutdown(ctx)`
+  and three optional functions: `activate(ctx)`, `abandon(ctx)` and `turn(ctx, timeout_ms)`. The struct starts with `size` and may grow. The
+  design text had `start` and `shutdown` only; the optional three are what make a script a generation of the same lifecycle as a native
+  shell: `activate` and `abandon` are the loader's commit and abandon, `turn` is the runtime's own loop (below). A runtime that has no use
+  for one leaves it absent. `LANG_OTHER` (5) labels the generation of a script whose language has no constant of its own.
+- **Detection** is `gnoblin_shell_host::runtime::detect`, the table of section 6 as a pure function: the language a caller named, else
+  `\x7fELF`, else `.so`, else the known extensions (`.py`, `.js`, `.mjs`, `.ts`, `.mts`), else the runtime library named by the extension. A
+  path with no extension that is not a library is a `NoLanguage` load error that lists the known extensions and the `language =` override.
+  `NativeShell::with_language` is where a launcher file's `language =` goes.
+- **Runtime directories** are `$GNOBLIN_RUNTIME_DIR` and `<core libdir>/gnoblin/`, the second found with `dladdr` on code of the core, so a
+  relocated prefix works. The runtime for `.ts` is `libgnoblin-runtime-js.so` (the extension names the language, the language names the
+  library). A missing runtime is a `NoRuntime` error that says which file it looked for, in which directories, which extensions it knows and
+  how to name a language.
+- **One open runtime, many generations.** A runtime library is opened once, from a unique copy as a native shell is, and stays open for the
+  life of the process: the interpreter it keeps is the shell instance's, and a reload is a new `start` with a new context inside it. This is
+  the one deliberate difference from a native reload, and it is why a script reload adds **nothing** to the retire list: the library is
+  mapped once, and a script generation maps nothing. (A bounded retire list that a script could exhaust would be the wrong rule for a
+  language whose reload is as cheap as a save.) `NativeModule` is one type with two backings; `activate`, `dispatch`, `end`, `retire`,
+  `abandon` and `try_unload` do what each backing needs, and `NativeShell` (`start`, `reload`, `serve_requests`, `stop`) is unchanged for
+  both.
+- **`dispatch` for a runtime with a loop.** The host's loop calls `NativeModule::dispatch(timeout)`. For a script whose runtime exports
+  `turn`, that is the runtime's turn (which waits for what the runtime owns, up to the timeout), then the core's queue without waiting, so
+  posts, timers and published signals still run. A negative turn ends the shell as a negative `dispatch` does.
+- **The test runtime** is `gnoblin-fixture-runtime-test`: `.gnotest` scripts whose first line says what the runtime does. The tests
+  (`crates/gnoblin-core-impl/tests/runtime.rs`) run the reload driver over it: dispatch by extension, the order of `start`, shutdown hook, release, `shutdown`
+  and `activate` through a reload, no library kept however often it reloads, a failed `start` that leaves the serving generation, a panic
+  contained in a runtime, a generation that cannot activate and is abandoned, no runtime for an extension, a library that is not a runtime, a
+  file with no way to run it, a missing script, and a native shell still loading as one.
+
+### 23.2 The relayed link (M6.2)
+
+- **Why the JavaScript runtime does not use the node functions.** Section 10.2 has the natives call `node_get`, `write_*` and the rest in
+  place of the engine's own mirror (D4). The engine's shell is 15 thousand lines over its own mirror, builder and gate, with a suite
+  (`crates/gnoblin-js/tests`, 60 files) that pins what a script sees and writes; moving every native onto the node functions is a rewrite of
+  that suite's subject, and it is not what putting the engine behind the runtime entry needs. The runtime keeps its mirror and the core
+  gives it the compositor's link.
+- **The relay.** Five table functions, appended to the table: `tree_link_open`, `tree_link_attach`, `tree_link_send`, `tree_link_recv` and
+  `tree_link_fd`. The core opens the link its host provided (`TreeLinkProvider`, the in-process queue of the compositor or the fake of a
+  test) and keeps no mirror for a shell that opened it; `tree_attach` and the node functions are for the other kind of shell, and the
+  two are exclusive (`E_BUSY`). What crosses is bytes: `gnoblin_tree_client::relay` encodes a transaction and a batch of incoming messages
+  (a one-byte format number, little-endian numbers, length-prefixed text and lists), because no Rust type crosses the ABI. A decode never
+  panics: a short buffer, an unknown tag, trailing bytes and another format number are errors. The descriptor is a duplicate of the
+  link's wake descriptor that the runtime owns, so its loop sleeps on the compositor's mailbox as the socket role sleeps on its socket.
+- **The loop.** The runtime exports `turn`: wait for the engine's connections or its next timer (at most the host's timeout), run one engine frame, and, when
+  the watcher saw a change, ask the core for a reload with `request_reload`.
+- **Reload goes through the loader.** The engine's role no longer reloads itself in this mode (`JsRoleConfig::external_reload`): the watcher,
+  which knows every module the generation imported, only says that a reload is wanted, and the runtime asks the host for it. The host serves
+  it between turns with `NativeShell::reload`, which calls `start` with a new context: the first `start` boots the shell over the link, a
+  later one evaluates the script in a staging generation beside the serving one and swaps it in only when it evaluated cleanly
+  (`JsRole::reload_now`, the engine's own reload with its rollback mark). `start` therefore stages and commits in one call, and the runtime
+  exports no `activate` or `abandon`: there is nothing between them to undo. The context the link and the log use moves to the new
+  generation when the swap commits, so a failed reload changes nothing; `shutdown` of a generation that a reload has replaced is a no-op,
+  and `shutdown` of the serving one ends the shell. A failed reload comes back through the loader's text: `reload of PATH failed, still
+running generation N: PATH: init failed (E_ERR): FILE:LINE:COLUMN: MESSAGE`, at the line of the `.ts` file the author wrote.
+- **A broken first load** is not a failed `start`: the role keeps its rule that a shell is never left bare, so the stock configuration runs
+  and the diagnostic is logged, exactly as for a `shell.ts` in the configuration directory.
+- **The log.** The log is a per-library singleton, so the engine's lines would be dropped. `gnoblin_log::forward::install` gives the runtime library a
+  subscriber that hands each event to the core's `log` with the component in front (`js: ...`), so the core's filter and record apply.
+- **The version sidecar** (`host_api.rs`) is found beside the prefix of the library the code runs in (`dladdr`, then every ancestor up to
+  four levels, so a multiarch libdir works), then beside the executable, then in the data directories. It no longer assumes the host
+  process is `gnoblin`.
+
+### 23.3 The bytecode cache key (M6.4)
+
+The location is unchanged: `$XDG_CACHE_HOME/gnoblin/js/qjs-<key>/`, `GNOBLIN_JS_CACHE=0` turns it off. The key, which names the directory, now
+includes the runtime module's version string (`gnoblin-runtime-js <version>`, what the entry reports as `version`) beside the engine and
+type-stripper versions the build read from the lock file and the crate's own version. Each entry's name is still the SHA-256 of the
+stripped input, the module name and the key, so two runtime libraries that differ in any of them never read each other's files, and a
+directory a different key wrote is removed when this one is first written. `JsBytecodeCache::in_dir_for` and `from_environment_for` take the
+version string; the engine linked into a binary keeps an empty one.

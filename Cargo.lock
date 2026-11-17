@@ -1561,6 +1561,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-fixture-runtime-test"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+]
+
+[[package]]
 name = "gnoblin-fixture-shell-hot"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -2131,6 +2138,7 @@ dependencies = [
  "gnoblin-proto",
  "gnoblin-secret",
  "gnoblin-types",
+ "prost",
 ]
 
 [[package]]

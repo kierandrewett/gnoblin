@@ -61,6 +61,7 @@ const | LANG_NATIVE | u32 = 1 | 1.0
 const | LANG_PYTHON | u32 = 2 | 1.0
 const | LANG_JS | u32 = 3 | 1.0
 const | LANG_TS | u32 = 4 | 1.0
+const | LANG_OTHER | u32 = 5 | 1.0
 const | SHELL_FLAG_FOREIGN_LOOP | u32 = 1 | 1.0
 const | ATTACH_HOLDER | u32 = 1 | 1.0
 const | ATTACH_OBSERVER | u32 = 2 | 1.0
@@ -255,7 +256,22 @@ field | GnoblinShellEntry.shutdown | unsafe extern "C" fn(ctx: GnoblinCtx) @24 +
 field | GnoblinShellEntry.stats | Option<unsafe extern "C" fn(out: *mut GnoblinShellStats)> @32 +8 | 1.0
 field | GnoblinShellEntry.label | GnoblinStr @40 +16 | 1.0
 
-struct | GnoblinApi | size 352 align 8 extensible | 1.0
+struct | GnoblinRuntimeEntry | size 104 align 8 extensible | 1.0
+
+field | GnoblinRuntimeEntry.size | u32 @0 +4 | 1.0
+field | GnoblinRuntimeEntry.abi_major | u32 @4 +4 | 1.0
+field | GnoblinRuntimeEntry.abi_minor_built | u32 @8 +4 | 1.0
+field | GnoblinRuntimeEntry.flags | u32 @12 +4 | 1.0
+field | GnoblinRuntimeEntry.name | GnoblinStr @16 +16 | 1.0
+field | GnoblinRuntimeEntry.extensions | GnoblinStr @32 +16 | 1.0
+field | GnoblinRuntimeEntry.version | GnoblinStr @48 +16 | 1.0
+field | GnoblinRuntimeEntry.start | unsafe extern "C" fn(api: *const GnoblinApi, ctx: GnoblinCtx, script: GnoblinStr) -> i32 @64 +8 | 1.0
+field | GnoblinRuntimeEntry.shutdown | unsafe extern "C" fn(ctx: GnoblinCtx) @72 +8 | 1.0
+field | GnoblinRuntimeEntry.activate | Option<unsafe extern "C" fn(ctx: GnoblinCtx) -> i32> @80 +8 | 1.0
+field | GnoblinRuntimeEntry.abandon | Option<unsafe extern "C" fn(ctx: GnoblinCtx)> @88 +8 | 1.0
+field | GnoblinRuntimeEntry.turn | Option<unsafe extern "C" fn(ctx: GnoblinCtx, timeout_ms: u32) -> i32> @96 +8 | 1.0
+
+struct | GnoblinApi | size 392 align 8 extensible | 1.0
 
 field | GnoblinApi.size | u32 @0 +4 | 1.0
 field | GnoblinApi.major | u32 @4 +4 | 1.0
@@ -303,3 +319,8 @@ field | GnoblinApi.proc_kill | unsafe extern "C" fn(ctx: GnoblinCtx, process: Gn
 field | GnoblinApi.state_put | unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, bytes: *const u8, len: usize, version: u32) -> i32 @328 +8 | 1.0
 field | GnoblinApi.state_get | unsafe extern "C" fn(ctx: GnoblinCtx, key: *const u8, key_len: usize, out: *mut GnoblinBuf, version: *mut u32) -> i32 @336 +8 | 1.0
 field | GnoblinApi.node_adopt | unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, name: *const u8, name_len: usize, flags: u32, out: *mut GnoblinNode) -> i32 @344 +8 | 1.0
+field | GnoblinApi.tree_link_open | unsafe extern "C" fn(ctx: GnoblinCtx, mode: u32) -> i32 @352 +8 | 1.0
+field | GnoblinApi.tree_link_attach | unsafe extern "C" fn(ctx: GnoblinCtx, version: u64) -> i32 @360 +8 | 1.0
+field | GnoblinApi.tree_link_send | unsafe extern "C" fn(ctx: GnoblinCtx, bytes: *const u8, len: usize) -> i32 @368 +8 | 1.0
+field | GnoblinApi.tree_link_recv | unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinBuf) -> i32 @376 +8 | 1.0
+field | GnoblinApi.tree_link_fd | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @384 +8 | 1.0

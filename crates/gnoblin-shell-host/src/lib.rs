@@ -8,6 +8,8 @@
 //!   runs exactly once, and every later call it makes is refused.
 //! - [`native`] and [`retire`]: the loader of `.so` shells (unique copy, `dlopen`, entry check, `init`), and the bounded,
 //!   visible list of the libraries it cannot unmap. One loader: the core library instantiates it over its function table.
+//! - [`runtime`]: language dispatch: what a path is (a native shell, or a script and the runtime library that runs it by its
+//!   extension) and the runtime libraries the loader keeps open (`gnoruntime_entry_v1`).
 //! - [`stage`]: the stage, commit, abandon and swap protocol, with rollback marks and failure recovery that keeps the old
 //!   generation. A language plugs its own stage and swap steps in through two traits.
 //! - [`reload`]: the native reload protocol over the loader ([`reload::NativeShell`]: stage, commit, abandon), the
@@ -30,6 +32,7 @@ pub mod native;
 pub mod process;
 pub mod reload;
 pub mod retire;
+pub mod runtime;
 pub mod stage;
 pub mod supervisor;
 pub mod watch;

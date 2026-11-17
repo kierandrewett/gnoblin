@@ -35,6 +35,7 @@ mod catalog;
 mod events;
 mod exports;
 pub mod host;
+mod link;
 mod listen;
 mod memory;
 mod procs;
