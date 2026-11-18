@@ -67,7 +67,7 @@ struct Rig {
 
 impl Rig {
     fn frame(&mut self) -> Vec<String> {
-        self.shell.frame().expect("a frame").diagnostics
+        self.shell.frame_with_core()
     }
 
     /// The text of `source`'s value, evaluated as a script.

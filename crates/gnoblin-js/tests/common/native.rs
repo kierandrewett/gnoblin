@@ -155,9 +155,10 @@ impl CoreShell {
     }
 
     /// One frame of the shell, then the core's half of it.
-    pub fn frame_with_core(&mut self) {
-        self.shell.frame().expect("a frame");
+    pub fn frame_with_core(&mut self) -> Vec<String> {
+        let diagnostics = self.shell.frame().expect("a frame").diagnostics;
         self.core.dispatch(&self.shell);
+        diagnostics
     }
 }
 

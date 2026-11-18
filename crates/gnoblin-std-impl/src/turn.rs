@@ -201,13 +201,15 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
                 .st
                 .borrow_mut()
                 .apply_placements(&run.tiled, &placements, &plan.cx.area),
-            Err(fail) => g.log_at(
-                LogLevel::CoreError,
-                &format!(
-                    "gnoblin-std: workspace {workspace}: the layout's compute failed: {}",
-                    fail.message
-                ),
-            ),
+            Err(fail) => {
+                g.log_at(
+                    LogLevel::CoreError,
+                    &format!(
+                        "gnoblin-std: workspace {workspace}: the layout's compute failed: {}",
+                        fail.message
+                    ),
+                );
+            }
         }
     }
     // Hooks and compute may have changed the layout's own options: record them so they do not trigger another pass.

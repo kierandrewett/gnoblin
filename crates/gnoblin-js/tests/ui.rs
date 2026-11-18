@@ -689,7 +689,7 @@ fn every_window_has_a_titlebar_of_its_own_including_the_ones_there_at_boot() {
     let mut shell = common::native::CoreShell::new(&comp, honest_config(&root));
     shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     for _ in 0..6 {
-        shell.frame_with_core();
+        let _ = shell.frame_with_core();
     }
     assert_eq!(comp.children(3).len(), 1);
     assert_eq!(comp.children(4).len(), 1);
