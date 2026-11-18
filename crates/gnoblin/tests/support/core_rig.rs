@@ -6,7 +6,8 @@
 //! dirty. The core's registry is one per process, so the rigs of the tests of a binary take turns: [`Turn`] is the place in the queue.
 #![allow(dead_code)]
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 use gnoblin_core_abi::GnoblinCtx;
@@ -53,16 +54,15 @@ impl Drop for Turn {
 }
 
 /// Hands out the link the role made, once.
-struct Handed(Mutex<Option<Box<dyn TreeLink>>>);
+struct Handed(RefCell<Option<Box<dyn TreeLink>>>);
 
-struct Provider(Arc<Handed>);
+struct Provider(Rc<Handed>);
 
 impl TreeLinkProvider for Provider {
     fn open(&self, _mode: AttachMode) -> Result<Box<dyn TreeLink>, LinkError> {
         self.0
             .0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+            .borrow_mut()
             .take()
             .ok_or_else(|| LinkError("the core opened the shell's link twice".to_owned()))
     }
@@ -72,7 +72,7 @@ impl TreeLinkProvider for Provider {
 pub struct CoreRig {
     embedded: Embedded,
     ctx: GnoblinCtx,
-    handed: Arc<Handed>,
+    handed: Rc<Handed>,
 }
 
 impl CoreRig {
@@ -82,18 +82,9 @@ impl CoreRig {
     ///
     /// The core cannot open the generation, or the library is not of the core's ABI.
     pub fn new(clock: Arc<dyn Clock>) -> Result<CoreRig, String> {
-        // This binary links the core's stub (`libgnoblin-core.so.1`, for the compositor binary these tests also run), which the loader
-        // resolves to the staged library. The std library reaches the core through those exports, so the core this process holds has to
-        // define them: naming them pulls their definitions out of the rlib, and a definition in the executable wins over the library's.
-        std::hint::black_box((
-            gnoblin_core_impl::gnoblin_get_api as usize,
-            gnoblin_core_impl::gnoblin_last_error as usize,
-            gnoblin_core_impl::gnoblin_abi_version as usize,
-            gnoblin_core_impl::gnoblin_catalog_hash as usize,
-        ));
-        let handed = Arc::new(Handed(Mutex::new(None)));
+        let handed = Rc::new(Handed(RefCell::new(None)));
         host::reset_session();
-        host::set_tree_link_provider(Box::new(Provider(Arc::clone(&handed))));
+        host::set_tree_link_provider(Box::new(Provider(Rc::clone(&handed))));
         host::set_clock(clock);
         let ctx = host::open_generation("js-role", gnoblin_core_abi::LANG_TS).map_err(|error| format!("{error:?}"))?;
         let embedded = Embedded::new(host::api(), ctx);
@@ -113,7 +104,7 @@ impl CoreRig {
     ///
     /// The core cannot open the link.
     pub fn take_over(&self, link: Box<dyn TreeLink>) -> Result<Box<dyn TreeLink>, String> {
-        *self.handed.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(link);
+        *self.handed.0.borrow_mut() = Some(link);
         self.embedded.link()
     }
 

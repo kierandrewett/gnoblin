@@ -133,24 +133,33 @@ fn directive(line: &str) {
 /// directory, otherwise a generated stub. Call it from `build.rs`; it emits the `cargo:` directives and panics with an
 /// actionable message when it cannot.
 pub fn link_library(spec: &StubSpec<'_>) {
+    link_library_into(spec, None);
+}
+
+/// Like [`link_library`], for the binaries of the crate only (`Some("bins")`): the test targets of a crate that only launches the
+/// library do not name it, so a test that links the implementation itself gets the one definition of its exports.
+pub fn link_library_into(spec: &StubSpec<'_>, targets: Option<&str>) {
     directive(&format!("rerun-if-env-changed={}", spec.lib_dir_var));
     directive("rerun-if-env-changed=CC");
-    if let Some(dir) = env::var_os(spec.lib_dir_var) {
-        directive(&format!("rustc-link-search=native={}", Path::new(&dir).display()));
-        directive(&format!("rustc-link-lib=dylib={}", spec.link_name));
-        return;
-    }
-    // Two stubs may be linked by one crate (the std SDK links std and core): each gets its own directory, so neither
-    // overwrites the other's source or library.
-    let out_dir = env::var_os("OUT_DIR")
-        .map(PathBuf::from)
-        .expect("OUT_DIR is not set: link_library must run in a build script");
-    let dir = out_dir.join(format!("link-{}", spec.link_name));
-    if let Err(message) = write_stub_for(&dir, spec) {
-        panic!("{message}");
-    }
+    let dir = if let Some(dir) = env::var_os(spec.lib_dir_var) {
+        PathBuf::from(dir)
+    } else {
+        // Two stubs may be linked by one crate (the std SDK links std and core): each gets its own directory, so neither
+        // overwrites the other's source or library.
+        let out_dir = env::var_os("OUT_DIR")
+            .map(PathBuf::from)
+            .expect("OUT_DIR is not set: link_library must run in a build script");
+        let dir = out_dir.join(format!("link-{}", spec.link_name));
+        if let Err(message) = write_stub_for(&dir, spec) {
+            panic!("{message}");
+        }
+        dir
+    };
     directive(&format!("rustc-link-search=native={}", dir.display()));
-    directive(&format!("rustc-link-lib=dylib={}", spec.link_name));
+    match targets {
+        None => directive(&format!("rustc-link-lib=dylib={}", spec.link_name)),
+        Some(targets) => directive(&format!("rustc-link-arg-{targets}=-l{}", spec.link_name)),
+    }
 }
 
 /// Links the core library into the crate being built: the installed one when [`LIB_DIR_VAR`] names a directory,
@@ -158,6 +167,11 @@ pub fn link_library(spec: &StubSpec<'_>) {
 /// message when it cannot.
 pub fn link_core(extra: &[&str]) {
     link_library(&StubSpec::core(extra));
+}
+
+/// [`link_core`] for the binaries of the crate only: see [`link_library_into`].
+pub fn link_core_into_bins(extra: &[&str]) {
+    link_library_into(&StubSpec::core(extra), Some("bins"));
 }
 
 #[cfg(test)]

@@ -29,7 +29,9 @@ fn main() {
         "cargo:rerun-if-env-changed={}",
         gnoblin_core_abi::build_support::LIB_DIR_VAR
     );
-    gnoblin_core_abi::build_support::link_core(&[]);
+    // The binary only: a test target of this crate that links the core's implementation (`tests/support/core_rig.rs`) must see the one
+    // definition of its exports, and a stub listed before it would take them.
+    gnoblin_core_abi::build_support::link_core_into_bins(&[]);
     let rpath = env::var("GNOBLIN_RPATH").unwrap_or_else(|_| DEFAULT_RPATH.to_owned());
     if !rpath.is_empty() {
         // DT_RUNPATH, not DT_RPATH, so a caller's `LD_LIBRARY_PATH` can still point the binary at another core.
