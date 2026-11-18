@@ -576,7 +576,7 @@ struct | GnoblinStdStyleEntries | size 16 align 8 fixed | 1.0
 field | GnoblinStdStyleEntries.ptr | *const GnoblinStdStyleEntry @0 +8 | 1.0
 field | GnoblinStdStyleEntries.len | usize @8 +8 | 1.0
 
-struct | GnoblinStdApi | size 816 align 8 extensible | 1.0
+struct | GnoblinStdApi | size 824 align 8 extensible | 1.0
 
 field | GnoblinStdApi.size | u32 @0 +4 | 1.0
 field | GnoblinStdApi.major | u32 @4 +4 | 1.0
@@ -682,3 +682,4 @@ field | GnoblinStdApi.client_areas | unsafe extern "C" fn(ctx: GnoblinCtx, clien
 field | GnoblinStdApi.workspace_restore_client | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, arrived: u32) -> i32 @792 +8 | 1.0
 field | GnoblinStdApi.client_restore_snap | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, zone: u32, floating: *const GnoblinStdRect) -> i32 @800 +8 | 1.0
 field | GnoblinStdApi.floating_place | unsafe extern "C" fn(ctx: GnoblinCtx, query: *const GnoblinStdFloatingQuery, out: *mut GnoblinStdRect) -> i32 @808 +8 | 1.0
+field | GnoblinStdApi.style_rank | unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, rank: f64) -> i32 @816 +8 | 1.0

@@ -630,6 +630,12 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         scriptable: true,
         standalone: true,
     },
+    FunctionInfo {
+        name: "style_rank",
+        inputs: &["style", "rank"],
+        scriptable: true,
+        standalone: true,
+    },
 ];
 
 pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
@@ -734,6 +740,7 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "workspace_restore_client" => workspace_restore_client(lib, ctx, args),
         "client_restore_snap" => client_restore_snap(lib, ctx, args),
         "floating_place" => floating_place(lib, ctx, args),
+        "style_rank" => style_rank(lib, ctx, args),
         other => Err(StdError::unsupported(other)),
     }
 }
@@ -3153,6 +3160,28 @@ fn floating_place(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError>
     let status = lib.check("floating_place", returned)?;
     arena.adopt();
     Ok(read_gnoblin_std_rect(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn style_rank(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, style_rank) + size_of::<usize>()) {
+        return Err(StdError::unsupported("style_rank"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`style_rank` takes 2 arguments (style, rank), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let style = args[0].to_u64("argument `style` of `style_rank`")?;
+    let rank = args[1].to_f64("argument `rank` of `style_rank`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.style_rank)(ctx, style, rank) };
+    let status = lib.check("style_rank", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
 }
 
 fn read_gnoblin_std_stats(record: &GnoblinStdStats) -> Dyn {
