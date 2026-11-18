@@ -119,6 +119,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "prost",
+ "rustix",
  "zeroize",
 ]
 
