@@ -16,7 +16,7 @@
 
 use std::path::Path;
 
-use gnoblin_js::{JsShell, JsShellError};
+use gnoblin_js::JsShellError;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 
 mod common;
