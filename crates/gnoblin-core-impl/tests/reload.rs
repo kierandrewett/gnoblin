@@ -482,10 +482,13 @@ fn example_10_reloads_three_times_without_touching_a_client_and_keeps_its_state_
         number(current, "registered") - number(current, "drops"),
         "the core holds exactly the running generation's registrations: {core} / {current}"
     );
-    assert_eq!(
-        number(core, "stale"),
-        0.0,
-        "no call from a retired generation reached the core"
+    // The example's own poster thread (habit 5) posts every 50 ms and ends at its first refusal, and the core counts a refused post
+    // as a stale call. Whether that refusal came before the stats were read depends on how fast the three reloads ran, so each
+    // retired generation may have one stale call and no more: anything beyond that is a call of something else.
+    let stale = number(core, "stale");
+    assert!(
+        stale <= retired.len() as f64,
+        "no call from a retired generation reached the core but each poster's refused post: {core}"
     );
     // One private copy of the library is mapped per generation that ever loaded, plus the core once.
     let maps = final_stats.iter().find(|line| line.starts_with("maps ")).expect("maps");

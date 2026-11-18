@@ -109,10 +109,40 @@ fn geometry(comp: &FakeCompositor, id: u64) {
     }
 }
 
-/// The chord claim whose text is `chord`, pressed. The SDK claims a chord as the shell wrote it, so the text is the shell's own.
+/// The other spelling of `chord`: `<Super><Shift>1` for `Super+Shift+1`, and back.
+fn other_spelling(chord: &str) -> String {
+    if chord.starts_with('<') {
+        let mut parts = Vec::new();
+        let mut rest = chord;
+        while let Some(after) = rest.strip_prefix('<') {
+            let Some((modifier, tail)) = after.split_once('>') else {
+                break;
+            };
+            parts.push(modifier);
+            rest = tail;
+        }
+        parts.push(rest);
+        parts.join("+")
+    } else {
+        let mut parts: Vec<&str> = chord.split('+').collect();
+        let key = parts.pop().unwrap_or_default();
+        let modifiers: String = parts.iter().map(|modifier| format!("<{modifier}>")).collect();
+        format!("{modifiers}{key}")
+    }
+}
+
+/// The chord claim for `chord`, pressed. The SDK claims a chord as the shell wrote it, and the examples write theirs both ways
+/// (`<Super>Tab`, which the Rust SDK's own examples use, and the spec text `Super+Tab`), so the claim is looked for in either
+/// spelling and the press carries the spelling the shell used.
 pub(crate) fn press(comp: &FakeCompositor, module: &Module, chord: &str) {
-    let claim = comp.claim_id(chord);
-    comp.chord(claim, chord, "press");
+    let (claim, text) = match comp.find_claim(chord) {
+        Some(claim) => (claim, chord.to_owned()),
+        None => {
+            let other = other_spelling(chord);
+            (comp.find_claim(&other).unwrap_or_else(|| comp.claim_id(chord)), other)
+        }
+    };
+    comp.chord(claim, &text, "press");
     pump(module);
 }
 

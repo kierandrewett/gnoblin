@@ -769,10 +769,14 @@ gnoblin.every(400, lambda: note("every"))
             "advance:500",
             "advance:500",
             "advance:500",
+            // The notes are `sh` processes the shell spawned: the clock is the test's own, so they need real time to write their
+            // lines before the reload and the stop end the generation that started them.
+            "sleep:300",
             "mark:timers",
             "dump",
             "reload",
             "pump",
+            "sleep:300",
             "stop",
         ],
     );

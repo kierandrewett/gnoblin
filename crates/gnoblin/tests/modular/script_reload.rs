@@ -200,10 +200,17 @@ fn run(language: &Language) {
     let copies_before = copies(&session);
     assert!(!copies_before.is_empty(), "the runtime is mapped from its own copy");
 
-    // Both files change, as when one save writes the module and another the entry: the module's edit is in force (rows 24 apart),
-    // so the module graph was read again and not served from a stale cache. The window is moved by the new code, in place.
-    save(&module, &(language.module_text)(true));
+    // Both files change, as when an editor saves the entry and then a module: the module's edit is in force (rows 24 apart), so the
+    // module graph was read again and not served from a stale cache. The window is moved by the new code, in place.
+    //
+    // The entry is saved first, and a moment apart from the module. Two saves are two changes to a runtime that watches files, and
+    // under load they may be seen as two reloads: the first generation then holds the new entry over the old module, which is
+    // harmless (it places the columns), where the module saved first would give a generation that has the new rows and the old
+    // entry, whose tag a window opened after the rows would then carry. The gap makes the split certain here instead of a matter
+    // of luck, so the assertions below hold for every way the two saves can be seen.
     save(&shell, &(language.shell_text)("second", &marker));
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    save(&module, &(language.module_text)(true));
     let rows = (height - gap) / 2.0;
     wait_for_window(
         &mut session,
