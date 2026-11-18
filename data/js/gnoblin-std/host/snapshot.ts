@@ -1,14 +1,19 @@
-// Saves workspace membership and window placement across a reload.
+// Saves workspace membership and window placement across a reload, and gives them back to the library of the next generation.
+//
+// A reload is a new generation with a library of its own, so what the old one held (which windows were on which workspace, which
+// workspace each output showed) is read from it here and handed to the new one by workspace id.
 
 import { insetFromNumbers, insetToNumbers } from "gnoblin-core/inset";
 import type { Client } from "gnoblin-core/host/client";
 import { ctx } from "gnoblin-core/host/context";
-import { std } from "gnoblin-std/host/state";
 import type { KeptWindow, WorkspaceSnapshot } from "gnoblin-core/host/contract";
-import { deskOutputs, primaryDesk, setShown } from "gnoblin-std/host/desks";
-import type { Desk } from "gnoblin-std/host/desks";
-import { moveClient } from "gnoblin-std/host/membership";
 import { stateOf } from "gnoblin-core/host/node_state";
+import { ClientFlags } from "gnoblin-std/generated/constants";
+import { deskOutputs, primaryOutput, shownOn } from "gnoblin-std/host/desks";
+import { nativeClient, nativeOutput } from "gnoblin-std/host/library";
+import { syncMembership } from "gnoblin-std/host/membership";
+import { showWorkspace } from "gnoblin-std/host/show";
+import { std } from "gnoblin-std/host/state";
 import type { Workspace } from "gnoblin-std/host/workspace";
 import { wsState } from "gnoblin-std/host/workspace_state";
 import { restoreSnap, snapRecord } from "gnoblin-std/snap";
@@ -24,6 +29,19 @@ const asArray = (rect: Rect | null | undefined): number[] | null =>
 const asRect = (numbers: number[] | null | undefined): Rect | null =>
     numbers && numbers.length === 4 ? { x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3] } : null;
 
+/** The room the library last fitted a window's frame to, or null while it has not fitted it. */
+function fittedInset(client: Client): number[] | null {
+    const state = nativeClient(client).state();
+    return (state.flags & ClientFlags.HAS_FITTED) === 0
+        ? null
+        : insetToNumbers({
+              top: state.fittedTop,
+              right: state.fittedRight,
+              bottom: state.fittedBottom,
+              left: state.fittedLeft,
+          });
+}
+
 /** Captures each window's saved rectangles and the frame inset used to fit it. */
 function keptWindows(): KeptWindow[] {
     const kept: KeptWindow[] = [];
@@ -32,7 +50,7 @@ function keptWindows(): KeptWindow[] {
         const snap = snapRecord(client);
         const leftAt = (client as unknown as { floatingBounds?: Rect | null }).floatingBounds ?? null;
         // Keep a known zero too: a later generation must detect a frame appearing after one without a frame.
-        const inset = std.fittedInset.get(client) ?? null;
+        const inset = fittedInset(client);
         if (rects.floating === null && rects.windowed === null && snap === null && leftAt === null && inset === null) {
             continue;
         }
@@ -43,7 +61,7 @@ function keptWindows(): KeptWindow[] {
             leftAt: asArray(leftAt),
             zone: snap?.zone ?? null,
             snapFloating: asArray(snap?.floating),
-            inset: inset === null ? null : insetToNumbers(inset),
+            inset,
         });
     }
     return kept;
@@ -59,7 +77,16 @@ function restoreKept(kept: readonly KeptWindow[]): void {
         windowState.keep(client, { floating: asRect(entry.floating), windowed: asRect(entry.windowed) });
         const inset = insetFromNumbers(entry.inset);
         if (inset !== null) {
-            std.fittedInset.set(client, inset);
+            const native = nativeClient(client);
+            const state = native.state();
+            native.setState({
+                ...state,
+                flags: state.flags | ClientFlags.HAS_FITTED,
+                fittedTop: inset.top,
+                fittedRight: inset.right,
+                fittedBottom: inset.bottom,
+                fittedLeft: inset.left,
+            });
         }
         const leftAt = asRect(entry.leftAt);
         if (leftAt !== null) {
@@ -74,15 +101,19 @@ function restoreKept(kept: readonly KeptWindow[]): void {
 
 /** Captures workspace membership and the workspace shown on each output. */
 export function snapshotWorkspaces(): WorkspaceSnapshot {
+    syncMembership();
+    const workspaces = std.workspaceRoot.list as Workspace[];
+    const primary = primaryOutput();
+    const shown = primary === null ? (workspaces.find((workspace) => workspace.active) ?? null) : shownOn(primary);
     return {
-        active: primaryDesk()?.shown?.id ?? null,
-        workspaces: (std.workspaceRoot.list as Workspace[]).map((workspace) => ({
+        active: shown?.id ?? null,
+        workspaces: workspaces.map((workspace) => ({
             id: workspace.id,
             clients: (wsState(workspace).clientsState.list as Client[]).map((client) => stateOf(client).node),
         })),
         outputs: deskOutputs().flatMap((output) => {
-            const shown = std.deskByOutput.get(output)?.shown;
-            return shown === null || shown === undefined ? [] : [{ output: output.name, workspace: shown.id }];
+            const on = shownOn(output);
+            return on === null ? [] : [{ output: output.name, workspace: on.id }];
         }),
         kept: keptWindows(),
     };
@@ -94,36 +125,35 @@ export function snapshotWorkspaces(): WorkspaceSnapshot {
  */
 export function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
     restoreKept(previous.kept ?? []);
+    const workspaces = std.workspaceRoot.list as Workspace[];
     for (const entry of previous.workspaces) {
-        const kept = (std.workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === entry.id) ?? null;
-        const target = kept ?? (std.workspaceRoot.list[0] as Workspace | undefined) ?? null;
+        const kept = workspaces.find((workspace) => workspace.id === entry.id) ?? null;
+        const target = kept ?? workspaces[0] ?? null;
         for (const node of entry.clients) {
-            const client = ctx.clientsByNode.get(node);
-            if (client) {
-                moveClient(client, target, kept === null);
+            if (target !== null && ctx.clientsByNode.has(node)) {
+                wsState(target).native.restoreClient(node, kept === null ? 1 : 0);
             }
         }
     }
+    syncMembership();
     // Each output shows what it showed; the primary output's workspace is the one the snapshot calls active.
-    const wanted: [Desk, Workspace][] = [];
+    const wanted: [Workspace, number][] = [];
     for (const entry of previous.outputs ?? []) {
         const output = deskOutputs().find((one) => one.name === entry.output);
-        const workspace = (std.workspaceRoot.list as Workspace[]).find((one) => one.id === entry.workspace);
-        const desk = output === undefined ? undefined : std.deskByOutput.get(output);
-        if (desk !== undefined && workspace !== undefined) {
-            wanted.push([desk, workspace]);
+        const workspace = workspaces.find((one) => one.id === entry.workspace);
+        if (output !== undefined && workspace !== undefined) {
+            wanted.push([workspace, nativeOutput(output).node]);
         }
     }
-    const primary = primaryDesk();
-    const shown = (std.workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === previous.active);
-    if (primary !== null && shown !== undefined && !wanted.some(([desk]) => desk === primary)) {
-        wanted.push([primary, shown]);
+    const primary = primaryOutput();
+    const shown = workspaces.find((workspace) => workspace.id === previous.active);
+    if (primary !== null && shown !== undefined && !wanted.some(([, node]) => node === nativeOutput(primary).node)) {
+        wanted.push([shown, nativeOutput(primary).node]);
     }
-    for (const [desk, workspace] of wanted) {
-        const other = std.desks.find((candidate) => candidate !== desk && candidate.shown === workspace);
-        if (other !== undefined) {
-            setShown(other, desk.shown);
+    for (const [workspace, node] of wanted) {
+        const output = deskOutputs().find((one) => nativeOutput(one).node === node);
+        if (output !== undefined) {
+            showWorkspace(workspace, { output });
         }
-        setShown(desk, workspace);
     }
 }

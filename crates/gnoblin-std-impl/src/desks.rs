@@ -241,11 +241,17 @@ impl State {
 
     // ---- work areas -----------------------------------------------------------------------------------------------------
 
-    /// What a layout tiles in on `output`: its rectangle. (Panels that take room from it belong to the shell's own UI, not to
-    /// this library.)
+    /// What a layout tiles in on `output`: its rectangle less the room the shell's own bars take from the top and the bottom
+    /// (`output_set_insets`; the panels themselves are the shell's UI, not this library's).
     pub(crate) fn area_of(&self, output: NodeId) -> Option<Rect> {
         let rect = output_rect(&self.g, output)?;
-        Some(Rect::new(rect.x, rect.y, rect.width, rect.height.max(1.0)))
+        let (top, bottom) = self.insets.get(&output).copied().unwrap_or((0.0, 0.0));
+        Some(Rect::new(
+            rect.x,
+            rect.y + top,
+            rect.width,
+            (rect.height - top - bottom).max(1.0),
+        ))
     }
 
     /// The one area a spanning desk's workspace is laid out in: the bounding box of the work areas of the outputs it covers.
@@ -483,7 +489,7 @@ impl State {
 
     /// Makes the desk of `lead` show one workspace over `members` (the desks of the other members show nothing of their own and
     /// cover the same workspace), or ends the span with `None`. Asking for the span that holds changes nothing.
-    fn span_desks(&mut self, lead: NodeId, members: Option<&[NodeId]>) {
+    pub(crate) fn span_desks(&mut self, lead: NodeId, members: Option<&[NodeId]>) {
         let Some(desk) = self.desk_of_output(lead) else {
             return;
         };

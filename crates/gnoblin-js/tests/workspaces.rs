@@ -322,7 +322,8 @@ fn a_workspace_can_be_subclassed_and_listened_to_through_its_clients() {
              gnoblin.workspaces.add(new Dev());\n",
         ),
     );
-    rig.frame();
+    // The library hears of the window with the dispatch that follows the engine's frame, and tells the listeners with the next.
+    rig.settle();
     assert_eq!(rig.eval("gnoblin.workspaces.at(0) instanceof g.Dev"), "true");
     assert_eq!(
         rig.eval("g.log.join()"),
@@ -330,7 +331,7 @@ fn a_workspace_can_be_subclassed_and_listened_to_through_its_clients() {
         "the window that was there at boot joined and was announced"
     );
     link.create_window(4, "two");
-    rig.frame();
+    rig.settle();
     assert_eq!(rig.eval("g.log.join()"), "added 3,added 4");
     assert_eq!(rect(&comp, 3), "0,0,500,800");
     link.destroy(3);
@@ -396,6 +397,8 @@ fn a_dirty_workspace_computes_once_per_frame_and_its_writes_are_one_transaction(
     // Two windows and a field edit in one frame: one compute, one transaction of eight writes.
     link.create_window(3, "one");
     link.create_window(4, "two");
+    // The library hears of the windows with the dispatch of the frame, and lays them out in the turn that follows it.
+    rig.frame();
     rig.frame();
     assert_eq!(
         rig.eval("g.computes"),

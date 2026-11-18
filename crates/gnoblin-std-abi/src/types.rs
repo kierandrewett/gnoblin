@@ -168,6 +168,23 @@ abi_consts! {
     pub const STD_CLIENT_HAS_MIN: u32 = 2;
     /// `GnoblinStdClientState.flags`: `max_width` and `max_height` hold the most the client may be resized to.
     pub const STD_CLIENT_HAS_MAX: u32 = 4;
+    /// `GnoblinStdClientState.flags`: the `fitted_*` fields hold the frame inset the client was last fitted to. A shell that restores
+    /// the library after a reload gives it back, so a frame that appeared across the reload is noticed.
+    pub const STD_CLIENT_HAS_FITTED: u32 = 8;
+    /// `GnoblinStdClientState.flags`, read only: the layout that last placed the client wants it hidden (a monocle's other windows),
+    /// whether or not its workspace is shown.
+    pub const STD_CLIENT_LAYOUT_HIDES: u32 = 16;
+
+    /// `GnoblinStdOutputInfo.flags`: the output has a desk, so it can show a workspace (it is on and mirrors nothing).
+    pub const STD_OUTPUT_HAS_DESK: u32 = 1;
+    /// `GnoblinStdOutputInfo.flags`: the output's desk waits parked for an output to return.
+    pub const STD_OUTPUT_PARKED: u32 = 2;
+    /// `GnoblinStdOutputInfo.flags`: the output has a size, so `rect` and `area` hold it.
+    pub const STD_OUTPUT_HAS_RECT: u32 = 4;
+    /// `GnoblinStdAreas.flags`: `output` holds the output rectangle the client is on.
+    pub const STD_AREAS_HAS_OUTPUT: u32 = 1;
+    /// `GnoblinStdAreas.flags`: `area` holds the work area of that output.
+    pub const STD_AREAS_HAS_AREA: u32 = 2;
 
     /// `client_snap` zone and `GnoblinStdClientState.snap_zone`: the client is not snapped.
     pub const STD_SNAP_NONE: u32 = 0;
@@ -487,6 +504,56 @@ abi_structs! {
         pub reserved: u32,
         /// The rectangle `client_unsnap` puts a snapped client back to. Read only.
         pub snap_floating: GnoblinStdRect,
+        /// With `STD_CLIENT_HAS_FITTED`: the room above the content the client's frame had when the library last fitted it.
+        pub fitted_top: f64,
+        /// With `STD_CLIENT_HAS_FITTED`: the room to the right.
+        pub fitted_right: f64,
+        /// With `STD_CLIENT_HAS_FITTED`: the room below.
+        pub fitted_bottom: f64,
+        /// With `STD_CLIENT_HAS_FITTED`: the room to the left.
+        pub fitted_left: f64,
+    }
+
+    /// What the desk knows about one output: filled by `output_info`.
+    pub struct GnoblinStdOutputInfo {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_OUTPUT_*` flags.
+        pub flags: u32,
+        /// The workspace the output shows (the one its span shows, for an output a span covers), or zero.
+        pub workspace: GnoblinStdWorkspace,
+        /// With `STD_OUTPUT_HAS_RECT`: the output's rectangle in the compositor's logical pixels.
+        pub rect: GnoblinStdRect,
+        /// With `STD_OUTPUT_HAS_RECT`: what a layout tiles in on this output alone: its rectangle less the room the shell's bars
+        /// take (`output_set_insets`).
+        pub area: GnoblinStdRect,
+    }
+
+    /// The outputs a workspace is stretched over: the argument of `output_span`. A struct that starts with `size` may grow.
+    pub struct GnoblinStdSpan {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The output whose desk shows the one workspace over all the members.
+        pub lead: GnoblinNode,
+        /// The outputs the span covers, the lead first. Fewer than two, or none, ends the lead's span.
+        pub members: *const GnoblinNode,
+        /// Number of members.
+        pub n_members: usize,
+    }
+
+    /// The output a client is on and its work area: filled by `client_areas`.
+    pub struct GnoblinStdAreas {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_AREAS_*` flags.
+        pub flags: u32,
+        /// With `STD_AREAS_HAS_OUTPUT`: the rectangle of the output the client is on, or the primary output's when its workspace
+        /// is on none.
+        pub output: GnoblinStdRect,
+        /// With `STD_AREAS_HAS_AREA`: what a layout tiles in on that output.
+        pub area: GnoblinStdRect,
     }
 
     /// One collection event, delivered to a `GnoblinStdEventFn`. Valid until the callback returns; the fields a kind does not
@@ -1335,6 +1402,22 @@ abi_structs! {
         /// units; for a pinch the way `scale` has gone from 1, `STD_WAY_NONE` while it is within `threshold` of 1. The distance at
         /// which a binding of the library's own decides is 12 units and 0.1.
         pub gesture_way: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, dx: f64, dy: f64, scale: f64, threshold: f64, out: *mut u32) -> i32,
+        /// Fills `out` with what the desk knows about an output: whether it can show a workspace, which one it shows, its rectangle and
+        /// the area a layout tiles in on it. `E_NO_SUCH_NODE` for a node that is not an output the library tracks.
+        pub output_info: unsafe extern "C" fn(ctx: GnoblinCtx, output: GnoblinNode, out: *mut GnoblinStdOutputInfo) -> i32,
+        /// Sets the room the shell's own bars take from the top and the bottom of an output. A layout tiles in what is left, so
+        /// every workspace computes again when it changes. `E_NO_SUCH_NODE` for a node that is not an output the library tracks.
+        pub output_set_insets: unsafe extern "C" fn(ctx: GnoblinCtx, output: GnoblinNode, top: f64, bottom: f64) -> i32,
+        /// Makes the desk of the span's lead show one workspace over its members (the desks of the other members show nothing of
+        /// their own), or ends the lead's span. Asking for the span that holds changes nothing.
+        pub output_span: unsafe extern "C" fn(ctx: GnoblinCtx, span: *const GnoblinStdSpan) -> i32,
+        /// Writes the output a client is on and its work area. A client whose workspace no output shows is on the primary output;
+        /// zero asks for the primary output itself.
+        pub client_areas: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStdAreas) -> i32,
+        /// Puts a client on a workspace as a reload gives it back: it moves like `client_move_to_workspace` (its dialogs go with it), but
+        /// it is not refitted, and a layout is told it arrived only when `arrived` is nonzero. 1 when it moved, 0 when it was refused
+        /// (the client is gone or already there, or the workspace is not added).
+        pub workspace_restore_client: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, arrived: u32) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]

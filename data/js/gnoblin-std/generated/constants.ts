@@ -92,8 +92,25 @@ export const ClientFlags = {
   HAS_FLOATING: 1,
   HAS_MIN: 2,
   HAS_MAX: 4,
+  HAS_FITTED: 8,
+  LAYOUT_HIDES: 16,
 } as const;
 export type ClientFlags = (typeof ClientFlags)[keyof typeof ClientFlags];
+
+/** The `STD_OUTPUT_*` constants. */
+export const OutputFlags = {
+  HAS_DESK: 1,
+  PARKED: 2,
+  HAS_RECT: 4,
+} as const;
+export type OutputFlags = (typeof OutputFlags)[keyof typeof OutputFlags];
+
+/** The `STD_AREAS_*` constants. */
+export const AreasFlags = {
+  HAS_OUTPUT: 1,
+  HAS_AREA: 2,
+} as const;
+export type AreasFlags = (typeof AreasFlags)[keyof typeof AreasFlags];
 
 /** The `STD_SNAP_*` constants. */
 export const SnapKind = {

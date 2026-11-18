@@ -1,46 +1,42 @@
-// A script workspace's private state: its id, layout and gaps, its clients, and what its layout was last told.
-// A workspace is the script's own object (the compositor does not know it), so this state is all there is.
+// A script workspace's private state: the library's handle on it, the layout object a script gave it and what that layout was
+// last told, and the collection that follows its clients.
+//
+// The workspace itself (its windows, its place on an output, its gaps and its layout's placement of the windows) is the
+// library's. What is here is what only the script's side has: the `Layout` object (a class a script extends, which the library
+// reaches through `host/layout_bridge`), the live `gaps` object a script may write into, and the `MutableCollection` whose list
+// `host/membership` keeps equal to the library's.
 
 import type { Client } from "gnoblin-core/host/client";
 import type { CollectionState } from "gnoblin-core/host/collection_state";
 import type { MutableCollection } from "gnoblin-core/host/collections";
+import type { Collection as NativeCollection, Workspace as NativeWorkspace } from "gnoblin-std/generated/classes";
+import type { LayoutBridge } from "gnoblin-std/host/layout_bridge";
 import { std } from "gnoblin-std/host/state";
 import type { Workspace } from "gnoblin-std/host/workspace";
 import type { Gaps, Layout } from "gnoblin-std/layout";
-import type { Rect } from "gnoblin-core/types";
 
-/** Layout and membership state held privately for each script workspace. */
+/** What the script's side keeps of one workspace. */
 export interface WorkspaceState {
+    /** The library's workspace. */
+    readonly native: NativeWorkspace;
     /** Stable workspace id. */
-    id: string;
-    /** Display name. */
-    name: string;
-    /** Layout instance used to place the workspace's clients. */
+    readonly id: string;
+    /** Layout instance the library asks to place the workspace's clients. */
     layout: Layout;
-    /** Inner and outer gaps in logical pixels. */
+    /** What the library asks the layout, and what it was told of the layout's own fields. */
+    bridge: LayoutBridge;
+    /** Inner and outer gaps in logical pixels: the object a script reads and may write into. */
     gaps: Gaps;
-    /** Whether the workspace is in `gnoblin.workspaces`. */
-    attached: boolean;
-    /** Clients assigned to this workspace. */
-    clients: MutableCollection<Client>;
-    /** Internal membership state for the client collection. */
-    clientsState: CollectionState;
-    /** The clients that joined since the layout last heard of them, for `onClientAdded`. */
-    arrived: Client[];
-    /** Clients that left since the layout last heard of them. */
-    departed: Client[];
-    /** Whether the layout has to compute again the next time the workspace is shown. */
-    dirty: boolean;
-    /** The layout's own fields when the workspace was last looked at, to notice a change. */
-    fields: Map<PropertyKey, unknown> | null;
-    /** Gap values most recently observed by the layout. */
+    /** The gaps the library was last given. */
     gapsSeen: [number, number];
-    /** The area the layout last computed for. */
-    area: Rect | null;
-    /** The focused client the layout last computed for: a change of focus is a reason to compute again. */
-    focusSeen: Client | null;
-    /** The fullscreen and maximised clients the layout last computed for: a change is a reason to compute again. */
-    coverSeen: string;
+    /** Whether the workspace is in `gnoblin.workspaces`, as the library last said. */
+    attached: boolean;
+    /** The library's collection of the workspace's clients. */
+    readonly nativeClients: NativeCollection;
+    /** Clients assigned to this workspace. */
+    readonly clients: MutableCollection<Client>;
+    /** Internal membership state for the client collection. */
+    readonly clientsState: CollectionState;
 }
 
 /** Returns workspace state. Throws when the value is not a Workspace. */

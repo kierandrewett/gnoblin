@@ -9,7 +9,7 @@ import type { Client } from "gnoblin-core/host/client";
 import { clientHolders } from "gnoblin-core/host/collection_events";
 import { ctx } from "gnoblin-core/host/context";
 import { std } from "gnoblin-std/host/state";
-import { currentDesk, isShown, primaryDesk, primaryOutput } from "gnoblin-std/host/desks";
+import { currentWorkspace, hasDesk, primaryOutput, shownOn } from "gnoblin-std/host/desks";
 import { describeListener, handlerOf } from "gnoblin-core/host/dispatch";
 import type { Source } from "gnoblin-core/host/dispatch";
 import { stateOf } from "gnoblin-core/host/node_state";
@@ -28,12 +28,17 @@ import type { ClientRequest } from "gnoblin-std/window_state";
 
 /** Whether a non-minimised fullscreen window is shown on the workspace for `output`. */
 function fullscreenShowing(output: { alive: boolean } | null): boolean {
-    const desk = output === null ? primaryDesk() : (std.deskByOutput.get(output as Output) ?? null);
-    const shown = desk === null || desk.parked ? null : desk.shown;
+    const shown = output === null ? shownOnPrimary() : hasDesk(output as Output) ? shownOn(output as Output) : null;
     if (shown === null) {
         return false;
     }
     return (wsState(shown).clientsState.list as Client[]).some((client) => client.fullscreen && !client.minimised);
+}
+
+/** The workspace the primary output shows, or null. */
+function shownOnPrimary(): Workspace | null {
+    const output = primaryOutput();
+    return output === null ? null : shownOn(output);
 }
 
 /** Calls the `onRequest` of the client's own listeners, then of the collections that hold it, until one handles it. */
@@ -59,7 +64,7 @@ function dispatchRequest(client: Client, request: ClientRequest<Client>): void {
 
 /** Shows the workspace `step` places from the one the output under the pointer shows; nothing past either end. */
 function stepWorkspace(step: number): void {
-    const shown = currentDesk()?.shown ?? null;
+    const shown = currentWorkspace();
     if (shown === null) {
         return;
     }
@@ -162,8 +167,7 @@ export function installPolicy(): void {
             }
         },
         onActiveWorkspace: (client) => {
-            const own = std.membership.get(client);
-            return own !== undefined && isShown(own);
+            return std.membership.get(client)?.active === true;
         },
         output: (client) => outputRectOf(client ?? null),
         workArea: (client) => workAreaOf(client ?? null),

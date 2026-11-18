@@ -1021,6 +1021,11 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     drag_tile: crate::bindings::drag_tile,
     gesture_way: crate::bindings::gesture_way,
     transition_release: crate::animation::table::transition_release,
+    output_info: crate::objects::output_info,
+    output_set_insets: crate::objects::output_set_insets,
+    output_span: crate::objects::output_span,
+    client_areas: crate::objects::client_areas,
+    workspace_restore_client: crate::objects::workspace_restore_client,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };

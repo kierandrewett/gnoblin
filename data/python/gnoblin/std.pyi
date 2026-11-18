@@ -97,6 +97,21 @@ class ClientFlags(IntFlag):
     HAS_FLOATING = 1
     HAS_MIN = 2
     HAS_MAX = 4
+    HAS_FITTED = 8
+    LAYOUT_HIDES = 16
+
+class OutputFlags(IntFlag):
+    """The `STD_OUTPUT_*` constants."""
+
+    HAS_DESK = 1
+    PARKED = 2
+    HAS_RECT = 4
+
+class AreasFlags(IntFlag):
+    """The `STD_AREAS_*` constants."""
+
+    HAS_OUTPUT = 1
+    HAS_AREA = 2
 
 class SnapKind(IntEnum):
     """The `STD_SNAP_*` constants."""
@@ -335,11 +350,54 @@ class ClientState:
     floating: Rect = ...
     snap_zone: int = ...
     snap_floating: Rect = ...
+    fitted_top: float = ...
+    fitted_right: float = ...
+    fitted_bottom: float = ...
+    fitted_left: float = ...
 
     def _to_dyn(self) -> dict[str, Any]: ...
 
     @classmethod
     def _from_dyn(cls, data: dict[str, Any]) -> ClientState: ...
+
+@dataclass
+class OutputInfo:
+    """What the desk knows about one output: filled by `output_info`."""
+
+    flags: int = ...
+    workspace: int = ...
+    rect: Rect = ...
+    area: Rect = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> OutputInfo: ...
+
+@dataclass
+class Span:
+    """The outputs a workspace is stretched over: the argument of `output_span`. A struct that starts with `size` may grow."""
+
+    lead: int = ...
+    members: list[int] = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> Span: ...
+
+@dataclass
+class Areas:
+    """The output a client is on and its work area: filled by `client_areas`."""
+
+    flags: int = ...
+    output: Rect = ...
+    area: Rect = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> Areas: ...
 
 @dataclass
 class Event:
@@ -1023,6 +1081,12 @@ class Client:
         """
         ...
 
+    def areas(self) -> Areas:
+        """Writes the output a client is on and its work area. A client whose workspace no output shows is on the primary output;
+        zero asks for the primary output itself.
+        """
+        ...
+
     @property
     def window(self) -> Node: ...
 
@@ -1129,6 +1193,13 @@ class Workspace:
         """Writes the `STD_BUILTIN_*` kind of the workspace's layout, or zero when it is the floating layout or a foreign one."""
         ...
 
+    def restore_client(self, client: int, arrived: int) -> bool:
+        """Puts a client on a workspace as a reload gives it back: it moves like `client_move_to_workspace` (its dialogs go with it), but
+        it is not refitted, and a layout is told it arrived only when `arrived` is nonzero. 1 when it moved, 0 when it was refused
+        (the client is gone or already there, or the workspace is not added).
+        """
+        ...
+
     def use(self, layout: Any) -> Any: ...
     @classmethod
     def create(cls, id: str, *, name: str = ..., layout: Optional[Layout] = ..., gaps: tuple[float, float] = ...) -> Workspace: ...
@@ -1154,6 +1225,25 @@ class Output:
 
     def workspace(self) -> Optional[Workspace]:
         """Writes the workspace an output shows, or zero."""
+        ...
+
+    def info(self) -> OutputInfo:
+        """Fills `out` with what the desk knows about an output: whether it can show a workspace, which one it shows, its rectangle and
+        the area a layout tiles in on it. `E_NO_SUCH_NODE` for a node that is not an output the library tracks.
+        """
+        ...
+
+    def set_insets(self, top: float, bottom: float) -> int:
+        """Sets the room the shell's own bars take from the top and the bottom of an output. A layout tiles in what is left, so
+        every workspace computes again when it changes. `E_NO_SUCH_NODE` for a node that is not an output the library tracks.
+        """
+        ...
+
+    @staticmethod
+    def span(span: Span | dict[str, Any]) -> int:
+        """Makes the desk of the span's lead show one workspace over its members (the desks of the other members show nothing of
+        their own), or ends the lead's span. Asking for the span that holds changes nothing.
+        """
         ...
 
 class Easing:

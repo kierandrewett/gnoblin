@@ -24,7 +24,7 @@ import type { ClientListener } from "gnoblin-core/host/listeners";
 import type { Display } from "gnoblin-std/display/display";
 import type { OutputProfile } from "gnoblin-std/display/output_profile";
 import { Extensions } from "gnoblin-std/extensions/xr/availability";
-import { deskOfClient, effectiveDesk } from "gnoblin-std/host/desks";
+import { floatingBoundsOf, isFloating, setFloating, setFloatingBounds } from "gnoblin-std/host/client_state";
 import { moveClientTo } from "gnoblin-std/host/membership";
 import type { DisplayCollection, WorkspaceCollection } from "gnoblin-std/host/roots";
 import { showWorkspace } from "gnoblin-std/host/show";
@@ -32,8 +32,8 @@ import type { ShowOptions } from "gnoblin-std/host/show";
 import { std } from "gnoblin-std/host/state";
 import { clientStyle, computedStyleOf, scopeStyle, styleWarningsOf } from "gnoblin-std/host/style_scopes";
 import { areaOf } from "gnoblin-std/host/work_area";
+import { shownOn } from "gnoblin-std/host/desks";
 import type { Workspace } from "gnoblin-std/host/workspace";
-import { wsOf } from "gnoblin-std/host/workspace_state";
 import { repositioning } from "gnoblin-std/reposition";
 import type { RepositionClient } from "gnoblin-std/reposition";
 import { sceneOf } from "gnoblin-std/scene/scene";
@@ -79,6 +79,11 @@ declare module "gnoblin-core/host/client" {
          * `compute`, so it keeps the place it has. Only the script knows this; the compositor does not.
          */
         floating: boolean;
+        /**
+         * The rectangle the window floats at: where the user last put it, which a layout that tiles does not take from it. Null
+         * while none is kept. The library keeps it, so a window's refit to another output moves it too.
+         */
+        floatingBounds: Rect | null;
         /** The workspace the client is on, or null. */
         readonly workspace: Workspace | null;
         /** The output that shows the client's workspace, or null while no output shows it (or the output is gone). */
@@ -256,34 +261,33 @@ export function extendObjectModel(): void {
         },
         floating: {
             get(this: Client): boolean {
-                return std.floating.has(this);
+                return isFloating(this);
             },
             set(this: Client, value: boolean) {
                 if (typeof value !== "boolean") {
                     throw new TypeError(`Client#${host.label(stateOf(this).node)}.floating: must be true or false`);
                 }
-                if (std.floating.has(this) !== value) {
-                    if (value) {
-                        std.floating.add(this);
-                    } else {
-                        std.floating.delete(this);
-                    }
-                    const own = wsOf(this);
-                    if (own) {
-                        own.dirty = true;
-                    }
+                if (isFloating(this) !== value) {
+                    setFloating(this, value);
                 }
+            },
+        },
+        floatingBounds: {
+            get(this: Client): Rect | null {
+                return floatingBoundsOf(this);
+            },
+            set(this: Client, value: Rect | null) {
+                setFloatingBounds(this, value);
             },
         },
         workspace: {
             get(this: Client): Workspace | null {
-                return std.membership.get(this) ?? null;
+                return this.alive ? (std.membership.get(this) ?? null) : null;
             },
         },
         output: {
             get(this: Client): Output | null {
-                const desk = deskOfClient(this);
-                return desk?.parked === false ? desk.output : null;
+                return this.workspace?.output ?? null;
             },
         },
         moveToWorkspace(this: Client, workspace: Workspace): boolean {
@@ -315,8 +319,7 @@ export function extendObjectModel(): void {
         },
         workspace: {
             get(this: Output): Workspace | null {
-                const desk = std.deskByOutput.get(this);
-                return desk !== undefined && stateOf(this).alive ? effectiveDesk(desk).shown : null;
+                return stateOf(this).alive ? shownOn(this) : null;
             },
         },
         show(this: Output, workspace: Workspace | string, options: ShowOptions = {}): void {

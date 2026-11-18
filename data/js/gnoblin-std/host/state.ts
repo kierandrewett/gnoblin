@@ -1,6 +1,11 @@
-// What `gnoblin-std` keeps for one runtime generation: the workspaces and the desks that show them, the styles, the
-// transition engine, the frame decorations and the rest of the desktop policy. `gnoblin-core` keeps the object model in
-// its own context (`gnoblin-core/host/context`) and knows nothing of this one; `gnoblin-std/host/install` fills it.
+// What `gnoblin-std` keeps for one runtime generation: the TypeScript half of the workspaces (the object a script holds, its
+// layout and the collections that follow the library's), the styles, the transition engine, the frame decorations and the rest
+// of the desktop policy. `gnoblin-core` keeps the object model in its own context (`gnoblin-core/host/context`) and knows
+// nothing of this one; `gnoblin-std/host/install` fills it.
+//
+// The workspaces themselves, the desks that say which output shows which of them, the placement of the windows and the
+// policies belong to `libgnoblin-std`: this context holds only the identity of what the library made (a `Workspace` object for
+// each workspace handle) and what was last told to it.
 //
 // Like the core context it is one instance per generation, because a generation is a fresh runtime that evaluates this
 // module once.
@@ -14,8 +19,6 @@ import type { XRRuntime } from "gnoblin-std/extensions/xr/runtime";
 import type { FocusPolicy } from "gnoblin-std/focus";
 import type { Decorations } from "gnoblin-std/frame/decorations";
 import type { GestureTools } from "gnoblin-std/gesture_actions";
-import type { Desk } from "gnoblin-std/host/desks";
-import type { Slide } from "gnoblin-std/host/show";
 import type { ClientStyleState, ScopeStyle } from "gnoblin-std/host/style_scopes";
 import type { Workspace } from "gnoblin-std/host/workspace";
 import type { WorkspaceState } from "gnoblin-std/host/workspace_state";
@@ -27,42 +30,23 @@ export class StdContext {
     /** Per-workspace state; a WeakMap avoids retaining removed workspaces. */
     readonly wsStates = new WeakMap<object, WorkspaceState>();
 
-    /** The workspace each client belongs to; this is managed by the script, not the compositor. */
+    /** The `Workspace` object of each workspace the library made, by its handle. */
+    readonly byHandle = new Map<number, Workspace>();
+
+    /** The workspace each client was last seen on, as the library's collections said. */
     readonly membership = new WeakMap<Client, Workspace>();
 
-    /** Clients offered to a layout as arrivals; dialogs are excluded and do not later leave it. */
-    readonly offered = new WeakSet<Client>();
+    /** Windows that closed lately, by node, so a layout hears of a window that is already gone from the tree. */
+    readonly closed = new Map<number, { client: Client; frame: number }>();
 
-    /** The dialogs already centred in their parent. */
-    readonly centred = new WeakSet<Client>();
+    /** The frame the shell is in, counted from the first one: what `closed` is pruned by. */
+    frame = 0;
 
-    /** The clients the script marked floating: a layout leaves them where they are. */
-    readonly floating = new WeakSet<Client>();
+    /** The room each output's bars last told the library they take, as "top,bottom". */
+    readonly insets = new WeakMap<Output, string>();
 
-    /** All live desks, with a reverse lookup from each output. */
-    readonly desks: Desk[] = [];
-
-    /** Reverse index from an output to the desk it displays. */
-    readonly deskByOutput = new WeakMap<Output, Desk>();
-
-    /** Slides waiting to start after the next successful layout pass. */
-    readonly slides: Slide[] = [];
-
-    /** Unshown workspaces whose windows stay drawn until a slide away from them ends. */
-    readonly holding = new Map<Workspace, number>();
-
-    /** Whether the last layout placement wants each client shown. Defaults to shown. */
-    readonly shownByLayout = new WeakMap<Client, boolean>();
-
-    /**
-     * Visibility last set by the layout driver. A client it has not hidden is shown. Comparing against this value
-     * prevents a client hidden by the compositor (for example, when minimised) from being shown again until the layout
-     * changes its decision.
-     */
-    readonly writtenVisible = new WeakMap<Client, boolean>();
-
-    /** The frame inset last used to fit a window, so later passes can detect changes. */
-    readonly fittedInset = new WeakMap<Client, FrameInset>();
+    /** The frame inset the library last was given for each client. */
+    readonly insetSent = new WeakMap<Client, FrameInset>();
 
     /** Styles attached to scopes, keyed by the collection state they affect. */
     readonly scopeStyles = new WeakMap<CollectionState, ScopeStyle>();
@@ -81,12 +65,6 @@ export class StdContext {
 
     /** Shared values that need reassignment and cannot be module-level `let` bindings. */
     readonly flags = {
-        /**
-         * Whether the layout pass is running, which a transition cannot start inside: its writes are the pass's own.
-         */
-        laying: false,
-        /** The first-seat focused window at the end of the last frame, used when checking a closing window. */
-        lastFocus: null as Client | null,
         /** Stable tie-break order for style selections created at equal priority. */
         styleOrder: 0,
     };
@@ -98,7 +76,7 @@ export class StdContext {
     staging!: Staging;
     /** The state of `gnoblin.outputs.profiles`. */
     profileRoot!: CollectionState;
-    /** The state of `gnoblin.workspaces`. */
+    /** The state of `gnoblin.workspaces`, which follows the library's list of workspaces. */
     workspaceRoot!: CollectionState;
     /** The state of `gnoblin.displays`. */
     displayRoot!: CollectionState;

@@ -1,6 +1,6 @@
 // The root collections of `gnoblin-std`: `gnoblin.workspaces`, `gnoblin.displays` and `gnoblin.outputs.profiles`. Each is
 // made once per generation by `installRoots` and kept on the std context; `gnoblin-core` makes `gnoblin.clients` and
-// `gnoblin.outputs`.
+// `gnoblin.outputs`. The list of `gnoblin.workspaces` is the library's (`host/membership` keeps it equal).
 
 import type { Display } from "gnoblin-std/display/display";
 import type { OutputProfile } from "gnoblin-std/display/output_profile";
@@ -12,7 +12,7 @@ import { showWorkspace } from "gnoblin-std/host/show";
 import type { ShowOptions } from "gnoblin-std/host/show";
 import { screenArea } from "gnoblin-std/host/work_area";
 import type { Workspace } from "gnoblin-std/host/workspace";
-import { addWorkspace, removeWorkspace } from "gnoblin-std/host/workspaces";
+import { addWorkspace, clearWorkspaces, removeWorkspace } from "gnoblin-std/host/workspaces";
 import type { Rect } from "gnoblin-core/types";
 
 /** The workspaces of the script, which also say which of them each output shows. */
@@ -61,7 +61,7 @@ export function installRoots(): void {
         }),
     );
 
-    // Script workspaces and their named sets; membership is script-owned.
+    // The workspaces: their list is the library's, which these calls change.
     std.workspaceRoot = collectionState(
         new WorkspaceCollection(CREATE, {
             ...rootState("Workspace"),
@@ -69,18 +69,8 @@ export function installRoots(): void {
                 add: (workspace) => addWorkspace(workspace as Workspace),
                 // The last workspace stays: a shell with nowhere to put a window is unusable, so `remove` refuses
                 // to drop it.
-                remove: (workspace) => {
-                    if (std.workspaceRoot.list.length < 2) {
-                        return false;
-                    }
-                    removeWorkspace(workspace as Workspace);
-                    return true;
-                },
-                clear: () => {
-                    for (const workspace of [...std.workspaceRoot.list]) {
-                        removeWorkspace(workspace as Workspace);
-                    }
-                },
+                remove: (workspace) => removeWorkspace(workspace as Workspace),
+                clear: clearWorkspaces,
             },
         }),
     );

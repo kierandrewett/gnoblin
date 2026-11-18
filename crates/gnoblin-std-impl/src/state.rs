@@ -77,6 +77,11 @@ pub(crate) struct ClientRec {
     pub(crate) before: Option<Rect>,
     /// How many passes in a row found the expected rectangle missing.
     pub(crate) lost: u8,
+    /// The compositor answered the transaction that carried the expected rectangle: only then can a window that did not take it
+    /// be told from one whose change has not reached the tree yet.
+    pub(crate) acked: bool,
+    /// The layout pass that wrote the expected rectangle.
+    pub(crate) write_pass: u64,
     /// The geometry changed since the listeners were last told.
     pub(crate) geometry_pending: bool,
     /// The room the client's frame takes round its content (`client_set_state`).
@@ -86,6 +91,8 @@ pub(crate) struct ClientRec {
     pub(crate) max: Option<(f64, f64)>,
     /// The rectangle the client floats at, when the shell kept one.
     pub(crate) float_rect: Option<Rect>,
+    /// The room the frame took when the client was last fitted: a layout pass that finds another has the frame keep its place.
+    pub(crate) fitted: Option<crate::floating::Inset>,
     /// Where the client is snapped, and the rectangle it floated at before.
     pub(crate) snap: Option<crate::client_state::Snap>,
 }
@@ -187,6 +194,8 @@ pub(crate) struct State {
     pub(crate) rec: HashMap<NodeId, ClientRec>,
     /// Every connected output, in the order it appeared.
     pub(crate) outputs: Vec<NodeId>,
+    /// The room the shell's own bars take from the top and the bottom of each output (`output_set_insets`).
+    pub(crate) insets: HashMap<NodeId, (f64, f64)>,
     /// The added workspaces, in order.
     pub(crate) workspaces: Vec<Id>,
     pub(crate) ws: HashMap<Id, Workspace>,
@@ -205,6 +214,8 @@ pub(crate) struct State {
     /// The window that had the keyboard at the end of the last turn.
     pub(crate) last_focus: Option<NodeId>,
     pub(crate) counters: Counters,
+    /// The pass wrote a placement: the compositor's answer to the transaction that carries it is awaited.
+    pub(crate) placements_written: bool,
     /// The transition engine: staged writes, tracks and what owns them.
     pub(crate) anim: crate::animation::engine::AnimState,
     /// Styles: what each scope sets and what was applied to each client.

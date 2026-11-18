@@ -3,11 +3,11 @@
 import { host } from "gnoblin-core/host/bridge";
 import { Client } from "gnoblin-core/host/client";
 import { ctx } from "gnoblin-core/host/context";
+import { hiddenByLayout } from "gnoblin-std/host/client_state";
 import { std } from "gnoblin-std/host/state";
 import { stateOf } from "gnoblin-core/host/node_state";
 import { mainSeat } from "gnoblin-core/host/seat";
 import { Workspace } from "gnoblin-std/host/workspace";
-import { noteSignal } from "gnoblin-core/properties";
 import { attachScene } from "gnoblin-std/scene/backend";
 import type { SceneBackend } from "gnoblin-std/scene/backend";
 import { XRRuntime } from "gnoblin-std/extensions/xr/runtime";
@@ -31,14 +31,15 @@ export function installScene(): void {
                 ? {
                       clients: () =>
                           [...content.clients].map((client) => {
-                              noteSignal(client, "shown");
+                              // Reading `visible` is what makes a view follow the layout, which writes it.
+                              void client.visible;
                               return {
                                   node: stateOf(client).node,
                                   x: client.x,
                                   y: client.y,
                                   width: client.width,
                                   height: client.height,
-                                  visible: !client.minimised && (std.shownByLayout.get(client) ?? true),
+                                  visible: !client.minimised && !hiddenByLayout(client),
                               };
                           }),
                       area: () => {

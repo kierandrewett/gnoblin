@@ -99,6 +99,21 @@ class ClientFlags(IntFlag):
     HAS_FLOATING = 1
     HAS_MIN = 2
     HAS_MAX = 4
+    HAS_FITTED = 8
+    LAYOUT_HIDES = 16
+
+class OutputFlags(IntFlag):
+    """The `STD_OUTPUT_*` constants."""
+
+    HAS_DESK = 1
+    PARKED = 2
+    HAS_RECT = 4
+
+class AreasFlags(IntFlag):
+    """The `STD_AREAS_*` constants."""
+
+    HAS_OUTPUT = 1
+    HAS_AREA = 2
 
 class SnapKind(IntEnum):
     """The `STD_SNAP_*` constants."""
@@ -381,6 +396,10 @@ class ClientState:
     floating: Rect = field(default_factory=Rect)
     snap_zone: int = 0
     snap_floating: Rect = field(default_factory=Rect)
+    fitted_top: float = 0.0
+    fitted_right: float = 0.0
+    fitted_bottom: float = 0.0
+    fitted_left: float = 0.0
 
     def _to_dyn(self) -> dict[str, Any]:
         return {
@@ -396,6 +415,10 @@ class ClientState:
             "floating": self.floating._to_dyn(),
             "snap_zone": self.snap_zone,
             "snap_floating": self.snap_floating._to_dyn(),
+            "fitted_top": self.fitted_top,
+            "fitted_right": self.fitted_right,
+            "fitted_bottom": self.fitted_bottom,
+            "fitted_left": self.fitted_left,
         }
 
     @classmethod
@@ -413,6 +436,79 @@ class ClientState:
             floating=Rect._from_dyn(data["floating"]),
             snap_zone=data["snap_zone"],
             snap_floating=Rect._from_dyn(data["snap_floating"]),
+            fitted_top=data["fitted_top"],
+            fitted_right=data["fitted_right"],
+            fitted_bottom=data["fitted_bottom"],
+            fitted_left=data["fitted_left"],
+        )
+
+@dataclass
+class OutputInfo:
+    """What the desk knows about one output: filled by `output_info`."""
+
+    flags: int = 0
+    workspace: int = 0
+    rect: Rect = field(default_factory=Rect)
+    area: Rect = field(default_factory=Rect)
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "flags": self.flags,
+            "workspace": self.workspace,
+            "rect": self.rect._to_dyn(),
+            "area": self.area._to_dyn(),
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> OutputInfo:
+        return cls(
+            flags=data["flags"],
+            workspace=data["workspace"],
+            rect=Rect._from_dyn(data["rect"]),
+            area=Rect._from_dyn(data["area"]),
+        )
+
+@dataclass
+class Span:
+    """The outputs a workspace is stretched over: the argument of `output_span`. A struct that starts with `size` may grow."""
+
+    lead: int = 0
+    members: list[int] = field(default_factory=list)
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "lead": self.lead,
+            "members": list(self.members),
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> Span:
+        return cls(
+            lead=data["lead"],
+            members=list(data["members"]),
+        )
+
+@dataclass
+class Areas:
+    """The output a client is on and its work area: filled by `client_areas`."""
+
+    flags: int = 0
+    output: Rect = field(default_factory=Rect)
+    area: Rect = field(default_factory=Rect)
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "flags": self.flags,
+            "output": self.output._to_dyn(),
+            "area": self.area._to_dyn(),
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> Areas:
+        return cls(
+            flags=data["flags"],
+            output=Rect._from_dyn(data["output"]),
+            area=Rect._from_dyn(data["area"]),
         )
 
 @dataclass
@@ -1598,6 +1694,13 @@ class Client(_b.Handle):
         raw = _call("client_unsnap", self.node, _b.dyn(forget))
         return bool(raw)
 
+    def areas(self) -> Areas:
+        """Writes the output a client is on and its work area. A client whose workspace no output shows is on the primary output;
+        zero asks for the primary output itself.
+        """
+        raw = _call("client_areas", self.node)
+        return Areas._from_dyn(raw)
+
 class Workspace(_b.Handle):
     """A workspace, by the library's own id. Zero is nil; an id is never reused in one process."""
 
@@ -1723,6 +1826,14 @@ class Workspace(_b.Handle):
         raw = _call("workspace_layout_kind", self.handle)
         return raw
 
+    def restore_client(self, client: int, arrived: int) -> bool:
+        """Puts a client on a workspace as a reload gives it back: it moves like `client_move_to_workspace` (its dialogs go with it), but
+        it is not refitted, and a layout is told it arrived only when `arrived` is nonzero. 1 when it moved, 0 when it was refused
+        (the client is gone or already there, or the workspace is not added).
+        """
+        raw = _call("workspace_restore_client", self.handle, _b.dyn(client), _b.dyn(arrived))
+        return bool(raw)
+
 class Policy(_b.Handle):
     """Functions of `policy` that need no handle."""
 
@@ -1750,6 +1861,28 @@ class Output(_b.Handle):
         """Writes the workspace an output shows, or zero."""
         raw = _call("output_workspace", self.node)
         return _b.wrap(Workspace, raw)
+
+    def info(self) -> OutputInfo:
+        """Fills `out` with what the desk knows about an output: whether it can show a workspace, which one it shows, its rectangle and
+        the area a layout tiles in on it. `E_NO_SUCH_NODE` for a node that is not an output the library tracks.
+        """
+        raw = _call("output_info", self.node)
+        return OutputInfo._from_dyn(raw)
+
+    def set_insets(self, top: float, bottom: float) -> int:
+        """Sets the room the shell's own bars take from the top and the bottom of an output. A layout tiles in what is left, so
+        every workspace computes again when it changes. `E_NO_SUCH_NODE` for a node that is not an output the library tracks.
+        """
+        raw = _call("output_set_insets", self.node, _b.dyn(top), _b.dyn(bottom))
+        return raw
+
+    @staticmethod
+    def span(span: Span | dict[str, Any]) -> int:
+        """Makes the desk of the span's lead show one workspace over its members (the desks of the other members show nothing of
+        their own), or ends the lead's span. Asking for the span that holds changes nothing.
+        """
+        raw = _call("output_span", _b.dyn(span))
+        return raw
 
 class Easing(_b.Handle):
     """Functions of `easing` that need no handle."""

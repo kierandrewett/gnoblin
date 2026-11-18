@@ -1,119 +1,46 @@
-// Provides output rectangles, layout work areas and the output containing a client's centre.
+// Output rectangles and layout work areas, as the library holds them: an output's rectangle less the room the shell's bars take,
+// and the output a client is on (the one that holds the middle of it when its workspace spans several).
 
 import { shrinkRect } from "gnoblin-core/inset";
-import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
-import { deskOfClient, deskShowing, primaryOutput } from "gnoblin-std/host/desks";
-import type { Desk } from "gnoblin-std/host/desks";
 import { stateOf } from "gnoblin-core/host/node_state";
 import type { Output } from "gnoblin-core/host/output";
-import type { Workspace } from "gnoblin-std/host/workspace";
 import type { Rect } from "gnoblin-core/types";
-import { barInsets } from "gnoblin-std/widgets";
+import { Client as NativeClient } from "gnoblin-std/generated/classes";
+import { AreasFlags, OutputFlags } from "gnoblin-std/generated/constants";
+import { nativeClient } from "gnoblin-std/host/library";
+import { outputInfo } from "gnoblin-std/host/desks";
 
-/** An output's rectangle in the compositor's coordinates. Null for a gone output or one with no size yet. */
-function rectOf(output: Output): Rect | null {
-    const state = stateOf(output);
-    if (!state.alive) {
-        return null;
-    }
-    const width = host.get(state.node, "width");
-    const height = host.get(state.node, "height");
-    if (typeof width !== "number" || typeof height !== "number" || !(width > 0) || !(height > 0)) {
-        return null;
-    }
-    const x = host.get(state.node, "x");
-    const y = host.get(state.node, "y");
-    return { x: typeof x === "number" ? x : 0, y: typeof y === "number" ? y : 0, width, height };
-}
-
-/** What a layout tiles in on `output`: its rectangle less the bars on it. */
+/** What a layout tiles in on `output`: its rectangle less the bars on it. Null for a gone output or one with no size. */
 export function areaOf(output: Output): Rect | null {
-    const rect = rectOf(output);
-    if (rect === null) {
+    if (!stateOf(output).alive) {
         return null;
     }
-    const insets = barInsets(output);
-    return {
-        x: rect.x,
-        y: rect.y + insets.top,
-        width: rect.width,
-        height: Math.max(1, rect.height - insets.top - insets.bottom),
-    };
+    const info = outputInfo(output);
+    return (info.flags & OutputFlags.HAS_RECT) === 0 ? null : info.area;
 }
 
-/**
- * The one area a spanning desk's workspace is laid out in: the bounding box of the work areas of the outputs it covers.
- * A union of unequal outputs has corners no output shows; a window a layout puts there is not visible.
- */
-function spanArea(outputs: readonly Output[]): Rect | null {
-    const areas = outputs.map(areaOf).filter((area): area is Rect => area !== null);
-    if (areas.length === 0) {
-        return null;
-    }
-    const left = Math.min(...areas.map((area) => area.x));
-    const top = Math.min(...areas.map((area) => area.y));
-    const right = Math.max(...areas.map((area) => area.x + area.width));
-    const bottom = Math.max(...areas.map((area) => area.y + area.height));
-    return { x: left, y: top, width: right - left, height: bottom - top };
-}
-
-/** The area of the output a desk shows on: null for a desk with no output, a parked one, or an output with no size. */
-export function areaOfDesk(desk: Desk): Rect | null {
-    if (desk.output === null || desk.parked) {
-        return null;
-    }
-    return desk.spans === null ? areaOf(desk.output) : spanArea(desk.spans);
-}
-
-/** The output of `desk` that holds the middle of `client`: a spanning desk covers several, any other has one. */
-function deskOutputAt(desk: Desk, client: Client | null): Output | null {
-    if (desk.output === null || desk.parked) {
-        return null;
-    }
-    if (desk.spans === null || client === null) {
-        return desk.output;
-    }
-    const x = client.x + client.width / 2;
-    const y = client.y + client.height / 2;
-    return (
-        desk.spans.find((output) => {
-            const rect = rectOf(output);
-            return rect !== null && x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
-        }) ?? desk.output
-    );
-}
-
-/** The primary output as a rectangle: the whole output. Null when the tree has no output yet. */
-function screenRect(): Rect | null {
-    const output = primaryOutput();
-    return output === null ? null : rectOf(output);
+/** The areas of the output `client` is on, or of the primary output when none is asked for. */
+function areasOf(client: Client | null) {
+    return (client === null ? new NativeClient(0) : nativeClient(client)).areas();
 }
 
 /** The area windows are laid out in on the primary output. Null when the tree has no output yet. */
 export function screenArea(): Rect | null {
-    const output = primaryOutput();
-    return output === null ? null : areaOf(output);
+    const areas = areasOf(null);
+    return (areas.flags & AreasFlags.HAS_AREA) === 0 ? null : areas.area;
 }
 
 /** The output rectangle `client` is on, or the primary output's when its workspace is on none. */
 export function outputRectOf(client: Client | null): Rect | null {
-    const desk = client === null ? null : deskOfClient(client);
-    const output = desk === null ? null : deskOutputAt(desk, client);
-    return output === null ? screenRect() : rectOf(output);
+    const areas = areasOf(client);
+    return (areas.flags & AreasFlags.HAS_OUTPUT) === 0 ? null : areas.output;
 }
 
 /** The work area of the output `client` is on, or the primary output's when its workspace is on none. */
 export function workAreaOf(client: Client | null): Rect | null {
-    const desk = client === null ? null : deskOfClient(client);
-    const output = desk === null ? null : deskOutputAt(desk, client);
-    return output === null ? screenArea() : areaOf(output);
-}
-
-/** The work area of the output that shows `workspace` (all of a span), or the primary output's when none does. */
-export function workAreaOfWorkspace(workspace: Workspace): Rect | null {
-    const desk = deskShowing(workspace);
-    return desk?.output && !desk.parked ? areaOfDesk(desk) : screenArea();
+    const areas = areasOf(client);
+    return (areas.flags & AreasFlags.HAS_AREA) === 0 ? null : areas.area;
 }
 
 /**

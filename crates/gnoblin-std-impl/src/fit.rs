@@ -23,39 +23,98 @@ pub(crate) fn fit_into(rect: &Rect, area: &Rect) -> Rect {
 }
 
 impl State {
-    /// The output rectangle `client` is on, or the primary output's when its workspace is on none.
-    pub(crate) fn output_rect_of(&self, client: NodeId) -> Option<Rect> {
+    /// The output `client` is on: the one its workspace is shown on (for a span, the one that holds the middle of the client), or
+    /// `None` while no output shows its workspace.
+    fn output_of_client(&self, client: NodeId) -> Option<NodeId> {
         let desk = self
             .rec
             .get(&client)
             .and_then(|rec| rec.workspace)
             .and_then(|workspace| self.desk_showing(workspace))
-            .and_then(|id| self.desk(id));
-        let output = desk.and_then(|desk| {
-            let own = desk.output?;
-            if desk.parked {
-                return None;
-            }
-            let Some(spans) = &desk.spans else {
-                return Some(own);
-            };
-            let rect = nodes::rect_of(&self.g, client);
-            let (x, y) = (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
-            Some(
-                spans
-                    .iter()
-                    .copied()
-                    .find(|output| {
-                        output_rect(&self.g, *output)
-                            .is_some_and(|r| x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height)
-                    })
-                    .unwrap_or(own),
-            )
-        });
-        match output {
+            .and_then(|id| self.desk(id))?;
+        let own = desk.output?;
+        if desk.parked {
+            return None;
+        }
+        let Some(spans) = &desk.spans else {
+            return Some(own);
+        };
+        let rect = nodes::rect_of(&self.g, client);
+        let (x, y) = (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
+        Some(
+            spans
+                .iter()
+                .copied()
+                .find(|output| {
+                    output_rect(&self.g, *output)
+                        .is_some_and(|r| x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height)
+                })
+                .unwrap_or(own),
+        )
+    }
+
+    /// The output rectangle `client` is on, or the primary output's when its workspace is on none.
+    pub(crate) fn output_rect_of(&self, client: NodeId) -> Option<Rect> {
+        match self.output_of_client(client) {
             Some(output) => output_rect(&self.g, output),
             None => self.primary_output().and_then(|output| output_rect(&self.g, output)),
         }
+    }
+
+    /// The work area of the output `client` is on, or the primary output's when its workspace is on none.
+    pub(crate) fn work_area_of_client(&self, client: NodeId) -> Option<Rect> {
+        match self.output_of_client(client) {
+            Some(output) => self.area_of(output),
+            None => self.screen_area(),
+        }
+    }
+
+    /// A frame came, went or changed (a reload toggled decorations, or the shell gave a client's frame another size): the content
+    /// does not move by itself, so the rule is that the FRAME keeps its place: the content moves in by what the top and left gained
+    /// and out by what they lost, and the result is clamped so the frame stays inside `area`. A maximised window fills the area
+    /// again, a snapped one tiles to its zone again, and the rectangles a window returns to move the same way, so they do not bring
+    /// the old offset back. A fullscreen window is left alone and fitted when it leaves. Returns whether the frame changed since
+    /// the client was last fitted, so a layout places its windows again. This is `followFrame` of `host/fitting.ts`.
+    pub(crate) fn follow_frame(&mut self, client: NodeId, area: &Rect) -> bool {
+        let g = self.g.clone();
+        if nodes::flag(&g, client, "fullscreen") {
+            return false;
+        }
+        let inset = self.inset_of(client);
+        let Some(was) = self.rec.get_mut(&client).and_then(|rec| rec.fitted.replace(inset)) else {
+            return false;
+        };
+        if was == inset {
+            return false;
+        }
+        let (dx, dy) = (inset.left - was.left, inset.top - was.top);
+        let moved = |rect: &Rect| {
+            fit_content(
+                &Rect::new(rect.x + dx, rect.y + dy, rect.width, rect.height),
+                &inset,
+                area,
+            )
+        };
+        let mut floats = false;
+        if let Some(rec) = self.rec.get_mut(&client) {
+            if let Some(snap) = rec.snap.as_mut() {
+                snap.floating = moved(&snap.floating);
+            }
+            if let Some(floating) = rec.float_rect {
+                rec.float_rect = Some(moved(&floating));
+            }
+            floats = rec.floating;
+        }
+        let zone = self.rec.get(&client).and_then(|rec| rec.snap).map(|snap| snap.zone);
+        if nodes::flag(&g, client, "maximised") {
+            nodes::write_rect(&g, client, &shrink(area, &inset));
+        } else if let Some(zone) = zone {
+            self.snap_client(client, zone, area, true);
+        } else if !nodes::flag(&g, client, "tiled") || floats {
+            let own = nodes::rect_of(&g, client);
+            nodes::write_rect(&g, client, &moved(&own));
+        }
+        true
     }
 
     /// Fits a window to the work area it is now in: a maximised window fills it, a snapped one tiles to its zone again, a floating one

@@ -15,6 +15,7 @@ import { installDisplays } from "gnoblin-std/host/displays";
 import { registerInspectors } from "gnoblin-std/host/console";
 import { lifecycle } from "gnoblin-std/host/lifecycle";
 import { extendObjectModel, registerQueryKeys } from "gnoblin-std/host/members";
+import { openLibrary } from "gnoblin-std/host/library";
 import { installFocus, installPolicy } from "gnoblin-std/host/policy";
 import { installTransitions } from "gnoblin-std/host/rollback";
 import { installRoots } from "gnoblin-std/host/roots";
@@ -33,6 +34,8 @@ function installUi(): void {
 
 /** Installs the package on the host. */
 function installStd(): void {
+    // The library is the desktop: its workspaces, desks and layout pass start here, and every shell that imports this package has them.
+    openLibrary();
     registerQueryKeys();
     installStaging();
     installRoots();

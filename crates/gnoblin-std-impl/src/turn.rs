@@ -18,6 +18,9 @@ use std::rc::Rc;
 use gnoblin_core::{Gnoblin, LogLevel, Rect};
 use gnoblin_std_abi as abi;
 
+use crate::animation::easing::Easing;
+use crate::animation::engine::Options;
+use crate::animation::staging::{Curve, Prop, Staged};
 use crate::layout::{LayoutContext, Placement};
 use crate::nodes;
 use crate::state::{self, Id, NodeId, Notice, State, Std};
@@ -67,6 +70,10 @@ pub(crate) fn turn(std: &Rc<Std>) {
     std.drain();
     layout_pass(std, &g);
     std.st.borrow_mut().apply_styles();
+    let wrote = std::mem::take(&mut std.st.borrow_mut().placements_written);
+    if wrote {
+        acknowledge_writes(std, &g);
+    }
     std.drain();
 }
 
@@ -111,6 +118,24 @@ fn layout_pass(std: &Rc<Std>, g: &Gnoblin) {
     }
 }
 
+/// Once the compositor has answered the transaction that carries this pass's placements, a window that does not hold what the pass
+/// wrote is one whose write was lost. Before it has, the tree may simply not have heard of the change yet.
+fn acknowledge_writes(std: &Rc<Std>, g: &Gnoblin) {
+    let (ctx, pass) = {
+        let st = std.st.borrow();
+        (st.ctx, st.counters.layout_passes)
+    };
+    let _ = g.flush(move |_serial| {
+        if let Some(std) = state::find(ctx) {
+            for rec in std.st.borrow_mut().rec.values_mut() {
+                if rec.write_pass <= pass {
+                    rec.acked = true;
+                }
+            }
+        }
+    });
+}
+
 /// Everything the pass needs to know about one workspace before it calls the layout.
 struct Plan {
     cx: LayoutContext,
@@ -141,6 +166,19 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
     }
     for client in &plan.arrived {
         layout.client_added(g, &plan.cx, *client);
+    }
+    {
+        // Refit changed frames before placing their windows; new arrivals keep their current frame.
+        let mut st = std.st.borrow_mut();
+        let mut moved = false;
+        for client in &plan.cx.children {
+            if nodes::alive(&st.g, *client) && st.follow_frame(*client, &plan.cx.area) {
+                moved = true;
+            }
+        }
+        if moved && let Some(ws) = st.ws.get_mut(&workspace) {
+            ws.dirty = true;
+        }
     }
     let run = std.st.borrow_mut().begin_compute(workspace, &plan);
     if let Some(run) = run {
@@ -202,6 +240,7 @@ impl State {
             let Some((expected, before)) = self
                 .rec
                 .get(&client)
+                .filter(|rec| rec.acked)
                 .and_then(|rec| rec.expected.zip(rec.before))
                 .filter(|_| nodes::alive(&self.g, client))
             else {
@@ -367,10 +406,16 @@ impl State {
             if let Some(bounds) = bounds {
                 let before = nodes::rect_of(&g, *client);
                 nodes::write_rect(&g, *client, &bounds);
+                let pass = self.counters.layout_passes;
                 if let Some(rec) = self.rec.get_mut(client) {
                     rec.before = (before != bounds).then_some(before);
                     rec.expected = (before != bounds).then_some(bounds);
                     rec.lost = 0;
+                    rec.acked = false;
+                    rec.write_pass = pass;
+                }
+                if before != bounds {
+                    self.placements_written = true;
                 }
             }
             nodes::write_flag(&g, *client, "tiled", placement.is_some_and(|placement| placement.tiled));
@@ -468,19 +513,37 @@ impl State {
 /// Carries a slide's windows to where they rest, with the compositor's own tween, and hides the ones that left once it is over.
 fn play_slide(std: &Rc<Std>, g: &Gnoblin, play: Play) {
     let ctx = std.st.borrow().ctx;
-    let seconds = play.duration_ms / 1000.0;
+    let duration = play.duration_ms;
     let moves = play.moves;
-    // The offsets were written this turn; the tween starts from them once they have been sent.
+    // The offsets were written this turn; the timed writes start from them once they have been sent: each window's `x` goes to where
+    // it rests along the CSS `ease-out` curve, all of them as one transition.
     let started = g.flush(move |_serial| {
         if let Some(std) = state::find(ctx) {
-            let g = std.g();
-            for (client, target) in &moves {
-                if nodes::alive(&g, *client) {
-                    let _ = g
-                        .node(gnoblin_core::NodeId(*client))
-                        .set_animated("x", *target, seconds);
-                }
+            let samples = Easing::EaseOut.samples();
+            {
+                let mut st = std.st.borrow_mut();
+                let entries: Vec<Staged> = moves
+                    .iter()
+                    .filter(|(client, _)| nodes::alive(&st.g, *client))
+                    .map(|(client, target)| Staged {
+                        node: *client,
+                        key: "x".to_owned(),
+                        value: Prop::Number(*target),
+                        curve: Some(Curve {
+                            duration_ms: duration,
+                            samples: samples.clone(),
+                        }),
+                    })
+                    .collect();
+                let options = Options {
+                    duration_ms: duration,
+                    delay_ms: 0.0,
+                    samples: samples.clone(),
+                    autoplay: true,
+                };
+                let _ = st.transition_commit(entries, &options);
             }
+            std.drain();
         }
     });
     if let Err(error) = started {

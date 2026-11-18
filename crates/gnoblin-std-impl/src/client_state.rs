@@ -9,8 +9,8 @@
 use gnoblin_core::Rect;
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinNode};
 use gnoblin_std_abi::{
-    GnoblinStdClientState, GnoblinStdRect, STD_CLIENT_HAS_FLOATING, STD_CLIENT_HAS_MAX, STD_CLIENT_HAS_MIN,
-    STD_SNAP_LEFT, STD_SNAP_NONE, STD_SNAP_RIGHT, STD_SNAP_TOP,
+    GnoblinStdClientState, GnoblinStdRect, STD_CLIENT_HAS_FITTED, STD_CLIENT_HAS_FLOATING, STD_CLIENT_HAS_MAX,
+    STD_CLIENT_HAS_MIN, STD_CLIENT_LAYOUT_HIDES, STD_SNAP_LEFT, STD_SNAP_NONE, STD_SNAP_RIGHT, STD_SNAP_TOP,
 };
 
 use crate::error::Fail;
@@ -121,6 +121,13 @@ impl State {
         let (snap_zone, snap_floating) = rec.snap.map_or((STD_SNAP_NONE, Rect::new(0.0, 0.0, 0.0, 0.0)), |snap| {
             (snap.zone, snap.floating)
         });
+        let fitted = rec.fitted.map_or(Inset::default(), |inset| {
+            flags |= STD_CLIENT_HAS_FITTED;
+            inset
+        });
+        if rec.shown_by_layout == Some(false) {
+            flags |= STD_CLIENT_LAYOUT_HIDES;
+        }
         Some(GnoblinStdClientState {
             size: size_of::<GnoblinStdClientState>() as u32,
             flags,
@@ -136,6 +143,10 @@ impl State {
             snap_zone,
             reserved: 0,
             snap_floating: rect_out(&snap_floating),
+            fitted_top: fitted.top,
+            fitted_right: fitted.right,
+            fitted_bottom: fitted.bottom,
+            fitted_left: fitted.left,
         })
     }
 
@@ -181,6 +192,12 @@ impl State {
         rec.min = (state.flags & STD_CLIENT_HAS_MIN != 0).then_some((state.min_width, state.min_height));
         rec.max = (state.flags & STD_CLIENT_HAS_MAX != 0).then_some((state.max_width, state.max_height));
         rec.float_rect = (state.flags & STD_CLIENT_HAS_FLOATING != 0).then(|| rect_in(&state.floating));
+        rec.fitted = (state.flags & STD_CLIENT_HAS_FITTED != 0).then_some(Inset {
+            top: state.fitted_top,
+            right: state.fitted_right,
+            bottom: state.fitted_bottom,
+            left: state.fitted_left,
+        });
         if changed && let Some(workspace) = rec.workspace.and_then(|id| self.ws.get_mut(&id)) {
             workspace.dirty = true;
         }

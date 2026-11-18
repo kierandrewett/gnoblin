@@ -1,127 +1,184 @@
-// Tracks workspace membership, dialog placement and client transfers.
+// Which windows are on which workspace, and the moves of a window between them.
+//
+// The library keeps the membership (`libgnoblin-std`'s workspaces and their collections of clients). What a script holds are
+// `MutableCollection`s of the engine's `Client` objects, one for each workspace and one for `gnoblin.workspaces`, with the
+// listeners and the live selections a script puts on them. This module keeps those lists equal to the library's: after each
+// call that can change a membership, when the library announces one, and at the start of every frame it reads the library's
+// list and does for each difference what the host always did for a window joining or leaving (the signal, the listeners, the
+// selections). A window the engine has not seen yet is left for the next time.
 
 import { GnoblinError } from "gnoblin-core/errors";
-import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
-import { recompute } from "gnoblin-core/host/collection_events";
+import { holders, recompute } from "gnoblin-core/host/collection_events";
+import type { CollectionState, Member } from "gnoblin-core/host/collection_state";
 import { ctx } from "gnoblin-core/host/context";
-import { std } from "gnoblin-std/host/state";
-import { isShown } from "gnoblin-std/host/desks";
-import { guard, queueFor } from "gnoblin-core/host/dispatch";
-import { refitClient } from "gnoblin-std/host/fitting";
+import { queueFor } from "gnoblin-core/host/dispatch";
 import { isClient, stateOf } from "gnoblin-core/host/node_state";
-import { hasFocus } from "gnoblin-core/host/seat";
-import { workAreaOfWorkspace } from "gnoblin-std/host/work_area";
-import type { Workspace } from "gnoblin-std/host/workspace";
+import { disposeBindingsOf, raiseSignal } from "gnoblin-core/properties";
+import { isKnown, whenKnown } from "gnoblin-std/host/client_state";
+import { nativeClient } from "gnoblin-std/host/library";
+import { std } from "gnoblin-std/host/state";
+import { Workspace } from "gnoblin-std/host/workspace";
 import { isWorkspace, wsState } from "gnoblin-std/host/workspace_state";
-import type { WorkspaceState } from "gnoblin-std/host/workspace_state";
-import { raiseSignal } from "gnoblin-core/properties";
+import { Collection as NativeCollection, Workspace as NativeWorkspace } from "gnoblin-std/generated/classes";
+import { CollectionKind } from "gnoblin-std/generated/constants";
 
-/** A workspace's clients traded places: its layout computes again, and one with a record of its own trades them
- * there.
- */
-export function swapClients(workspace: Workspace, a: Client, b: Client): void {
-    const state = wsState(workspace);
-    state.dirty = true;
-    guard(`${workspace}.layout.onClientsSwapped`, () => state.layout.onClientsSwapped?.(a, b));
+/** Whether two lists hold the same objects in the same order. */
+function sameList(a: readonly unknown[], b: readonly unknown[]): boolean {
+    return a.length === b.length && a.every((member, at) => member === b[at]);
 }
 
-/** Puts `client` in `workspace`, which it is not in. */
-function link(workspace: Workspace, client: Client, arrived: boolean): void {
-    const state = wsState(workspace);
-    std.membership.set(client, workspace);
-    state.clientsState.list.push(client);
-    raiseSignal(state.clientsState, "items");
-    state.dirty = true;
-    if (arrived) {
-        state.arrived.push(client);
-        std.offered.add(client);
-    }
-    queueFor(state.clientsState, "onAdded", [client, state.clientsState.self]);
-    recompute(state.clientsState, client);
+/** Puts `list` right where it is, so whoever holds the array sees the change. */
+function replaceIn(list: Member[], next: readonly Member[]): void {
+    list.splice(0, list.length, ...next);
 }
 
-/** Takes `client`, which is alive, out of `workspace`. */
-function unlink(workspace: Workspace, client: Client): void {
-    const state = wsState(workspace);
-    std.membership.delete(client);
-    state.clientsState.list.splice(state.clientsState.list.indexOf(client), 1);
-    raiseSignal(state.clientsState, "items");
-    state.dirty = true;
-    forgetArrival(state, client);
-    queueFor(state.clientsState, "onRemoved", [client, state.clientsState.self]);
-    recompute(state.clientsState, client);
+/** The `Workspace` object of a workspace the library holds: the one for its handle. */
+export function workspaceOf(native: NativeWorkspace): Workspace {
+    return std.byHandle.get(native.handle) ?? Workspace.wrap(native);
 }
 
-/** A client that leaves before its layout heard of it never was there for the layout. */
-export function forgetArrival(state: WorkspaceState, client: Client): void {
-    const at = state.arrived.indexOf(client);
-    if (at >= 0) {
-        state.arrived.splice(at, 1);
-    } else if (std.offered.has(client) || ctx.preexisting.has(client)) {
-        state.departed.push(client);
-    }
-}
-
-/** Moves `client` to `target` (or out of every workspace when it is null). `arrived` says a layout may place it. */
-export function moveClient(client: Client, target: Workspace | null, arrived: boolean): void {
-    const from = std.membership.get(client) ?? null;
-    if (from === target) {
+/** Makes `gnoblin.workspaces` the list the library holds, and tells the listeners and the selections what it changed. */
+function syncWorkspaceList(): void {
+    const root = std.workspaceRoot;
+    const handles = NativeCollection.root(CollectionKind.WORKSPACES)?.members() ?? [];
+    const next = handles.map((handle) => workspaceOf(new NativeWorkspace(handle)));
+    const list = root.list as Workspace[];
+    if (sameList(list, next)) {
         return;
     }
-    if (from) {
-        unlink(from, client);
+    const left = list.filter((workspace) => !next.includes(workspace));
+    const joined = next.filter((workspace) => !list.includes(workspace));
+    const held = new Map(left.map((workspace) => [workspace, holders(root, workspace)] as const));
+    replaceIn(root.list, next);
+    for (const workspace of left) {
+        wsState(workspace).attached = false;
+        disposeBindingsOf(workspace);
+        for (const view of held.get(workspace) ?? []) {
+            view.members?.delete(workspace);
+            queueFor(view, "onRemoved", [workspace, view.self]);
+        }
     }
-    if (target) {
-        link(target, client, arrived);
+    for (const workspace of joined) {
+        wsState(workspace).attached = true;
+        queueFor(root, "onAdded", [workspace, root.self]);
     }
-    // A dialog stays with its parent: it goes wherever the parent goes.
-    for (const dialog of dialogsOf(client)) {
-        moveClient(dialog, target, false);
+    raiseSignal(root, "items");
+    // A workspace's index moved with the list, and which of them is active may have with it.
+    for (const workspace of next) {
+        recompute(root, workspace);
     }
 }
 
-/** The live clients that are dialogs of `parent`. */
-export function dialogsOf(parent: Client): Client[] {
-    return (ctx.clientRoot.list as Client[]).filter((client) => client.alive && client.parentWindow === parent);
+/** Puts `client` in the list of `workspace`, which it is not in. */
+function link(state: CollectionState, workspace: Workspace, client: Client): void {
+    std.membership.set(client, workspace);
+    state.list.push(client);
+    raiseSignal(state, "items");
+    queueFor(state, "onAdded", [client, state.self]);
+    recompute(state, client);
+}
+
+/** Takes `client` out of the list of `workspace`. */
+function unlink(state: CollectionState, workspace: Workspace, client: Client): void {
+    if (std.membership.get(client) === workspace) {
+        std.membership.delete(client);
+    }
+    state.list.splice(state.list.indexOf(client), 1);
+    raiseSignal(state, "items");
+    queueFor(state, "onRemoved", [client, state.self]);
+    recompute(state, client);
 }
 
 /**
- * Puts a dialog where its parent is, and centres it in the parent the first time. Returns whether it did: a dialog
- * whose parent is on no workspace (or is gone) is placed as any other window.
+ * Makes every list of windows the library's. A window leaves its old workspace's list before it joins the new one's, as a
+ * move always told them. A window the engine has not seen is not in the list yet, and the next call finds it.
  */
-export function placeDialog(client: Client): boolean {
-    const parent = client.parentWindow;
-    const workspace = parent === null ? undefined : std.membership.get(parent);
-    if (parent === null || workspace === undefined) {
-        return false;
+export function syncMembership(): void {
+    syncWorkspaceList();
+    const wanted = new Map<Workspace, Client[]>();
+    for (const workspace of std.byHandle.values()) {
+        const nodes = wsState(workspace).nativeClients.members();
+        wanted.set(
+            workspace,
+            nodes.flatMap((node) => ctx.clientsByNode.get(node) ?? []),
+        );
     }
-    if (std.membership.get(client) !== workspace) {
-        moveClient(client, workspace, false);
+    for (const [workspace, next] of wanted) {
+        const state = wsState(workspace).clientsState;
+        for (const client of [...state.list] as Client[]) {
+            if (!next.includes(client)) {
+                unlink(state, workspace, client);
+            }
+        }
     }
-    if (!std.centred.has(client)) {
-        std.centred.add(client);
-        client.x = parent.x + Math.floor((parent.width - client.width) / 2);
-        client.y = parent.y + Math.floor((parent.height - client.height) / 2);
+    for (const [workspace, next] of wanted) {
+        const state = wsState(workspace).clientsState;
+        for (const client of next) {
+            if (!state.list.includes(client)) {
+                link(state, workspace, client);
+            }
+        }
+        // The same windows in another order: the workspace's windows traded places.
+        if (!sameList(state.list, next)) {
+            replaceIn(state.list, next);
+            raiseSignal(state, "items");
+        }
     }
-    return true;
 }
 
-/** Hands the keyboard to the first window still showing on `workspace`, or to nobody. A tree with no seat has none. */
-function passFocusFrom(workspace: Workspace | null, leaving: Client): void {
-    if (host.input.seats().length === 0) {
+/** A window closed: it leaves its workspace's list at once, as the compositor's word of it reaches the engine first. */
+export function forgetClient(client: Client): void {
+    const workspace = std.membership.get(client);
+    if (workspace === undefined) {
         return;
     }
-    const next =
-        workspace === null
-            ? undefined
-            : (wsState(workspace).clientsState.list as Client[]).find(
-                  (one) => one !== leaving && one.alive && !one.minimised,
-              );
-    if (next === undefined) {
-        ctx.input.primary.clearFocus();
-    } else {
-        next.focus();
+    const state = wsState(workspace).clientsState;
+    std.membership.delete(client);
+    const at = state.list.indexOf(client);
+    if (at >= 0) {
+        state.list.splice(at, 1);
+        raiseSignal(state, "items");
+    }
+    for (const view of holders(state, client)) {
+        view.members?.delete(client);
+    }
+}
+
+/** The moves asked of windows the library does not know yet, made when it does. */
+const waiting = new Map<Client, Workspace>();
+
+/**
+ * Asks the library to move `client` to `workspace`. The engine hears of a window a turn before the library, so a move asked of a
+ * window the library does not know yet waits for the next frame: it is taken as done when nothing that the engine can see
+ * would refuse it.
+ */
+function moveWhenKnown(client: Client, workspace: Workspace, ask: () => boolean): boolean {
+    const moved = whenKnown(ask, () => {
+        const refused =
+            !client.alive ||
+            client.fullscreen ||
+            client.parentWindow !== null ||
+            !wsState(workspace).attached ||
+            std.membership.get(client) === workspace;
+        if (!refused) {
+            waiting.set(client, workspace);
+        }
+        return !refused;
+    });
+    syncMembership();
+    return moved;
+}
+
+/** Makes the moves that waited for the library to know their window. */
+export function flushMoves(): void {
+    for (const [client, workspace] of [...waiting]) {
+        if (!client.alive) {
+            waiting.delete(client);
+        } else if (isKnown(client)) {
+            waiting.delete(client);
+            nativeClient(client).moveToWorkspace(wsState(workspace).native);
+        }
     }
 }
 
@@ -130,51 +187,39 @@ export function moveClientTo(client: Client, workspace: Workspace): boolean {
     if (!isWorkspace(workspace)) {
         throw new TypeError(`${client}.moveToWorkspace: needs a Workspace`);
     }
-    const from = std.membership.get(client) ?? null;
-    if (
-        !client.alive ||
-        !wsState(workspace).attached ||
-        client.fullscreen ||
-        client.parentWindow !== null ||
-        from === workspace
-    ) {
-        return false;
-    }
-    const wasFocused = hasFocus(client);
-    moveClient(client, workspace, true);
-    // The window left the screen, so the focus passes to a window that stays.
-    if (wasFocused && !isShown(workspace)) {
-        passFocusFrom(from, client);
-    }
-    const area = workAreaOfWorkspace(workspace);
-    if (area !== null) {
-        refitClient(client, area);
-    }
-    return true;
+    return moveWhenKnown(client, workspace, () => nativeClient(client).moveToWorkspace(wsState(workspace).native));
 }
 
 /** `workspace.clients.add(client)`: the client leaves its workspace and joins this one. */
 export function transferClient(workspace: Workspace, client: Client): void {
     const target = `${workspace}.clients.add`;
-    if (!wsState(workspace).attached) {
+    const state = wsState(workspace);
+    if (state.native.info().attached === 0) {
         throw new GnoblinError("invalid_state", target, "add the workspace to gnoblin.workspaces first");
     }
     if (!isClient(client) || !ctx.clientsByNode.has(stateOf(client).node)) {
         throw new GnoblinError("not_found", target, "the client is gone or is not a client of the compositor");
     }
-    moveClient(client, workspace, true);
+    moveWhenKnown(client, workspace, () => {
+        state.nativeClients.add(stateOf(client).node);
+        return true;
+    });
 }
 
 /** `workspace.clients.remove(client)`: the client has no workspace until it is given one. */
 export function detachClient(workspace: Workspace, client: Client): void {
-    if (std.membership.get(client) === workspace) {
-        moveClient(client, null, false);
-    }
+    wsState(workspace).nativeClients.remove(stateOf(client).node);
+    syncMembership();
 }
 
 /** Removes every client from a workspace without closing the windows. */
 export function clearClients(workspace: Workspace): void {
-    for (const client of [...wsState(workspace).clientsState.list] as Client[]) {
-        detachClient(workspace, client);
-    }
+    wsState(workspace).nativeClients.clear();
+    syncMembership();
+}
+
+/** A workspace's clients traded places: its layout computes again, and one with a record of its own trades them there. */
+export function swapClients(workspace: Workspace, a: Client, b: Client): void {
+    wsState(workspace).nativeClients.swap(stateOf(a).node, stateOf(b).node);
+    syncMembership();
 }

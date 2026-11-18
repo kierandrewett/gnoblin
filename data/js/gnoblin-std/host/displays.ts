@@ -13,50 +13,30 @@ import { collectionState, rootState } from "gnoblin-core/host/collection_state";
 import { Collection } from "gnoblin-core/host/collections";
 import { ctx } from "gnoblin-core/host/context";
 import { std } from "gnoblin-std/host/state";
-import { effectiveDesk, fillDesks, liveOutputs, primaryOutput, setShown } from "gnoblin-std/host/desks";
+import { hasDesk, liveOutputs, primaryOutput, shownOn } from "gnoblin-std/host/desks";
+import { nativeOutput } from "gnoblin-std/host/library";
+import { Output as NativeOutput } from "gnoblin-std/generated/classes";
 import { queueFor, say } from "gnoblin-core/host/dispatch";
 import { Output } from "gnoblin-core/host/output";
 import { applyOutput } from "gnoblin-core/host/output_apply";
 import { showWorkspace } from "gnoblin-std/host/show";
 import { Workspace } from "gnoblin-std/host/workspace";
-import { wsState } from "gnoblin-std/host/workspace_state";
+import { syncMembership } from "gnoblin-std/host/membership";
 
 /** Whether two lists hold the same outputs in the same order. */
 function sameOutputs(a: readonly Output[], b: readonly Output[]): boolean {
     return a.length === b.length && a.every((output, at) => output === b[at]);
 }
 
-/**
- * Makes the desk of `lead` show one workspace over `members` (the desks of the other members show nothing of their own
- * and cover the same workspace), or ends the span with null. Asking for the span that holds changes nothing.
+/** Makes the desk of `lead` show one workspace over `members` (the desks of the other members show nothing of their own and
+ * cover the same workspace), or ends the span with null. Asking for the span that holds changes nothing.
  */
 function spanDesks(lead: Output, members: readonly Output[] | null): void {
-    const desk = std.deskByOutput.get(lead);
-    if (desk === undefined) {
-        return;
-    }
-    const covered = (members ?? []).filter((output) => std.deskByOutput.has(output));
-    const next = covered.length > 1 ? covered : null;
-    if (next === null ? desk.spans === null : desk.spans !== null && sameOutputs(desk.spans, next)) {
-        return;
-    }
-    for (const other of std.desks) {
-        if (other.spannedBy === desk) {
-            other.spannedBy = null;
-        }
-    }
-    desk.spans = next;
-    for (const output of next ?? []) {
-        const under = std.deskByOutput.get(output);
-        if (under !== undefined && under !== desk) {
-            under.spannedBy = desk;
-            setShown(under, null);
-        }
-    }
-    if (desk.shown !== null) {
-        wsState(desk.shown).dirty = true;
-    }
-    fillDesks();
+    NativeOutput.span({
+        lead: nativeOutput(lead).node,
+        members: (members ?? []).map((output) => nativeOutput(output).node),
+    });
+    syncMembership();
 }
 
 /** Sends an output request on behalf of a profile or display; a request the shell cannot send is reported, not
@@ -119,12 +99,9 @@ export function installDisplays(): void {
     const displayBackend: DisplayBackend = {
         outputs: () => liveOutputs(),
         primary: () => primaryOutput(),
-        hasDesk: (output) => std.deskByOutput.has(output as Output),
-        shownOn: (output) => {
-            const desk = std.deskByOutput.get(output as Output);
-            return desk === undefined ? null : effectiveDesk(desk).shown;
-        },
-        attached: (workspace) => wsState(workspace as Workspace).attached,
+        hasDesk: (output) => hasDesk(output as Output),
+        shownOn: (output) => shownOn(output as Output),
+        attached: (workspace) => (workspace as Workspace).index >= 0,
         show: (workspace, output) => showWorkspace(workspace as Workspace, { output: output as Output }),
         span: (lead, members) => spanDesks(lead as Output, members as readonly Output[] | null),
         mirrorOf: (output) => (output as Output).mirrorOf,

@@ -47,6 +47,7 @@ impl State {
             clients: Vec::new(),
             rec: HashMap::new(),
             outputs: Vec::new(),
+            insets: HashMap::new(),
             workspaces: Vec::new(),
             ws: HashMap::new(),
             colls: HashMap::new(),
@@ -60,6 +61,7 @@ impl State {
             policy: Policy::default(),
             last_focus: None,
             counters: Counters::default(),
+            placements_written: false,
             anim: crate::animation::engine::AnimState::default(),
             styles: crate::style::cascade::StyleState::default(),
             scene: crate::scene::SceneState::default(),
@@ -231,6 +233,7 @@ impl State {
             return;
         }
         self.outputs.retain(|one| *one != id);
+        self.insets.remove(&id);
         let root = self.roots[1];
         self.notify_one(abi::STD_EVENT_REMOVED, id, root);
         self.recompute(abi::STD_COLLECTION_OUTPUTS, id);
@@ -248,10 +251,8 @@ impl State {
                 let mut notice = Notice::new(abi::STD_EVENT_GEOMETRY_CHANGED, id, holders);
                 notice.rect = crate::desks::output_rect(&self.g, id).unwrap_or_default();
                 self.notices.push(notice);
-                // The area the workspaces are laid out in changed: each recomputes when it sees the new one.
-                for ws in self.ws.values_mut() {
-                    ws.dirty = true;
-                }
+                // The area the workspaces are laid out in changed: each computes again when its pass finds the area is not the one
+                // it computed for (`begin_compute`), so nothing is marked here: the pass may have seen the new area already.
             }
             "mode" => {
                 let mut notice = Notice::new(abi::STD_EVENT_MODE_CHANGED, id, holders);

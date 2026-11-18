@@ -383,6 +383,18 @@ impl State {
         Ok(true)
     }
 
+    /// A reload gives `client` back to `workspace`: it moves, with its dialogs, but is not refitted. `arrived` says a layout may place
+    /// it. 1 when it moved, 0 when it is refused.
+    pub(crate) fn restore_client(&mut self, workspace: Id, client: NodeId, arrived: bool) -> Res<bool> {
+        let attached = self.workspace(workspace)?.attached;
+        let from = self.rec.get(&client).and_then(|rec| rec.workspace);
+        if !attached || !self.rec.contains_key(&client) || !nodes::alive(&self.g, client) || from == Some(workspace) {
+            return Ok(false);
+        }
+        self.move_client(client, Some(workspace), arrived);
+        Ok(true)
+    }
+
     /// `workspace.clients.add(client)`: the client leaves its workspace and joins this one.
     pub(crate) fn transfer_client(&mut self, workspace: Id, client: NodeId) -> Res<()> {
         if !self.workspace(workspace)?.attached {

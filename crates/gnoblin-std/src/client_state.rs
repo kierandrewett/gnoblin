@@ -124,6 +124,10 @@ impl Client {
             snap_zone: 0,
             reserved: 0,
             snap_floating: rect_out(Rect::default()),
+            fitted_top: 0.0,
+            fitted_right: 0.0,
+            fitted_bottom: 0.0,
+            fitted_left: 0.0,
         };
         let std = self.std();
         // SAFETY: `client_state` fills the struct it is given up to the `size` the caller set; `raw` is a live local.

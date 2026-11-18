@@ -48,6 +48,7 @@ mod fit;
 mod floating;
 mod layout;
 mod nodes;
+mod objects;
 mod providers;
 mod scene;
 mod splits;
