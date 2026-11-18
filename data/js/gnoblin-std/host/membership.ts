@@ -51,6 +51,7 @@ function syncWorkspaceList(): void {
     const joined = next.filter((workspace) => !list.includes(workspace));
     const held = new Map(left.map((workspace) => [workspace, holders(root, workspace)] as const));
     replaceIn(root.list, next);
+    std.displayManager.changed();
     for (const workspace of left) {
         wsState(workspace).attached = false;
         disposeBindingsOf(workspace);

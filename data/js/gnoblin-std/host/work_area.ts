@@ -17,7 +17,7 @@ export function areaOf(output: Output): Rect | null {
         return null;
     }
     const info = outputInfo(output);
-    return (info.flags & OutputFlags.HAS_RECT) === 0 ? null : info.area;
+    return info === null || (info.flags & OutputFlags.HAS_RECT) === 0 ? null : info.area;
 }
 
 /** The areas of the output `client` is on, or of the primary output when none is asked for. */

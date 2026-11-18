@@ -163,6 +163,10 @@ impl State {
     /// The output the pointer is over, among those with a desk.
     fn pointer_screen(&self) -> Option<NodeId> {
         let seat = nodes::seat(&self.g)?;
+        // The seat names the screen the pointer is on; its coordinates are the fallback for a tree whose seat does not.
+        if let Ok(Some(screen)) = seat.get_node("screen") {
+            return self.outputs.contains(&screen.id().0).then(|| screen.id().0);
+        }
         let (x, y) = (seat.get_f64("pointer_x").ok()?, seat.get_f64("pointer_y").ok()?);
         self.outputs.iter().copied().find(|output| {
             output_rect(&self.g, *output)
@@ -467,7 +471,8 @@ impl State {
     /// Moves the keyboard `step` windows along the workspace's windows: nothing moves past either end.
     pub(crate) fn walk(&mut self, workspace: Id, step: i64) -> Res<()> {
         let list = self.workspace(workspace)?.clients.clone();
-        let Some(at) = list.iter().position(|client| nodes::flag(&self.g, *client, "focused")) else {
+        let focused = nodes::focused_window(&self.g, &self.clients);
+        let Some(at) = list.iter().position(|client| Some(*client) == focused) else {
             return Ok(());
         };
         let Some(next) = i64::try_from(at)

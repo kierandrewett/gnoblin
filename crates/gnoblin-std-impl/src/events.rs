@@ -383,6 +383,12 @@ fn subscribe(std: &Rc<Std>, g: &Gnoblin) -> Res<()> {
         })?;
     }
 
+    // The keyboard moved: nothing to update now (a window that closes in the same batch as the focus changes is the one that had
+    // it), but the next turn notes who has it.
+    let focused = Rc::clone(std);
+    g.on_class_property_changed("seat", "focus", move |_node, _value| handle(&focused, |_st| {}))
+        .map_err(Fail::from)?;
+
     let appeared = Rc::clone(std);
     g.on_node_created("screen", move |node| {
         handle(&appeared, |st| st.output_created(node.id().0))

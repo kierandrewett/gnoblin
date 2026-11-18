@@ -148,8 +148,11 @@ pub fn close_window(rig: &mut Rig, node: u64) {
 }
 
 /// A second shell on the compositor of `rig`, as a reload starts one, whose `shell.ts` adds the same three workspaces and
-/// then runs `config`. The caller `reconcile`s it against the first one's snapshot.
-pub fn next_generation(rig: &Rig, config: &str) -> Rig {
+/// then runs `config`. The caller `reconcile`s it against the first one's snapshot. The first generation is gone before the
+/// second starts: the core's registry is one per process.
+pub fn next_generation(rig: Rig, config: &str) -> Rig {
+    let comp = rig.comp.clone();
+    drop(rig);
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
     let init = format!(
@@ -158,16 +161,16 @@ pub fn next_generation(rig: &Rig, config: &str) -> Rig {
     );
     std::fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let (config, clock) = timed_config(&root);
-    let mut shell = gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), config).expect("the shell boots");
+    let (mut shell, core) = super::native::shell_over_core(&comp, std::sync::Arc::new(clock.clone()), config);
     let load_diagnostics = shell
         .load_entry(std::path::Path::new("shell.ts"))
         .expect("shell.ts loads");
     Rig {
         shell,
-        comp: rig.comp.clone(),
+        comp,
         load_diagnostics,
         clock,
-        core: None,
+        core: Some(core),
         _dir: dir,
     }
 }

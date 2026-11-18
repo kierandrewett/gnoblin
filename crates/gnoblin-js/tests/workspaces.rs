@@ -436,8 +436,11 @@ fn a_dirty_workspace_computes_once_per_frame_and_its_writes_are_one_transaction(
     );
     let before = sent(&comp).len();
     rig.frame();
+    // The script's own writes leave with the engine's frame; the library lays the workspace out in the turn that follows and sends
+    // what the layout decides as a transaction of its own.
+    rig.frame();
     let txs = sent(&comp);
-    assert_eq!(txs.len(), before + 1);
+    assert_eq!(txs.len(), before + 2);
     let x_writes: Vec<&TxOp> = txs[before]
         .iter()
         .filter(|op| matches!(op, TxOp::Set { node: 3, key, .. } if key == "x"))

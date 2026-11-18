@@ -2969,3 +2969,18 @@ JavaScript runtime library (libgnoblin-runtime-js): this shell host has no __gno
   were not run.
 - The clean-checkout proof is on S1; the S3 gates (including `just dist-check`) ran on a warm target.
 - `share/gnoblin/types/**` of section 11 is not installed (35.3).
+**Workspaces, desks, membership, floating and the layout pass moved (lane TsStdObjects, branch `js-TsStdObjects-wip`, not on
+`rust-compositor`).** `Workspace` is a thin object over the library's workspace (`host/workspace.ts`, `host/workspace_state.ts`); the list
+of `gnoblin.workspaces` and each workspace's `clients` stay core `MutableCollection`s whose lists `host/membership.ts` keeps equal to the
+library's (after each call, on the library's `ADDED`/`REMOVED` events, at the start of every frame). A script's `Layout` reaches the library
+through `host/layout_bridge.ts` (the stock `FloatingLayout` is the library's own). Deleted: `host/{layout_driver,placements,fitting}.ts` and
+the TypeScript desks, show, slides, work areas and reload retention (now `host/{desks,show,work_area,snapshot}.ts` over the table). Added to
+the std table: `output_info`, `output_set_insets`, `output_span`, `client_areas`, `workspace_restore_client`, the `fitted_*` fields and
+`STD_CLIENT_LAYOUT_HIDES` of the client state; in the library: `follow_frame`, bar insets in work areas, seat-based focus, `seat.screen` for the
+pointer's output, slides through the transition engine (ease-out, 33 samples), acknowledged-write gating of the lost-write retry.
+Observable change: the library follows the engine by one dispatch, so a window's membership events and layout arrive one to two frames after the
+engine hears of it. **Not landed, and why:** `transition.rs` needs TsStdAnim's native `requestTransition` (the TS engine cannot stage the library's
+layout writes); the library does not yet focus a window when a parked output returns (`outputAnnounced`); `outputs.rs` bare-shell tests
+(`a_profile_that_does_not_check...`, `a_reload_puts_each_output_back...`) must run over the core; `DisplayManager` (profiles, logical displays,
+mirror requests) stays TypeScript: its backend is native but its reconciliation has no table counterpart; `FloatingLayout.place`/`onClientAdded`
+and `placeRect` stay TypeScript (a standalone `floating_place` is the next step).

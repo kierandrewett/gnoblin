@@ -850,7 +850,7 @@ fn a_reload_keeps_the_rectangles_a_maximised_fullscreen_or_snapped_window_return
         Some(("left".to_owned(), [30.0, 60.0, 300.0, 200.0]))
     );
 
-    let mut second = next_generation(&rig, "");
+    let mut second = next_generation(rig, "");
     second.shell.reconcile(&snapshot).expect("reconciles");
     settle(&mut second);
     exec(

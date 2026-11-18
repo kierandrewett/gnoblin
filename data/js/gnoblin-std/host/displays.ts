@@ -13,9 +13,10 @@ import { collectionState, rootState } from "gnoblin-core/host/collection_state";
 import { Collection } from "gnoblin-core/host/collections";
 import { ctx } from "gnoblin-core/host/context";
 import { std } from "gnoblin-std/host/state";
-import { hasDesk, liveOutputs, primaryOutput, shownOn } from "gnoblin-std/host/desks";
+import { hasDesk, liveOutputs, outputInfo, primaryOutput, shownOn } from "gnoblin-std/host/desks";
 import { nativeOutput } from "gnoblin-std/host/library";
-import { Output as NativeOutput } from "gnoblin-std/generated/classes";
+import { Collection as NativeCollection, Output as NativeOutput } from "gnoblin-std/generated/classes";
+import { CollectionKind, EventKind } from "gnoblin-std/generated/constants";
 import { queueFor, say } from "gnoblin-core/host/dispatch";
 import { Output } from "gnoblin-core/host/output";
 import { applyOutput } from "gnoblin-core/host/output_apply";
@@ -32,9 +33,15 @@ function sameOutputs(a: readonly Output[], b: readonly Output[]): boolean {
  * cover the same workspace), or ends the span with null. Asking for the span that holds changes nothing.
  */
 function spanDesks(lead: Output, members: readonly Output[] | null): void {
+    // An output the library has not heard of yet has no desk to span: its arrival asks the manager again.
+    if (outputInfo(lead) === null) {
+        return;
+    }
     NativeOutput.span({
         lead: nativeOutput(lead).node,
-        members: (members ?? []).map((output) => nativeOutput(output).node),
+        members: (members ?? [])
+            .filter((output) => outputInfo(output) !== null)
+            .map((output) => nativeOutput(output).node),
     });
     syncMembership();
 }
@@ -121,6 +128,12 @@ export function installDisplays(): void {
         std.profileRoot.list as OutputProfile[],
         std.displayRoot.list as Display[],
     );
+
+    // The library hears of an output a turn after the engine does, and an output it has a desk for is what a display shows on.
+    const connected = NativeCollection.root(CollectionKind.OUTPUTS);
+    for (const event of [EventKind.ADDED, EventKind.REMOVED]) {
+        connected?.listen(event, 0, () => std.displayManager.changed());
+    }
 
     attachDisplays({
         changed: () => std.displayManager.changed(),

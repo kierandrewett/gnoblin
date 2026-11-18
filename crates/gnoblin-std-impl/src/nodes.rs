@@ -122,9 +122,19 @@ pub(crate) fn seat(g: &Gnoblin) -> Option<gnoblin_core::Node> {
         .find(|child| child.class().ok() == Some(seat))
 }
 
-/// The window that has the keyboard, among `clients`.
+/// The window that has the keyboard, among `clients`: the one the seat's focus names, as a shell gives focus by writing the seat's
+/// `focus` and a compositor was seen not to keep a window's own `focused` current while a shell holds the tree. A tree with no seat
+/// has no seat focus to read, so the window whose own `focused` is set is the answer.
 pub(crate) fn focused_window(g: &Gnoblin, clients: &[Id]) -> Option<Id> {
-    clients.iter().copied().find(|client| flag(g, *client, "focused"))
+    match seat(g) {
+        Some(seat) => seat
+            .get_node("focus")
+            .ok()
+            .flatten()
+            .map(|focus| focus.id().0)
+            .filter(|focus| clients.contains(focus)),
+        None => clients.iter().copied().find(|client| flag(g, *client, "focused")),
+    }
 }
 
 /// Writes the four rectangle properties that differ from the window's own.

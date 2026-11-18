@@ -371,7 +371,7 @@ impl State {
         {
             return Ok(false);
         }
-        let was_focused = nodes::flag(&self.g, client, "focused");
+        let was_focused = nodes::focused_window(&self.g, &self.clients) == Some(client);
         self.move_client(client, Some(workspace), true);
         // The window left the screen, so the focus passes to a window that stays.
         if was_focused && !self.is_shown(workspace) {

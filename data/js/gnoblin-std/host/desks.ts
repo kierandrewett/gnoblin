@@ -6,15 +6,23 @@ import { host } from "gnoblin-core/host/bridge";
 import { ctx } from "gnoblin-core/host/context";
 import { stateOf } from "gnoblin-core/host/node_state";
 import type { Output } from "gnoblin-core/host/output";
+import { Workspace as NativeWorkspace } from "gnoblin-std/generated/classes";
 import { OutputFlags } from "gnoblin-std/generated/constants";
 import type { OutputInfo } from "gnoblin-std/generated/records";
-import { nativeOutput } from "gnoblin-std/host/library";
+import { failureCode, FAILED, nativeOutput } from "gnoblin-std/host/library";
 import { workspaceOf } from "gnoblin-std/host/membership";
 import type { Workspace } from "gnoblin-std/host/workspace";
 
-/** What the library knows of an output. */
-export function outputInfo(output: Output): OutputInfo {
-    return nativeOutput(output).info();
+/** What the library knows of an output, or null while it has not heard of it: the engine hears of an output a turn before. */
+export function outputInfo(output: Output): OutputInfo | null {
+    try {
+        return nativeOutput(output).info();
+    } catch (error) {
+        if (failureCode(error) !== FAILED.noSuchNode) {
+            throw error;
+        }
+        return null;
+    }
 }
 
 /** The outputs that are connected, in the order the compositor made them. */
@@ -24,7 +32,7 @@ export function liveOutputs(): Output[] {
 
 /** Whether the output has a desk of its own: it is on and not a mirror. */
 export function hasDesk(output: Output): boolean {
-    return stateOf(output).alive && (outputInfo(output).flags & OutputFlags.HAS_DESK) !== 0;
+    return stateOf(output).alive && ((outputInfo(output)?.flags ?? 0) & OutputFlags.HAS_DESK) !== 0;
 }
 
 /** The outputs that have a desk: every connected output but a mirror and one that is off. */
@@ -40,8 +48,8 @@ export function primaryOutput(): Output | null {
 
 /** The workspace an output shows (the one its span shows, for a spanned output), or null. */
 export function shownOn(output: Output): Workspace | null {
-    const shown = nativeOutput(output).workspace();
-    return shown === null ? null : workspaceOf(shown);
+    const shown = outputInfo(output)?.workspace ?? 0;
+    return shown === 0 ? null : workspaceOf(new NativeWorkspace(shown));
 }
 
 /** The workspace a new window, a key and a plain `show` act on: the one the output under the pointer shows, else the primary one's. */
