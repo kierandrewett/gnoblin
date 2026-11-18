@@ -4,7 +4,6 @@
 //
 // A failed callback leaves the tree unchanged: the library drops what it staged, and `snapshot` puts back what is not a tree write.
 
-import { GnoblinError } from "gnoblin-core/errors";
 import { easingKind, DEFAULT_EASING, EASING_NAMES } from "gnoblin-std/transition/easing";
 import type { TransitionOptions as NativeOptions } from "gnoblin-std/generated/records";
 import type { Init } from "gnoblin-std/generated/native";
@@ -100,38 +99,6 @@ export class TransitionEngine {
             throw error;
         }
         return new Transition(host, committed);
-    }
-
-    /**
-     * Starts timed writes the shell makes of its own accord, with no callback to run: the workspace slides, which begin
-     * inside a layout pass, where `request` cannot. The writes are one transition, so a newer write of a property takes
-     * it from them, and a window that is not drawn yet is still tweened to its place. Inside a `requestTransition`
-     * callback (its layout pass starts the slide) they join the transition being staged, each with its own duration.
-     */
-    play(writes: { node: number; key: string; value: unknown }[], options: TransitionOptions): void {
-        const site = "gnoblin.workspaces.show";
-        const host = this.#host;
-        const native = optionsOf(options, site);
-        const inside = host.staging.active;
-        if (!inside) {
-            host.staging.begin(native);
-        }
-        try {
-            for (const { node, key, value } of writes) {
-                const code = host.staging.animate(node, key, value, native);
-                if (code != null) {
-                    throw new GnoblinError("denied", site, `the host refused Client#${node}.${key} (${code})`);
-                }
-            }
-        } catch (error) {
-            if (!inside) {
-                host.staging.discard();
-            }
-            throw error;
-        }
-        if (!inside) {
-            new Transition(host, host.staging.commit());
-        }
     }
 }
 

@@ -192,30 +192,6 @@ export class Staging {
         return undefined;
     }
 
-    /**
-     * Stages a write with a curve of its own (a workspace slide that a callback's layout pass starts), inside a callback; outside
-     * one, `begin` and `commit` wrap it. The library checks it at once, and refuses a property the tree cannot animate.
-     */
-    animate(node: number, key: string, value: Value, options: Init<NativeOptions>): string | undefined {
-        const held = this.#held;
-        const prop = propOf(value);
-        if (held === null || prop === undefined) {
-            return "invalid-value";
-        }
-        let staged = true;
-        try {
-            Native.animate(node, key, prop, options);
-        } catch (error) {
-            if (!unknownNode(error)) {
-                return refusalOf(error);
-            }
-            // A node the library cannot hold writes of takes the value at the commit, from the engine, with no curve.
-            staged = false;
-        }
-        held.set(`${node}:${key}`, { node, key, value: copy(value), staged });
-        return undefined;
-    }
-
     /** Throws for a call that has a side effect, while a callback is staging. Otherwise does nothing. */
     forbid(target: string): void {
         if (this.#held !== null) {
