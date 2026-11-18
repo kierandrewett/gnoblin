@@ -10,9 +10,11 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, stock_modules_in};
+use gnoblin_js::JsConfig;
+
+mod common;
+use common::FakeCompositor;
 
 /// The helpers every case shares. There is no `gnoblin` host: the cases call the library only.
 const HARNESS: &str = r##"
@@ -79,24 +81,21 @@ import { area, nodes, focusables, tiled, lay, arrive, thrown, rect, emit } from 
 import { DwindleLayout } from "gnoblin-std";
 "#;
 
-/// Evaluates `body` (TypeScript) with the stock library imported and returns what it passed to `emit`.
+/// Evaluates `body` (TypeScript) with the stock library imported and returns what it passed to `emit`. The shell runs over a core with
+/// the std library loaded, which is what computes the layout.
 fn run(body: &str) -> String {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), format!("{IMPORTS}\n{body}\n")).expect("shell.ts is written");
-    let mut config = JsConfig::new(&root).embed("harness", HARNESS);
-    for (name, source) in stock_modules_in(&[std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")])
-        .expect("the stock library reads")
-    {
-        config = config.embed(name, source);
-    }
-    let generation = JsGeneration::new(&config, 1).expect("a generation");
-    generation
-        .eval_module(Path::new("shell.ts"))
-        .expect("shell.ts evaluates");
-    generation
-        .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
+    let (mut config, clock) = common::timed_config(&root);
+    config.js = std::mem::replace(&mut config.js, JsConfig::new(&root)).embed("harness", HARNESS);
+    let comp = FakeCompositor::new();
+    let (mut shell, _core) = common::native::shell_over_core(&comp, std::sync::Arc::new(clock), config);
+    shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
+    shell
+        .eval("globalThis.out")
         .expect("the case called emit")
+        .expect("a value")
 }
 
 fn lines(expected: &[&str]) -> String {
@@ -121,6 +120,7 @@ fn the_options_default_to_hyprlands() {
 
 #[test]
 fn a_bad_option_is_refused_in_the_layouts_name() {
+    // The texts are the library's: it, not the script, decides what an option may be.
     let got = run(r#"
         const one = nodes(1);
         const bad = (options: object) => thrown(() => lay(new DwindleLayout(options as any), one));
@@ -141,16 +141,16 @@ fn a_bad_option_is_refused_in_the_layouts_name() {
     assert_eq!(
         got,
         lines(&[
-            "RangeError: DwindleLayout forceSplit must be 0, 1 or 2, got 3",
-            "RangeError: DwindleLayout forceSplit must be 0, 1 or 2, got left",
-            "RangeError: DwindleLayout splitBias must be 0 or 1, got 2",
-            "RangeError: DwindleLayout splitWidthMultiplier must be a finite number",
-            "RangeError: DwindleLayout splitWidthMultiplier must be a finite number",
-            "TypeError: DwindleLayout preserveSplit must be true or false",
-            "TypeError: DwindleLayout smartSplit must be true or false",
-            "TypeError: DwindleLayout useActiveForSplits must be true or false",
-            "TypeError: DwindleLayout smartResizing must be true or false",
-            "TypeError: DwindleLayout permanentDirectionOverride must be true or false",
+            "TypeError: DwindleLayout forceSplit must be one of by_pointer, first, second, got 3",
+            "TypeError: DwindleLayout forceSplit must be one of by_pointer, first, second, got left",
+            "TypeError: DwindleLayout splitBias must be one of first, opened, got 2",
+            "Error: E_TYPE: dwindle.split_width_multiplier must be a finite number above 0, got NaN",
+            "Error: E_TYPE: dwindle.split_width_multiplier must be a number",
+            "Error: E_TYPE: dwindle.preserve_split must be a boolean",
+            "Error: E_TYPE: dwindle.smart_split must be a boolean",
+            "Error: E_TYPE: dwindle.use_active_for_splits must be a boolean",
+            "Error: E_TYPE: dwindle.smart_resizing must be a boolean",
+            "Error: E_TYPE: dwindle.permanent_direction_override must be a boolean",
             "TypeError: DwindleLayout pointer must be a function or null",
         ])
     );
@@ -375,7 +375,7 @@ fn the_split_width_multiplier_scales_the_height_before_the_comparison() {
     let got = run(r#"
         const two = nodes(2);
         const by = (splitWidthMultiplier: number) => arrive(new DwindleLayout({ splitWidthMultiplier }), two, 2);
-        emit([by(2), by(0.5), by(1), by(50), by(0)].join("\n"));
+        emit([by(2), by(0.5), by(1), by(50), thrown(() => by(0))].join("\n"));
     "#);
     assert_eq!(
         got,
@@ -384,7 +384,7 @@ fn the_split_width_multiplier_scales_the_height_before_the_comparison() {
             "0,0,500,800 500,0,500,800",
             "0,0,500,800 500,0,500,800",
             "0,0,1000,400 0,400,1000,400",
-            "0,0,500,800 500,0,500,800",
+            "Error: E_TYPE: dwindle.split_width_multiplier must be a finite number above 0, got 0",
         ])
     );
 }
@@ -530,7 +530,7 @@ fn preselect_refuses_a_word_that_is_not_a_direction() {
     "#);
     assert_eq!(
         got,
-        "TypeError: DwindleLayout preselect direction must be left, right, up, down or none, got sideways"
+        "Error: E_TYPE: dwindle.preselect.direction must be a member of its enumeration"
     );
 }
 
@@ -627,8 +627,8 @@ fn rotate_split_turns_by_multiples_of_ninety_degrees() {
             "-180: 500,0,500,800 0,0,500,800",
             "0: 0,0,500,800 500,0,500,800",
             "90, 90: 500,0,500,800 0,0,500,800",
-            "RangeError: DwindleLayout rotateSplit angle must be a multiple of 90, got 45",
-            "RangeError: DwindleLayout rotateSplit angle must be a multiple of 90, got NaN",
+            "Error: E_TYPE: dwindle.rotate_split angle must be a multiple of 90, got 45",
+            "Error: E_TYPE: dwindle.rotate_split.angle must be a finite number, got NaN",
         ])
     );
 }
@@ -720,8 +720,8 @@ fn split_ratio_sets_or_changes_the_ratio_of_the_focused_windows_split() {
             "true 0,0,100,800 100,0,900,800",
             "true 0,0,900,800 900,0,100,800",
             "true 0,0,100,800 100,0,900,800",
-            "TypeError: DwindleLayout splitRatio needs a finite number, got NaN",
-            "TypeError: DwindleLayout splitRatio needs a finite number, got wide",
+            "Error: E_TYPE: dwindle.split_ratio.amount must be a finite number, got NaN",
+            "Error: E_TYPE: dwindle.split_ratio.amount must be a number",
             "false",
             "false",
             "0,0,100,800 100,0,900,800",
@@ -798,7 +798,7 @@ fn pseudotile_takes_an_explicit_size_and_the_cell_size_for_a_window_that_has_non
             "0,0,500,800 650,350,200,100",
             "0,0,500,800 500,0,500,800",
             "0,0,500,400 500,0,500,400",
-            "RangeError: DwindleLayout pseudotile size must be finite numbers above 0, got -1 by 100",
+            "Error: E_TYPE: dwindle.pseudotile size must be numbers above 0, got -1 by 100",
         ])
     );
 }

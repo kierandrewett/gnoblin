@@ -157,8 +157,8 @@ fn dwindle_has_the_retired_defaults_and_refuses_a_bad_split() {
         got,
         lines(&[
             "aspect,0.5,",
-            "TypeError: DwindleLayout split must be aspect, horizontal or vertical",
-            "RangeError: DwindleLayout ratio must be a finite number",
+            "TypeError: DwindleLayout split must be one of aspect, horizontal, vertical, got diagonal",
+            "Error: E_TYPE: dwindle.ratio must be a finite number, got NaN",
             "RangeError: DwindleLayout gap must be a finite number of at least 0, got -1",
         ])
     );
@@ -411,9 +411,9 @@ fn scroll_to_pins_the_view_until_the_focused_node_changes_as_before() {
         got,
         lines(&[
             "0,0,0,500,",
-            "TypeError: scrollTo needs a finite number, got NaN",
-            "TypeError: scrollTo needs a finite number, got Infinity",
-            "TypeError: scrollTo needs a finite number, got left",
+            "Error: E_TYPE: strip.scroll_to.offset must be a finite number, got NaN",
+            "Error: E_TYPE: strip.scroll_to.offset must be a finite number, got inf",
+            "Error: E_TYPE: strip.scroll_to.offset must be a number",
         ])
     );
 }
@@ -540,7 +540,7 @@ fn a_carousel_shows_the_focused_node_at_the_front_and_rotate_wraps_round_the_rin
             "0,0,0",
             "w1",
             "w2",
-            "TypeError: rotate needs a number of steps, got one",
+            "Error: E_TYPE: carousel.rotate.steps must be a whole number",
         ])
     );
 }

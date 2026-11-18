@@ -498,10 +498,12 @@ fn an_arc_layouts_fields_are_plain_and_a_change_recomputes_it() {
         -(0.5_f64).cos() * 500.0,
         "the new radius is laid out",
     );
-    let message = thrown(&mut rig, "new ArcLayout({ radius: -1 })");
-    assert!(message.contains("radius must be a finite number above 0"), "{message}");
-    let message = thrown(&mut rig, "new ArcLayout({ spacing: NaN })");
-    assert!(message.contains("spacing must be a finite number"), "{message}");
+    // The library refuses a bad option when the layout first computes, in its own words.
+    let compute = ".compute({ children: [{}], area: { x: 0, y: 0, width: 10, height: 10 } })";
+    let message = thrown(&mut rig, &format!("new ArcLayout({{ radius: -1 }}){compute}"));
+    assert!(message.contains("arc.radius must be"), "{message}");
+    let message = thrown(&mut rig, &format!("new ArcLayout({{ spacing: NaN }}){compute}"));
+    assert!(message.contains("arc.spacing must be"), "{message}");
 }
 
 #[test]

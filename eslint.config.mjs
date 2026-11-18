@@ -81,7 +81,12 @@ export default [
         // The generated binding of the std library carries the dynamic values of the call layer (`__gnoblinStd.call` answers
         // what the table's function wrote, which is any shape).
         files: ["data/js/gnoblin-std/generated/**/*.ts"],
-        rules: { "@typescript-eslint/no-explicit-any": "off" },
+        // It imports every group of constants to the module that may use them, and writes an options type for a kind with no options.
+        rules: {
+            "@typescript-eslint/no-explicit-any": "off",
+            "@typescript-eslint/no-unused-vars": "off",
+            "@typescript-eslint/no-empty-object-type": "off",
+        },
     },
     { files: ["**/*.cjs"], languageOptions: { sourceType: "commonjs" } },
 ];

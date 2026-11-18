@@ -1,20 +1,64 @@
 // StripLayout places one node per column in a horizontal strip, with focus kept in view. Carousel3dLayout arranges
-// nodes on a perspective ring with the focused node at the front. Neither layout tiles its nodes.
+// nodes on a perspective ring with the focused node at the front. Neither layout tiles its nodes. The columns, the view and
+// the ring are the library's (`libgnoblin-std`, kinds `strip` and `carousel`); these classes hold the options.
 
-import { Layout } from "gnoblin-std/layout";
-import type { LayoutContext, LayoutNode, Placement } from "gnoblin-std/layout";
+import { Builtin } from "gnoblin-std/generated/classes";
+import { BuiltinKind } from "gnoblin-std/generated/constants";
 import type { Rect } from "gnoblin-core/types";
+import type { Placement as LibraryPlacement } from "gnoblin-std/generated/records";
+import type { LayoutContext, LayoutNode, Placement } from "gnoblin-std/layout";
+import { argOf, NativeLayout } from "gnoblin-std/layouts/native";
+import type { OptionSpecs } from "gnoblin-std/layouts/native";
 
-const TAU = 2 * Math.PI;
-const MIN_COLUMN = 0.1;
-const MAX_COLUMN = 1;
+/** The built-in layout `kind` made with `options`, asked once for the placements of `count` cards, and freed. */
+function computeOnce(
+    kind: number,
+    options: ReturnType<typeof argOf>[],
+    count: number,
+    focus: number,
+    area: Rect,
+): ReturnType<Builtin["compute"]> {
+    const made = Builtin.new(kind, options);
+    if (made === null) {
+        throw new Error("the library made no layout");
+    }
+    try {
+        const children = Array.from({ length: count }, (_, i) => i + 1);
+        return made.compute({
+            flags: 0,
+            children,
+            area,
+            gapInner: 0,
+            gapOuter: 0,
+            focused: focus,
+            pointerX: 0,
+            pointerY: 0,
+            focusedWidth: 0,
+            focusedHeight: 0,
+        });
+    } finally {
+        made.free();
+    }
+}
 
-/** A column's width as a fraction of the strip's width, held to 0.1 to 1. Anything but a number is an error. */
+/**
+ * A column's width as a fraction of the strip's, held to the library's 0.1 to 1. Anything but a number is an error. The bounds are the
+ * library's: a one-column strip over a width of 1 is as wide as the column the library would give.
+ */
 export function clampColumn(value: unknown): number {
     if (typeof value !== "number" || Number.isNaN(value)) {
         throw new TypeError(`column must be a number, got ${String(value)}`);
     }
-    return Math.min(Math.max(value, MIN_COLUMN), MAX_COLUMN);
+    // The library takes a finite number below the range of a script's node numbers, and holds it to its own: an infinity is as far outside
+    // it as 2 or -1 are.
+    const finite = Math.min(Math.max(value, -1), 2);
+    const [placed] = computeOnce(BuiltinKind.STRIP, [argOf("column", finite)], 1, 1, {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+    });
+    return placed.bounds.width;
 }
 
 /** What the focus helpers need of a node: whether it has focus and how to give it focus. */
@@ -31,15 +75,15 @@ export interface NodeSource {
     readonly clients: Iterable<LayoutNode>;
 }
 
-function focusable(node: LayoutNode): FocusableNode {
-    return node as FocusableNode;
-}
-
 /** Options of `StripLayout`. */
 export interface StripOptions {
     /** A column's width as a fraction of the strip's, held to 0.1 to 1. Default 0.5. */
     column?: number;
 }
+
+const STRIP_OPTIONS: OptionSpecs = {
+    column: { native: "column" },
+};
 
 /**
  * Columns sit edge to edge with no gap or margin. The view follows focus unless `scrollTo` pinned it; a pin ends
@@ -48,15 +92,11 @@ export interface StripOptions {
  * The layout keeps its own column order, because a new node opens right after the focused column rather than at the
  * end. One instance must serve one workspace.
  */
-export class StripLayout extends Layout {
+export class StripLayout extends NativeLayout {
     /** Column width as a fraction of the strip width, clamped to 0.1..1. Default 0.5. */
     column: number;
-    /** The view offset in pixels `scrollTo` pinned, or `null` while the view follows the focused column. */
-    pin: number | null = null;
-    #order: LayoutNode[] = [];
-    #view = 0;
-    /** The focus the previous compute saw. */
-    #focus: LayoutNode | null = null;
+    /** How many times `scrollTo` pinned the view: the pin is not a field the workspace can compare, so this counter is. */
+    revision = 0;
 
     constructor(options: StripOptions = {}) {
         super();
@@ -64,96 +104,47 @@ export class StripLayout extends Layout {
         clampColumn(this.column);
     }
 
-    /** Returns placements for the strip's ordered columns, scrolled to show focus or the pinned offset. */
-    compute(context: LayoutContext): Placement[] {
-        const { x, y, width: viewWidth, height } = context.area;
-        const columnWidth = clampColumn(this.column) * viewWidth;
-        const focused = context.focused ?? null;
-        const live = new Set<LayoutNode>(context.children);
-        this.#order = this.#order.filter((node) => live.has(node));
-        const known = new Set(this.#order);
-        // A node opens after the column that had focus when it arrived, which the compositor has since moved to it.
-        let at = this.#focus === null ? -1 : this.#order.indexOf(this.#focus);
-        for (const node of context.children) {
-            if (known.has(node)) {
-                continue;
-            }
-            if (at >= 0) {
-                at += 1;
-                this.#order.splice(at, 0, node);
-            } else {
-                this.#order.push(node);
-            }
-        }
-        if (focused !== this.#focus) {
-            this.#focus = focused !== null && live.has(focused) ? focused : null;
-            this.pin = null;
-        }
-        const order = this.#order;
-        if (this.pin !== null) {
-            this.#view = this.pin;
-        } else {
-            const index = focused === null ? -1 : order.indexOf(focused);
-            if (index >= 0) {
-                const left = index * columnWidth;
-                if (left < this.#view || left + columnWidth > this.#view + viewWidth) {
-                    this.#view = left + columnWidth / 2 - viewWidth / 2; // centre the focused column
-                }
-            }
-        }
-        this.#view = Math.min(Math.max(this.#view, 0), Math.max(0, order.length * columnWidth - viewWidth));
-        const view = this.#view;
-        return order.map((node, i) => ({
-            node,
-            bounds: { x: x + i * columnWidth - view, y, width: columnWidth, height },
-        }));
+    protected get kind(): number {
+        return BuiltinKind.STRIP;
     }
 
-    /** Scrolls the view to `offset` pixels and keeps it there until the focused node changes. */
-    scrollTo(offset: number): void {
-        if (typeof offset !== "number" || !Number.isFinite(offset)) {
-            throw new TypeError(`scrollTo needs a finite number, got ${String(offset)}`);
-        }
-        this.pin = offset;
+    protected get options(): OptionSpecs {
+        return STRIP_OPTIONS;
     }
 
-    /** Moves focus one column left; at the first column nothing happens. */
-    focusLeft(workspace: NodeSource): void {
-        this.#step(workspace, -1);
-    }
-
-    /** Moves focus one column right; at the last column nothing happens. */
-    focusRight(workspace: NodeSource): void {
-        this.#step(workspace, 1);
-    }
-
-    #step(workspace: NodeSource, delta: -1 | 1): void {
-        const held = new Set(workspace.clients);
-        const columns = this.#order.filter((node) => held.has(node));
-        const at = columns.findIndex((node) => focusable(node).focused);
-        const next = at >= 0 ? columns[at + delta] : undefined;
-        if (next !== undefined) {
-            focusable(next).focus();
-        }
+    protected override changed(): void {
+        this.revision += 1;
     }
 
     /** Focus moves to a neighbour of a focused column that went, so the strip keeps a focus. */
     onClientRemoved(client: LayoutNode, context: LayoutContext): void {
-        const at = this.#order.indexOf(client);
-        if (at < 0 || client !== this.#focus) {
-            return;
-        }
-        const live = new Set<LayoutNode>(context.children);
-        const next = [this.#order[at + 1], this.#order[at - 1]].find(
-            (node): node is LayoutNode => node !== undefined && live.has(node),
-        );
-        if (next !== undefined) {
-            focusable(next).focus();
-        }
+        this.handOnFocus(client, context);
+    }
+
+    /** The view offset in pixels `scrollTo` pinned, or `null` while the view follows the focused column. */
+    get pin(): number | null {
+        const answer = this.act("pin", [], { clients: [] }, false);
+        return typeof answer === "number" ? answer : null;
+    }
+
+    /** Scrolls the view to `offset` pixels and keeps it there until the focused node changes. */
+    scrollTo(offset: number): void {
+        this.act("scroll_to", [argOf("offset", offset)], { clients: [] }, false);
+        this.changed();
+    }
+
+    /** Moves focus one column left; at the first column nothing happens. */
+    focusLeft(workspace: NodeSource): void {
+        this.act("focus_left", [], workspace);
+    }
+
+    /** Moves focus one column right; at the last column nothing happens. */
+    focusRight(workspace: NodeSource): void {
+        this.act("focus_right", [], workspace);
     }
 }
 
-/** Options of `ring`, which `Carousel3dLayout` lays its cards out with. */
+/** Options of `Carousel3dLayout`. */
 export interface RingOptions {
     /** Vertical field of view in degrees. Default 40. */
     fov?: number;
@@ -174,7 +165,9 @@ export interface RingSlot extends Rect {
 }
 
 /**
- * The pure ring layout of `count` cards with the 1-based `focus` at the front, inside `area`. One slot per card.
+ * The pure ring layout of `count` cards with the 1-based `focus` at the front, inside `area`. One slot per card. The rectangles, the
+ * depth and the angle are the library's (kind `carousel`); the fade is a function of the angle, which is all the library does not
+ * hold: a node's opacity belongs to the rules, so a layout never applies it.
  */
 export function ring(count: number, focus: number, area: Rect, options: RingOptions = {}): RingSlot[] {
     if (count === 0) {
@@ -183,40 +176,30 @@ export function ring(count: number, focus: number, area: Rect, options: RingOpti
     if (!Number.isInteger(focus) || focus < 1 || focus > count) {
         throw new RangeError(`focus must be an index in 1..${count}, got ${String(focus)}`);
     }
-    const cardWidth = area.width * (options.cardWidth ?? 0.36);
-    const cardHeight = area.height * (options.cardHeight ?? 0.6);
-    const radius = Math.max(cardWidth * 1.25, (count * cardWidth * 1.25) / TAU);
-    const focal = Math.max(1, cardHeight / 2 / Math.tan(((options.fov ?? 40) * Math.PI) / 180 / 2));
-    const centreZ = -(focal + radius);
-    const cx = area.x + area.width / 2;
-    const cy = area.y + area.height / 2;
-    const slots: RingSlot[] = [];
-    for (let i = 1; i <= count; i++) {
-        let k = (((i - focus) % count) + count) % count;
-        if (k > count / 2) {
-            k -= count; // signed offset from the front, in (-count/2, count/2]
-        }
-        const angle = (k * TAU) / count;
-        const sideways = radius * Math.sin(angle);
-        const z = centreZ + radius * Math.cos(angle);
-        const scale = focal / -z;
-        const width = cardWidth * scale;
-        const height = cardHeight * scale;
-        slots.push({
-            x: cx + sideways * scale - width / 2,
-            y: cy - height / 2,
-            width,
-            height,
+    const list = [
+        argOf("fov", options.fov ?? 40),
+        argOf("card_width", options.cardWidth ?? 0.36),
+        argOf("card_height", options.cardHeight ?? 0.6),
+    ];
+    return computeOnce(BuiltinKind.CAROUSEL, list, count, focus, area).map((placement) => {
+        const angle = placement.rotationY;
+        return {
+            ...placement.bounds,
             opacity: 0.4 + (0.6 * (1 + Math.cos(angle))) / 2,
             rotation: (angle * 180) / Math.PI,
-            z,
-        });
-    }
-    return slots;
+            z: placement.z,
+        };
+    });
 }
 
 /** Options of `Carousel3dLayout`. It takes the same fields as `RingOptions`. */
 export type Carousel3dOptions = RingOptions;
+
+const CAROUSEL_OPTIONS: OptionSpecs = {
+    fov: { native: "fov" },
+    cardWidth: { native: "card_width" },
+    cardHeight: { native: "card_height" },
+};
 
 /**
  * Cards on a ring, the focused node at the front; with no focus among the nodes the first is. Each placement is the
@@ -224,7 +207,7 @@ export type Carousel3dOptions = RingOptions;
  * axis, so a renderer that draws depth can use them. The depth fade of the ring is not applied: a node's opacity
  * belongs to the rules.
  */
-export class Carousel3dLayout extends Layout {
+export class Carousel3dLayout extends NativeLayout {
     /** Vertical field of view, in degrees. Default 40. */
     fov: number;
     /** Card width as a fraction of the area's width. Default 0.36. */
@@ -239,38 +222,23 @@ export class Carousel3dLayout extends Layout {
         this.cardHeight = options.cardHeight ?? 0.6;
     }
 
-    /** Returns one perspective placement per child, with the focused node at the front. */
-    compute(context: LayoutContext): Placement[] {
-        const nodes = context.children;
-        const focused = context.focused ?? null;
-        const index = focused === null ? -1 : nodes.lastIndexOf(focused);
-        const slots = ring(nodes.length, index >= 0 ? index + 1 : 1, context.area, {
-            fov: this.fov,
-            cardWidth: this.cardWidth,
-            cardHeight: this.cardHeight,
-        });
-        return nodes.map((node, i) => {
-            const slot = slots[i];
-            return {
-                node,
-                bounds: { x: slot.x, y: slot.y, width: slot.width, height: slot.height },
-                z: slot.z,
-                rotation: [0, (slot.rotation * Math.PI) / 180, 0] as const,
-            };
-        });
+    protected get kind(): number {
+        return BuiltinKind.CAROUSEL;
+    }
+
+    protected get options(): OptionSpecs {
+        return CAROUSEL_OPTIONS;
+    }
+
+    /** A card always has its turn about the vertical axis, a front card's none. */
+    protected override placement(raw: LibraryPlacement): Placement {
+        const placement = super.placement(raw);
+        placement.rotation ??= [0, 0, 0];
+        return placement;
     }
 
     /** Moves focus `steps` cards round the ring, wrapping at both ends. */
     rotate(workspace: NodeSource, steps: number): void {
-        if (typeof steps !== "number" || !Number.isFinite(steps)) {
-            throw new TypeError(`rotate needs a number of steps, got ${String(steps)}`);
-        }
-        const cards = [...workspace.clients];
-        const at = cards.findIndex((node) => focusable(node).focused);
-        if (at < 0) {
-            return;
-        }
-        const count = cards.length;
-        focusable(cards[(((at + steps) % count) + count) % count]).focus();
+        this.act("rotate", [argOf("steps", steps)], workspace);
     }
 }

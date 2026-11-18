@@ -270,11 +270,11 @@ view of the core's (`tree_link_open`/`tree_link_attach`), and what the engine wr
 that one connection, one transaction on the wire at a time. A shell may therefore use `gnoblin-core`'s objects and
 `gnoblin-std/native` together, as `examples/03-typescript-std/shell.ts` does.
 
-The stock layouts of `gnoblin-std` (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `KioskLayout`) are thin classes over the
+The stock layouts of `gnoblin-std` (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `KioskLayout`, `DwindleLayout`, `StripLayout`, `ArcLayout`, `Carousel3dLayout`) are thin classes over the
 library's built-in layouts: the options are plain fields as before, the algorithm is `libgnoblin-std`'s (`Builtin`, made by
 `builtin_new`, which belongs to no workspace). They need `libgnoblin-std.so.1`, like `gnoblin-std/native`; their option errors are the
-library's. `DwindleLayout`, `StripLayout`, `Carousel3dLayout`, `ArcLayout` and `FloatingLayout` are still TypeScript (see design
-section 25.4).
+library's. An action (`DwindleLayout.toggleSplit(workspace)`, `StripLayout.focusLeft(workspace)`) is the library's too: it runs against the workspace's windows and
+hands the keyboard to the window the library names. `FloatingLayout` is still TypeScript (see design section 25.4).
 
 The stock drag classes (`ClientMoveBinding`, `ClientResizeBinding`, `ClientSwapBinding`, `SplitResizeBinding`) are still
 `PointerDragBinding` subclasses, so the engine's matcher picks the binding and a script's own subclass keeps working, but what a

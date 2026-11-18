@@ -242,7 +242,7 @@ fn to_dyn<'js>(ctx: &Ctx<'js>, ids: &ScriptIds, support: &Object<'js>, value: Va
         return Ok(Dyn::Bool(flag));
     }
     if let Some(number) = value.as_number() {
-        if number >= ScriptIds::HANDLE_BASE {
+        if number.is_finite() && number >= ScriptIds::HANDLE_BASE {
             return ids
                 .from_script(number)
                 .map(Dyn::Uint)
