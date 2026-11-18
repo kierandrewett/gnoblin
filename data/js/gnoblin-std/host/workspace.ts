@@ -52,6 +52,17 @@ export class Workspace extends NativeObject {
         }
         const checked = checkWorkspaceOptions(options);
         const bridge = bridgeLayout(checked.layout, () => this);
+        // A workspace of this id that an earlier generation left in the library is this one: it keeps its windows and its place.
+        const left = [...std.inherited].find((workspace) => workspace.id === checked.id);
+        if (left !== undefined) {
+            const held = wsState(left).native;
+            std.inherited.delete(left);
+            held.setLayout(bridge.spec);
+            held.setGaps(checked.gaps.inner, checked.gaps.outer);
+            held.setName(checked.name);
+            this.#state(held, checked.id, checked.layout, checked.gaps, bridge);
+            return;
+        }
         const native = throughLibrary("Workspace", {}, () =>
             NativeWorkspace.new({
                 id: checked.id,

@@ -33,6 +33,10 @@ export class StdContext {
     /** The `Workspace` object of each workspace the library made, by its handle. */
     readonly byHandle = new Map<number, Workspace>();
 
+    /** The workspaces the library already held when this generation installed (a reload that stays in one core generation): the
+     * ones this generation's entry does not make again are removed when it has loaded. */
+    readonly inherited = new Set<Workspace>();
+
     /** The workspace each client was last seen on, as the library's collections said. */
     readonly membership = new WeakMap<Client, Workspace>();
 

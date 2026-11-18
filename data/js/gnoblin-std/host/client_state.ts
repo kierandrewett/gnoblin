@@ -37,7 +37,9 @@ export function whenKnown<T>(call: () => T, waiting: () => T): T {
     try {
         return call();
     } catch (error) {
-        if (failureCode(error) !== FAILED.noSuchNode) {
+        // A window the library has not heard of is a node it does not know, or a member it cannot find in a collection.
+        const code = failureCode(error);
+        if (code !== FAILED.noSuchNode && code !== FAILED.noSuchMember) {
             throw error;
         }
         return waiting();

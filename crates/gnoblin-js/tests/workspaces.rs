@@ -1146,3 +1146,33 @@ fn timers_after_runs_its_function_once_at_the_first_frame_past_the_time() {
         "gnoblin.timers.after: ms must be a finite number from 0 to 86400000"
     );
 }
+
+#[test]
+fn a_window_the_library_has_not_heard_of_yet_is_moved_when_it_has() {
+    // The engine hears of a window a turn before the library: a script that answers it at once names a window the library does not
+    // know, and the move waits for the library to.
+    let comp = compositor(false);
+    let link = Script(comp.clone());
+    let mut rig = rig(
+        &comp,
+        &init(
+            "g.a = new Workspace({ id: 'a' }); g.b = new Workspace({ id: 'b' });\n\
+             gnoblin.workspaces.add(g.a); gnoblin.workspaces.add(g.b);\n",
+        ),
+    );
+    rig.settle();
+    link.create_window(4, "new");
+    // The engine's frame alone: the library has not been dispatched.
+    rig.shell.frame().expect("a frame");
+    assert_eq!(
+        rig.eval("g.b.clients.add(gnoblin.clients.get('4')); 'added'"),
+        "added",
+        "no error for a window the library does not know yet"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.clients.get('4').moveToWorkspace(g.b))"),
+        "true"
+    );
+    rig.settle();
+    assert_eq!(rig.eval("gnoblin.clients.get('4').workspace.id"), "b");
+}

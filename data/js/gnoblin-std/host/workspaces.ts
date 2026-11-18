@@ -48,6 +48,13 @@ export function clearWorkspaces(): void {
  */
 export function ensureDefaultWorkspace(): void {
     syncMembership();
+    // What an earlier generation left and this one did not declare again goes, unless it is all there is.
+    for (const workspace of [...std.inherited]) {
+        std.inherited.delete(workspace);
+        if (std.workspaceRoot.list.length > 1) {
+            removeWorkspace(workspace);
+        }
+    }
     if (std.workspaceRoot.list.length > 0) {
         return;
     }

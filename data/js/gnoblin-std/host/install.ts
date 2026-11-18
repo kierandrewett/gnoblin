@@ -24,6 +24,7 @@ import { installSnap } from "gnoblin-std/host/snap_host";
 import { installServices } from "gnoblin-std/host/services";
 import { installStaging } from "gnoblin-std/host/staging";
 import { std } from "gnoblin-std/host/state";
+import type { Workspace } from "gnoblin-std/host/workspace";
 import { installScene } from "gnoblin-std/host/xr_bridge";
 import { attachUi } from "gnoblin-std/ui/state";
 
@@ -74,3 +75,6 @@ function installStd(): void {
 installStd();
 // A library that outlives this generation (a reload that stays in one core generation) holds workspaces already: they are in the list.
 syncMembership();
+for (const workspace of std.workspaceRoot.list as Workspace[]) {
+    std.inherited.add(workspace);
+}
