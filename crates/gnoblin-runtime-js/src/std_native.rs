@@ -115,6 +115,19 @@ pub(crate) trait Enter {
     fn enter(&self, body: &mut dyn for<'js> FnMut(&Ctx<'js>) -> rquickjs::Result<()>) -> Result<(), String>;
 }
 
+/// The way into the script from inside one of its own calls into the library: the call's context.
+struct CallEnter<'a, 'js>(&'a Ctx<'js>);
+
+impl Enter for CallEnter<'_, '_> {
+    fn enter(&self, body: &mut dyn for<'js> FnMut(&Ctx<'js>) -> rquickjs::Result<()>) -> Result<(), String> {
+        body(self.0).map_err(|error| {
+            // A script's failure is the callback's: the context holds no exception that would reach the caller of the call.
+            let _ = self.0.catch();
+            error.to_string()
+        })
+    }
+}
+
 /// Runs `body` with `enter` as the way a callback gets into the running generation.
 pub(crate) fn with_enter<R>(enter: &dyn Enter, body: impl FnOnce() -> R) -> R {
     struct Reset;
@@ -374,9 +387,15 @@ fn install<'js>(ctx: &Ctx<'js>, ids: &ScriptIds) -> rquickjs::Result<()> {
                     values.push(to_dyn(&ctx, &call_ids, &support, arg?)?);
                 }
                 USED.with(|cell| cell.set(true));
-                let answer = library
-                    .call(context(), &name, &values)
-                    .map_err(|error| throw(&ctx, &error))?;
+                // A call the script makes may ask the script back before it returns (a transition's commit runs the layout pass
+                // against the staged state, and a script's layout is a callback): the way in is the call's own context, which
+                // is already inside the script. A callback of a dispatch has its own way in, which stays.
+                let answered = if ENTER.with(Cell::get).is_some() {
+                    library.call(context(), &name, &values)
+                } else {
+                    with_enter(&CallEnter(&ctx), || library.call(context(), &name, &values))
+                };
+                let answer = answered.map_err(|error| throw(&ctx, &error))?;
                 from_dyn(&ctx, &call_ids, &answer)
             },
         )?,

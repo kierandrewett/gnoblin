@@ -541,11 +541,15 @@ fn a_collection_swap_trades_two_members_and_tells_the_layout() {
             } catch (error) {
                 refused = error.code;
             }
-            return [first, refused, workspace.layout.heard.join(';')].join('|');
+            return [first, refused].join('|');
         })()",
     );
+    assert_eq!(got, "5,4,3|invalid_argument");
+    // The library tells the layout in its next pass, never inside the call that traded the two.
+    rig.settle();
     assert_eq!(
-        got, "5,4,3|invalid_argument|35",
+        rig.eval("gnoblin.workspaces.get('main').layout.heard.join(';')"),
+        "35",
         "the hook heard the one swap, and not a swap with itself"
     );
 }

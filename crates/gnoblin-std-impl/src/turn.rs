@@ -21,6 +21,7 @@ use gnoblin_std_abi as abi;
 use crate::animation::easing::Easing;
 use crate::animation::engine::Options;
 use crate::animation::staging::{Curve, Prop, Staged};
+use crate::floating::{grow, shrink};
 use crate::layout::{LayoutContext, Placement};
 use crate::nodes;
 use crate::state::{self, Id, NodeId, Notice, State, Std};
@@ -378,28 +379,30 @@ impl State {
         Some(Compute { moved_from, tiled })
     }
 
-    /// The rectangle a placement gives `client`: its bounds moved by the offset of its transform's position, to whole pixels.
-    /// With no bounds the rectangle is the window's own size centred in `area`.
+    /// The rectangle a placement gives `client`: the content inside the frame the placement's bounds describe, moved by the offset of
+    /// its transform's position, to whole pixels. A placement places the FRAME (the content with the room its frame takes on each
+    /// side), so the content is what is left of the bounds. With no bounds the frame is the window's own size, frame included,
+    /// centred in `area`.
     fn placement_bounds(&self, client: NodeId, placement: &Placement, area: &Rect) -> Option<Rect> {
+        let inset = self.inset_of(client);
         let Some((dx, dy)) = placement.offset else {
-            return placement.bounds;
+            return placement.bounds.map(|bounds| shrink(&bounds, &inset));
         };
         let own = nodes::rect_of(&self.g, client);
+        let room = grow(&Rect::new(0.0, 0.0, own.width, own.height), &inset);
         let base = placement.bounds.unwrap_or_else(|| {
             Rect::new(
-                area.x + (area.width - own.width) / 2.0,
-                area.y + (area.height - own.height) / 2.0,
-                own.width,
-                own.height,
+                area.x + (area.width - room.width) / 2.0,
+                area.y + (area.height - room.height) / 2.0,
+                room.width,
+                room.height,
             )
         });
         // JavaScript's `Math.round`: halves go up.
         let round = |value: f64| (value + 0.5).floor();
-        Some(Rect::new(
-            round(base.x + dx),
-            round(base.y + dy),
-            base.width,
-            base.height,
+        Some(shrink(
+            &Rect::new(round(base.x + dx), round(base.y + dy), base.width, base.height),
+            &inset,
         ))
     }
 
