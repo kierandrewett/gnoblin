@@ -97,6 +97,12 @@ impl NativeCore {
         config.js.natives.push(self.embedded.std_native());
     }
 
+    /// Gives a bare generation (a script run with no shell and no host) `__gnoblinStd`, for a case of a pure function of the stock
+    /// library that the library computes.
+    pub fn configure_generation(&self, config: &mut gnoblin_js::JsConfig) {
+        config.natives.push(self.embedded.std_native());
+    }
+
     /// The core's half of a frame: what the library announces and runs, and what it writes.
     pub fn dispatch(&self, shell: &JsShell) -> i32 {
         self.embedded.dispatch(shell)

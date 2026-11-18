@@ -11,6 +11,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use gnoblin_js::{JsConfig, JsGeneration, JsRole, JsRoleLinks, JsShell, JsShellConfig, stock_modules_in};
@@ -19,7 +20,7 @@ use gnoblin_tree_client::tree_mirror::{MirrorValue, TreeGesture, TreeIncoming};
 use tempfile::TempDir;
 
 mod common;
-use common::{Claim, FakeCompositor, ROOT, honest_config, honest_role_config, set_change, text, timed_config};
+use common::{Claim, FakeCompositor, ROOT, honest_config, honest_role_config, native, set_change, text, timed_config};
 
 // -- the trigger grammar -----------------------------------------------------------------------------------
 
@@ -52,6 +53,29 @@ fn grammar(body: &str) -> String {
     generation
         .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
         .expect("the case called emit")
+}
+
+/// Like [`grammar`], in a shell over a core and the std library: for a case of a drag function that the library computes.
+fn grammar_native(body: &str) -> String {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    let source = format!(
+        "import {{ ClientMoveBinding, ClientResizeBinding, dragConstraintMode, constrainRect }} from \"gnoblin-std\";\n\
+         const emit = (value: unknown) => {{ (globalThis as any).out = String(value); }};\n\
+         const thrown = (fn: () => void) => {{ try {{ fn(); }} catch (e: any) {{ return `${{e.name}}: ${{e.message}} [${{e.token}}]`; }} return \"did not throw\"; }};\n\
+         {body}\n"
+    );
+    fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
+    let (config, clock) = timed_config(&root);
+    let (mut shell, core) = native::shell_over_core(&FakeCompositor::new(), Arc::new(clock), config);
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let out = shell
+        .eval("globalThis.out")
+        .expect("the script runs")
+        .expect("the case called emit");
+    drop(core);
+    out
 }
 
 fn lines(items: &[&str]) -> String {
@@ -399,6 +423,8 @@ struct Rig {
     shell: JsShell,
     comp: Comp,
     clock: ManualClock,
+    /// The core and the std library the shell runs over: the stock bindings and the snap rules are the library's.
+    core: native::NativeCore,
     _dir: TempDir,
 }
 
@@ -410,7 +436,9 @@ impl Rig {
     }
 
     fn frame(&mut self) -> Vec<String> {
-        self.shell.frame().expect("a frame").diagnostics
+        let diagnostics = self.shell.frame().expect("a frame").diagnostics;
+        self.core.dispatch(&self.shell);
+        diagnostics
     }
 
     /// The text of `source`'s value; `undefined` when it has none.
@@ -433,13 +461,14 @@ fn rig_with(comp: &Comp, init: &str, tweak: impl FnOnce(&mut JsShellConfig)) -> 
     fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let (mut config, clock) = timed_config(&root);
     tweak(&mut config);
-    let mut shell = JsShell::new(Box::new(comp.0.clone()), config).expect("the shell boots");
+    let (mut shell, core) = native::shell_over_core(&comp.0, Arc::new(clock.clone()), config);
     let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     let mut rig = Rig {
         shell,
         comp: comp.clone(),
         clock,
+        core,
         _dir: dir,
     };
     // The claims the entry made travel with the first frame.
@@ -1412,7 +1441,7 @@ fn the_stock_move_stays_in_the_work_area_and_a_minimum_strip_lets_the_window_lea
 
 #[test]
 fn the_drag_constraint_and_the_size_rules_agree_with_the_retired_drag_tests() {
-    let got = grammar(
+    let got = grammar_native(
         r#"
         const area = { x: 0, y: 32, width: 1920, height: 1048 };
         const at = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });

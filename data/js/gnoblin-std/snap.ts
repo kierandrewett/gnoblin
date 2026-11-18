@@ -8,12 +8,37 @@
 import { NO_INSET, shrinkRect } from "gnoblin-core/inset";
 import type { FrameInset } from "gnoblin-core/inset";
 import type { Rect } from "gnoblin-core/types";
+import { Drag } from "gnoblin-std/generated/classes";
+import { SnapKind } from "gnoblin-std/generated/constants";
 
 /** The part of the work area a window tiles to: the left or right half, or all of it. */
 export type SnapZone = "left" | "right" | "top";
 
 /** How near an edge the pointer must be to name it, in pixels. A small fixed zone. */
-export const SNAP_MARGIN = 4;
+export const SNAP_MARGIN = SnapKind.MARGIN;
+
+/** The names of the zones, by the number the library knows them by. */
+const ZONES: Readonly<Record<number, SnapZone>> = {
+    [SnapKind.LEFT]: "left",
+    [SnapKind.RIGHT]: "right",
+    [SnapKind.TOP]: "top",
+};
+
+/** The number the library knows a zone by; none for a name that is not a zone. */
+const ZONE_NUMBERS: Readonly<Record<string, number>> = {
+    left: SnapKind.LEFT,
+    right: SnapKind.RIGHT,
+    top: SnapKind.TOP,
+};
+
+/** The zone the library's number names. */
+export function zoneNamed(zone: number): SnapZone {
+    const named = ZONES[zone];
+    if (named === undefined) {
+        throw new RangeError(`${zone} is not a snap zone`);
+    }
+    return named;
+}
 
 /** Whether edge tiling is on. Absent is off; anything but a boolean throws. */
 export function edgeTilingEnabled(value: unknown): boolean {
@@ -28,31 +53,12 @@ export function edgeTilingEnabled(value: unknown): boolean {
 
 /** The edge the pointer is within `margin` pixels of, or null. Left and right win over top at corners. */
 export function edgeZone(x: number, y: number, area: Rect, margin: number = SNAP_MARGIN): SnapZone | null {
-    if (x - area.x <= margin) {
-        return "left";
-    }
-    if (area.x + area.width - x <= margin) {
-        return "right";
-    }
-    if (y - area.y <= margin) {
-        return "top";
-    }
-    return null;
+    return ZONES[Drag.zone(x, y, area, margin)] ?? null;
 }
 
 /** The rectangle a window tiles to in `zone`, or null when the zone does not tile. The halves are whole pixels. */
 export function tileRect(zone: string, area: Rect): Rect | null {
-    const half = Math.floor(area.width / 2);
-    switch (zone) {
-        case "left":
-            return { x: area.x, y: area.y, width: half, height: area.height };
-        case "right":
-            return { x: area.x + half, y: area.y, width: area.width - half, height: area.height };
-        case "top":
-            return { x: area.x, y: area.y, width: area.width, height: area.height };
-        default:
-            return null;
-    }
+    return Object.hasOwn(ZONE_NUMBERS, zone) ? Drag.tile(ZONE_NUMBERS[zone], area) : null;
 }
 
 /** What `snapClient` reads and writes of a client. */

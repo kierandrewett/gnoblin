@@ -105,6 +105,7 @@ class SnapKind(IntEnum):
     LEFT = 1
     RIGHT = 2
     TOP = 3
+    MARGIN = 4
 
 class EasingKind(IntEnum):
     """The `STD_EASING_*` constants."""
@@ -213,6 +214,15 @@ class DragKind(IntEnum):
     HAS_LOCAL = 1
     HAS_WORK_AREA = 2
     EDGE_TILING = 4
+    CLIENT_FULLSCREEN = 1
+    CLIENT_MAXIMISED = 2
+    CLIENT_TILED = 4
+    CLIENT_FLOATING = 8
+    CLIENT_DIALOG = 16
+    CLIENT_MINIMISED = 32
+    CLIENT_HIDDEN = 64
+    CLIENT_ON_WORKSPACE = 128
+    STRIP = 75
 
 class ConstraintKind(IntEnum):
     """The `STD_CONSTRAINT_*` constants."""
@@ -241,6 +251,27 @@ class WayKind(IntEnum):
     DOWN = 4
     IN = 5
     OUT = 6
+
+class SideFlags(IntFlag):
+    """The `STD_SIDE_*` constants."""
+
+    LEFT = 1
+    RIGHT = 2
+    TOP = 4
+    BOTTOM = 8
+
+class OutcomeFlags(IntFlag):
+    """The `STD_OUTCOME_*` constants."""
+
+    TOOK = 1
+    HAS_BOUNDS = 2
+    HAS_FLOATING = 4
+    FORGET_SNAP = 8
+    HAS_SWAP = 16
+    HAS_RATIO = 32
+    HAS_CROSS_RATIO = 64
+    RESET_SPLIT = 128
+    HAS_SIDES = 256
 
 STD_LISTEN_REPLAY = 1
 STD_SPLIT_CROSS = 1
@@ -658,6 +689,61 @@ class BindingSpec:
 
     @classmethod
     def _from_dyn(cls, data: dict[str, Any]) -> BindingSpec: ...
+
+@dataclass
+class DragTile:
+    """One tile of a workspace as a swap drag sees it: a client, what it is, and where it is."""
+
+    flags: int = ...
+    id: int = ...
+    rect: Rect = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DragTile: ...
+
+@dataclass
+class DragStep:
+    """What `drag_step` is given for one step of a drag the caller matched: the pointer and where the press was, the window it
+    pressed, and what the caller knows of that window and kept from the drag's start. A copy: the library keeps nothing of it
+    past the call, and nothing of the drag between calls.
+    """
+
+    client_flags: int = ...
+    event: Optional[DragEvent] = ...
+    bounds: Rect = ...
+    start: Rect = ...
+    sides: int = ...
+    state: Optional[ClientState] = ...
+    split: Optional[Split] = ...
+    tiles: list[DragTile] = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DragStep: ...
+
+@dataclass
+class DragOutcome:
+    """What a drag step asks the caller to do. A drag that moves a window gives its rectangle, one that trades places gives the
+    tile, one that moves a divider gives its ratio: the caller writes them to the objects it holds.
+    """
+
+    flags: int = ...
+    snap_zone: int = ...
+    bounds: Rect = ...
+    floating: Rect = ...
+    swap_with: int = ...
+    sides: int = ...
+    reserved2: int = ...
+    ratio: float = ...
+    cross_ratio: float = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DragOutcome: ...
 
 @dataclass
 class Stats:
@@ -1341,6 +1427,65 @@ class Builtin:
 
     def reset_split(self, token: int) -> int:
         """Puts the dividers of the drag named `token` back as they were when `builtin_find_split` returned them."""
+        ...
+
+class Drag:
+    """Functions of `drag` that need no handle."""
+
+    @staticmethod
+    def step(kind: int, options: Sequence[Option | dict[str, Any]], step: DragStep | dict[str, Any]) -> DragOutcome:
+        """Gives the drag binding `kind` (`STD_BINDING_*`, with the options `layouts::BINDING_KINDS` declares for it; `trigger` and
+        `priority` are read and ignored: the caller matches the chord) one step of a drag the caller matched itself, and writes
+        what the binding wants done to `out`. The steps are the four a binding of the shell's own is told, in order
+        (`STD_DRAG_START`, any number of `STD_DRAG_UPDATE`, then `STD_DRAG_END` or `STD_DRAG_CANCEL`); a start that
+        `STD_OUTCOME_TOOK` is not set on is a binding that declined, and the caller offers the drag to the next one. The library
+        keeps nothing between steps: the caller keeps what a step answers that a later one needs (a resize's sides) and gives
+        the drag's start back with each. A function of its inputs; it reads nothing of the library's state and touches nothing.
+        `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong type or out of range. Works on a generation
+        that never called `open`.
+        """
+        ...
+
+    @staticmethod
+    def clamp(pos: float, size: float, start: float, span: float, constraint: int) -> float:
+        """Writes where a window of `size` along one axis goes when it is moved to `pos` inside the area that starts at `start` and is
+        `span` long, as the `constraint` (`STD_CONSTRAINT_*`) says: a window larger than the area goes to its start.
+        """
+        ...
+
+    @staticmethod
+    def resize(start: Rect | dict[str, Any], sides: int, dx: float, dy: float, limits: ClientState | dict[str, Any]) -> Rect:
+        """Writes the rectangle `start` becomes when the `sides` (`STD_SIDE_*`) of it follow the pointer by (`dx`, `dy`). The opposite
+        side is the anchor: a rectangle held at a limit stops there and does not slide. The limits are the least and most size
+        `limits` carries (`STD_CLIENT_HAS_MIN` and `STD_CLIENT_HAS_MAX`); a null `limits`, or one with no least size, leaves the
+        smallest size every resize leaves (100 by 80).
+        """
+        ...
+
+    @staticmethod
+    def zone(x: float, y: float, area: Rect | dict[str, Any], margin: float) -> int:
+        """Writes the `STD_SNAP_*` zone of the edge of `area` that the point (`x`, `y`) is within `margin` pixels of
+        (`STD_SNAP_NONE` when it is within none). Left and right win over top at the corners.
+        """
+        ...
+
+    @staticmethod
+    def tile(zone: int, area: Rect | dict[str, Any]) -> Optional[Rect]:
+        """1 when it wrote to `out` the part of `area` a window snapped to `zone` (`STD_SNAP_*`) fills, 0 when the zone does not tile.
+        The halves are whole pixels.
+        """
+        ...
+
+class Gesture:
+    """Functions of `gesture` that need no handle."""
+
+    @staticmethod
+    def way(kind: int, dx: float, dy: float, scale: float, threshold: float) -> int:
+        """Writes the way a gesture has gone (`STD_WAY_*`): for a swipe (`kind` `STD_GESTURE_SWIPE`) the direction of the longer axis
+        of (`dx`, `dy`), a tie going to the horizontal, `STD_WAY_NONE` while the fingers have moved less than `threshold` touchpad
+        units; for a pinch the way `scale` has gone from 1, `STD_WAY_NONE` while it is within `threshold` of 1. The distance at
+        which a binding of the library's own decides is 12 units and 0.1.
+        """
         ...
 
 class Registration:

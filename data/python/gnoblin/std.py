@@ -107,6 +107,7 @@ class SnapKind(IntEnum):
     LEFT = 1
     RIGHT = 2
     TOP = 3
+    MARGIN = 4
 
 class EasingKind(IntEnum):
     """The `STD_EASING_*` constants."""
@@ -215,6 +216,15 @@ class DragKind(IntEnum):
     HAS_LOCAL = 1
     HAS_WORK_AREA = 2
     EDGE_TILING = 4
+    CLIENT_FULLSCREEN = 1
+    CLIENT_MAXIMISED = 2
+    CLIENT_TILED = 4
+    CLIENT_FLOATING = 8
+    CLIENT_DIALOG = 16
+    CLIENT_MINIMISED = 32
+    CLIENT_HIDDEN = 64
+    CLIENT_ON_WORKSPACE = 128
+    STRIP = 75
 
 class ConstraintKind(IntEnum):
     """The `STD_CONSTRAINT_*` constants."""
@@ -243,6 +253,27 @@ class WayKind(IntEnum):
     DOWN = 4
     IN = 5
     OUT = 6
+
+class SideFlags(IntFlag):
+    """The `STD_SIDE_*` constants."""
+
+    LEFT = 1
+    RIGHT = 2
+    TOP = 4
+    BOTTOM = 8
+
+class OutcomeFlags(IntFlag):
+    """The `STD_OUTCOME_*` constants."""
+
+    TOOK = 1
+    HAS_BOUNDS = 2
+    HAS_FLOATING = 4
+    FORGET_SNAP = 8
+    HAS_SWAP = 16
+    HAS_RATIO = 32
+    HAS_CROSS_RATIO = 64
+    RESET_SPLIT = 128
+    HAS_SIDES = 256
 
 STD_LISTEN_REPLAY = 1
 STD_SPLIT_CROSS = 1
@@ -1047,6 +1078,113 @@ class BindingSpec:
             trigger=data["trigger"],
             priority=data["priority"],
             threshold=data["threshold"],
+        )
+
+@dataclass
+class DragTile:
+    """One tile of a workspace as a swap drag sees it: a client, what it is, and where it is."""
+
+    flags: int = 0
+    id: int = 0
+    rect: Rect = field(default_factory=Rect)
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "flags": self.flags,
+            "id": self.id,
+            "rect": self.rect._to_dyn(),
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DragTile:
+        return cls(
+            flags=data["flags"],
+            id=data["id"],
+            rect=Rect._from_dyn(data["rect"]),
+        )
+
+@dataclass
+class DragStep:
+    """What `drag_step` is given for one step of a drag the caller matched: the pointer and where the press was, the window it
+    pressed, and what the caller knows of that window and kept from the drag's start. A copy: the library keeps nothing of it
+    past the call, and nothing of the drag between calls.
+    """
+
+    client_flags: int = 0
+    event: Optional[DragEvent] = None
+    bounds: Rect = field(default_factory=Rect)
+    start: Rect = field(default_factory=Rect)
+    sides: int = 0
+    state: Optional[ClientState] = None
+    split: Optional[Split] = None
+    tiles: list[DragTile] = field(default_factory=list)
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "client_flags": self.client_flags,
+            "event": None if self.event is None else self.event._to_dyn(),
+            "bounds": self.bounds._to_dyn(),
+            "start": self.start._to_dyn(),
+            "sides": self.sides,
+            "state": None if self.state is None else self.state._to_dyn(),
+            "split": None if self.split is None else self.split._to_dyn(),
+            "tiles": [item._to_dyn() for item in self.tiles],
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DragStep:
+        return cls(
+            client_flags=data["client_flags"],
+            event=None if data["event"] is None else DragEvent._from_dyn(data["event"]),
+            bounds=Rect._from_dyn(data["bounds"]),
+            start=Rect._from_dyn(data["start"]),
+            sides=data["sides"],
+            state=None if data["state"] is None else ClientState._from_dyn(data["state"]),
+            split=None if data["split"] is None else Split._from_dyn(data["split"]),
+            tiles=[DragTile._from_dyn(item) for item in data["tiles"]],
+        )
+
+@dataclass
+class DragOutcome:
+    """What a drag step asks the caller to do. A drag that moves a window gives its rectangle, one that trades places gives the
+    tile, one that moves a divider gives its ratio: the caller writes them to the objects it holds.
+    """
+
+    flags: int = 0
+    snap_zone: int = 0
+    bounds: Rect = field(default_factory=Rect)
+    floating: Rect = field(default_factory=Rect)
+    swap_with: int = 0
+    sides: int = 0
+    reserved2: int = 0
+    ratio: float = 0.0
+    cross_ratio: float = 0.0
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "flags": self.flags,
+            "snap_zone": self.snap_zone,
+            "bounds": self.bounds._to_dyn(),
+            "floating": self.floating._to_dyn(),
+            "swap_with": self.swap_with,
+            "sides": self.sides,
+            "reserved2": self.reserved2,
+            "ratio": self.ratio,
+            "cross_ratio": self.cross_ratio,
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DragOutcome:
+        return cls(
+            flags=data["flags"],
+            snap_zone=data["snap_zone"],
+            bounds=Rect._from_dyn(data["bounds"]),
+            floating=Rect._from_dyn(data["floating"]),
+            swap_with=data["swap_with"],
+            sides=data["sides"],
+            reserved2=data["reserved2"],
+            ratio=data["ratio"],
+            cross_ratio=data["cross_ratio"],
         )
 
 @dataclass
@@ -1937,6 +2075,71 @@ class Builtin(_b.Handle):
     def reset_split(self, token: int) -> int:
         """Puts the dividers of the drag named `token` back as they were when `builtin_find_split` returned them."""
         raw = _call("builtin_reset_split", self.handle, _b.dyn(token))
+        return raw
+
+class Drag(_b.Handle):
+    """Functions of `drag` that need no handle."""
+
+    @staticmethod
+    def step(kind: int, options: Sequence[Option | dict[str, Any]], step: DragStep | dict[str, Any]) -> DragOutcome:
+        """Gives the drag binding `kind` (`STD_BINDING_*`, with the options `layouts::BINDING_KINDS` declares for it; `trigger` and
+        `priority` are read and ignored: the caller matches the chord) one step of a drag the caller matched itself, and writes
+        what the binding wants done to `out`. The steps are the four a binding of the shell's own is told, in order
+        (`STD_DRAG_START`, any number of `STD_DRAG_UPDATE`, then `STD_DRAG_END` or `STD_DRAG_CANCEL`); a start that
+        `STD_OUTCOME_TOOK` is not set on is a binding that declined, and the caller offers the drag to the next one. The library
+        keeps nothing between steps: the caller keeps what a step answers that a later one needs (a resize's sides) and gives
+        the drag's start back with each. A function of its inputs; it reads nothing of the library's state and touches nothing.
+        `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong type or out of range. Works on a generation
+        that never called `open`.
+        """
+        raw = _call("drag_step", _b.dyn(kind), _b.dyn(options), _b.dyn(step))
+        return DragOutcome._from_dyn(raw)
+
+    @staticmethod
+    def clamp(pos: float, size: float, start: float, span: float, constraint: int) -> float:
+        """Writes where a window of `size` along one axis goes when it is moved to `pos` inside the area that starts at `start` and is
+        `span` long, as the `constraint` (`STD_CONSTRAINT_*`) says: a window larger than the area goes to its start.
+        """
+        raw = _call("drag_clamp", _b.dyn(pos), _b.dyn(size), _b.dyn(start), _b.dyn(span), _b.dyn(constraint))
+        return raw
+
+    @staticmethod
+    def resize(start: Rect | dict[str, Any], sides: int, dx: float, dy: float, limits: ClientState | dict[str, Any]) -> Rect:
+        """Writes the rectangle `start` becomes when the `sides` (`STD_SIDE_*`) of it follow the pointer by (`dx`, `dy`). The opposite
+        side is the anchor: a rectangle held at a limit stops there and does not slide. The limits are the least and most size
+        `limits` carries (`STD_CLIENT_HAS_MIN` and `STD_CLIENT_HAS_MAX`); a null `limits`, or one with no least size, leaves the
+        smallest size every resize leaves (100 by 80).
+        """
+        raw = _call("drag_resize", _b.dyn(start), _b.dyn(sides), _b.dyn(dx), _b.dyn(dy), _b.dyn(limits))
+        return Rect._from_dyn(raw)
+
+    @staticmethod
+    def zone(x: float, y: float, area: Rect | dict[str, Any], margin: float) -> int:
+        """Writes the `STD_SNAP_*` zone of the edge of `area` that the point (`x`, `y`) is within `margin` pixels of
+        (`STD_SNAP_NONE` when it is within none). Left and right win over top at the corners.
+        """
+        raw = _call("drag_zone", _b.dyn(x), _b.dyn(y), _b.dyn(area), _b.dyn(margin))
+        return raw
+
+    @staticmethod
+    def tile(zone: int, area: Rect | dict[str, Any]) -> Optional[Rect]:
+        """1 when it wrote to `out` the part of `area` a window snapped to `zone` (`STD_SNAP_*`) fills, 0 when the zone does not tile.
+        The halves are whole pixels.
+        """
+        raw = _call("drag_tile", _b.dyn(zone), _b.dyn(area))
+        return None if raw is None else Rect._from_dyn(raw)
+
+class Gesture(_b.Handle):
+    """Functions of `gesture` that need no handle."""
+
+    @staticmethod
+    def way(kind: int, dx: float, dy: float, scale: float, threshold: float) -> int:
+        """Writes the way a gesture has gone (`STD_WAY_*`): for a swipe (`kind` `STD_GESTURE_SWIPE`) the direction of the longer axis
+        of (`dx`, `dy`), a tie going to the horizontal, `STD_WAY_NONE` while the fingers have moved less than `threshold` touchpad
+        units; for a pinch the way `scale` has gone from 1, `STD_WAY_NONE` while it is within `threshold` of 1. The distance at
+        which a binding of the library's own decides is 12 units and 0.1.
+        """
+        raw = _call("gesture_way", _b.dyn(kind), _b.dyn(dx), _b.dyn(dy), _b.dyn(scale), _b.dyn(threshold))
         return raw
 
 class Registration(_b.Handle):

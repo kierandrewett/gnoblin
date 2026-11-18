@@ -21,6 +21,10 @@
 
 mod drags;
 mod gesture;
+mod step_api;
+mod steps;
+
+pub(crate) use self::step_api::{drag_clamp, drag_resize, drag_step, drag_tile, drag_zone, gesture_way};
 
 use core::ffi::c_void;
 use std::cell::RefCell;
@@ -33,11 +37,10 @@ use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinDropFn};
 use gnoblin_std_abi::layouts::binding_kind;
 use gnoblin_std_abi::{
     GnoblinStdBindingSpec, GnoblinStdDragEvent, GnoblinStdDragFn, GnoblinStdGestureEvent, GnoblinStdGestureFn,
-    GnoblinStdOption, GnoblinStdRect, GnoblinStdReg, STD_BINDING_MOVE, STD_BINDING_RESIZE, STD_BINDING_SPLIT_RESIZE,
-    STD_BINDING_SWAP, STD_CONSTRAINT_MINIMUM_STRIP, STD_CONSTRAINT_WORK_AREA, STD_DRAG_CANCEL, STD_DRAG_EDGE_TILING,
-    STD_DRAG_END, STD_DRAG_HAS_LOCAL, STD_DRAG_HAS_WORK_AREA, STD_DRAG_START, STD_DRAG_UPDATE, STD_GESTURE_BEGIN,
-    STD_GESTURE_CANCEL, STD_GESTURE_END, STD_GESTURE_HAS_POSITION, STD_GESTURE_PINCH, STD_GESTURE_SWIPE,
-    STD_GESTURE_UPDATE,
+    GnoblinStdOption, GnoblinStdRect, GnoblinStdReg, STD_CONSTRAINT_MINIMUM_STRIP, STD_CONSTRAINT_WORK_AREA,
+    STD_DRAG_CANCEL, STD_DRAG_EDGE_TILING, STD_DRAG_END, STD_DRAG_HAS_LOCAL, STD_DRAG_HAS_WORK_AREA, STD_DRAG_START,
+    STD_DRAG_UPDATE, STD_GESTURE_BEGIN, STD_GESTURE_CANCEL, STD_GESTURE_END, STD_GESTURE_HAS_POSITION,
+    STD_GESTURE_PINCH, STD_GESTURE_SWIPE, STD_GESTURE_UPDATE,
 };
 
 use crate::builtin::{OptionSet, Pt, Val, read_set, read_text};
@@ -47,8 +50,9 @@ use crate::state::{Id, NodeId, State, Std, next_id};
 use crate::table::{call_reg, read_ext};
 use crate::turn::schedule;
 
-use self::drags::{GripChoice, MoveDrag, ResizeDrag, SNAP_MARGIN, SplitResizeDrag, SwapDrag};
+use self::drags::RuleDrag;
 use self::gesture::{GestureTrigger, progress_of, way_of};
+use self::steps::DragRule;
 
 /// How far a pointer travels before a press becomes a drag, in logical pixels.
 const DRAG_THRESHOLD: f64 = 4.0;
@@ -891,18 +895,10 @@ pub(crate) unsafe extern "C" fn binding_builtin(
             return Err(Fail::type_error(format!("{}.trigger must not be empty", desc.name)));
         }
         let priority = options.num("priority");
-        let handler: fn(&OptionSet) -> Box<dyn DragHandler> = match kind {
-            STD_BINDING_MOVE => |options| {
-                let snap = options
-                    .boolean("snap")
-                    .then(|| options.maybe("snap_margin").unwrap_or(SNAP_MARGIN));
-                Box::new(MoveDrag::new(snap))
-            },
-            STD_BINDING_RESIZE => |options| Box::new(ResizeDrag::new(GripChoice::from_member(options.member("grip")))),
-            STD_BINDING_SWAP => |_| Box::new(SwapDrag::new()),
-            STD_BINDING_SPLIT_RESIZE => |_| Box::new(SplitResizeDrag::new()),
-            other => return Err(Fail::type_error(format!("unknown built-in binding kind {other}"))),
-        };
-        add_drag(&std, &trigger, priority, DRAG_THRESHOLD, || handler(&options))
+        let rule = DragRule::of(kind, &options)
+            .ok_or_else(|| Fail::type_error(format!("unknown built-in binding kind {kind}")))?;
+        add_drag(&std, &trigger, priority, DRAG_THRESHOLD, || {
+            Box::new(RuleDrag::new(rule))
+        })
     })
 }

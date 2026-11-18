@@ -80,9 +80,19 @@ impl GestureTrigger {
 
 /// The way the fingers have gone so far, or `STD_WAY_NONE` while they have gone less than the decision distance.
 pub(super) fn way_of(kind: GestureKind, dx: f64, dy: f64, scale: f64) -> u32 {
+    let decide = match kind {
+        GestureKind::Swipe => SWIPE_DECIDE,
+        GestureKind::Pinch => PINCH_DECIDE,
+    };
+    way_past(kind, dx, dy, scale, decide)
+}
+
+/// [`way_of`] with the distance a gesture must have gone to have a way: `threshold` touchpad units for a swipe, as far from 1 for a
+/// pinch's scale. A binding of the library's own decides at `SWIPE_DECIDE` and `PINCH_DECIDE`.
+pub(crate) fn way_past(kind: GestureKind, dx: f64, dy: f64, scale: f64, threshold: f64) -> u32 {
     match kind {
         GestureKind::Swipe => {
-            if dx.abs().max(dy.abs()) < SWIPE_DECIDE {
+            if dx.abs().max(dy.abs()) < threshold {
                 STD_WAY_NONE
             } else if dx.abs() >= dy.abs() {
                 if dx > 0.0 { STD_WAY_RIGHT } else { STD_WAY_LEFT }
@@ -93,7 +103,7 @@ pub(super) fn way_of(kind: GestureKind, dx: f64, dy: f64, scale: f64) -> u32 {
             }
         }
         GestureKind::Pinch => {
-            if (scale - 1.0).abs() < PINCH_DECIDE {
+            if (scale - 1.0).abs() < threshold {
                 STD_WAY_NONE
             } else if scale < 1.0 {
                 STD_WAY_IN

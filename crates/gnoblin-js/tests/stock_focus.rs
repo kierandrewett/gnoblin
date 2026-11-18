@@ -11,6 +11,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use gnoblin_js::{JsConfig, JsGeneration, JsShell, stock_modules_in};
@@ -19,7 +20,7 @@ use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 use tempfile::TempDir;
 
 mod common;
-use common::{FakeCompositor, ROOT, text, timed_config};
+use common::{FakeCompositor, ROOT, native, text, timed_config};
 
 // -- the pure functions, run in a bare generation -----------------------------------------------------------
 
@@ -59,6 +60,26 @@ fn run(body: &str) -> String {
     generation
         .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
         .expect("the case called emit")
+}
+
+/// Like [`run`], in a shell over a core and the std library: for a case of a pure function that the library computes (`__gnoblinStd`).
+fn run_native(body: &str) -> String {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    let imports = IMPORTS.replace("import { emit, thrown } from \"harness\";", "");
+    let prelude = "const emit = (value: unknown) => { (globalThis as any).out = String(value); };\n\
+                   const thrown = (fn: () => void) => { try { fn(); } catch (e: any) { return `${e.name}: ${e.message}`; } return \"did not throw\"; };\n";
+    fs::write(root.join("shell.ts"), format!("{imports}\n{prelude}{body}\n")).expect("shell.ts is written");
+    let (config, clock) = timed_config(&root);
+    let (mut shell, core) = native::shell_over_core(&FakeCompositor::new(), Arc::new(clock), config);
+    let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let out = shell
+        .eval("globalThis.out")
+        .expect("the script runs")
+        .expect("the case called emit");
+    drop(core);
+    out
 }
 
 fn lines(expected: &[&str]) -> String {
@@ -306,7 +327,8 @@ fn a_pointer_near_an_edge_names_the_zone_and_a_zone_names_a_rectangle() {
     // Before: "a pointer within the margin of an edge names that edge", "a pointer away from every edge names no zone",
     // "left and right tile to the matching half, top fills the area", "an unknown zone has no rectangle", in the the retired shell
     // work area of 1920 by 1048 starting at y 32. The retired rectangle was x, y, w, h; this one is x, y, width, height.
-    let got = run(r#"
+    let got = run_native(
+        r#"
         const area = { x: 0, y: 32, width: 1920, height: 1048 };
         const text = (r: any) => (r === null ? "none" : [r.x, r.y, r.width, r.height].join(","));
         emit([
@@ -324,7 +346,8 @@ fn a_pointer_near_an_edge_names_the_zone_and_a_zone_names_a_rectangle() {
             text(tileRect("bottom", area)),
             text(tileRect("right", { x: 0, y: 0, width: 101, height: 50 })),
         ].join("\n"));
-    "#);
+    "#,
+    );
     assert_eq!(
         got,
         lines(&[
@@ -501,6 +524,8 @@ fn world(seat: Vec<(&str, MirrorValue)>) -> Comp {
 struct Rig {
     shell: JsShell,
     clock: ManualClock,
+    /// The core and the std library the shell runs over: the stock bindings and the snap rules are the library's.
+    core: native::NativeCore,
     _dir: TempDir,
 }
 
@@ -513,6 +538,7 @@ impl Rig {
 
     fn frame(&mut self) -> Vec<String> {
         let diagnostics = self.shell.frame().expect("a frame").diagnostics;
+        self.core.dispatch(&self.shell);
         // A rule's `cornerRadius` is kept in the client's style and noticed once as not drawn.
         assert!(
             diagnostics.iter().all(|d| d.starts_with("not applied: style.")),
@@ -540,12 +566,13 @@ fn boot(comp: &Comp, init: &str) -> Rig {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), format!("{PRELUDE}{init}")).expect("shell.ts is written");
     let (config, clock) = timed_config(&root);
-    let mut shell = JsShell::new(Box::new(comp.0.clone()), config).expect("the shell boots");
+    let (mut shell, core) = native::shell_over_core(&comp.0, Arc::new(clock.clone()), config);
     let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     let mut rig = Rig {
         shell,
         clock,
+        core,
         _dir: dir,
     };
     rig.frame();
@@ -737,6 +764,8 @@ fn auto_raise_is_off_by_default_and_a_window_that_lost_focus_is_not_raised() {
     rig.advance(30);
     rig.frame();
     assert!(comp.ops().is_empty(), "auto_raise is false");
+    // The core's registry is one per process: the first rig ends before the second begins.
+    drop(rig);
     let comp = world(vec![
         ("focus_mode", text("hover")),
         ("auto_raise", flag(true)),
@@ -917,10 +946,13 @@ fn the_move_bindings_snap_option_sets_the_margin_or_turns_snapping_off() {
         "0,260,300,200",
         "10 pixels from the edge is outside the default margin of 4"
     );
+    // The core's registry is one per process: the first rig ends before the second begins.
+    drop(rig);
     let comp = world(vec![("edge_tiling", flag(true))]);
     let mut rig = rig_with_move(&comp, "new ClientMoveBinding({ id: \"move\", snap: 12 })");
     drag_to(&comp, &mut rig, (10.0, 300.0));
     assert_eq!(comp.rect(3), "0,0,500,800", "10 pixels is inside a margin of 12");
+    drop(rig);
     let comp = world(vec![("edge_tiling", flag(true))]);
     let mut rig = rig_with_move(&comp, "new ClientMoveBinding({ id: \"move\", snap: false })");
     drag_to(&comp, &mut rig, (2.0, 300.0));

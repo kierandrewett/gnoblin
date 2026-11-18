@@ -1,14 +1,17 @@
-// `ClientMoveBinding`: drag a window by the pointer, with the edge snapping of `gnoblin-std/snap`.
+// `ClientMoveBinding`: drag a window by the pointer, with the edge snapping of `gnoblin-std/snap`. The drag is the library's move
+// (`libgnoblin-std`, binding kind `move`); this class gives it the window and writes what it answers.
 
 import { PointerDragBinding } from "gnoblin-core/bindings/binding";
 import type { PointerDragBindingOptions } from "gnoblin-core/bindings/binding";
-import { constrainRect, dragConstraintMode, draggable, moved } from "gnoblin-std/bindings/drag";
 import type { BindingClient, DragEvent, Point, Rect } from "gnoblin-core/bindings/types";
-import { growRect, NO_INSET, shrinkRect } from "gnoblin-core/inset";
-import { edgeZone, forgetSnap, SNAP_MARGIN, snapClient } from "gnoblin-std/snap";
+import { NO_INSET } from "gnoblin-core/inset";
+import { DragKind, OutcomeFlags, SnapKind } from "gnoblin-std/generated/constants";
+import { MoveBinding } from "gnoblin-std/generated/layouts";
+import { has, rectOf, takeStep } from "gnoblin-std/bindings/step";
+import { forgetSnap, SNAP_MARGIN, snapClient, zoneNamed } from "gnoblin-std/snap";
 import type { SnapClient } from "gnoblin-std/snap";
 
-/** What `ClientMoveBinding.onStart` keeps for one drag. */
+/** What `ClientMoveBinding.onStart` keeps for one drag: where the press and the window were. */
 export interface MoveState {
     /** Client whose bounds are being moved. */
     client: BindingClient;
@@ -46,15 +49,23 @@ export class ClientMoveBinding extends PointerDragBinding {
         this.snap = snap;
     }
 
+    /** The library's move, with the edge distance this binding has now. */
+    #rule(): MoveBinding {
+        return new MoveBinding(this.snap === false ? { snap: false } : { snap: true, snapMargin: this.snap });
+    }
+
     /** Starts a move for a movable client and records its starting position. */
     onStart(event: DragEvent): MoveState | false {
         const { client, position } = event;
-        if (!client || !position || !draggable(client)) {
+        if (!client || !position) {
+            return false;
+        }
+        if (!has(takeStep(this.#rule(), DragKind.START, event, client), OutcomeFlags.TOOK)) {
             return false;
         }
         // A snapped window the user takes hold of is no longer tiled to its zone.
         forgetSnap(client);
-        return { client, startPointer: { ...position }, startBounds: { ...client.bounds } };
+        return { client, startPointer: { ...position }, startBounds: rectOf(client.bounds) };
     }
 
     /** Moves the client by the pointer distance from the start. */
@@ -63,33 +74,30 @@ export class ClientMoveBinding extends PointerDragBinding {
         if (!client.alive || !event.position) {
             return;
         }
-        const delta = moved(startPointer, event.position);
-        const target = { ...startBounds, x: startBounds.x + delta.x, y: startBounds.y + delta.y };
-        // The seat's constraint keeps the window reachable. Without a work area there is nothing to keep it in. The
-        // frame (the content with its frame around it) is what stays in: a titlebar dragged off the top could not be
-        // grabbed again.
-        if (!event.workArea) {
-            client.bounds = target;
-            return;
+        const answer = takeStep(this.#rule(), DragKind.UPDATE, event, client, {
+            origin: startPointer,
+            start: startBounds,
+        });
+        if (has(answer, OutcomeFlags.HAS_BOUNDS)) {
+            client.bounds = rectOf(answer.bounds);
         }
-        const inset = client.frameInset ?? NO_INSET;
-        const frame = constrainRect(growRect(target, inset), event.workArea, dragConstraintMode(event.dragConstraint));
-        client.bounds = { ...shrinkRect(frame, inset), width: target.width, height: target.height };
     }
 
     /** Saves the moved bounds and tiles on release when edge tiling is enabled. */
     onEnd(event: DragEvent, state: object): void {
-        const { client } = state as MoveState;
+        const { client, startPointer, startBounds } = state as MoveState;
         if (!client.alive) {
             return;
         }
-        client.floatingBounds = { ...client.bounds };
-        if (this.snap === false || event.edgeTiling !== true || !event.workArea || !event.position) {
-            return;
+        const answer = takeStep(this.#rule(), DragKind.END, event, client, {
+            origin: startPointer,
+            start: startBounds,
+        });
+        if (has(answer, OutcomeFlags.HAS_FLOATING)) {
+            client.floatingBounds = rectOf(answer.floating);
         }
-        const zone = edgeZone(event.position.x, event.position.y, event.workArea, this.snap);
-        if (zone !== null) {
-            snapClient(client as SnapClient, zone, {
+        if (answer.snapZone !== SnapKind.NONE && event.workArea) {
+            snapClient(client as SnapClient, zoneNamed(answer.snapZone), {
                 edgeTiling: true,
                 area: event.workArea,
                 inset: client.frameInset ?? NO_INSET,
@@ -98,10 +106,17 @@ export class ClientMoveBinding extends PointerDragBinding {
     }
 
     /** Restores the original bounds when the drag is cancelled. */
-    onCancel(_event: DragEvent, state: object): void {
-        const { client, startBounds } = state as MoveState;
-        if (client.alive) {
-            client.bounds = { ...startBounds };
+    onCancel(event: DragEvent, state: object): void {
+        const { client, startPointer, startBounds } = state as MoveState;
+        if (!client.alive) {
+            return;
+        }
+        const answer = takeStep(this.#rule(), DragKind.CANCEL, event, client, {
+            origin: startPointer,
+            start: startBounds,
+        });
+        if (has(answer, OutcomeFlags.HAS_BOUNDS)) {
+            client.bounds = rectOf(answer.bounds);
         }
     }
 }

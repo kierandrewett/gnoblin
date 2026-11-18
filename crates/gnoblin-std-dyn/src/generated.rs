@@ -23,7 +23,7 @@ pub struct FunctionInfo {
     pub inputs: &'static [&'static str],
     /// Whether the call layer can carry it; a function with a raw pointer argument is native only.
     pub scriptable: bool,
-    /// Whether it works on a generation that has not opened the library (the built-in layouts): a call to it never opens it.
+    /// Whether it works on a generation that has not opened the library (the built-in layouts, the drag machines): a call to it never opens it.
     pub standalone: bool,
 }
 
@@ -545,6 +545,42 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         scriptable: true,
         standalone: true,
     },
+    FunctionInfo {
+        name: "drag_step",
+        inputs: &["kind", "options", "step"],
+        scriptable: true,
+        standalone: true,
+    },
+    FunctionInfo {
+        name: "drag_clamp",
+        inputs: &["pos", "size", "start", "span", "constraint"],
+        scriptable: true,
+        standalone: true,
+    },
+    FunctionInfo {
+        name: "drag_resize",
+        inputs: &["start", "sides", "dx", "dy", "limits"],
+        scriptable: true,
+        standalone: true,
+    },
+    FunctionInfo {
+        name: "drag_zone",
+        inputs: &["x", "y", "area", "margin"],
+        scriptable: true,
+        standalone: true,
+    },
+    FunctionInfo {
+        name: "drag_tile",
+        inputs: &["zone", "area"],
+        scriptable: true,
+        standalone: true,
+    },
+    FunctionInfo {
+        name: "gesture_way",
+        inputs: &["kind", "dx", "dy", "scale", "threshold"],
+        scriptable: true,
+        standalone: true,
+    },
 ];
 
 pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
@@ -635,6 +671,12 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "builtin_find_split" => builtin_find_split(lib, ctx, args),
         "builtin_set_split" => builtin_set_split(lib, ctx, args),
         "builtin_reset_split" => builtin_reset_split(lib, ctx, args),
+        "drag_step" => drag_step(lib, ctx, args),
+        "drag_clamp" => drag_clamp(lib, ctx, args),
+        "drag_resize" => drag_resize(lib, ctx, args),
+        "drag_zone" => drag_zone(lib, ctx, args),
+        "drag_tile" => drag_tile(lib, ctx, args),
+        "gesture_way" => gesture_way(lib, ctx, args),
         other => Err(StdError::unsupported(other)),
     }
 }
@@ -2703,6 +2745,176 @@ fn builtin_reset_split(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdE
     Ok(Dyn::Int(i64::from(status)))
 }
 
+#[allow(unused_mut, unused_variables)]
+fn drag_step(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, drag_step) + size_of::<usize>()) {
+        return Err(StdError::unsupported("drag_step"));
+    }
+    if args.len() != 3 {
+        return Err(StdError::type_error(format!(
+            "`drag_step` takes 3 arguments (kind, options, step), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let kind = args[0].to_u32("argument `kind` of `drag_step`")?;
+    let options: Vec<GnoblinStdOption> = args[1]
+        .to_list("argument `options` of `drag_step`")?
+        .iter()
+        .map(|item| write_gnoblin_std_option(&mut arena, item, "argument `options` of `drag_step`"))
+        .collect::<Result<_, _>>()?;
+    let step = write_gnoblin_std_drag_step(&mut arena, &args[2], "argument `step` of `drag_step`")?;
+    // SAFETY: an all-zero `GnoblinStdDragOutcome` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdDragOutcome = unsafe { zeroed() };
+    out.size = size_of::<GnoblinStdDragOutcome>() as u32;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe {
+        (api.drag_step)(
+            ctx,
+            kind,
+            options.as_ptr(),
+            options.len(),
+            &raw const step,
+            &raw mut out,
+        )
+    };
+    let status = lib.check("drag_step", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_drag_outcome(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn drag_clamp(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, drag_clamp) + size_of::<usize>()) {
+        return Err(StdError::unsupported("drag_clamp"));
+    }
+    if args.len() != 5 {
+        return Err(StdError::type_error(format!(
+            "`drag_clamp` takes 5 arguments (pos, size, start, span, constraint), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let pos = args[0].to_f64("argument `pos` of `drag_clamp`")?;
+    let size = args[1].to_f64("argument `size` of `drag_clamp`")?;
+    let start = args[2].to_f64("argument `start` of `drag_clamp`")?;
+    let span = args[3].to_f64("argument `span` of `drag_clamp`")?;
+    let constraint = args[4].to_u32("argument `constraint` of `drag_clamp`")?;
+    let mut out: f64 = 0.0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.drag_clamp)(ctx, pos, size, start, span, constraint, &raw mut out) };
+    let status = lib.check("drag_clamp", returned)?;
+    arena.adopt();
+    Ok(Dyn::Float(out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn drag_resize(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, drag_resize) + size_of::<usize>()) {
+        return Err(StdError::unsupported("drag_resize"));
+    }
+    if args.len() != 5 {
+        return Err(StdError::type_error(format!(
+            "`drag_resize` takes 5 arguments (start, sides, dx, dy, limits), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let start = write_gnoblin_std_rect(&mut arena, &args[0], "argument `start` of `drag_resize`")?;
+    let sides = args[1].to_u32("argument `sides` of `drag_resize`")?;
+    let dx = args[2].to_f64("argument `dx` of `drag_resize`")?;
+    let dy = args[3].to_f64("argument `dy` of `drag_resize`")?;
+    let limits = write_gnoblin_std_client_state(&mut arena, &args[4], "argument `limits` of `drag_resize`")?;
+    // SAFETY: an all-zero `GnoblinStdRect` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdRect = unsafe { zeroed() };
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.drag_resize)(ctx, &raw const start, sides, dx, dy, &raw const limits, &raw mut out) };
+    let status = lib.check("drag_resize", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_rect(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn drag_zone(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, drag_zone) + size_of::<usize>()) {
+        return Err(StdError::unsupported("drag_zone"));
+    }
+    if args.len() != 4 {
+        return Err(StdError::type_error(format!(
+            "`drag_zone` takes 4 arguments (x, y, area, margin), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let x = args[0].to_f64("argument `x` of `drag_zone`")?;
+    let y = args[1].to_f64("argument `y` of `drag_zone`")?;
+    let area = write_gnoblin_std_rect(&mut arena, &args[2], "argument `area` of `drag_zone`")?;
+    let margin = args[3].to_f64("argument `margin` of `drag_zone`")?;
+    let mut out: u32 = 0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.drag_zone)(ctx, x, y, &raw const area, margin, &raw mut out) };
+    let status = lib.check("drag_zone", returned)?;
+    arena.adopt();
+    Ok(Dyn::Uint(u64::from(out)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn drag_tile(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, drag_tile) + size_of::<usize>()) {
+        return Err(StdError::unsupported("drag_tile"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`drag_tile` takes 2 arguments (zone, area), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let zone = args[0].to_u32("argument `zone` of `drag_tile`")?;
+    let area = write_gnoblin_std_rect(&mut arena, &args[1], "argument `area` of `drag_tile`")?;
+    // SAFETY: an all-zero `GnoblinStdRect` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdRect = unsafe { zeroed() };
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.drag_tile)(ctx, zone, &raw const area, &raw mut out) };
+    let status = lib.check("drag_tile", returned)?;
+    arena.adopt();
+    if status == 0 {
+        return Ok(Dyn::Nil);
+    }
+    Ok(read_gnoblin_std_rect(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn gesture_way(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, gesture_way) + size_of::<usize>()) {
+        return Err(StdError::unsupported("gesture_way"));
+    }
+    if args.len() != 5 {
+        return Err(StdError::type_error(format!(
+            "`gesture_way` takes 5 arguments (kind, dx, dy, scale, threshold), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let kind = args[0].to_u32("argument `kind` of `gesture_way`")?;
+    let dx = args[1].to_f64("argument `dx` of `gesture_way`")?;
+    let dy = args[2].to_f64("argument `dy` of `gesture_way`")?;
+    let scale = args[3].to_f64("argument `scale` of `gesture_way`")?;
+    let threshold = args[4].to_f64("argument `threshold` of `gesture_way`")?;
+    let mut out: u32 = 0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.gesture_way)(ctx, kind, dx, dy, scale, threshold, &raw mut out) };
+    let status = lib.check("gesture_way", returned)?;
+    arena.adopt();
+    Ok(Dyn::Uint(u64::from(out)))
+}
+
 fn read_gnoblin_std_stats(record: &GnoblinStdStats) -> Dyn {
     // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
     Dyn::Map(vec![
@@ -2955,6 +3167,21 @@ fn read_gnoblin_std_placement(record: &GnoblinStdPlacement) -> Dyn {
         ("scale_z".to_owned(), Dyn::Float(record.scale_z)),
         ("offset_x".to_owned(), Dyn::Float(record.offset_x)),
         ("offset_y".to_owned(), Dyn::Float(record.offset_y)),
+    ])
+}
+
+fn read_gnoblin_std_drag_outcome(record: &GnoblinStdDragOutcome) -> Dyn {
+    // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
+    Dyn::Map(vec![
+        ("flags".to_owned(), Dyn::Uint(u64::from(record.flags))),
+        ("snap_zone".to_owned(), Dyn::Uint(u64::from(record.snap_zone))),
+        ("bounds".to_owned(), read_gnoblin_std_rect(&record.bounds)),
+        ("floating".to_owned(), read_gnoblin_std_rect(&record.floating)),
+        ("swap_with".to_owned(), Dyn::Uint(record.swap_with)),
+        ("sides".to_owned(), Dyn::Uint(u64::from(record.sides))),
+        ("reserved2".to_owned(), Dyn::Uint(u64::from(record.reserved2))),
+        ("ratio".to_owned(), Dyn::Float(record.ratio)),
+        ("cross_ratio".to_owned(), Dyn::Float(record.cross_ratio)),
     ])
 }
 
@@ -3463,6 +3690,116 @@ fn write_gnoblin_std_layout_query(
     }
     if let Some(item) = reader.take("focused_height") {
         record.focused_height = item.to_f64(&reader.path("focused_height"))?;
+    }
+    reader.finish()?;
+    Ok(record)
+}
+
+#[allow(unused_mut)]
+fn write_gnoblin_std_drag_step(arena: &mut Arena, value: &Dyn, what: &str) -> Result<GnoblinStdDragStep, StdError> {
+    let mut reader = MapReader::new(value, what)?;
+    // SAFETY: an all-zero `GnoblinStdDragStep` is valid: numbers, null pointers and absent functions.
+    let mut record: GnoblinStdDragStep = unsafe { zeroed() };
+    record.size = size_of::<GnoblinStdDragStep>() as u32;
+    if let Some(item) = reader.take("client_flags") {
+        record.client_flags = item.to_u32(&reader.path("client_flags"))?;
+    }
+    if let Some(item) = reader.take("event") {
+        let nested = write_gnoblin_std_drag_event(arena, item, &reader.path("event"))?;
+        record.event = arena.keep(nested);
+    }
+    if let Some(item) = reader.take("bounds") {
+        record.bounds = write_gnoblin_std_rect(arena, item, &reader.path("bounds"))?;
+    }
+    if let Some(item) = reader.take("start") {
+        record.start = write_gnoblin_std_rect(arena, item, &reader.path("start"))?;
+    }
+    if let Some(item) = reader.take("sides") {
+        record.sides = item.to_u32(&reader.path("sides"))?;
+    }
+    if let Some(item) = reader.take("state") {
+        let nested = write_gnoblin_std_client_state(arena, item, &reader.path("state"))?;
+        record.state = arena.keep(nested);
+    }
+    if let Some(item) = reader.take("split") {
+        let nested = write_gnoblin_std_split(arena, item, &reader.path("split"))?;
+        record.split = arena.keep(nested);
+    }
+    if let Some(item) = reader.take("tiles") {
+        let list = item.to_list(&reader.path("tiles"))?;
+        let values: Vec<GnoblinStdDragTile> = list
+            .iter()
+            .map(|entry| write_gnoblin_std_drag_tile(arena, entry, &reader.path("tiles")))
+            .collect::<Result<_, _>>()?;
+        let kept = arena.keep(values);
+        // SAFETY: `kept` points at the vector the arena owns for the call.
+        record.tiles = unsafe { (*kept).as_ptr() };
+        record.n_tiles = unsafe { (*kept).len() };
+    }
+    reader.finish()?;
+    Ok(record)
+}
+
+#[allow(unused_mut)]
+fn write_gnoblin_std_drag_event(arena: &mut Arena, value: &Dyn, what: &str) -> Result<GnoblinStdDragEvent, StdError> {
+    let mut reader = MapReader::new(value, what)?;
+    // SAFETY: an all-zero `GnoblinStdDragEvent` is valid: numbers, null pointers and absent functions.
+    let mut record: GnoblinStdDragEvent = unsafe { zeroed() };
+    record.size = size_of::<GnoblinStdDragEvent>() as u32;
+    if let Some(item) = reader.take("phase") {
+        record.phase = item.to_u32(&reader.path("phase"))?;
+    }
+    if let Some(item) = reader.take("flags") {
+        record.flags = item.to_u32(&reader.path("flags"))?;
+    }
+    if let Some(item) = reader.take("constraint") {
+        record.constraint = item.to_u32(&reader.path("constraint"))?;
+    }
+    if let Some(item) = reader.take("button") {
+        record.button = item.to_i64(&reader.path("button"))?;
+    }
+    if let Some(item) = reader.take("client") {
+        record.client = item.to_u64(&reader.path("client"))?;
+    }
+    if let Some(item) = reader.take("x") {
+        record.x = item.to_f64(&reader.path("x"))?;
+    }
+    if let Some(item) = reader.take("y") {
+        record.y = item.to_f64(&reader.path("y"))?;
+    }
+    if let Some(item) = reader.take("origin_x") {
+        record.origin_x = item.to_f64(&reader.path("origin_x"))?;
+    }
+    if let Some(item) = reader.take("origin_y") {
+        record.origin_y = item.to_f64(&reader.path("origin_y"))?;
+    }
+    if let Some(item) = reader.take("local_x") {
+        record.local_x = item.to_f64(&reader.path("local_x"))?;
+    }
+    if let Some(item) = reader.take("local_y") {
+        record.local_y = item.to_f64(&reader.path("local_y"))?;
+    }
+    if let Some(item) = reader.take("work_area") {
+        record.work_area = write_gnoblin_std_rect(arena, item, &reader.path("work_area"))?;
+    }
+    reader.finish()?;
+    Ok(record)
+}
+
+#[allow(unused_mut)]
+fn write_gnoblin_std_drag_tile(arena: &mut Arena, value: &Dyn, what: &str) -> Result<GnoblinStdDragTile, StdError> {
+    let mut reader = MapReader::new(value, what)?;
+    // SAFETY: an all-zero `GnoblinStdDragTile` is valid: numbers, null pointers and absent functions.
+    let mut record: GnoblinStdDragTile = unsafe { zeroed() };
+    record.size = size_of::<GnoblinStdDragTile>() as u32;
+    if let Some(item) = reader.take("flags") {
+        record.flags = item.to_u32(&reader.path("flags"))?;
+    }
+    if let Some(item) = reader.take("id") {
+        record.id = item.to_u64(&reader.path("id"))?;
+    }
+    if let Some(item) = reader.take("rect") {
+        record.rect = write_gnoblin_std_rect(arena, item, &reader.path("rect"))?;
     }
     reader.finish()?;
     Ok(record)

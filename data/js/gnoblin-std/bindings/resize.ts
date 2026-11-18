@@ -1,9 +1,13 @@
-// `ClientResizeBinding`: drag the edge or corner of a window nearest the pointer to resize it.
+// `ClientResizeBinding`: drag the edge or corner of a window nearest the pointer to resize it. The drag is the library's resize
+// (`libgnoblin-std`, binding kind `resize`); this class gives it the window and writes what it answers.
 
 import { PointerDragBinding } from "gnoblin-core/bindings/binding";
 import type { PointerDragBindingOptions } from "gnoblin-core/bindings/binding";
-import { draggable, moved } from "gnoblin-std/bindings/drag";
 import type { BindingClient, DragEvent, Point, Rect } from "gnoblin-core/bindings/types";
+import { Drag } from "gnoblin-std/generated/classes";
+import { ClientFlags, DragKind, OutcomeFlags, SideFlags } from "gnoblin-std/generated/constants";
+import { ResizeBinding, ResizeGrip } from "gnoblin-std/generated/layouts";
+import { has, rectOf, takeStep } from "gnoblin-std/bindings/step";
 
 /** Where a resize drag holds the client: the corner that moves with the pointer. */
 export type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -34,68 +38,64 @@ export interface ResizeState {
     corner: ResizeCorner | ResizeEdge;
 }
 
-const CORNERS: readonly string[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
+/** What `edges` says, in the library's words. */
+const GRIPS: Readonly<Record<string, ResizeGrip>> = {
+    quadrant: ResizeGrip.QUADRANT,
+    nearest: ResizeGrip.NEAREST,
+    "top-left": ResizeGrip.TOP_LEFT,
+    "top-right": ResizeGrip.TOP_RIGHT,
+    "bottom-left": ResizeGrip.BOTTOM_LEFT,
+    "bottom-right": ResizeGrip.BOTTOM_RIGHT,
+};
 
-/** The side of a `width` by `height` client that a press at `where` is nearest to. A tie goes to left, then top. */
-function nearestEdge(where: Point, width: number, height: number): ResizeEdge {
-    const gaps: [ResizeEdge, number][] = [
-        ["left", where.x],
-        ["top", where.y],
-        ["right", width - where.x],
-        ["bottom", height - where.y],
-    ];
-    return gaps.reduce((best, gap) => (gap[1] < best[1] ? gap : best))[0];
+/** The sides of the library's `SideFlags` that the name of a corner or an edge moves. */
+function sidesOf(corner: ResizeCorner | ResizeEdge): number {
+    let sides = 0;
+    if (corner.endsWith("left")) {
+        sides |= SideFlags.LEFT;
+    } else if (corner.endsWith("right")) {
+        sides |= SideFlags.RIGHT;
+    }
+    if (corner.startsWith("top")) {
+        sides |= SideFlags.TOP;
+    } else if (corner.startsWith("bottom")) {
+        sides |= SideFlags.BOTTOM;
+    }
+    return sides;
 }
 
-/** The fewest pixels a client may be resized to when it states no minimum of its own. */
-const MIN_SIZE = { width: 100, height: 80 };
+/** The name of the corner or the edge that `SideFlags` flags are. */
+const NAMES: Readonly<Record<number, ResizeCorner | ResizeEdge>> = {
+    [SideFlags.LEFT | SideFlags.TOP]: "top-left",
+    [SideFlags.RIGHT | SideFlags.TOP]: "top-right",
+    [SideFlags.LEFT | SideFlags.BOTTOM]: "bottom-left",
+    [SideFlags.RIGHT | SideFlags.BOTTOM]: "bottom-right",
+    [SideFlags.LEFT]: "left",
+    [SideFlags.RIGHT]: "right",
+    [SideFlags.TOP]: "top",
+    [SideFlags.BOTTOM]: "bottom",
+};
 
 /**
  * The rectangle `start` becomes when the corner or side `corner` of it moves by `delta`. The opposite corner is the
  * anchor: a rectangle held at a limit stops there and does not slide. An axis no side moves on keeps the size it had,
- * whatever the limits say. The smallest size is `min`, or `MIN_SIZE`; `max` is none when absent. This is the arithmetic
- * of `ClientResizeBinding` and of a frame's `ResizeHandle`.
+ * whatever the limits say. The smallest size is `min`, or 100 by 80; `max` is none when absent. This is the arithmetic
+ * of `ClientResizeBinding` and of a frame's `ResizeHandle`, and the library's.
  */
 export function resizedRect(
     start: Rect,
     corner: ResizeCorner | ResizeEdge,
     delta: Point,
-    min: { width: number; height: number } = MIN_SIZE,
+    min?: { width: number; height: number },
     max?: { width: number; height: number },
 ): Rect {
-    const r = { ...start };
-    // The sides that move with the pointer: a corner moves two, an edge moves one.
-    const left = corner.endsWith("left");
-    const right = corner.endsWith("right");
-    const top = corner.startsWith("top");
-    const bottom = corner.startsWith("bottom");
-    if (left) {
-        r.x += delta.x;
-        r.width -= delta.x;
-    } else if (right) {
-        r.width += delta.x;
-    }
-    if (top) {
-        r.y += delta.y;
-        r.height -= delta.y;
-    } else if (bottom) {
-        r.height += delta.y;
-    }
-    if (left || right) {
-        const limitedWidth = Math.max(min.width, Math.min(r.width, max?.width ?? Infinity));
-        if (left) {
-            r.x += r.width - limitedWidth;
-        }
-        r.width = limitedWidth;
-    }
-    if (top || bottom) {
-        const limitedHeight = Math.max(min.height, Math.min(r.height, max?.height ?? Infinity));
-        if (top) {
-            r.y += r.height - limitedHeight;
-        }
-        r.height = limitedHeight;
-    }
-    return r;
+    return Drag.resize(start, sidesOf(corner), delta.x, delta.y, {
+        flags: (min === undefined ? 0 : ClientFlags.HAS_MIN) | (max === undefined ? 0 : ClientFlags.HAS_MAX),
+        minWidth: min?.width ?? 0,
+        minHeight: min?.height ?? 0,
+        maxWidth: max?.width ?? 0,
+        maxHeight: max?.height ?? 0,
+    });
 }
 
 /**
@@ -110,31 +110,30 @@ export class ClientResizeBinding extends PointerDragBinding {
     constructor(options: ClientResizeOptions = {}) {
         super({ ...options, id: options.id ?? "resize", trigger: options.trigger ?? "Super+MouseRight+Drag" });
         const edges = options.edges ?? "quadrant";
-        if (edges !== "quadrant" && edges !== "nearest" && !CORNERS.includes(edges)) {
+        if (!Object.hasOwn(GRIPS, edges)) {
             throw new TypeError(
-                `ClientResizeBinding edges must be quadrant, nearest or one of ${CORNERS.join(", ")}, got ${String(edges)}`,
+                `ClientResizeBinding edges must be quadrant, nearest or one of ${Object.keys(GRIPS).slice(2).join(", ")}, got ${String(edges)}`,
             );
         }
         this.edges = edges;
     }
 
+    /** The library's resize, with the grip this binding has now. */
+    #rule(): ResizeBinding {
+        return new ResizeBinding({ grip: GRIPS[this.edges] });
+    }
+
     /** Starts a resize for a movable client and records the selected corner or side. */
     onStart(event: DragEvent): ResizeState | false {
         const { client, position } = event;
-        if (!client || !position || !draggable(client)) {
+        if (!client || !position) {
             return false;
         }
-        const start = { ...client.bounds };
-        const where = event.localPosition ?? { x: position.x - start.x, y: position.y - start.y };
-        let corner: ResizeCorner | ResizeEdge;
-        if (this.edges === "quadrant") {
-            corner = `${where.y < start.height / 2 ? "top" : "bottom"}-${where.x < start.width / 2 ? "left" : "right"}`;
-        } else if (this.edges === "nearest") {
-            corner = nearestEdge(where, start.width, start.height);
-        } else {
-            corner = this.edges;
+        const answer = takeStep(this.#rule(), DragKind.START, event, client);
+        if (!has(answer, OutcomeFlags.TOOK)) {
+            return false;
         }
-        return { client, start, pointer: { ...position }, corner };
+        return { client, start: rectOf(client.bounds), pointer: { ...position }, corner: NAMES[answer.sides] };
     }
 
     /** Resizes the client using pointer travel from the start. */
@@ -143,22 +142,45 @@ export class ClientResizeBinding extends PointerDragBinding {
         if (!client.alive || !event.position) {
             return;
         }
-        client.bounds = resizedRect(start, corner, moved(pointer, event.position), client.minSize, client.maxSize);
+        const answer = takeStep(this.#rule(), DragKind.UPDATE, event, client, {
+            origin: pointer,
+            start,
+            sides: sidesOf(corner),
+        });
+        if (has(answer, OutcomeFlags.HAS_BOUNDS)) {
+            client.bounds = rectOf(answer.bounds);
+        }
     }
 
     /** Saves the final bounds as the client's floating bounds. */
-    onEnd(_event: DragEvent, state: object): void {
-        const { client } = state as ResizeState;
-        if (client.alive) {
-            client.floatingBounds = { ...client.bounds };
+    onEnd(event: DragEvent, state: object): void {
+        const { client, start, pointer, corner } = state as ResizeState;
+        if (!client.alive) {
+            return;
+        }
+        const answer = takeStep(this.#rule(), DragKind.END, event, client, {
+            origin: pointer,
+            start,
+            sides: sidesOf(corner),
+        });
+        if (has(answer, OutcomeFlags.HAS_FLOATING)) {
+            client.floatingBounds = rectOf(answer.floating);
         }
     }
 
     /** Restores the original bounds when the drag is cancelled. */
-    onCancel(_event: DragEvent, state: object): void {
-        const { client, start } = state as ResizeState;
-        if (client.alive) {
-            client.bounds = { ...start };
+    onCancel(event: DragEvent, state: object): void {
+        const { client, start, pointer, corner } = state as ResizeState;
+        if (!client.alive) {
+            return;
+        }
+        const answer = takeStep(this.#rule(), DragKind.CANCEL, event, client, {
+            origin: pointer,
+            start,
+            sides: sidesOf(corner),
+        });
+        if (has(answer, OutcomeFlags.HAS_BOUNDS)) {
+            client.bounds = rectOf(answer.bounds);
         }
     }
 }

@@ -1,18 +1,15 @@
-// The rules every pointer drag shares: how far the pointer has moved since the drag began, which clients may be
-// dragged at all, and how a move or resize is held inside the area a `drag_constraint` allows.
+// What every pointer drag shares: how a move or resize is held inside the area a `drag_constraint` allows. The arithmetic is the
+// library's (`libgnoblin-std`, `drag_clamp`); this module is the spelling a script knows it by.
 
-import type { BindingClient, Point, Rect } from "gnoblin-core/bindings/types";
-
-/** How far the pointer has moved since `start`. */
-export function moved(start: Point, now: Point): Point {
-    return { x: now.x - start.x, y: now.y - start.y };
-}
+import type { Rect } from "gnoblin-core/bindings/types";
+import { Drag } from "gnoblin-std/generated/classes";
+import { ConstraintKind, DragKind } from "gnoblin-std/generated/constants";
 
 /** How a dragged window is kept in the work area: inside it, or with a strip of it inside. */
 export type DragConstraint = "work_area" | "minimum_strip";
 
 /** The visible strip of a window kept inside the work area under `minimum_strip`. */
-export const DRAG_STRIP = 75;
+export const DRAG_STRIP = DragKind.STRIP;
 
 /** The constraint a seat's `drag_constraint` names. Absent is `work_area`; any other value throws. */
 export function dragConstraintMode(value: unknown): DragConstraint {
@@ -27,16 +24,8 @@ export function dragConstraintMode(value: unknown): DragConstraint {
 
 /** One axis: a window of extent `size` at `pos`, against an area that starts at `start` and is `span` long. */
 export function clampAxis(pos: number, size: number, start: number, span: number, mode: DragConstraint): number {
-    if (mode === "work_area") {
-        if (size >= span) {
-            return start;
-        }
-        return Math.min(Math.max(pos, start), start + span - size);
-    }
-    const visible = Math.min(DRAG_STRIP, size);
-    const low = start - (size - visible);
-    const high = start + span - visible;
-    return Math.min(Math.max(pos, low), high);
+    const constraint = mode === "minimum_strip" ? ConstraintKind.MINIMUM_STRIP : ConstraintKind.WORK_AREA;
+    return Drag.clamp(pos, size, start, span, constraint);
 }
 
 /** `rect` moved to the place `mode` allows inside `area`, keeping its size. */
@@ -47,9 +36,4 @@ export function constrainRect(rect: Rect, area: Rect, mode: DragConstraint): Rec
         width: rect.width,
         height: rect.height,
     };
-}
-
-/** Whether a window may be dragged: a fullscreen or maximised one declines. */
-export function draggable(client: BindingClient): boolean {
-    return !client.fullscreen && client.maximised !== true;
 }

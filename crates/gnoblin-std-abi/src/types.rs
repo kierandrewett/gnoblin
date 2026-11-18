@@ -355,6 +355,56 @@ abi_consts! {
     pub const STD_WAY_IN: u32 = 5;
     /// A way a gesture went: a pinch that opens.
     pub const STD_WAY_OUT: u32 = 6;
+
+    /// `GnoblinStdDragStep.client_flags` (and a tile's `flags`): the client is fullscreen.
+    pub const STD_DRAG_CLIENT_FULLSCREEN: u32 = 1;
+    /// `GnoblinStdDragStep.client_flags`: the client is maximised.
+    pub const STD_DRAG_CLIENT_MAXIMISED: u32 = 2;
+    /// `GnoblinStdDragStep.client_flags`: a layout places the client in a tile.
+    pub const STD_DRAG_CLIENT_TILED: u32 = 4;
+    /// `GnoblinStdDragStep.client_flags`: the shell floated the client, so a layout leaves it where it is.
+    pub const STD_DRAG_CLIENT_FLOATING: u32 = 8;
+    /// `GnoblinStdDragStep.client_flags`: the client is a dialog of another window.
+    pub const STD_DRAG_CLIENT_DIALOG: u32 = 16;
+    /// `GnoblinStdDragStep.client_flags` (tiles): the client is minimised.
+    pub const STD_DRAG_CLIENT_MINIMISED: u32 = 32;
+    /// `GnoblinStdDragStep.client_flags` (tiles): the client is not shown.
+    pub const STD_DRAG_CLIENT_HIDDEN: u32 = 64;
+    /// `GnoblinStdDragStep.client_flags`: the client is on a workspace, whose clients are the step's tiles.
+    pub const STD_DRAG_CLIENT_ON_WORKSPACE: u32 = 128;
+
+    /// How many pixels of a window stay on screen under `STD_CONSTRAINT_MINIMUM_STRIP`.
+    pub const STD_DRAG_STRIP: u32 = 75;
+    /// How near an edge of the work area, in pixels, a drop must be to snap the window there.
+    pub const STD_SNAP_MARGIN: u32 = 4;
+
+    /// A side of a window a resize moves (`drag_resize`): the left side. A corner is two of them.
+    pub const STD_SIDE_LEFT: u32 = 1;
+    /// A side of a window a resize moves: the right side.
+    pub const STD_SIDE_RIGHT: u32 = 2;
+    /// A side of a window a resize moves: the top.
+    pub const STD_SIDE_TOP: u32 = 4;
+    /// A side of a window a resize moves: the bottom.
+    pub const STD_SIDE_BOTTOM: u32 = 8;
+
+    /// `GnoblinStdDragOutcome.flags`: the binding took the drag (`STD_DRAG_START`).
+    pub const STD_OUTCOME_TOOK: u32 = 1;
+    /// `GnoblinStdDragOutcome.flags`: `bounds` is the rectangle the client is to have.
+    pub const STD_OUTCOME_HAS_BOUNDS: u32 = 2;
+    /// `GnoblinStdDragOutcome.flags`: `floating` is the rectangle the client floats at from now on.
+    pub const STD_OUTCOME_HAS_FLOATING: u32 = 4;
+    /// `GnoblinStdDragOutcome.flags`: the client is no longer snapped to a zone, and stays where it is.
+    pub const STD_OUTCOME_FORGET_SNAP: u32 = 8;
+    /// `GnoblinStdDragOutcome.flags`: `swap_with` is the tile the dragged client trades places with.
+    pub const STD_OUTCOME_HAS_SWAP: u32 = 16;
+    /// `GnoblinStdDragOutcome.flags`: `ratio` is the position the divider is to have.
+    pub const STD_OUTCOME_HAS_RATIO: u32 = 32;
+    /// `GnoblinStdDragOutcome.flags`: `cross_ratio` is the position the second divider is to have.
+    pub const STD_OUTCOME_HAS_CROSS_RATIO: u32 = 64;
+    /// `GnoblinStdDragOutcome.flags`: the dividers go back to where they were when the drag began.
+    pub const STD_OUTCOME_RESET_SPLIT: u32 = 128;
+    /// `GnoblinStdDragOutcome.flags`: `sides` names the sides of the window the drag moves.
+    pub const STD_OUTCOME_HAS_SIDES: u32 = 256;
 }
 
 abi_structs! {
@@ -833,6 +883,75 @@ abi_structs! {
         pub threshold: f64,
     }
 
+    /// One tile of a workspace as a swap drag sees it: a client, what it is, and where it is.
+    pub struct GnoblinStdDragTile {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_DRAG_CLIENT_*` flags of the client.
+        pub flags: u32,
+        /// The client, by an id the caller chooses and reads back from `GnoblinStdDragOutcome.swap_with`.
+        pub id: GnoblinNode,
+        /// The client's content rectangle.
+        pub rect: GnoblinStdRect,
+    }
+
+    /// What `drag_step` is given for one step of a drag the caller matched: the pointer and where the press was, the window it
+    /// pressed, and what the caller knows of that window and kept from the drag's start. A copy: the library keeps nothing of it
+    /// past the call, and nothing of the drag between calls.
+    pub struct GnoblinStdDragStep {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_DRAG_CLIENT_*` flags of the window the press landed on; read when the event names a client.
+        pub client_flags: u32,
+        /// The step, as the library tells it to a binding of the shell's own: its phase, the pointer, where the press was, the work
+        /// area. On every step but the start the caller gives the press as it was on the start.
+        pub event: *const GnoblinStdDragEvent,
+        /// The pressed window's content rectangle now.
+        pub bounds: GnoblinStdRect,
+        /// The pressed window's content rectangle when the drag started: what an update moves it from and a cancel puts back.
+        pub start: GnoblinStdRect,
+        /// A resize's update: the `STD_SIDE_*` sides the drag moves, as the start's outcome gave them.
+        pub sides: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The pressed window's frame inset and size limits (`client_state` fills it); null when it has none.
+        pub state: *const GnoblinStdClientState,
+        /// For a split-resize drag: the divider a layout's `find_split` gave for the press, with `ratio` and `cross_ratio` as they
+        /// were then; null when it gave none.
+        pub split: *const GnoblinStdSplit,
+        /// For a swap drag's updates and end: the tiles of the dragged window's workspace, in the workspace's order.
+        pub tiles: *const GnoblinStdDragTile,
+        /// Number of tiles.
+        pub n_tiles: usize,
+    }
+
+    /// What a drag step asks the caller to do. A drag that moves a window gives its rectangle, one that trades places gives the
+    /// tile, one that moves a divider gives its ratio: the caller writes them to the objects it holds.
+    pub struct GnoblinStdDragOutcome {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_OUTCOME_*` flags: which of the fields below mean something.
+        pub flags: u32,
+        /// A `STD_SNAP_*` zone the dropped window is to be tiled to (`snap_tile` gives its rectangle), or `STD_SNAP_NONE`.
+        pub snap_zone: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// With `STD_OUTCOME_HAS_BOUNDS`: the rectangle the window is to have.
+        pub bounds: GnoblinStdRect,
+        /// With `STD_OUTCOME_HAS_FLOATING`: the rectangle the window floats at from now on.
+        pub floating: GnoblinStdRect,
+        /// With `STD_OUTCOME_HAS_SWAP`: the tile, by the id the step gave it. On an update, the tile the pointer is over now.
+        pub swap_with: GnoblinNode,
+        /// With `STD_OUTCOME_HAS_SIDES`: the `STD_SIDE_*` sides a resize that started moves for the rest of the drag.
+        pub sides: u32,
+        /// Zero.
+        pub reserved2: u32,
+        /// With `STD_OUTCOME_HAS_RATIO`: the divider's position.
+        pub ratio: f64,
+        /// With `STD_OUTCOME_HAS_CROSS_RATIO`: the second divider's position.
+        pub cross_ratio: f64,
+    }
+
     /// Counters the library keeps. Filled by `stats`.
     pub struct GnoblinStdStats {
         /// Size of this struct, set by the caller.
@@ -1182,6 +1301,36 @@ abi_structs! {
         pub builtin_set_split: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64, ratio: f64, cross_ratio: f64) -> i32,
         /// Puts the dividers of the drag named `token` back as they were when `builtin_find_split` returned them.
         pub builtin_reset_split: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64) -> i32,
+
+        /// Gives the drag binding `kind` (`STD_BINDING_*`, with the options `layouts::BINDING_KINDS` declares for it; `trigger` and
+        /// `priority` are read and ignored: the caller matches the chord) one step of a drag the caller matched itself, and writes
+        /// what the binding wants done to `out`. The steps are the four a binding of the shell's own is told, in order
+        /// (`STD_DRAG_START`, any number of `STD_DRAG_UPDATE`, then `STD_DRAG_END` or `STD_DRAG_CANCEL`); a start that
+        /// `STD_OUTCOME_TOOK` is not set on is a binding that declined, and the caller offers the drag to the next one. The library
+        /// keeps nothing between steps: the caller keeps what a step answers that a later one needs (a resize's sides) and gives
+        /// the drag's start back with each. A function of its inputs; it reads nothing of the library's state and touches nothing.
+        /// `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong type or out of range. Works on a generation
+        /// that never called `open`.
+        pub drag_step: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize, step: *const GnoblinStdDragStep, out: *mut GnoblinStdDragOutcome) -> i32,
+        /// Writes where a window of `size` along one axis goes when it is moved to `pos` inside the area that starts at `start` and is
+        /// `span` long, as the `constraint` (`STD_CONSTRAINT_*`) says: a window larger than the area goes to its start.
+        pub drag_clamp: unsafe extern "C" fn(ctx: GnoblinCtx, pos: f64, size: f64, start: f64, span: f64, constraint: u32, out: *mut f64) -> i32,
+        /// Writes the rectangle `start` becomes when the `sides` (`STD_SIDE_*`) of it follow the pointer by (`dx`, `dy`). The opposite
+        /// side is the anchor: a rectangle held at a limit stops there and does not slide. The limits are the least and most size
+        /// `limits` carries (`STD_CLIENT_HAS_MIN` and `STD_CLIENT_HAS_MAX`); a null `limits`, or one with no least size, leaves the
+        /// smallest size every resize leaves (100 by 80).
+        pub drag_resize: unsafe extern "C" fn(ctx: GnoblinCtx, start: *const GnoblinStdRect, sides: u32, dx: f64, dy: f64, limits: *const GnoblinStdClientState, out: *mut GnoblinStdRect) -> i32,
+        /// Writes the `STD_SNAP_*` zone of the edge of `area` that the point (`x`, `y`) is within `margin` pixels of
+        /// (`STD_SNAP_NONE` when it is within none). Left and right win over top at the corners.
+        pub drag_zone: unsafe extern "C" fn(ctx: GnoblinCtx, x: f64, y: f64, area: *const GnoblinStdRect, margin: f64, out: *mut u32) -> i32,
+        /// 1 when it wrote to `out` the part of `area` a window snapped to `zone` (`STD_SNAP_*`) fills, 0 when the zone does not tile.
+        /// The halves are whole pixels.
+        pub drag_tile: unsafe extern "C" fn(ctx: GnoblinCtx, zone: u32, area: *const GnoblinStdRect, out: *mut GnoblinStdRect) -> i32,
+        /// Writes the way a gesture has gone (`STD_WAY_*`): for a swipe (`kind` `STD_GESTURE_SWIPE`) the direction of the longer axis
+        /// of (`dx`, `dy`), a tie going to the horizontal, `STD_WAY_NONE` while the fingers have moved less than `threshold` touchpad
+        /// units; for a pinch the way `scale` has gone from 1, `STD_WAY_NONE` while it is within `threshold` of 1. The distance at
+        /// which a binding of the library's own decides is 12 units and 0.1.
+        pub gesture_way: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, dx: f64, dy: f64, scale: f64, threshold: f64, out: *mut u32) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]

@@ -1,10 +1,14 @@
 // The two drag bindings of the tiling layouts: `ClientSwapBinding` swaps a tiled window with the one under the
-// pointer, and `SplitResizeBinding` moves the split between two tiles.
+// pointer, and `SplitResizeBinding` moves the split between two tiles. The drags are the library's (`libgnoblin-std`, binding
+// kinds `swap` and `split_resize`); these classes give them the windows and the dividers and write what they answer.
 
 import { PointerDragBinding } from "gnoblin-core/bindings/binding";
 import type { BindingCollection, PointerDragBindingOptions } from "gnoblin-core/bindings/binding";
-import { draggable } from "gnoblin-std/bindings/drag";
 import type { BindingClient, DragEvent, Point } from "gnoblin-core/bindings/types";
+import { AxisKind, DragKind, OutcomeFlags, STD_SPLIT_CROSS } from "gnoblin-std/generated/constants";
+import { SplitResizeBinding as NativeSplitResize, SwapBinding } from "gnoblin-std/generated/layouts";
+import type { Split } from "gnoblin-std/generated/records";
+import { has, idOf, takeStep, tileOf } from "gnoblin-std/bindings/step";
 
 /**
  * What the tiling bindings read of a client. `tiled` is the flag a layout sets when it places the client, and it stays
@@ -24,11 +28,6 @@ export interface TiledClient extends BindingClient {
     readonly workspace?: OrderedWorkspace | null;
 }
 
-/** Whether `client` sits in a tile: placed by a tiling layout and not floated, fullscreen, maximised or a dialog. */
-function inTile(client: TiledClient): boolean {
-    return client.tiled === true && client.floating !== true && client.parentWindow == null && draggable(client);
-}
-
 /** The part of a workspace the swap binding needs: its clients in layout order, and a way to trade two places. */
 export interface OrderedWorkspace {
     /** Clients in layout order; `swap` trades their positions. */
@@ -45,25 +44,27 @@ export interface SwapState {
     over: TiledClient | null;
 }
 
-/** The tiled client of `workspace`, other than `except`, whose rectangle holds `at`; null when none does. */
-function tileAt(workspace: OrderedWorkspace, at: Point, except: TiledClient): TiledClient | null {
+/**
+ * Asks the library which tile of `workspace`, other than `dragged`, the pointer in `event` holds, at the `phase` of a swap drag;
+ * null when none does, or when the event has no position.
+ */
+function tileAt(
+    phase: number,
+    event: DragEvent,
+    dragged: TiledClient,
+    workspace: OrderedWorkspace,
+): TiledClient | null {
+    if (!event.position) {
+        return null;
+    }
+    const byId = new Map<number, TiledClient>();
     for (const client of workspace.clients) {
-        const b = client.bounds;
-        if (
-            client !== except &&
-            client.alive &&
-            inTile(client) &&
-            client.minimised !== true &&
-            client.visible !== false &&
-            at.x >= b.x &&
-            at.x < b.x + b.width &&
-            at.y >= b.y &&
-            at.y < b.y + b.height
-        ) {
-            return client;
+        if (client.alive) {
+            byId.set(idOf(client), client);
         }
     }
-    return null;
+    const answer = takeStep(new SwapBinding(), phase, event, dragged, { tiles: [...byId.values()].map(tileOf) });
+    return has(answer, OutcomeFlags.HAS_SWAP) ? (byId.get(answer.swapWith) ?? null) : null;
 }
 
 /**
@@ -81,24 +82,23 @@ export class ClientSwapBinding extends PointerDragBinding {
     /** Starts a swap when the pressed client belongs to a tiled workspace. */
     onStart(event: DragEvent): SwapState | false {
         const client = event.client as TiledClient | undefined;
-        const workspace = client?.workspace;
-        if (!client || !workspace || !inTile(client)) {
+        if (!client?.workspace || !has(takeStep(new SwapBinding(), DragKind.START, event, client), OutcomeFlags.TOOK)) {
             return false;
         }
-        return { dragged: client, workspace, over: null };
+        return { dragged: client, workspace: client.workspace, over: null };
     }
 
     /** Tracks the tile currently under the pointer. */
     onUpdate(event: DragEvent, state: object): void {
         const swap = state as SwapState;
-        swap.over = event.position ? tileAt(swap.workspace, event.position, swap.dragged) : null;
+        swap.over = tileAt(DragKind.UPDATE, event, swap.dragged, swap.workspace);
     }
 
     /** Swaps the dragged client with the tile under the release point. */
     onEnd(event: DragEvent, state: object): void {
         const { dragged, workspace } = state as SwapState;
         // The release decides, not the last sample: the pointer may have moved since it.
-        const over = event.position ? tileAt(workspace, event.position, dragged) : null;
+        const over = tileAt(DragKind.END, event, dragged, workspace);
         if (over !== null && dragged.alive && dragged.workspace === workspace) {
             workspace.clients.swap(dragged, over);
         }
@@ -168,18 +168,32 @@ export class SplitResizeBinding extends PointerDragBinding {
         const client = event.client as TiledClient | undefined;
         const { position } = event;
         const layout = event.layout as SplitSource | undefined;
-        if (!client || !position || !inTile(client)) {
+        if (!client || !position) {
             return false;
         }
         const split = typeof layout?.findSplit === "function" ? layout.findSplit(client, position) : null;
-        if (split === null || split === undefined || !(split.span > 0)) {
+        if (split === null || split === undefined) {
             return false;
         }
+        const state = this.#hold(split, position);
+        if (
+            !has(
+                takeStep(new NativeSplitResize(), DragKind.START, event, client, { split: splitOf(state) }),
+                OutcomeFlags.TOOK,
+            )
+        ) {
+            return false;
+        }
+        return state;
+    }
+
+    /** What the drag keeps from its start: the dividers and their ratios as the layout found them, and the press. */
+    #hold(split: LayoutSplit, start: Point): SplitState {
         const { cross } = split;
         const second = cross !== null && cross !== undefined && cross.span > 0;
         return {
             split,
-            start: { ...position },
+            start: { ...start },
             startRatio: split.ratio,
             cross: second ? { split: cross, startRatio: cross.ratio } : null,
         };
@@ -187,21 +201,33 @@ export class SplitResizeBinding extends PointerDragBinding {
 
     /** Updates the divider ratios from pointer travel. */
     onUpdate(event: DragEvent, state: object): void {
-        const { split, start, startRatio, cross } = state as SplitState;
+        const held = state as SplitState;
         if (!event.position) {
             return;
         }
-        follow(split, startRatio, start, event.position);
-        if (cross !== null) {
-            follow(cross.split, cross.startRatio, start, event.position);
+        const answer = takeStep(new NativeSplitResize(), DragKind.UPDATE, event, undefined, {
+            origin: held.start,
+            split: splitOf(held),
+        });
+        if (has(answer, OutcomeFlags.HAS_RATIO)) {
+            held.split.ratio = answer.ratio;
+        }
+        if (held.cross !== null && has(answer, OutcomeFlags.HAS_CROSS_RATIO)) {
+            held.cross.split.ratio = answer.crossRatio;
         }
     }
 
     /** Restores the divider position from before the drag. */
-    onCancel(_event: DragEvent, state: object): void {
-        const { split, cross } = state as SplitState;
-        split.reset();
-        cross?.split.reset();
+    onCancel(event: DragEvent, state: object): void {
+        const held = state as SplitState;
+        const answer = takeStep(new NativeSplitResize(), DragKind.CANCEL, event, undefined, {
+            origin: held.start,
+            split: splitOf(held),
+        });
+        if (has(answer, OutcomeFlags.RESET_SPLIT)) {
+            held.split.reset();
+            held.cross?.split.reset();
+        }
     }
 }
 
@@ -222,9 +248,25 @@ export function addTilingBindings(
     }
 }
 
-/** Sets `split` to where the pointer's travel since `start` carries it from `startRatio`. */
-function follow(split: LayoutSplit, startRatio: number, start: Point, at: Point): void {
-    const travel = split.axis === "x" ? at.x - start.x : at.y - start.y;
-    const ratio = startRatio + (split.direction * travel) / split.span;
-    split.ratio = Math.max(split.min, Math.min(split.max, ratio));
+/**
+ * What the library is told of the divider a drag holds: its axis, its span, how far it may go, and the second one, with the ratios
+ * they had when the drag started.
+ */
+function splitOf({ split, startRatio, cross }: SplitState): Split {
+    return {
+        flags: cross !== null ? STD_SPLIT_CROSS : 0,
+        token: 0,
+        axis: split.axis === "x" ? AxisKind.X : AxisKind.Y,
+        direction: split.direction,
+        span: split.span,
+        min: split.min,
+        max: split.max,
+        ratio: startRatio,
+        crossAxis: cross?.split.axis === "y" ? AxisKind.Y : AxisKind.X,
+        crossDirection: cross?.split.direction ?? 1,
+        crossSpan: cross?.split.span ?? 0,
+        crossMin: cross?.split.min ?? 0,
+        crossMax: cross?.split.max ?? 0,
+        crossRatio: cross?.startRatio ?? 0,
+    };
 }

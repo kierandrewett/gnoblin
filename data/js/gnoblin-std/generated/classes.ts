@@ -4,7 +4,7 @@
 
 import { call } from "gnoblin-std/generated/native";
 import type { Init } from "gnoblin-std/generated/native";
-import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutQuery, layoutQueryToNative, layoutQueryFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
+import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutQuery, layoutQueryToNative, layoutQueryFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, DragTile, dragTileToNative, dragTileFromNative, DragStep, dragStepToNative, dragStepFromNative, DragOutcome, dragOutcomeToNative, dragOutcomeFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
 
 function handleOf(value: { handle: number } | { node: number } | number): number {
   if (typeof value === "number") {
@@ -531,6 +531,59 @@ export class Builtin {
   resetSplit(token: number): number {
     const raw = call("builtin_reset_split", this.handle, token);
     return raw;
+  }
+}
+
+export class Drag {
+  // Gives the drag binding `kind` (`STD_BINDING_*`, with the options `layouts::BINDING_KINDS` declares for it; `trigger` and
+  // `priority` are read and ignored: the caller matches the chord) one step of a drag the caller matched itself, and writes
+  // what the binding wants done to `out`. The steps are the four a binding of the shell's own is told, in order
+  // (`STD_DRAG_START`, any number of `STD_DRAG_UPDATE`, then `STD_DRAG_END` or `STD_DRAG_CANCEL`); a start that
+  // `STD_OUTCOME_TOOK` is not set on is a binding that declined, and the caller offers the drag to the next one. The library
+  // keeps nothing between steps: the caller keeps what a step answers that a later one needs (a resize's sides) and gives
+  // the drag's start back with each. A function of its inputs; it reads nothing of the library's state and touches nothing.
+  // `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong type or out of range. Works on a generation
+  // that never called `open`.
+  static step(kind: number, options: Init<Option>[], step: Init<DragStep>): DragOutcome {
+    const raw = call("drag_step", kind, options.map(optionToNative), dragStepToNative(step));
+    return (dragOutcomeFromNative(raw));
+  }
+  // Writes where a window of `size` along one axis goes when it is moved to `pos` inside the area that starts at `start` and is
+  // `span` long, as the `constraint` (`STD_CONSTRAINT_*`) says: a window larger than the area goes to its start.
+  static clamp(pos: number, size: number, start: number, span: number, constraint: number): number {
+    const raw = call("drag_clamp", pos, size, start, span, constraint);
+    return (raw);
+  }
+  // Writes the rectangle `start` becomes when the `sides` (`STD_SIDE_*`) of it follow the pointer by (`dx`, `dy`). The opposite
+  // side is the anchor: a rectangle held at a limit stops there and does not slide. The limits are the least and most size
+  // `limits` carries (`STD_CLIENT_HAS_MIN` and `STD_CLIENT_HAS_MAX`); a null `limits`, or one with no least size, leaves the
+  // smallest size every resize leaves (100 by 80).
+  static resize(start: Init<Rect>, sides: number, dx: number, dy: number, limits: Init<ClientState>): Rect {
+    const raw = call("drag_resize", rectToNative(start), sides, dx, dy, clientStateToNative(limits));
+    return (rectFromNative(raw));
+  }
+  // Writes the `STD_SNAP_*` zone of the edge of `area` that the point (`x`, `y`) is within `margin` pixels of
+  // (`STD_SNAP_NONE` when it is within none). Left and right win over top at the corners.
+  static zone(x: number, y: number, area: Init<Rect>, margin: number): number {
+    const raw = call("drag_zone", x, y, rectToNative(area), margin);
+    return (raw);
+  }
+  // 1 when it wrote to `out` the part of `area` a window snapped to `zone` (`STD_SNAP_*`) fills, 0 when the zone does not tile.
+  // The halves are whole pixels.
+  static tile(zone: number, area: Init<Rect>): Rect | null {
+    const raw = call("drag_tile", zone, rectToNative(area));
+    return raw == null ? null : (rectFromNative(raw));
+  }
+}
+
+export class Gesture {
+  // Writes the way a gesture has gone (`STD_WAY_*`): for a swipe (`kind` `STD_GESTURE_SWIPE`) the direction of the longer axis
+  // of (`dx`, `dy`), a tie going to the horizontal, `STD_WAY_NONE` while the fingers have moved less than `threshold` touchpad
+  // units; for a pinch the way `scale` has gone from 1, `STD_WAY_NONE` while it is within `threshold` of 1. The distance at
+  // which a binding of the library's own decides is 12 units and 0.1.
+  static way(kind: number, dx: number, dy: number, scale: number, threshold: number): number {
+    const raw = call("gesture_way", kind, dx, dy, scale, threshold);
+    return (raw);
   }
 }
 

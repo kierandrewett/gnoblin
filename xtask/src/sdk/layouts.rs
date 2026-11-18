@@ -467,6 +467,9 @@ pub fn typescript() -> String {
     let mut code = CodeWriter::new("  ");
     code.line("import { call } from \"gnoblin-std/generated/native\";");
     code.line("import { Registration, Workspace } from \"gnoblin-std/generated/classes\";");
+    code.line("import { dragOutcomeFromNative, dragStepToNative } from \"gnoblin-std/generated/records\";");
+    code.line("import type { DragOutcome, DragStep } from \"gnoblin-std/generated/records\";");
+    code.line("import type { Init } from \"gnoblin-std/generated/native\";");
     code.blank();
     code.line(BASE_TS.trim_matches('\n'));
     code.blank();
@@ -746,10 +749,22 @@ export class BuiltinBinding {
 
   /** Claims the binding's trigger; `remove()` on the result ends it. */
   start(): Registration {
-    const list = Object.entries(this.options)
+    return new Registration(call("binding_builtin", this.kind, this.list()));
+  }
+
+  /**
+   * Gives the binding's rules one step of a drag the shell matched itself (`drag_step`): nothing is claimed, the chord, the press
+   * and the threshold are the shell's, and so is what a drag keeps between its steps. The answer says what to write to the shell's
+   * own window, tile and divider objects.
+   */
+  step(step: Init<DragStep>): DragOutcome {
+    return dragOutcomeFromNative(call("drag_step", this.kind, this.list(), dragStepToNative(step)));
+  }
+
+  private list(): Record<string, unknown>[] {
+    return Object.entries(this.options)
       .filter(([, value]) => value !== null && value !== undefined)
       .map(([name, value]) => optionToNative(name, value, this.shapes[name]));
-    return new Registration(call("binding_builtin", this.kind, list));
   }
 }
 "#;

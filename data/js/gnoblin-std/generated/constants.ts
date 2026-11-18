@@ -101,6 +101,7 @@ export const SnapKind = {
   LEFT: 1,
   RIGHT: 2,
   TOP: 3,
+  MARGIN: 4,
 } as const;
 export type SnapKind = (typeof SnapKind)[keyof typeof SnapKind];
 
@@ -220,6 +221,15 @@ export const DragKind = {
   HAS_LOCAL: 1,
   HAS_WORK_AREA: 2,
   EDGE_TILING: 4,
+  CLIENT_FULLSCREEN: 1,
+  CLIENT_MAXIMISED: 2,
+  CLIENT_TILED: 4,
+  CLIENT_FLOATING: 8,
+  CLIENT_DIALOG: 16,
+  CLIENT_MINIMISED: 32,
+  CLIENT_HIDDEN: 64,
+  CLIENT_ON_WORKSPACE: 128,
+  STRIP: 75,
 } as const;
 export type DragKind = (typeof DragKind)[keyof typeof DragKind];
 
@@ -253,6 +263,29 @@ export const WayKind = {
   OUT: 6,
 } as const;
 export type WayKind = (typeof WayKind)[keyof typeof WayKind];
+
+/** The `STD_SIDE_*` constants. */
+export const SideFlags = {
+  LEFT: 1,
+  RIGHT: 2,
+  TOP: 4,
+  BOTTOM: 8,
+} as const;
+export type SideFlags = (typeof SideFlags)[keyof typeof SideFlags];
+
+/** The `STD_OUTCOME_*` constants. */
+export const OutcomeFlags = {
+  TOOK: 1,
+  HAS_BOUNDS: 2,
+  HAS_FLOATING: 4,
+  FORGET_SNAP: 8,
+  HAS_SWAP: 16,
+  HAS_RATIO: 32,
+  HAS_CROSS_RATIO: 64,
+  RESET_SPLIT: 128,
+  HAS_SIDES: 256,
+} as const;
+export type OutcomeFlags = (typeof OutcomeFlags)[keyof typeof OutcomeFlags];
 
 export const STD_LISTEN_REPLAY = 1;
 export const STD_SPLIT_CROSS = 1;

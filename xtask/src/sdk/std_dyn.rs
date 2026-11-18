@@ -263,6 +263,10 @@ fn render(library: &Library) -> Result<String, String> {
     Ok(code.finish())
 }
 
+/// The objects whose functions work on a generation that has not opened the library: the built-in layouts, and the drag machines and
+/// the pure geometry of drags and gestures. They read nothing of the library's state, so a call to one never starts its desktop.
+const STANDALONE_OBJECTS: &[&str] = &["builtin", "drag", "gesture"];
+
 fn functions_table(code: &mut CodeWriter, library: &Library) {
     code.line("/// One entry of the table as a script sees it.");
     code.line("pub struct FunctionInfo {");
@@ -273,7 +277,7 @@ fn functions_table(code: &mut CodeWriter, library: &Library) {
     code.line("pub inputs: &'static [&'static str],");
     code.line("/// Whether the call layer can carry it; a function with a raw pointer argument is native only.");
     code.line("pub scriptable: bool,");
-    code.line("/// Whether it works on a generation that has not opened the library (the built-in layouts): a call to it never opens it.");
+    code.line("/// Whether it works on a generation that has not opened the library (the built-in layouts, the drag machines): a call to it never opens it.");
     code.line("pub standalone: bool,");
     code.dedent();
     code.line("}");
@@ -292,7 +296,7 @@ fn functions_table(code: &mut CodeWriter, library: &Library) {
             function.name,
             inputs.join(", "),
             function.scriptable,
-            function.object.as_deref() == Some("builtin")
+            STANDALONE_OBJECTS.contains(&function.object.as_deref().unwrap_or(""))
         ));
     }
     code.dedent();

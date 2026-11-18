@@ -15,6 +15,8 @@
 
 import { GestureBinding } from "gnoblin-core/bindings/binding";
 import type { DragEvent } from "gnoblin-core/bindings/types";
+import { Gesture } from "gnoblin-std/generated/classes";
+import { GestureKind, WayKind } from "gnoblin-std/generated/constants";
 
 /** The shortest swipe `onSwipe` acts on, in touchpad units. */
 export const SWIPE_THRESHOLD = 48;
@@ -77,23 +79,29 @@ export const GESTURE_ACTION_NAMES: readonly GestureActionName[] = Object.keys(AC
 const SWIPE_WAYS: readonly string[] = ["left", "right", "up", "down"];
 const PINCH_WAYS: readonly string[] = ["in", "out"];
 
+/** The words a swipe's way (`WayKind`) goes by. */
+const SWIPES: Readonly<Record<number, SwipeDirection>> = {
+    [WayKind.LEFT]: "left",
+    [WayKind.RIGHT]: "right",
+    [WayKind.UP]: "up",
+    [WayKind.DOWN]: "down",
+};
+
+/** The words a pinch's way goes by. */
+const PINCHES: Readonly<Record<number, PinchDirection>> = {
+    [WayKind.IN]: "in",
+    [WayKind.OUT]: "out",
+};
+
 /**
  * The way a gesture has gone: `left`, `right`, `up` or `down` by its longer axis, or `null` while it has moved less
- * than `threshold` (default `SWIPE_THRESHOLD`) touchpad units. A tie goes to the horizontal axis.
+ * than `threshold` (default `SWIPE_THRESHOLD`) touchpad units. A tie goes to the horizontal axis. The library decides.
  */
 export function gestureDirection(
     event: { readonly dx?: number; readonly dy?: number },
     threshold: number = SWIPE_THRESHOLD,
 ): SwipeDirection | null {
-    const dx = event.dx ?? 0;
-    const dy = event.dy ?? 0;
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < threshold) {
-        return null;
-    }
-    if (Math.abs(dx) >= Math.abs(dy)) {
-        return dx > 0 ? "right" : "left";
-    }
-    return dy > 0 ? "down" : "up";
+    return SWIPES[Gesture.way(GestureKind.SWIPE, event.dx ?? 0, event.dy ?? 0, 1, threshold)] ?? null;
 }
 
 /** Where a named action finds the stock actions when a binding has none of its own: the `gnoblin` global. */
@@ -210,11 +218,7 @@ export class PinchActionBinding extends GestureActionBinding {
     }
 
     protected way(event: DragEvent): string | null {
-        const scale = event.scale ?? 1;
-        if (scale >= 1 + this.threshold) {
-            return "out";
-        }
-        return scale <= 1 - this.threshold ? "in" : null;
+        return PINCHES[Gesture.way(GestureKind.PINCH, 0, 0, event.scale ?? 1, this.threshold)] ?? null;
     }
 }
 

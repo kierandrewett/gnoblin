@@ -3,7 +3,7 @@
 // catalog 0x8d9a5c8fd0c2c922, core-abi 1.0, std-abi 1.0
 
 import type { Init } from "gnoblin-std/generated/native";
-import { CollectionKind, EventKind, TermKind, LayoutKind, PlaceKind, PlacementFlags, QueryFlags, OutputsKind, WorkspacesKind, AxisKind, ClientFlags, SnapKind, EasingKind, PropKind, TransitionKind, ControlKind, StyleKind, EntryKind, SceneKind, BuiltinKind, ValueKind, BindingKind, DragKind, ConstraintKind, GestureKind, WayKind } from "gnoblin-std/generated/constants";
+import { CollectionKind, EventKind, TermKind, LayoutKind, PlaceKind, PlacementFlags, QueryFlags, OutputsKind, WorkspacesKind, AxisKind, ClientFlags, SnapKind, EasingKind, PropKind, TransitionKind, ControlKind, StyleKind, EntryKind, SceneKind, BuiltinKind, ValueKind, BindingKind, DragKind, ConstraintKind, GestureKind, WayKind, SideFlags, OutcomeFlags } from "gnoblin-std/generated/constants";
 
 // A rectangle in the compositor's logical pixels.
 export interface Rect {
@@ -766,6 +766,111 @@ export function bindingSpecFromNative(data: any): BindingSpec {
     trigger: data.trigger,
     priority: data.priority,
     threshold: data.threshold,
+  };
+}
+
+// One tile of a workspace as a swap drag sees it: a client, what it is, and where it is.
+export interface DragTile {
+  flags: number;
+  id: number;
+  rect: Rect;
+}
+
+export function dragTileToNative(value: Init<DragTile>): Record<string, unknown> {
+  return {
+    flags: value.flags,
+    id: value.id,
+    rect: value.rect === undefined ? undefined : rectToNative(value.rect),
+  };
+}
+
+export function dragTileFromNative(data: any): DragTile {
+  return {
+    flags: data.flags,
+    id: data.id,
+    rect: rectFromNative(data.rect),
+  };
+}
+
+// What `drag_step` is given for one step of a drag the caller matched: the pointer and where the press was, the window it
+// pressed, and what the caller knows of that window and kept from the drag's start. A copy: the library keeps nothing of it
+// past the call, and nothing of the drag between calls.
+export interface DragStep {
+  clientFlags: number;
+  event: DragEvent | null;
+  bounds: Rect;
+  start: Rect;
+  sides: number;
+  state: ClientState | null;
+  split: Split | null;
+  tiles: DragTile[];
+}
+
+export function dragStepToNative(value: Init<DragStep>): Record<string, unknown> {
+  return {
+    client_flags: value.clientFlags,
+    event: value.event == null ? undefined : dragEventToNative(value.event),
+    bounds: value.bounds === undefined ? undefined : rectToNative(value.bounds),
+    start: value.start === undefined ? undefined : rectToNative(value.start),
+    sides: value.sides,
+    state: value.state == null ? undefined : clientStateToNative(value.state),
+    split: value.split == null ? undefined : splitToNative(value.split),
+    tiles: value.tiles === undefined ? undefined : value.tiles.map(dragTileToNative),
+  };
+}
+
+export function dragStepFromNative(data: any): DragStep {
+  return {
+    clientFlags: data.client_flags,
+    event: data.event == null ? null : dragEventFromNative(data.event),
+    bounds: rectFromNative(data.bounds),
+    start: rectFromNative(data.start),
+    sides: data.sides,
+    state: data.state == null ? null : clientStateFromNative(data.state),
+    split: data.split == null ? null : splitFromNative(data.split),
+    tiles: (Array.from(data.tiles) as any[]).map(dragTileFromNative),
+  };
+}
+
+// What a drag step asks the caller to do. A drag that moves a window gives its rectangle, one that trades places gives the
+// tile, one that moves a divider gives its ratio: the caller writes them to the objects it holds.
+export interface DragOutcome {
+  flags: number;
+  snapZone: number;
+  bounds: Rect;
+  floating: Rect;
+  swapWith: number;
+  sides: number;
+  reserved2: number;
+  ratio: number;
+  crossRatio: number;
+}
+
+export function dragOutcomeToNative(value: Init<DragOutcome>): Record<string, unknown> {
+  return {
+    flags: value.flags,
+    snap_zone: value.snapZone,
+    bounds: value.bounds === undefined ? undefined : rectToNative(value.bounds),
+    floating: value.floating === undefined ? undefined : rectToNative(value.floating),
+    swap_with: value.swapWith,
+    sides: value.sides,
+    reserved2: value.reserved2,
+    ratio: value.ratio,
+    cross_ratio: value.crossRatio,
+  };
+}
+
+export function dragOutcomeFromNative(data: any): DragOutcome {
+  return {
+    flags: data.flags,
+    snapZone: data.snap_zone,
+    bounds: rectFromNative(data.bounds),
+    floating: rectFromNative(data.floating),
+    swapWith: data.swap_with,
+    sides: data.sides,
+    reserved2: data.reserved2,
+    ratio: data.ratio,
+    crossRatio: data.cross_ratio,
   };
 }
 

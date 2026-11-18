@@ -276,6 +276,13 @@ library's built-in layouts: the options are plain fields as before, the algorith
 library's. `DwindleLayout`, `StripLayout`, `Carousel3dLayout`, `ArcLayout` and `FloatingLayout` are still TypeScript (see design
 section 25.4).
 
+The stock drag classes (`ClientMoveBinding`, `ClientResizeBinding`, `ClientSwapBinding`, `SplitResizeBinding`) are still
+`PointerDragBinding` subclasses, so the engine's matcher picks the binding and a script's own subclass keeps working, but what a
+drag decides is the library's: each hook gives `libgnoblin-std` one step (`drag_step`) and writes back the answer. `clampAxis`,
+`constrainRect`, `resizedRect`, `edgeZone`, `tileRect` and `gestureDirection` call the library too. A script that wants the library to
+match the chord as well uses `Binding.drag`, `Binding.gesture` or `new MoveBinding().start()` from `gnoblin-std/native`; those start
+the library's desktop, so a shell that keeps its own workspaces uses the engine's `KeyBinding` and `PointerDragBinding`.
+
 `examples/03-typescript-std/` has the shells the tests run. The hand-written part of the binding is `gnoblin-std/native`
 itself (`clients()`, `tile`, `createWorkspace`).
 
