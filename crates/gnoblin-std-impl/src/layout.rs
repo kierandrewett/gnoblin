@@ -345,9 +345,15 @@ impl LayoutObj {
     }
 
     /// A client joined the workspace.
-    pub(crate) fn client_added(&self, g: &Gnoblin, cx: &LayoutContext, client: NodeId) {
+    pub(crate) fn client_added(
+        &self,
+        g: &Gnoblin,
+        cx: &LayoutContext,
+        client: NodeId,
+        insets: &std::collections::HashMap<NodeId, Inset>,
+    ) {
         match &self.kind {
-            Kind::Floating { mode, step, placed } => place_floating(g, cx, client, *mode, *step, placed),
+            Kind::Floating { mode, step, placed } => place_floating(g, cx, client, *mode, *step, placed, insets),
             Kind::Foreign(foreign) => foreign.hook_client(foreign.vtable.client_added, cx, client),
             Kind::Builtin(_) => {}
         }
@@ -464,6 +470,7 @@ fn place_floating(
     mode: PlaceMode,
     step: f64,
     placed: &RefCell<HashSet<NodeId>>,
+    insets: &std::collections::HashMap<NodeId, Inset>,
 ) {
     // A window that came from a tiled layout is floating now, placed or not.
     if nodes::flag(g, client, "tiled") {
@@ -476,12 +483,18 @@ fn place_floating(
     let own = nodes::rect_of(g, client);
     let width = if own.width > 0.0 { own.width } else { DEFAULT_WIDTH };
     let height = if own.height > 0.0 { own.height } else { DEFAULT_HEIGHT };
-    let inset = Inset::default();
+    // A window is placed as a frame: the content with the room its frame takes on each side.
+    let inset = insets.get(&client).copied().unwrap_or_default();
     let occupied: Vec<Rect> = cx
         .children
         .iter()
         .filter(|other| **other != client && nodes::visible(g, **other))
-        .map(|other| grow(&nodes::rect_of(g, *other), &inset))
+        .map(|other| {
+            grow(
+                &nodes::rect_of(g, *other),
+                &insets.get(other).copied().unwrap_or_default(),
+            )
+        })
         .collect();
     let room = grow(&Rect::new(0.0, 0.0, width, height), &inset);
     let spot = place_rect(mode, room.width, room.height, &cx.area, &occupied, step);

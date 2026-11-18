@@ -191,3 +191,25 @@ pub(crate) unsafe extern "C" fn workspace_restore_client(
         })
     })
 }
+
+pub(crate) unsafe extern "C" fn client_restore_snap(
+    ctx: GnoblinCtx,
+    client: GnoblinNode,
+    zone: u32,
+    floating: *const GnoblinStdRect,
+) -> i32 {
+    call("client_restore_snap", || {
+        // SAFETY: the caller guarantees `floating` is null or a readable `GnoblinStdRect`.
+        let Some(floating) = (unsafe { floating.as_ref() }) else {
+            return Err(Fail::err("client_restore_snap: a null rectangle"));
+        };
+        let floating = Rect::new(floating.x, floating.y, floating.width, floating.height);
+        mutate(ctx, |st| {
+            let Some(rec) = st.rec.get_mut(&client) else {
+                return Err(Fail::new(abi::E_NO_SUCH_NODE, format!("node {client} is not a client")));
+            };
+            rec.snap = Some(crate::client_state::Snap { zone, floating });
+            Ok(abi::E_OK)
+        })
+    })
+}

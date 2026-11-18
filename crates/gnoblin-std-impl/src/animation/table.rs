@@ -181,8 +181,15 @@ pub(crate) unsafe extern "C" fn transition_commit(ctx: GnoblinCtx, out: *mut Gno
             ));
         }
         // The layout and style passes run against the staged state, so their writes are staged with the callback's.
+        std.st.borrow_mut().compute_failed = None;
         crate::turn::settle(&std);
         let entries = staging::end();
+        let failed = std.st.borrow_mut().compute_failed.take();
+        if let Some(message) = failed {
+            // A layout that fails fails the transition: nothing staged is sent, and the shell puts back what it changed.
+            let _ = std.st.borrow_mut().anim_take_pending();
+            return Err(Fail::refused(format!("the layout's compute failed: {message}")));
+        }
         let result = {
             let mut st = std.st.borrow_mut();
             match st.anim_take_pending() {

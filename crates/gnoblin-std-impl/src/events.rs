@@ -62,6 +62,7 @@ impl State {
             last_focus: None,
             counters: Counters::default(),
             placements_written: false,
+            compute_failed: None,
             anim: crate::animation::engine::AnimState::default(),
             styles: crate::style::cascade::StyleState::default(),
             scene: crate::scene::SceneState::default(),

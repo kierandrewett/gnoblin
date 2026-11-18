@@ -1,6 +1,5 @@
 // Snapshots state outside the compositor tree and installs staged transition handling.
 
-import { GnoblinError } from "gnoblin-core/errors";
 import { ctx } from "gnoblin-core/host/context";
 import { std } from "gnoblin-std/host/state";
 import { layout } from "gnoblin-std/host/frame";
@@ -40,6 +39,16 @@ function settleStaged(): void {
 
 /** Installs the engine behind `requestTransition`: the callback runs over the library's staging, the passes below run at its end. */
 export function installTransitions(): void {
+    // A layout the library asked at the commit that failed fails the transition with the layout's own error.
+    const commit = std.staging.commit.bind(std.staging);
+    std.staging.commit = () => {
+        const before = ctx.reports.length;
+        try {
+            return commit();
+        } catch (error) {
+            throw ctx.reports.splice(before)[0]?.error ?? error;
+        }
+    };
     std.transitions = new TransitionEngine({
         staging: std.staging,
         schedule: (site, task) => {

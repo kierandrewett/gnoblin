@@ -1419,6 +1419,10 @@ abi_structs! {
         /// (the client is gone or already there, or the workspace is not added).
         pub workspace_restore_client: unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, arrived: u32) -> i32,
 
+        /// Gives a client the snapped state a reload takes back: `zone` (`STD_SNAP_*`) and the rectangle `client_unsnap` puts it back to.
+        /// Nothing moves: the caller put the window where it was. `E_NO_SUCH_NODE` for a node that is not a client.
+        pub client_restore_snap: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, zone: u32, floating: *const GnoblinStdRect) -> i32,
+
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]
         pub uptime_ms: unsafe extern "C" fn() -> u64,

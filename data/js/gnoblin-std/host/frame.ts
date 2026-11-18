@@ -2,7 +2,9 @@
 // own turn after the engine's frame, so what a layout reads (the gaps a script wrote into, the room the bars take, the frames
 // round the windows) is handed over first, and the lists a script holds are made the library's.
 
-import { sameInset } from "gnoblin-core/inset";
+import { growRect, NO_INSET, sameInset, shrinkRect } from "gnoblin-core/inset";
+import type { FrameInset } from "gnoblin-core/inset";
+import type { Rect } from "gnoblin-core/types";
 import type { Client } from "gnoblin-core/host/client";
 import { ctx } from "gnoblin-core/host/context";
 import { guard } from "gnoblin-core/host/dispatch";
@@ -15,8 +17,9 @@ import { flushMoves, syncMembership } from "gnoblin-std/host/membership";
 import { std } from "gnoblin-std/host/state";
 import { applyStyles } from "gnoblin-std/host/styles";
 import { wsState } from "gnoblin-std/host/workspace_state";
-import { NO_INSET } from "gnoblin-core/inset";
+import { workAreaOf } from "gnoblin-std/host/work_area";
 import { barInsets } from "gnoblin-std/widgets";
+import { windowState } from "gnoblin-std/window_state";
 
 /** How many frames a window that closed stays known to the layouts that are told of it. */
 const CLOSED_FRAMES = 4;
@@ -65,6 +68,33 @@ function sendInsets(): void {
     }
 }
 
+/** A rectangle that moved to another place: shrunk to the area when larger, then moved inside it. */
+function fitInto(rect: Rect, area: Rect): Rect {
+    const width = Math.min(rect.width, area.width);
+    const height = Math.min(rect.height, area.height);
+    return {
+        x: Math.min(Math.max(rect.x, area.x), area.x + area.width - width),
+        y: Math.min(Math.max(rect.y, area.y), area.y + area.height - height),
+        width,
+        height,
+    };
+}
+
+/**
+ * A frame changed its room: the FRAME keeps its place, so the rectangle the script's side keeps for the window to go back to
+ * (maximise and fullscreen remember where it floated) moves in by what the top and left gained and stays inside the area.
+ * The library does the same for what it keeps (the rectangle a window floats at, a snap's).
+ */
+function keepFramePlace(client: Client, was: FrameInset, inset: FrameInset): void {
+    const area = workAreaOf(client);
+    const kept = windowState.kept(client).floating;
+    if (area === null || kept === null) {
+        return;
+    }
+    const moved = { ...kept, x: kept.x + inset.left - was.left, y: kept.y + inset.top - was.top };
+    windowState.keep(client, { floating: shrinkRect(fitInto(growRect(moved, inset), area), inset) });
+}
+
 /** Tells the library the room each window's frame takes, which a layout places the frame round. */
 function sendFrames(): void {
     const decorations = std.decorations;
@@ -76,8 +106,12 @@ function sendFrames(): void {
         if (sameInset(inset, std.insetSent.get(client) ?? NO_INSET)) {
             continue;
         }
+        const was = std.insetSent.get(client);
         untilKnown(() => {
             const native = nativeClient(client);
+            if (was !== undefined) {
+                keepFramePlace(client, was, inset);
+            }
             native.setState({
                 ...native.state(),
                 insetTop: inset.top,

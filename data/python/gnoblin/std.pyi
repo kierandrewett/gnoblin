@@ -1087,6 +1087,12 @@ class Client:
         """
         ...
 
+    def restore_snap(self, zone: int, floating: Rect | dict[str, Any]) -> int:
+        """Gives a client the snapped state a reload takes back: `zone` (`STD_SNAP_*`) and the rectangle `client_unsnap` puts it back to.
+        Nothing moves: the caller put the window where it was. `E_NO_SUCH_NODE` for a node that is not a client.
+        """
+        ...
+
     @property
     def window(self) -> Node: ...
 

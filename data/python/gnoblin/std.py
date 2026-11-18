@@ -1701,6 +1701,13 @@ class Client(_b.Handle):
         raw = _call("client_areas", self.node)
         return Areas._from_dyn(raw)
 
+    def restore_snap(self, zone: int, floating: Rect | dict[str, Any]) -> int:
+        """Gives a client the snapped state a reload takes back: `zone` (`STD_SNAP_*`) and the rectangle `client_unsnap` puts it back to.
+        Nothing moves: the caller put the window where it was. `E_NO_SUCH_NODE` for a node that is not a client.
+        """
+        raw = _call("client_restore_snap", self.node, _b.dyn(zone), _b.dyn(floating))
+        return raw
+
 class Workspace(_b.Handle):
     """A workspace, by the library's own id. Zero is nil; an id is never reused in one process."""
 

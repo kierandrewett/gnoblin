@@ -130,6 +130,12 @@ export class Client {
     const raw = call("client_areas", this.node);
     return (areasFromNative(raw));
   }
+  // Gives a client the snapped state a reload takes back: `zone` (`STD_SNAP_*`) and the rectangle `client_unsnap` puts it back to.
+  // Nothing moves: the caller put the window where it was. `E_NO_SUCH_NODE` for a node that is not a client.
+  restoreSnap(zone: number, floating: Init<Rect>): number {
+    const raw = call("client_restore_snap", this.node, zone, rectToNative(floating));
+    return raw;
+  }
 }
 
 export class Workspace {

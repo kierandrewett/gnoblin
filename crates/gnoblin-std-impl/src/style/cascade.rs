@@ -288,6 +288,11 @@ impl State {
 
     /// Writes the resolved style of every client whose style or layers changed since it was last applied.
     pub(crate) fn apply_styles(&mut self) {
+        // A shell that keeps its styles itself (the TypeScript library, which has made no scope here) has this pass leave its windows
+        // alone: the first scope made here is what makes the library the styles' owner.
+        if self.styles.by_scope.is_empty() {
+            return;
+        }
         let epoch = self.styles.epoch;
         for client in self.clients.clone() {
             if !crate::nodes::alive(&self.g, client) {

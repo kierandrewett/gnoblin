@@ -563,7 +563,7 @@ struct | GnoblinStdStyleEntries | size 16 align 8 fixed | 1.0
 field | GnoblinStdStyleEntries.ptr | *const GnoblinStdStyleEntry @0 +8 | 1.0
 field | GnoblinStdStyleEntries.len | usize @8 +8 | 1.0
 
-struct | GnoblinStdApi | size 800 align 8 extensible | 1.0
+struct | GnoblinStdApi | size 808 align 8 extensible | 1.0
 
 field | GnoblinStdApi.size | u32 @0 +4 | 1.0
 field | GnoblinStdApi.major | u32 @4 +4 | 1.0
@@ -667,3 +667,4 @@ field | GnoblinStdApi.output_set_insets | unsafe extern "C" fn(ctx: GnoblinCtx, 
 field | GnoblinStdApi.output_span | unsafe extern "C" fn(ctx: GnoblinCtx, span: *const GnoblinStdSpan) -> i32 @776 +8 | 1.0
 field | GnoblinStdApi.client_areas | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStdAreas) -> i32 @784 +8 | 1.0
 field | GnoblinStdApi.workspace_restore_client | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, arrived: u32) -> i32 @792 +8 | 1.0
+field | GnoblinStdApi.client_restore_snap | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, zone: u32, floating: *const GnoblinStdRect) -> i32 @800 +8 | 1.0

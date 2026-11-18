@@ -1929,14 +1929,17 @@ fn a_short_swipe_slides_back_and_leaves_the_shown_workspace_alone() {
 // -- a reload hands the claims over --------------------------------------------------------------------------
 
 /// A role over the fake compositor whose entry is `init`, the directory it reads and the directory's guard.
-fn role_over(comp: &Comp, init: &str) -> (JsRole, std::path::PathBuf, TempDir) {
+fn role_over(comp: &Comp, init: &str) -> (JsRole, std::path::PathBuf, (TempDir, native::NativeCore)) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), init).expect("shell.ts");
     let mut config = honest_role_config(&root);
     config.watch = false;
-    let role = JsRole::over_link(Box::new(comp.0.clone()), JsRoleLinks::default(), config).expect("a role");
-    (role, root, dir)
+    // The shell's library is the std library over a core of its own, as the runtime's is.
+    let core = native::NativeCore::new(&comp.0, Arc::clone(&config.shell.clock));
+    config.shell.js.natives.push(core.std_native());
+    let role = JsRole::over_link(core.link(), JsRoleLinks::default(), config).expect("a role");
+    (role, root, (dir, core))
 }
 
 /// An entry with one monocle workspace (a layout with no bindings of its own), then `rest`.

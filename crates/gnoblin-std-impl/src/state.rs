@@ -216,6 +216,8 @@ pub(crate) struct State {
     pub(crate) counters: Counters,
     /// The pass wrote a placement: the compositor's answer to the transaction that carries it is awaited.
     pub(crate) placements_written: bool,
+    /// A layout's compute failed in a pass: a transition that is committing fails with it, and nothing it staged is sent.
+    pub(crate) compute_failed: Option<String>,
     /// The transition engine: staged writes, tracks and what owns them.
     pub(crate) anim: crate::animation::engine::AnimState,
     /// Styles: what each scope sets and what was applied to each client.

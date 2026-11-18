@@ -618,6 +618,12 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         scriptable: true,
         standalone: false,
     },
+    FunctionInfo {
+        name: "client_restore_snap",
+        inputs: &["client", "zone", "floating"],
+        scriptable: true,
+        standalone: false,
+    },
 ];
 
 pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
@@ -720,6 +726,7 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "output_span" => output_span(lib, ctx, args),
         "client_areas" => client_areas(lib, ctx, args),
         "workspace_restore_client" => workspace_restore_client(lib, ctx, args),
+        "client_restore_snap" => client_restore_snap(lib, ctx, args),
         other => Err(StdError::unsupported(other)),
     }
 }
@@ -3091,6 +3098,29 @@ fn workspace_restore_client(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn,
     // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
     let returned = unsafe { (api.workspace_restore_client)(ctx, workspace, client, arrived) };
     let status = lib.check("workspace_restore_client", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn client_restore_snap(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, client_restore_snap) + size_of::<usize>()) {
+        return Err(StdError::unsupported("client_restore_snap"));
+    }
+    if args.len() != 3 {
+        return Err(StdError::type_error(format!(
+            "`client_restore_snap` takes 3 arguments (client, zone, floating), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let client = args[0].to_u64("argument `client` of `client_restore_snap`")?;
+    let zone = args[1].to_u32("argument `zone` of `client_restore_snap`")?;
+    let floating = write_gnoblin_std_rect(&mut arena, &args[2], "argument `floating` of `client_restore_snap`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.client_restore_snap)(ctx, client, zone, &raw const floating) };
+    let status = lib.check("client_restore_snap", returned)?;
     arena.adopt();
     Ok(Dyn::Int(i64::from(status)))
 }

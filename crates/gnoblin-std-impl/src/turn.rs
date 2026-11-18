@@ -169,8 +169,16 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
             let _ = g.window_handle(gnoblin_core::NodeId(next)).focus();
         }
     }
+    let insets: HashMap<NodeId, crate::floating::Inset> = {
+        let st = std.st.borrow();
+        plan.cx
+            .children
+            .iter()
+            .map(|child| (*child, st.inset_of(*child)))
+            .collect()
+    };
     for client in &plan.arrived {
-        layout.client_added(g, &plan.cx, *client);
+        layout.client_added(g, &plan.cx, *client, &insets);
     }
     {
         // Refit changed frames before placing their windows; new arrivals keep their current frame.
@@ -202,6 +210,7 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
                 .borrow_mut()
                 .apply_placements(&run.tiled, &placements, &plan.cx.area),
             Err(fail) => {
+                std.st.borrow_mut().compute_failed = Some(fail.message.clone());
                 g.log_at(
                     LogLevel::CoreError,
                     &format!(
