@@ -84,3 +84,13 @@ def spawn(
     on_exit: Callable[[int | None, str | None, bool, str, str, bool, bool], None] | None = None,
 ) -> int: ...
 def process_signal(token: int, name: str) -> None: ...
+
+# Verbs: the methods and signals of the compositor's own objects (`gnoblin.session`, idle, outputs), by class and member name.
+def verb_call(
+    class_: str,
+    method: str,
+    args: tuple[Any, ...] | None = None,
+    on_answer: Callable[[bytes, str | None], None] | None = None,
+    object: int = 0,
+) -> None: ...
+def verb_subscribe(class_: str, signal: str, callback: Callable[..., None]) -> int: ...
