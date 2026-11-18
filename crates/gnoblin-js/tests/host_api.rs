@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 
 use common::{FakeCompositor, Rig, rig_setup, timed_config};
 use gnoblin_js::{
-    JsLinkError, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb, JsShell, strip_types,
+    JsLinkError, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb, strip_types,
 };
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
