@@ -100,6 +100,10 @@ function limitsOf(client: BindingClient): ClientState {
         floating: NO_RECT,
         snapZone: 0,
         snapFloating: NO_RECT,
+        fittedTop: 0,
+        fittedRight: 0,
+        fittedBottom: 0,
+        fittedLeft: 0,
     };
 }
 

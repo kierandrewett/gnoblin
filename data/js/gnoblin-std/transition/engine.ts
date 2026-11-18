@@ -90,7 +90,16 @@ export class TransitionEngine {
             restore();
             throw error;
         }
-        return new Transition(host, host.staging.commit());
+        // The library runs the passes of the shell's layouts at the commit: a layout that fails fails the transition as a callback does.
+        let committed;
+        try {
+            committed = host.staging.commit();
+        } catch (error) {
+            host.staging.discard();
+            restore();
+            throw error;
+        }
+        return new Transition(host, committed);
     }
 
     /**
