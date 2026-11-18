@@ -137,3 +137,40 @@ pub fn shell_over_core(
     let shell = JsShell::new(core.link(), config).expect("the shell boots over the core");
     (shell, core)
 }
+
+/// A shell over a core with std loaded, that is one value: the core lives as long as the shell does and goes after it. It
+/// derefs to the shell, so a test that held a `JsShell` holds this.
+pub struct CoreShell {
+    shell: JsShell,
+    /// Dropped after the shell.
+    pub core: NativeCore,
+}
+
+impl CoreShell {
+    /// A shell of `config` over `comp` and a core whose timers read the config's clock.
+    pub fn new(comp: &FakeCompositor, config: JsShellConfig) -> CoreShell {
+        let clock = Arc::clone(&config.clock);
+        let (shell, core) = shell_over_core(comp, clock, config);
+        CoreShell { shell, core }
+    }
+
+    /// One frame of the shell, then the core's half of it.
+    pub fn frame_with_core(&mut self) {
+        self.shell.frame().expect("a frame");
+        self.core.dispatch(&self.shell);
+    }
+}
+
+impl std::ops::Deref for CoreShell {
+    type Target = JsShell;
+
+    fn deref(&self) -> &JsShell {
+        &self.shell
+    }
+}
+
+impl std::ops::DerefMut for CoreShell {
+    fn deref_mut(&mut self) -> &mut JsShell {
+        &mut self.shell
+    }
+}

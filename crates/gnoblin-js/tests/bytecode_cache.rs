@@ -16,10 +16,10 @@ use common::*;
 const IMPORTS: &str = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nvoid lib;\n";
 
 /// A shell over a fresh fake compositor, whose config root is `root` and whose modules are cached by `cache`.
-fn boot(root: &Path, cache: &JsBytecodeCache) -> Result<JsShell, JsShellError> {
+fn boot(root: &Path, cache: &JsBytecodeCache) -> Result<common::native::CoreShell, JsShellError> {
     let mut config = honest_config(root);
     config.js.cache = cache.clone();
-    let mut shell = JsShell::new(Box::new(FakeCompositor::new()), config)?;
+    let mut shell = common::native::CoreShell::new(&FakeCompositor::new(), config);
     shell.load_entry(Path::new("shell.ts"))?;
     Ok(shell)
 }
@@ -63,6 +63,8 @@ fn the_second_start_loads_every_module_from_bytecode() {
     assert_eq!(cold.misses, cold.writes, "every module that missed was written");
     assert_eq!(files_in(&first).len() as u64, cold.writes);
 
+    // The core's registry is one per process: the first shell is gone before the second starts.
+    drop(shell);
     let second = JsBytecodeCache::in_dir(&cache_dir);
     let mut shell = boot(&root, &second).expect("the second start");
     works(&mut shell);
@@ -132,6 +134,7 @@ fn a_file_that_cannot_be_trusted_is_compiled_again_and_replaced() {
     let damaged = JsBytecodeCache::in_dir(&cache_dir);
     let mut shell = boot(&root, &damaged).expect("a start over a damaged cache");
     works(&mut shell);
+    drop(shell);
     let stats = damaged.stats();
     assert_eq!(stats.hits, 0, "nothing damaged was used: {stats:?}");
     assert_eq!(stats.writes, count, "every module was written again: {stats:?}");

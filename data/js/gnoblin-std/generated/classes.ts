@@ -4,7 +4,7 @@
 
 import { call } from "gnoblin-std/generated/native";
 import type { Init } from "gnoblin-std/generated/native";
-import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutQuery, layoutQueryToNative, layoutQueryFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, DragTile, dragTileToNative, dragTileFromNative, DragStep, dragStepToNative, dragStepFromNative, DragOutcome, dragOutcomeToNative, dragOutcomeFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
+import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, OutputInfo, outputInfoToNative, outputInfoFromNative, Span, spanToNative, spanFromNative, Areas, areasToNative, areasFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutQuery, layoutQueryToNative, layoutQueryFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, DragTile, dragTileToNative, dragTileFromNative, DragStep, dragStepToNative, dragStepFromNative, DragOutcome, dragOutcomeToNative, dragOutcomeFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
 
 function handleOf(value: { handle: number } | { node: number } | number): number {
   if (typeof value === "number") {
@@ -124,6 +124,12 @@ export class Client {
     const raw = call("client_unsnap", this.node, forget);
     return raw !== 0;
   }
+  // Writes the output a client is on and its work area. A client whose workspace no output shows is on the primary output;
+  // zero asks for the primary output itself.
+  areas(): Areas {
+    const raw = call("client_areas", this.node);
+    return (areasFromNative(raw));
+  }
 }
 
 export class Workspace {
@@ -237,6 +243,13 @@ export class Workspace {
     const raw = call("workspace_layout_kind", this.handle);
     return (raw);
   }
+  // Puts a client on a workspace as a reload gives it back: it moves like `client_move_to_workspace` (its dialogs go with it), but
+  // it is not refitted, and a layout is told it arrived only when `arrived` is nonzero. 1 when it moved, 0 when it was refused
+  // (the client is gone or already there, or the workspace is not added).
+  restoreClient(client: number, arrived: number): boolean {
+    const raw = call("workspace_restore_client", this.handle, handleOf(client), arrived);
+    return raw !== 0;
+  }
 }
 
 export class Policy {
@@ -259,6 +272,24 @@ export class Output {
   workspace(): Workspace | null {
     const raw = call("output_workspace", this.node);
     return (raw == null ? null : new Workspace(raw));
+  }
+  // Fills `out` with what the desk knows about an output: whether it can show a workspace, which one it shows, its rectangle and
+  // the area a layout tiles in on it. `E_NO_SUCH_NODE` for a node that is not an output the library tracks.
+  info(): OutputInfo {
+    const raw = call("output_info", this.node);
+    return (outputInfoFromNative(raw));
+  }
+  // Sets the room the shell's own bars take from the top and the bottom of an output. A layout tiles in what is left, so
+  // every workspace computes again when it changes. `E_NO_SUCH_NODE` for a node that is not an output the library tracks.
+  setInsets(top: number, bottom: number): number {
+    const raw = call("output_set_insets", this.node, top, bottom);
+    return raw;
+  }
+  // Makes the desk of the span's lead show one workspace over its members (the desks of the other members show nothing of
+  // their own), or ends the lead's span. Asking for the span that holds changes nothing.
+  static span(span: Init<Span>): number {
+    const raw = call("output_span", spanToNative(span));
+    return raw;
   }
 }
 

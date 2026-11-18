@@ -588,6 +588,36 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         scriptable: true,
         standalone: true,
     },
+    FunctionInfo {
+        name: "output_info",
+        inputs: &["output"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "output_set_insets",
+        inputs: &["output", "top", "bottom"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "output_span",
+        inputs: &["span"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "client_areas",
+        inputs: &["client"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "workspace_restore_client",
+        inputs: &["workspace", "client", "arrived"],
+        scriptable: true,
+        standalone: false,
+    },
 ];
 
 pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
@@ -685,6 +715,11 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "drag_zone" => drag_zone(lib, ctx, args),
         "drag_tile" => drag_tile(lib, ctx, args),
         "gesture_way" => gesture_way(lib, ctx, args),
+        "output_info" => output_info(lib, ctx, args),
+        "output_set_insets" => output_set_insets(lib, ctx, args),
+        "output_span" => output_span(lib, ctx, args),
+        "client_areas" => client_areas(lib, ctx, args),
+        "workspace_restore_client" => workspace_restore_client(lib, ctx, args),
         other => Err(StdError::unsupported(other)),
     }
 }
@@ -2945,6 +2980,121 @@ fn gesture_way(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
     Ok(Dyn::Uint(u64::from(out)))
 }
 
+#[allow(unused_mut, unused_variables)]
+fn output_info(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, output_info) + size_of::<usize>()) {
+        return Err(StdError::unsupported("output_info"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`output_info` takes 1 arguments (output), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let output = args[0].to_u64("argument `output` of `output_info`")?;
+    // SAFETY: an all-zero `GnoblinStdOutputInfo` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdOutputInfo = unsafe { zeroed() };
+    out.size = size_of::<GnoblinStdOutputInfo>() as u32;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.output_info)(ctx, output, &raw mut out) };
+    let status = lib.check("output_info", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_output_info(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn output_set_insets(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, output_set_insets) + size_of::<usize>()) {
+        return Err(StdError::unsupported("output_set_insets"));
+    }
+    if args.len() != 3 {
+        return Err(StdError::type_error(format!(
+            "`output_set_insets` takes 3 arguments (output, top, bottom), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let output = args[0].to_u64("argument `output` of `output_set_insets`")?;
+    let top = args[1].to_f64("argument `top` of `output_set_insets`")?;
+    let bottom = args[2].to_f64("argument `bottom` of `output_set_insets`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.output_set_insets)(ctx, output, top, bottom) };
+    let status = lib.check("output_set_insets", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn output_span(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, output_span) + size_of::<usize>()) {
+        return Err(StdError::unsupported("output_span"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`output_span` takes 1 arguments (span), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let span = write_gnoblin_std_span(&mut arena, &args[0], "argument `span` of `output_span`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.output_span)(ctx, &raw const span) };
+    let status = lib.check("output_span", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn client_areas(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, client_areas) + size_of::<usize>()) {
+        return Err(StdError::unsupported("client_areas"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`client_areas` takes 1 arguments (client), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let client = args[0].to_u64("argument `client` of `client_areas`")?;
+    // SAFETY: an all-zero `GnoblinStdAreas` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdAreas = unsafe { zeroed() };
+    out.size = size_of::<GnoblinStdAreas>() as u32;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.client_areas)(ctx, client, &raw mut out) };
+    let status = lib.check("client_areas", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_areas(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn workspace_restore_client(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, workspace_restore_client) + size_of::<usize>()) {
+        return Err(StdError::unsupported("workspace_restore_client"));
+    }
+    if args.len() != 3 {
+        return Err(StdError::type_error(format!(
+            "`workspace_restore_client` takes 3 arguments (workspace, client, arrived), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let workspace = args[0].to_u64("argument `workspace` of `workspace_restore_client`")?;
+    let client = args[1].to_u64("argument `client` of `workspace_restore_client`")?;
+    let arrived = args[2].to_u32("argument `arrived` of `workspace_restore_client`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.workspace_restore_client)(ctx, workspace, client, arrived) };
+    let status = lib.check("workspace_restore_client", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
 fn read_gnoblin_std_stats(record: &GnoblinStdStats) -> Dyn {
     // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
     Dyn::Map(vec![
@@ -3038,6 +3188,10 @@ fn read_gnoblin_std_client_state(record: &GnoblinStdClientState) -> Dyn {
         ("floating".to_owned(), read_gnoblin_std_rect(&record.floating)),
         ("snap_zone".to_owned(), Dyn::Uint(u64::from(record.snap_zone))),
         ("snap_floating".to_owned(), read_gnoblin_std_rect(&record.snap_floating)),
+        ("fitted_top".to_owned(), Dyn::Float(record.fitted_top)),
+        ("fitted_right".to_owned(), Dyn::Float(record.fitted_right)),
+        ("fitted_bottom".to_owned(), Dyn::Float(record.fitted_bottom)),
+        ("fitted_left".to_owned(), Dyn::Float(record.fitted_left)),
     ])
 }
 
@@ -3212,6 +3366,25 @@ fn read_gnoblin_std_drag_outcome(record: &GnoblinStdDragOutcome) -> Dyn {
         ("reserved2".to_owned(), Dyn::Uint(u64::from(record.reserved2))),
         ("ratio".to_owned(), Dyn::Float(record.ratio)),
         ("cross_ratio".to_owned(), Dyn::Float(record.cross_ratio)),
+    ])
+}
+
+fn read_gnoblin_std_output_info(record: &GnoblinStdOutputInfo) -> Dyn {
+    // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
+    Dyn::Map(vec![
+        ("flags".to_owned(), Dyn::Uint(u64::from(record.flags))),
+        ("workspace".to_owned(), Dyn::Uint(record.workspace)),
+        ("rect".to_owned(), read_gnoblin_std_rect(&record.rect)),
+        ("area".to_owned(), read_gnoblin_std_rect(&record.area)),
+    ])
+}
+
+fn read_gnoblin_std_areas(record: &GnoblinStdAreas) -> Dyn {
+    // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
+    Dyn::Map(vec![
+        ("flags".to_owned(), Dyn::Uint(u64::from(record.flags))),
+        ("output".to_owned(), read_gnoblin_std_rect(&record.output)),
+        ("area".to_owned(), read_gnoblin_std_rect(&record.area)),
     ])
 }
 
@@ -3530,6 +3703,18 @@ fn write_gnoblin_std_client_state(
     if let Some(item) = reader.take("snap_floating") {
         record.snap_floating = write_gnoblin_std_rect(arena, item, &reader.path("snap_floating"))?;
     }
+    if let Some(item) = reader.take("fitted_top") {
+        record.fitted_top = item.to_f64(&reader.path("fitted_top"))?;
+    }
+    if let Some(item) = reader.take("fitted_right") {
+        record.fitted_right = item.to_f64(&reader.path("fitted_right"))?;
+    }
+    if let Some(item) = reader.take("fitted_bottom") {
+        record.fitted_bottom = item.to_f64(&reader.path("fitted_bottom"))?;
+    }
+    if let Some(item) = reader.take("fitted_left") {
+        record.fitted_left = item.to_f64(&reader.path("fitted_left"))?;
+    }
     reader.finish()?;
     Ok(record)
 }
@@ -3830,6 +4015,30 @@ fn write_gnoblin_std_drag_tile(arena: &mut Arena, value: &Dyn, what: &str) -> Re
     }
     if let Some(item) = reader.take("rect") {
         record.rect = write_gnoblin_std_rect(arena, item, &reader.path("rect"))?;
+    }
+    reader.finish()?;
+    Ok(record)
+}
+
+#[allow(unused_mut)]
+fn write_gnoblin_std_span(arena: &mut Arena, value: &Dyn, what: &str) -> Result<GnoblinStdSpan, StdError> {
+    let mut reader = MapReader::new(value, what)?;
+    // SAFETY: an all-zero `GnoblinStdSpan` is valid: numbers, null pointers and absent functions.
+    let mut record: GnoblinStdSpan = unsafe { zeroed() };
+    record.size = size_of::<GnoblinStdSpan>() as u32;
+    if let Some(item) = reader.take("lead") {
+        record.lead = item.to_u64(&reader.path("lead"))?;
+    }
+    if let Some(item) = reader.take("members") {
+        let list = item.to_list(&reader.path("members"))?;
+        let mut values = Vec::with_capacity(list.len());
+        for entry in list {
+            values.push(entry.to_u64(&reader.path("members"))?);
+        }
+        let kept = arena.keep(values);
+        // SAFETY: `kept` points at the vector the arena owns for the call.
+        record.members = unsafe { (*kept).as_ptr() };
+        record.n_members = unsafe { (*kept).len() };
     }
     reader.finish()?;
     Ok(record)

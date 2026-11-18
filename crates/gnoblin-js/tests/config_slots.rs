@@ -223,7 +223,7 @@ impl SlotLink for FakeSlots {
 // --- rigs ------------------------------------------------------------------------------------------------------
 
 struct Rig {
-    shell: JsShell,
+    shell: common::native::CoreShell,
     link: Script,
     doc: FakeDoc,
     slots: FakeSlots,
@@ -267,7 +267,7 @@ fn rig_with(init: &str, document: Option<&str>, tune: impl FnOnce(&mut JsShellCo
     let slots = FakeSlots::default();
     let mut config = shell_config(&root);
     tune(&mut config);
-    let mut shell = JsShell::new(Box::new(link.0.clone()), config).expect("the shell boots");
+    let mut shell = common::native::CoreShell::new(&link.0, config);
     shell.set_config_link(Box::new(doc.clone()));
     shell.set_slot_link(Box::new(slots.clone()));
     let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");

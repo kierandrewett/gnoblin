@@ -836,14 +836,21 @@ fn a_reload_puts_each_output_back_on_the_workspace_it_showed() {
     let init =
         format!("{IMPORTS}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id }}));\n");
     std::fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
-    let mut second =
-        gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), honest_config(&root)).expect("the shell boots");
+    // The core's registry is one per process: the first generation is gone before the second starts.
+    let comp = rig.comp.clone();
+    drop(rig);
+    let (mut second, core) = common::native::shell_over_core(
+        &comp,
+        std::sync::Arc::new(gnoblin_shell_host::supervisor::ManualClock::default()),
+        honest_config(&root),
+    );
     second
         .load_entry(std::path::Path::new("shell.ts"))
         .expect("shell.ts loads");
     second.reconcile(&snapshot).expect("reconciles");
     for _ in 0..4 {
         second.frame().expect("a frame");
+        core.dispatch(&second);
     }
     let shown = second
         .eval("gnoblin.outputs.map((o) => `${o.name}=${o.workspace?.id}`).join(' ')")
@@ -1092,8 +1099,11 @@ fn a_profile_that_does_not_check_fails_the_config_naming_the_profile() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
     std::fs::write(root.join("shell.ts"), format!("{IMPORTS}{init}")).expect("shell.ts is written");
-    let mut shell =
-        gnoblin_js::JsShell::new(Box::new(FakeCompositor::new()), honest_config(&root)).expect("the shell boots");
+    let (mut shell, _core) = common::native::shell_over_core(
+        &FakeCompositor::new(),
+        std::sync::Arc::new(gnoblin_shell_host::supervisor::ManualClock::default()),
+        honest_config(&root),
+    );
     let error = shell
         .load_entry(std::path::Path::new("shell.ts"))
         .expect_err("the config does not check");

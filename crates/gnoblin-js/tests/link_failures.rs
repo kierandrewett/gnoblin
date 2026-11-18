@@ -232,10 +232,12 @@ fn a_reply_that_comes_late_loses_no_write_and_keeps_their_order() {
 // ---- a link that dies ----------------------------------------------------------------------------------------------
 
 /// A shell of the same config over the same compositor, as the guardian's restart makes one.
-fn restart(rig: &Rig) -> JsShell {
+fn restart(rig: &mut Rig) -> common::native::CoreShell {
+    // The core's registry is one per process: the generation that ended is gone before the next starts.
+    drop(rig.core.take());
     let root = std::fs::canonicalize(rig._dir.path()).expect("the temp dir exists");
     let (config, _clock) = timed_config(&root);
-    let mut shell = JsShell::new(Box::new(rig.comp.clone()), config).expect("the shell boots on the new link");
+    let mut shell = common::native::CoreShell::new(&rig.comp, config);
     shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     shell
 }
@@ -277,7 +279,7 @@ fn a_link_that_dies_mid_transaction_ends_the_shell_with_a_link_error_and_the_nex
         rig.comp.claimed().is_empty(),
         "the compositor released the dead shell's claims"
     );
-    let mut second = restart(&rig);
+    let mut second = restart(&mut rig);
     for _ in 0..6 {
         second.frame().expect("the second shell's frame");
     }

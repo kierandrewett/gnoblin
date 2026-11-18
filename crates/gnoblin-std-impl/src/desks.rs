@@ -379,11 +379,38 @@ impl State {
     }
 
     /// An output appeared (or became one that can show a workspace).
-    pub(crate) fn output_added(&mut self, output: NodeId) {
+    pub(crate) fn output_added(&mut self, output: NodeId) -> bool {
+        let mut returned = false;
         if self.desk_capable(output) && self.desk_of_output(output).is_none() {
-            self.give_desk(output);
+            returned = self.give_desk(output);
         }
         self.apply_policies();
+        returned
+    }
+
+    /// An output that came back to a parked desk was announced: restore the windows that waited hidden by focusing one, if a seat
+    /// exists and none has the keyboard.
+    pub(crate) fn focus_returned(&mut self, output: NodeId) {
+        let Some(seat) = nodes::seat(&self.g) else {
+            return;
+        };
+        if nodes::focused_window(&self.g, &self.clients).is_some() {
+            return;
+        }
+        let first = self
+            .desk_of_output(output)
+            .and_then(|desk| self.desk(desk))
+            .and_then(|desk| desk.shown)
+            .and_then(|workspace| self.ws.get(&workspace))
+            .and_then(|ws| {
+                ws.clients
+                    .iter()
+                    .copied()
+                    .find(|client| nodes::alive(&self.g, *client) && !nodes::flag(&self.g, *client, "minimised"))
+            });
+        if let Some(first) = first {
+            let _ = seat.set("focus", gnoblin_core::NodeId(first));
+        }
     }
 
     /// An output is gone, or can no longer show a workspace.

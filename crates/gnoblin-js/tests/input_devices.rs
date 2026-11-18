@@ -61,7 +61,7 @@ impl JsConfigLink for Doc {
 }
 
 struct World {
-    shell: JsShell,
+    shell: common::native::CoreShell,
     comp: FakeCompositor,
     doc: Doc,
     _dir: tempfile::TempDir,
@@ -121,7 +121,7 @@ fn boot(body: &str, xr: bool) -> (World, Vec<String>) {
     let imports = "import * as libCore from \"gnoblin-core\"; import * as libStd from \"gnoblin-std\"; const lib = { ...libCore, ...libStd };\nconst { gnoblin, ...rest } = lib;\nconst g = globalThis as any;\ng.g = g;\nObject.assign(g, rest);\n";
     fs::write(root.join("shell.ts"), format!("{imports}{body}\n")).expect("shell.ts is written");
     let (config, _clock) = timed_config(&root);
-    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
+    let mut shell = common::native::CoreShell::new(&comp, config);
     let doc = Doc::default();
     shell.set_config_link(Box::new(doc.clone()));
     let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
@@ -401,6 +401,8 @@ fn extensions_iterate_with_an_id_and_a_status_and_xr_is_null_until_the_program_h
     let mut world = world("g.seen = [...gnoblin.extensions].map((e) => `${e.id}:${e.status}`).join();\n");
     assert_eq!(world.eval("seen"), "xr:unloaded");
     assert_eq!(world.eval("String(gnoblin.extensions.xr)"), "null");
+    // The core's registry is one per process: the first world is gone before the second starts.
+    drop(world);
 
     let (mut with_xr, diagnostics) = boot("", true);
     assert!(diagnostics.is_empty(), "{diagnostics:?}");

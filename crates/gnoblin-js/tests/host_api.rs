@@ -109,7 +109,7 @@ fn rig(init_body: &str) -> (Rig, FakeSession) {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), format!("{PRELUDE}{init_body}\n")).expect("shell.ts is written");
     let (config, clock) = timed_config(&root);
-    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
+    let (mut shell, core) = common::native::shell_over_core(&comp, std::sync::Arc::clone(&config.clock), config);
     let session = FakeSession::default();
     shell.set_session_link(Box::new(session.clone()));
     let load_diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
@@ -119,7 +119,7 @@ fn rig(init_body: &str) -> (Rig, FakeSession) {
         comp,
         load_diagnostics,
         clock,
-        core: None,
+        core: Some(core),
         _dir: dir,
     };
     rig.settle();
@@ -326,6 +326,8 @@ fn reload_config_begins_the_reload_verb_and_is_refused_while_the_configuration_l
         "rev 4 a: restart required|config_rejected shell.ts:3:1: unexpected token"
     );
 
+    // The core's registry is one per process: the first rig is gone before the second starts.
+    drop(rig);
     let mut loading = rig_setup(
         PRELUDE,
         "try { gnoblin.runtime.reloadConfig(); g.log.push('no'); } catch (e) { g.log.push(e.name + ': ' + e.message); }",

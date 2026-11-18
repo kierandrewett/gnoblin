@@ -224,7 +224,9 @@ impl State {
         let root = self.roots[1];
         self.notify_one(abi::STD_EVENT_ADDED, id, root);
         self.recompute(abi::STD_COLLECTION_OUTPUTS, id);
-        self.output_added(id);
+        if self.output_added(id) {
+            self.focus_returned(id);
+        }
     }
 
     /// An output left the tree.
@@ -318,7 +320,7 @@ pub(crate) fn open_model(ctx: GnoblinCtx) -> Res<Rc<Std>> {
         }
     }
     for output in st.outputs.clone() {
-        st.output_added(output);
+        let _ = st.output_added(output);
     }
     let std = Rc::new(Std::new(st));
     state::insert(ctx, Rc::clone(&std));

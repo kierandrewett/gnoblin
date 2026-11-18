@@ -3,7 +3,7 @@
 // catalog 0x8d9a5c8fd0c2c922, core-abi 1.0, std-abi 1.0
 
 import type { Init } from "gnoblin-std/generated/native";
-import { CollectionKind, EventKind, TermKind, LayoutKind, PlaceKind, PlacementFlags, QueryFlags, OutputsKind, WorkspacesKind, AxisKind, ClientFlags, SnapKind, EasingKind, PropKind, TransitionKind, ControlKind, StyleKind, EntryKind, SceneKind, BuiltinKind, ValueKind, BindingKind, DragKind, ConstraintKind, GestureKind, WayKind, SideFlags, OutcomeFlags } from "gnoblin-std/generated/constants";
+import { CollectionKind, EventKind, TermKind, LayoutKind, PlaceKind, PlacementFlags, QueryFlags, OutputsKind, WorkspacesKind, AxisKind, ClientFlags, OutputFlags, AreasFlags, SnapKind, EasingKind, PropKind, TransitionKind, ControlKind, StyleKind, EntryKind, SceneKind, BuiltinKind, ValueKind, BindingKind, DragKind, ConstraintKind, GestureKind, WayKind, SideFlags, OutcomeFlags } from "gnoblin-std/generated/constants";
 
 // A rectangle in the compositor's logical pixels.
 export interface Rect {
@@ -104,6 +104,10 @@ export interface ClientState {
   floating: Rect;
   snapZone: number;
   snapFloating: Rect;
+  fittedTop: number;
+  fittedRight: number;
+  fittedBottom: number;
+  fittedLeft: number;
 }
 
 export function clientStateToNative(value: Init<ClientState>): Record<string, unknown> {
@@ -120,6 +124,10 @@ export function clientStateToNative(value: Init<ClientState>): Record<string, un
     floating: value.floating === undefined ? undefined : rectToNative(value.floating),
     snap_zone: value.snapZone,
     snap_floating: value.snapFloating === undefined ? undefined : rectToNative(value.snapFloating),
+    fitted_top: value.fittedTop,
+    fitted_right: value.fittedRight,
+    fitted_bottom: value.fittedBottom,
+    fitted_left: value.fittedLeft,
   };
 }
 
@@ -137,6 +145,79 @@ export function clientStateFromNative(data: any): ClientState {
     floating: rectFromNative(data.floating),
     snapZone: data.snap_zone,
     snapFloating: rectFromNative(data.snap_floating),
+    fittedTop: data.fitted_top,
+    fittedRight: data.fitted_right,
+    fittedBottom: data.fitted_bottom,
+    fittedLeft: data.fitted_left,
+  };
+}
+
+// What the desk knows about one output: filled by `output_info`.
+export interface OutputInfo {
+  flags: number;
+  workspace: number;
+  rect: Rect;
+  area: Rect;
+}
+
+export function outputInfoToNative(value: Init<OutputInfo>): Record<string, unknown> {
+  return {
+    flags: value.flags,
+    workspace: value.workspace,
+    rect: value.rect === undefined ? undefined : rectToNative(value.rect),
+    area: value.area === undefined ? undefined : rectToNative(value.area),
+  };
+}
+
+export function outputInfoFromNative(data: any): OutputInfo {
+  return {
+    flags: data.flags,
+    workspace: data.workspace,
+    rect: rectFromNative(data.rect),
+    area: rectFromNative(data.area),
+  };
+}
+
+// The outputs a workspace is stretched over: the argument of `output_span`. A struct that starts with `size` may grow.
+export interface Span {
+  lead: number;
+  members: number[];
+}
+
+export function spanToNative(value: Init<Span>): Record<string, unknown> {
+  return {
+    lead: value.lead,
+    members: value.members === undefined ? undefined : [...value.members],
+  };
+}
+
+export function spanFromNative(data: any): Span {
+  return {
+    lead: data.lead,
+    members: Array.from(data.members as number[]),
+  };
+}
+
+// The output a client is on and its work area: filled by `client_areas`.
+export interface Areas {
+  flags: number;
+  output: Rect;
+  area: Rect;
+}
+
+export function areasToNative(value: Init<Areas>): Record<string, unknown> {
+  return {
+    flags: value.flags,
+    output: value.output === undefined ? undefined : rectToNative(value.output),
+    area: value.area === undefined ? undefined : rectToNative(value.area),
+  };
+}
+
+export function areasFromNative(data: any): Areas {
+  return {
+    flags: data.flags,
+    output: rectFromNative(data.output),
+    area: rectFromNative(data.area),
   };
 }
 
