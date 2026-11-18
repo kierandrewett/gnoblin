@@ -122,6 +122,7 @@ members = [
     "examples/02-std-prelude",
     "examples/06-rust-layout",
     "examples/08-no-workspaces",
+    "examples/09-native-linked",
     "examples/10-hot-reload",
     "xtask",
 ]

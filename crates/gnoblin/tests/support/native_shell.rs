@@ -110,6 +110,73 @@ fn build_shells() -> Result<Shells, String> {
     })
 }
 
+// ---- the examples that link std ----------------------------------------------------------------------------------------
+
+/// The native examples that use `gnoblin-std`: each needs `libgnoblin-std.so.1` where the loader finds it, so a session runs
+/// with the staged libraries' directory on `LD_LIBRARY_PATH` (see [`staged_library_path`]).
+pub struct StdShells {
+    /// Example 2: one floating workspace per output, chords that walk the workspaces.
+    pub prelude: PathBuf,
+    /// Example 6: a `Layout` written in Rust, equal columns.
+    pub layout: PathBuf,
+    /// Example 9: logs the libraries its process maps and the ABIs it was built for and finds installed.
+    pub linked: PathBuf,
+}
+
+/// Builds the std examples into the shells' target directory. Built once per test binary.
+pub fn std_shells() -> &'static StdShells {
+    static SHELLS: LazyLock<Result<StdShells, String>> = LazyLock::new(build_std_shells);
+    match &*SHELLS {
+        Ok(shells) => shells,
+        Err(message) => panic!("cannot build the std examples: {message}"),
+    }
+}
+
+fn build_std_shells() -> Result<StdShells, String> {
+    let root = repo_root();
+    let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("native-shells");
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = Command::new(cargo)
+        .current_dir(&root)
+        .args(["build", "--locked", "--manifest-path"])
+        .arg(root.join("Cargo.toml"))
+        .args([
+            "-p",
+            "gnoblin-example-std-prelude",
+            "-p",
+            "gnoblin-example-rust-layout",
+            "-p",
+            "gnoblin-example-native-linked",
+        ])
+        .env("CARGO_TARGET_DIR", &target)
+        .output()
+        .map_err(|error| format!("cannot run cargo: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "cargo build of the std examples failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let debug = target.join("debug");
+    Ok(StdShells {
+        prelude: debug.join("libstd_prelude.so"),
+        layout: debug.join("librust_layout.so"),
+        linked: debug.join("libnative_linked.so"),
+    })
+}
+
+/// The directory of the staged libraries (`cargo xtask stage` puts `libgnoblin-core.so.1` and `libgnoblin-std.so.1` beside the
+/// binary): what a std shell needs on `LD_LIBRARY_PATH`, because a shell records no run path.
+pub fn staged_library_path() -> String {
+    let directory = Path::new(BIN).parent().expect("the binary's directory");
+    assert!(
+        directory.join("libgnoblin-std.so.1").exists(),
+        "{} has no libgnoblin-std.so.1: run `cargo xtask stage` before the suites that run a std shell",
+        directory.display()
+    );
+    directory.display().to_string()
+}
+
 // ---- example 10, built as a developer builds it -----------------------------------------------------------------------
 
 /// Example 10 (`examples/10-hot-reload`) as the libraries a reload test swaps in. One source, edited and rebuilt in a project of
@@ -899,6 +966,7 @@ pub const KEY_T: u32 = 20;
 pub const KEY_X: u32 = 45;
 pub const KEY_RIGHT: u32 = 106;
 pub const KEY_DOWN: u32 = 108;
+pub const KEY_TAB: u32 = 15;
 
 /// The `Mod4` bit of an xkb modifier mask, which `pc+us` gives the Super keys.
 const MOD_SUPER: u32 = 1 << 6;

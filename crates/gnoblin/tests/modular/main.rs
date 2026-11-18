@@ -17,9 +17,12 @@ mod support;
 
 mod document;
 mod js_esm;
+mod native_std;
 mod no_std;
+mod no_workspaces;
 mod script_binding;
 mod script_reload;
+mod single_core;
 mod std_layouts;
 mod ts_types;
 

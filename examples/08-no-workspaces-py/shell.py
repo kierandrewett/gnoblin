@@ -18,9 +18,14 @@ from tiles import tiles
 
 
 def work_area():
-    """The primary screen's rectangle: the first screen of the tree, or a default when the compositor has none yet."""
+    """The primary screen's rectangle: the first screen of the tree, or a default when the compositor has none yet.
+
+    The compositor publishes a screen's place and size as the node's own ``x``, ``y``, ``width`` and ``height``; a screen that leaves
+    them at zero is read by its ``screen_*`` properties instead (the same rule as the Rust example)."""
     for node in gnoblin.root.children():
         if isinstance(node, Screen):
+            if node.width > 0 and node.height > 0:
+                return (node.x, node.y, node.width, node.height)
             return (node.screen_x, node.screen_y, node.screen_width, node.screen_height)
     return (0.0, 0.0, 1920.0, 1080.0)
 

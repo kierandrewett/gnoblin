@@ -1,0 +1,22 @@
+[package]
+name = "gnoblin-example-native-linked"
+description = "Example 9: a native shell dynamically linked to the installed libraries. It carries no copy of the core or of std, and on start it says which libraries its process maps and which ABI each one has."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "native_linked"
+crate-type = ["cdylib"]
+
+# The shell depends on the std SDK and the core SDK and nothing else. Both are declarations the dynamic linker resolves against the
+# installed `libgnoblin-std.so.1` and `libgnoblin-core.so.1`: `readelf -d` on the built file lists those two as NEEDED and no other
+# library of ours, and no gnoblin symbol is defined in it but the entry point.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../crates/gnoblin-std" }
+
+[lints]
+workspace = true

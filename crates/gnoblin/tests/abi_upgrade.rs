@@ -21,7 +21,6 @@
 //! Needs `cargo xtask stage` first (the baseline libraries are the staged ones), as the other session suites do.
 
 mod support;
-use std::collections::BTreeSet;
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::os::unix::process::ExitStatusExt as _;
@@ -30,6 +29,7 @@ use std::process::Command;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
+use support::elf::*;
 use support::native_shell::*;
 use support::{Mapper, scene};
 
@@ -104,138 +104,6 @@ fn golden() -> &'static Golden {
         }
     });
     &GOLDEN
-}
-
-// ---- reading binaries --------------------------------------------------------------------------------------------------------
-
-/// Runs a binutils (or coreutils) tool on `path` and returns its standard output. `LD_LIBRARY_PATH` is cleared so `ldd` shows what
-/// the run path alone resolves.
-fn tool(name: &str, args: &[&str], path: &Path) -> String {
-    tool_with(name, args, path, &[])
-}
-
-fn tool_with(name: &str, args: &[&str], path: &Path, env: &[(&str, &Path)]) -> String {
-    let mut command = Command::new(name);
-    command.args(args).arg(path).env_remove("LD_LIBRARY_PATH");
-    for (key, value) in env {
-        command.env(key, value);
-    }
-    let output = command
-        .output()
-        .unwrap_or_else(|error| panic!("`{name}` is needed for these tests (binutils): {error}"));
-    assert!(
-        output.status.success(),
-        "{name} failed on {}: {}",
-        path.display(),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
-/// What `readelf -d` says of a file.
-#[derive(Debug, Default)]
-struct Dynamic {
-    needed: Vec<String>,
-    soname: Option<String>,
-    runpath: Option<String>,
-}
-
-fn bracketed(line: &str) -> Option<String> {
-    let start = line.find('[')?;
-    let end = line.rfind(']')?;
-    Some(line[start + 1..end].to_owned())
-}
-
-fn dynamic(path: &Path) -> Dynamic {
-    let mut dynamic = Dynamic::default();
-    for line in tool("readelf", &["-d", "-W"], path).lines() {
-        if line.contains("(NEEDED)") {
-            dynamic.needed.extend(bracketed(line));
-        } else if line.contains("(SONAME)") {
-            dynamic.soname = bracketed(line);
-        } else if line.contains("(RUNPATH)") {
-            dynamic.runpath = bracketed(line);
-        }
-    }
-    dynamic
-}
-
-fn symbols(path: &Path, which: &str) -> BTreeSet<String> {
-    tool("nm", &["-D", which], path)
-        .lines()
-        .filter_map(|line| line.split_whitespace().last().map(str::to_owned))
-        .collect()
-}
-
-fn is_core(name: &str) -> bool {
-    name == "libgnoblin-core.so.1"
-}
-
-fn is_std(name: &str) -> bool {
-    name == "libgnoblin-std.so.1"
-}
-
-/// The dependency facts of a shell, core-only or std (`design/modular-framework.md` 11): it links the installed core, and std when it
-/// uses std, and no other library of ours; it defines nothing but `gnoshell_entry_v1` (no copy of the compositor, the core or std);
-/// every `gnoblin_` symbol it needs is one the core (or std) exports.
-#[track_caller]
-fn assert_shell_dependencies(shell: &Path, uses_std: bool) {
-    let facts = dynamic(shell);
-    assert_eq!(
-        facts.needed.iter().filter(|name| is_core(name)).count(),
-        1,
-        "{} names the core exactly once: {facts:?}",
-        shell.display()
-    );
-    assert_eq!(
-        facts.needed.iter().filter(|name| is_std(name)).count(),
-        usize::from(uses_std),
-        "{} names std exactly when it uses std: {facts:?}",
-        shell.display()
-    );
-    let ours: Vec<&String> = facts.needed.iter().filter(|name| name.contains("gnoblin")).collect();
-    assert_eq!(
-        ours.len(),
-        1 + usize::from(uses_std),
-        "no library of ours but the core (and std): {facts:?}"
-    );
-    assert_eq!(
-        facts.runpath, None,
-        "a shell carries no run path: the prefix finds its libraries"
-    );
-    assert_eq!(
-        symbols(shell, "--defined-only"),
-        BTreeSet::from(["gnoshell_entry_v1".to_owned()]),
-        "{} defines only the shell entry",
-        shell.display()
-    );
-    let core_exports: BTreeSet<String> = fs::read_to_string(root().join("crates/gnoblin-core-abi/exports.txt"))
-        .expect("the core's export list")
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_owned)
-        .collect();
-    for name in symbols(shell, "--undefined-only")
-        .into_iter()
-        .filter(|name| name.starts_with("gnoblin_"))
-    {
-        assert!(
-            core_exports.contains(&name) || (uses_std && name.starts_with("gnoblin_std_")),
-            "{} needs `{name}`, which neither the core nor std exports",
-            shell.display()
-        );
-    }
-}
-
-/// Where `ldd` says `name` resolves, with the path made canonical (`$ORIGIN/../lib` is printed as written).
-fn resolved(ldd: &str, name: &str) -> Option<PathBuf> {
-    ldd.lines().find_map(|line| {
-        let (library, rest) = line.trim().split_once(" => ")?;
-        (library == name)
-            .then(|| rest.rsplit_once(" (").map_or(rest, |(path, _)| path))
-            .and_then(|path| fs::canonicalize(path).ok())
-    })
 }
 
 // ---- the libraries -------------------------------------------------------------------------------------------------------------

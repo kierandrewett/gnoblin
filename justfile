@@ -97,12 +97,18 @@ abi-check:
 golden-check:
     tests/modular/golden/regenerate.sh --check
 
-# The modular framework's real-session suites (design/modular-framework.md 12, M8.2 to M8.4): stage the core and std libraries, then
-# run the shipped binary with native shells. `abi_upgrade` is example 12 (the golden shells on the next minor, refused on another
-# major) and the dependency validation (`readelf -d`, `nm -D`, `ldd`, `/proc/PID/maps`). Add a suite here when it joins the 18.
+# The modular framework's suites (design/modular-framework.md 12 and 34, M8.1 to M8.4). Stage the core and std libraries, then run the shipped
+# binary with shells of every language on a headless backend: the `modular` target (examples 2, 3, 4, 5, 6, 7, 9, 11 and 17 for scripts,
+# the duplicate-core check, the document the script role commits), `native_shell*` (examples 1 and 8, the failures, the verbs),
+# `reload_session` and `reload_scripts` (examples 10, 11 and 18 and the bound on retired libraries), `startup` (examples 13 to 16, and
+# `--shell NAME` for example 14), `failed_start`, `std_providers` (example 17), and `abi_upgrade` (example 12: the golden shells on the
+# next minor, refused on another major, and the dependency validation with `readelf -d`, `nm -D`, `ldd` and `/proc/PID/maps`). Then the
+# crates whose tests drive the real core and std libraries with a fake compositor: lifetimes, stale callbacks, generations, the C ABI.
+# Add a suite here when it joins the 18.
 modular:
     cargo xtask stage
-    cargo test --locked -p gnoblin --test abi_upgrade --test native_shell --test native_shell_failures --test std_providers
+    cargo test --locked -p gnoblin --test modular --test abi_upgrade --test native_shell --test native_shell_failures --test native_shell_verbs --test native_shell_spelling --test std_providers --test reload_session --test reload_scripts --test startup --test failed_start --test roles
+    cargo test --locked -p gnoblin-core-impl -p gnoblin-shell-host -p gnoblin-std-impl
 
 # Fail on a -sys crate whose system package the CI install list lacks (scripts/ci-install-system-libraries.sh).
 native-libs:

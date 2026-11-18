@@ -563,3 +563,84 @@ fn a_session_with_no_in_process_shell_says_there_is_nothing_to_reload() {
     assert_eq!(code, 1);
     assert!(err.contains("runs no shell in its own process"), "{err}");
 }
+
+/// Whether a mapped path is one of the unique copies the host makes of a shell library (`.../gen-N/...`).
+fn is_shell_copy(path: &str) -> bool {
+    path.contains("/gen-")
+}
+
+#[test]
+fn the_retired_libraries_are_bounded_at_32_and_the_reload_past_the_limit_is_refused_while_the_shell_serves_on() {
+    // D16: a retired native generation is never unloaded, so every reload keeps one library mapped for the life of the process. The
+    // bound is 32 libraries, the ones of failed replacements included (a library that was mapped and refused may have left a thread
+    // or a destructor behind, as a retired one may). Past it a reload is refused with a text that says what to do, and nothing else
+    // changes: the running generation serves, the client stays connected.
+    let hot = hot();
+    let mut run = running(&[]);
+    for generation in 2..=31_u32 {
+        let (code, out, err) = ctl(&run.session, &["shell", "reload"]);
+        assert_eq!(
+            (code, out.as_str()),
+            (0, format!("reloaded: generation {generation}\n").as_str()),
+            "{err}\n{}",
+            run.session.log_text()
+        );
+    }
+    // 30 reloads retired 30 generations. Two replacements whose `init` fails and panics are refused, and their libraries stay mapped: 32.
+    for (replacement, why) in [(&hot.bad, "init failed"), (&hot.panics, "E_PANIC")] {
+        swap_in(replacement, &run.live);
+        let (code, out, err) = ctl(&run.session, &["shell", "reload"]);
+        assert_eq!(code, 1, "{out}\n{err}");
+        assert!(
+            err.contains(why) && err.contains("still running generation 31"),
+            "{err}"
+        );
+    }
+    let (code, status, _) = ctl(&run.session, &["shell", "status"]);
+    assert_eq!(code, 0);
+    assert!(
+        status.contains("32 of 32 retired shell libraries retained"),
+        "the status counts the libraries of the failed replacements too: {status}"
+    );
+
+    // The 33rd library would be one past the bound: a good replacement is refused, before anything is copied or mapped.
+    swap_in(&hot.v2, &run.live);
+    let (code, out, err) = ctl(&run.session, &["shell", "reload"]);
+    assert_eq!(code, 1, "{out}\n{err}");
+    assert!(
+        err.contains("32 retired shell libraries are still mapped (the limit is 32)")
+            && err.contains("restart gnoblin"),
+        "the refusal says what is mapped, the limit and what to do: {err}"
+    );
+    assert!(
+        err.contains("still running generation 31"),
+        "and which generation serves: {err}"
+    );
+    let copies = run
+        .session
+        .mapped_files()
+        .iter()
+        .filter(|path| is_shell_copy(path))
+        .count();
+    assert_eq!(
+        copies,
+        33,
+        "30 retired generations, 2 refused replacements and the running one stay mapped, and the refused reload mapped nothing: {:#?}",
+        run.session.mapped_files()
+    );
+
+    // The shell that serves is generation 31, by its own step: a window opened now is placed by it, the client never noticed, and the
+    // session runs on. A watcher or a chord asking for a reload meets the same refusal and the same running generation.
+    run.client.roundtrip();
+    run.client.map_window("third", "Third");
+    wait_for_window(
+        &mut run.session,
+        "generation 31 places the third window by its 40 pixel step",
+        "third",
+        |window| at(window, 2, 40.0),
+    );
+    let (code, status, _) = ctl(&run.session, &["shell", "status"]);
+    assert_eq!(code, 0);
+    assert!(status.contains("generation 31 is running"), "{status}");
+    assert!(run.session.exited().is_none(), "{}", run.session.log_text());
+}
