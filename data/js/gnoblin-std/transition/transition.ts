@@ -1,21 +1,16 @@
-// The handle returned by `gnoblin.requestTransition`: controls its tracks and reports how they ended.
+// The handle returned by `gnoblin.requestTransition`: controls its tracks and reports how they ended. The tracks, their owners and the
+// end are the library's (`gnoblin-std/generated`'s `Transition`); this class is the script's spelling of one.
 
+import { ControlKind, TransitionKind } from "gnoblin-std/generated/constants";
+import { Transition as Native } from "gnoblin-std/generated/classes";
+import type { TransitionInfo } from "gnoblin-std/generated/records";
+import { stdFailure } from "gnoblin-std/native_error";
 import type { TransitionHost, TransitionResult, TransitionSubscription } from "gnoblin-std/transition/types";
 
-let counter = 0;
-
-/**
- * The controls the transition engine uses to operate the compositor tracks.
- */
-export interface TransitionControl {
-    /** Sets the tracks to a fraction of their duration, from 0 to 1. */
-    seek(progress: number): void;
-    /** Holds or resumes the tracks. */
-    pause(paused: boolean): void;
-    /** Sets whether the tracks run towards the start or target. */
-    reverse(reverse: boolean): void;
-    /** Ends every owned track at its target value. */
-    cancel(): void;
+/** The people who ask to be told when a transition ends. */
+interface Waiter {
+    run: (result: TransitionResult) => void;
+    live: boolean;
 }
 
 /**
@@ -34,23 +29,35 @@ export class Transition {
     readonly id: number;
     /** The duration in milliseconds, or 0 when reduced motion is active. */
     readonly duration: number;
+    #native: Native;
     #host: TransitionHost;
     #state: "running" | "finished" | "cancelled" = "running";
-    #callbacks: { run: (result: TransitionResult) => void; live: boolean }[] = [];
+    #waiters: Waiter[] = [];
     #promise: Promise<TransitionResult> | null = null;
     #resolve: ((result: TransitionResult) => void) | null = null;
-    #control: TransitionControl | null;
-    #progress = 0;
-    #paused: boolean;
-    #reversed = false;
+    /** What the transition was when it ended: the library forgets an ended one after a while. */
+    #last: TransitionInfo;
 
     /** Only the engine makes transitions: a script receives one from `requestTransition`. */
-    constructor(host: TransitionHost, duration: number, autoplay: boolean, control: TransitionControl | null) {
-        this.id = counter += 1;
-        this.duration = duration;
+    constructor(host: TransitionHost, native: Native) {
         this.#host = host;
-        this.#paused = !autoplay;
-        this.#control = control;
+        this.#native = native;
+        this.#last = native.info();
+        this.id = this.#last.id;
+        this.duration = this.#last.durationMs;
+        host.staging.track(1);
+        // The library says when it ends: its tracks all ended, a newer write took the last of them, or it was cancelled.
+        native.finished((event) => {
+            this.settle(event.flag !== 0);
+        });
+    }
+
+    /** What the library says the transition is, while it still does. */
+    #info(): TransitionInfo {
+        if (this.#state === "running") {
+            this.#last = this.#native.info();
+        }
+        return this.#last;
     }
 
     /** True from the call until the transition finishes or is cancelled. */
@@ -65,12 +72,12 @@ export class Transition {
 
     /** Whether the tracks are held: `autoplay: false` until `play()` or `reverse()`, and after `pause()`. */
     get paused(): boolean {
-        return this.#paused;
+        return this.#info().paused !== 0;
     }
 
     /** Whether the tracks run back to their start. */
     get reversed(): boolean {
-        return this.#reversed;
+        return this.#info().reversed !== 0;
     }
 
     /**
@@ -79,7 +86,7 @@ export class Transition {
      * last written, 0 before that: the compositor does not report a running transition's place.
      */
     get progress(): number {
-        return this.#progress;
+        return this.#info().progress;
     }
 
     /** Sets the track position from 0 (start) to 1 (target), without playing or pausing. */
@@ -87,34 +94,17 @@ export class Transition {
         if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
             throw new RangeError(`Transition.progress: expects a number from 0 to 1, not ${String(value)}`);
         }
-        this.#host.staging.forbid("Transition.progress");
-        if (this.#state !== "running") {
-            return;
-        }
-        this.#progress = value;
-        this.#control?.seek(value);
+        this.#control(ControlKind.SEEK, value, "Transition.progress");
     }
 
     /** Lets the tracks run on towards the target, from where they are. */
     play(): void {
-        this.#host.staging.forbid("Transition.play()");
-        if (this.#state !== "running") {
-            return;
-        }
-        this.#paused = false;
-        this.#reversed = false;
-        this.#control?.reverse(false);
-        this.#control?.pause(false);
+        this.#control(ControlKind.PLAY, 0, "Transition.play()");
     }
 
     /** Holds the tracks where they are. */
     pause(): void {
-        this.#host.staging.forbid("Transition.pause()");
-        if (this.#state !== "running") {
-            return;
-        }
-        this.#paused = true;
-        this.#control?.pause(true);
+        this.#control(ControlKind.PAUSE, 0, "Transition.pause()");
     }
 
     /**
@@ -122,14 +112,20 @@ export class Transition {
      * `{ cancelled: true }` and the start values are back in the tree.
      */
     reverse(): void {
-        this.#host.staging.forbid("Transition.reverse()");
+        this.#control(ControlKind.REVERSE, 0, "Transition.reverse()");
+    }
+
+    /** A control: refused inside a `requestTransition` callback, a no-op once the transition ended. */
+    #control(op: number, value: number, target: string): void {
+        this.#host.staging.forbid(target);
         if (this.#state !== "running") {
             return;
         }
-        this.#paused = false;
-        this.#reversed = true;
-        this.#control?.reverse(true);
-        this.#control?.pause(false);
+        try {
+            this.#native.control(op, value);
+        } catch (error) {
+            throw stdFailure(error, target);
+        }
     }
 
     /**
@@ -159,9 +155,9 @@ export class Transition {
         if (typeof fn !== "function") {
             throw new TypeError("Transition.onFinished: expects a function");
         }
-        const entry = { run: fn, live: true };
+        const entry: Waiter = { run: fn, live: true };
         if (this.#state === "running") {
-            this.#callbacks.push(entry);
+            this.#waiters.push(entry);
         } else {
             this.#deliver(entry);
         }
@@ -178,26 +174,26 @@ export class Transition {
      * transition began, so cancelling puts what is drawn there and does not go back. Nothing happens once it ended.
      */
     cancel(): void {
-        if (this.#state === "running") {
-            this.#control?.cancel();
-            this.settle(true);
-        }
+        this.#control(ControlKind.CANCEL, 0, "Transition.cancel()");
+        this.settle(true);
     }
 
-    /** Settles the transition. Engine only: a second settle does nothing. */
+    /** Settles the transition. The library's word and `cancel` only: a second settle does nothing. */
     settle(cancelled: boolean): void {
         if (this.#state !== "running") {
             return;
         }
+        this.#last = { ...this.#info(), state: cancelled ? TransitionKind.CANCELLED : TransitionKind.FINISHED };
         this.#state = cancelled ? "cancelled" : "finished";
+        this.#host.staging.track(-1);
         const result: TransitionResult = Object.freeze({ cancelled });
         this.#resolve?.(result);
-        for (const entry of this.#callbacks.splice(0)) {
+        for (const entry of this.#waiters.splice(0)) {
             this.#deliver(entry, result);
         }
     }
 
-    #deliver(entry: { run: (result: TransitionResult) => void; live: boolean }, result?: TransitionResult): void {
+    #deliver(entry: Waiter, result?: TransitionResult): void {
         const delivered = result ?? { cancelled: this.#state === "cancelled" };
         this.#host.schedule(`Transition#${this.id}.onFinished`, () => {
             if (entry.live) {

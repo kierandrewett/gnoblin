@@ -80,6 +80,26 @@ pub(crate) fn read<R>(ctx: GnoblinCtx, f: impl FnOnce(&State) -> Res<R>) -> Res<
     f(&std.st.borrow())
 }
 
+/// The generation's state for a function that needs no desktop: the model is attached when the generation has none, and the library does
+/// not become the desktop (animation, styles and the scene work beside a shell that keeps its own workspaces).
+pub(crate) fn quiet_of(ctx: GnoblinCtx) -> Res<Rc<Std>> {
+    state::lookup_quiet(ctx)
+}
+
+/// [`mutate`] for a function that needs no desktop.
+pub(crate) fn mutate_quiet<R>(ctx: GnoblinCtx, f: impl FnOnce(&mut State) -> Res<R>) -> Res<R> {
+    let std = quiet_of(ctx)?;
+    let result = f(&mut std.st.borrow_mut());
+    schedule(&std);
+    result
+}
+
+/// [`read`] for a function that needs no desktop.
+pub(crate) fn read_quiet<R>(ctx: GnoblinCtx, f: impl FnOnce(&State) -> Res<R>) -> Res<R> {
+    let std = quiet_of(ctx)?;
+    f(&std.st.borrow())
+}
+
 // ---- reading what the caller passed ----------------------------------------------------------------------------------------
 
 /// `len` bytes at `ptr` as text.
@@ -1000,6 +1020,7 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     drag_zone: crate::bindings::drag_zone,
     drag_tile: crate::bindings::drag_tile,
     gesture_way: crate::bindings::gesture_way,
+    transition_release: crate::animation::table::transition_release,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };

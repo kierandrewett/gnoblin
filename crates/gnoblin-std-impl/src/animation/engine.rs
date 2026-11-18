@@ -34,20 +34,23 @@ pub(crate) struct Options {
 }
 
 impl Options {
-    /// Checks the caller's options as `checkOptions` does: a finite duration and delay of at least 0, a known easing.
-    pub(crate) fn check(raw: &abi::GnoblinStdTransitionOptions) -> Res<Options> {
+    /// Checks the caller's options as `checkOptions` does: a finite duration and delay of at least 0, a known easing. `site` names the
+    /// call in the error (`gnoblin.requestTransition`), as the path of the member it was about.
+    pub(crate) fn check(raw: &abi::GnoblinStdTransitionOptions, site: &str) -> Res<Options> {
         if !raw.duration_ms.is_finite() || raw.duration_ms < 0.0 {
-            return Err(Fail::type_error(
-                "transition: duration must be a finite number of milliseconds of at least 0",
-            ));
+            return Err(Fail::type_error(format!(
+                "{site}: duration must be a finite number of milliseconds of at least 0"
+            )));
         }
         if !raw.delay_ms.is_finite() || raw.delay_ms < 0.0 {
-            return Err(Fail::type_error(
-                "transition: delay must be a finite number of milliseconds of at least 0",
-            ));
+            return Err(Fail::type_error(format!(
+                "{site}: delay must be a finite number of milliseconds of at least 0"
+            )));
         }
         let easing = Easing::from_abi(raw.easing).ok_or_else(|| {
-            Fail::type_error("transition: easing must be one of linear, ease, ease-in, ease-out, ease-in-out")
+            Fail::type_error(format!(
+                "{site}: easing must be one of linear, ease, ease-in, ease-out, ease-in-out"
+            ))
         })?;
         Ok(Options {
             duration_ms: raw.duration_ms,
@@ -169,13 +172,14 @@ fn drop_tween(g: &Gnoblin, tween: u64) {
 
 impl State {
     /// Starts staging a transition's writes.
-    pub(crate) fn transition_begin(&mut self, options: Options) -> Res<()> {
+    pub(crate) fn transition_begin(&mut self, raw: &abi::GnoblinStdTransitionOptions) -> Res<()> {
+        const SITE: &str = "gnoblin.requestTransition";
         if staging::active() {
-            return Err(Fail::busy(
-                "gnoblin.requestTransition was called inside a transition callback; stage every change in the outer callback instead",
-            ));
+            return Err(Fail::busy(format!(
+                "{SITE}: was called inside a requestTransition callback; stage every change in the outer callback instead"
+            )));
         }
-        self.anim.pending = Some(options);
+        self.anim.pending = Some(Options::check(raw, SITE)?);
         staging::begin();
         Ok(())
     }
@@ -195,6 +199,13 @@ impl State {
         staging::released(node, key);
         self.process_released();
         self.g.node(NodeId(node)).set(key, value.to_value()).map_err(Fail::from)
+    }
+
+    /// A write of `key` of `node` was made by the shell's own engine, outside the library: the transition that played the property
+    /// lets it go.
+    pub(crate) fn transition_release(&mut self, node: u64, key: &str) {
+        staging::released(node, key);
+        self.process_released();
     }
 
     /// The staged value of a property while a transition is being staged, else the tree's.
@@ -555,6 +566,14 @@ impl State {
 }
 
 impl State {
+    /// Ends the generation's hold on the compositor: the `tween` nodes of the transitions still running are destroyed.
+    pub(crate) fn anim_release(&mut self) {
+        for (tween, _) in std::mem::take(&mut self.anim.by_tween) {
+            drop_tween(&self.g, tween);
+        }
+        self.anim.owners.clear();
+    }
+
     /// The options of the transition being staged, taken as it commits.
     pub(crate) fn anim_take_pending(&mut self) -> Option<Options> {
         self.anim.pending.take()

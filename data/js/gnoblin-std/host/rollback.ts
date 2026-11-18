@@ -1,12 +1,9 @@
 // Snapshots state outside the compositor tree and installs staged transition handling.
 
-import { errorCodeOfRefusal, GnoblinError } from "gnoblin-core/errors";
-import { host, nodeName } from "gnoblin-core/host/bridge";
-import { ANIMATED_KEYS } from "gnoblin-std/host/client_animation";
+import { GnoblinError } from "gnoblin-core/errors";
 import { ctx } from "gnoblin-core/host/context";
 import { std } from "gnoblin-std/host/state";
 import { layout } from "gnoblin-std/host/layout_driver";
-import { motion } from "gnoblin-core/host/seat";
 import { everyStyle } from "gnoblin-std/host/style_scopes";
 import type { Workspace } from "gnoblin-std/host/workspace";
 import { wsState } from "gnoblin-std/host/workspace_state";
@@ -72,39 +69,14 @@ function settleStaged(): void {
     }
 }
 
-/** Installs the engine that stages transition writes and drives animation tracks. */
+/** Installs the engine behind `requestTransition`: the callback runs over the library's staging, the passes below run at its end. */
 export function installTransitions(): void {
-    // Transition engine that stages writes, validates placements, and drives animation tracks.
     std.transitions = new TransitionEngine({
         staging: std.staging,
-        motion,
-        animated: (key) => Object.hasOwn(ANIMATED_KEYS, key),
-        placed: (node) =>
-            (host.get(node, "width") as number) > 0 &&
-            (host.get(node, "height") as number) > 0 &&
-            host.get(node, "visible") !== false,
-        label: nodeName,
-        makeTween: () => {
-            const made = host.tween.create();
-            if (typeof made !== "number") {
-                throw new GnoblinError(
-                    errorCodeOfRefusal(String(made)),
-                    "gnoblin.requestTransition",
-                    "the shell could not make the node that holds the transition's play state",
-                );
-            }
-            return made;
-        },
-        dropTween: (tween) => {
-            host.tween.destroy(tween);
-        },
         schedule: (site, task) => {
             ctx.queue.push({ site, task });
         },
         snapshot: snapshotScriptState,
         settle: settleStaged,
-        error: (code, target, message) => new GnoblinError(code, target, message),
     });
-
-    ctx.hostApi.onTrackEnded = (event) => std.transitions.trackEnded(event);
 }

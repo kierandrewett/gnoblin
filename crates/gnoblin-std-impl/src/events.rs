@@ -43,6 +43,7 @@ impl State {
             g,
             ctx,
             opened: false,
+            desktop: false,
             clients: Vec::new(),
             rec: HashMap::new(),
             outputs: Vec::new(),
@@ -271,14 +272,36 @@ fn handle(std: &Rc<Std>, f: impl FnOnce(&mut State)) {
     std.drain();
 }
 
-/// Attaches the library to the generation `ctx`.
+/// Makes the library the generation's desktop, attaching it first when it is not: the default workspace, the adoption of windows
+/// and the window policy are the library's from here on.
 ///
 /// # Errors
 ///
 /// The core refuses the ABI, the tree cannot be attached, or a subscription is refused.
 pub(crate) fn open(ctx: GnoblinCtx) -> Res<()> {
-    if state::find(ctx).is_some() {
-        return Ok(());
+    let std = open_model(ctx)?;
+    let g = {
+        let mut st = std.st.borrow_mut();
+        if st.desktop {
+            return Ok(());
+        }
+        st.desktop = true;
+        st.g.clone()
+    };
+    schedule(&std);
+    register_providers(&g, ctx);
+    Ok(())
+}
+
+/// Attaches the library to the generation `ctx` with no desktop: it takes stock of the windows and outputs and watches the tree, which
+/// is all animation, styles and the scene need. [`open`] adds the desktop later.
+///
+/// # Errors
+///
+/// The core refuses the ABI, the tree cannot be attached, or a subscription is refused.
+pub(crate) fn open_model(ctx: GnoblinCtx) -> Res<Rc<Std>> {
+    if let Some(std) = state::find(ctx) {
+        return Ok(std);
     }
     let g = gnoblin_core::private::gnoblin_for(ctx)?;
     g.attach()?;
@@ -288,7 +311,8 @@ pub(crate) fn open(ctx: GnoblinCtx) -> Res<()> {
     }
     let screen = g.class("screen")?;
     for child in g.root()?.children()? {
-        if child.class()? == screen {
+        // A node of a class the core's catalog does not have (a compositor newer than the core) is not an output.
+        if child.class().is_ok_and(|class| class == screen) {
             st.outputs.push(child.id().0);
         }
     }
@@ -301,9 +325,7 @@ pub(crate) fn open(ctx: GnoblinCtx) -> Res<()> {
         state::remove(ctx);
         return Err(fail);
     }
-    schedule(&std);
-    register_providers(&g, ctx);
-    Ok(())
+    Ok(std)
 }
 
 /// Registers std's desktop policy with the core on the generation that opened std (`providers.rs`). A kind someone already holds

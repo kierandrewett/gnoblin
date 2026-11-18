@@ -12,7 +12,8 @@ use super::values::{self, Entry, Prop, Radii, ScalarProp};
 use crate::animation::table::prop_struct;
 use crate::error::{Fail, Res};
 use crate::state::{State, next_id};
-use crate::table::{call, fill_out, lent, mutate, put, read, read_ext};
+// The style functions need no desktop: they open the library's model alone (`state::lookup_quiet`).
+use crate::table::{call, fill_out, lent, mutate_quiet as mutate, put, read_ext, read_quiet as read};
 
 thread_local! {
     /// The entries a read lent, with the colours they point at, valid until the next call on this thread.

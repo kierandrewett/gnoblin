@@ -8,7 +8,8 @@ use gnoblin_std_abi::GnoblinStdProp;
 use super::Kind;
 use crate::animation::table::{prop_in, prop_struct};
 use crate::error::Fail;
-use crate::table::{call, fill_out, mutate, put, read, std_of, utf8};
+// The scene functions need no desktop: they open the library's model alone (`state::lookup_quiet`).
+use crate::table::{call, fill_out, mutate_quiet as mutate, put, quiet_of as std_of, read_quiet as read, utf8};
 
 pub(crate) unsafe extern "C" fn scene_new(ctx: GnoblinCtx, kind: u32, out: *mut GnoblinNode) -> i32 {
     call("scene_new", || {

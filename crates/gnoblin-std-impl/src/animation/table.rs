@@ -21,7 +21,10 @@ use super::engine::Options;
 use super::staging::{self, Prop};
 use crate::error::{Fail, Res};
 use crate::state::{self, RegData};
-use crate::table::{call, call_reg, fill_out, lent, mutate, put, read, read_ext, std_of, utf8};
+// The animation functions need no desktop: they open the library's model alone (`state::lookup_quiet`).
+use crate::table::{
+    call, call_reg, fill_out, lent, mutate_quiet as mutate, put, quiet_of as std_of, read_ext, read_quiet as read, utf8,
+};
 use crate::turn::schedule;
 
 thread_local! {
@@ -91,15 +94,14 @@ pub(crate) fn prop_struct(value: Option<&Prop>) -> GnoblinStdProp {
     out
 }
 
-/// The options the caller passed, checked.
+/// The options the caller passed, read: the checks are made where the options are used, which names the call in the error.
 ///
 /// # Safety
 ///
 /// `options` must be null or point at a `GnoblinStdTransitionOptions`.
-unsafe fn options_in(options: *const GnoblinStdTransitionOptions) -> Res<Options> {
+unsafe fn options_in(options: *const GnoblinStdTransitionOptions) -> Res<GnoblinStdTransitionOptions> {
     // SAFETY: forwarded from the caller.
-    let raw = unsafe { read_ext(options, "transition options") }?;
-    Options::check(&raw)
+    unsafe { read_ext(options, "transition options") }
 }
 
 pub(crate) unsafe extern "C" fn easing_sample(_ctx: GnoblinCtx, easing: u32, t: f64, out: *mut f64) -> i32 {
@@ -115,7 +117,7 @@ pub(crate) unsafe extern "C" fn transition_begin(ctx: GnoblinCtx, options: *cons
     call("transition_begin", || {
         // SAFETY: the caller guarantees `options` is null or a readable struct.
         let options = unsafe { options_in(options) }?;
-        mutate(ctx, |st| st.transition_begin(options))?;
+        mutate(ctx, |st| st.transition_begin(&options))?;
         Ok(abi::E_OK)
     })
 }
@@ -131,6 +133,23 @@ pub(crate) unsafe extern "C" fn transition_set(
         // SAFETY: the caller guarantees `key` is `key_len` readable bytes and `value` a readable struct.
         let (key, value) = unsafe { (utf8(key, key_len)?, prop_in(value)?) };
         mutate(ctx, |st| st.transition_set(node, key, value))?;
+        Ok(abi::E_OK)
+    })
+}
+
+pub(crate) unsafe extern "C" fn transition_release(
+    ctx: GnoblinCtx,
+    node: GnoblinNode,
+    key: *const u8,
+    key_len: usize,
+) -> i32 {
+    call("transition_release", || {
+        // SAFETY: the caller guarantees `key` is `key_len` readable bytes.
+        let key = unsafe { utf8(key, key_len) }?;
+        let std = std_of(ctx)?;
+        std.st.borrow_mut().transition_release(node, key);
+        // A transition that lost its last property is over: the next turn tells its listeners.
+        schedule(&std);
         Ok(abi::E_OK)
     })
 }
@@ -198,6 +217,7 @@ pub(crate) unsafe extern "C" fn transition_animate(
     call("transition_animate", || {
         // SAFETY: the caller guarantees the pointers are what the table documents.
         let (key, value, options) = unsafe { (utf8(key, key_len)?, prop_in(value)?, options_in(options)?) };
+        let options = Options::check(&options, "gnoblin.transition")?;
         let made = mutate(ctx, |st| st.transition_animate(node, key, value, &options))?;
         // SAFETY: the caller guarantees `out` is null or a writable handle.
         unsafe { put(out, made.unwrap_or(0)) }?;

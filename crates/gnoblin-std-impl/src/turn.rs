@@ -51,7 +51,7 @@ pub(crate) fn turn(std: &Rc<Std>) {
     let g = std.g();
     {
         let mut st = std.st.borrow_mut();
-        if !st.opened {
+        if st.desktop && !st.opened {
             st.opened = true;
             if let Err(fail) = st.ensure_default_workspace() {
                 g.log_at(
