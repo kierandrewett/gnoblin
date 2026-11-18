@@ -1,8 +1,7 @@
-// The options and results of `gnoblin.requestTransition`, plus the host interface used by the transition engine.
+// The options and results of `gnoblin.requestTransition`, plus what the transition layer needs of the shell.
 
-import type { TrackEndedEvent } from "gnoblin-core/session/types";
 import type { Easing } from "gnoblin-std/transition/easing";
-import type { MakeError, Staging } from "gnoblin-std/transition/staging";
+import type { Staging } from "gnoblin-std/transition/staging";
 
 /** The milliseconds a transition takes when `duration` is not given. */
 export const DEFAULT_DURATION_MS = 250;
@@ -33,37 +32,18 @@ export interface TransitionResult {
 
 /** Stops a callback before it runs. Calling it twice is harmless. */
 export interface TransitionSubscription {
-    /** Stops the callback before it runs. */
+    /** Stops the callback before it runs. Calling it twice is harmless. */
     unsubscribe(): void;
 }
 
-/** What an engine needs of the shell. */
+/** What the transition layer needs of the shell. */
 export interface TransitionHost {
-    /** Reads and stages property writes during a transition callback. */
+    /** Stages the engine's reads and writes during a transition callback, in the library (`gnoblin-std/transition/staging`). */
     staging: Staging;
-    /** The milliseconds an animation of `duration` takes: 0 while the seat asks for reduced motion. */
-    motion(duration: number): number;
-    /** Whether the tree takes a timed write of `key`. */
-    animated(key: string): boolean;
-    /** Whether a node has a place that is drawn: a size, and not hidden. A node that has none just appears. */
-    placed(node: number): boolean;
-    /** The name of a node in an error path: `Client#3`. */
-    label(node: number): string;
-    /**
-     * Makes the compositor's `tween` node, the play state its tracks join (`progress`, `paused`, `reverse`), and
-     * returns its id. Throws when the shell can make no more nodes.
-     */
-    makeTween(): number;
-    /** Destroys a `tween` node made by `makeTween`. */
-    dropTween(tween: number): void;
     /** Queues `task` after the calls already queued, under the listener budget. `site` names it in a report. */
     schedule(site: string, task: () => void): void;
     /** Takes what a callback can change that is not a tree write, and returns what puts it back. */
     snapshot(): () => void;
     /** Runs the style and layout passes once against the staged state, so their writes are staged too. */
     settle(): void;
-    /** Creates an error with a code, target path and message. */
-    error: MakeError;
 }
-
-export type { TrackEndedEvent };

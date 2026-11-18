@@ -179,6 +179,9 @@ pub(crate) struct State {
     pub(crate) ctx: GnoblinCtx,
     /// The first turn has run: windows that waited get a workspace and a layout starts placing arrivals.
     pub(crate) opened: bool,
+    /// The shell made the library its desktop (`open`): the default workspace, the adoption of windows and the window policy are
+    /// the library's. Until it does, the library only holds what animation, styles and the scene need.
+    pub(crate) desktop: bool,
     /// Every window, in the order it appeared.
     pub(crate) clients: Vec<NodeId>,
     pub(crate) rec: HashMap<NodeId, ClientRec>,
@@ -336,6 +339,23 @@ pub(crate) fn lookup(ctx: GnoblinCtx) -> Res<Rc<Std>> {
     ))
 }
 
+/// The library state of the generation `ctx` for the functions that need no desktop (animation, styles, the scene): it is made, with
+/// no desktop, when the generation has none yet. A shell that keeps its own workspaces calls only these, so the library must not
+/// become a second window manager beside it (its default workspace, its adoption of windows, the window policy it registers).
+///
+/// # Errors
+///
+/// The generation retired (`E_RETIRED`), or the core refuses the library's attach.
+pub(crate) fn lookup_quiet(ctx: GnoblinCtx) -> Res<Rc<Std>> {
+    if let Some(std) = find(ctx) {
+        return Ok(std);
+    }
+    if RETIRED.with(|retired| retired.borrow().contains(&ctx)) {
+        return lookup(ctx);
+    }
+    crate::events::open_model(ctx)
+}
+
 /// Records the state of a newly opened generation.
 pub(crate) fn insert(ctx: GnoblinCtx, std: Rc<Std>) {
     OPEN.with(|open| open.borrow_mut().insert(ctx, std));
@@ -356,6 +376,8 @@ pub(crate) fn retire(ctx: GnoblinCtx) {
         crate::bindings::retire(&std);
         let (regs, workspaces, graveyard) = {
             let mut st = std.st.borrow_mut();
+            // The generation ends its hold on the compositor: the `tween` nodes of the transitions still running go.
+            st.anim_release();
             st.notices.clear();
             let regs: Vec<Rc<RegData>> = st.regs.drain().map(|(_, reg)| reg).collect();
             let workspaces: Vec<Workspace> = st.ws.drain().map(|(_, workspace)| workspace).collect();

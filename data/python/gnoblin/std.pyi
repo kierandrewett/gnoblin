@@ -1223,6 +1223,14 @@ class Transition:
         ...
 
     @staticmethod
+    def release(node: int, key: str) -> int:
+        """A write of `key` of `node` was made outside the library, by a shell that keeps a mirror of the tree of its own (the
+        TypeScript engine): a transition that played the property lets it go. A shell that makes every write through the library
+        never needs it.
+        """
+        ...
+
+    @staticmethod
     def run(options: TransitionOptions | dict[str, Any], body: Callable[[], Any]) -> Optional[Transition]:
         """Transition: `transition_begin`, then `body()`, then `transition_commit` (or `transition_abort` when `body` raises)."""
         ...

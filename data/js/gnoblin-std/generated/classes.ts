@@ -322,6 +322,13 @@ export class Transition {
     const raw = call("transition_finished", this.handle, (event: any) => cb(eventFromNative(event)));
     return new Registration(raw);
   }
+  // A write of `key` of `node` was made outside the library, by a shell that keeps a mirror of the tree of its own (the
+  // TypeScript engine): a transition that played the property lets it go. A shell that makes every write through the library
+  // never needs it.
+  static release(node: number, key: string): number {
+    const raw = call("transition_release", handleOf(node), key);
+    return raw;
+  }
   /** `transition_begin`, then `body()`, then `transition_commit`; `transition_abort` when `body` throws. */
   static run(options: Init<TransitionOptions>, body: () => void): Transition | null {
     Transition.begin(options);

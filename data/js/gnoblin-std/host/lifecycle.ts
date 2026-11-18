@@ -258,7 +258,6 @@ export const lifecycle: Partial<HostHooks> = {
     release() {
         std.xrRuntime.release();
         sceneReleaseAll();
-        std.transitions.release();
         lockRelease();
         uiReleaseAll();
         if (std.decorations !== null) {

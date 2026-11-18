@@ -23,7 +23,8 @@ pub struct FunctionInfo {
     pub inputs: &'static [&'static str],
     /// Whether the call layer can carry it; a function with a raw pointer argument is native only.
     pub scriptable: bool,
-    /// Whether it works on a generation that has not opened the library (the built-in layouts, the drag machines): a call to it never opens it.
+    /// Whether it works on a generation that has not made the library its desktop (the built-in layouts, animation, styles and the scene):
+    /// a call to it never opens the desktop. The library attaches its model by itself when such a call is the first.
     pub standalone: bool,
 }
 
@@ -273,157 +274,157 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         name: "easing_sample",
         inputs: &["easing", "t"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "transition_begin",
         inputs: &["options"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "transition_set",
         inputs: &["node", "key", "value"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "transition_get",
         inputs: &["node", "key"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "transition_commit",
         inputs: &[],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "transition_abort",
         inputs: &[],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "transition_animate",
         inputs: &["node", "key", "value", "options"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "transition_control",
         inputs: &["transition", "op", "value"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "transition_info",
         inputs: &["transition"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "transition_finished",
         inputs: &["transition", "cb"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_scope",
         inputs: &["scope", "target"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_set",
         inputs: &["style", "prop", "value"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_set_list",
         inputs: &["style", "prop", "entries"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_unset",
         inputs: &["style", "prop"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_get",
         inputs: &["style", "prop"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_list",
         inputs: &["style", "prop"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_computed",
         inputs: &["client", "prop"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_computed_list",
         inputs: &["client", "prop"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_origin",
         inputs: &["client", "prop"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "style_notes",
         inputs: &["client"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "scene_new",
         inputs: &["kind"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "scene_destroy",
         inputs: &["node"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "scene_insert",
         inputs: &["parent", "node", "index"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "scene_root",
         inputs: &[],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "scene_set",
         inputs: &["node", "key", "value"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "scene_get",
         inputs: &["node", "key"],
         scriptable: true,
-        standalone: false,
+        standalone: true,
     },
     FunctionInfo {
         name: "workspace_set_layout_kind",
@@ -542,6 +543,12 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
     FunctionInfo {
         name: "builtin_reset_split",
         inputs: &["builtin", "token"],
+        scriptable: true,
+        standalone: true,
+    },
+    FunctionInfo {
+        name: "transition_release",
+        inputs: &["node", "key"],
         scriptable: true,
         standalone: true,
     },
@@ -671,6 +678,7 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "builtin_find_split" => builtin_find_split(lib, ctx, args),
         "builtin_set_split" => builtin_set_split(lib, ctx, args),
         "builtin_reset_split" => builtin_reset_split(lib, ctx, args),
+        "transition_release" => transition_release(lib, ctx, args),
         "drag_step" => drag_step(lib, ctx, args),
         "drag_clamp" => drag_clamp(lib, ctx, args),
         "drag_resize" => drag_resize(lib, ctx, args),
@@ -2741,6 +2749,28 @@ fn builtin_reset_split(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdE
     // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
     let returned = unsafe { (api.builtin_reset_split)(ctx, builtin, token) };
     let status = lib.check("builtin_reset_split", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn transition_release(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, transition_release) + size_of::<usize>()) {
+        return Err(StdError::unsupported("transition_release"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`transition_release` takes 2 arguments (node, key), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let node = args[0].to_u64("argument `node` of `transition_release`")?;
+    let key = arena.text(args[1].to_text("argument `key` of `transition_release`")?);
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.transition_release)(ctx, node, key.ptr, key.len) };
+    let status = lib.check("transition_release", returned)?;
     arena.adopt();
     Ok(Dyn::Int(i64::from(status)))
 }

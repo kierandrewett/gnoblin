@@ -121,6 +121,29 @@ fn two(layout: &str) -> Rig {
 }
 
 #[test]
+fn a_transition_does_not_make_the_library_a_second_desktop_beside_the_shells_own_workspaces() {
+    // The first call into the library is `transition_begin`. A library that became the desktop on it would add its own workspace,
+    // adopt the windows and place them (rectangles, `tiled`, `visible`) beside the shell's: only the callback's write may go out.
+    let mut rig = two("new Layout()");
+    let mark = rig.comp.sent_count();
+    exec(
+        &mut rig,
+        "gnoblin.requestTransition(() => { g.a.opacity = 0.5; }, { duration: 100 });",
+    );
+    settle(&mut rig);
+    rig.advance(1000);
+    settle(&mut rig);
+    assert_eq!(
+        writes(&rig, mark)
+            .into_iter()
+            .map(|write| (write.node, write.key))
+            .collect::<Vec<_>>(),
+        [(3, "opacity".to_owned())],
+        "the library adopted and placed nothing"
+    );
+}
+
+#[test]
 fn the_callback_runs_once_and_its_writes_are_one_transaction_of_timed_writes_with_the_easings_samples() {
     // AN1: "callback invoked exactly once; N writes yield exactly one tree transaction".
     let mut rig = two("new Layout()");

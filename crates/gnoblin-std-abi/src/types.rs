@@ -1301,6 +1301,10 @@ abi_structs! {
         pub builtin_set_split: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64, ratio: f64, cross_ratio: f64) -> i32,
         /// Puts the dividers of the drag named `token` back as they were when `builtin_find_split` returned them.
         pub builtin_reset_split: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64) -> i32,
+        /// A write of `key` of `node` was made outside the library, by a shell that keeps a mirror of the tree of its own (the
+        /// TypeScript engine): a transition that played the property lets it go. A shell that makes every write through the library
+        /// never needs it.
+        pub transition_release: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize) -> i32,
 
         /// Gives the drag binding `kind` (`STD_BINDING_*`, with the options `layouts::BINDING_KINDS` declares for it; `trigger` and
         /// `priority` are read and ignored: the caller matches the chord) one step of a drag the caller matched itself, and writes
