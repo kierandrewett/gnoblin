@@ -2722,7 +2722,6 @@ What did not move, and the named blocker of each:
   the XR extension read script-made nodes there) and `scene_children`/`scene_parent`; `snap` goes with the workspace row (`host/fitting`, `policy`, `snapshot`). XR extensions,
   the lock card, dialogs and the UI toolkit stay TypeScript.
 
-
 ## 35. Gate report (lane GateTip)
 
 The full-workspace gates and the tests of every workspace member, run on Agent37 boxes (2 CPUs, 12 GB; `gnoblin-GateTip` and
