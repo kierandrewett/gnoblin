@@ -8,7 +8,7 @@ use std::fs;
 use std::path::Path;
 use std::rc::Rc;
 
-use gnoblin_js::{JsConfigCommit, JsConfigLink, JsLinkError, JsShell};
+use gnoblin_js::{JsConfigCommit, JsConfigLink, JsLinkError};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 mod common;
