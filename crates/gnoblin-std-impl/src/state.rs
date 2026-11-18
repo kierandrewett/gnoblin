@@ -208,8 +208,6 @@ pub(crate) struct State {
     pub(crate) styles: crate::style::cascade::StyleState,
     /// The scene nodes the shell made.
     pub(crate) scene: crate::scene::SceneState,
-    /// The built-in layouts that belong to no workspace (`standalone.rs`), by handle.
-    pub(crate) builtins: HashMap<Id, Rc<LayoutObj>>,
 }
 
 /// One generation's library state and the flags that decide what runs when.

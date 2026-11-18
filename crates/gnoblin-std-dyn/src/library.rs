@@ -230,7 +230,12 @@ impl StdLib {
     /// An argument of the wrong kind (`E_TYPE`), a function the library lacks (`E_UNSUPPORTED`), or the code and text the
     /// library failed with.
     pub fn call(&self, ctx: GnoblinCtx, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
-        self.attach(ctx)?;
+        if !generated::FUNCTIONS
+            .iter()
+            .any(|info| info.name == function && info.standalone)
+        {
+            self.attach(ctx)?;
+        }
         generated::dispatch(self, ctx, function, args)
     }
 }

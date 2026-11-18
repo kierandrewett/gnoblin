@@ -1153,7 +1153,9 @@ abi_structs! {
 
         /// Makes the built-in layout `kind` (`STD_BUILTIN_*`) with the options given, as `workspace_set_layout_kind` does, but for no
         /// workspace, and writes its handle to `out`. `E_NO_SUCH_MEMBER` for an unknown option, `E_TYPE` for a value of the wrong
-        /// type or out of range.
+        /// type or out of range. The `builtin_*` functions work on a generation that never called `open`: the library's desktop (its
+        /// default workspace, its adoption of windows, its layout pass) starts with `open`, and a shell that keeps its own workspaces
+        /// asks for layouts only. The layouts go with the generation.
         pub builtin_new: unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize, out: *mut GnoblinStdBuiltin) -> i32,
         /// Frees a built-in layout, and the state its kind kept.
         pub builtin_free: unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin) -> i32,

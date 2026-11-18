@@ -16,7 +16,10 @@ use std::time::Duration;
 mod support;
 use support::*;
 
-use gnoblin_js::{JsShell, JsShellConfig};
+mod reference;
+use reference::Reference;
+
+use gnoblin_js::JsShellConfig;
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_testkit::compositor::{FakeCompositor, ROOT, text};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
@@ -311,7 +314,7 @@ fn observe(comp: &FakeCompositor, id: u64) -> Obs {
     }
 }
 
-fn settle(shell: &mut JsShell) {
+fn settle(shell: &mut Reference) {
     for _ in 0..6 {
         let diagnostics = shell.frame().expect("a frame").diagnostics;
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
@@ -340,7 +343,7 @@ fn reference(script: &str) -> Steps {
     config.entry_budget = Duration::from_secs(5);
     config.frame_budget = Duration::from_secs(10);
     config.clock = std::sync::Arc::new(ManualClock::default());
-    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
+    let mut shell = Reference::new(&comp, config);
     let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     settle(&mut shell);

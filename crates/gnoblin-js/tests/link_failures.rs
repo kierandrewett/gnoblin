@@ -389,6 +389,8 @@ fn placements_converge_whatever_stale_refusals_come_in_whatever_order() {
         want.iter().all(|rect| rect == "0,0,1000,800"),
         "the layout places every window with no refusal: {want:?}"
     );
+    // The core's registry is one per process: a rig is gone before the next is made.
+    drop(fine);
     for seed in 1..=60 {
         let rig = run_tiled(seed, |rig, rng| {
             for round in 0..rng.below(7) {

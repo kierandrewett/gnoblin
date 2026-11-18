@@ -205,6 +205,8 @@ fn what_gnoblin_std_adds_to_a_listener_class_is_a_subscription_too_and_only_with
     );
     let mut rig = rig(STD, "");
     assert_eq!(rig.eval(&check_names(&core_declared(), &extra)), "ok");
+    // The core's registry is one per process: a rig is gone before the next is made.
+    drop(rig);
     // A shell without std has neither the method nor its subscription.
     let mut core = self::rig(CORE, "");
     assert_eq!(

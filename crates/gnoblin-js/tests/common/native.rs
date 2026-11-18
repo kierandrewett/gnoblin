@@ -36,9 +36,20 @@ impl TreeLinkProvider for Provider {
     }
 }
 
+thread_local! {
+    /// Whether this thread holds the process lock: a second core on the thread would wait for the first for ever.
+    static HOLDS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 fn process_lock() -> MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
-    LOCK.lock().unwrap_or_else(PoisonError::into_inner)
+    assert!(
+        !HOLDS.with(std::cell::Cell::get),
+        "a second rig over a core while this test's first is alive: the core's registry is one per process, so drop the first (`drop(rig)`) before the second"
+    );
+    let guard = LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+    HOLDS.with(|holds| holds.set(true));
+    guard
 }
 
 /// A core generation with the std library loaded, over a fake compositor.
@@ -101,6 +112,7 @@ impl Drop for NativeCore {
     fn drop(&mut self) {
         host::close_generation(self.ctx);
         host::reset_session();
+        HOLDS.with(|holds| holds.set(false));
     }
 }
 

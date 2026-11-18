@@ -151,6 +151,8 @@ fn a_maximised_fullscreen_or_tiled_window_is_refused() {
         "nor a fullscreen one"
     );
     assert!(!running(&mut rig), "and no mode started");
+    // The core's registry is one per process: a rig is gone before the next is made.
+    drop(rig);
 
     let mut tiled = world(1, false, "new Fill()", "");
     assert_eq!(tiled.eval("String(gnoblin.clients.get('3').tiled)"), "true");

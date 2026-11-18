@@ -38,6 +38,10 @@ gnoblin-a11y = { path = "../gnoblin-a11y" }
 [dev-dependencies]
 # The parity test drives the TypeScript std over the same fake compositor script as the native one, and compares what each wrote.
 gnoblin-js = { path = "../gnoblin-js" }
+# ...over a core with this library loaded, in the test's own process (`tests/reference`).
+gnoblin-core-impl = { path = "../gnoblin-core-impl" }
+gnoblin-runtime-js = { path = "../gnoblin-runtime-js" }
+gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
 gnoblin-shell-host = { path = "../gnoblin-shell-host" }
 gnoblin-testkit = { path = "../gnoblin-testkit" }
 gnoblin-tree-client = { path = "../gnoblin-tree-client" }

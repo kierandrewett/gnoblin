@@ -77,5 +77,11 @@ export default [
         files: ["data/js/gnoblin-std/layout.ts", "data/js/gnoblin-std/ui/canvas.ts"],
         rules: { "@typescript-eslint/no-unsafe-declaration-merging": "off" },
     },
+    {
+        // The generated binding of the std library carries the dynamic values of the call layer (`__gnoblinStd.call` answers
+        // what the table's function wrote, which is any shape).
+        files: ["data/js/gnoblin-std/generated/**/*.ts"],
+        rules: { "@typescript-eslint/no-explicit-any": "off" },
+    },
     { files: ["**/*.cjs"], languageOptions: { sourceType: "commonjs" } },
 ];

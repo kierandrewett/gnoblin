@@ -62,7 +62,6 @@ impl State {
             anim: crate::animation::engine::AnimState::default(),
             styles: crate::style::cascade::StyleState::default(),
             scene: crate::scene::SceneState::default(),
-            builtins: std::collections::HashMap::new(),
         };
         let clients = state.new_root(abi::STD_COLLECTION_CLIENTS, Source::Clients);
         let outputs = state.new_root(abi::STD_COLLECTION_OUTPUTS, Source::Outputs);
