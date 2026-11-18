@@ -191,12 +191,17 @@ impl Drift {
     }
 }
 
+/// The files under `dir` that a generator could own. Python's bytecode caches (`__pycache__`, which `.gitignore` names) are
+/// written by any run of the package from the tree and are nobody's output.
 fn files_under(root: &Path, dir: &str) -> Vec<String> {
     fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
         let Ok(entries) = fs::read_dir(dir) else { return };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
+                if path.file_name().is_some_and(|name| name == "__pycache__") {
+                    continue;
+                }
                 walk(base, &path, out);
             } else if let Ok(relative) = path.strip_prefix(base) {
                 out.push(relative.to_string_lossy().into_owned());
