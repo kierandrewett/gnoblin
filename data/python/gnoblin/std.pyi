@@ -1451,6 +1451,18 @@ class Scene:
         """Reads a property of a scene node, including the ones the library keeps (a camera's `size`)."""
         ...
 
+    @staticmethod
+    def children(node: int) -> list[int]:
+        """Writes the children of a node of the tree to `out`, in tree order, lent until the next call into the library on this thread.
+        The library reads the tree as the shell's own writes leave it, so a node made a moment ago is there.
+        """
+        ...
+
+    @staticmethod
+    def parent(node: int) -> Optional[int]:
+        """Writes the parent of a node to `out`, or zero for a node that has none."""
+        ...
+
 class Layout:
     """Functions of `layout` that need no handle."""
 

@@ -9,13 +9,14 @@ import { stateOf } from "gnoblin-core/host/node_state";
 import { mainSeat } from "gnoblin-core/host/seat";
 import { Workspace } from "gnoblin-std/host/workspace";
 import { attachScene } from "gnoblin-std/scene/backend";
+import { nativeScene } from "gnoblin-std/scene/native";
 import type { SceneBackend } from "gnoblin-std/scene/backend";
 import { XRRuntime } from "gnoblin-std/extensions/xr/runtime";
 import type { XRWorld } from "gnoblin-std/extensions/xr/types";
 
 /** Attaches the scene and makes the XR runtime. */
 export function installScene(): void {
-    const sceneBackend: SceneBackend = {
+    const engineBackend: SceneBackend = {
         create: (cls) => host.xr.create(cls),
         insert: (node, parent, index) => host.xr.insert(node, parent, index),
         destroy: (node) => host.xr.destroy(node),
@@ -52,6 +53,8 @@ export function installScene(): void {
                 : undefined,
     };
 
+    // A node a script makes is the library's; the engine answers for the rest.
+    const sceneBackend = nativeScene(engineBackend);
     attachScene(sceneBackend);
 
     // XR view into host nodes, seats, clients, and input contexts.

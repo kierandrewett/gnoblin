@@ -3024,3 +3024,15 @@ copy to drift. A shell's `tsconfig.json` extends the installed file and type-che
   that a first write makes the scope's own, and the per-field checks with their error paths (`values`, `filters`, `border_shadow`, `lists`, `element`, `state`, `snapshot`, about 1000 lines).
   They are the API a script writes against; the library has no in-place edit and takes a list whole, so the object model cannot be the library's. The library re-checks everything it is given.
   Deleted: `resolve.ts`, `map.ts` and the apply pass of `host/styles.ts`.
+
+**The scene (lane TsStdAnim).** The rows `scene/*` and `display/camera2d` of the table above have moved for the nodes a script makes.
+
+- _The same-frame problem, and the choice._ A node the library makes is unknown to the engine's mirror until the compositor echoes it, so the engine cannot read, write or list it. Teaching the engine's mirror a creation the compositor has
+  not confirmed would mean an optimistic view in the hub that the echo then has to reconcile; instead the nodes a script makes are never read in the engine's mirror at all. `gnoblin-std/scene/native.ts` is the scene's backend: a node the library made
+  (`made`, and the root) goes to `Scene.new`, `insert`, `destroy`, `children`, `parent`, `get` and `set`, which read the tree as the shell's own writes leave it, so a node made a moment ago is there; any other node (a window, the XR program's
+  head and controllers) goes to the engine as before. Reads and writes of a script's node tell the property bindings themselves (`noteHostRead`, `noteHostWrite`), as the engine's host did.
+- _What moved._ The checks of the scene (finite numbers, the projection names, a zoom above zero), the camera's `size`, the flat camera's `zoom` (the node's scale) and `roll`, and the pointer `input` mode (one key) are the library's; a write inside
+  a `requestTransition` is staged by the library with the rest. New table functions: `scene_children` and `scene_parent`.
+- _What stays TypeScript._ The classes and their conversions (`rotationFrom`, `scaleFrom`, the quaternion and `{ x, y, z }` forms, `Transform3D`), the registry of the script's objects, the pointer handlers, `metresPerUnit`, the View of a workspace
+  (`scene_mirror.ts`, which makes one child View per client from the script's workspace) and the XR extension.
+- _Not yet proven._ A script node inserted under a node only the engine knows (a UI canvas made in the same frame) is refused by the library; the toolkit mounts its canvases through `mountUnder`, and no test makes that case.

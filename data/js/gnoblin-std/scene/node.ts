@@ -8,7 +8,7 @@ import { host, SceneError, sceneState } from "gnoblin-std/scene/backend";
 import type { HostValue, Scalar } from "gnoblin-std/scene/backend";
 import { givenIds, gone, label, live, metresPerUnit, nodeIdOf, nodes, sceneForget } from "gnoblin-std/scene/registry";
 import { Transform3D } from "gnoblin-core/math/transform";
-import { finite, Vector3 } from "gnoblin-core/math/vector";
+import { Vector3 } from "gnoblin-core/math/vector";
 import { rotationFrom, scaleFrom, transformFrom, vectorFrom, withAxes } from "gnoblin-core/math/spatial";
 import type { AxisTriple, RotationInit, ScaleInit, TransformInit, Triple, Vec3Like } from "gnoblin-core/math/spatial";
 
@@ -115,16 +115,6 @@ export class Node {
         if (gone.has(this)) {
             throw new SceneError("not_found", `${label(this)}.${key}`, "the node was destroyed");
         }
-        // Skip unchanged values so repeated writes, such as a drag updating its pose, do not send extra operations.
-        const current = host().get(nodeIdOf(this), key);
-        const same = Array.isArray(value)
-            ? Array.isArray(current) &&
-              current.length === value.length &&
-              current.every((part, at) => part === value[at])
-            : current === value;
-        if (same) {
-            return;
-        }
         const code = host().set(nodeIdOf(this), key, value);
         if (code !== undefined) {
             throw new SceneError(
@@ -151,7 +141,7 @@ export class Node {
     }
     /** Sets the X position in the parent's units. */
     set x(value: number) {
-        this.write("x", finite(`${label(this)}.x`, value));
+        this.write("x", value);
     }
     /** Y position in the parent's units. */
     get y(): number {
@@ -159,7 +149,7 @@ export class Node {
     }
     /** Sets the Y position in the parent's units. */
     set y(value: number) {
-        this.write("y", finite(`${label(this)}.y`, value));
+        this.write("y", value);
     }
     /** Z position in the parent's units. */
     get z(): number {
@@ -167,7 +157,7 @@ export class Node {
     }
     /** Sets the Z position in the parent's units. */
     set z(value: number) {
-        this.write("z", finite(`${label(this)}.z`, value));
+        this.write("z", value);
     }
 
     /**
@@ -207,7 +197,7 @@ export class Node {
     }
     /** Sets opacity from 0 (transparent) to 1 (opaque). */
     set opacity(value: number) {
-        this.write("opacity", finite(`${label(this)}.opacity`, value));
+        this.write("opacity", value);
     }
 
     /** The node's own placement: its position, rotation and one uniform scale (the first component of `scale`). */
@@ -253,10 +243,8 @@ export class Node {
      * `false` (`none`).
      */
     get input(): InputMode {
-        if (!this.read<boolean>("input")) {
-            return "none";
-        }
-        return this.read<string>("input_mode") === "capture" ? "capture" : "forward";
+        const mode = this.read<string>("input");
+        return mode === "capture" || mode === "forward" ? mode : "none";
     }
     /** Sets pointer handling to `forward`, `capture` or `none`. */
     set input(value: boolean | InputMode) {
@@ -264,10 +252,7 @@ export class Node {
         if (mode !== "forward" && mode !== "capture" && mode !== "none") {
             throw new TypeError(`${label(this)}.input: must be "forward", "capture", "none" or a boolean`);
         }
-        if (mode !== "none") {
-            this.write("input_mode", mode);
-        }
-        this.write("input", mode !== "none");
+        this.write("input", mode);
     }
 
     /** Called when the pointer enters the node. Only a node the shell is sent edges for hears it: see `input`. */

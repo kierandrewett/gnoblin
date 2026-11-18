@@ -636,6 +636,18 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         scriptable: true,
         standalone: true,
     },
+    FunctionInfo {
+        name: "scene_children",
+        inputs: &["node"],
+        scriptable: true,
+        standalone: true,
+    },
+    FunctionInfo {
+        name: "scene_parent",
+        inputs: &["node"],
+        scriptable: true,
+        standalone: true,
+    },
 ];
 
 pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
@@ -741,6 +753,8 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "client_restore_snap" => client_restore_snap(lib, ctx, args),
         "floating_place" => floating_place(lib, ctx, args),
         "style_rank" => style_rank(lib, ctx, args),
+        "scene_children" => scene_children(lib, ctx, args),
+        "scene_parent" => scene_parent(lib, ctx, args),
         other => Err(StdError::unsupported(other)),
     }
 }
@@ -3182,6 +3196,51 @@ fn style_rank(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
     let status = lib.check("style_rank", returned)?;
     arena.adopt();
     Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn scene_children(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, scene_children) + size_of::<usize>()) {
+        return Err(StdError::unsupported("scene_children"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`scene_children` takes 1 arguments (node), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let node = args[0].to_u64("argument `node` of `scene_children`")?;
+    // SAFETY: an all-zero `GnoblinStdMembers` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdMembers = unsafe { zeroed() };
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.scene_children)(ctx, node, &raw mut out) };
+    let status = lib.check("scene_children", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_members(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn scene_parent(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, scene_parent) + size_of::<usize>()) {
+        return Err(StdError::unsupported("scene_parent"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`scene_parent` takes 1 arguments (node), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let node = args[0].to_u64("argument `node` of `scene_parent`")?;
+    let mut out: u64 = 0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.scene_parent)(ctx, node, &raw mut out) };
+    let status = lib.check("scene_parent", returned)?;
+    arena.adopt();
+    Ok(if out == 0 { Dyn::Nil } else { Dyn::Uint(out) })
 }
 
 fn read_gnoblin_std_stats(record: &GnoblinStdStats) -> Dyn {

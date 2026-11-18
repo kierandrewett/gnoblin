@@ -477,6 +477,17 @@ export class Scene {
     const raw = call("scene_get", handleOf(node), key);
     return (propFromNative(raw));
   }
+  // Writes the children of a node of the tree to `out`, in tree order, lent until the next call into the library on this thread.
+  // The library reads the tree as the shell's own writes leave it, so a node made a moment ago is there.
+  static children(node: number): number[] {
+    const raw = call("scene_children", handleOf(node));
+    return (Array.from(raw as number[]));
+  }
+  // Writes the parent of a node to `out`, or zero for a node that has none.
+  static parent(node: number): number | null {
+    const raw = call("scene_parent", handleOf(node));
+    return (raw);
+  }
 }
 
 export class Layout {

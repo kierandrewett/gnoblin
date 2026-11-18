@@ -14,7 +14,7 @@ import type { NodeOptions } from "gnoblin-std/scene/node";
  */
 export class Camera2D extends Node {
     constructor(options: Camera2DInit = {}) {
-        super(options as never);
+        super(options as never, "Camera2D");
     }
 
     protected override assign(options: NodeOptions): void {
@@ -40,27 +40,24 @@ export class Camera2D extends Node {
         this.y = finite(`${this}.position.y`, value.y);
     }
 
-    /** Magnification: 1 shows the content at its size. */
+    /** Magnification: 1 shows the content at its size. The library keeps it as the node's scale. */
     get zoom(): number {
-        return this.read<number[]>("scale")[0];
+        return this.read<number>("zoom");
     }
     /** Sets magnification to a positive scale factor. */
     set zoom(value: number) {
-        if (finite(`${this}.zoom`, value) <= 0) {
-            throw new RangeError(`${this}.zoom: must be above 0`);
-        }
-        this.write("scale", [value, value, 1]);
+        this.write("zoom", value);
     }
 
     /** The roll about the view axis, in radians. */
     // @ts-expect-error Camera2D uses one angle instead of Node's 3D rotation.
     override get rotation(): number {
-        return this.read<number[]>("rotation")[2];
+        return this.read<number>("roll");
     }
     /** Sets the view roll in radians. */
     // @ts-expect-error As the getter above.
     override set rotation(value: number) {
-        this.write("rotation", [0, 0, finite(`${this}.rotation`, value)]);
+        this.write("roll", value);
     }
 }
 

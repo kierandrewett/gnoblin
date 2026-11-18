@@ -2146,6 +2146,20 @@ class Scene(_b.Handle):
         raw = _call("scene_get", _b.dyn(node), _b.dyn(key))
         return Prop._from_dyn(raw)
 
+    @staticmethod
+    def children(node: int) -> list[int]:
+        """Writes the children of a node of the tree to `out`, in tree order, lent until the next call into the library on this thread.
+        The library reads the tree as the shell's own writes leave it, so a node made a moment ago is there.
+        """
+        raw = _call("scene_children", _b.dyn(node))
+        return list(raw)
+
+    @staticmethod
+    def parent(node: int) -> Optional[int]:
+        """Writes the parent of a node to `out`, or zero for a node that has none."""
+        raw = _call("scene_parent", _b.dyn(node))
+        return raw
+
 class Layout(_b.Handle):
     """Functions of `layout` that need no handle."""
 

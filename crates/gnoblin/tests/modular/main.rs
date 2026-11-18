@@ -24,6 +24,7 @@ mod script_binding;
 mod script_reload;
 mod single_core;
 mod std_layouts;
+mod transition_reload;
 mod ts_types;
 
 use std::fs;

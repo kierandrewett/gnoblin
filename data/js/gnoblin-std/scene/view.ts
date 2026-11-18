@@ -125,7 +125,7 @@ export class View extends Node {
     }
     /** Sets picture width in client pixels. */
     set width(value: number) {
-        this.write("width", finite(`${label(this)}.width`, value));
+        this.write("width", value);
     }
 
     /** Picture height in client pixels. */
@@ -134,7 +134,7 @@ export class View extends Node {
     }
     /** Sets picture height in client pixels. */
     set height(value: number) {
-        this.write("height", finite(`${label(this)}.height`, value));
+        this.write("height", value);
     }
 
     /** The View's picture dimensions as `{ width, height }`. */

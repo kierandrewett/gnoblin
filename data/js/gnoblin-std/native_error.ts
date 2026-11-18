@@ -80,7 +80,8 @@ export function stdFailure(error: unknown, fallback: string): unknown {
     }
     const text = error.message.replace(/^E_[A-Z_]+: /, "");
     if (error.code === ErrorKind.TYPE) {
-        return new TypeError(text);
+        // A number out of its range (`zoom` of 0) is a `RangeError`, as the script API has always said; any other wrong value a `TypeError`.
+        return / must be above \d/.test(text) ? new RangeError(text) : new TypeError(text);
     }
     const named = /^([^\s:]+): ([\s\S]*)$/.exec(text);
     return named === null

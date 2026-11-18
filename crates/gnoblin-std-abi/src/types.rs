@@ -1457,6 +1457,11 @@ abi_structs! {
         /// Gives the style of a `where` selection a rank: among the selections that style a client the higher rank beats the lower, and
         /// equal ranks go by the order the selections first got a style. `E_TYPE` for the style of anything but a selection.
         pub style_rank: unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, rank: f64) -> i32,
+        /// Writes the children of a node of the tree to `out`, in tree order, lent until the next call into the library on this thread.
+        /// The library reads the tree as the shell's own writes leave it, so a node made a moment ago is there.
+        pub scene_children: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinStdMembers) -> i32,
+        /// Writes the parent of a node to `out`, or zero for a node that has none.
+        pub scene_parent: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinNode) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]

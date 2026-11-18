@@ -3,7 +3,7 @@
 
 use gnoblin_core::NodeId;
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinNode};
-use gnoblin_std_abi::GnoblinStdProp;
+use gnoblin_std_abi::{GnoblinStdMembers, GnoblinStdProp};
 
 use super::Kind;
 use crate::animation::table::{prop_in, prop_struct};
@@ -51,10 +51,52 @@ pub(crate) unsafe extern "C" fn scene_insert(
 
 pub(crate) unsafe extern "C" fn scene_root(ctx: GnoblinCtx, out: *mut GnoblinNode) -> i32 {
     call("scene_root", || {
-        let std = std_of(ctx)?;
-        let root = std.g().root()?.id().0;
+        let root = mutate(ctx, |st| {
+            let root = st.g.root()?.id().0;
+            // The root takes the writes of any node (a script mounts nodes under it and may move it), so the library knows it as one.
+            st.scene.kinds.entry(root).or_insert(Kind::Node);
+            Ok(root)
+        })?;
         // SAFETY: the caller guarantees `out` is null or a writable node id.
         unsafe { put(out, root) }?;
+        Ok(abi::E_OK)
+    })
+}
+
+thread_local! {
+    /// The children `scene_children` lent, valid until the next call on this thread.
+    static LENT_CHILDREN: std::cell::RefCell<Vec<u64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub(crate) unsafe extern "C" fn scene_children(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinStdMembers) -> i32 {
+    call("scene_children", || {
+        let std = std_of(ctx)?;
+        let children = std.g().node(NodeId(node)).children()?;
+        let (ptr, len) = LENT_CHILDREN.with(|lent| {
+            *lent.borrow_mut() = children.iter().map(|child| child.id().0).collect();
+            let lent = lent.borrow();
+            (lent.as_ptr(), lent.len())
+        });
+        // SAFETY: the caller guarantees `out` is null or writable.
+        unsafe {
+            put(
+                out,
+                GnoblinStdMembers {
+                    ptr: if len == 0 { core::ptr::null() } else { ptr },
+                    len,
+                },
+            )
+        }?;
+        Ok(abi::E_OK)
+    })
+}
+
+pub(crate) unsafe extern "C" fn scene_parent(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinNode) -> i32 {
+    call("scene_parent", || {
+        let std = std_of(ctx)?;
+        let parent = std.g().node(NodeId(node)).parent()?.map_or(0, |parent| parent.id().0);
+        // SAFETY: the caller guarantees `out` is null or a writable node id.
+        unsafe { put(out, parent) }?;
         Ok(abi::E_OK)
     })
 }

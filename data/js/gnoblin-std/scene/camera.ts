@@ -28,9 +28,6 @@ export interface Camera3DOptions extends NodeOptions {
     size?: number;
 }
 
-/** Keeps the orthographic height because the tree has no property for it. */
-const cameraSizes = new WeakMap<object, number>();
-
 /** A scene node that projects its children. A `View` draws content through its camera. */
 export class Camera3D extends Node {
     constructor(options: Camera3DOptions = {}, cls = "Camera") {
@@ -53,16 +50,13 @@ export class Camera3D extends Node {
         }
     }
 
-    /** Visible orthographic height in scene units; defaults to 1000 and must be greater than zero. */
+    /** Visible orthographic height in scene units; defaults to 1000 and must be greater than zero. The library keeps it: the tree has no property for it. */
     get size(): number {
-        return cameraSizes.get(this) ?? 1000;
+        return this.read<number>("size");
     }
     /** Sets the orthographic height; it must be greater than zero. */
     set size(value: number) {
-        if (finite(`${label(this)}.size`, value) <= 0) {
-            throw new RangeError(`${label(this)}.size: must be above 0`);
-        }
-        cameraSizes.set(this, value);
+        this.write("size", value);
     }
 
     /** Returns the active projection mode: `orthographic`, `perspective` or `stereo`. */
@@ -83,7 +77,7 @@ export class Camera3D extends Node {
     }
     /** Sets the camera's metres per scene unit. */
     set metres(value: number) {
-        this.write("metres", finite(`${label(this)}.metres`, value));
+        this.write("metres", value);
     }
 
     /** Returns the near clipping distance in camera-space units. */
@@ -92,7 +86,7 @@ export class Camera3D extends Node {
     }
     /** Sets the near clipping distance in camera-space units. */
     set near(value: number) {
-        this.write("near", finite(`${label(this)}.near`, value));
+        this.write("near", value);
     }
 
     /** Returns the far clipping distance in camera-space units. */
@@ -101,7 +95,7 @@ export class Camera3D extends Node {
     }
     /** Sets the far clipping distance in camera-space units. */
     set far(value: number) {
-        this.write("far", finite(`${label(this)}.far`, value));
+        this.write("far", value);
     }
 
     /** Returns the vertical field of view in degrees. */
@@ -110,7 +104,7 @@ export class Camera3D extends Node {
     }
     /** Sets the vertical field of view in degrees. */
     set fov(value: number) {
-        this.write("fov", finite(`${label(this)}.fov`, value));
+        this.write("fov", value);
     }
 
     /** Returns the stereo eye spacing in metres. */
@@ -119,7 +113,7 @@ export class Camera3D extends Node {
     }
     /** Sets the stereo eye spacing in metres. */
     set ipd(value: number) {
-        this.write("ipd", finite(`${label(this)}.ipd`, value));
+        this.write("ipd", value);
     }
 
     /** Number of layers the headset can carry in one frame, or 0 before the XR program reports a value. */
