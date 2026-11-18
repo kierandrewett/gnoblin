@@ -152,14 +152,31 @@ fn drive(script: &Path, steps: &[&str]) -> Run {
 /// less than the source tree's.
 fn drive_in(script: &Path, steps: &[&str], stock: &Path) -> Run {
     let stage = stage();
+    drive_over(&stage.dir, &stage.runtimes, script, steps, stock)
+}
+
+/// Like [`drive`], in a shell that uses the std library: the prefix with the library beside the core.
+fn drive_std(script: &Path, steps: &[&str]) -> Run {
+    let stage = stage();
+    drive_over(
+        &stage.with_std,
+        &stage.with_std_runtimes,
+        script,
+        steps,
+        &repo_root().join("data/js"),
+    )
+}
+
+fn drive_over(dir: &Path, runtimes: &Path, script: &Path, steps: &[&str], stock: &Path) -> Run {
+    let stage = stage();
     let mut all: Vec<PathBuf> = vec![PathBuf::from("reload"), script.to_owned()];
     all.extend(steps.iter().map(PathBuf::from));
     let refs: Vec<&Path> = all.iter().map(PathBuf::as_path).collect();
     let output = scenario_with_env(
-        &stage.dir,
+        dir,
         &refs,
         &[
-            ("GNOBLIN_RUNTIME_DIR", stage.runtimes.as_path()),
+            ("GNOBLIN_RUNTIME_DIR", runtimes),
             ("GNOBLIN_JS_STOCK_DIR", stock),
             ("XDG_CACHE_HOME", stage.cache.as_path()),
             ("GNOBLIN_JS_CONSOLE", Path::new("0")),
@@ -229,7 +246,7 @@ fn project(name: &str) -> PathBuf {
 
 #[test]
 fn example_4_a_js_shell_of_es_modules_runs_in_process_and_its_std_workspace_tiles_the_windows() {
-    let run = drive(
+    let run = drive_std(
         &example("04-js-esm/shell.js"),
         &[
             "pump", "mark:one", "dump", "open:50", "mark:two", "dump", "stats", "stop",
@@ -237,10 +254,11 @@ fn example_4_a_js_shell_of_es_modules_runs_in_process_and_its_std_workspace_tile
     );
     assert_eq!(run.code, 0, "{}", run.dump());
     assert!(run.stdout.contains("started generation=1"), "{}", run.dump());
-    // The context is a JavaScript one, and the engine is in the runtime library: the one extra mapping is the runtime.
+    // The context is a JavaScript one, and the engine is in the runtime library: the one extra mapping is the runtime. The shell
+    // imports `gnoblin-std`, whose stock layouts are the library's, so the library is mapped too.
     assert!(
         run.stdout
-            .contains("maps core_copies=1 shell_mappings=1 std_mappings=0"),
+            .contains("maps core_copies=1 shell_mappings=1 std_mappings=1"),
         "{}",
         run.dump()
     );
