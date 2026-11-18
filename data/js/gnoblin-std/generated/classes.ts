@@ -4,7 +4,7 @@
 
 import { call } from "gnoblin-std/generated/native";
 import type { Init } from "gnoblin-std/generated/native";
-import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, OutputInfo, outputInfoToNative, outputInfoFromNative, Span, spanToNative, spanFromNative, Areas, areasToNative, areasFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutQuery, layoutQueryToNative, layoutQueryFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, DragTile, dragTileToNative, dragTileFromNative, DragStep, dragStepToNative, dragStepFromNative, DragOutcome, dragOutcomeToNative, dragOutcomeFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
+import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, OutputInfo, outputInfoToNative, outputInfoFromNative, Span, spanToNative, spanFromNative, Areas, areasToNative, areasFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutQuery, layoutQueryToNative, layoutQueryFromNative, FloatingQuery, floatingQueryToNative, floatingQueryFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, DragTile, dragTileToNative, dragTileFromNative, DragStep, dragStepToNative, dragStepFromNative, DragOutcome, dragOutcomeToNative, dragOutcomeFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
 
 function handleOf(value: { handle: number } | { node: number } | number): number {
   if (typeof value === "number") {
@@ -628,6 +628,16 @@ export class Gesture {
   static way(kind: number, dx: number, dy: number, scale: number, threshold: number): number {
     const raw = call("gesture_way", kind, dx, dy, scale, threshold);
     return (raw);
+  }
+}
+
+export class Floating {
+  // Writes to `out` the rectangle a new window goes at, as the floating layout places one (free space, centred or cascading), and
+  // with `STD_FLOAT_APART` as it keeps windows off one another's corner. Reads nothing of the library's state: it never starts
+  // the desktop. `E_TYPE` for a mode that is not `STD_PLACE_*` or a number that is not finite.
+  static place(query: Init<FloatingQuery>): Rect {
+    const raw = call("floating_place", floatingQueryToNative(query));
+    return (rectFromNative(raw));
   }
 }
 

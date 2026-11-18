@@ -46,6 +46,7 @@ mod events;
 mod exports;
 mod fit;
 mod floating;
+mod floating_api;
 mod layout;
 mod nodes;
 mod objects;

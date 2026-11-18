@@ -422,7 +422,8 @@ export class DwindleLayout extends BuiltinLayout {
     this.setOption("permanent_direction_override", value);
   }
 
-  // A split goes side by side when the cell's width is at least its height times this, held to 0.1 to 3.0.
+  // A split goes side by side when the cell's width is at least its height times this; any finite number is taken,
+  // and it is held to 0.1 to 3.0 where it is used.
   get splitWidthMultiplier(): number {
     return this.getOption("split_width_multiplier") as number;
   }
@@ -562,8 +563,9 @@ export class StripLayout extends BuiltinLayout {
     this.setOption("column", value);
   }
 
-  // Scrolls the view to `offset` pixels and keeps it there until the focused window changes.
-  scrollTo(offset: number): void {
+  // Scrolls the view to `offset` pixels and keeps it there until the focused window changes; with no offset the
+  // view follows the focus again.
+  scrollTo(offset?: number | null): void {
     this.act("scroll_to", [["offset", offset]]);
   }
 

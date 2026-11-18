@@ -2990,3 +2990,27 @@ that only repeated it left the place unset). The lock-session helpers of `crates
 core with the std library, like `js_shell.rs`. **Still TypeScript:** `DisplayManager` (profiles, logical displays, mirror requests): its
 backend is native but its reconciliation has no table counterpart; `FloatingLayout.place`/`onClientAdded` and `placeRect` (a standalone
 `floating_place` is the next step).
+
+### 25.5 Compatibility of the migrated layouts, `floating_place` and the installed declarations (lane TsStdNative2)
+
+**Read and write parity.** The public members of the migrated layout classes were compared with the files at `3d9849068~1`: every export and every
+instance member is still there. Two differed and are restored: `StripLayout.pin` is a getter and a setter again (setting it pins the view, `null` lets
+it follow the focus; the library's `scroll_to` takes an absent offset for that), and `scrollTo` and the setter refuse a non-finite offset in the old
+words. `split_width_multiplier` accepts any finite number again and holds it to 0.1 to 3.0 where it is used, as the TypeScript did (0 and negatives
+clamp to 0.1; only a non-number is refused). `ArcLayout` and `StripLayout` check their options in the constructor again, in the old words and with no call into the library (`gnoblinctl check`
+loads a shell in a host with no library, so a constructor must not need one). **Documented differences:** the text of a refused option is the library's (`E_TYPE: dwindle.ratio must be a finite number, got NaN`), not
+the TypeScript's, and the error class is `Error`, not `RangeError`/`TypeError`, for every option the library checks; `DwindleLayout` and `MasterStackLayout`
+still validate `gap` in the constructor and the rest when they first compute.
+
+**`floating_place`.** A standalone table function (it never starts the desktop) with the record `GnoblinStdFloatingQuery` (mode, step, size, area and the
+occupied rectangles; `STD_FLOAT_APART` also keeps windows off one another's corner). It runs the arithmetic of the library's own floating layout
+(`floating::place_rect`, `apart_from`). `FloatingLayout.place`, `onClientAdded` and `placeRect` are thin wrappers over it: they read the clients'
+frames, ask, and write the answer. The TypeScript scans, the cascade and the separation are deleted. What stays TypeScript of `FloatingLayout` is the
+host contract (the `placed` set, `floatingBounds`, the frame inset), which belongs to the workspace row.
+
+**Installed declarations.** `cargo xtask dist install` installs `share/gnoblin/types/gnoblin.d.ts` (the globals, from `gnoblin-js-types`) and
+`share/gnoblin/types/<package>/index.ts` (the stock index plus the exports of its host module: the module the runtime builds, which the sources alone
+are not) and `share/gnoblin/types/tsconfig.json`, which maps each package name to its entry and the submodules to `../js/<package>/*`. The packages' own
+declarations are their `.ts` sources, which the generated bindings of `gen-sdks` (`gnoblin-std/generated/*`) belong to, so there is no second
+copy to drift. A shell's `tsconfig.json` extends the installed file and type-checks against the installed library with no `types init` copy;
+`dist-check` fails on a prefix without them or whose map names a file that is not installed.

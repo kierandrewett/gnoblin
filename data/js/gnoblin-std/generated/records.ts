@@ -464,6 +464,42 @@ export function layoutQueryFromNative(data: any): LayoutQuery {
   };
 }
 
+// What `floating_place` is asked: where a new window of a size goes among the windows that are already there. A copy: the library
+// keeps nothing of it past the call.
+export interface FloatingQuery {
+  flags: number;
+  mode: number;
+  step: number;
+  width: number;
+  height: number;
+  area: Rect;
+  occupied: Rect[];
+}
+
+export function floatingQueryToNative(value: Init<FloatingQuery>): Record<string, unknown> {
+  return {
+    flags: value.flags,
+    mode: value.mode,
+    step: value.step,
+    width: value.width,
+    height: value.height,
+    area: value.area === undefined ? undefined : rectToNative(value.area),
+    occupied: value.occupied === undefined ? undefined : value.occupied.map(rectToNative),
+  };
+}
+
+export function floatingQueryFromNative(data: any): FloatingQuery {
+  return {
+    flags: data.flags,
+    mode: data.mode,
+    step: data.step,
+    width: data.width,
+    height: data.height,
+    area: rectFromNative(data.area),
+    occupied: (Array.from(data.occupied) as any[]).map(rectFromNative),
+  };
+}
+
 // Which layout a workspace has: the argument of `workspace_set_layout`. A struct that starts with `size` may grow.
 export interface LayoutSpec {
   kind: LayoutKind;

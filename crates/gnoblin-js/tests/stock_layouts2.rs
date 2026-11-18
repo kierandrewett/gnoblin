@@ -411,9 +411,42 @@ fn scroll_to_pins_the_view_until_the_focused_node_changes_as_before() {
         got,
         lines(&[
             "0,0,0,500,",
-            "Error: E_TYPE: strip.scroll_to.offset must be a finite number, got NaN",
-            "Error: E_TYPE: strip.scroll_to.offset must be a finite number, got inf",
-            "Error: E_TYPE: strip.scroll_to.offset must be a number",
+            "TypeError: scrollTo needs a finite number, got NaN",
+            "TypeError: scrollTo needs a finite number, got Infinity",
+            "TypeError: scrollTo needs a finite number, got left",
+        ])
+    );
+}
+
+#[test]
+fn the_pin_can_be_read_set_and_cleared_as_a_field_as_before() {
+    // Before: `pin` was a plain field: setting it pinned the view, null let it follow the focus again, and the layout was dirty either way.
+    let got = run(r#"
+        const { list, state } = focusables(3);
+        state.current = list[2];
+        const l = new StripLayout();
+        const x = (placed, name) => placed.find((p) => p.node.name === name).bounds.x;
+        const compute = () => l.compute({ children: list, area: area(), focused: state.current });
+        compute();
+        const before = l.revision;
+        l.pin = 100;
+        const set = [l.pin, x(compute(), "w1"), l.revision > before];
+        l.pin = null;
+        const cleared = [l.pin, x(compute(), "w1")];
+        emit([
+            set.join(","),
+            cleared.join(","),
+            thrown(() => { l.pin = Number.NaN; }),
+            thrown(() => { l.pin = "left" as any; }),
+        ].join("\n"));
+    "#);
+    assert_eq!(
+        got,
+        lines(&[
+            "100,-100,true",
+            ",-500",
+            "TypeError: scrollTo needs a finite number, got NaN",
+            "TypeError: scrollTo needs a finite number, got left",
         ])
     );
 }

@@ -376,9 +376,10 @@ const DWINDLE: LayoutKindDesc = LayoutKindDesc {
         ),
         option(
             "split_width_multiplier",
-            above(ValueShape::Number, 0.0),
+            value(ValueShape::Number),
             Initial::Number(1.0),
-            "A split goes side by side when the cell's width is at least its height times this, held to 0.1 to 3.0.",
+            "A split goes side by side when the cell's width is at least its height times this; any finite number is taken, and it is held \
+             to 0.1 to 3.0 where it is used.",
         ),
         option(
             "use_active_for_splits",
@@ -533,11 +534,12 @@ const STRIP: LayoutKindDesc = LayoutKindDesc {
             "scroll_to",
             &[arg(
                 "offset",
-                value(ValueShape::Number),
-                "Pixels from the strip's start.",
+                maybe(ValueShape::Number),
+                "Pixels from the strip's start; absent lets the view follow the focus again.",
             )],
             None,
-            "Scrolls the view to `offset` pixels and keeps it there until the focused window changes.",
+            "Scrolls the view to `offset` pixels and keeps it there until the focused window changes; with no offset the view follows the \
+             focus again.",
         ),
         action(
             "focus_left",

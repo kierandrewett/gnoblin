@@ -624,6 +624,12 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         scriptable: true,
         standalone: false,
     },
+    FunctionInfo {
+        name: "floating_place",
+        inputs: &["query"],
+        scriptable: true,
+        standalone: true,
+    },
 ];
 
 pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
@@ -727,6 +733,7 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "client_areas" => client_areas(lib, ctx, args),
         "workspace_restore_client" => workspace_restore_client(lib, ctx, args),
         "client_restore_snap" => client_restore_snap(lib, ctx, args),
+        "floating_place" => floating_place(lib, ctx, args),
         other => Err(StdError::unsupported(other)),
     }
 }
@@ -3125,6 +3132,29 @@ fn client_restore_snap(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdE
     Ok(Dyn::Int(i64::from(status)))
 }
 
+#[allow(unused_mut, unused_variables)]
+fn floating_place(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, floating_place) + size_of::<usize>()) {
+        return Err(StdError::unsupported("floating_place"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`floating_place` takes 1 arguments (query), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let query = write_gnoblin_std_floating_query(&mut arena, &args[0], "argument `query` of `floating_place`")?;
+    // SAFETY: an all-zero `GnoblinStdRect` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdRect = unsafe { zeroed() };
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.floating_place)(ctx, &raw const query, &raw mut out) };
+    let status = lib.check("floating_place", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_rect(&out))
+}
+
 fn read_gnoblin_std_stats(record: &GnoblinStdStats) -> Dyn {
     // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
     Dyn::Map(vec![
@@ -4069,6 +4099,49 @@ fn write_gnoblin_std_span(arena: &mut Arena, value: &Dyn, what: &str) -> Result<
         // SAFETY: `kept` points at the vector the arena owns for the call.
         record.members = unsafe { (*kept).as_ptr() };
         record.n_members = unsafe { (*kept).len() };
+    }
+    reader.finish()?;
+    Ok(record)
+}
+
+#[allow(unused_mut)]
+fn write_gnoblin_std_floating_query(
+    arena: &mut Arena,
+    value: &Dyn,
+    what: &str,
+) -> Result<GnoblinStdFloatingQuery, StdError> {
+    let mut reader = MapReader::new(value, what)?;
+    // SAFETY: an all-zero `GnoblinStdFloatingQuery` is valid: numbers, null pointers and absent functions.
+    let mut record: GnoblinStdFloatingQuery = unsafe { zeroed() };
+    record.size = size_of::<GnoblinStdFloatingQuery>() as u32;
+    if let Some(item) = reader.take("flags") {
+        record.flags = item.to_u32(&reader.path("flags"))?;
+    }
+    if let Some(item) = reader.take("mode") {
+        record.mode = item.to_u32(&reader.path("mode"))?;
+    }
+    if let Some(item) = reader.take("step") {
+        record.step = item.to_f64(&reader.path("step"))?;
+    }
+    if let Some(item) = reader.take("width") {
+        record.width = item.to_f64(&reader.path("width"))?;
+    }
+    if let Some(item) = reader.take("height") {
+        record.height = item.to_f64(&reader.path("height"))?;
+    }
+    if let Some(item) = reader.take("area") {
+        record.area = write_gnoblin_std_rect(arena, item, &reader.path("area"))?;
+    }
+    if let Some(item) = reader.take("occupied") {
+        let list = item.to_list(&reader.path("occupied"))?;
+        let values: Vec<GnoblinStdRect> = list
+            .iter()
+            .map(|entry| write_gnoblin_std_rect(arena, entry, &reader.path("occupied")))
+            .collect::<Result<_, _>>()?;
+        let kept = arena.keep(values);
+        // SAFETY: `kept` points at the vector the arena owns for the call.
+        record.occupied = unsafe { (*kept).as_ptr() };
+        record.n_occupied = unsafe { (*kept).len() };
     }
     reader.finish()?;
     Ok(record)

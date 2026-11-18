@@ -21,6 +21,16 @@ const OPTIONS: OptionSpecs = {
     spacing: { native: "spacing" },
 };
 
+/** The checks the constructor always made, which need no library; the library checks again when it makes its layout. */
+function check(name: string, value: unknown, positive: boolean): number {
+    if (typeof value !== "number" || !Number.isFinite(value) || (positive && value <= 0)) {
+        throw new TypeError(
+            `ArcLayout: ${name} must be a finite number${positive ? " above 0" : ""}, got ${String(value)}`,
+        );
+    }
+    return value;
+}
+
 /** What a View shows, so a layout of Views follows the focus of the client behind each. Undefined for other nodes. */
 function contentOf(node: LayoutNode): unknown {
     return "content" in node ? node.content : undefined;
@@ -43,8 +53,8 @@ export class ArcLayout extends NativeLayout {
 
     constructor(options: ArcOptions = {}) {
         super();
-        this.radius = options.radius ?? 1200;
-        this.spacing = options.spacing ?? 0.35;
+        this.radius = check("radius", options.radius ?? 1200, true);
+        this.spacing = check("spacing", options.spacing ?? 0.35, false);
     }
 
     protected get kind(): number {

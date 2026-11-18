@@ -40,6 +40,7 @@ const | STD_LAYOUT_FOREIGN | u32 = 2 | 1.0
 const | STD_PLACE_SMART | u32 = 0 | 1.0
 const | STD_PLACE_CENTER | u32 = 1 | 1.0
 const | STD_PLACE_CASCADE | u32 = 2 | 1.0
+const | STD_FLOAT_APART | u32 = 1 | 1.0
 const | STD_PLACEMENT_BOUNDS | u32 = 1 | 1.0
 const | STD_PLACEMENT_HIDDEN | u32 = 2 | 1.0
 const | STD_PLACEMENT_TILED | u32 = 4 | 1.0
@@ -333,6 +334,18 @@ field | GnoblinStdLayoutQuery.pointer_y | f64 @88 +8 | 1.0
 field | GnoblinStdLayoutQuery.focused_width | f64 @96 +8 | 1.0
 field | GnoblinStdLayoutQuery.focused_height | f64 @104 +8 | 1.0
 
+struct | GnoblinStdFloatingQuery | size 88 align 8 extensible | 1.0
+
+field | GnoblinStdFloatingQuery.size | u32 @0 +4 | 1.0
+field | GnoblinStdFloatingQuery.flags | u32 @4 +4 | 1.0
+field | GnoblinStdFloatingQuery.mode | u32 @8 +4 | 1.0
+field | GnoblinStdFloatingQuery.step | f64 @16 +8 | 1.0
+field | GnoblinStdFloatingQuery.width | f64 @24 +8 | 1.0
+field | GnoblinStdFloatingQuery.height | f64 @32 +8 | 1.0
+field | GnoblinStdFloatingQuery.area | GnoblinStdRect @40 +32 | 1.0
+field | GnoblinStdFloatingQuery.occupied | *const GnoblinStdRect @72 +8 | 1.0
+field | GnoblinStdFloatingQuery.n_occupied | usize @80 +8 | 1.0
+
 struct | GnoblinStdPlacements | size 16 align 8 fixed | 1.0
 
 field | GnoblinStdPlacements.ptr | *const GnoblinStdPlacement @0 +8 | 1.0
@@ -563,7 +576,7 @@ struct | GnoblinStdStyleEntries | size 16 align 8 fixed | 1.0
 field | GnoblinStdStyleEntries.ptr | *const GnoblinStdStyleEntry @0 +8 | 1.0
 field | GnoblinStdStyleEntries.len | usize @8 +8 | 1.0
 
-struct | GnoblinStdApi | size 808 align 8 extensible | 1.0
+struct | GnoblinStdApi | size 816 align 8 extensible | 1.0
 
 field | GnoblinStdApi.size | u32 @0 +4 | 1.0
 field | GnoblinStdApi.major | u32 @4 +4 | 1.0
@@ -668,3 +681,4 @@ field | GnoblinStdApi.output_span | unsafe extern "C" fn(ctx: GnoblinCtx, span: 
 field | GnoblinStdApi.client_areas | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStdAreas) -> i32 @784 +8 | 1.0
 field | GnoblinStdApi.workspace_restore_client | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, arrived: u32) -> i32 @792 +8 | 1.0
 field | GnoblinStdApi.client_restore_snap | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, zone: u32, floating: *const GnoblinStdRect) -> i32 @800 +8 | 1.0
+field | GnoblinStdApi.floating_place | unsafe extern "C" fn(ctx: GnoblinCtx, query: *const GnoblinStdFloatingQuery, out: *mut GnoblinStdRect) -> i32 @808 +8 | 1.0

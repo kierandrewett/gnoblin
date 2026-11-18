@@ -41,14 +41,19 @@ function computeOnce(
     }
 }
 
+/** A column is a number: the one check the constructor makes, which needs no library (a shell is also checked where there is none). */
+function checkColumn(value: unknown): asserts value is number {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+        throw new TypeError(`column must be a number, got ${String(value)}`);
+    }
+}
+
 /**
  * A column's width as a fraction of the strip's, held to the library's 0.1 to 1. Anything but a number is an error. The bounds are the
  * library's: a one-column strip over a width of 1 is as wide as the column the library would give.
  */
 export function clampColumn(value: unknown): number {
-    if (typeof value !== "number" || Number.isNaN(value)) {
-        throw new TypeError(`column must be a number, got ${String(value)}`);
-    }
+    checkColumn(value);
     // The library takes a finite number below the range of a script's node numbers, and holds it to its own: an infinity is as far outside
     // it as 2 or -1 are.
     const finite = Math.min(Math.max(value, -1), 2);
@@ -101,7 +106,7 @@ export class StripLayout extends NativeLayout {
     constructor(options: StripOptions = {}) {
         super();
         this.column = options.column ?? 0.5;
-        clampColumn(this.column);
+        checkColumn(this.column);
     }
 
     protected get kind(): number {
@@ -121,16 +126,30 @@ export class StripLayout extends NativeLayout {
         this.handOnFocus(client, context);
     }
 
-    /** The view offset in pixels `scrollTo` pinned, or `null` while the view follows the focused column. */
+    /** The view offset in pixels `scrollTo` pinned, or `null` while the view follows the focused column. Setting it pins the view, or with `null` lets it follow again. */
     get pin(): number | null {
         const answer = this.act("pin", [], { clients: [] }, false);
         return typeof answer === "number" ? answer : null;
     }
 
-    /** Scrolls the view to `offset` pixels and keeps it there until the focused node changes. */
-    scrollTo(offset: number): void {
+    set pin(offset: number | null) {
+        if (offset !== null) {
+            this.#checkOffset(offset);
+        }
         this.act("scroll_to", [argOf("offset", offset)], { clients: [] }, false);
         this.changed();
+    }
+
+    /** Scrolls the view to `offset` pixels and keeps it there until the focused node changes. */
+    scrollTo(offset: number): void {
+        this.#checkOffset(offset);
+        this.pin = offset;
+    }
+
+    #checkOffset(offset: unknown): void {
+        if (typeof offset !== "number" || !Number.isFinite(offset)) {
+            throw new TypeError(`scrollTo needs a finite number, got ${String(offset)}`);
+        }
     }
 
     /** Moves focus one column left; at the first column nothing happens. */

@@ -305,4 +305,5 @@ export const OutcomeFlags = {
 export type OutcomeFlags = (typeof OutcomeFlags)[keyof typeof OutcomeFlags];
 
 export const STD_LISTEN_REPLAY = 1;
+export const STD_FLOAT_APART = 1;
 export const STD_SPLIT_CROSS = 1;

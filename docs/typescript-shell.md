@@ -217,6 +217,13 @@ such as `gnoblin-std/scene` opens the file the shell runs.
 - Run `gnoblinctl types init` again after an upgrade. It rewrites `.gnoblin` to the release you run and never replaces a
   `tsconfig.json` you have.
 
+An installed prefix also carries the declarations, so a shell needs no copy of the library to be type-checked: `share/gnoblin/types/tsconfig.json`
+maps `gnoblin-core` and `gnoblin-std` to the installed library and loads the globals. Extend it from your `tsconfig.json`:
+
+```json
+{ "extends": "/usr/share/gnoblin/types/tsconfig.json", "include": ["./*.ts"] }
+```
+
 See [Editor files](gnoblinctl.md#editor-files) for what is written where.
 
 ## What the file can do
@@ -274,7 +281,7 @@ The stock layouts of `gnoblin-std` (`MasterStackLayout`, `GridLayout`, `MonocleL
 library's built-in layouts: the options are plain fields as before, the algorithm is `libgnoblin-std`'s (`Builtin`, made by
 `builtin_new`, which belongs to no workspace). They need `libgnoblin-std.so.1`, like `gnoblin-std/native`; their option errors are the
 library's. An action (`DwindleLayout.toggleSplit(workspace)`, `StripLayout.focusLeft(workspace)`) is the library's too: it runs against the workspace's windows and
-hands the keyboard to the window the library names. `FloatingLayout` is still TypeScript (see design section 25.4).
+hands the keyboard to the window the library names. `FloatingLayout` asks the library where a new window goes (`floating_place`) and keeps the host contract (see design section 25.5).
 
 The stock drag classes (`ClientMoveBinding`, `ClientResizeBinding`, `ClientSwapBinding`, `SplitResizeBinding`) are still
 `PointerDragBinding` subclasses, so the engine's matcher picks the binding and a script's own subclass keeps working, but what a

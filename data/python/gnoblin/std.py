@@ -291,6 +291,7 @@ class OutcomeFlags(IntFlag):
     HAS_SIDES = 256
 
 STD_LISTEN_REPLAY = 1
+STD_FLOAT_APART = 1
 STD_SPLIT_CROSS = 1
 
 @dataclass
@@ -778,6 +779,43 @@ class LayoutQuery:
             pointer_y=data["pointer_y"],
             focused_width=data["focused_width"],
             focused_height=data["focused_height"],
+        )
+
+@dataclass
+class FloatingQuery:
+    """What `floating_place` is asked: where a new window of a size goes among the windows that are already there. A copy: the library
+    keeps nothing of it past the call.
+    """
+
+    flags: int = 0
+    mode: int = 0
+    step: float = 0.0
+    width: float = 0.0
+    height: float = 0.0
+    area: Rect = field(default_factory=Rect)
+    occupied: list[Rect] = field(default_factory=list)
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "flags": self.flags,
+            "mode": self.mode,
+            "step": self.step,
+            "width": self.width,
+            "height": self.height,
+            "area": self.area._to_dyn(),
+            "occupied": [item._to_dyn() for item in self.occupied],
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> FloatingQuery:
+        return cls(
+            flags=data["flags"],
+            mode=data["mode"],
+            step=data["step"],
+            width=data["width"],
+            height=data["height"],
+            area=Rect._from_dyn(data["area"]),
+            occupied=[Rect._from_dyn(item) for item in data["occupied"]],
         )
 
 @dataclass
@@ -2291,6 +2329,18 @@ class Gesture(_b.Handle):
         raw = _call("gesture_way", _b.dyn(kind), _b.dyn(dx), _b.dyn(dy), _b.dyn(scale), _b.dyn(threshold))
         return raw
 
+class Floating(_b.Handle):
+    """Functions of `floating` that need no handle."""
+
+    @staticmethod
+    def place(query: FloatingQuery | dict[str, Any]) -> Rect:
+        """Writes to `out` the rectangle a new window goes at, as the floating layout places one (free space, centred or cascading), and
+        with `STD_FLOAT_APART` as it keeps windows off one another's corner. Reads nothing of the library's state: it never starts
+        the desktop. `E_TYPE` for a mode that is not `STD_PLACE_*` or a number that is not finite.
+        """
+        raw = _call("floating_place", _b.dyn(query))
+        return Rect._from_dyn(raw)
+
 class Registration(_b.Handle):
     """A registration the std library holds for a shell: a listener on a collection. Owned by the generation that made it;
     `remove` ends it, and the generation's retirement ends the rest.
@@ -2624,7 +2674,9 @@ class DwindleLayout(_b.BuiltinLayout):
 
     @property
     def split_width_multiplier(self) -> float:
-        """A split goes side by side when the cell's width is at least its height times this, held to 0.1 to 3.0."""
+        """A split goes side by side when the cell's width is at least its height times this; any finite number is taken,
+        and it is held to 0.1 to 3.0 where it is used.
+        """
         return self._get("split_width_multiplier")
 
     @split_width_multiplier.setter
@@ -2761,8 +2813,10 @@ class StripLayout(_b.BuiltinLayout):
     def column(self, value: float) -> None:
         self._set("column", value)
 
-    def scroll_to(self, offset: float) -> None:
-        """Scrolls the view to `offset` pixels and keeps it there until the focused window changes."""
+    def scroll_to(self, offset: Optional[float] = None) -> None:
+        """Scrolls the view to `offset` pixels and keeps it there until the focused window changes; with no offset the
+        view follows the focus again.
+        """
         self._act("scroll_to", [("offset", offset)])
 
     def focus_left(self) -> None:

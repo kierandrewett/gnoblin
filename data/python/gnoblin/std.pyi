@@ -289,6 +289,7 @@ class OutcomeFlags(IntFlag):
     HAS_SIDES = 256
 
 STD_LISTEN_REPLAY = 1
+STD_FLOAT_APART = 1
 STD_SPLIT_CROSS = 1
 
 @dataclass
@@ -543,6 +544,25 @@ class LayoutQuery:
 
     @classmethod
     def _from_dyn(cls, data: dict[str, Any]) -> LayoutQuery: ...
+
+@dataclass
+class FloatingQuery:
+    """What `floating_place` is asked: where a new window of a size goes among the windows that are already there. A copy: the library
+    keeps nothing of it past the call.
+    """
+
+    flags: int = ...
+    mode: int = ...
+    step: float = ...
+    width: float = ...
+    height: float = ...
+    area: Rect = ...
+    occupied: list[Rect] = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> FloatingQuery: ...
 
 @dataclass
 class LayoutSpec:
@@ -1592,6 +1612,17 @@ class Gesture:
         """
         ...
 
+class Floating:
+    """Functions of `floating` that need no handle."""
+
+    @staticmethod
+    def place(query: FloatingQuery | dict[str, Any]) -> Rect:
+        """Writes to `out` the rectangle a new window goes at, as the floating layout places one (free space, centred or cascading), and
+        with `STD_FLOAT_APART` as it keeps windows off one another's corner. Reads nothing of the library's state: it never starts
+        the desktop. `E_TYPE` for a mode that is not `STD_PLACE_*` or a number that is not finite.
+        """
+        ...
+
 class Registration:
     """A registration the std library holds for a shell: a listener on a collection. Owned by the generation that made it;
     `remove` ends it, and the generation's retirement ends the rest.
@@ -1861,7 +1892,9 @@ class DwindleLayout:
 
     @property
     def split_width_multiplier(self) -> float:
-        """A split goes side by side when the cell's width is at least its height times this, held to 0.1 to 3.0."""
+        """A split goes side by side when the cell's width is at least its height times this; any finite number is taken,
+        and it is held to 0.1 to 3.0 where it is used.
+        """
         ...
 
     @split_width_multiplier.setter
@@ -1990,8 +2023,10 @@ class StripLayout:
     def column(self, value: float) -> None:
         ...
 
-    def scroll_to(self, offset: float) -> None:
-        """Scrolls the view to `offset` pixels and keeps it there until the focused window changes."""
+    def scroll_to(self, offset: Optional[float] = None) -> None:
+        """Scrolls the view to `offset` pixels and keeps it there until the focused window changes; with no offset the
+        view follows the focus again.
+        """
         ...
 
     def focus_left(self) -> None:

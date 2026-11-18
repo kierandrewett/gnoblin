@@ -127,6 +127,10 @@ abi_consts! {
     /// `GnoblinStdLayoutSpec.placement`: a cascade from the area's top left.
     pub const STD_PLACE_CASCADE: u32 = 2;
 
+    /// `GnoblinStdFloatingQuery.flags`: after the spot is chosen, a window that would sit exactly on the top-left corner of another is
+    /// moved back toward the area's origin one `step` at a time, so a cascade that ran out of room does not pile windows on one point.
+    pub const STD_FLOAT_APART: u32 = 1;
+
     /// `GnoblinStdPlacement.flags`: `bounds` holds the client's rectangle; without it the client stays where it is.
     pub const STD_PLACEMENT_BOUNDS: u32 = 1;
     /// `GnoblinStdPlacement.flags`: the client is hidden (a monocle's other windows).
@@ -692,6 +696,29 @@ abi_structs! {
         pub focused_width: f64,
         /// With `STD_QUERY_FOCUSED_SIZE`: the focused client's height with its frame.
         pub focused_height: f64,
+    }
+
+    /// What `floating_place` is asked: where a new window of a size goes among the windows that are already there. A copy: the library
+    /// keeps nothing of it past the call.
+    pub struct GnoblinStdFloatingQuery {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_FLOAT_*` flags.
+        pub flags: u32,
+        /// How the window is placed: `STD_PLACE_*`.
+        pub mode: u32,
+        /// The distance between cascade positions; zero reads as 32.
+        pub step: f64,
+        /// The window's width, frame included. Below 1 it is read as 1.
+        pub width: f64,
+        /// The window's height, frame included. Below 1 it is read as 1.
+        pub height: f64,
+        /// The rectangle the window goes in.
+        pub area: GnoblinStdRect,
+        /// The rectangles of the windows already there, frame included.
+        pub occupied: *const GnoblinStdRect,
+        /// Number of occupied rectangles.
+        pub n_occupied: usize,
     }
 
     /// An array of placements the library lends for the call: `ptr` points at `len` placements, valid until the next call into the
@@ -1422,6 +1449,11 @@ abi_structs! {
         /// Gives a client the snapped state a reload takes back: `zone` (`STD_SNAP_*`) and the rectangle `client_unsnap` puts it back to.
         /// Nothing moves: the caller put the window where it was. `E_NO_SUCH_NODE` for a node that is not a client.
         pub client_restore_snap: unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, zone: u32, floating: *const GnoblinStdRect) -> i32,
+
+        /// Writes to `out` the rectangle a new window goes at, as the floating layout places one (free space, centred or cascading), and
+        /// with `STD_FLOAT_APART` as it keeps windows off one another's corner. Reads nothing of the library's state: it never starts
+        /// the desktop. `E_TYPE` for a mode that is not `STD_PLACE_*` or a number that is not finite.
+        pub floating_place: unsafe extern "C" fn(ctx: GnoblinCtx, query: *const GnoblinStdFloatingQuery, out: *mut GnoblinStdRect) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]

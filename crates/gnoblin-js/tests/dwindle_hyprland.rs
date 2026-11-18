@@ -144,7 +144,7 @@ fn a_bad_option_is_refused_in_the_layouts_name() {
             "TypeError: DwindleLayout forceSplit must be one of by_pointer, first, second, got 3",
             "TypeError: DwindleLayout forceSplit must be one of by_pointer, first, second, got left",
             "TypeError: DwindleLayout splitBias must be one of first, opened, got 2",
-            "Error: E_TYPE: dwindle.split_width_multiplier must be a finite number above 0, got NaN",
+            "Error: E_TYPE: dwindle.split_width_multiplier must be a finite number, got NaN",
             "Error: E_TYPE: dwindle.split_width_multiplier must be a number",
             "Error: E_TYPE: dwindle.preserve_split must be a boolean",
             "Error: E_TYPE: dwindle.smart_split must be a boolean",
@@ -375,7 +375,7 @@ fn the_split_width_multiplier_scales_the_height_before_the_comparison() {
     let got = run(r#"
         const two = nodes(2);
         const by = (splitWidthMultiplier: number) => arrive(new DwindleLayout({ splitWidthMultiplier }), two, 2);
-        emit([by(2), by(0.5), by(1), by(50), thrown(() => by(0))].join("\n"));
+        emit([by(2), by(0.5), by(1), by(50), by(0), by(-3)].join("\n"));
     "#);
     assert_eq!(
         got,
@@ -384,7 +384,8 @@ fn the_split_width_multiplier_scales_the_height_before_the_comparison() {
             "0,0,500,800 500,0,500,800",
             "0,0,500,800 500,0,500,800",
             "0,0,1000,400 0,400,1000,400",
-            "Error: E_TYPE: dwindle.split_width_multiplier must be a finite number above 0, got 0",
+            "0,0,500,800 500,0,500,800",
+            "0,0,500,800 500,0,500,800",
         ])
     );
 }

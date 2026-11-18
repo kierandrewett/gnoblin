@@ -148,10 +148,12 @@ impl Imp for ColumnStrip {
     fn act(&mut self, action: &str, args: &[Val], env: &ActionEnv) -> Res<ActionResult> {
         match action {
             "scroll_to" => {
-                let Some(Val::Num(offset)) = args.first() else {
-                    return Err(Fail::type_error("strip.scroll_to needs an offset"));
+                self.core.pin = match args.first() {
+                    Some(Val::Num(offset)) => Some(*offset),
+                    // No offset lets the view follow the focus again.
+                    Some(Val::None) | None => None,
+                    Some(_) => return Err(Fail::type_error("strip.scroll_to takes an offset in pixels or none")),
                 };
-                self.core.pin = Some(*offset);
                 Ok(ActionResult {
                     value: Val::None,
                     changed: true,
