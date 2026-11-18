@@ -19,6 +19,7 @@ import { openLibrary } from "gnoblin-std/host/library";
 import { installFocus, installPolicy } from "gnoblin-std/host/policy";
 import { installTransitions } from "gnoblin-std/host/rollback";
 import { installRoots } from "gnoblin-std/host/roots";
+import { installSnap } from "gnoblin-std/host/snap_host";
 import { installServices } from "gnoblin-std/host/services";
 import { installStaging } from "gnoblin-std/host/staging";
 import { std } from "gnoblin-std/host/state";
@@ -39,6 +40,7 @@ function installStd(): void {
     registerQueryKeys();
     installStaging();
     installRoots();
+    installSnap();
     installDisplays();
     installUi();
     installPolicy();

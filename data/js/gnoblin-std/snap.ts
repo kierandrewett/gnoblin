@@ -3,15 +3,12 @@
 // `crates/gnoblin-js/tests/stock_focus.rs`.
 //
 // The geometry helpers use plain rectangles. `snapClient` and `unsnapClient` work with objects that have `bounds`;
-// the library keeps the snap of a window with its frame inset and the rectangle it floats at.
+// they keep restore data in a WeakMap rather than adding fields to the client, and a window the host holds has the library keep it.
 
-import type { Client } from "gnoblin-core/host/client";
+import { NO_INSET, shrinkRect } from "gnoblin-core/inset";
 import type { FrameInset } from "gnoblin-core/inset";
 import type { Rect } from "gnoblin-core/types";
 import { Drag } from "gnoblin-std/generated/classes";
-import type { Client as NativeClient } from "gnoblin-std/generated/classes";
-import { whenKnown } from "gnoblin-std/host/client_state";
-import { nativeClient } from "gnoblin-std/host/library";
 import { SnapKind } from "gnoblin-std/generated/constants";
 
 /** The part of the work area a window tiles to: the left or right half, or all of it. */
@@ -96,49 +93,104 @@ export interface SnapOptions {
     inset?: FrameInset;
 }
 
-/** The library's record of a client: the snap lives with its frame inset and floating rectangle, where a refit reads it. */
-function library(client: object): NativeClient {
-    return nativeClient(client as unknown as Client);
+/**
+ * What the shell host gives snapping for the windows it holds: the library keeps the snap of a window with its frame inset and the
+ * rectangle it floats at, where a refit reads it. An object that is not a window (the pure helpers' tests) keeps its own record.
+ */
+export interface SnapHost {
+    /** Whether `client` is a window the library holds. */
+    owns(client: object): boolean;
+    /** The library tiles the window to the zone number, less the room its frame takes. */
+    snap(client: object, zone: number, area: Rect, edgeTiling: boolean): boolean;
+    /** Puts a snapped window back where it floated, or only forgets the snap with `forget`. */
+    unsnap(client: object, forget: boolean): boolean;
+    /** The snap the library keeps for the window, or null. */
+    record(client: object): { zone: number; floating: Rect } | null;
+    /** Gives the library back the snap a reload took. */
+    restore(client: object, zone: number, floating: Rect): void;
+}
+
+let hosted: SnapHost | null = null;
+
+/** Gives snapping its host. The package install calls it once per generation. */
+export function attachSnap(host: SnapHost): void {
+    hosted = host;
+}
+
+/** The records of objects the library does not hold. */
+const snapped = new WeakMap<object, SnapRecord>();
+
+/** The host's hold on `client`, or null for an object of its own. */
+function held(client: object): SnapHost | null {
+    return hosted !== null && hosted.owns(client) ? hosted : null;
 }
 
 /**
  * Tiles `client` to `zone`. Refused (false) when edge tiling is off or the zone does not tile, and the client stays
  * where it was. A maximised client floats first, so unsnapping returns it to the rectangle it had before. A client
- * that is snapped already keeps the rectangle it first floated at. The library tiles it, less the room its frame takes.
+ * that is snapped already keeps the rectangle it first floated at. The library tiles a window, less the room its frame takes.
  */
 export function snapClient(client: SnapClient, zone: string, options: SnapOptions): boolean {
-    if (!Object.hasOwn(ZONE_NUMBERS, zone)) {
+    const rect = options.edgeTiling ? tileRect(zone, options.area) : null;
+    if (rect === null) {
         return false;
     }
-    return whenKnown(
-        () => library(client).snap(ZONE_NUMBERS[zone], options.area, options.edgeTiling ? 1 : 0),
-        () => false,
-    );
+    const host = held(client);
+    if (host !== null) {
+        return host.snap(client, ZONE_NUMBERS[zone], options.area, options.edgeTiling);
+    }
+    const before = snapped.get(client);
+    let floating: Rect;
+    if (before !== undefined) {
+        floating = before.floating;
+    } else if (client.maximised === true) {
+        floating = { ...(client.floatingBounds ?? client.bounds) };
+    } else {
+        floating = { ...client.bounds };
+    }
+    if (client.maximised === true) {
+        client.maximised = false;
+    }
+    snapped.set(client, { zone: zone as SnapZone, floating });
+    client.bounds = shrinkRect(rect, options.inset ?? NO_INSET);
+    return true;
 }
 
 /** Puts a snapped client back where it floated. False when it is not snapped. */
 export function unsnapClient(client: SnapClient): boolean {
-    return whenKnown(
-        () => library(client).unsnap(0),
-        () => false,
-    );
+    const host = held(client);
+    if (host !== null) {
+        return host.unsnap(client, false);
+    }
+    const state = snapped.get(client);
+    if (state === undefined) {
+        return false;
+    }
+    snapped.delete(client);
+    client.bounds = state.floating;
+    return true;
 }
 
 /** A copy of what `client`'s snap keeps, or null when it is not snapped: what `restoreSnap` takes back. */
 export function snapRecord(client: object): SnapRecord | null {
-    return whenKnown(
-        () => {
-            const state = library(client).state();
-            const zone = ZONES[state.snapZone];
-            return zone === undefined ? null : { zone, floating: { ...state.snapFloating } };
-        },
-        () => null,
-    );
+    const host = held(client);
+    if (host !== null) {
+        const record = host.record(client);
+        const zone = record === null ? undefined : ZONES[record.zone];
+        return record === null || zone === undefined ? null : { zone, floating: { ...record.floating } };
+    }
+    const state = snapped.get(client);
+    return state === undefined ? null : { zone: state.zone, floating: { ...state.floating } };
 }
 
 /** Snaps `client` again from a record `snapRecord` took, without moving it: the caller put the rectangle back. */
 export function restoreSnap(client: object, record: SnapRecord): void {
-    library(client).restoreSnap(ZONE_NUMBERS[record.zone], record.floating);
+    const host = held(client);
+    if (host !== null) {
+        host.restore(client, ZONE_NUMBERS[record.zone], record.floating);
+    } else {
+        snapped.set(client, { zone: record.zone, floating: { ...record.floating } });
+    }
 }
 
 /** The zone `client` is snapped to, or null. */
@@ -148,8 +200,10 @@ export function snappedZone(client: object): SnapZone | null {
 
 /** Forgets the snap of `client` without moving it: the window left its zone some other way. */
 export function forgetSnap(client: object): void {
-    whenKnown(
-        () => library(client).unsnap(1),
-        () => false,
-    );
+    const host = held(client);
+    if (host !== null) {
+        host.unsnap(client, true);
+    } else {
+        snapped.delete(client);
+    }
 }
