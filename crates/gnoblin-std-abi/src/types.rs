@@ -1454,6 +1454,9 @@ abi_structs! {
         /// with `STD_FLOAT_APART` as it keeps windows off one another's corner. Reads nothing of the library's state: it never starts
         /// the desktop. `E_TYPE` for a mode that is not `STD_PLACE_*` or a number that is not finite.
         pub floating_place: unsafe extern "C" fn(ctx: GnoblinCtx, query: *const GnoblinStdFloatingQuery, out: *mut GnoblinStdRect) -> i32,
+        /// Gives the style of a `where` selection a rank: among the selections that style a client the higher rank beats the lower, and
+        /// equal ranks go by the order the selections first got a style. `E_TYPE` for the style of anything but a selection.
+        pub style_rank: unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, rank: f64) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]

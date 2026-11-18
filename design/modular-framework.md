@@ -3014,3 +3014,13 @@ are not) and `share/gnoblin/types/tsconfig.json`, which maps each package name t
 declarations are their `.ts` sources, which the generated bindings of `gen-sdks` (`gnoblin-std/generated/*`) belong to, so there is no second
 copy to drift. A shell's `tsconfig.json` extends the installed file and type-checks against the installed library with no `types init` copy;
 `dist-check` fails on a prefix without them or whose map names a file that is not installed.
+**Styles (lane TsStdAnim).** The row `style/*` of the table above has moved, with the scopes onto the library's workspaces and selections.
+
+- _What the library holds._ Every scope (`gnoblin.clients`, a workspace's clients, a `where` selection, one client) is a `style_scope`; `gnoblin-std/style/native.ts` hands each the scalars and lists its
+  script object holds (`give`: only when the JSON of them changed) once a frame, in `applyStyles`, and before any read of an inherited list or a computed style. The cascade, the origin of each
+  property, the effects, opacity and corner radius written to the window node, the 16-effect limit and the notes of what nothing draws are the library's, applied in its turn and, inside
+  a `requestTransition`, in the commit. A selection's `priority` is `style_rank` (new table function; equal ranks go by the order the selections first got a style).
+- _What stays TypeScript, and why._ The style objects: `ClientStyle`, the element classes, `StyleList` and the once-per-frame comparison that finds a `push` or `splice`, the copy of an inherited list
+  that a first write makes the scope's own, and the per-field checks with their error paths (`values`, `filters`, `border_shadow`, `lists`, `element`, `state`, `snapshot`, about 1000 lines).
+  They are the API a script writes against; the library has no in-place edit and takes a list whole, so the object model cannot be the library's. The library re-checks everything it is given.
+  Deleted: `resolve.ts`, `map.ts` and the apply pass of `host/styles.ts`.

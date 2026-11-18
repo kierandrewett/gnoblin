@@ -1,95 +1,44 @@
-// Applies resolved client styles to host nodes and reports effects the compositor cannot draw.
+// Hands the library the styles a script holds. What a style becomes on a window node (effects, opacity, corner radius) and what nothing
+// draws is the library's: it applies them in its turn and in a transition's commit (`gnoblin-std/style/native`). The library keeps what
+// it did not draw as notes of the client; the shell says each once, as a notice of the frame, when the styles moved.
 
-import { errorCodeOfRefusal, GnoblinError } from "gnoblin-core/errors";
-import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
 import { ctx } from "gnoblin-core/host/context";
-import { guard, say } from "gnoblin-core/host/dispatch";
+import { say } from "gnoblin-core/host/dispatch";
 import { stateOf } from "gnoblin-core/host/node_state";
-import { everyStyle, layersOf, styleState } from "gnoblin-std/host/style_scopes";
-import type { ClientStyleState } from "gnoblin-std/host/style_scopes";
+import { everyStyle, pushStyles } from "gnoblin-std/host/style_scopes";
+import { notesOf } from "gnoblin-std/style/native";
 import { syncStyleLists } from "gnoblin-std/style/lists";
-import { mapStyle } from "gnoblin-std/style/map";
-import { resolveStyle } from "gnoblin-std/style/resolve";
 import { styleEpoch } from "gnoblin-std/style/state";
-import type { StyleLayer } from "gnoblin-std/style/resolve";
-import type { HostValue } from "gnoblin-core/types";
 
-/**
- * Maximum effects supported on one node. A style can contain up to this many shadows and borders combined,
- * with a backdrop blur counting as one effect.
- */
-const MAX_NODE_EFFECTS = 16;
+/** What the notes were last asked at, and how many frames more to ask: the library applies a style in the turn after the frame that gave it. */
+const noticed = { epoch: -1, clients: -1, frames: 0 };
 
-/** Writes a client's resolved effects, opacity and corner radius to its node when they change. */
-function applyClientStyle(client: Client, state: ClientStyleState, layers: StyleLayer[]): void {
-    const node = stateOf(client).node;
-    const label = `Client#${host.label(node)}.style`;
-    const computed = resolveStyle(layers);
-    state.computed = computed;
-    const mapping = mapStyle(computed);
-    state.notes = mapping.unapplied;
-    for (const text of mapping.unapplied) {
-        say(`not applied: style.${text}`);
-    }
-    const refused = (what: string, code: string | undefined | null): void => {
-        if (code != null && code !== "unknown-node") {
-            ctx.reports.push({
-                site: label,
-                error: new GnoblinError(errorCodeOfRefusal(code), label, `the host refused the ${what} (${code})`),
-            });
-        }
-    };
-    if (mapping.effects.length > MAX_NODE_EFFECTS) {
-        const error = new RangeError(
-            `${label}: a window carries at most ${MAX_NODE_EFFECTS} effects, the style makes ${mapping.effects.length}`,
-        );
-        state.notes = [...state.notes, error.message];
-        ctx.reports.push({ site: label, error });
-    } else {
-        const json = JSON.stringify(mapping.effects);
-        // A window an earlier generation styled keeps its effects: the first application clears them when the style
-        // has none, which is how a line removed from the config takes its effect away on reload.
-        const published = host.published(node, "effects") as unknown as unknown[] | undefined;
-        const unchanged =
-            state.effects === null
-                ? mapping.effects.length === 0 && (published ?? []).length === 0
-                : json === state.effects;
-        if (!unchanged) {
-            refused("effects", host.set(node, "effects", mapping.effects as unknown as HostValue));
-        }
-        state.effects = json;
-    }
-    const before = state.opacity ?? (host.published(node, "opacity") as number);
-    if (computed.opacity !== before) {
-        refused("opacity", host.set(node, "opacity", computed.opacity));
-    }
-    state.opacity = computed.opacity;
-    const radiusBefore = state.cornerRadius ?? (host.published(node, "corner_radius") as number);
-    if (mapping.cornerRadius !== radiusBefore) {
-        refused("corner radius", host.set(node, "corner_radius", mapping.cornerRadius));
-    }
-    state.cornerRadius = mapping.cornerRadius;
-}
-
-/** Checks mutable style arrays, then applies resolved styles for clients whose style or inherited layers changed. */
+/** Checks the arrays a script changed in place, gives the library the styles that moved, and says what it did not draw. */
 export function applyStyles(): void {
     for (const style of everyStyle()) {
         for (const error of syncStyleLists(style)) {
             ctx.reports.push({ site: "gnoblin.style", error });
         }
     }
+    pushStyles();
     const epoch = styleEpoch();
-    for (const client of ctx.clientRoot.list as Client[]) {
-        const state = styleState(client);
-        const layers = layersOf(client);
-        const key = layers.map((layer) => layer.origin).join("\n");
-        if (state.applied && state.epoch === epoch && state.layers === key) {
-            continue;
+    const clients = ctx.clientRoot.list.length;
+    if (epoch !== noticed.epoch || clients !== noticed.clients) {
+        noticed.epoch = epoch;
+        noticed.clients = clients;
+        noticed.frames = 3;
+    }
+    if (noticed.frames > 0) {
+        noticed.frames -= 1;
+        for (const client of ctx.clientRoot.list as Client[]) {
+            if (stateOf(client).alive) {
+                for (const note of notesOf(stateOf(client).node)) {
+                    if (note.startsWith("not applied:")) {
+                        say(note);
+                    }
+                }
+            }
         }
-        state.applied = true;
-        state.epoch = epoch;
-        state.layers = key;
-        guard(`Client#${host.label(stateOf(client).node)}.style`, () => applyClientStyle(client, state, layers));
     }
 }

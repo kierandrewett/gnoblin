@@ -10,6 +10,6 @@ export { MAX_STYLE_LIST } from "gnoblin-std/style/values";
 export type { BorderInit, BorderLike, ShadowInit, ShadowLike } from "gnoblin-std/style/border_shadow";
 export type { Filter, FilterInit } from "gnoblin-std/style/filters";
 export type { StyleList, StyleProperty } from "gnoblin-std/style/lists";
-export type { BorderValue, ComputedStyle, FilterValue, ShadowValue } from "gnoblin-std/style/resolve";
+export type { BorderValue, ComputedStyle, FilterValue, ShadowValue } from "gnoblin-std/style/computed";
 export type { ClientStyleInit } from "gnoblin-std/style/style";
 export type { CornerRadii } from "gnoblin-std/style/values";

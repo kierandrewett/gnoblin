@@ -1408,6 +1408,12 @@ class Style:
         """Lends what a client's style asks for that is not drawn, one text per line, empty when all of it is."""
         ...
 
+    def rank(self, rank: float) -> int:
+        """Gives the style of a `where` selection a rank: among the selections that style a client the higher rank beats the lower, and
+        equal ranks go by the order the selections first got a style. `E_TYPE` for the style of anything but a selection.
+        """
+        ...
+
 class Scene:
     """Functions of `scene` that need no handle."""
 

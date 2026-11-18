@@ -2096,6 +2096,13 @@ class Style(_b.Handle):
         raw = _call("style_notes", _b.dyn(client))
         return raw
 
+    def rank(self, rank: float) -> int:
+        """Gives the style of a `where` selection a rank: among the selections that style a client the higher rank beats the lower, and
+        equal ranks go by the order the selections first got a style. `E_TYPE` for the style of anything but a selection.
+        """
+        raw = _call("style_rank", self.handle, _b.dyn(rank))
+        return raw
+
 class Scene(_b.Handle):
     """Functions of `scene` that need no handle."""
 

@@ -435,6 +435,12 @@ export class Style {
     const raw = call("style_notes", handleOf(client));
     return (raw);
   }
+  // Gives the style of a `where` selection a rank: among the selections that style a client the higher rank beats the lower, and
+  // equal ranks go by the order the selections first got a style. `E_TYPE` for the style of anything but a selection.
+  rank(rank: number): number {
+    const raw = call("style_rank", this.handle, rank);
+    return raw;
+  }
 }
 
 export class Scene {

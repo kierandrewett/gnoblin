@@ -38,7 +38,7 @@ import { repositioning } from "gnoblin-std/reposition";
 import type { RepositionClient } from "gnoblin-std/reposition";
 import { sceneOf } from "gnoblin-std/scene/scene";
 import type { Scene } from "gnoblin-std/scene/scene";
-import type { ComputedStyle } from "gnoblin-std/style/resolve";
+import type { ComputedStyle } from "gnoblin-std/style/computed";
 import { replaceStyle } from "gnoblin-std/style/style";
 import type { ClientStyle, ClientStyleInit } from "gnoblin-std/style/style";
 import { setProperties } from "gnoblin-std/transition/engine";

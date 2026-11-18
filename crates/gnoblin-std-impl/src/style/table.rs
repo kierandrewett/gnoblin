@@ -430,3 +430,27 @@ pub(crate) unsafe extern "C" fn style_notes(ctx: GnoblinCtx, client: GnoblinNode
         Ok(abi::E_OK)
     })
 }
+
+pub(crate) unsafe extern "C" fn style_rank(ctx: GnoblinCtx, style: GnoblinStdStyle, rank: f64) -> i32 {
+    call("style_rank", || {
+        if !rank.is_finite() {
+            return Err(Fail::type_error("a selection's rank must be a finite number"));
+        }
+        mutate(ctx, |st| {
+            let scope = st
+                .styles
+                .stores
+                .get(&style)
+                .map(|store| store.scope)
+                .ok_or_else(|| Fail::stale(format!("style {style} does not exist")))?;
+            match scope {
+                Scope::Collection(coll) if st.colls.get(&coll).is_some_and(|coll| coll.parent.is_some()) => {
+                    st.styles.set_rank(coll, rank);
+                    Ok(())
+                }
+                _ => Err(Fail::type_error("only the style of a `where` selection has a rank")),
+            }
+        })?;
+        Ok(abi::E_OK)
+    })
+}

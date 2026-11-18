@@ -1,65 +1,62 @@
-// Resolves the style layers that apply to each client.
+// The scopes of the styles a script holds: which collection or client each is the style of, and the library's scope that follows it.
+// The cascade, the resolve, what a resolved style becomes on the node and what nothing draws are the library's (`gnoblin-std/style/native`);
+// this module keeps the script's style objects and hands the library what they hold.
 
 import { GnoblinError } from "gnoblin-core/errors";
 import { host } from "gnoblin-core/host/bridge";
 import type { Client } from "gnoblin-core/host/client";
-import { contains, QUERY_KEYS, rootOf } from "gnoblin-core/host/collection_state";
+import { QUERY_KEYS } from "gnoblin-core/host/collection_state";
 import type { CollectionState } from "gnoblin-core/host/collection_state";
 import { ctx } from "gnoblin-core/host/context";
 import { std } from "gnoblin-std/host/state";
 import { stateOf } from "gnoblin-core/host/node_state";
 import type { Workspace } from "gnoblin-std/host/workspace";
-import { wsOf, wsState } from "gnoblin-std/host/workspace_state";
-import { layeredList, resolveStyle } from "gnoblin-std/style/resolve";
+import { wsState } from "gnoblin-std/host/workspace_state";
+import type { Collection as NativeCollection } from "gnoblin-std/generated/classes";
+import {
+    clientsRoot,
+    computedOf,
+    emptyComputed,
+    give,
+    inherited,
+    notesOf,
+    scopeOf,
+    termsOf,
+} from "gnoblin-std/style/native";
+import type { Scope } from "gnoblin-std/style/native";
+import { LIST_ENTRY } from "gnoblin-std/style/lists";
+import type { ListName } from "gnoblin-std/style/lists";
+import type { StyleElement } from "gnoblin-std/style/element";
 import { bindStyle, ClientStyle } from "gnoblin-std/style/style";
-import type { ComputedStyle, StyleLayer } from "gnoblin-std/style/resolve";
+import type { ComputedStyle } from "gnoblin-std/style/computed";
 import type { Style } from "gnoblin-std/style/style";
+import { styleEpoch } from "gnoblin-std/style/state";
 
 /** The style a collection of clients carries, and where it ranks among the selections. */
 export interface ScopeStyle {
     /** The scope's mutable style values. */
     style: ClientStyle;
-    /** The order the scope's style was first asked for in: the tie-break between selections of equal priority. */
+    /** The order the scope's style was first asked for in. */
     order: number;
+    /** The library's scope of the collection. */
+    scope: Scope;
 }
 
-/** What a client's style last resolved from and wrote to its node. */
+/** What the script's side keeps of a client's style. */
 export interface ClientStyleState {
     /** The client's own overrides, made the first time a script reads `client.style`. */
     style: ClientStyle | null;
-    /** Whether the style has been written to the host. */
-    applied: boolean;
-    /** The style epoch and the layers the last application was made for. */
-    epoch: number;
-    /** Origins of style layers used by the last application. */
-    layers: string;
-    /** The effective style values last computed for the client. */
+    /** The library's scope of the client, made when the client is first asked about. */
+    scope: Scope | null;
+    /** The effective style values last computed for the client, kept after it is gone. */
     computed: ComputedStyle | null;
-    /** Style properties not applied to the host. */
-    notes: string[];
-    /** The effects last written, as JSON; null before the first write. */
-    effects: string | null;
-    /** The opacity last written, or the node's own when nothing was written yet. */
-    opacity: number | null;
-    /** The corner radius last written, or the node's own when nothing was written yet. */
-    cornerRadius: number | null;
 }
 
-/** Lazily allocates the per-client style bookkeeping used by the frame pass. */
+/** Lazily allocates the per-client style bookkeeping. */
 export function styleState(client: Client): ClientStyleState {
     let state = std.clientStyles.get(client);
     if (state === undefined) {
-        state = {
-            style: null,
-            applied: false,
-            epoch: -1,
-            layers: "",
-            computed: null,
-            notes: [],
-            effects: null,
-            opacity: null,
-            cornerRadius: null,
-        };
+        state = { style: null, scope: null, computed: null };
         std.clientStyles.set(client, state);
     }
     return state;
@@ -78,27 +75,41 @@ function scopePath(state: CollectionState): string {
     return state === ctx.clientRoot ? "gnoblin.clients" : `Workspace#${workspaceOfScope(state)?.id ?? "?"}.clients`;
 }
 
-/** The name `computedStyle.origin` gives a scope. */
-function scopeOrigin(state: CollectionState): string {
-    if (state.parent !== null) {
-        return scopePath(state).replace(/^gnoblin\.clients\./, "");
+/** The library's collection that stands for a collection of clients of the script's. */
+const natives = new WeakMap<CollectionState, NativeCollection>();
+
+function nativeCollection(state: CollectionState): NativeCollection {
+    let found = natives.get(state);
+    if (found === undefined) {
+        if (state.parent !== null) {
+            const narrowed = nativeCollection(state.parent).where(termsOf(state.query ?? {}));
+            if (narrowed === null) {
+                throw new GnoblinError("internal", scopePath(state), "the library made no selection");
+            }
+            found = narrowed;
+        } else if (state === ctx.clientRoot) {
+            found = clientsRoot();
+        } else {
+            const workspace = workspaceOfScope(state);
+            if (workspace === undefined) {
+                throw new TypeError("style: only a collection of clients has a style");
+            }
+            found = wsState(workspace).nativeClients;
+        }
+        natives.set(state, found);
     }
-    return state === ctx.clientRoot ? "global" : `workspace:${workspaceOfScope(state)?.id ?? "?"}`;
+    return found;
 }
 
-/** The layers of the scopes above a collection's own: what a list it does not override is inherited from. */
-function layersAbove(state: CollectionState): StyleLayer[] {
-    const layers: StyleLayer[] = [];
-    const global = std.scopeStyles.get(ctx.clientRoot);
-    if (global !== undefined && state !== ctx.clientRoot) {
-        layers.push({ origin: "global", style: global.style });
-    }
-    const root = rootOf(state);
-    const scope = root === ctx.clientRoot ? undefined : std.scopeStyles.get(root);
-    if (scope !== undefined && state !== root) {
-        layers.push({ origin: scopeOrigin(root), style: scope.style });
-    }
-    return layers;
+/** The elements of an inherited list, as a script gets them: copies, which no list owns. */
+function elementsOf(name: ListName, data: Record<string, unknown>[]): StyleElement[] {
+    return data.map((entry) => {
+        const literal =
+            typeof entry.kind === "string"
+                ? { [entry.kind]: entry.kind === "blur" ? entry.radius : entry.amount }
+                : entry;
+        return LIST_ENTRY[name](literal, "inherited", []);
+    });
 }
 
 /** The scope of `state`, made when first asked for. */
@@ -109,43 +120,35 @@ export function scopeStyle(state: CollectionState): ScopeStyle {
     let scope = std.scopeStyles.get(state);
     if (scope === undefined) {
         const style = new ClientStyle();
-        scope = { style, order: std.flags.styleOrder };
+        const native = scopeOf("collection", nativeCollection(state).handle);
+        scope = { style, order: std.flags.styleOrder, scope: { native, given: "{}" } };
         std.flags.styleOrder += 1;
         std.scopeStyles.set(state, scope);
         if (state.parent !== null) {
             std.styledSelections.push(state);
+            if (state.priority !== undefined && state.priority !== 0) {
+                native.rank(state.priority);
+            }
         }
+        const made = scope;
         bindStyle(style, {
             path: () => `${scopePath(state)}.style`,
-            below: (name) => layeredList(layersAbove(state), name),
+            below: (name) => {
+                pushStyles();
+                return elementsOf(name, inherited(made.scope, name));
+            },
         });
     }
     return scope;
 }
 
-/** The scopes a client sits under, lowest precedence first: global, its workspace, then its `where()` selections. */
-function scopeLayers(client: Client): StyleLayer[] {
-    const layers: StyleLayer[] = [];
-    const global = std.scopeStyles.get(ctx.clientRoot);
-    if (global !== undefined) {
-        layers.push({ origin: "global", style: global.style });
+/** The library's scope of a client, made when first needed. */
+function clientScope(client: Client): Scope {
+    const state = styleState(client);
+    if (state.scope === null) {
+        state.scope = { native: scopeOf("client", stateOf(client).node), given: "{}" };
     }
-    const own = wsOf(client);
-    const workspace = own === null ? undefined : std.scopeStyles.get(own.clientsState);
-    if (own !== null && workspace !== undefined) {
-        layers.push({ origin: `workspace:${own.id}`, style: workspace.style });
-    }
-    const selected = std.styledSelections
-        .filter((state) => contains(state, client))
-        .sort(
-            (a, b) =>
-                (a.priority ?? 0) - (b.priority ?? 0) ||
-                (std.scopeStyles.get(a) as ScopeStyle).order - (std.scopeStyles.get(b) as ScopeStyle).order,
-        );
-    for (const state of selected) {
-        layers.push({ origin: scopeOrigin(state), style: (std.scopeStyles.get(state) as ScopeStyle).style });
-    }
-    return layers;
+    return state.scope;
 }
 
 /** Creates and binds the client-owned style override layer. */
@@ -156,7 +159,10 @@ export function clientStyle(client: Client): ClientStyle {
         const path = (): string => `Client#${host.label(stateOf(client).node)}.style`;
         bindStyle(style, {
             path,
-            below: (name) => layeredList(scopeLayers(client), name),
+            below: (name) => {
+                pushStyles();
+                return elementsOf(name, inherited(clientScope(client), name));
+            },
             guard: () => {
                 if (!stateOf(client).alive) {
                     throw new GnoblinError("not_found", path(), "the client is gone");
@@ -168,36 +174,59 @@ export function clientStyle(client: Client): ClientStyle {
     return state.style;
 }
 
-/** `scopeLayers` and the client's own overrides on top. */
-export function layersOf(client: Client): StyleLayer[] {
-    const own = std.clientStyles.get(client)?.style;
-    const layers = scopeLayers(client);
-    return own === null || own === undefined ? layers : [...layers, { origin: "client", style: own }];
+/** The epoch the library was last given the styles at. */
+let given = -1;
+
+/** Hands the library what every style holds, when any changed. */
+export function pushStyles(): void {
+    const epoch = styleEpoch();
+    if (epoch === given) {
+        return;
+    }
+    given = epoch;
+    for (const found of everyScope()) {
+        give(found.scope, found.style.toJSON());
+    }
+    for (const client of ctx.clientRoot.list as Client[]) {
+        const own = std.clientStyles.get(client)?.style;
+        if (own !== null && own !== undefined && stateOf(client).alive) {
+            give(clientScope(client), own.toJSON());
+        }
+    }
 }
 
 /** Resolves the effective style, retaining the last result after the client is gone. */
 export function computedStyleOf(client: Client): ComputedStyle {
+    const state = styleState(client);
     if (!stateOf(client).alive) {
-        return std.clientStyles.get(client)?.computed ?? resolveStyle([]);
+        return state.computed ?? emptyComputed();
     }
-    return resolveStyle(layersOf(client));
+    pushStyles();
+    state.computed = computedOf(stateOf(client).node);
+    return state.computed;
 }
 
-/** Reports style properties the renderer skipped for a client. */
+/** Reports style properties the renderer skipped for a client: what the library says it did not draw, and what the compositor did not. */
 export function styleWarningsOf(client: Client): readonly string[] {
-    const notes = (std.clientStyles.get(client)?.notes ?? []).map((note) => `not applied: style.${note}`);
-    const skipped = (host.get(stateOf(client).node, "skipped") as unknown as string[] | undefined) ?? [];
-    return Object.freeze([...notes, ...skipped.map((text) => `the compositor does not draw the effect ${text}`)]);
+    pushStyles();
+    return Object.freeze(notesOf(stateOf(client).node));
 }
 
-/** Every style a script can have changed an array of in place. */
-export function* everyStyle(): Generator<Style> {
+/** The scope styles of every collection a script asked the style of. */
+function* everyScope(): Generator<ScopeStyle> {
     const scopes = [ctx.clientRoot, ...(std.workspaceRoot.list as Workspace[]).map((w) => wsState(w).clientsState)];
     for (const scope of [...scopes, ...std.styledSelections]) {
         const found = std.scopeStyles.get(scope);
         if (found !== undefined) {
-            yield found.style;
+            yield found;
         }
+    }
+}
+
+/** Every style a script can have changed an array of in place. */
+export function* everyStyle(): Generator<Style> {
+    for (const found of everyScope()) {
+        yield found.style;
     }
     for (const client of ctx.clientRoot.list as Client[]) {
         const own = std.clientStyles.get(client)?.style;

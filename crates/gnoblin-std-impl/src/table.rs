@@ -1028,6 +1028,7 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     workspace_restore_client: crate::objects::workspace_restore_client,
     client_restore_snap: crate::objects::client_restore_snap,
     floating_place: crate::floating_api::floating_place,
+    style_rank: crate::style::table::style_rank,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };

@@ -66,9 +66,24 @@ pub(crate) struct StyleState {
     pub(crate) by_scope: HashMap<Scope, Id>,
     /// The selections that have a style, in the order they first got one: the tie-break between selections.
     pub(crate) selections: Vec<Id>,
+    /// What a selection ranks by among the selections that style a client: higher wins (`style_rank`); absent is 0.
+    ranks: HashMap<Id, f64>,
     /// Goes up by one for every accepted change of any style; the application compares it between turns.
     pub(crate) epoch: u64,
     clients: HashMap<u64, Applied>,
+}
+
+impl StyleState {
+    /// The rank of the selection `coll`.
+    fn rank(&self, coll: Id) -> f64 {
+        self.ranks.get(&coll).copied().unwrap_or(0.0)
+    }
+
+    /// Sets the rank of the selection `coll`.
+    pub(crate) fn set_rank(&mut self, coll: Id, rank: f64) {
+        self.ranks.insert(coll, rank);
+        self.epoch += 1;
+    }
 }
 
 /// A layer of a client's cascade.
@@ -193,10 +208,17 @@ impl State {
         {
             layers.extend(self.layer_of(Scope::Collection(ws.coll), format!("workspace:{}", ws.id)));
         }
-        for selection in &self.styles.selections {
-            if self.contains(*selection, client) {
-                layers.extend(self.layer_of(Scope::Collection(*selection), self.coll_origin(*selection)));
-            }
+        // Higher rank beats lower; selections of one rank keep the order they first got a style (the sort is stable).
+        let mut held: Vec<Id> = self
+            .styles
+            .selections
+            .iter()
+            .copied()
+            .filter(|selection| self.contains(*selection, client))
+            .collect();
+        held.sort_by(|a, b| self.styles.rank(*a).total_cmp(&self.styles.rank(*b)));
+        for selection in held {
+            layers.extend(self.layer_of(Scope::Collection(selection), self.coll_origin(selection)));
         }
         layers
     }
