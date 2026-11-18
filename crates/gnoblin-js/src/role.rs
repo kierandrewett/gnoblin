@@ -259,7 +259,22 @@ impl JsRole {
     /// socket). The handshake is the role's own: the version this build serves, sent as a client. The
     /// compositor grants the owner connection by the peer's credentials, so the session owner's second
     /// connection is the one that can attach the tree.
-    pub fn connect(env: &dyn Fn(&str) -> Option<String>, mut config: JsRoleConfig) -> Result<Self, JsShellError> {
+    pub fn connect(env: &dyn Fn(&str) -> Option<String>, config: JsRoleConfig) -> Result<Self, JsShellError> {
+        Self::connect_through(env, config, Ok)
+    }
+
+    /// Like [`JsRole::connect`], with the tree link passed through `through` before the shell takes it. A host that gives the shell
+    /// the std library (a test that runs the role over a core) hands the link to the core here and returns the view of the core's tree
+    /// the shell is to drive.
+    ///
+    /// # Errors
+    ///
+    /// The socket cannot be reached, the handshake fails, or `through` refuses the link.
+    pub fn connect_through(
+        env: &dyn Fn(&str) -> Option<String>,
+        mut config: JsRoleConfig,
+        through: impl FnOnce(Box<dyn TreeLink>) -> Result<Box<dyn TreeLink>, String>,
+    ) -> Result<Self, JsShellError> {
         let path = socket_path(env).map_err(JsShellError::Link)?;
         config.resolve_console(env);
         let transport = UnixTransport::connect(&path)
@@ -274,7 +289,8 @@ impl JsRole {
             .into_stream()
             .map_err(|error| JsShellError::Link(error.to_string()))?;
         let link = SocketTreeLink::new(stream).map_err(|error| JsShellError::Link(error.to_string()))?;
-        Self::over_link(Box::new(link), JsRoleLinks::over_owner_socket(&path, version), config)
+        let link = through(Box::new(link)).map_err(JsShellError::Link)?;
+        Self::over_link(link, JsRoleLinks::over_owner_socket(&path, version), config)
     }
 
     /// Boots the shell over `link` and loads the user's entry. With no entry file, or an entry that fails to

@@ -27,6 +27,7 @@ use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xd
 use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
+pub mod core_rig;
 pub mod elf;
 pub mod lock_session;
 
