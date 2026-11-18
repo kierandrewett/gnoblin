@@ -139,6 +139,7 @@ fn acknowledge_writes(std: &Rc<Std>, g: &Gnoblin) {
 /// Everything the pass needs to know about one workspace before it calls the layout.
 struct Plan {
     cx: LayoutContext,
+    swapped: Vec<(NodeId, NodeId)>,
     departed: Vec<NodeId>,
     arrived: Vec<NodeId>,
 }
@@ -159,6 +160,9 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
     let Some(plan) = std.st.borrow_mut().plan_workspace(workspace, revision) else {
         return;
     };
+    for (a, b) in &plan.swapped {
+        layout.clients_swapped(*a, *b);
+    }
     for client in &plan.departed {
         if let Some(next) = layout.client_removed(&plan.cx, *client) {
             let _ = g.window_handle(gnoblin_core::NodeId(next)).focus();
@@ -321,13 +325,19 @@ impl State {
             pointer: None,
         };
         let departed = std::mem::take(&mut ws.departed);
+        let swapped = std::mem::take(&mut ws.swapped);
         let arrived: Vec<NodeId> = std::mem::take(&mut ws.arrived)
             .into_iter()
             .filter(|client| {
                 nodes::alive(&self.g, *client) && self.rec.get(client).and_then(|rec| rec.workspace) == Some(workspace)
             })
             .collect();
-        Some(Plan { cx, departed, arrived })
+        Some(Plan {
+            cx,
+            swapped,
+            departed,
+            arrived,
+        })
     }
 
     /// Starts a compute when the workspace is shown and dirty or its area moved: records the area, refits the windows to a new

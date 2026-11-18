@@ -1252,7 +1252,10 @@ fn the_inspector_helpers_return_plain_data() {
         "import { Workspace, FloatingLayout } from \"gnoblin-std\";\n\
          for (const id of [\"1\", \"2\", \"3\", \"4\"]) gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));\n",
     );
-    rig.frame();
+    // The library gives the windows their workspace in the dispatch after the engine's frame.
+    for _ in 0..3 {
+        rig.frame();
+    }
     let dir = tempfile::tempdir().expect("a temp dir");
     let path = dir.path().join("js.sock");
     let mut console = JsConsole::bind(&path).expect("the console listens");

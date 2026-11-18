@@ -314,13 +314,8 @@ pub(crate) fn open_model(ctx: GnoblinCtx) -> Res<Rc<Std>> {
     }
     let screen = g.class("screen")?;
     for child in g.root()?.children()? {
-<<<<<<< HEAD
         // A node of a class the core's catalog does not have (a compositor newer than the core) is not an output.
         if child.class().is_ok_and(|class| class == screen) {
-=======
-        // A node of a class the catalog does not know is not an output.
-        if child.class().ok() == Some(screen) {
->>>>>>> b61ac9a52 (test(js): remaining bare shells run over the core; open tolerates nodes of classes the catalog lacks)
             st.outputs.push(child.id().0);
         }
     }

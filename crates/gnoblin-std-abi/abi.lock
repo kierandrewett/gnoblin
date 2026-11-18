@@ -563,11 +563,7 @@ struct | GnoblinStdStyleEntries | size 16 align 8 fixed | 1.0
 field | GnoblinStdStyleEntries.ptr | *const GnoblinStdStyleEntry @0 +8 | 1.0
 field | GnoblinStdStyleEntries.len | usize @8 +8 | 1.0
 
-<<<<<<< HEAD
-struct | GnoblinStdApi | size 760 align 8 extensible | 1.0
-=======
-struct | GnoblinStdApi | size 792 align 8 extensible | 1.0
->>>>>>> 8da5b591d (feat(std): parked-output focus, bare-shell tests over the core, regenerated bindings)
+struct | GnoblinStdApi | size 800 align 8 extensible | 1.0
 
 field | GnoblinStdApi.size | u32 @0 +4 | 1.0
 field | GnoblinStdApi.major | u32 @4 +4 | 1.0
@@ -659,7 +655,6 @@ field | GnoblinStdApi.builtin_clients_swapped | unsafe extern "C" fn(ctx: Gnobli
 field | GnoblinStdApi.builtin_find_split | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, client: GnoblinNode, x: f64, y: f64, out: *mut GnoblinStdSplit) -> i32 @680 +8 | 1.0
 field | GnoblinStdApi.builtin_set_split | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64, ratio: f64, cross_ratio: f64) -> i32 @688 +8 | 1.0
 field | GnoblinStdApi.builtin_reset_split | unsafe extern "C" fn(ctx: GnoblinCtx, builtin: GnoblinStdBuiltin, token: u64) -> i32 @696 +8 | 1.0
-<<<<<<< HEAD
 field | GnoblinStdApi.transition_release | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, key: *const u8, key_len: usize) -> i32 @704 +8 | 1.0
 field | GnoblinStdApi.drag_step | unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize, step: *const GnoblinStdDragStep, out: *mut GnoblinStdDragOutcome) -> i32 @712 +8 | 1.0
 field | GnoblinStdApi.drag_clamp | unsafe extern "C" fn(ctx: GnoblinCtx, pos: f64, size: f64, start: f64, span: f64, constraint: u32, out: *mut f64) -> i32 @720 +8 | 1.0
@@ -667,16 +662,8 @@ field | GnoblinStdApi.drag_resize | unsafe extern "C" fn(ctx: GnoblinCtx, start:
 field | GnoblinStdApi.drag_zone | unsafe extern "C" fn(ctx: GnoblinCtx, x: f64, y: f64, area: *const GnoblinStdRect, margin: f64, out: *mut u32) -> i32 @736 +8 | 1.0
 field | GnoblinStdApi.drag_tile | unsafe extern "C" fn(ctx: GnoblinCtx, zone: u32, area: *const GnoblinStdRect, out: *mut GnoblinStdRect) -> i32 @744 +8 | 1.0
 field | GnoblinStdApi.gesture_way | unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, dx: f64, dy: f64, scale: f64, threshold: f64, out: *mut u32) -> i32 @752 +8 | 1.0
-=======
-field | GnoblinStdApi.drag_step | unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, options: *const GnoblinStdOption, n_options: usize, step: *const GnoblinStdDragStep, out: *mut GnoblinStdDragOutcome) -> i32 @704 +8 | 1.0
-field | GnoblinStdApi.drag_clamp | unsafe extern "C" fn(ctx: GnoblinCtx, pos: f64, size: f64, start: f64, span: f64, constraint: u32, out: *mut f64) -> i32 @712 +8 | 1.0
-field | GnoblinStdApi.drag_resize | unsafe extern "C" fn(ctx: GnoblinCtx, start: *const GnoblinStdRect, sides: u32, dx: f64, dy: f64, limits: *const GnoblinStdClientState, out: *mut GnoblinStdRect) -> i32 @720 +8 | 1.0
-field | GnoblinStdApi.drag_zone | unsafe extern "C" fn(ctx: GnoblinCtx, x: f64, y: f64, area: *const GnoblinStdRect, margin: f64, out: *mut u32) -> i32 @728 +8 | 1.0
-field | GnoblinStdApi.drag_tile | unsafe extern "C" fn(ctx: GnoblinCtx, zone: u32, area: *const GnoblinStdRect, out: *mut GnoblinStdRect) -> i32 @736 +8 | 1.0
-field | GnoblinStdApi.gesture_way | unsafe extern "C" fn(ctx: GnoblinCtx, kind: u32, dx: f64, dy: f64, scale: f64, threshold: f64, out: *mut u32) -> i32 @744 +8 | 1.0
-field | GnoblinStdApi.output_info | unsafe extern "C" fn(ctx: GnoblinCtx, output: GnoblinNode, out: *mut GnoblinStdOutputInfo) -> i32 @752 +8 | 1.0
-field | GnoblinStdApi.output_set_insets | unsafe extern "C" fn(ctx: GnoblinCtx, output: GnoblinNode, top: f64, bottom: f64) -> i32 @760 +8 | 1.0
-field | GnoblinStdApi.output_span | unsafe extern "C" fn(ctx: GnoblinCtx, span: *const GnoblinStdSpan) -> i32 @768 +8 | 1.0
-field | GnoblinStdApi.client_areas | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStdAreas) -> i32 @776 +8 | 1.0
-field | GnoblinStdApi.workspace_restore_client | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, arrived: u32) -> i32 @784 +8 | 1.0
->>>>>>> 8da5b591d (feat(std): parked-output focus, bare-shell tests over the core, regenerated bindings)
+field | GnoblinStdApi.output_info | unsafe extern "C" fn(ctx: GnoblinCtx, output: GnoblinNode, out: *mut GnoblinStdOutputInfo) -> i32 @760 +8 | 1.0
+field | GnoblinStdApi.output_set_insets | unsafe extern "C" fn(ctx: GnoblinCtx, output: GnoblinNode, top: f64, bottom: f64) -> i32 @768 +8 | 1.0
+field | GnoblinStdApi.output_span | unsafe extern "C" fn(ctx: GnoblinCtx, span: *const GnoblinStdSpan) -> i32 @776 +8 | 1.0
+field | GnoblinStdApi.client_areas | unsafe extern "C" fn(ctx: GnoblinCtx, client: GnoblinNode, out: *mut GnoblinStdAreas) -> i32 @784 +8 | 1.0
+field | GnoblinStdApi.workspace_restore_client | unsafe extern "C" fn(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace, client: GnoblinNode, arrived: u32) -> i32 @792 +8 | 1.0

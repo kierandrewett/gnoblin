@@ -32,6 +32,9 @@ pub(crate) struct Workspace {
     pub(crate) arrived: Vec<NodeId>,
     /// The clients that left since the layout last heard of them.
     pub(crate) departed: Vec<NodeId>,
+    /// The pairs of clients that traded places since the layout last heard of it: it hears of them in its next pass, never inside the
+    /// call that traded them.
+    pub(crate) swapped: Vec<(NodeId, NodeId)>,
     /// The layout has to compute again the next time the workspace is shown.
     pub(crate) dirty: bool,
     /// The focused client the layout last computed for: a change of focus is a reason to compute again.
@@ -92,6 +95,7 @@ impl State {
                 coll,
                 arrived: Vec::new(),
                 departed: Vec::new(),
+                swapped: Vec::new(),
                 dirty: true,
                 focus_seen: None,
                 cover_seen: String::new(),
@@ -442,8 +446,7 @@ impl State {
         }
         ws.clients.swap(first, second);
         ws.dirty = true;
-        let layout = Rc::clone(&ws.layout);
-        layout.clients_swapped(a, b);
+        ws.swapped.push((a, b));
         Ok(())
     }
 
