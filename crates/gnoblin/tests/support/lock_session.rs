@@ -149,6 +149,8 @@ pub struct Shell {
     in_tick: Arc<AtomicU64>,
     began: Instant,
     thread: Option<JoinHandle<Vec<String>>>,
+    /// The place of this shell's core in the process's queue, until the shell ends.
+    turn: Option<super::core_rig::Turn>,
 }
 
 impl Shell {
@@ -168,6 +170,7 @@ impl Shell {
         let stopped = Arc::clone(&stop);
         let in_tick = Arc::new(AtomicU64::new(0));
         let ticking = Arc::clone(&in_tick);
+        let turn = super::core_rig::Turn::wait();
         let began = Instant::now();
         let thread = std::thread::Builder::new()
             .name("js-shell".to_owned())
@@ -175,7 +178,12 @@ impl Shell {
                 let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
                 let mut config = JsRoleConfig::new(&dir, Some(super::stock_dir()));
                 configure(&mut config);
-                let mut role = JsRole::connect(&env, config).expect("the shell attaches");
+                // The shell runs over a core with the std library loaded, as in the compositor.
+                let rig = super::core_rig::CoreRig::new(Arc::clone(&config.shell.clock))
+                    .expect("a core with the std library");
+                config.shell.js.natives.push(rig.std_native());
+                let mut role =
+                    JsRole::connect_through(&env, config, |link| rig.take_over(link)).expect("the shell attaches");
                 let mut problems = Vec::new();
                 let mut taken = 0;
                 while !stopped.load(Ordering::Relaxed) {
@@ -184,6 +192,7 @@ impl Shell {
                         Ordering::Relaxed,
                     );
                     let ticked = role.tick();
+                    rig.dispatch(role.shell_mut());
                     ticking.store(0, Ordering::Relaxed);
                     if let Err(error) = ticked {
                         problems.push(error.to_string());
@@ -193,6 +202,7 @@ impl Shell {
                     taken = role.diagnostics_reported();
                     std::thread::sleep(Duration::from_millis(5));
                 }
+                drop(role);
                 problems
             })
             .expect("the shell thread");
@@ -201,6 +211,7 @@ impl Shell {
             in_tick,
             began,
             thread: Some(thread),
+            turn: Some(turn),
         }
     }
 
@@ -221,9 +232,13 @@ impl Shell {
     /// Stops the shell and returns the problems it reported.
     pub fn finish(&mut self) -> Vec<String> {
         self.stop.store(true, Ordering::Relaxed);
-        self.thread
+        let problems = self
+            .thread
             .take()
-            .map_or_else(Vec::new, |thread| thread.join().expect("the shell thread ends"))
+            .map_or_else(Vec::new, |thread| thread.join().expect("the shell thread ends"));
+        // The thread's core is gone with it: the next shell of the process may have its turn.
+        self.turn.take();
+        problems
     }
 }
 
@@ -479,6 +494,9 @@ impl TreeLink for ForgingLink {
 /// hangs, how slow its frames are and when it dies. Its budgets are the honest ones of the other real-compositor tests.
 pub struct Driven {
     pub role: JsRole,
+    // Dropped after the role: the core is the role's link, and the turn is the core's place in the queue.
+    rig: super::core_rig::CoreRig,
+    _turn: super::core_rig::Turn,
     pub forged: Rc<RefCell<Forged>>,
     /// Everything the shell reported, in order.
     pub problems: Vec<String>,
@@ -486,6 +504,7 @@ pub struct Driven {
 
 impl Driven {
     pub fn start(session: &Session, dir: &Path) -> Self {
+        let turn = super::core_rig::Turn::wait();
         let transport = gnoblin_client::unix::UnixTransport::connect(&session.ipc()).expect("the session is listening");
         let version = {
             let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
@@ -506,9 +525,14 @@ impl Driven {
         config.console = JsConsoleSite::Off;
         config.shell.entry_budget = Duration::from_secs(30);
         config.shell.frame_budget = Duration::from_secs(60);
-        let role = JsRole::over_link(Box::new(link), JsRoleLinks::default(), config).expect("the shell attaches");
+        let rig = super::core_rig::CoreRig::new(Arc::clone(&config.shell.clock)).expect("a core with the std library");
+        config.shell.js.natives.push(rig.std_native());
+        let link = rig.take_over(Box::new(link)).expect("the core takes the link");
+        let role = JsRole::over_link(link, JsRoleLinks::default(), config).expect("the shell attaches");
         Self {
             role,
+            rig,
+            _turn: turn,
             forged,
             problems: Vec::new(),
         }
@@ -516,6 +540,7 @@ impl Driven {
 
     pub fn tick(&mut self) {
         self.role.tick().expect("a frame");
+        self.rig.dispatch(self.role.shell_mut());
         // The role keeps every diagnostic since it started, so this is the whole list and not the last frame's.
         self.problems = self.role.diagnostics().to_vec();
     }
@@ -556,7 +581,9 @@ impl Driven {
 
     /// One more frame, and what it said if it failed: the end of a role, as a crash is.
     pub fn try_tick(&mut self) -> Result<(), JsShellError> {
-        self.role.tick()
+        let ticked = self.role.tick();
+        self.rig.dispatch(self.role.shell_mut());
+        ticked
     }
 }
 
