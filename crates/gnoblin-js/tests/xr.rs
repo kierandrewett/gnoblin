@@ -189,7 +189,7 @@ fn load(declared: bool, body: &str, setup: impl FnOnce(&FakeCompositor)) -> Resu
     fs::write(root.join("shell.ts"), body).expect("shell.ts is written");
     let mut config = honest_config(&root);
     config.xr_declared = declared;
-    let mut shell = JsShell::new(Box::new(comp), config).expect("the shell boots");
+    let mut shell = common::native::CoreShell::new(&comp, config);
     shell
         .load_entry(Path::new("shell.ts"))
         .map_err(|error| error.to_string())

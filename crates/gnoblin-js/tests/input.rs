@@ -1717,10 +1717,10 @@ fn retiring_the_shell_cancels_what_is_running_once_and_releases_every_claim() {
 // -- the stock config as a runtime config ------------------------------------------------------------------
 
 /// A shell over `comp` that has run no entry.
-fn bare_shell(comp: &Comp) -> (JsShell, TempDir) {
+fn bare_shell(comp: &Comp) -> (native::CoreShell, TempDir) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    let shell = JsShell::new(Box::new(comp.0.clone()), honest_config(&root)).expect("the shell boots");
+    let shell = native::CoreShell::new(&comp.0, honest_config(&root));
     (shell, dir)
 }
 

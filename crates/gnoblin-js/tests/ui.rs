@@ -686,10 +686,10 @@ fn every_window_has_a_titlebar_of_its_own_including_the_ones_there_at_boot() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), format!("{IMPORTS}startDecorations();\n")).expect("shell.ts");
-    let mut shell = JsShell::new(Box::new(comp.clone()), honest_config(&root)).expect("the shell boots");
+    let mut shell = common::native::CoreShell::new(&comp, honest_config(&root));
     shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     for _ in 0..6 {
-        shell.frame().expect("a frame");
+        shell.frame_with_core();
     }
     assert_eq!(comp.children(3).len(), 1);
     assert_eq!(comp.children(4).len(), 1);
