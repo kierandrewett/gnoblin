@@ -177,8 +177,17 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
             .map(|child| (*child, st.inset_of(*child)))
             .collect()
     };
+    // A window the shell gave floating bounds is where the user wants it: the floating layout leaves it alone.
+    let floated: std::collections::HashSet<NodeId> = {
+        let st = std.st.borrow();
+        plan.arrived
+            .iter()
+            .copied()
+            .filter(|client| st.has_floating_bounds(*client))
+            .collect()
+    };
     for client in &plan.arrived {
-        layout.client_added(g, &plan.cx, *client, &insets);
+        layout.client_added(g, &plan.cx, *client, &insets, &floated);
     }
     {
         // Refit changed frames before placing their windows; new arrivals keep their current frame.

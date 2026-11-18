@@ -57,6 +57,11 @@ pub(crate) fn fit_content(rect: &Rect, inset: &Inset, area: &Rect) -> Rect {
 }
 
 impl State {
+    /// Whether the shell gave `client` floating bounds.
+    pub(crate) fn has_floating_bounds(&self, client: NodeId) -> bool {
+        self.rec.get(&client).is_some_and(|rec| rec.float_rect.is_some())
+    }
+
     /// The room the client's frame takes round its content.
     pub(crate) fn inset_of(&self, client: NodeId) -> Inset {
         self.rec.get(&client).map(|rec| rec.inset).unwrap_or_default()

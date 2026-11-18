@@ -351,9 +351,12 @@ impl LayoutObj {
         cx: &LayoutContext,
         client: NodeId,
         insets: &std::collections::HashMap<NodeId, Inset>,
+        floated: &HashSet<NodeId>,
     ) {
         match &self.kind {
-            Kind::Floating { mode, step, placed } => place_floating(g, cx, client, *mode, *step, placed, insets),
+            Kind::Floating { mode, step, placed } => {
+                place_floating(g, cx, client, *mode, *step, placed, insets, floated);
+            }
             Kind::Foreign(foreign) => foreign.hook_client(foreign.vtable.client_added, cx, client),
             Kind::Builtin(_) => {}
         }
@@ -471,12 +474,13 @@ fn place_floating(
     step: f64,
     placed: &RefCell<HashSet<NodeId>>,
     insets: &std::collections::HashMap<NodeId, Inset>,
+    floated: &HashSet<NodeId>,
 ) {
     // A window that came from a tiled layout is floating now, placed or not.
     if nodes::flag(g, client, "tiled") {
         nodes::write_flag(g, client, "tiled", false);
     }
-    if placed.borrow().contains(&client) {
+    if floated.contains(&client) || placed.borrow().contains(&client) {
         return;
     }
     // Until the shell writes the size, the properties hold what the client committed.
