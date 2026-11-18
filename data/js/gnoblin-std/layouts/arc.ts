@@ -1,9 +1,12 @@
 // ArcLayout places nodes around the viewer, with the focused node at the front. It uses transform placements: positions
 // on a circle in the x-z plane and turns about the vertical axis that face each node towards the centre. See
-// `gnoblin-std/layout` for how a flat workspace uses `Placement.transform`.
+// `gnoblin-std/layout` for how a flat workspace uses `Placement.transform`. The geometry is the library's
+// (`libgnoblin-std`, kind `arc`); this class holds the options.
 
-import { Layout } from "gnoblin-std/layout";
-import type { LayoutContext, LayoutNode, Placement } from "gnoblin-std/layout";
+import { BuiltinKind } from "gnoblin-std/generated/constants";
+import type { LayoutContext, LayoutNode } from "gnoblin-std/layout";
+import { NativeLayout } from "gnoblin-std/layouts/native";
+import type { OptionSpecs } from "gnoblin-std/layouts/native";
 
 /** Options of `ArcLayout`. */
 export interface ArcOptions {
@@ -13,14 +16,10 @@ export interface ArcOptions {
     spacing?: number;
 }
 
-function check(name: string, value: unknown, positive: boolean): number {
-    if (typeof value !== "number" || !Number.isFinite(value) || (positive && value <= 0)) {
-        throw new TypeError(
-            `ArcLayout: ${name} must be a finite number${positive ? " above 0" : ""}, got ${String(value)}`,
-        );
-    }
-    return value;
-}
+const OPTIONS: OptionSpecs = {
+    radius: { native: "radius" },
+    spacing: { native: "spacing" },
+};
 
 /** What a View shows, so a layout of Views follows the focus of the client behind each. Undefined for other nodes. */
 function contentOf(node: LayoutNode): unknown {
@@ -36,7 +35,7 @@ function contentOf(node: LayoutNode): unknown {
  * On a flat workspace the placements are the node's offset from the centre of the work area (`radius * sin(angle)`
  * across), its depth `z`, its turn about Y and its scale; see `Placement.transform`.
  */
-export class ArcLayout extends Layout {
+export class ArcLayout extends NativeLayout {
     /** Distance from the centre of the arc to each node, in scene units. Default 1200. */
     radius: number;
     /** Angle between neighbouring nodes, in radians. Default 0.35. */
@@ -44,32 +43,24 @@ export class ArcLayout extends Layout {
 
     constructor(options: ArcOptions = {}) {
         super();
-        this.radius = check("radius", options.radius ?? 1200, true);
-        this.spacing = check("spacing", options.spacing ?? 0.35, false);
+        this.radius = options.radius ?? 1200;
+        this.spacing = options.spacing ?? 0.35;
     }
 
-    /** Returns one transform placement for each child, with the focused child at the front. */
-    compute(context: LayoutContext): Placement[] {
-        const { children, focused } = context;
-        const at =
-            focused === null || focused === undefined
-                ? -1
-                : children.findIndex((node) => node === focused || contentOf(node) === focused);
-        const selected = Math.max(0, at);
-        return children.map((node, i) => {
-            const angle = (i - selected) * this.spacing;
-            return {
-                node,
-                transform: {
-                    position: {
-                        x: Math.sin(angle) * this.radius,
-                        y: 0,
-                        z: -Math.cos(angle) * this.radius,
-                    },
-                    rotation: { x: 0, y: -angle, z: 0 },
-                    scale: 1,
-                },
-            };
-        });
+    protected get kind(): number {
+        return BuiltinKind.ARC;
+    }
+
+    protected get options(): OptionSpecs {
+        return OPTIONS;
+    }
+
+    /** The child that is the focused node, or whose `content` is: a layout of Views follows the focus of the client behind each. */
+    protected override focusedChild(context: LayoutContext): LayoutNode | undefined {
+        const { focused, children } = context;
+        if (focused === null || focused === undefined) {
+            return undefined;
+        }
+        return children.find((node) => node === focused || contentOf(node) === focused);
     }
 }

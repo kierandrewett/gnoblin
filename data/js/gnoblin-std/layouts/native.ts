@@ -20,6 +20,20 @@ import type { LayoutSplit } from "gnoblin-std/bindings/tiling";
 import { Layout } from "gnoblin-std/layout";
 import type { LayoutContext, LayoutNode, Placement } from "gnoblin-std/layout";
 
+/** What the library's actions take of a workspace: the nodes it holds, and which of them has the keyboard. */
+export interface ActionSource {
+    /** The nodes the layout places, in the workspace's order. A node with a `focused` flag that is true has the keyboard. */
+    readonly clients: Iterable<LayoutNode>;
+}
+
+/** The size of a node with its frame, for an action that keeps a window's own size. */
+export interface OwnSize {
+    /** Width in logical pixels. */
+    width: number;
+    /** Height in logical pixels. */
+    height: number;
+}
+
 /** What a script's option is called in the library, and the words of its enumeration when it has one. */
 export interface OptionSpec {
     /** The option's name in the library's table of layout kinds (`master_count`). */
@@ -30,6 +44,8 @@ export interface OptionSpec {
     readonly toNative?: (value: unknown) => unknown;
     /** The script's value for the library's. */
     readonly fromNative?: (value: unknown) => unknown;
+    /** True for an option only the script changes (a function the library is told the meaning of): it is not read back. */
+    readonly readOnly?: boolean;
 }
 
 /** The options of a layout, by the name of the script's own field. */
@@ -48,6 +64,32 @@ export function numberOf(node: object): number {
         known.set(node, found);
     }
     return found;
+}
+
+/** One argument of an action as the library takes it: absent when `value` is `undefined` or `null`, a member of `members` by its word. */
+export function argOf(name: string, value: unknown, members?: Readonly<Record<string, number>>): Init<Option> {
+    if (value === undefined || value === null) {
+        return { kind: ValueKind.NONE, name };
+    }
+    if (typeof value === "boolean") {
+        return { kind: ValueKind.BOOL, flag: value ? 1 : 0, name };
+    }
+    if (typeof value === "string" && members !== undefined) {
+        const member = members[value.toUpperCase()];
+        return member === undefined ? { kind: ValueKind.TEXT, text: value, name } : { kind: ValueKind.ENUM, number: member, name };
+    }
+    if (typeof value === "number") {
+        return { kind: ValueKind.NUMBER, number: value, name };
+    }
+    if (typeof value === "string") {
+        return { kind: ValueKind.TEXT, text: value, name };
+    }
+    return { kind: ValueKind.TEXT, text: String(value), name };
+}
+
+/** A node as an argument of an action: the number the library knows it by. */
+export function nodeArgOf(name: string, node: LayoutNode): Init<Option> {
+    return { kind: ValueKind.NODE, node: numberOf(node), name };
 }
 
 /** The word of a member of an enumeration, or the number when the library knows none. */
@@ -232,25 +274,44 @@ export abstract class NativeLayout extends Layout {
         return null;
     }
 
-    /** What the library is asked about: the clients, the area, the gaps, the focus and what the layout reads of the pointer. */
-    protected query(context: LayoutContext, focused: LayoutNode | undefined) {
+    /** The own size of `node` with its frame, for an action that keeps a window's size; null when the node has none. */
+    protected ownSizeOf(_node: LayoutNode): OwnSize | null {
+        return null;
+    }
+
+    /** Called when the library changed something a workspace cannot see in the fields: a divider moved, an action changed the tree. */
+    protected changed(): void {}
+
+    /** The numbers of `nodes`, which the library knows them by from now on, and the focus among them. */
+    #numbered(nodes: readonly LayoutNode[], focused: LayoutNode | undefined): { children: number[]; focused: number } {
         this.#nodes.clear();
-        const children = context.children.map((node) => {
+        const children = nodes.map((node) => {
             const number = numberOf(node);
             this.#nodes.set(number, node);
             return number;
         });
+        return { children, focused: focused === undefined ? 0 : numberOf(focused) };
+    }
+
+    /** What the library is asked about: the clients, the area, the gaps, the focus and what the layout reads of the pointer. */
+    protected query(context: LayoutContext, focused: LayoutNode | undefined) {
+        const numbers = this.#numbered(context.children, focused);
         const pointer = this.pointerOf();
         return {
             flags: pointer === null ? 0 : QueryFlags.POINTER,
-            children,
+            children: numbers.children,
             area: context.area,
             gapInner: context.gap?.inner ?? 0,
             gapOuter: context.gap?.outer ?? 0,
-            focused: focused === undefined ? 0 : numberOf(focused),
+            focused: numbers.focused,
             pointerX: pointer?.x ?? 0,
             pointerY: pointer?.y ?? 0,
         };
+    }
+
+    /** `value` as the library takes it. */
+    #nativeOf(spec: OptionSpec, value: unknown): unknown {
+        return spec.toNative === undefined ? value : spec.toNative(value);
     }
 
     /** The library's layout with the options the fields hold now. */
@@ -258,6 +319,7 @@ export abstract class NativeLayout extends Layout {
         const owner = this.constructor.name;
         const specs = this.options;
         const fields = this as unknown as Record<string, unknown>;
+        const text = (spec: OptionSpec, field: string): string => JSON.stringify(this.#nativeOf(spec, fields[field]) ?? null);
         if (this.#builtin === null) {
             const list = Object.entries(specs).map(([field, spec]) => optionOf(spec, owner, field, fields[field]));
             const made = Builtin.new(this.kind, list);
@@ -267,15 +329,15 @@ export abstract class NativeLayout extends Layout {
             this.#builtin = made;
             this.#told.clear();
             for (const [field, spec] of Object.entries(specs)) {
-                this.#told.set(spec.native, JSON.stringify(fields[field] ?? null));
+                this.#told.set(spec.native, text(spec, field));
             }
             return made;
         }
         for (const [field, spec] of Object.entries(specs)) {
-            const text = JSON.stringify(fields[field] ?? null);
-            if (this.#told.get(spec.native) !== text) {
+            const now = text(spec, field);
+            if (this.#told.get(spec.native) !== now) {
                 this.#builtin.set(optionOf(spec, owner, field, fields[field]));
-                this.#told.set(spec.native, text);
+                this.#told.set(spec.native, now);
             }
         }
         return this.#builtin;
@@ -289,6 +351,9 @@ export abstract class NativeLayout extends Layout {
         }
         const fields = this as unknown as Record<string, unknown>;
         for (const [field, spec] of Object.entries(this.options)) {
+            if (spec.readOnly === true) {
+                continue;
+            }
             const answer = builtin.get(spec.native);
             const value = spec.members === undefined ? answerOf(answer) : wordOf(spec, answer.number);
             const plain = answer.kind === ValueKind.NONE ? undefined : value;
@@ -296,7 +361,7 @@ export abstract class NativeLayout extends Layout {
             if (fields[field] !== next) {
                 fields[field] = next;
             }
-            this.#told.set(spec.native, JSON.stringify(fields[field] ?? null));
+            this.#told.set(spec.native, JSON.stringify(this.#nativeOf(spec, fields[field]) ?? null));
         }
     }
 
@@ -338,6 +403,44 @@ export abstract class NativeLayout extends Layout {
         return placement;
     }
 
+    /**
+     * Runs the library's action `name` with `values` against the nodes of `source` and the one that has the keyboard. A node the
+     * library hands the keyboard to is given it. The options are read back, and an answer that is not `false` says the action
+     * changed something (`changes` false for one that only reads or sets what no workspace compares).
+     */
+    protected act(name: string, values: readonly Init<Option>[], source: ActionSource, changes = true): unknown {
+        const builtin = this.native();
+        const nodes = [...source.clients];
+        const focused = nodes.find((node) => (node as { focused?: unknown }).focused === true);
+        const numbers = this.#numbered(nodes, focused);
+        const size = focused === undefined ? null : this.ownSizeOf(focused);
+        const [hand, answer] = builtin.act(name, [...values], {
+            flags: size === null ? 0 : QueryFlags.FOCUSED_SIZE,
+            children: numbers.children,
+            area: { x: 0, y: 0, width: 0, height: 0 },
+            gapInner: 0,
+            gapOuter: 0,
+            focused: numbers.focused,
+            pointerX: 0,
+            pointerY: 0,
+            focusedWidth: size?.width ?? 0,
+            focusedHeight: size?.height ?? 0,
+        });
+        this.#give(hand);
+        this.pull();
+        const value = answerOf(answer);
+        if (changes && value !== false && value !== undefined) {
+            this.changed();
+        }
+        return value;
+    }
+
+    /** Gives the keyboard to the node the library named, when it is one of the last query's and can take it. */
+    #give(number: number | null): void {
+        const node = number === null || number === 0 ? undefined : this.#nodes.get(number);
+        (node as { focus?: () => void } | undefined)?.focus?.();
+    }
+
     /** The divider a drag that pressed `client` at `point` would move: the library's, or null while it has none. */
     findSplit(client: LayoutNode, point: Point): LayoutSplit | null {
         if (this.#builtin === null || !this.#nodes.has(numberOf(client))) {
@@ -351,16 +454,27 @@ export abstract class NativeLayout extends Layout {
     setSplit(token: number, ratio: number, cross: number): void {
         this.#builtin?.setSplit(token, ratio, cross);
         this.pull();
+        this.changed();
     }
 
     /** Puts the dividers of the drag `token` back, and reads the options back. */
     resetSplit(token: number): void {
         this.#builtin?.resetSplit(token);
         this.pull();
+        this.changed();
     }
 
     /** The two clients traded places in the workspace's order. */
     onClientsSwapped(a: LayoutNode, b: LayoutNode): void {
         this.#builtin?.clientsSwapped(numberOf(a), numberOf(b));
+    }
+
+    /** A client left the workspace: a layout that keeps the keyboard in its own order (a strip's columns) hands it on. */
+    onClientRemoved(client: LayoutNode, context: LayoutContext): void {
+        if (this.#builtin === null) {
+            return;
+        }
+        const query = this.query(context, this.focusedChild(context));
+        this.#give(this.#builtin.clientRemoved(query, numberOf(client)));
     }
 }

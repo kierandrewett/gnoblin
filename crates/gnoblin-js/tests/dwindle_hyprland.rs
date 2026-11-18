@@ -10,9 +10,11 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, stock_modules_in};
+use gnoblin_js::JsConfig;
+
+mod common;
+use common::FakeCompositor;
 
 /// The helpers every case shares. There is no `gnoblin` host: the cases call the library only.
 const HARNESS: &str = r##"
@@ -79,24 +81,21 @@ import { area, nodes, focusables, tiled, lay, arrive, thrown, rect, emit } from 
 import { DwindleLayout } from "gnoblin-std";
 "#;
 
-/// Evaluates `body` (TypeScript) with the stock library imported and returns what it passed to `emit`.
+/// Evaluates `body` (TypeScript) with the stock library imported and returns what it passed to `emit`. The shell runs over a core with
+/// the std library loaded, which is what computes the layout.
 fn run(body: &str) -> String {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), format!("{IMPORTS}\n{body}\n")).expect("shell.ts is written");
-    let mut config = JsConfig::new(&root).embed("harness", HARNESS);
-    for (name, source) in stock_modules_in(&[std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")])
-        .expect("the stock library reads")
-    {
-        config = config.embed(name, source);
-    }
-    let generation = JsGeneration::new(&config, 1).expect("a generation");
-    generation
-        .eval_module(Path::new("shell.ts"))
-        .expect("shell.ts evaluates");
-    generation
-        .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
+    let (mut config, clock) = common::timed_config(&root);
+    config.js = std::mem::replace(&mut config.js, JsConfig::new(&root)).embed("harness", HARNESS);
+    let comp = FakeCompositor::new();
+    let (mut shell, _core) = common::native::shell_over_core(&comp, std::sync::Arc::new(clock), config);
+    shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
+    shell
+        .eval("globalThis.out")
         .expect("the case called emit")
+        .expect("a value")
 }
 
 fn lines(expected: &[&str]) -> String {
