@@ -187,7 +187,15 @@ fn pass_workspace(std: &Rc<Std>, g: &Gnoblin, workspace: Id) {
             .collect()
     };
     for client in &plan.arrived {
-        layout.client_added(g, &plan.cx, *client, &insets, &floated);
+        layout.client_added(
+            g,
+            &plan.cx,
+            *client,
+            &crate::layout::Known {
+                insets: &insets,
+                floated: &floated,
+            },
+        );
     }
     {
         // Refit changed frames before placing their windows; new arrivals keep their current frame.

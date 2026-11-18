@@ -345,18 +345,9 @@ impl LayoutObj {
     }
 
     /// A client joined the workspace.
-    pub(crate) fn client_added(
-        &self,
-        g: &Gnoblin,
-        cx: &LayoutContext,
-        client: NodeId,
-        insets: &std::collections::HashMap<NodeId, Inset>,
-        floated: &HashSet<NodeId>,
-    ) {
+    pub(crate) fn client_added(&self, g: &Gnoblin, cx: &LayoutContext, client: NodeId, known: &Known<'_>) {
         match &self.kind {
-            Kind::Floating { mode, step, placed } => {
-                place_floating(g, cx, client, *mode, *step, placed, insets, floated);
-            }
+            Kind::Floating { mode, step, placed } => place_floating(g, cx, client, (*mode, *step), placed, known),
             Kind::Foreign(foreign) => foreign.hook_client(foreign.vtable.client_added, cx, client),
             Kind::Builtin(_) => {}
         }
@@ -465,17 +456,24 @@ impl LayoutObj {
     }
 }
 
+/// What the library knows of the clients of a pass that a layout's `client_added` reads.
+pub(crate) struct Known<'a> {
+    /// The room each client's frame takes round its content.
+    pub insets: &'a std::collections::HashMap<NodeId, Inset>,
+    /// The clients the shell gave floating bounds: the floating layout leaves them where they are.
+    pub floated: &'a HashSet<NodeId>,
+}
+
 /// The floating layout's `onClientAdded`: places a newly added client once, unless this layout placed it already.
 fn place_floating(
     g: &Gnoblin,
     cx: &LayoutContext,
     client: NodeId,
-    mode: PlaceMode,
-    step: f64,
+    (mode, step): (PlaceMode, f64),
     placed: &RefCell<HashSet<NodeId>>,
-    insets: &std::collections::HashMap<NodeId, Inset>,
-    floated: &HashSet<NodeId>,
+    known: &Known<'_>,
 ) {
+    let Known { insets, floated } = *known;
     // A window that came from a tiled layout is floating now, placed or not.
     if nodes::flag(g, client, "tiled") {
         nodes::write_flag(g, client, "tiled", false);

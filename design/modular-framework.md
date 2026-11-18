@@ -2969,8 +2969,8 @@ JavaScript runtime library (libgnoblin-runtime-js): this shell host has no __gno
   were not run.
 - The clean-checkout proof is on S1; the S3 gates (including `just dist-check`) ran on a warm target.
 - `share/gnoblin/types/**` of section 11 is not installed (35.3).
-**Workspaces, desks, membership, floating and the layout pass moved (lane TsStdObjects, branch `js-TsStdObjects-wip`, not on
-`rust-compositor`).** `Workspace` is a thin object over the library's workspace (`host/workspace.ts`, `host/workspace_state.ts`); the list
+
+**Workspaces, desks, membership, floating and the layout pass moved (lane TsStdObjects).** `Workspace` is a thin object over the library's workspace (`host/workspace.ts`, `host/workspace_state.ts`); the list
 of `gnoblin.workspaces` and each workspace's `clients` stay core `MutableCollection`s whose lists `host/membership.ts` keeps equal to the
 library's (after each call, on the library's `ADDED`/`REMOVED` events, at the start of every frame). A script's `Layout` reaches the library
 through `host/layout_bridge.ts` (the stock `FloatingLayout` is the library's own). Deleted: `host/{layout_driver,placements,fitting}.ts` and
@@ -2979,8 +2979,14 @@ the std table: `output_info`, `output_set_insets`, `output_span`, `client_areas`
 `STD_CLIENT_LAYOUT_HIDES` of the client state; in the library: `follow_frame`, bar insets in work areas, seat-based focus, `seat.screen` for the
 pointer's output, slides through the transition engine (ease-out, 33 samples), acknowledged-write gating of the lost-write retry.
 Observable change: the library follows the engine by one dispatch, so a window's membership events and layout arrive one to two frames after the
-engine hears of it. **Not landed, and why:** `transition.rs` needs TsStdAnim's native `requestTransition` (the TS engine cannot stage the library's
-layout writes); the library does not yet focus a window when a parked output returns (`outputAnnounced`); `outputs.rs` bare-shell tests
-(`a_profile_that_does_not_check...`, `a_reload_puts_each_output_back...`) must run over the core; `DisplayManager` (profiles, logical displays,
-mirror requests) stays TypeScript: its backend is native but its reconciliation has no table counterpart; `FloatingLayout.place`/`onClientAdded`
-and `placeRect` stay TypeScript (a standalone `floating_place` is the next step).
+engine hears of it. **What the landing needed beyond the move.** A reload that stays in one core generation (the test rig's `reload_now` and watcher path; a
+production reload opens a new core generation, whose library starts empty) leaves the library's workspaces in place, so a script generation
+adopts the workspace it finds under an id it adds (`host/workspace.ts`; `State.inherited`), drops the unclaimed ones once its own exist
+(`ensureDefaultWorkspace`), and hands an inherited workspace's windows to its new layout. A window the library has not heard of yet is waited
+for on both refusal codes (`E_NO_SUCH_NODE`, `E_NO_SUCH_MEMBER`; `whenKnown`). A generation that frames no window gives back the room an
+earlier one's frames took (`clearInheritedFrames`). The native floating layout leaves a window that has floating bounds where the shell put
+it, and its first placement writes the whole rectangle (a window the compositor has not placed reads as its committed size, so a placement
+that only repeated it left the place unset). The lock-session helpers of `crates/gnoblin/tests/support/lock_session.rs` run their shells over a
+core with the std library, like `js_shell.rs`. **Still TypeScript:** `DisplayManager` (profiles, logical displays, mirror requests): its
+backend is native but its reconciliation has no table counterpart; `FloatingLayout.place`/`onClientAdded` and `placeRect` (a standalone
+`floating_place` is the next step).
