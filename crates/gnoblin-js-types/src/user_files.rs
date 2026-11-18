@@ -87,6 +87,19 @@ const LEGACY_TYPES_HEADER: &str = "// gnoblin.d.ts: the types of the Gnoblin Jav
 /// `files` so the editor loads it whatever the user's `include` matches. Every path is relative to this file.
 #[must_use]
 pub fn render_generated_tsconfig() -> String {
+    render_tsconfig_over(LIBRARY_DIR, LIBRARY_DIR)
+}
+
+/// The `tsconfig.json` an installed prefix carries (`share/gnoblin/types/tsconfig.json`): the same configuration as
+/// [`render_generated_tsconfig`], with each package's entry beside the file (`./<package>/index.ts`: the stock index with the exports of its
+/// host module added, which is the module the runtime builds), the rest of the package mapped to the installed stock library
+/// (`../js/<package>/*`) and the declaration file beside it. A user's `tsconfig.json` that extends it type-checks a shell against the installed library with no copy of it.
+#[must_use]
+pub fn render_installed_tsconfig() -> String {
+    render_tsconfig_over(".", "../js")
+}
+
+fn render_tsconfig_over(entries: &str, library: &str) -> String {
     let config = json!({
         "compilerOptions": {
             "target": "es2023",
@@ -100,15 +113,24 @@ pub fn render_generated_tsconfig() -> String {
             // No `@types` discovery: the globals are declared by the file named below.
             "types": [],
             "paths": {
-                "gnoblin-core": [format!("./{LIBRARY_DIR}/gnoblin-core/index.ts")],
-                "gnoblin-core/*": [format!("./{LIBRARY_DIR}/gnoblin-core/*")],
-                "gnoblin-std": [format!("./{LIBRARY_DIR}/gnoblin-std/index.ts")],
-                "gnoblin-std/*": [format!("./{LIBRARY_DIR}/gnoblin-std/*")],
+                "gnoblin-core": [format!("{}/gnoblin-core/index.ts", dotted(entries))],
+                "gnoblin-core/*": [format!("{}/gnoblin-core/*", dotted(library))],
+                "gnoblin-std": [format!("{}/gnoblin-std/index.ts", dotted(entries))],
+                "gnoblin-std/*": [format!("{}/gnoblin-std/*", dotted(library))],
             },
         },
         "files": [format!("./{TYPES_FILE}")],
     });
     pretty(&config)
+}
+
+/// `library` as a path relative to the tsconfig that names it: `lib` is `./lib`, `../js` and `.` stay.
+fn dotted(library: &str) -> String {
+    if library.starts_with('.') {
+        library.trim_end_matches('/').to_owned()
+    } else {
+        format!("./{library}")
+    }
 }
 
 /// The user's `tsconfig.json` when there is none: it extends the generated one and leaves what to check to the user.

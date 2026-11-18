@@ -140,6 +140,13 @@ enum Generated {
     StdHeader,
     /// `<libdir>/pkgconfig/gnoblin-std.pc`.
     StdPkgConfig,
+    /// `share/gnoblin/types/gnoblin.d.ts`: the globals of a TypeScript shell (`gnoblin`, `console`), as `gnoblinctl types init` writes it.
+    TypesGlobals,
+    /// `share/gnoblin/types/<package>/index.ts`: the package's stock index with the exports of its host module added, which is the module
+    /// the runtime builds from them (`gnoblin-js`'s `editor_library_in` makes the same text for `types init`).
+    TypesIndex(&'static str),
+    /// `share/gnoblin/types/tsconfig.json`: the configuration that maps the two packages to the installed library and loads the globals.
+    TypesConfig,
 }
 
 /// What the session installs. The optional packages (ananicy rules, the GeoClue authorisation file)
@@ -277,6 +284,30 @@ const ITEMS: &[InstallItem] = &[
     InstallItem::Tree {
         from: "data/js/gnoblin-std",
         to: "share/gnoblin/js/gnoblin-std",
+    },
+    // The declarations of a TypeScript shell (section 11: `share/gnoblin/types/**`). The two packages are declared by their own sources, which
+    // the generated bindings of `gen-sdks` (`gnoblin-std/generated/*`) are part of, so this directory holds what is not a source of the
+    // library: the globals, the two entry modules as the runtime builds them (the stock index plus its host module's exports), and the
+    // configuration that maps the package names to those and their submodules to `../js`. A shell's `tsconfig.json` extends it.
+    InstallItem::Generated {
+        to: "share/gnoblin/types/gnoblin.d.ts",
+        kind: Generated::TypesGlobals,
+        requires_built: CORE_BUILT_NAME,
+    },
+    InstallItem::Generated {
+        to: "share/gnoblin/types/gnoblin-core/index.ts",
+        kind: Generated::TypesIndex("gnoblin-core"),
+        requires_built: CORE_BUILT_NAME,
+    },
+    InstallItem::Generated {
+        to: "share/gnoblin/types/gnoblin-std/index.ts",
+        kind: Generated::TypesIndex("gnoblin-std"),
+        requires_built: CORE_BUILT_NAME,
+    },
+    InstallItem::Generated {
+        to: "share/gnoblin/types/tsconfig.json",
+        kind: Generated::TypesConfig,
+        requires_built: CORE_BUILT_NAME,
     },
     // The starter is the packaged default shell (section 7.2, tier 7): what `gnoblin` runs on a fresh install, and what `gnoblinctl
     // config init` writes.
@@ -724,6 +755,16 @@ fn plan(repo: &Path, built: &Path, libdir: &str) -> Result<Vec<Planned>, DistErr
                             false,
                         ),
                         Generated::StdPkgConfig => (std_pkg_config(libdir).into_bytes(), true),
+                        Generated::TypesGlobals => (gnoblin_js_types::render_dts().into_bytes(), false),
+                        Generated::TypesIndex(package) => {
+                            let index = repo.join("data/js").join(package).join("index.ts");
+                            let mut text = fs::read_to_string(&index).map_err(|error| {
+                                DistError::Generate(format!("cannot read {}: {error}", index.display()))
+                            })?;
+                            text.push_str(&format!("\nexport * from \"{package}/host\";\n"));
+                            (text.into_bytes(), false)
+                        }
+                        Generated::TypesConfig => (gnoblin_js_types::render_installed_tsconfig().into_bytes(), false),
                     };
                     planned.push(Planned {
                         to: expand_libdir(to, libdir),
@@ -1640,6 +1681,14 @@ mod tests {
         assert!(root.join("lib64/gnoblin/shells").is_dir());
         assert!(root.join("share/gnoblin/js/gnoblin-core/index.ts").is_file());
         assert!(root.join("share/gnoblin/js/gnoblin-std/index.ts").is_file());
+        assert!(root.join("share/gnoblin/types/gnoblin.d.ts").is_file());
+        let config = fs::read_to_string(root.join("share/gnoblin/types/tsconfig.json")).unwrap();
+        assert!(
+            config.contains("./gnoblin-std/index.ts") && config.contains("../js/gnoblin-std/*"),
+            "{config}"
+        );
+        let index = fs::read_to_string(root.join("share/gnoblin/types/gnoblin-std/index.ts")).unwrap();
+        assert!(index.ends_with("export * from \"gnoblin-std/host\";\n"), "{index}");
         assert_eq!(manifest_problems(&root).unwrap().0, Vec::<String>::new());
 
         let mut remove = options(&destdir, &target, "lib64");

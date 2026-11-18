@@ -17,6 +17,8 @@ gnoblin-schema = { path = "../crates/gnoblin-schema" }
 gnoblin-core-abi = { path = "../crates/gnoblin-core-abi", features = ["build-support"] }
 # The std library's ABI is read the same way: its lock, its header and its link stub (`gnoblin-std-abi`).
 gnoblin-std-abi = { path = "../crates/gnoblin-std-abi", features = ["build-support"] }
+# The declarations a prefix installs (`share/gnoblin/types/`): the globals and the tsconfig, from the crate `gnoblinctl types init` writes them with.
+gnoblin-js-types = { path = "../crates/gnoblin-js-types" }
 
 # The duplicate-type report parses every crate's Rust source, so it needs the
 # parser rather than a pattern match. These are build-tool dependencies only:

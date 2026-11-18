@@ -378,6 +378,43 @@ pub fn check_layout(root: &Path, libdir: &str) -> Vec<String> {
                 .to_owned(),
         );
     }
+    for file in [
+        "share/gnoblin/types/gnoblin.d.ts",
+        "share/gnoblin/types/tsconfig.json",
+        "share/gnoblin/types/gnoblin-core/index.ts",
+        "share/gnoblin/types/gnoblin-std/index.ts",
+    ] {
+        if !root.join(file).is_file() {
+            problems.push(format!(
+                "{file} is missing: the declarations of a TypeScript shell (design section 11)"
+            ));
+        }
+    }
+    // The configuration maps the packages to the installed library: every path it names must be there.
+    if let Ok(text) = fs::read_to_string(root.join("share/gnoblin/types/tsconfig.json")) {
+        for package in ["gnoblin-core", "gnoblin-std"] {
+            let wanted = format!("./{package}/index.ts");
+            if !text.contains(&wanted) {
+                problems.push(format!(
+                    "share/gnoblin/types/tsconfig.json does not map \"{package}\" to {wanted}"
+                ));
+            }
+            if !text.contains(&format!("../js/{package}/*"))
+                || !root.join(format!("share/gnoblin/js/{package}")).is_dir()
+            {
+                problems.push(format!(
+                    "share/gnoblin/types/tsconfig.json maps the submodules of \"{package}\" to a directory that is not installed"
+                ));
+            }
+            let host = format!("export * from \"{package}/host\";");
+            let entry = root.join(format!("share/gnoblin/types/{package}/index.ts"));
+            if fs::read_to_string(&entry).is_ok_and(|text| !text.contains(&host)) {
+                problems.push(format!(
+                    "share/gnoblin/types/{package}/index.ts does not export its host module"
+                ));
+            }
+        }
+    }
     for package in ["gnoblin-core", "gnoblin-std"] {
         let index = format!("share/gnoblin/js/{package}/index.ts");
         if !root.join(&index).is_file() {
@@ -1605,6 +1642,10 @@ mod tests {
             "share/gnoblin/shells/ is missing",
             "share/gnoblin/js/gnoblin-core/index.ts is missing",
             "share/gnoblin/js/gnoblin-std/index.ts is missing",
+            "share/gnoblin/types/gnoblin.d.ts is missing",
+            "share/gnoblin/types/tsconfig.json is missing",
+            "share/gnoblin/types/gnoblin-core/index.ts is missing",
+            "share/gnoblin/types/gnoblin-std/index.ts is missing",
         ] {
             assert!(
                 problems.iter().any(|problem| problem.starts_with(expected)),

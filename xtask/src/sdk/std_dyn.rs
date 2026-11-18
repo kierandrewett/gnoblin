@@ -266,7 +266,16 @@ fn render(library: &Library) -> Result<String, String> {
 /// The objects whose functions work on a generation that has not made the library its desktop: the built-in layouts, the drag machines
 /// and the pure geometry of drags and gestures (they read nothing of the library's state), and animation, styles and the scene (the
 /// library attaches its model alone for them). A call to one never starts the desktop.
-const STANDALONE_OBJECTS: &[&str] = &["builtin", "drag", "gesture", "easing", "transition", "style", "scene"];
+const STANDALONE_OBJECTS: &[&str] = &[
+    "builtin",
+    "drag",
+    "gesture",
+    "easing",
+    "transition",
+    "style",
+    "scene",
+    "floating",
+];
 
 fn functions_table(code: &mut CodeWriter, library: &Library) {
     code.line("/// One entry of the table as a script sees it.");

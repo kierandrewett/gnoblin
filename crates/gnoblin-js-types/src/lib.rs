@@ -25,5 +25,5 @@ mod user_files;
 pub use render::render_dts;
 pub use user_files::{
     GENERATED_DIR, GENERATED_TSCONFIG_FILE, JsWritten, LIBRARY_DIR, TSCONFIG_FILE, TYPES_FILE, TsconfigOutcome,
-    VERSION_FILE, ensure_user_files, render_generated_tsconfig, render_user_tsconfig,
+    VERSION_FILE, ensure_user_files, render_generated_tsconfig, render_installed_tsconfig, render_user_tsconfig,
 };
