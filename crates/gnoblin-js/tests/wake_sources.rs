@@ -98,6 +98,7 @@ const STD_CONTEXT: &[(&str, Part)] = &[
     ),
     ("profileRoot", State),
     ("workspaceRoot", State),
+    ("inherited", State),
     ("displayRoot", State),
     ("displayManager", Wakes("display manager")),
     ("gestureTools", State),
