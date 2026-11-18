@@ -85,7 +85,7 @@ fn rig_with(comp: &Comp, init: &str, tweak: impl FnOnce(&mut JsShellConfig)) -> 
     fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     let mut config = honest_config(&root);
     tweak(&mut config);
-    let mut shell = common::native::CoreShell::new(&comp, config);
+    let mut shell = common::native::CoreShell::new(comp, config);
     let load_diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     Rig {
         shell,

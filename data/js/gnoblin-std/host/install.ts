@@ -16,6 +16,7 @@ import { registerInspectors } from "gnoblin-std/host/console";
 import { lifecycle } from "gnoblin-std/host/lifecycle";
 import { extendObjectModel, registerQueryKeys } from "gnoblin-std/host/members";
 import { openLibrary } from "gnoblin-std/host/library";
+import { syncMembership } from "gnoblin-std/host/membership";
 import { installFocus, installPolicy } from "gnoblin-std/host/policy";
 import { installTransitions } from "gnoblin-std/host/rollback";
 import { installRoots } from "gnoblin-std/host/roots";
@@ -71,3 +72,5 @@ function installStd(): void {
 }
 
 installStd();
+// A library that outlives this generation (a reload that stays in one core generation) holds workspaces already: they are in the list.
+syncMembership();

@@ -886,6 +886,7 @@ fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
     let settle = |role: &mut JsRole| {
         for _ in 0..6 {
             role.tick().expect("a frame");
+            core.dispatch(role.shell_mut());
         }
     };
     // A window the first generation frames as it maps, the way a real one arrives.

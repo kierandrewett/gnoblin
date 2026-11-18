@@ -14,7 +14,6 @@
 use std::fs;
 use std::path::Path;
 
-use gnoblin_js::JsShell;
 use gnoblin_paint::{PaintList, PaintOp, Rgba8, decode, encode};
 mod common;
 use common::*;
