@@ -241,20 +241,8 @@ const NOTICES: &[Notice] = &[
         optional: false,
     },
     Notice {
-        file: "gnoblin-std/host/style_scopes.ts",
-        why: "style properties no effect kind draws (background, filter, inset shadows) stay in computedStyle",
-        doc: Some(STYLE),
-        optional: false,
-    },
-    Notice {
         file: "gnoblin-std/host/styles.ts",
-        why: "the same notice, raised where a style is applied to a window",
-        doc: Some(STYLE),
-        optional: false,
-    },
-    Notice {
-        file: "gnoblin-std/style/map.ts",
-        why: "the mapping from a style to effects, which lists what it could not map",
+        why: "the notices of the library about a style (background, filter, inset shadows stay in computedStyle), said once by the frame",
         doc: Some(STYLE),
         optional: false,
     },
