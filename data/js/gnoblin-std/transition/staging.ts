@@ -71,6 +71,11 @@ export class Staging {
     #held: Map<string, Held> | null = null;
     /** How many transitions have not ended: while there are none a plain write has nothing to release. */
     #running = 0;
+    /**
+     * What a commit sent for the engine's own reads: the library's writes reach the engine's mirror when the compositor echoes them,
+     * so until the engine's value moves off what it was at the commit, a read answers with the committed value.
+     */
+    #echo = new Map<string, { value: Value; before: Value }>();
 
     constructor(backend: StageBackend, error: MakeError) {
         this.#backend = backend;
@@ -85,6 +90,9 @@ export class Staging {
     /** A transition began, or ended: the count a plain write consults. */
     track(delta: 1 | -1): void {
         this.#running += delta;
+        if (this.#running === 0) {
+            this.#echo.clear();
+        }
     }
 
     /** Starts staging in the library. A second start fails, naming the call. */
@@ -114,7 +122,12 @@ export class Staging {
             throw this.#error("internal", "gnoblin.requestTransition", "the library made no transition");
         }
         for (const entry of (held ?? new Map<string, Held>()).values()) {
-            if (!entry.staged) {
+            if (entry.staged) {
+                this.#echo.set(`${entry.node}:${entry.key}`, {
+                    value: copy(entry.value),
+                    before: copy(this.#backend.get(entry.node, entry.key)),
+                });
+            } else {
                 this.#backend.set(entry.node, entry.key, entry.value);
             }
         }
@@ -132,8 +145,21 @@ export class Staging {
 
     /** Reads a staged value first, otherwise reads from the engine. */
     get(node: number, key: string): Value {
-        const staged = this.#held?.get(`${node}:${key}`);
-        return staged === undefined ? this.#backend.get(node, key) : copy(staged.value);
+        const id = `${node}:${key}`;
+        const staged = this.#held?.get(id);
+        if (staged !== undefined) {
+            return copy(staged.value);
+        }
+        const now = this.#backend.get(node, key);
+        const sent = this.#echo.get(id);
+        if (sent === undefined) {
+            return now;
+        }
+        if (JSON.stringify(now) !== JSON.stringify(sent.before)) {
+            this.#echo.delete(id);
+            return now;
+        }
+        return copy(sent.value);
     }
 
     /** Writes immediately or stages the value until the callback completes. */
@@ -208,6 +234,7 @@ export class Staging {
      * made in a later frame, which is what a script that takes a property from an animation does, ends the track.
      */
     #plain(node: number, key: string, value: Value): string | undefined {
+        this.#echo.delete(`${node}:${key}`);
         if (this.#running > 0) {
             try {
                 Native.release(node, key);
