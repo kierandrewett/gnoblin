@@ -93,6 +93,19 @@ pub(crate) fn write_num(g: &Gnoblin, id: Id, key: &str, value: f64) {
     }
 }
 
+/// Writes the four rectangle properties whether or not they differ from what the window holds: a window the compositor has not given
+/// a place reads as its committed size, and a placement that only repeats it would leave the place unset.
+pub(crate) fn write_rect_all(g: &Gnoblin, id: Id, rect: &Rect) {
+    for (key, value) in [
+        ("x", rect.x),
+        ("y", rect.y),
+        ("width", rect.width),
+        ("height", rect.height),
+    ] {
+        put(g, id, key, Prop::Number(value));
+    }
+}
+
 /// Writes a boolean property when it differs from what the node holds.
 pub(crate) fn write_flag(g: &Gnoblin, id: Id, key: &str, value: bool) {
     let held = match staging::peek(id, key) {

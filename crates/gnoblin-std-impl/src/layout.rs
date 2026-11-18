@@ -499,6 +499,6 @@ fn place_floating(
     let room = grow(&Rect::new(0.0, 0.0, width, height), &inset);
     let spot = place_rect(mode, room.width, room.height, &cx.area, &occupied, step);
     let frame = apart_from(&spot, &occupied, &cx.area, step);
-    nodes::write_rect(g, client, &shrink(&frame, &inset));
+    nodes::write_rect_all(g, client, &shrink(&frame, &inset));
     placed.borrow_mut().insert(client);
 }
