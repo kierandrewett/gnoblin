@@ -273,6 +273,8 @@ fn functions_table(code: &mut CodeWriter, library: &Library) {
     code.line("pub inputs: &'static [&'static str],");
     code.line("/// Whether the call layer can carry it; a function with a raw pointer argument is native only.");
     code.line("pub scriptable: bool,");
+    code.line("/// Whether it works on a generation that has not opened the library (the built-in layouts): a call to it never opens it.");
+    code.line("pub standalone: bool,");
     code.dedent();
     code.line("}");
     code.blank();
@@ -286,10 +288,11 @@ fn functions_table(code: &mut CodeWriter, library: &Library) {
             .map(|name| format!("{name:?}"))
             .collect();
         code.line(format!(
-            "FunctionInfo {{ name: {:?}, inputs: &[{}], scriptable: {} }},",
+            "FunctionInfo {{ name: {:?}, inputs: &[{}], scriptable: {}, standalone: {} }},",
             function.name,
             inputs.join(", "),
-            function.scriptable
+            function.scriptable,
+            function.object.as_deref() == Some("builtin")
         ));
     }
     code.dedent();

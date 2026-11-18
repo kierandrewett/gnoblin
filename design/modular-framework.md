@@ -2588,6 +2588,34 @@ of the core's tree and installs `__gnoblinStd`. `rig_native`, and every `rig_*` 
 dispatch. Cost: every test binary of `gnoblin-js` now links the core (about 170 MB each in a debug build); run them one at a time on a
 small disk.
 
+**The red and hung tests had two causes, neither a defect of the layouts.**
+
+- **A second window manager.** The first call of a script into the library (`builtin_new` from a stock layout) opened it for the generation,
+  and an open library is a desktop: its first turn adds the default `desktop` workspace, adopts every window and lays it out. In a TypeScript
+  shell that keeps its own workspaces this was a second manager beside the script's. The library's `desktop` placed the window and wrote
+  `tiled = false` over what the script's layout had just written (`client_requests::a_move_request_is_ignored_for_a_window_a_layout_tiles`
+  read `tiled` as `false`), and the other workspace tests that failed did so the same way. The `builtin_*` functions now need no `open`: the
+  layouts are held per generation apart from the library's state, a generation's go with its `on_shutdown`, and the call layer never opens the
+  library for a `standalone` function (`FunctionInfo::standalone`, generated from the table). The desktop starts when a shell calls any
+  other function, as it does for a Python or Rust shell.
+- **The rig's lock.** The core's registry is one per process, so a rig holds a process lock for as long as it lives. A test that made a second
+  rig while its first was still alive (a shadowed `let mut rig`) waited for itself for ever: this was every hang
+  (`link_failures`, `window_policy`, `tiling_bindings` and the others). The rig now refuses with a message naming the cause, and the 19 tests
+  that did it drop the first rig before the second; no assertion changed.
+
+The three parity tests of `gnoblin-std-impl` (`tiling`, `examples`, `anim_style`) run their TypeScript reference over the same rig
+(`tests/reference`), as the reference's layouts are the library's now.
+
+**Dwindle, strip, arc, carousel (not landed).** The port is written on branch `origin/js-TsStdNative-wip`: `NativeLayout` gained `act` (an
+action against a workspace's clients and focus, the keyboard handed to the node the library names), `onClientRemoved`, `changed` (the
+`revision` counter a tree needs) and `argOf`/`nodeArgOf`; `DwindleLayout`, `StripLayout`, `ArcLayout` and `Carousel3dLayout` are thin
+classes over it, and `ring()` and `clampColumn()` (pure helpers nothing called) are gone. It has not been built or run: the tests that
+assert the old TypeScript error texts (`dwindle_hyprland`, `stock_layouts2`) and the `ring`/`clampColumn` cases need porting to
+behaviour first, and the budget of this run ended before that.
+
+`spec_conformance` and `starter_parity` boot their own shells and now boot them over the core as well. Every file of `crates/gnoblin-js/tests`
+(49) was run on the box one test to a process, under a timeout, and passes.
+
 **What moved.** The algorithms of `layouts/{master-stack,grid,monocle,kiosk}`: the std table gained `builtin_*` (a built-in layout of a
 kind with no workspace: `new`, `free`, `set`, `get`, `compute`, `act`, `client_removed`, `clients_swapped`, `find_split`, `set_split`,
 `reset_split`; records `GnoblinStdLayoutQuery`, `GnoblinStdPlacements`), implemented in `gnoblin-std-impl/src/standalone.rs` over the same

@@ -9,14 +9,15 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
-use gnoblin_js::{JsConfigCommit, JsConfigLink, JsLinkError, JsShell};
+use gnoblin_js::{JsConfigCommit, JsConfigLink, JsFrame, JsLinkError, JsShell};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 use sha2::{Digest, Sha256};
 
 mod common;
+use common::native::{NativeCore, shell_over_core};
 use common::{FakeCompositor, ROOT, timed_config};
 
 /// The number of code fences the specification's archive holds, besides `init.js`.
@@ -388,14 +389,15 @@ fn boot(files: &[(&str, String)], probe: Option<&str>, session_first: bool) -> R
     }
     let (config, clock) = timed_config(&root);
     let outcome = (|| {
-        let mut shell = JsShell::new(Box::new(comp.clone()), config).map_err(|error| error.to_string())?;
+        // Over a core with the std library loaded, as the compositor runs it: the stock layouts are the library's.
+        let (mut shell, core) = shell_over_core(&comp, Arc::new(clock.clone()), config);
         shell.set_config_link(Box::new(AcceptingDocument::default()));
         // The frames before the entry let the shell see the tree it booted over: the XR program's session is a seat in
         // it, and `gnoblin.extensions.xr` exists only after the shell has. They also give a window its default
         // workspace, so a fence that makes workspaces of its own must load first.
         if session_first {
             for _ in 0..6 {
-                shell.frame().map_err(|error| error.to_string())?;
+                frame(&mut shell, &core)?;
             }
         }
         let mut diagnostics = shell
@@ -403,7 +405,7 @@ fn boot(files: &[(&str, String)], probe: Option<&str>, session_first: bool) -> R
             .map_err(|error| error.to_string())?;
         let track_mark = comp.sent_count();
         for _ in 0..6 {
-            diagnostics.extend(shell.frame().map_err(|error| error.to_string())?.diagnostics);
+            diagnostics.extend(frame(&mut shell, &core)?.diagnostics);
         }
         if files.iter().any(|(_, source)| source.contains("__specComplete")) {
             let mut complete = shell
@@ -417,7 +419,7 @@ fn boot(files: &[(&str, String)], probe: Option<&str>, session_first: bool) -> R
                 }
                 clock.advance(Duration::from_millis(100));
                 elapsed_ms += 100.0;
-                diagnostics.extend(shell.frame().map_err(|error| error.to_string())?.diagnostics);
+                diagnostics.extend(frame(&mut shell, &core)?.diagnostics);
                 for op in comp.ops_since(track_mark) {
                     if let TxOp::Set {
                         node,
@@ -631,6 +633,13 @@ fn makes_workspaces(source: &str) -> bool {
 }
 
 /// Loads one JS fragment: as the entry `init.js` itself (`entry`), or as a module behind the prelude.
+/// One frame: the engine's, then the core's dispatch, in which the library runs what is dirty.
+fn frame(shell: &mut JsShell, core: &NativeCore) -> Result<JsFrame, String> {
+    let done = shell.frame().map_err(|error| error.to_string())?;
+    core.dispatch(shell);
+    Ok(done)
+}
+
 fn run_js(source: &str, entry: bool) -> Result<(), String> {
     let source = &spec_imports(source);
     let mut files = vec![("workspaces/DevelopmentWorkspace.js", DEVELOPMENT_WORKSPACE.to_owned())];

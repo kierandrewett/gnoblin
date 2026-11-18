@@ -526,6 +526,8 @@ fn a_shell_that_does_not_start_the_menu_leaves_the_request_unanswered_and_one_wi
         "the stock menu never started"
     );
     assert!(!menu_open(&mut rig));
+    // The core's registry is one per process: a rig is gone before the next is made.
+    drop(rig);
     let mut rig = world(1, MENU);
     rig.comp.external_set(21, "pointer_x", MirrorValue::Double(220.0));
     rig.comp.external_set(21, "pointer_y", MirrorValue::Double(140.0));
@@ -708,6 +710,8 @@ fn a_shell_that_does_not_start_the_alert_has_none_and_an_alert_closes_an_open_wi
     let mut rig = world(1, MENU);
     stuck(&mut rig, 3, true);
     assert_eq!(rig.eval("String(notRespondingAlerts.started)"), "false");
+    // The core's registry is one per process: a rig is gone before the next is made.
+    drop(rig);
     let mut rig = world(1, FAST_ALERTS);
     ask(&mut rig, 3, 10.0, 10.0);
     assert!(menu_open(&mut rig));

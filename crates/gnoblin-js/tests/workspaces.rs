@@ -467,6 +467,8 @@ fn the_area_follows_the_screen_and_a_screen_less_tree_lays_nothing_out() {
         (before.parse::<u32>().expect("a number") + 1).to_string(),
         "once for the two changes"
     );
+    // The core's registry is one per process: a rig is gone before the next is made.
+    drop(tiled);
 
     let bare = FakeCompositor::new();
     let mut rig = rig(

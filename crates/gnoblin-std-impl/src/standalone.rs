@@ -6,10 +6,16 @@
 //! the same object the workspace's is (`builtin/`), so the rectangles, the options and their checks, the actions and the state a
 //! kind keeps (a dwindle's tree) are the library's once, for every language.
 //!
+//! These functions need no `open`: the library's desktop (its default workspace, its adoption of windows, its layout pass) starts
+//! with `open`, and a shell that only asks for layouts must not get a second window manager beside its own. The layouts are held
+//! per generation, apart from the library's state, and a generation's go with it (`on_shutdown`).
+//!
 //! The clients of a query are ids the caller chooses. The library reads nothing of them from the tree: a layout is pure over ids and
 //! rectangles. A call never touches a workspace, and posts no turn.
 #![allow(unsafe_code)]
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use gnoblin_core::Rect;
@@ -25,22 +31,53 @@ use crate::builtin::{ActionEnv, Builtin, encode_value, read_args, read_one, read
 use crate::error::{Fail, Res};
 use crate::layout::{LayoutContext, LayoutObj, Placement};
 use crate::state::next_id;
-use crate::table::{call, fill_out, put, read, read_ext, std_of};
+use crate::table::{call, fill_out, put, read_ext};
+
+type Layouts = HashMap<GnoblinStdBuiltin, Rc<LayoutObj>>;
 
 thread_local! {
+    /// The built-in layouts of each generation that made one.
+    static LAYOUTS: RefCell<HashMap<GnoblinCtx, Layouts>> = RefCell::new(HashMap::new());
     /// The placements the last `builtin_compute` lent, valid until the next call on this thread.
     static LENT_PLACEMENTS: std::cell::RefCell<Vec<GnoblinStdPlacement>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// The layout behind `handle`, or why there is none.
 fn layout_of(ctx: GnoblinCtx, handle: GnoblinStdBuiltin) -> Res<Rc<LayoutObj>> {
-    read(ctx, |st| {
-        st.builtins.get(&handle).map(Rc::clone).ok_or_else(|| {
-            Fail::no_such(format!(
-                "there is no built-in layout {handle}: it was freed, or never made"
-            ))
-        })
+    LAYOUTS.with(|all| {
+        all.borrow()
+            .get(&ctx)
+            .and_then(|layouts| layouts.get(&handle))
+            .map(Rc::clone)
+            .ok_or_else(|| {
+                Fail::no_such(format!(
+                    "there is no built-in layout {handle}: it was freed, or never made"
+                ))
+            })
     })
+}
+
+/// Holds `layout` for `ctx`, and arranges for the generation's layouts to go when it retires.
+fn keep(ctx: GnoblinCtx, id: GnoblinStdBuiltin, layout: Rc<LayoutObj>) -> Res<()> {
+    let first = LAYOUTS.with(|all| {
+        let mut all = all.borrow_mut();
+        let first = !all.contains_key(&ctx);
+        all.entry(ctx).or_default().insert(id, layout);
+        first
+    });
+    if first {
+        let registered = gnoblin_core::private::gnoblin_for(ctx).and_then(|g| {
+            g.on_shutdown(move || {
+                LAYOUTS.with(|all| all.borrow_mut().remove(&ctx));
+            })
+            .map(drop)
+        });
+        if let Err(error) = registered {
+            LAYOUTS.with(|all| all.borrow_mut().remove(&ctx));
+            return Err(Fail::from(error));
+        }
+    }
+    Ok(())
 }
 
 fn builtin(layout: &LayoutObj) -> &Builtin {
@@ -105,7 +142,6 @@ pub(crate) unsafe extern "C" fn builtin_new(
     out: *mut GnoblinStdBuiltin,
 ) -> i32 {
     call("builtin_new", || {
-        let std = std_of(ctx)?;
         let desc = layout_kind(kind).ok_or_else(|| {
             Fail::type_error(format!(
                 "unknown built-in layout kind {kind}: the kinds are 1 to {}",
@@ -118,15 +154,18 @@ pub(crate) unsafe extern "C" fn builtin_new(
         let id = next_id();
         // SAFETY: the caller guarantees `out` is null or writable.
         unsafe { put(out, id) }?;
-        std.st.borrow_mut().builtins.insert(id, layout);
+        keep(ctx, id, layout)?;
         Ok(abi::E_OK)
     })
 }
 
 pub(crate) unsafe extern "C" fn builtin_free(ctx: GnoblinCtx, handle: GnoblinStdBuiltin) -> i32 {
     call("builtin_free", || {
-        let std = std_of(ctx)?;
-        let gone = std.st.borrow_mut().builtins.remove(&handle);
+        let gone = LAYOUTS.with(|all| {
+            all.borrow_mut()
+                .get_mut(&ctx)
+                .and_then(|layouts| layouts.remove(&handle))
+        });
         gone.map(drop)
             .ok_or_else(|| Fail::no_such(format!("there is no built-in layout {handle}")))?;
         Ok(abi::E_OK)

@@ -37,17 +37,8 @@ pub fn files(spec: &SdkSpec) -> Result<Vec<File>, String> {
         file("records.ts", renderer.records()?),
         file("classes.ts", renderer.classes()?),
         file("layouts.ts", super::layouts::typescript()),
-        file("index.ts", index()),
+        file("index.ts", renderer.index()),
     ])
-}
-
-fn index() -> String {
-    let mut code = CodeWriter::new("  ");
-    for module in ["constants", "records", "classes", "layouts"] {
-        code.line(format!("export * from \"gnoblin-std/generated/{module}\";"));
-    }
-    code.line("export { call, functions, type Init } from \"gnoblin-std/generated/native\";");
-    code.finish()
 }
 
 struct Renderer<'a> {
@@ -401,6 +392,27 @@ impl Renderer<'_> {
 
     // -----------------------------------------------------------------------------------------------------------------
     // classes
+
+    /// The index of the generated modules. A name that a class and a record both have (the vtable record `Layout` and the class of
+    /// the `layout` functions) is the class in the index, and the record is `NameVtable`: `export *` of both is a compile error.
+    fn index(&self) -> String {
+        let mut code = CodeWriter::new("  ");
+        for module in ["constants", "records", "classes", "layouts"] {
+            code.line(format!("export * from \"gnoblin-std/generated/{module}\";"));
+        }
+        let classes: Vec<String> = self.class_infos().into_iter().map(|class| class.name).collect();
+        for record in self.lib.records.iter().filter(|record| record.vtable) {
+            let name = vtable_name(&record.name);
+            if classes.contains(&name) {
+                code.line(format!("export {{ {name} }} from \"gnoblin-std/generated/classes\";"));
+                code.line(format!(
+                    "export type {{ {name} as {name}Vtable }} from \"gnoblin-std/generated/records\";"
+                ));
+            }
+        }
+        code.line("export { call, functions, type Init } from \"gnoblin-std/generated/native\";");
+        code.finish()
+    }
 
     fn class_infos(&self) -> Vec<ClassInfo> {
         let std_handle = |name: &str| self.lib.handle(name).is_some();

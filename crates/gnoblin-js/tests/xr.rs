@@ -1003,6 +1003,7 @@ fn a_hand_that_turns_turns_the_panel_about_it_and_keep_holds_the_panels_own_rota
     near(yaw(&rig, view), 0.5, "and turns with it");
     grip(&mut rig, 0.0);
 
+    drop(rig);
     let mut kept = drag_world("gnoblin.extensions.configure('xr', { layout: { triggers: { move: null } } });");
     kept.eval(
         "gnoblin.extensions.xr.room.layout.bindings.add(new ViewMoveBinding({ id: 'move', rotation: 'keep' })); 1",
@@ -1303,6 +1304,7 @@ fn a_two_button_chord_that_goes_down_together_is_not_taken_for_its_first_button(
     rig.frame();
     assert_eq!(rig.eval("log.join(',')"), "resize");
     // With the default settle time a chord that is not yet stable has not started.
+    drop(rig);
     let mut slow = world(&[(800.0, 600.0)], "globalThis.log = [];");
     xr_arrives(&mut slow);
     hand(&slow, RIGHT_HAND, "right", 0.0, 0.0, 0.0);
@@ -1483,6 +1485,7 @@ fn a_ray_drag_and_a_resize_claim_the_buttons_of_their_triggers() {
     grip(&mut rig, 0.0);
     assert!(claimed(&rig, RIGHT_HAND).is_empty());
 
+    drop(rig);
     let mut resizing = drag_world("");
     move_hand(&mut resizing, 200.0, 100.0, 0.0);
     resizing
@@ -1512,6 +1515,7 @@ fn a_hand_that_points_at_nothing_or_a_binding_that_declines_claims_nothing() {
     assert!(claimed(&rig, RIGHT_HAND).is_empty());
     assert_eq!(claim_writes(&rig, RIGHT_HAND), 0);
 
+    drop(rig);
     let mut declined = drag_world(&format!(
         "{SPY} globalThis.Decline = class extends Spy {{ onStart() {{ return false; }} }};"
     ));
@@ -1541,6 +1545,7 @@ fn every_way_a_drag_ends_gives_the_claim_back() {
     );
 
     // Cancelled: the drag's binding is removed from the room.
+    drop(rig);
     let mut removed = drag_world("");
     grip(&mut removed, 1.0);
     assert_eq!(claimed(&removed, RIGHT_HAND), ["grip"]);
@@ -1554,6 +1559,7 @@ fn every_way_a_drag_ends_gives_the_claim_back() {
     );
 
     // Cancelled: the controller's hook throws, which is reported and ends only that drag.
+    drop(removed);
     let mut crashed = drag_world(SPY);
     crashed.eval("gnoblin.extensions.xr.room.layout.bindings.add(new Spy({ id: 'spy', trigger: 'Grip+Drag' })); 1");
     crashed.eval("globalThis.boom = true; 1");
@@ -1575,6 +1581,7 @@ fn every_way_a_drag_ends_gives_the_claim_back() {
     );
 
     // Cancelled: the session ends under the drag.
+    drop(crashed);
     let mut ended = drag_world("");
     grip(&mut ended, 1.0);
     assert_eq!(claimed(&ended, RIGHT_HAND), ["grip"]);

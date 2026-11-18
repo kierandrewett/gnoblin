@@ -291,6 +291,7 @@ fn a_gesture_bound_twice_is_refused_and_a_way_the_gesture_cannot_go_is_reported(
     assert_eq!(rig.eval("String(globalThis.out)"), "BindingConflictError");
     let sideways = "try { onSwipe({ sideways: 'window.close' }); \
                     (globalThis as any).out = 'accepted'; } catch (e: any) { (globalThis as any).out = e.message; }\n";
+    drop(rig);
     let mut rig = world(0, false, "new Layout()", sideways);
     assert_eq!(
         rig.eval("String(globalThis.out)"),
@@ -373,6 +374,7 @@ fn a_workspace_show_slides_unless_the_seat_asks_for_reduced_motion() {
         "without reduced motion the leaving windows stay drawn while they slide"
     );
 
+    drop(rig);
     let mut rig = world(2, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -471,6 +473,7 @@ fn the_titlebar_close_fades_the_window_out_unless_the_seat_asks_for_reduced_moti
     settle(&mut rig);
     assert!(rig.comp.timed_sets() > 0, "the fade is a timed write");
 
+    drop(rig);
     let mut rig = world(1, false, "new Layout()", "startDecorations();");
     rig.comp.external_set(SEAT, "reduced_motion", MirrorValue::Bool(true));
     settle(&mut rig);
@@ -632,6 +635,7 @@ fn removing_a_workspace_moves_its_windows_to_the_neighbour_before_it() {
     assert_eq!(rig.eval("String(gnoblin.workspaces.length)"), "2");
 
     // The first workspace has none before it: its windows go to the one after.
+    drop(rig);
     let mut rig = world(1, false, "new Layout()", "");
     exec(&mut rig, "gnoblin.workspaces.remove('1')");
     settle(&mut rig);
@@ -733,6 +737,7 @@ fn a_press_on_a_titlebar_focuses_and_raises_its_window() {
     settle(&mut rig);
 
     // The same press on a window whose seat keeps the stacking (raise_on_click off) focuses and does not raise.
+    drop(rig);
     let mut rig = world(2, false, "new Layout()", "startDecorations();");
     rig.comp.external_set(SEAT, "raise_on_click", MirrorValue::Bool(false));
     settle(&mut rig);

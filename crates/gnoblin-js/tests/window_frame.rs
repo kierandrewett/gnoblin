@@ -241,6 +241,7 @@ fn a_snapped_and_a_tiled_window_are_placed_as_frames_with_the_room_on_every_side
         "the frame is still the whole left half: the content is what the four edges leave"
     );
 
+    drop(rig);
     let mut rig = world(
         0,
         &format!("{FOUR} gnoblin.workspaces.add(new Workspace({{ id: '1', layout: new MasterStackLayout() }}));"),

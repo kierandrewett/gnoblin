@@ -283,6 +283,7 @@ fn the_divider_follows_the_pointer_on_the_right_and_across_a_gap() {
     assert_eq!(rect(&rig, 4), "0,0,600,800");
     drag.release(&mut rig, (600.0, 400.0));
     // A gap of 10 leaves 990 pixels to divide: the divider moves by exactly the pointer's travel.
+    drop(rig);
     let mut rig = world(2, "new MasterStackLayout({ gap: 10 })");
     assert_eq!(rect(&rig, 3), "0,0,495,800");
     assert_eq!(rect(&rig, 4), "505,0,495,800");
@@ -292,6 +293,7 @@ fn the_divider_follows_the_pointer_on_the_right_and_across_a_gap() {
     assert_eq!(rect(&rig, 4), "604,0,396,800");
     drag.release(&mut rig, (699.0, 400.0));
     // Master on top: the pointer's y moves it.
+    drop(rig);
     let mut rig = world(2, "new MasterStackLayout({ orientation: \"top\" })");
     assert_eq!(rect(&rig, 3), "0,0,1000,400");
     let drag = Drag::press(&mut rig, RESIZE, (500.0, 100.0));
@@ -313,6 +315,7 @@ fn a_layout_with_no_divider_declines_a_resize() {
         })()",
     );
     assert_eq!(got, "false");
+    drop(rig);
     let mut rig = world(3, "new GridLayout()");
     let got = rig.eval(
         "(() => {
@@ -328,6 +331,7 @@ fn a_layout_with_no_divider_declines_a_resize() {
         rig.comp.claimed()
     );
     // A floating layout's windows are not tiled, so neither tiling binding takes them.
+    drop(rig);
     let mut rig = world(2, "new FloatingLayout()");
     let got = rig.eval(
         "(() => {

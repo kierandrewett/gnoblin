@@ -18,6 +18,9 @@ use std::sync::LazyLock;
 mod support;
 use support::*;
 
+mod reference;
+use reference::Reference;
+
 const STD_FILE: &str = "libgnoblin-std.so.1";
 
 /// Two staged prefixes: one with the std library installed and one without, the same core, launcher and shells in both.
@@ -413,7 +416,7 @@ fn a_core_only_shell_never_loads_the_std_library_even_from_a_prefix_that_has_it(
 
 use std::time::Duration;
 
-use gnoblin_js::{JsShell, JsShellConfig};
+use gnoblin_js::JsShellConfig;
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_testkit::compositor::{FakeCompositor, ROOT, text};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
@@ -445,7 +448,7 @@ fn reference_world() -> FakeCompositor {
 }
 
 /// Runs the TypeScript shell `source` over `comp`: the frames before and after each step of `steps`, which may create windows.
-fn reference_run(comp: &FakeCompositor, source: &str, mut steps: impl FnMut(&FakeCompositor, &mut JsShell)) {
+fn reference_run(comp: &FakeCompositor, source: &str, mut steps: impl FnMut(&FakeCompositor, &mut Reference)) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("shell.ts"), source).expect("shell.ts is written");
@@ -455,7 +458,7 @@ fn reference_run(comp: &FakeCompositor, source: &str, mut steps: impl FnMut(&Fak
     config.entry_budget = Duration::from_secs(5);
     config.frame_budget = Duration::from_secs(10);
     config.clock = std::sync::Arc::new(clock);
-    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
+    let mut shell = Reference::new(comp, config);
     let diagnostics = shell.load_entry(Path::new("shell.ts")).expect("shell.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     for _ in 0..6 {
@@ -464,7 +467,7 @@ fn reference_run(comp: &FakeCompositor, source: &str, mut steps: impl FnMut(&Fak
     steps(comp, &mut shell);
 }
 
-fn settle(shell: &mut JsShell) {
+fn settle(shell: &mut Reference) {
     for _ in 0..6 {
         let diagnostics = shell.frame().expect("a frame").diagnostics;
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
