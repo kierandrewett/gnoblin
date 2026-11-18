@@ -287,6 +287,8 @@ struct Shell {
     stop: Arc<AtomicBool>,
     status: Arc<Mutex<Status>>,
     thread: Mutex<Option<JoinHandle<Vec<String>>>>,
+    /// The place of this shell's core in the process's queue, until the shell ends.
+    turn: Mutex<Option<support::core_rig::Turn>>,
 }
 
 impl Shell {
@@ -294,6 +296,7 @@ impl Shell {
     /// frame is over (or it has ended, which `ended` then says why), so that what `generation` and `diagnostics`
     /// read from here on is the shell's and not the zero of a thread that has not published yet.
     fn start(session: &Session, dir: &Path, tune: impl FnOnce(&mut JsRoleConfig) + Send + 'static) -> Self {
+        let turn = support::core_rig::Turn::wait();
         let socket = session.ipc().to_str().expect("a UTF-8 socket path").to_owned();
         let dir = dir.to_path_buf();
         let stop = Arc::new(AtomicBool::new(false));
@@ -311,7 +314,18 @@ impl Shell {
                     config.shell.frame_budget = HONEST_BUDGET;
                     config.shell.js.stage_budget = HONEST_BUDGET;
                     tune(&mut config);
-                    let mut role = match JsRole::connect(&env, config) {
+                    // The shell runs over a core with the std library loaded, as in the compositor: the library computes the stock layouts.
+                    let rig = match support::core_rig::CoreRig::new(Arc::clone(&config.shell.clock)) {
+                        Ok(rig) => rig,
+                        Err(error) => {
+                            let mut status = shared.lock().expect("the status lock");
+                            status.frames += 1;
+                            status.ended = Some(error);
+                            return;
+                        }
+                    };
+                    config.shell.js.natives.push(rig.std_native());
+                    let mut role = match JsRole::connect_through(&env, config, |link| rig.take_over(link)) {
                         Ok(role) => role,
                         Err(error) => {
                             let mut status = shared.lock().expect("the status lock");
@@ -325,6 +339,7 @@ impl Shell {
                     shared.lock().expect("the status lock").generation = role.generation_id();
                     while !stopped.load(Ordering::Relaxed) {
                         let ticked = role.tick();
+                        rig.dispatch(role.shell_mut());
                         {
                             let mut status = shared.lock().expect("the status lock");
                             status.frames += 1;
@@ -357,6 +372,7 @@ impl Shell {
             stop,
             status,
             thread: Mutex::new(Some(thread)),
+            turn: Mutex::new(Some(turn)),
         };
         shell.await_first_frame();
         shell
@@ -412,7 +428,10 @@ impl Shell {
     fn finish(&self) -> Vec<String> {
         self.stop.store(true, Ordering::Relaxed);
         let thread = self.thread.lock().expect("the thread lock").take();
-        thread.map_or_else(Vec::new, |thread| thread.join().expect("the shell thread ends"))
+        let logged = thread.map_or_else(Vec::new, |thread| thread.join().expect("the shell thread ends"));
+        // The thread's core is gone with it: the next shell of the process may have its turn.
+        self.turn.lock().expect("the turn lock").take();
+        logged
     }
 }
 

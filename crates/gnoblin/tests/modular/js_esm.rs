@@ -5,21 +5,24 @@ use crate::support::native_shell::{Gnoblin, KEY_ENTER, Start, Typist, start_scri
 use crate::{copy_example, is_runtime_copy, screen_of, serving};
 
 #[test]
-fn example_4_a_js_shell_of_es_modules_tiles_real_windows_binds_a_chord_and_maps_only_the_runtime() {
+fn example_4_a_js_shell_of_es_modules_tiles_real_windows_binds_a_chord_and_maps_the_runtime_and_the_std_library() {
     let dir = copy_example("04-js-esm");
     let mut session: Gnoblin = start_script(Start::Compositor, &dir.path().join("shell.js"), &[]);
     serving(&mut session);
 
-    // One mapping of the core, the runtime's private copy as the one mapping beyond it, and no std library: the stock library of
-    // `gnoblin-std` is data the runtime reads, and what `gnoblin-std` the library would be is not a shared object a JS shell loads.
+    // One mapping of the core, the runtime's private copy as the one mapping beyond it, and the std library once: the shell imports
+    // `gnoblin-std`, whose stock layouts are the library's (`builtin_*`), which the runtime opens the first time one is made.
     let files = session.mapped_files();
     let runtimes: Vec<&String> = files.iter().filter(|path| is_runtime_copy(path)).collect();
     assert_eq!(runtimes.len(), 1, "one mapping of the JavaScript runtime in {files:#?}");
-    assert!(
-        !files
-            .iter()
-            .any(|path| path.contains("gnoblin-std") || path.contains("gnoblin_std")),
-        "no std library is mapped by a JavaScript shell: {files:#?}"
+    let std: Vec<&String> = files
+        .iter()
+        .filter(|path| path.contains("gnoblin-std") || path.contains("gnoblin_std"))
+        .collect();
+    assert_eq!(
+        std.len(),
+        1,
+        "the std library is mapped once by a shell that imports it: {files:#?}"
     );
     assert!(
         files.iter().all(|path| !path.contains("libpython")),

@@ -97,4 +97,11 @@ gnoblin-wayland = { path = "../gnoblin-wayland" }
 # The configuration and dialog tests read the document the compositor holds, ask it for a consent dialog the way
 # the portal does (a request's options are the model's `Fields`) and refuse nothing a fake could answer.
 gnoblin-model = { path = "../gnoblin-model" }
+# The in-process JavaScript shell of `tests/js_shell.rs` runs over a core with the std library loaded, as the compositor runs it: the stock
+# layouts of `gnoblin-std` are the library's (`tests/support/core_rig.rs`). A development edge is what `impl-sealed` allows.
+gnoblin-core-impl = { path = "../gnoblin-core-impl" }
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-std-impl = { path = "../gnoblin-std-impl" }
+gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
+gnoblin-runtime-js = { path = "../gnoblin-runtime-js" }
 serde_json.workspace = true
