@@ -9,6 +9,8 @@ use gnoblin_js::{JsRole, JsRoleLinks};
 use gnoblin_paint::{PaintList, PaintOp, decode};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
+use std::sync::Arc;
+
 mod common;
 use common::*;
 
@@ -877,7 +879,10 @@ fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
     .expect("shell.ts");
     let mut config = honest_role_config(&root);
     config.watch = false;
-    let mut role = JsRole::over_link(Box::new(comp.clone()), JsRoleLinks::default(), config).expect("the role boots");
+    // The shell's library is the std library over a core of its own, as the runtime's is.
+    let core = common::native::NativeCore::new(&comp, Arc::clone(&config.shell.clock));
+    config.shell.js.natives.push(core.std_native());
+    let mut role = JsRole::over_link(core.link(), JsRoleLinks::default(), config).expect("the role boots");
     let settle = |role: &mut JsRole| {
         for _ in 0..6 {
             role.tick().expect("a frame");

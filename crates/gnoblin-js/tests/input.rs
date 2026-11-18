@@ -1825,6 +1825,11 @@ fn slide_rig(comp: &Comp) -> Rig {
          gnoblin.input.primary.bind(\"Swipe3\", new WorkspaceSlideBinding());\n",
     );
     rig.eval("gnoblin.workspaces.get('b').clients.add(gnoblin.clients.at(1))");
+    // The window the compositor mapped with no place has none the library would give it (a window that was there when the shell
+    // opened is not placed): the test gives it the rest place the slide goes back to.
+    for (key, value) in [("x", 20.0), ("y", 40.0), ("width", 300.0), ("height", 200.0)] {
+        comp.0.external_set(4, key, MirrorValue::Double(value));
+    }
     for _ in 0..3 {
         rig.frame();
     }
@@ -1946,7 +1951,9 @@ fn role_over(comp: &Comp, init: &str) -> (JsRole, std::path::PathBuf, (TempDir, 
 fn hand_off_entry(rest: &str) -> String {
     format!(
         "import {{ gnoblin }} from \"gnoblin-core\"; import {{ FloatingLayout, Workspace }} from \"gnoblin-std\";\n\
-         gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout: \"monocle\" }}));\n\
+         // The library's workspaces outlive a reload that stays in one core generation (a runtime reload opens a new one), so a\n\
+         // later generation finds `main` there already.\n\
+         if (!gnoblin.workspaces.get(\"main\")) gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout: \"monocle\" }}));\n\
          const input = gnoblin.input.primary;\n{rest}"
     )
 }
