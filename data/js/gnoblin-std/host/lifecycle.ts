@@ -7,7 +7,7 @@
 import { ctx } from "gnoblin-core/host/context";
 import type { HostHooks } from "gnoblin-core/host/hooks";
 import { stateOf } from "gnoblin-core/host/node_state";
-import { layout } from "gnoblin-std/host/frame";
+import { clearInheritedFrames, layout } from "gnoblin-std/host/frame";
 import { forgetClient } from "gnoblin-std/host/membership";
 import { declareDecorations } from "gnoblin-std/host/services";
 import { reconcileWorkspaces, snapshotWorkspaces } from "gnoblin-std/host/snapshot";
@@ -58,7 +58,10 @@ export const lifecycle: Partial<HostHooks> = {
 
     pointerEdge: (kind) => windowState.pointerEdge(kind),
 
-    finishLoad: ensureDefaultWorkspace,
+    finishLoad() {
+        clearInheritedFrames();
+        ensureDefaultWorkspace();
+    },
 
     opened() {
         // The declaration is written here, after the generation that ended took its own back: a reload stages the new
@@ -109,5 +112,9 @@ export const lifecycle: Partial<HostHooks> = {
 
     workArea: (client) => workAreaOf(client ?? null),
 
-    layouts: () => std.workspaceRoot.list.map((workspace) => wsState(workspace as Workspace).layout),
+    // What an earlier generation left in the library has no bindings of this generation's.
+    layouts: () =>
+        std.workspaceRoot.list
+            .filter((workspace) => !std.inherited.has(workspace as Workspace))
+            .map((workspace) => wsState(workspace as Workspace).layout),
 };

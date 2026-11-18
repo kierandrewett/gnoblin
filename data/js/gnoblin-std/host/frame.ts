@@ -125,6 +125,25 @@ function sendFrames(): void {
 }
 
 /**
+ * A generation that frames no window gives back the room an earlier generation's frames took, which the library still holds when a
+ * reload stays in one core generation (a runtime reload opens a new one, whose library holds none).
+ */
+export function clearInheritedFrames(): void {
+    if (std.decorations !== null) {
+        return;
+    }
+    for (const client of ctx.clientRoot.list as Client[]) {
+        untilKnown(() => {
+            const native = nativeClient(client);
+            const state = native.state();
+            if (state.insetTop + state.insetRight + state.insetBottom + state.insetLeft > 0) {
+                native.setState({ ...state, insetTop: 0, insetRight: 0, insetBottom: 0, insetLeft: 0 });
+            }
+        });
+    }
+}
+
+/**
  * Runs once a frame, after the listeners. The layout itself is not run here: it is the library's turn, which follows the
  * engine's frame, and it writes the placements as tree writes of its own.
  */

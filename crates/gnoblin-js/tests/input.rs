@@ -1951,9 +1951,7 @@ fn role_over(comp: &Comp, init: &str) -> (JsRole, std::path::PathBuf, (TempDir, 
 fn hand_off_entry(rest: &str) -> String {
     format!(
         "import {{ gnoblin }} from \"gnoblin-core\"; import {{ FloatingLayout, Workspace }} from \"gnoblin-std\";\n\
-         // The library's workspaces outlive a reload that stays in one core generation (a runtime reload opens a new one), so a\n\
-         // later generation finds `main` there already.\n\
-         if (!gnoblin.workspaces.get(\"main\")) gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout: \"monocle\" }}));\n\
+         gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout: \"monocle\" }}));\n\
          const input = gnoblin.input.primary;\n{rest}"
     )
 }

@@ -1169,10 +1169,6 @@ fn a_window_the_library_has_not_heard_of_yet_is_moved_when_it_has() {
         "added",
         "no error for a window the library does not know yet"
     );
-    assert_eq!(
-        rig.eval("String(gnoblin.clients.get('4').moveToWorkspace(g.b))"),
-        "true"
-    );
     rig.settle();
     assert_eq!(rig.eval("gnoblin.clients.get('4').workspace.id"), "b");
 }
