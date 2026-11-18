@@ -220,9 +220,11 @@ one. A node from `adopt_ephemeral_node` is removed at the next reload unless the
     Fix the build and the next change tries again. Anything the failed `init` did outside Gnoblin, such as starting a
     program or writing a file, is not undone.
 
-- **Retired libraries stay loaded.** Native code that may still be running is never unloaded. After 32 reloads in one
-  session, the next one is refused with `32 retired shell libraries are still mapped (the limit is 32)`. Restart `gnoblin`
-  to reload again.
+- **Retired libraries stay loaded.** Native code that may still be running is never unloaded, so each reload keeps one
+  library mapped for the life of the session, and so does a replacement that mapped and then failed (its `init` failed or
+  panicked). A file that cannot be mapped at all keeps nothing. The bound is 32 libraries. After that the next reload is
+  refused with `32 retired shell libraries are still mapped (the limit is 32)`, the shell that serves keeps serving and
+  `gnoblinctl shell status` shows `32 of 32 retired shell libraries retained`. Restart `gnoblin` to reload again.
 
 - **The compositor does not reload.** The core library, its ABI version and the backends change when `gnoblin` restarts.
 

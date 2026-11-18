@@ -1,9 +1,11 @@
 # Modular framework: core, std and shells
 
-Status: design, lane Architect, branch `rust-compositor` (PR #339, draft). Written against `origin/rust-compositor` at
-`17e44ef17`. The proof spike behind the linking, panic, reload and upgrade claims is recorded in
-`design/modular-framework-spike.md`; every claim marked "spike" cites a command and output there. Claims marked
-`[INFERENCE]` were read from code or knowledge and not run.
+Status: shipped with the exceptions listed in section 34 (lane Validation, M8.6); written as a design by lane Architect, branch
+`rust-compositor` (PR #339, draft), against `origin/rust-compositor` at `17e44ef17`. Sections 1 to 15 are the design as it was
+decided; sections 16 to 33 are what each lane built and found; section 34 is the evidence per example, each decision's final status
+and what is not done. The proof spike behind the linking, panic, reload and upgrade claims is recorded in
+`design/modular-framework-spike.md`; every claim marked "spike" cites a command and output there. Claims marked `[INFERENCE]` were
+read from code or knowledge and not run.
 
 The owner's specification (condensed in `local://modular-brief.md` and the lane brief) is the authority. This file turns it
 into crate names, an ABI, a loader, a discovery rule, a reload protocol, a migration order and a lane breakdown. Section 2
@@ -2447,3 +2449,103 @@ a Python shell and a TypeScript shell. The chord typed on a virtual keyboard rea
 - The verbs that need a power backend (`suspend`, `poweroff`, `reboot`, `hibernate`) were not called against a real session.
 - The TypeScript runtime's older `gnoblin.session` (the `begin(verb)` bridge over the owner socket) and the new `verbs.session` are
   two doors to the same compositor objects. Moving the first onto the second is a cleanup for the lane that owns `gnoblin-js`.
+
+## 34. Final status (lane Validation, M8.1, M8.2, M8.4, M8.6)
+
+Written against `origin/rust-compositor` at `4c775c1f3` plus this lane's commits. Every result below was observed on an Agent37 box
+(`gnoblin-Validation`, 2 CPUs, 12 GB) with the shipped binary on a headless backend, after `cargo xtask stage`.
+
+### 34.1 What shipped
+
+All of phases 0 to 6 and 8, and phase 7 but for the shader pass: `libgnoblin-core.so.1` (the compositor, the module loader and
+the C ABI), `libgnoblin-std.so.1`, the Rust SDK crates, `libgnoblin-runtime-js.so` and `libgnoblin-runtime-python.so`, the
+discovery rule and `gnoblin`'s launcher, native hot reload with retirement, the generated Python and TypeScript SDKs, the golden
+shells and `abi-check`, the install layout, and the examples and their tests below.
+
+### 34.2 The 18 examples: evidence
+
+"Test" is a real session unless marked. A suite name alone means every test of the example's name in it. `modular` is
+`crates/gnoblin/tests/modular/`. Results are from the box run of 2026-11-18 (`cargo test -p gnoblin --test NAME`).
+
+| #   | Example directory                                            | Test that runs it                                                                                                                                             | Result                      |
+| --- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| 1   | `examples/01-minimal-core-shell`                             | `native_shell.rs` (one core mapping, cascade, claimed chord); dependency facts in `abi_upgrade.rs`                                                            | 6 passed; abi_upgrade 7     |
+| 2   | `examples/02-std-prelude`                                    | `modular/native_std.rs::example_2_...` (new: std places windows, chord starts a terminal, one core and one std mapped)                                        | passed                      |
+| 3   | `examples/03-python-std`, `examples/03-typescript-std`       | Python: `modular/std_layouts.rs`, `single_core.rs`. TypeScript: no real-session test (see 34.7)                                                               | Python passed; TS not run   |
+| 4   | `examples/04-js-esm`                                         | `modular/js_esm.rs`, `single_core.rs`                                                                                                                         | passed                      |
+| 5   | `examples/05-ts-types`                                       | `modular/ts_types.rs`, `single_core.rs`                                                                                                                       | passed                      |
+| 6   | `examples/06-rust-layout`                                    | `modular/native_std.rs::example_6_...` (new: columns as windows open and close, `<Super>Tab` swaps)                                                           | passed                      |
+| 7   | `examples/07-script-binding`                                 | `modular/script_binding.rs` (TypeScript and Python)                                                                                                           | 2 passed                    |
+| 8   | `examples/08-no-workspaces`, `examples/08-no-workspaces-py`  | `modular/no_workspaces.rs` (new: both languages, no node class the compositor does not make, no std mapped), `native_shell.rs::example_eight_...`             | passed                      |
+| 9   | `examples/09-native-linked` (new)                            | `modular/native_std.rs::example_9_...` (new: `readelf -d`, `nm -D`, `ldd`, `/proc/PID/maps` and the shell's own report agree, libraries come from the prefix) | passed                      |
+| 10  | `examples/10-hot-reload`                                     | `reload_session.rs::example_10_*` (rebuild, two reloads with state and node identity, chord-requested reload), `gnoblinctl_shell_watch_...`                   | 8 passed (the suite)        |
+| 11  | `03-python-std`, `05-ts-types` (edit the shell and a module) | `modular/script_reload.rs`, `reload_scripts.rs`                                                                                                               | 2 + 2 passed                |
+| 12  | `tests/modular/golden` (stored ABI 1.0 shells)               | `abi_upgrade.rs::example_twelve_...` and the six others of the suite (1.1 libraries, 2.0 core and std refused, ldd, run path)                                 | 7 passed (287 s)            |
+| 13  | none (a `shell.*` in the config directory)                   | `startup.rs::example_13_...`                                                                                                                                  | passed                      |
+| 14  | none (a launcher `tiler.toml` in `XDG_DATA_DIRS`)            | `startup.rs::example_14_...` (`--shell tiler`, `--list-shells` row)                                                                                           | passed                      |
+| 15  | none                                                         | `startup.rs::example_15_*` (three tests)                                                                                                                      | passed                      |
+| 16  | none                                                         | `startup.rs::example_16_...`                                                                                                                                  | passed                      |
+| 17  | `01`, `04`, `08` on a prefix with no std                     | `modular/no_std.rs` (3), `std_providers.rs::example_17_...`; `gnoblin-std-impl/tests/examples.rs::example_17_*` (fake compositor)                             | modular 23 passed; 3 passed |
+| 18  | `examples/10-hot-reload` (bad `init`, panic, truncated)      | `reload_session.rs::example_18_...`                                                                                                                           | passed                      |
+
+The other suites of the box run all passed: `native_shell_failures` 6, `native_shell_verbs` 3, `native_shell_spelling` 3,
+`std_providers` 3, `startup` 13, `failed_start` 5, `roles` 9, `modular` 23 (21 before this lane).
+
+### 34.3 The validation items beyond the 18
+
+| Item                                      | Where it is asserted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `readelf -d` NEEDED, core-only versus std | `support/elf.rs::assert_shell_dependencies` (shared): a core-only shell names the core once and no std, a std shell names std then the core, no run path, only `gnoshell_entry_v1` defined. Used for the golden shells, examples 1 and 2 (`abi_upgrade.rs`) and example 9                                                                                                                                                                                                                                              |
+| One core mapping in `/proc/PID/maps`      | core-only and std native shells (`native_shell.rs`, `native_std.rs`, `abi_upgrade.rs`); JavaScript, TypeScript and Python shells (`modular/single_core.rs`, new)                                                                                                                                                                                                                                                                                                                                                       |
+| Stale callbacks, retired generations      | `reload_session.rs` (posters of retired generations are refused `Retired`, no chord of an old generation runs), `native_shell_failures.rs::a_call_from_a_generation_that_retired_...`, `gnoblin-shell-host/tests/canary.rs`, `modular/script_reload.rs`                                                                                                                                                                                                                                                                |
+| No reference into an unloaded library     | D16 holds: a retired or failed generation's library is never `dlclose`d. `reload_session.rs::the_retired_libraries_are_bounded_at_32_...` counts the `gen-N` mappings of a live session: 33 after 30 reloads and two failed replacements                                                                                                                                                                                                                                                                               |
+| The bound on retention                    | Policy confirmed in `gnoblin-shell-host/src/retire.rs`: 32 libraries, failed replacements that mapped included. Past it a reload is refused with `32 retired shell libraries are still mapped (the limit is 32). ... restart gnoblin`, the running generation serves on, `shell status` shows `32 of 32`. Now proved in a real session (it was proved with a driver only); documented in `docs/rust-shell.md`. A development session that rebuilds more than 32 times must restart `gnoblin`: that is the price of D16 |
+| Old binaries on new libraries             | `abi_upgrade.rs`: the stored ABI 1.0 shells on 1.1 libraries, and a 1.1 shell on a 1.0 core; both passed on this tip                                                                                                                                                                                                                                                                                                                                                                                                   |
+
+### 34.4 The clean-checkout build path
+
+`cargo build -p gnoblin` links a stub and does not build the core, which is the documented limitation (CONTRIBUTING.md, "The core
+library in the build tree"). Before this lane it ended in the loader's text only. `crates/gnoblin/build.rs` now prints a build-script
+warning that names `cargo xtask stage` while the core is not beside the binary. **Not run:** the empty-target-directory run of
+`cargo xtask stage`, `cargo build -p gnoblin`, `just dist-check` and `cargo xtask dist install` into a temporary prefix. The box's
+first build (`cargo xtask stage` from an empty target) succeeded and every suite above ran on that tree, and `abi_upgrade.rs` and
+`native_std.rs` install a private prefix and run `ldd` and `readelf` on it, but the warning's text and the `dist install` layout
+were not observed.
+
+### 34.5 Gates
+
+**Not done on a final SHA.** The box run above is the observed evidence: `cargo xtask stage` and the suites of 34.2. Not observed:
+`cargo fmt --check` on the workspace (the changed files were formatted with `rustfmt` on the box), `cargo check` and `clippy` of the
+workspace, the `cargo xtask` gates, `cargo test` of every other workspace member, the extension workspace, and the JavaScript
+checks. The scripts that were to run them are `lanes/Validation-tools/box/gates1.sh`, `tests2.sh`, `gates3.sh` and `gates4.sh`.
+
+### 34.6 Decisions D1 to D21, final status
+
+| #                  | Status                                                                                                                                                                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1                 | As decided: in-process by default, `--isolate` runs the same host in its own process (`startup.rs`, `reload_session.rs`).                                                                                |
+| D2, D3             | As decided: five exports and one table, schema-addressed members (`exports.txt`, `abi.lock`).                                                                                                            |
+| D4                 | Partly. Native and Python shells use the core's mirror and builder. The JavaScript runtime keeps its own mirror over the relayed link (section 23.2).                                                    |
+| D5, D6             | As decided: SDK crates `gnoblin-core`, `gnoblin-std`; hyphenated SONAMEs and installed names.                                                                                                            |
+| D7                 | As decided: the lock card stays in core.                                                                                                                                                                 |
+| D8, D9, D10        | As decided: `gnoblin-js` stays client side as a runtime library; renderers and backends stay in the core; the tree classes stay in the core.                                                             |
+| D11                | Mechanism only. `MotionPolicy` and `Setting::Motion` exist and the compositor honours them, but nothing sets them, so the default is the historical 200 ms in every session, a core-only shell included. |
+| D12, D13, D14, D15 | As decided: PyO3, the `gnoblin-core` and `gnoblin-std` specifiers, `shell.*` and `GNOBLIN_SHELL`, ambiguity is an error that lists the candidates.                                                       |
+| D16                | As decided, and now proved in a real session at the bound of 32 (34.3).                                                                                                                                  |
+| D17, D18           | As decided: `E_RETIRED`, ABI 1.0 with `abi.lock` and golden shells checked by `cargo xtask abi-check`.                                                                                                   |
+| D19                | As decided: laid out to be published, `publish = false`.                                                                                                                                                 |
+| D20                | **Not done.** No shader pass (M7.9); it still needs the owner's decision, as it reverses O7.                                                                                                             |
+| D21                | As decided: XR stays the out-of-process `extensions/gnoblin-xr`.                                                                                                                                         |
+
+### 34.7 Deviations and what is not done
+
+- The tests of section 12 are not one file per example under `tests/modular/NN_name.rs`. They are the suites of 34.2, and the `modular`
+  recipe of the `justfile` lists them all. The CI workflow now also watches `examples/` and `data/`, and `native-libs` and `gen-sdks`
+  have jobs of their own (`dist-check` stays a step of the workspace job).
+- Example 9 had no directory: it is `examples/09-native-linked`. `examples/README.md` indexes all 18.
+- Running example 8 for real found a defect in the Python tiler (it read `screen_*`, which the compositor leaves at zero); fixed.
+- Example 3 in TypeScript has no real-session test: a previous attempt did not start in the harness (section 32.5) and the std
+  migration of lane TsStdNative2 was still in flight, so the test was left for after it lands.
+- Not done, from the notes above: the shader pass (D20); a reload of an isolated shell from the socket and a watch on a launcher
+  file (27.6); timers and chords for a shell that runs its own loop inside `init` (33.1); verbs that need a power backend (33.5);
+  frozen provider vtables (the ABI is unreleased); a golden shell for any language but Rust.

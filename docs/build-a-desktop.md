@@ -185,13 +185,15 @@ stands. Rust ones build with `cargo build -p <package>` from the source tree; sc
 | `07-script-binding`     | TypeScript, Python | Core      | A key binding written entirely in a script that moves the focused window.                     |
 | `08-no-workspaces`      | Rust               | Core      | A master-and-stack tiler of raw windows with no workspaces and no scene graph.                |
 | `08-no-workspaces-py`   | Python             | Core      | The same tiler in Python, with the tiling in an imported module.                              |
+| `09-native-linked`      | Rust               | Core, std | Links the installed libraries and says which ones its process maps and which ABI each has.    |
 | `10-hot-reload`         | Rust               | Core      | A shell built to be rebuilt while it runs: kept state, adopted nodes, no duplicate listeners. |
 
 The numbers also name behaviours that are not shells of their own:
 
 - **Reload of a script (11):** edit `03-python-std/shell.py` or `03-typescript-std/shell.ts`, or a module it imports, and
   the shell reloads in place. See the [Python shell](python-shell.md#reload) and the [TypeScript shell](typescript-shell.md).
-- **Linking the installed libraries (9):** any Rust shell that uses `gnoblin-std`. See
+- **Linking the installed libraries (9):** [`09-native-linked`](#the-examples) logs the libraries its process maps and the ABI
+  it was built for and finds installed. Any Rust shell that uses `gnoblin-std` links the same way. See
   [Write a shell in Rust](rust-shell.md#link-to-the-installed-libraries).
 - **Update without rebuilding (12):** a shell built for one version of the libraries keeps running when they are upgraded.
   See [ABI compatibility](abi-compatibility.md).

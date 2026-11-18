@@ -20,11 +20,11 @@ just dist-check                             # build, stage, install into tempora
 
 In the build tree the library is `target/<profile>/libgnoblin_core_impl.so`, and must be reachable as `libgnoblin-core.so.1` beside `gnoblin`:
 
-| Command                                             | Result                                                                                                                                                                                                     |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cargo build --workspace`, `cargo test --workspace` | builds the library too, and `gnoblin-core-impl/build.rs` links `target/<profile>/libgnoblin-core.so.1` to it                                                                                               |
-| `cargo xtask stage [--release]`                     | builds `gnoblin-core-impl`, refuses a library `dist-check` would refuse, makes the SONAME link and the linker link `libgnoblin-core.so`; run it before `cargo build -p gnoblin` or `cargo test -p gnoblin` |
-| `cargo build -p gnoblin` alone                      | succeeds; running the binary then stops with the loader's `libgnoblin-core.so.1: cannot open shared object file`                                                                                           |
+| Command                                             | Result                                                                                                                                                                                                               |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cargo build --workspace`, `cargo test --workspace` | builds the library too, and `gnoblin-core-impl/build.rs` links `target/<profile>/libgnoblin-core.so.1` to it                                                                                                         |
+| `cargo xtask stage [--release]`                     | builds `gnoblin-core-impl`, refuses a library `dist-check` would refuse, makes the SONAME link and the linker link `libgnoblin-core.so`; run it before `cargo build -p gnoblin` or `cargo test -p gnoblin`           |
+| `cargo build -p gnoblin` alone                      | succeeds, with a build-script warning that names `cargo xtask stage` while the core is not beside the binary; running the binary then stops with the loader's `libgnoblin-core.so.1: cannot open shared object file` |
 
 ## `dist-check`
 

@@ -27,7 +27,7 @@ gnoblin                                # run the shell Gnoblin finds: ~/.config/
 
 `gnoblin --list-shells` prints every shell Gnoblin can see and marks the one that would run. See
 [Start Gnoblin and choose a shell](docs/starting-gnoblin.md) for how it chooses, [Build a desktop](docs/build-a-desktop.md)
-for small example shells, and [Write a shell in Rust](docs/rust-shell.md).
+and the [examples](examples/README.md) for small example shells, and [Write a shell in Rust](docs/rust-shell.md).
 
 ## Features
 
