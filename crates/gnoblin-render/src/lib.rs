@@ -46,7 +46,7 @@
 //! | `scene` | The node tree, transforms, damage recording, hit testing |
 //! | `damage` | Per-output damage rectangles and the merge rule |
 //! | `tween` | Animation tracks and their terminal reports |
-//! | `effect` | Per-node visual effects (blur, shadow, border) |
+//! | `effect` | Per-node visual effects (blur, shadow, border, shader) |
 //! | `property` | Typed visual property values and their kinds |
 //! | `camera`, `matrix` | Perspective and orthographic projection, 4x4 matrices |
 //! | `easing` | Timing curves for tracks |
@@ -158,10 +158,11 @@ pub use camera::{Camera, CameraError, Projection};
 
 /// Damage rectangles per output and the merge helper.
 pub use damage::{Damage, OutputDamage, merge_rects};
-/// Per-node visual effects (blur, shadow, border) and their limits.
+/// Per-node visual effects (blur, shadow, border, shader) and their limits.
 pub use effect::{
     BlurParams, Border, EffectError, EffectExtent, Effects, MAX_BLUR_GRADE, MAX_BLUR_PASSES, MAX_BLUR_RADIUS,
-    MAX_PASSES, MAX_STACKED, MIN_BLUR_DOWNSCALE, Pass, Shadow,
+    MAX_PASSES, MAX_SHADER_PARAMS, MAX_SHADER_SOURCE_BYTES, MAX_SHADERS, MAX_STACKED, MIN_BLUR_DOWNSCALE, Pass,
+    ShaderKey, ShaderPass, Shadow,
 };
 /// Geometry and identity types re-exported from `gnoblin-types`.
 pub use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Transform, Unsupported3d, Unsupported3dField, Vec3};

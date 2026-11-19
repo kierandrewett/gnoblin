@@ -49,6 +49,14 @@ pub const VIEW: &str = include_str!("wgsl/view.wgsl");
 /// has its own uniform block.
 pub const DOWNSAMPLE: &str = include_str!("wgsl/downsample.wgsl");
 
+/// What goes in front of a user shader's source: the shared preamble, then the user pass's own uniform block, the backdrop's
+/// bindings and the `backdrop` function. The text comes first so that a refusal's line number is the user's, counted from
+/// the end of this prefix (`shader::user`).
+pub const USER_PREFIX: &str = concat!(include_str!("wgsl/preamble.wgsl"), include_str!("wgsl/user_block.wgsl"),);
+
+/// What goes after a user shader's source: the `shade` body that calls the shell's `effect`, and the shared entry point.
+pub const USER_SUFFIX: &str = concat!(include_str!("wgsl/user_shade.wgsl"), include_str!("wgsl/effect.wgsl"),);
+
 #[cfg(test)]
 mod tests {
     use super::*;

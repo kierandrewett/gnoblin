@@ -394,27 +394,188 @@ fn a_tags_and_an_effects_set_travel_the_wire_and_come_back_in_the_change_batch()
     session.stop().expect("the session stops cleanly");
 }
 
-#[test]
-fn a_shader_effect_refuses_the_whole_effects_set_bad_value() {
-    let session = Session::start();
-    let mut wire = Wire::connect(session.socket());
-    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+/// A tint: the smallest source the validator accepts.
+const TINT_SHADER: &str =
+    "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {\n    return c * p[0];\n}\n";
 
-    let mut ops = create(1000, attached.root);
-    ops.push(op::Properties {
+fn shader_effect(source: &str, params: &[f64]) -> effect::Properties {
+    effect::Properties {
+        kind: "shader".to_owned(),
+        source: source.to_owned(),
+        params: params.to_vec(),
+        ..Default::default()
+    }
+}
+
+fn set_effects(node: u64, effects: Vec<effect::Properties>) -> op::Properties {
+    op::Properties {
         kind: "set".to_owned(),
-        node: 1000,
+        node,
         key: "effects".to_owned(),
         value_kind: "list_effect".to_owned(),
-        value_effects: vec![effect::Properties {
-            kind: "shader".to_owned(),
-            ..Default::default()
-        }],
+        value_effects: effects,
         ..Default::default()
-    });
+    }
+}
+
+/// A session whose `compositor.user-shaders` setting is on.
+fn session_with_user_shaders() -> Session {
+    Session::start_configured(None, |config| config.wayland.user_shaders = true)
+}
+
+/// Writes `effects` to a new node and returns the reply to the write.
+fn write_effects(session: &Session, effects: Vec<effect::Properties>) -> ReplyPayload {
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+    let mut ops = create(1000, attached.root);
+    ops.push(set_effects(1000, effects));
     transact(&mut wire, 2, 0, 1, ops);
-    let reply: ReplyPayload = reply(&mut wire, "transact");
-    assert!(!reply.applied, "the compositor runs no shader effects");
+    let envelope = loop {
+        let envelope = wire.receive().expect("a frame");
+        if envelope.member == "transact" {
+            break envelope;
+        }
+    };
+    envelope.payload_as::<ReplyPayload>().expect("the reply decodes")
+}
+
+#[test]
+fn a_shader_effect_is_refused_bad_value_while_user_shaders_are_off() {
+    let session = Session::start();
+    let reply = write_effects(&session, vec![shader_effect(TINT_SHADER, &[0.5])]);
+    assert!(!reply.applied, "the setting is off by default");
+    assert_eq!(reply.code, "bad-value");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn the_seat_says_whether_the_tree_accepts_user_shaders() {
+    let on = session_with_user_shaders();
+    let mut wire = Wire::connect(on.socket());
+    let (_, nodes) = attach_and_snapshot(&mut wire, 1);
+    let seat = nodes
+        .iter()
+        .find(|node| node.class == "seat")
+        .expect("the main seat node");
+    assert!(
+        seat.props
+            .iter()
+            .any(|prop| prop.key == "user_shaders" && prop.value_bool),
+        "with the setting on the seat carries `user_shaders`: {seat:?}"
+    );
+    on.stop().expect("the session stops cleanly");
+
+    let off = Session::start();
+    let mut wire = Wire::connect(off.socket());
+    let (_, nodes) = attach_and_snapshot(&mut wire, 1);
+    let seat = nodes
+        .iter()
+        .find(|node| node.class == "seat")
+        .expect("the main seat node");
+    assert!(
+        !seat
+            .props
+            .iter()
+            .any(|prop| prop.key == "user_shaders" && prop.value_bool),
+        "with it off the value is the default, false: {seat:?}"
+    );
+    off.stop().expect("the session stops cleanly");
+}
+
+/// With the setting on, a valid shader is accepted, travels back as it was written, and the software renderer, which
+/// has no compiler, leaves it undrawn and says so in the node's `skipped`.
+#[test]
+fn a_valid_shader_is_accepted_echoed_and_reported_skipped_by_the_software_renderer() {
+    let session = session_with_user_shaders();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+    let mut ops = create(1000, attached.root);
+    ops.push(set_effects(1000, vec![shader_effect(TINT_SHADER, &[0.5, 2.0])]));
+    transact(&mut wire, 2, 0, 1, ops);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut replied = false;
+    let mut changes: Vec<change::Properties> = Vec::new();
+    while !replied
+        || !changes
+            .iter()
+            .any(|change| change.node == 1000 && change.key == "skipped")
+    {
+        assert!(Instant::now() < deadline, "no skipped list arrived: {changes:?}");
+        let envelope = wire.receive().expect("a frame");
+        match envelope.member.as_str() {
+            "transact" => {
+                let reply = envelope.payload_as::<ReplyPayload>().expect("the reply decodes");
+                assert!(reply.applied, "the shader validates: {reply:?}");
+                replied = true;
+            }
+            "changes" => changes.extend(
+                envelope
+                    .payload_as::<ChangesPayload>()
+                    .expect("the batch decodes")
+                    .changes,
+            ),
+            other => panic!("unexpected frame `{other}`"),
+        }
+    }
+    let effects = changes
+        .iter()
+        .find(|change| change.node == 1000 && change.key == "effects")
+        .expect("the effects set is published");
+    assert_eq!(effects.value_effects.len(), 1);
+    assert_eq!(effects.value_effects[0].kind, "shader");
+    assert_eq!(effects.value_effects[0].source, TINT_SHADER);
+    assert_eq!(effects.value_effects[0].params, vec![0.5, 2.0]);
+    let skipped = changes
+        .iter()
+        .rev()
+        .find(|change| change.node == 1000 && change.key == "skipped")
+        .expect("the skipped list is published");
+    assert_eq!(skipped.value_texts, vec!["shader: unsupported-by-renderer".to_owned()]);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_shader_the_validator_refuses_refuses_the_whole_effects_set_bad_value() {
+    let session = session_with_user_shaders();
+    let looping = "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {\n    var a = 0.0;\n    loop {\n        a = a + 1.0;\n        if a > 3.0 { break; }\n    }\n    return c * a;\n}\n";
+    let reply = write_effects(
+        &session,
+        vec![
+            effect::Properties {
+                kind: "shadow".to_owned(),
+                colour: "#00000080".to_owned(),
+                ..Default::default()
+            },
+            shader_effect(looping, &[]),
+        ],
+    );
+    assert!(!reply.applied, "a loop is not a bounded for");
+    assert_eq!(reply.code, "bad-value");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_node_holds_four_shaders_and_a_fifth_is_too_large() {
+    let session = session_with_user_shaders();
+    let four = vec![shader_effect(TINT_SHADER, &[1.0]); 4];
+    let accepted = write_effects(&session, four.clone());
+    assert!(accepted.applied, "four shader passes fit: {accepted:?}");
+    session.stop().expect("the session stops cleanly");
+
+    let session = session_with_user_shaders();
+    let mut five = four;
+    five.push(shader_effect(TINT_SHADER, &[1.0]));
+    let refused = write_effects(&session, five);
+    assert!(!refused.applied);
+    assert_eq!(refused.code, "too-large");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_shader_with_nine_params_is_refused_bad_value() {
+    let session = session_with_user_shaders();
+    let reply = write_effects(&session, vec![shader_effect(TINT_SHADER, &[0.0; 9])]);
+    assert!(!reply.applied);
     assert_eq!(reply.code, "bad-value");
     session.stop().expect("the session stops cleanly");
 }

@@ -38,6 +38,7 @@ use super::tree::{
     tree_listing, writes_controller, writes_head_camera,
 };
 use super::tree_effects::{pass_from_wire, wire_from_pass};
+use crate::log;
 
 /// The namespace the tree answers on.
 pub const NAMESPACE: &str = "tree";
@@ -113,6 +114,8 @@ pub struct TreeHostHandle {
     serial: Arc<AtomicU64>,
     /// Measures text for `Canvas.measure` and paints canvases: the system fonts, found on first use.
     painter: SharedPainter,
+    /// Whether a `shader` effect is accepted: the `compositor.user-shaders` setting, fixed for the session.
+    user_shaders: bool,
 }
 
 impl std::fmt::Debug for TreeHostHandle {
@@ -140,7 +143,16 @@ impl TreeHostHandle {
             session: Arc::new(Mutex::new(TreeSession::default())),
             serial: Arc::new(AtomicU64::new(0)),
             painter: SharedPainter::system(),
+            user_shaders: false,
         })
+    }
+
+    /// This host with the `shader` effect kind accepted or refused: the `compositor.user-shaders` setting, read once at
+    /// startup. A host starts refusing it.
+    #[must_use]
+    pub fn with_user_shaders(mut self, accepted: bool) -> Self {
+        self.user_shaders = accepted;
+        self
     }
 
     /// Serves `client` in this process: what the frame tells it goes to `sink` and not to the dispatcher. The attach, the
@@ -303,7 +315,7 @@ impl TreeHostHandle {
         let base_serial = args.base_serial;
         // Moved out, so the ops (and any call text they carry) leave `args` and are wiped by the
         // transaction that takes them, not kept alive by the request.
-        let mut tx = match transaction(std::mem::take(&mut args.ops)) {
+        let mut tx = match transaction(std::mem::take(&mut args.ops), self.user_shaders) {
             Ok(tx) => tx,
             Err(refusal) => return Some(self.refusal(refusal.code, refusal.failed_op)),
         };
@@ -832,12 +844,12 @@ impl TreeDelivery {
 
 /// A transaction from its wire ops. The first op that does not convert refuses the batch,
 /// with its position as `failed_op`.
-fn transaction(ops: Vec<op::Properties>) -> Result<TreeTransaction, TreeRefusal> {
+fn transaction(ops: Vec<op::Properties>, user_shaders: bool) -> Result<TreeTransaction, TreeRefusal> {
     let converted = ops
         .into_iter()
         .enumerate()
         .map(|(index, op)| {
-            tree_op(op).map_err(|code| TreeRefusal {
+            tree_op(op, user_shaders).map_err(|code| TreeRefusal {
                 failed_op: i32::try_from(index).unwrap_or(i32::MAX),
                 code,
             })
@@ -848,7 +860,7 @@ fn transaction(ops: Vec<op::Properties>) -> Result<TreeTransaction, TreeRefusal>
 
 /// One wire op as a transaction op. A kind this build does not know, or a value it cannot
 /// carry, is `bad-value`.
-fn tree_op(mut op: op::Properties) -> Result<TreeOp, Code> {
+fn tree_op(mut op: op::Properties, user_shaders: bool) -> Result<TreeOp, Code> {
     let node = NodeId::new(op.node);
     Ok(match op.kind.as_str() {
         "new" => TreeOp::New {
@@ -870,7 +882,7 @@ fn tree_op(mut op: op::Properties) -> Result<TreeOp, Code> {
         "set" => TreeOp::Set {
             node,
             key: op.key.clone(),
-            value: set_value(&op)?,
+            value: set_value(&op, user_shaders)?,
             timing: timing(&op),
         },
         "call" => {
@@ -892,8 +904,9 @@ fn tree_op(mut op: op::Properties) -> Result<TreeOp, Code> {
 /// The value a `set` writes. The kinds the wire carries are bool, int, uint, double, text,
 /// node (`0` is nil), a list of doubles, a list of texts, a list of effects and bytes; any other
 /// kind is `bad-value`. A list of effects refuses the whole set when one entry is not a
-/// pass the renderer can draw, so a partial chain is never written.
-fn set_value(op: &op::Properties) -> Result<TreeValue, Code> {
+/// pass the renderer can draw, so a partial chain is never written. The reason an entry is refused (a shader's line and
+/// column, the setting being off) goes to the log; the reply carries the code only.
+fn set_value(op: &op::Properties, user_shaders: bool) -> Result<TreeValue, Code> {
     match op.value_kind.as_str() {
         "bool" => Ok(TreeValue::Bool(op.value_bool)),
         "int" => Ok(TreeValue::Int(op.value_int)),
@@ -909,7 +922,12 @@ fn set_value(op: &op::Properties) -> Result<TreeValue, Code> {
         "list_effect" => op
             .value_effects
             .iter()
-            .map(|entry| pass_from_wire(entry).map_err(|_| Code::BadValue))
+            .map(|entry| {
+                pass_from_wire(entry, user_shaders).map_err(|reason| {
+                    log::warn!(area = "tree", %reason, "an effect was refused");
+                    Code::BadValue
+                })
+            })
             .collect::<Result<Vec<_>, _>>()
             .map(TreeValue::Effects),
         _ => Err(Code::BadValue),

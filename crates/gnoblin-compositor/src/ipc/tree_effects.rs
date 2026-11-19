@@ -5,12 +5,14 @@
 //! echoes the passes the scene kept. The `window.add_effect` call and the window's `effect`
 //! objects this replaced are gone.
 //!
-//! Only `blur`, `shadow` and `border` exist. Any other kind, `shader` included, is an error with a reason,
-//! and the caller refuses the whole list rather than draw part of it. A value outside the
-//! renderer's documented range is refused by [`Pass::validate`], and its text is the reason.
+//! `blur`, `shadow`, `border` and `shader` exist. Any other kind is an error with a reason, as is a `shader` while the
+//! `compositor.user-shaders` setting is off or when its source does not validate, and the caller refuses the whole list
+//! rather than draw part of it. A value outside the renderer's documented range is refused by [`Pass::validate`], and its
+//! text is the reason.
 
 use gnoblin_proto::tree::effect;
-use gnoblin_render::{BlurParams, Border, Pass, Shadow};
+use gnoblin_render::{BlurParams, Border, MAX_SHADER_PARAMS, Pass, ShaderPass, Shadow};
+use gnoblin_render_frame::shader;
 use gnoblin_types::{Color, Vec3};
 
 /// The blur radius, in logical pixels, every blur effect draws with.
@@ -21,18 +23,19 @@ const BLUR_RADIUS: f32 = 12.0;
 
 /// The render pass one wire entry draws as.
 ///
+/// `user_shaders` is the `compositor.user-shaders` setting: while it is off a `shader` entry is refused.
+///
 /// # Errors
 ///
-/// The reason the entry is refused: an unknown kind (`shader` is one), a colour that is not
-/// `#rrggbb` or `#rrggbbaa`, or a value the renderer's range check rejects.
-pub(super) fn pass_from_wire(entry: &effect::Properties) -> Result<Pass, String> {
+/// The reason the entry is refused: an unknown kind, a `shader` while user shaders are off or whose source or params the
+/// validator refuses (its reason names the line and column), a colour that is not `#rrggbb` or `#rrggbbaa`, or a value
+/// the renderer's range check rejects.
+pub(super) fn pass_from_wire(entry: &effect::Properties, user_shaders: bool) -> Result<Pass, String> {
     match entry.kind.as_str() {
         "blur" => blur_pass(entry),
         "shadow" => shadow_pass(entry),
         "border" => border_pass(entry),
-        "shader" => {
-            Err("user shaders were removed: use a `blur`, `shadow` or `border` effect, or draw a `Canvas`".to_owned())
-        }
+        "shader" => shader_pass(entry, user_shaders),
         other => Err(format!("unknown effect kind `{other}`")),
     }
 }
@@ -71,7 +74,35 @@ pub(super) fn wire_from_pass(pass: &Pass) -> effect::Properties {
             colour: hex_colour(border.color),
             ..effect::Properties::default()
         },
+        Pass::Shader(shader) => effect::Properties {
+            kind: "shader".to_owned(),
+            source: shader.source().to_owned(),
+            params: shader.params().iter().map(|value| f64::from(*value)).collect(),
+            ..effect::Properties::default()
+        },
     }
+}
+
+/// The shader pass an entry asks for: refused while user shaders are off, then its params checked, then its source
+/// validated (`gnoblin_render_frame::shader::user::validate`). The reason of a refused source names its line and column.
+fn shader_pass(entry: &effect::Properties, user_shaders: bool) -> Result<Pass, String> {
+    if !user_shaders {
+        return Err(
+            "user shaders are switched off (`compositor.user-shaders`): use a `blur`, `shadow` or `border` effect, or draw a `Canvas`"
+                .to_owned(),
+        );
+    }
+    if entry.params.len() > MAX_SHADER_PARAMS {
+        return Err(format!(
+            "a shader takes at most {MAX_SHADER_PARAMS} params, got {}",
+            entry.params.len()
+        ));
+    }
+    let checked = shader::user::validate(&entry.source).map_err(|error| error.to_string())?;
+    let params: Vec<f32> = entry.params.iter().map(|value| *value as f32).collect();
+    let pass = Pass::Shader(ShaderPass::new(&entry.source, &params, checked.backdrop()));
+    pass.validate().map_err(|error| error.to_string())?;
+    Ok(pass)
 }
 
 /// The blur pass an entry asks for, validated against the renderer's ranges.
@@ -169,7 +200,7 @@ fn hex_colour(colour: Color) -> String {
 
 #[cfg(test)]
 mod tests {
-    //! The wire entry to pass mapping, ported from the window effect stack this replaced.
+    //! The wire entry to pass mapping, ported from the window effect stack this replaced, and the shader kind.
 
     use super::*;
 
@@ -189,6 +220,23 @@ mod tests {
         }
     }
 
+    /// The pass of an entry in a session with user shaders off, the default.
+    fn pass(entry: &effect::Properties) -> Result<Pass, String> {
+        pass_from_wire(entry, false)
+    }
+
+    const TINT: &str =
+        "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {\n    return c * p[0];\n}\n";
+
+    fn shader(source: &str, params: &[f64]) -> effect::Properties {
+        effect::Properties {
+            kind: "shader".to_owned(),
+            source: source.to_owned(),
+            params: params.to_vec(),
+            ..effect::Properties::default()
+        }
+    }
+
     #[test]
     fn parses_six_and_eight_digit_colours() {
         assert_eq!(parse_colour("#ff0000"), Ok(Color::from_rgba8(255, 0, 0, 255)));
@@ -200,8 +248,8 @@ mod tests {
 
     #[test]
     fn blur_and_shadow_map_to_their_passes() {
-        assert_eq!(pass_from_wire(&entry("blur")).map(|pass| pass.name()), Ok("blur"));
-        assert_eq!(pass_from_wire(&entry("shadow")).map(|pass| pass.name()), Ok("shadow"));
+        assert_eq!(pass(&entry("blur")).map(|pass| pass.name()), Ok("blur"));
+        assert_eq!(pass(&entry("shadow")).map(|pass| pass.name()), Ok("shadow"));
     }
 
     #[test]
@@ -212,7 +260,7 @@ mod tests {
         blur.tint = "#ff000080".to_owned();
         blur.brightness = 1.5;
         blur.noise = 0.25;
-        let Ok(Pass::Blur(params)) = pass_from_wire(&blur) else {
+        let Ok(Pass::Blur(params)) = pass(&blur) else {
             panic!("a valid blur maps to a blur pass");
         };
         assert_eq!(params.radius, BLUR_RADIUS);
@@ -227,41 +275,43 @@ mod tests {
     fn shadow_carries_its_spread_into_the_pass() {
         let mut shadow = entry("shadow");
         shadow.spread = 4.0;
-        let Ok(Pass::Shadow(pass)) = pass_from_wire(&shadow) else {
+        let Ok(Pass::Shadow(held)) = pass(&shadow) else {
             panic!("a valid shadow maps to a shadow pass");
         };
-        assert_eq!(pass.spread, 4.0);
+        assert_eq!(held.spread, 4.0);
     }
 
     #[test]
     fn out_of_range_values_are_refused_with_the_renderers_reason() {
         let mut blur = entry("blur");
         blur.passes = 0;
-        let reason = pass_from_wire(&blur).expect_err("zero passes is refused");
+        let reason = pass(&blur).expect_err("zero passes is refused");
         assert!(reason.contains("blur.passes"), "{reason}");
 
         let mut zero = entry("blur");
         zero.downscale = 0;
-        assert!(pass_from_wire(&zero).is_err(), "a zero divisor is not a fraction");
+        assert!(pass(&zero).is_err(), "a zero divisor is not a fraction");
 
         let mut tinted = entry("blur");
         tinted.tint = "red".to_owned();
-        assert!(pass_from_wire(&tinted).is_err_and(|reason| reason.contains("colour")));
+        assert!(pass(&tinted).is_err_and(|reason| reason.contains("colour")));
     }
 
     #[test]
-    fn a_shader_and_an_unknown_kind_are_refused() {
-        let reason = pass_from_wire(&entry("shader")).expect_err("no shader effects");
-        assert!(reason.contains("shader"), "{reason}");
-        let reason = pass_from_wire(&entry("glow")).expect_err("no such kind");
+    fn an_unknown_kind_is_refused() {
+        let reason = pass(&entry("glow")).expect_err("no such kind");
         assert!(reason.contains("glow"), "{reason}");
+        assert!(
+            pass_from_wire(&entry("glow"), true).is_err(),
+            "the setting does not make a kind up"
+        );
     }
 
     #[test]
     fn a_bad_shadow_colour_is_refused() {
         let mut shadow = entry("shadow");
         shadow.colour = "red".to_owned();
-        assert!(pass_from_wire(&shadow).is_err());
+        assert!(pass(&shadow).is_err());
     }
 
     #[test]
@@ -269,20 +319,20 @@ mod tests {
         let mut blur = entry("blur");
         blur.tint = "#10203040".to_owned();
         blur.passes = 2;
-        let pass = pass_from_wire(&blur).expect("a blur");
-        let echoed = wire_from_pass(&pass);
+        let held = pass(&blur).expect("a blur");
+        let echoed = wire_from_pass(&held);
         assert_eq!(echoed.kind, "blur");
         assert_eq!((echoed.downscale, echoed.passes), (2, 2));
         assert_eq!(echoed.tint, "#10203040");
-        assert_eq!(pass_from_wire(&echoed), Ok(pass), "the echo sets back to the same pass");
+        assert_eq!(pass(&echoed), Ok(held), "the echo sets back to the same pass");
 
         let mut shadow = entry("shadow");
         shadow.offset_y = 6.0;
-        let pass = pass_from_wire(&shadow).expect("a shadow");
-        let echoed = wire_from_pass(&pass);
+        let held = pass(&shadow).expect("a shadow");
+        let echoed = wire_from_pass(&held);
         assert_eq!((echoed.kind.as_str(), echoed.offset_y), ("shadow", 6.0));
         assert_eq!(echoed.colour, "#00000080");
-        assert_eq!(pass_from_wire(&echoed), Ok(pass));
+        assert_eq!(pass(&echoed), Ok(held));
     }
 
     #[test]
@@ -292,41 +342,96 @@ mod tests {
         border.offset = -1.0;
         border.inset = true;
         border.colour = "#ff8800cc".to_owned();
-        let Ok(Pass::Border(stroke)) = pass_from_wire(&border) else {
+        let Ok(Pass::Border(stroke)) = pass(&border) else {
             panic!("a valid border maps to a border pass");
         };
         assert_eq!((stroke.width, stroke.offset, stroke.inset), (2.0, -1.0, true));
         assert_eq!(stroke.color, Color::from_rgba8(255, 136, 0, 204));
-        let pass = pass_from_wire(&border).expect("a border");
-        let echoed = wire_from_pass(&pass);
+        let held = pass(&border).expect("a border");
+        let echoed = wire_from_pass(&held);
         assert_eq!(
             (echoed.kind.as_str(), echoed.width, echoed.inset),
             ("border", 2.0, true)
         );
         assert_eq!(echoed.colour, "#ff8800cc");
-        assert_eq!(
-            pass_from_wire(&echoed),
-            Ok(pass),
-            "the echo sets back to the same border"
-        );
+        assert_eq!(pass(&echoed), Ok(held), "the echo sets back to the same border");
     }
 
     #[test]
     fn a_border_refuses_a_negative_width_and_a_missing_colour() {
         let mut border = entry("border");
         border.width = -1.0;
-        assert!(pass_from_wire(&border).is_err_and(|reason| reason.contains("border.width")));
+        assert!(pass(&border).is_err_and(|reason| reason.contains("border.width")));
         let mut plain = entry("border");
         plain.colour = String::new();
-        assert!(pass_from_wire(&plain).is_err_and(|reason| reason.contains("colour")));
+        assert!(pass(&plain).is_err_and(|reason| reason.contains("colour")));
     }
 
     #[test]
     fn a_shadow_keeps_its_frame_flag_through_the_wire() {
         let mut shadow = entry("shadow");
         shadow.frame = true;
-        let pass = pass_from_wire(&shadow).expect("a shadow");
-        assert!(matches!(&pass, Pass::Shadow(held) if held.frame));
-        assert!(wire_from_pass(&pass).frame);
+        let held = pass(&shadow).expect("a shadow");
+        assert!(matches!(&held, Pass::Shadow(shadow) if shadow.frame));
+        assert!(wire_from_pass(&held).frame);
+    }
+
+    #[test]
+    fn a_shader_is_refused_while_user_shaders_are_off_and_the_reason_points_at_a_canvas() {
+        let reason = pass(&shader(TINT, &[0.5])).expect_err("the setting is off");
+        assert!(reason.contains("compositor.user-shaders"), "{reason}");
+        assert!(reason.contains("Canvas"), "{reason}");
+    }
+
+    #[test]
+    fn a_valid_shader_is_a_pass_with_its_source_params_and_backdrop_flag() {
+        let Ok(Pass::Shader(held)) = pass_from_wire(&shader(TINT, &[0.5, 2.0]), true) else {
+            panic!("a valid shader maps to a shader pass");
+        };
+        assert_eq!(held.source(), TINT);
+        assert_eq!(held.params(), &[0.5, 2.0]);
+        assert!(!held.backdrop(), "the tint reads no backdrop");
+        let blur =
+            "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return backdrop(uv); }";
+        let Ok(Pass::Shader(held)) = pass_from_wire(&shader(blur, &[]), true) else {
+            panic!("a valid shader maps to a shader pass");
+        };
+        assert!(held.backdrop(), "the validator found the call");
+    }
+
+    #[test]
+    fn a_shader_the_validator_refuses_is_refused_with_its_line_and_column() {
+        let source = "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {\n    var a = 0.0;\n    loop {\n        a = a + 1.0;\n        if a > 3.0 { break; }\n    }\n    return c * a;\n}\n";
+        let reason = pass_from_wire(&shader(source, &[]), true).expect_err("a loop is refused");
+        assert!(reason.contains("line 3, column 5"), "{reason}");
+    }
+
+    #[test]
+    fn a_shader_with_too_many_or_unusable_params_is_refused() {
+        let reason = pass_from_wire(&shader(TINT, &[0.0; 9]), true).expect_err("nine params");
+        assert!(reason.contains("params"), "{reason}");
+        assert!(pass_from_wire(&shader(TINT, &[f64::NAN]), true).is_err());
+        assert!(
+            pass_from_wire(&shader(TINT, &[1e300]), true).is_err(),
+            "a value a float cannot hold"
+        );
+        assert!(
+            pass_from_wire(&shader(TINT, &[0.0; 8]), true).is_ok(),
+            "eight is the cap"
+        );
+    }
+
+    #[test]
+    fn a_shader_echoes_as_the_entry_that_makes_it() {
+        let held = pass_from_wire(&shader(TINT, &[0.5, 2.0]), true).expect("a shader");
+        let echoed = wire_from_pass(&held);
+        assert_eq!(echoed.kind, "shader");
+        assert_eq!(echoed.source, TINT);
+        assert_eq!(echoed.params, [0.5, 2.0]);
+        assert_eq!(
+            pass_from_wire(&echoed, true),
+            Ok(held),
+            "the echo sets back to the same pass"
+        );
     }
 }

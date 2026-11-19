@@ -64,7 +64,7 @@ use gnoblin_animation::{PropertyValue, VisualProperty};
 use gnoblin_secret::SecretText;
 use gnoblin_types::{NodeId, Rect};
 
-use crate::effect::{EffectError, Effects, MAX_STACKED, Pass};
+use crate::effect::{EffectError, Effects, MAX_SHADERS, MAX_STACKED, Pass};
 use crate::scene::{NodeSpec, Scene, SceneError};
 use crate::scene_ids::Actor;
 
@@ -215,8 +215,8 @@ pub enum TreeValue {
     ListDouble(Vec<f64>),
     /// A list of strings.
     ListText(Vec<String>),
-    /// A list of effect passes, at most [`MAX_EFFECTS`] long. Only blur and shadow exist;
-    /// the tree has no user shader pass, so any other kind is refused before it gets here.
+    /// A list of effect passes, at most [`MAX_EFFECTS`] long. The compositor has checked a shader pass's source
+    /// before it gets here; any other kind than blur, shadow, border and shader is refused earlier still.
     Effects(Vec<Pass>),
     /// A node reference, or `None` for nil.
     Node(Option<NodeId>),
@@ -241,7 +241,7 @@ pub enum ValueType {
     ListDouble,
     /// A list of at most [`MAX_LIST`] strings, each at most [`MAX_TEXT_BYTES`] bytes.
     ListText,
-    /// A list of at most [`MAX_EFFECTS`] blur or shadow passes, each with finite,
+    /// A list of at most [`MAX_EFFECTS`] blur, shadow, border or shader passes, each with finite,
     /// in-range values.
     Effects,
     /// A reference to a live node whose class is this class or derives from it, or nil.
@@ -1023,8 +1023,12 @@ fn check_value(work: &Scene, classes: &dyn ClassInfo, value: &TreeValue, kind: &
         }
         (TreeValue::Effects(passes), ValueType::Effects) => {
             size_within(passes.len(), MAX_EFFECTS)?;
-            for kind in ["border", "shadow"] {
-                size_within(passes.iter().filter(|pass| pass.name() == kind).count(), MAX_STACKED)?;
+            for (kind, cap) in [
+                ("border", MAX_STACKED),
+                ("shadow", MAX_STACKED),
+                ("shader", MAX_SHADERS),
+            ] {
+                size_within(passes.iter().filter(|pass| pass.name() == kind).count(), cap)?;
             }
             passes.iter().try_for_each(check_effect_pass)
         }
@@ -1113,6 +1117,7 @@ fn pass_has_non_finite(pass: &Pass) -> bool {
         ]
         .iter()
         .any(|value| !value.is_finite()),
+        Pass::Shader(shader) => shader.params().iter().any(|value| !value.is_finite()),
     }
 }
 

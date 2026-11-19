@@ -1560,6 +1560,14 @@ doc = "Which renderer draws the compositor's frames."
 since = "0.2.0"
 
 [[section.field]]
+key = "user-shaders"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Whether a shell may give a node its own shader: an `effects` entry of kind `shader`. While it is off the entry is refused as a bad value and the shell draws a Canvas instead. The shader is checked before it is accepted (a source over 16 KiB, a loop that is not a bounded for, more than 16 texture reads and the like are refused with the line and column in the compositor's log), and a shader that samples the backdrop sees what a screen capture sees, with secure windows and the lock card black. Only a renderer that draws shaders applies one; the others list it as skipped."
+since = "0.2.0"
+
+[[section.field]]
 key = "gpu-memory-budget-mib"
 kind = "int"
 min = 0

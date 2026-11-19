@@ -14,10 +14,11 @@ name = "effect"
 since = "0.2.0"
 record = true
 
-# The kind of effect: `blur`, `shadow` or `border`. Any other kind, `shader` included, is
-# refused `bad-value` and the whole list is refused with it: the compositor runs no user
-# shaders. A node holds at most 8 `border` and at most 8 `shadow` elements; a list over
-# either cap is refused `too-large`.
+# The kind of effect: `blur`, `shadow`, `border` or `shader`. Any other kind is refused
+# `bad-value` and the whole list is refused with it. A `shader` is refused `bad-value` too
+# while the compositor's `compositor.user-shaders` setting is off (the default; the seat's
+# `user_shaders` says which), and when its source does not validate. A node holds at most 8
+# `border`, 8 `shadow` and 4 `shader` elements; a list over any cap is refused `too-large`.
 [[object.property]]
 name = "kind"
 type = "string"
@@ -143,4 +144,26 @@ since = "0.2.0"
 [[object.property]]
 name = "frame"
 type = "bool"
+since = "0.2.0"
+
+# Shader only. The WGSL source of the pass, at most 16 KiB. It defines
+# `fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32>` and may add
+# constants, structs and helper functions; it may not declare a variable, an override, a
+# texture, a buffer or an entry point. `c` is the node's premultiplied colour at `uv`, which
+# runs over the node's rectangle with (0, 0) at the top-left; `p` is `params`; `t` is the time
+# in seconds. The source may call `backdrop(uv)`, the premultiplied colour of what is behind
+# the node (secure windows and the lock card read as black). Loops are `for` only, with a
+# constant bound of at most 64 trips; a source reads a texture at most 16 times. A source the
+# validator refuses is refused `bad-value`, the whole list with it, and the compositor's log
+# names the line and column. Ignored by every other kind.
+[[object.property]]
+name = "source"
+type = "string"
+since = "0.2.0"
+
+# Shader only. The numbers the shader reads as `p[0]` to `p[7]`: at most 8, each finite; the
+# ones not written are 0. Ignored by every other kind.
+[[object.property]]
+name = "params"
+type = "list<double>"
 since = "0.2.0"

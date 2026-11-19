@@ -4152,7 +4152,12 @@ fn the_main_seat_publishes_the_effect_kinds_the_renderer_draws() {
     composer.take_tree_changes();
 
     composer.set_effect_kinds(Pass::NAMES);
-    let want = TreeValue::ListText(vec!["blur".to_owned(), "shadow".to_owned(), "border".to_owned()]);
+    let want = TreeValue::ListText(vec![
+        "blur".to_owned(),
+        "shadow".to_owned(),
+        "border".to_owned(),
+        "shader".to_owned(),
+    ]);
     assert!(composer.take_tree_changes().iter().any(|change| matches!(
         change,
         TreeChange::Set { node, key, value } if *node == seat && key == "effect_kinds" && *value == want
@@ -4161,6 +4166,58 @@ fn the_main_seat_publishes_the_effect_kinds_the_renderer_draws() {
     assert!(
         composer.take_tree_changes().is_empty(),
         "an unchanged list is not republished"
+    );
+}
+
+#[test]
+fn a_shader_pass_on_the_software_renderer_is_accepted_and_listed_skipped() {
+    use gnoblin_render::ShaderPass;
+    let (mut composer, _output) = screen();
+    let node = NodeId::new(0x4000);
+    composer.with_scene(|scene| {
+        scene
+            .insert(node, NodeSpec::new(Rect::new(0, 0, 100, 100)))
+            .expect("the node");
+        let mut chain = blur_and_shadow();
+        chain
+            .push(Pass::Shader(ShaderPass::new("fn effect() {}", &[], true)))
+            .expect("a shader");
+        scene.set_effects(node, chain).expect("the effects stay in the list");
+    });
+    composer.take_tree_changes();
+
+    composer.set_effect_kinds(crate::render::renderer::RendererKind::Software.effect_kinds());
+    composer.publish_skipped_effects();
+    assert_eq!(
+        queued_skipped(&mut composer, node),
+        Some(vec![
+            "blur: unsupported-by-renderer".to_owned(),
+            "shader: unsupported-by-renderer".to_owned(),
+        ]),
+        "the software renderer has no compiler: the shader is left undrawn and named, like the blur"
+    );
+}
+
+#[test]
+fn the_main_seat_publishes_whether_user_shaders_are_accepted() {
+    let mut composer = stock_composer();
+    composer.set_user_shaders(true);
+    let seat = composer.add_main_seat("seat0").expect("a seat node");
+    assert_eq!(
+        composer.with_scene(|scene| scene.value(seat, "user_shaders").cloned()),
+        Some(TreeValue::Bool(true)),
+        "a setting made before the seat exists reaches the seat when it is made"
+    );
+    composer.take_tree_changes();
+    composer.set_user_shaders(false);
+    assert!(composer.take_tree_changes().iter().any(|change| matches!(
+        change,
+        TreeChange::Set { node, key, value } if *node == seat && key == "user_shaders" && *value == TreeValue::Bool(false)
+    )));
+    composer.set_user_shaders(false);
+    assert!(
+        composer.take_tree_changes().is_empty(),
+        "an unchanged value is not republished"
     );
 }
 

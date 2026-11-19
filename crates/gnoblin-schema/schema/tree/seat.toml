@@ -160,14 +160,25 @@ since = "0.2.0"
 default = false
 readonly = true
 
-# The effect kinds the active renderer draws, `blur` and `shadow` among them: GLES draws both, the software and
-# Vulkan renderers draw none. Read-only: the renderer sets it once at startup. A shell reads it to adapt before it
-# sets a node's `effects`; an effect of a kind not listed stays in the list and is named in the node's `skipped`
-# as `<kind>: unsupported-by-renderer`.
+# The effect kinds the active renderer draws: `blur`, `shadow` and `border` for GLES, `shadow` and `border` for the
+# software renderer, none for Vulkan, and `shader` for a renderer that draws a user shader pass. Read-only: the renderer
+# sets it once at startup. A shell reads it to adapt before it sets a node's `effects`; an effect of a kind not listed
+# stays in the list and is named in the node's `skipped` as `<kind>: unsupported-by-renderer`.
 [[object.property]]
 name = "effect_kinds"
 type = "list<string>"
 since = "0.2.0"
+readonly = true
+
+# Whether the tree accepts a `shader` effect: true when the `compositor.user-shaders` setting is on. Read-only: the
+# compositor sets it once at startup. While it is false a list with a `shader` element is refused `bad-value`; while it
+# is true the source is validated, and what the renderer cannot draw is named in the node's `skipped` as `shader:
+# unsupported-by-renderer` (`effect_kinds` lists `shader` only for a renderer that draws it).
+[[object.property]]
+name = "user_shaders"
+type = "bool"
+since = "0.2.0"
+default = false
 readonly = true
 
 # Whether the shell that holds the tree draws window decorations (its stock `Titlebar`). The shell writes it: true

@@ -1,5 +1,6 @@
 //! The renderer a session draws with, from the `compositor.renderer` configuration setting, and the memory bounds
-//! (`compositor.gpu-memory-budget-mib`, `compositor.client-memory-limit-mib`, `compositor.client-surface-limit`).
+//! (`compositor.gpu-memory-budget-mib`, `compositor.client-memory-limit-mib`, `compositor.client-surface-limit`), and whether
+//! the tree accepts a user shader effect (`compositor.user-shaders`, off unless the document says on).
 //!
 //! A document that does not state the setting keeps `auto`, which is the renderer the selected
 //! backend draws with today. A value the schema does not accept is refused there, naming the
@@ -40,7 +41,9 @@ pub(crate) fn limits_of(section: &Compositor) -> MemoryLimits {
 pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &Path) {
     match store.load(source) {
         Ok(stored) => {
-            config.wayland.gpu_limits = limits_of(&stored.config.compositor.clone().unwrap_or_default());
+            let section = stored.config.compositor.clone().unwrap_or_default();
+            config.wayland.gpu_limits = limits_of(&section);
+            config.wayland.user_shaders = section.user_shaders.unwrap_or(false);
             apply(
                 config,
                 stored.config.compositor.as_ref().and_then(|section| section.renderer),

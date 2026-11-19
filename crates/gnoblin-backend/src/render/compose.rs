@@ -649,6 +649,9 @@ pub struct Composer {
     /// `skipped` list. The compositor sets it once from the backend before any frame; until then every kind is
     /// taken as drawn.
     effect_kinds: &'static [&'static str],
+    /// Whether the tree accepts a `shader` effect (`compositor.user-shaders`), published on the main seat as
+    /// `user_shaders`. The compositor sets it once before any frame.
+    user_shaders: bool,
     /// The pictures of the Canvas nodes, each painted from its `content` and kept until that or the node's size
     /// changes.
     canvases: BTreeMap<NodeId, CanvasPicture>,
@@ -731,6 +734,7 @@ impl Composer {
             secure_treatment: SecureTreatment::default(),
             secure_scope: BTreeSet::new(),
             effect_kinds: Pass::NAMES,
+            user_shaders: false,
             canvases: BTreeMap::new(),
             output_scales: BTreeMap::new(),
             painter,
@@ -2118,6 +2122,7 @@ impl Composer {
         self.main_seat = Some(id);
         self.publish_seat_screen();
         self.publish_effect_kinds();
+        self.publish_user_shaders();
         Some(id)
     }
 
@@ -3342,17 +3347,34 @@ impl Composer {
         self.publish_effect_kinds();
     }
 
+    /// Tells the composer whether the tree accepts a `shader` effect, and publishes it on the main seat's read-only
+    /// `user_shaders`. The compositor calls it once, from the `compositor.user-shaders` setting, before any frame.
+    pub fn set_user_shaders(&mut self, accepted: bool) {
+        self.user_shaders = accepted;
+        self.publish_user_shaders();
+    }
+
     /// Publishes the seat's `effect_kinds` when it differs from what the seat holds.
     fn publish_effect_kinds(&mut self) {
+        let value = TreeValue::ListText(self.effect_kinds.iter().map(|kind| (*kind).to_owned()).collect());
+        self.publish_seat_value("effect_kinds", value);
+    }
+
+    /// Publishes the seat's `user_shaders` when it differs from what the seat holds.
+    fn publish_user_shaders(&mut self) {
+        self.publish_seat_value("user_shaders", TreeValue::Bool(self.user_shaders));
+    }
+
+    /// Stores `value` as the main seat's `key` and queues it for the next change batch, when the seat holds another.
+    fn publish_seat_value(&mut self, key: &str, value: TreeValue) {
         let Some(seat) = self.main_seat else {
             return;
         };
-        let value = TreeValue::ListText(self.effect_kinds.iter().map(|kind| (*kind).to_owned()).collect());
-        if self.scene.value(seat, "effect_kinds") != Some(&value) {
-            let _ = self.scene.set_value(seat, "effect_kinds", value.clone());
+        if self.scene.value(seat, key) != Some(&value) {
+            let _ = self.scene.set_value(seat, key, value.clone());
             self.tree_changes.push(TreeChange::Set {
                 node: seat,
-                key: "effect_kinds".to_owned(),
+                key: key.to_owned(),
                 value,
             });
         }

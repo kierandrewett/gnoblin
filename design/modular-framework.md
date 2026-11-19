@@ -3281,9 +3281,11 @@ files, one test, the changelog and this document); `gnoblin-compositor` and `gno
 
 ## 37. The custom shader pass: analysis for the owner (D20, M7.9, O7)
 
-Status: **not built, on hold.** The question to the owner timed out and its default answer was "build it". A default after a
-timeout is not consent, and the answer reverses a decision the owner made (O7). Nothing in this section is implemented; no
-code, schema, ABI or SDK file changed. This is what the owner needs to decide.
+Status: **phase A is built**; the renderers are not. The owner approved the pass with backdrop sampling, which reverses O7 (D20, M7.9).
+Built: the validator, the `shader` effect kind and its wire path, the setting and the capability, the frame data, the secure-surface input,
+the software renderer's skipped listing, the catalog, the C ABI and the SDKs (37.6). Not built: the GLES pass, the Vulkan pass, the
+frame-cost watchdog, the std element and the real-session tests; 37.8 gives each lane its seam. 37.1 to 37.4 are the analysis the build
+followed, with the corrections noted in 37.3.
 
 ### 37.1 Why O7 refused it
 
@@ -3320,7 +3322,7 @@ rendering policies) is the new reason to reopen it.
       No storage buffers, atomics, compute, or extra textures.
     - A privacy rule that matters more than the code: a shader that samples the backdrop reads other windows. It must see what a
       screen capture sees (secure windows and the lock card drawn as black), and it has no read-back path to the shell.
-    - Phase 1 is node-only (the node's own texture and uniforms), which has no privacy question at all.
+    - Backdrop sampling is in scope: `backdrop(uv)` reads `OutputFrame::backdrop_input`, built with secure layers black (37.7).
 - **GPU hangs and runaway cost.** The vulkan renderer already maps device loss and timeout to `RenderError::Lost`
   (`gnoblin-render-vulkan/src/error.rs`); GLES has the robustness extension's reset status. Neither is a defence on its own. The
   defence is to bound the program before it runs and to watch what it costs:
@@ -3348,10 +3350,10 @@ rendering policies) is the new reason to reopen it.
     - `entry` is fixed, not a property.
     - The record keeps its flat shape; the other kinds ignore both, as `shadow` ignores `blur_radius`.
 - **Shader contract.** The user writes `fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32>`:
-  the node's premultiplied colour at `uv`, the params, and a built-in time in seconds. The wrapper (the shipped `preamble.wgsl`
-  and `quad.wgsl`) supplies the vertex stage, the block, and the texture.
-- **Errors.** A write the validator refuses answers a refusal that names the line and column of the user source
-  (`ShaderError` already carries them), through the existing `bad-value` path.
+  the node's premultiplied colour at `uv` (the layer's rectangle, `(0, 0)` top-left), the params, and a built-in time in seconds, and may call
+  `backdrop(uv)` (37.7). The wrapper (`preamble.wgsl`, `user_block.wgsl`, `user_shade.wgsl`, `effect.wgsl`) supplies the blocks, the textures and the entry point.
+- **Errors.** A write the validator refuses answers `bad-value`; the reason names the line and column of the shell's source (`ShaderError`
+  carries them) and is logged, because the reply has a code only (37.9).
 - **Animation.** `params` is a list, and the tween player animates numbers and triples of numbers, not whole lists. The first
   version animates through the built-in `t` and through writes; tweening `params` needs the tween player to interpolate a list
   element-wise, which is a separate small change.
@@ -3360,10 +3362,10 @@ rendering policies) is the new reason to reopen it.
   `abi.lock` move with it.
 - **Std.** A `ShaderFilter` style element beside `BlurFilter` (TypeScript, Python, Rust) that maps onto the `shader` effect. It is
   natural, because styles already map onto `effects`; it is small once the kind exists.
-- **Capability.** A setting `render.user_shaders` (default off until the owner confirms) and a capability in the session's
-  capability list, so a build or a user can disable the kind and the tree refuses it with today's message.
+- **Capability.** A setting (built as the document leaf `compositor.user-shaders`, default off, restart required) and a capability, the
+  seat's read-only `user_shaders`. While it is off the tree refuses the kind with a message that points at `Canvas`.
 
-### 37.4 Effort
+### 37.4 Effort (phase A covers the validator, schema and wire, frame data, software, catalog, SDK and test rows)
 
 For one engineer who knows the renderers, in working days:
 
@@ -3380,13 +3382,69 @@ About 30 working days, six weeks of calendar time with review. The risks are the
 thread, GLES driver compile stalls, and the backdrop privacy rule, which is why phase 1 is node-only. Backdrop sampling is a
 further 8 to 10 days and needs the owner's separate approval.
 
-### 37.5 What the owner decides
+### 37.5 What the owner decided
 
-- Keep O7 (no user shaders). Cost: none. The refusal text points at `Canvas`.
-- Build the node-only pass behind `render.user_shaders`, default off. Cost: about 30 days.
-- Build it with backdrop sampling too. Cost: about 40 days and the secure-surface rule.
+Build it with backdrop sampling too (the third option). O7 is reversed and D20 is resolved: the pass exists behind `compositor.user-shaders`,
+default off until the owner confirms. Sections 34 and 36 keep their "not done" text as history; this section is the current state.
 
-D20 stays "not done, needs the owner" in 34 and 36. If the owner builds it, the lane brief is 37.3 and 37.4.
+### 37.6 What phase A built (lane ShaderFound)
+
+| Part                                 | Where                                                                                                                                                                                                                                                                                              |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Validator on `naga`, no capabilities | `crates/gnoblin-render-frame/src/shader/user.rs`: `validate(source) -> Result<Validated, ShaderError>`; limits `MAX_LOOP_TRIPS` 64, `MAX_LOOP_NEST` 256, `MAX_TEXTURE_SAMPLES` 16, `MAX_EXPRESSIONS` 2048, source 16 KiB (`gnoblin_render::MAX_SHADER_SOURCE_BYTES`)                               |
+| Wrapper                              | `shader/wgsl/user_block.wgsl` (second block `gnoblin_user` at group 0 binding 1, the backdrop at group 2, `fn backdrop`), `shader/wgsl/user_shade.wgsl` (`shade` calls `effect`), `sources::USER_PREFIX` and `USER_SUFFIX`, `uniforms::UserBlock` (48 bytes)                                       |
+| Scene                                | `crates/gnoblin-render/src/effect.rs`: `Pass::Shader(ShaderPass)`, `ShaderKey`, `MAX_SHADERS` 4, `MAX_SHADER_PARAMS` 8; `Pass::NAMES` lists `shader`; `transaction.rs` refuses a fifth shader `too-large` inside `MAX_EFFECTS` 16                                                                  |
+| Schema                               | `effect.toml` `source`, `params`; `seat.toml` `user_shaders` (read-only); `gnoblin-config/schema/config.toml` `compositor.user-shaders` (restart required, `apply.rs`)                                                                                                                             |
+| Wire                                 | `gnoblin-compositor/src/ipc/tree_effects.rs` `pass_from_wire(entry, user_shaders)`; `tree_host.rs` `TreeHostHandle::with_user_shaders`; `gnoblin_wayland::Config::user_shaders`; `Composer::set_user_shaders` publishes the seat property                                                          |
+| Frame data                           | `gnoblin-render-frame/src/frame.rs` `OutputFrame::backdrop_input` and `BackdropInput`; `shader/cache.rs` `ShaderCache<V>` (64 entries, least recently used, keyed by `ShaderKey`)                                                                                                                  |
+| Software                             | `RendererKind::effect_kinds` (`gnoblin-backend/src/render/renderer.rs`) lists `shader` for no renderer, so the node's `skipped` names `shader: unsupported-by-renderer`                                                                                                                            |
+| ABI and SDKs                         | `GnoblinEffect.source`, `.params`, `.n_params` and `EFFECT_SHADER` (appended; `abi.lock` moved); `gnoblin_core::Effect::shader(source, params)` and `EffectKind::Shader`; the generated Python and TypeScript layouts and constants; the JS runtime's `effects` objects take `source` and `params` |
+
+A refusal is `bad-value` for the whole list (a fifth shader is `too-large`). The `reply` signal carries a code only, so the validator's
+line and column go to the compositor's log (`an effect was refused`, field `reason`).
+
+### 37.7 The backdrop contract and the secure rule
+
+- The shell may call `backdrop(uv: vec2<f32>) -> vec4<f32>` from `effect` or a helper. `uv` has the same meaning as `effect`'s: `(0, 0)` is
+  the layer's top-left and `(1, 1)` its bottom-right; outside `0..1` reads the nearest edge pixel; the colour is premultiplied. The wrapper owns
+  the binding and the sampler, and the source cannot declare a texture. `Validated::backdrop` (and `ShaderPass::backdrop()`) is true when
+  `effect` can reach `gnoblin_backdrop_tex`, so a renderer builds a backdrop only for a pass that reads it. Each `backdrop` call and each
+  texture read counts toward the 16-read limit, a `for` body once per trip, an `if` by its larger arm.
+- The backdrop is `OutputFrame::backdrop_input(index)`: the layers below the pass's layer as a frame damaged over the layer's rectangle
+  (`BackdropInput::region`), with every secure layer (a marked window, a lock surface, a prompt, the lock card) replaced by an opaque
+  black rectangle in its place and shape. It is black whatever `capture.secure-treatment` says. The cursor, the view and the colour matrix
+  are not in it. A renderer draws that frame into a scratch target and binds it; it never samples the target of the frame it is drawing,
+  which shows secure windows. The pass writes its own pixel only (no storage, atomics or read-back), so nothing it computes reaches the shell.
+
+### 37.8 Seams for the lanes that start after phase A
+
+- **GLES.** `crates/gnoblin-render-gles/src/lib.rs`, `draw_parts`: the `Pass::Shader(_) => {}` arm. Compile through `program.rs` `translate`:
+  `user::validate(pass.source())`, then `Validated::wgsl()` as the fragment module (entry `ENTRY`) with `shaders::VERTEX`. Bind `Uniforms::pack`
+  at group 0 binding 0 and `UserBlock::pack` at binding 1 (`gl.rs` accepts one block per program today; this program has two), the node
+  texture as the shipped passes bind it (group 1), and the backdrop at group 2 only when `pass.backdrop()`. Cache
+  `ShaderCache<Result<Program, ShaderError>>` by `pass.key()`. Add `"shader"` to the GLES list in `RendererKind::effect_kinds` when it draws.
+- **Vulkan.** `crates/gnoblin-render-vulkan/src/pipeline.rs`: group 0 gains a second uniform binding and group 2 the backdrop; one pipeline per
+  `ShaderKey`, created at draw time and kept in the same `ShaderCache`; list the kind when it draws.
+- **Watchdog.** Strikes are keyed by `ShaderKey::get()`; refuse a struck key before compiling; `ShaderCache::drain` on `RenderError::Lost`.
+  `Composer::skipped_effects` (`gnoblin-backend/src/render/compose.rs`) builds `<kind>: <reasons>` and needs a reason for a struck pass.
+- **Std.** A `ShaderFilter` maps onto `Effect::shader` beside the blur mapping in `gnoblin-std-impl/src/style/cascade.rs` (TypeScript and
+  Python write an `effects` entry with `kind: "shader"`, `source`, `params`) and checks `seat.user_shaders` first. The docs page for the contract
+  belongs to this lane.
+- **Real-session tests.** `Session::start_configured(None, |config| config.wayland.user_shaders = true)` in
+  `crates/gnoblin-compositor/tests/support/mod.rs`.
+
+### 37.9 Decisions the owner may overrule
+
+1. The setting is the document leaf `compositor.user-shaders` (restart required) and the capability the read-only `seat.user_shaders`, not a
+   live key named `render.user_shaders`.
+2. The reason for a refusal is logged, not replied; a `reason` field on `reply` would show it to the shell.
+3. A secure layer reads as black in a backdrop, not as the capture's grey mask.
+4. A loop is accepted by its shape: a `for` with constant start, bound and positive step whose counter the body does not write, at most 64
+   trips; nested loops multiply to at most 256; at most 2048 expressions; pointer parameters are refused; the analysis only had the 64.
+5. The wrapper clamps `effect`'s result to a valid premultiplied colour and applies the layer's tint, opacity and rounded corners.
+6. The module has a second uniform block and a third bind group, which the renderer lanes pay for.
+7. `params` are `f32` in the scene; a value an `f32` cannot hold is refused.
+8. `GnoblinEffect` grew by 32 bytes (appended, as the ABI rules allow); the struct is passed as an array, so a shell built before has to be rebuilt.
 
 ## 38. D11, window motion as std policy, and the stale statements of sections 31 to 34 (lane TsStdObjects)
 

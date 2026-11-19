@@ -1,10 +1,10 @@
-//! Effects: an ordered list of named passes, blur, shadow and border.
+//! Effects: an ordered list of named passes, blur, shadow, border and the shell's own shader.
 //!
 //! The plan gives the renderer effects as GLES passes (Renderer card). This
 //! module is the scene-side description of those passes: a pass names what it
 //! is, carries the values the effect needs, and is validated where it enters
-//! the scene, so the renderer never has to guess. There is no user shader pass:
-//! the compositor ships blur, shadow and border, and the tree refuses any other kind.
+//! the scene, so the renderer never has to guess. A shader the shell wrote is a pass too
+//! ([`ShaderPass`]); the compositor ships blur, shadow and border, and the tree refuses any other kind.
 //!
 //! Order is the pass order: a list is applied in the order it was pushed, which
 //! is what makes "blur then recolour" a different description from "recolour
@@ -13,6 +13,8 @@
 //! Shadow offsets are [`Vec3`] even though this build only accepts `z == 0`, for
 //! the same reason transforms are: a depth value is refused with the named
 //! `unsupported-3d` error instead of being silently dropped.
+
+use std::sync::Arc;
 
 use gnoblin_types::{Color, RectF, Unsupported3d, Unsupported3dField, Vec3};
 
@@ -30,6 +32,18 @@ pub const MAX_PASSES: usize = 32;
 /// so a style of eight shadows and eight borders still fits. The style model of the JS runtime
 /// caps its lists at the same number.
 pub const MAX_STACKED: usize = 8;
+
+/// The most shader passes one node may carry, counted apart from the other kinds and inside [`MAX_PASSES`].
+///
+/// A shader pass is an arbitrary program run for every pixel of the node, so the count is a frame cost; four is what a layered
+/// look needs.
+pub const MAX_SHADERS: usize = 4;
+
+/// The longest shader source, in bytes.
+pub const MAX_SHADER_SOURCE_BYTES: usize = 16 * 1024;
+
+/// The most numbers a shader pass takes, read in the shader as `p[0..8]`.
+pub const MAX_SHADER_PARAMS: usize = 8;
 
 /// The largest blur radius a pass accepts, in logical pixels.
 pub const MAX_BLUR_RADIUS: f32 = 100.0;
@@ -163,6 +177,119 @@ pub struct Border {
     pub color: Color,
 }
 
+/// The smallest key that names a shader source: the hash of its text.
+///
+/// The compiled-shader cache of a renderer is keyed by this (`gnoblin_render_frame::shader::ShaderCache`), so two passes with the
+/// same source share one compiled program whatever their params are. It is a 64-bit hash of the text, not a name a script chooses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ShaderKey(u64);
+
+impl ShaderKey {
+    /// The key of `source`.
+    #[must_use]
+    pub fn of(source: &str) -> Self {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::hash::DefaultHasher::new();
+        source.hash(&mut hasher);
+        Self(hasher.finish())
+    }
+
+    /// The hash, for a log line or a strike list.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// A user shader pass: the WGSL the shell wrote, the numbers it reads as `p[0..8]`, and whether it samples the backdrop.
+///
+/// The scene stores what the wire carried after the compositor checked the source with
+/// `gnoblin_render_frame::shader::user::validate` (the validator needs `naga`, which this crate does not link), and `backdrop` is
+/// that check's answer. A renderer compiles the source again through the same function, so a pass built some other way is refused
+/// there and drawn as skipped; it is never run unchecked.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShaderPass {
+    source: Arc<str>,
+    key: ShaderKey,
+    params: Vec<f32>,
+    backdrop: bool,
+}
+
+impl ShaderPass {
+    /// A pass of `source` with `params`, which reads the backdrop when `backdrop` is set.
+    #[must_use]
+    pub fn new(source: &str, params: &[f32], backdrop: bool) -> Self {
+        Self {
+            key: ShaderKey::of(source),
+            source: Arc::from(source),
+            params: params.to_vec(),
+            backdrop,
+        }
+    }
+
+    /// The WGSL source, as written.
+    #[must_use]
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// The source, shared: a frame clones the pass for every damaged output and must not copy 16 KiB each time.
+    #[must_use]
+    pub fn shared_source(&self) -> &Arc<str> {
+        &self.source
+    }
+
+    /// The compiled-shader cache key.
+    #[must_use]
+    pub const fn key(&self) -> ShaderKey {
+        self.key
+    }
+
+    /// The numbers the shell wrote, at most [`MAX_SHADER_PARAMS`].
+    #[must_use]
+    pub fn params(&self) -> &[f32] {
+        &self.params
+    }
+
+    /// The params as the shader reads them, `p[0..8]`: the ones that were not written are zero.
+    #[must_use]
+    pub fn params_padded(&self) -> [f32; MAX_SHADER_PARAMS] {
+        let mut padded = [0.0; MAX_SHADER_PARAMS];
+        for (slot, value) in padded.iter_mut().zip(&self.params) {
+            *slot = *value;
+        }
+        padded
+    }
+
+    /// Whether the source samples the backdrop, so a renderer has to produce one for the layer
+    /// (`gnoblin_render_frame::frame::OutputFrame::backdrop_input`).
+    #[must_use]
+    pub const fn backdrop(&self) -> bool {
+        self.backdrop
+    }
+
+    fn validate(&self) -> Result<(), EffectError> {
+        if self.source.is_empty() || self.source.len() > MAX_SHADER_SOURCE_BYTES {
+            return Err(EffectError::OutOfRange {
+                field: "shader.source",
+                min: 1.0,
+                max: MAX_SHADER_SOURCE_BYTES as f32,
+            });
+        }
+        if self.params.len() > MAX_SHADER_PARAMS {
+            return Err(EffectError::OutOfRange {
+                field: "shader.params",
+                min: 0.0,
+                max: MAX_SHADER_PARAMS as f32,
+            });
+        }
+        if self.params.iter().any(|value| !value.is_finite()) {
+            return Err(EffectError::NonFinite { field: "shader.params" });
+        }
+        Ok(())
+    }
+}
+
 /// One named pass in an effect chain.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Pass {
@@ -172,11 +299,13 @@ pub enum Pass {
     Shadow(Shadow),
     /// A border.
     Border(Border),
+    /// A shader the shell wrote.
+    Shader(ShaderPass),
 }
 
 impl Pass {
     /// Every kind of pass, by [`Pass::name`]. A renderer that draws all of them reports exactly this list.
-    pub const NAMES: &'static [&'static str] = &["blur", "shadow", "border"];
+    pub const NAMES: &'static [&'static str] = &["blur", "shadow", "border", "shader"];
 
     /// The pass's name, as inspection tools report it.
     #[must_use]
@@ -185,6 +314,7 @@ impl Pass {
             Self::Blur(_) => "blur",
             Self::Shadow(_) => "shadow",
             Self::Border(_) => "border",
+            Self::Shader(_) => "shader",
         }
     }
 
@@ -272,6 +402,7 @@ impl Pass {
                 }
                 Ok(())
             }
+            Self::Shader(shader) => shader.validate(),
         }
     }
 
@@ -295,7 +426,7 @@ impl Pass {
                     bottom: (blur + shadow.offset.y).max(0.0),
                 }
             }
-            Self::Blur(_) => EffectExtent::ZERO,
+            Self::Blur(_) | Self::Shader(_) => EffectExtent::ZERO,
             Self::Border(border) => {
                 // The outer edge of the stroke is `offset + width` past the silhouette when it lies
                 // outside, and `offset` before it, towards the inside, when it lies inside; a
@@ -400,12 +531,17 @@ impl Effects {
         }
         pass.validate()?;
         let kind = pass.name();
-        if matches!(pass, Pass::Border(_) | Pass::Shadow(_)) {
+        let cap = match pass {
+            Pass::Border(_) | Pass::Shadow(_) => Some(MAX_STACKED),
+            Pass::Shader(_) => Some(MAX_SHADERS),
+            Pass::Blur(_) => None,
+        };
+        if let Some(max) = cap {
             let held = self.passes.iter().filter(|held| held.name() == kind).count();
-            if held >= MAX_STACKED {
+            if held >= max {
                 return Err(EffectError::TooManyOfKind {
                     kind,
-                    max: MAX_STACKED,
+                    max,
                     got: held + 1,
                 });
             }
@@ -538,7 +674,7 @@ pub enum EffectError {
         /// The size including the refused pass.
         got: usize,
     },
-    /// The chain already has the maximum number of borders, or of shadows.
+    /// The chain already has the maximum number of borders, of shadows or of shader passes.
     TooManyOfKind {
         /// The kind that is over its cap, by [`Pass::name`].
         kind: &'static str,
@@ -816,6 +952,7 @@ mod tests {
                 color: Color::BLACK,
                 frame: false,
             }),
+            Pass::Shader(tint_shader()),
         ]
         .iter()
         .map(Pass::name)
@@ -823,6 +960,85 @@ mod tests {
         for name in names {
             assert!(Pass::NAMES.contains(&name), "{name}");
         }
-        assert_eq!(Pass::NAMES.len(), 3);
+        assert_eq!(Pass::NAMES.len(), 4);
+    }
+
+    fn tint_shader() -> ShaderPass {
+        ShaderPass::new(
+            "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c; }",
+            &[0.5, 2.0],
+            false,
+        )
+    }
+
+    #[test]
+    fn a_shader_pass_keeps_its_source_params_and_a_key_that_follows_the_source() {
+        let pass = tint_shader();
+        assert_eq!(pass.params(), &[0.5, 2.0]);
+        assert_eq!(pass.params_padded(), [0.5, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(pass.key(), ShaderKey::of(pass.source()));
+        let other = ShaderPass::new("fn effect() {}", &[0.5, 2.0], false);
+        assert_ne!(pass.key(), other.key(), "another source is another key");
+        let reparamed = ShaderPass::new(pass.source(), &[9.0], true);
+        assert_eq!(
+            pass.key(),
+            reparamed.key(),
+            "params and the backdrop flag are not part of the key"
+        );
+        assert_eq!(Pass::Shader(pass).padding(), EffectExtent::ZERO);
+    }
+
+    #[test]
+    fn a_shader_pass_refuses_a_source_or_params_outside_its_bounds() {
+        assert!(Pass::Shader(tint_shader()).validate().is_ok());
+        let empty = Pass::Shader(ShaderPass::new("", &[], false));
+        assert!(matches!(
+            empty.validate(),
+            Err(EffectError::OutOfRange {
+                field: "shader.source",
+                ..
+            })
+        ));
+        let big = Pass::Shader(ShaderPass::new(&"a".repeat(MAX_SHADER_SOURCE_BYTES + 1), &[], false));
+        assert!(matches!(
+            big.validate(),
+            Err(EffectError::OutOfRange {
+                field: "shader.source",
+                ..
+            })
+        ));
+        let long = Pass::Shader(ShaderPass::new("x", &[0.0; MAX_SHADER_PARAMS + 1], false));
+        assert!(matches!(
+            long.validate(),
+            Err(EffectError::OutOfRange {
+                field: "shader.params",
+                ..
+            })
+        ));
+        let nan = Pass::Shader(ShaderPass::new("x", &[f32::NAN], false));
+        assert!(matches!(
+            nan.validate(),
+            Err(EffectError::NonFinite { field: "shader.params" })
+        ));
+    }
+
+    #[test]
+    fn a_node_holds_four_shader_passes_and_refuses_a_fifth() {
+        let mut effects = Effects::new();
+        for _ in 0..MAX_SHADERS {
+            effects.push(Pass::Shader(tint_shader())).expect("within the cap");
+        }
+        assert!(matches!(
+            effects.push(Pass::Shader(tint_shader())),
+            Err(EffectError::TooManyOfKind {
+                kind: "shader",
+                max: MAX_SHADERS,
+                got: 5
+            })
+        ));
+        assert_eq!(effects.len(), MAX_SHADERS);
+        effects
+            .push(Pass::Blur(BlurParams::default()))
+            .expect("the cap counts shaders only");
     }
 }

@@ -123,6 +123,38 @@ impl Uniforms {
     }
 }
 
+/// The size of the user pass's own block in bytes: `GnoblinUser` in `wgsl/user_block.wgsl`, two `vec4`s of params and one of
+/// clock.
+pub const USER_BLOCK_BYTES: usize = 48;
+
+/// The values of the second uniform block a user shader pass uploads, beside [`Uniforms`].
+///
+/// It sits at `@group(0) @binding(1)`. The shared block is the same for the pass as for the shipped ones, so a renderer
+/// packs it with [`Uniforms::pack`] and then this.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UserBlock {
+    /// The shell's numbers, `p[0..8]` in the shader, zero for those it did not write.
+    pub params: [f32; 8],
+    /// The pass's time in seconds, `t` in the shader.
+    pub time: f32,
+}
+
+impl UserBlock {
+    /// The block for `params` at `time` seconds.
+    #[must_use]
+    pub const fn new(params: [f32; 8], time: f32) -> Self {
+        Self { params, time }
+    }
+
+    /// Writes the block for one draw into `out`, replacing what it held.
+    pub fn pack(&self, out: &mut Vec<u8>) {
+        out.clear();
+        out.resize(USER_BLOCK_BYTES, 0);
+        write_floats(out, 0, &self.params);
+        write_floats(out, 32, &[self.time, 0.0, 0.0, 0.0]);
+    }
+}
+
 /// A colour as the four floats a shader reads, clamped so an overshooting animation cannot
 /// produce a colour outside the unit range.
 fn components(colour: Color) -> [f32; 4] {
@@ -180,5 +212,30 @@ mod tests {
         );
         assert_eq!(uniforms.params, [4.0, 4.0, -3.0, -1.0]);
         assert_eq!((uniforms.corner, uniforms.opacity), (6.0, 0.5));
+    }
+}
+
+#[cfg(test)]
+mod user_block_tests {
+    use super::*;
+
+    #[test]
+    fn the_user_block_is_the_eight_params_then_the_clock() {
+        let params = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        let mut bytes = Vec::new();
+        UserBlock::new(params, 2.5).pack(&mut bytes);
+        assert_eq!(bytes.len(), USER_BLOCK_BYTES);
+        let floats: Vec<f32> = bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|chunk| f32::from_ne_bytes(*chunk))
+            .collect();
+        assert_eq!(floats[..8], params, "p[0..8] fill the two vec4s");
+        assert_eq!(
+            floats[8..],
+            [2.5, 0.0, 0.0, 0.0],
+            "the time is the first lane of the clock, the rest is zero"
+        );
     }
 }

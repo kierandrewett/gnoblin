@@ -32,6 +32,9 @@
 //! 4. **A corner radius a shader cannot use reaches it.** A radius that is negative or
 //!    not finite is dropped with the layer, the same way a non-finite opacity is, so a
 //!    signed distance field never sees one: `tests::an_unusable_corner_radius_is_dropped`.
+//! 5. **A shader reads a secure window.** A shader pass that samples the backdrop never samples the frame being drawn,
+//!    which shows secure layers: it samples [`OutputFrame::backdrop_input`], the layers below it with every secure layer
+//!    drawn black: `backdrop_tests::a_shaders_backdrop_has_the_layers_below_it_and_a_secure_one_is_black`.
 //!
 //! # What a layer carries besides its pixels
 //!
@@ -51,7 +54,7 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 use smithay::wayland::dmabuf::get_dmabuf;
 
-use gnoblin_render::{Effects, Mat4};
+use gnoblin_render::{Effects, Mat4, Pass};
 use gnoblin_types::{Color, Rect, RectF};
 
 use super::image::Image;
@@ -98,7 +101,11 @@ impl Layer {
     /// It keeps the layer's place, corners and perspective, so a masked window takes the shape
     /// the display showed. It drops the effects, which act on the content the mask hides.
     fn mask(&self) -> Solid {
-        let grey = Color::new(0.5, 0.5, 0.5, 1.0);
+        self.mask_with(Color::new(0.5, 0.5, 0.5, 1.0))
+    }
+
+    /// A rectangle of `grey` in the layer's place, corners and perspective: the mask of a capture, or the black of a backdrop.
+    fn mask_with(&self, grey: Color) -> Solid {
         match self {
             Self::Surface(surface) => Solid {
                 corner_radius: surface.corner_radius,
@@ -115,6 +122,34 @@ impl Layer {
             Self::Overlay(overlay) => Solid::new(overlay.dst(), grey),
         }
     }
+
+    /// The destination rectangle of the layer, in the output's logical space.
+    fn dst(&self) -> Rect {
+        match self {
+            Self::Surface(surface) => surface.dst,
+            Self::Solid(solid) => solid.dst,
+            Self::Overlay(overlay) => overlay.dst(),
+        }
+    }
+
+    /// The effect chain the layer carries, if it can carry one.
+    fn effects(&self) -> Option<&Effects> {
+        match self {
+            Self::Surface(surface) => Some(&surface.effects),
+            Self::Solid(solid) => Some(&solid.effects),
+            Self::Overlay(_) => None,
+        }
+    }
+}
+
+/// What a shader pass that samples the backdrop reads: see [`OutputFrame::backdrop_input`].
+#[derive(Clone, Debug)]
+pub struct BackdropInput {
+    /// The layers below the shader's layer, secure ones drawn black, damaged over [`Self::region`].
+    pub frame: OutputFrame,
+    /// The rectangle of the output the shader's layer covers, in the output's logical space. The backdrop texture is this
+    /// rectangle: `backdrop(uv)` at `(0, 0)` is its top-left pixel and at `(1, 1)` its bottom-right.
+    pub region: Rect,
 }
 
 /// What a [`Surface`] draws its pixels from.
@@ -689,6 +724,56 @@ impl OutputFrame {
         }
         frame
     }
+
+    /// The picture a shader pass that samples the backdrop reads for the layer at `index`, or [`None`] when the layer has
+    /// no such pass.
+    ///
+    /// It is the layers below `index`, as a frame, damaged over the layer's own rectangle: what is already in the target
+    /// when the layer is drawn, with one difference that is the point of the function. A secure layer below (a window the
+    /// shell marked, a lock surface, a secret prompt, the lock card) is drawn as an opaque black rectangle in its own place
+    /// and shape, whatever `capture.secure-treatment` says, so a shader sees what a screen capture would show and has no
+    /// way to read a secure window's pixels. A renderer draws this frame into a scratch target of `region` and binds that
+    /// as the shader's backdrop; it never samples the target of the frame it is drawing, which still shows the secure
+    /// layers. The cursor, the view and the colour matrix are whole-output passes drawn above the layers, so they are not
+    /// in it. A layer below that samples a backdrop itself is described as it is, and the renderer builds its backdrop in
+    /// turn.
+    #[must_use]
+    pub fn backdrop_input(&self, index: usize) -> Option<BackdropInput> {
+        let layer = self.layers.get(index)?;
+        let reads_backdrop = layer.effects().is_some_and(|effects| {
+            effects
+                .passes()
+                .iter()
+                .any(|pass| matches!(pass, Pass::Shader(shader) if shader.backdrop()))
+        });
+        let region = layer.dst();
+        if !reads_backdrop || region.is_empty() {
+            return None;
+        }
+        let layers = self.layers[..index]
+            .iter()
+            .map(|below| {
+                if below.is_secure() {
+                    Layer::Solid(below.mask_with(Color::BLACK))
+                } else {
+                    below.clone()
+                }
+            })
+            .collect();
+        Some(BackdropInput {
+            frame: Self {
+                background: self.background,
+                damage: vec![region],
+                layers,
+                cursor: None,
+                view: None,
+                colour_matrix: None,
+                view_scenes: self.view_scenes.clone(),
+                live_views: self.live_views.clone(),
+            },
+            region,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -938,5 +1023,89 @@ mod tests {
             "the overlay is the top entry of the one list"
         );
         assert_eq!(solid_order(&frame), vec![0, 1]);
+    }
+}
+
+#[cfg(test)]
+mod backdrop_tests {
+    use super::*;
+    use gnoblin_render::{Pass, ShaderPass};
+
+    fn shader_layer(backdrop: bool) -> Layer {
+        let mut solid = Solid::new(Rect::new(10, 10, 20, 20), Color::new(0.0, 0.0, 1.0, 1.0));
+        solid
+            .effects
+            .push(Pass::Shader(ShaderPass::new("fn effect() {}", &[], backdrop)))
+            .expect("a shader pass");
+        Layer::Solid(solid)
+    }
+
+    fn plain(dst: Rect, colour: Color, secure: bool) -> Layer {
+        let mut solid = Solid::new(dst, colour);
+        solid.secure = secure;
+        Layer::Solid(solid)
+    }
+
+    #[test]
+    fn a_shaders_backdrop_has_the_layers_below_it_and_a_secure_one_is_black() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(plain(Rect::new(0, 0, 64, 64), Color::WHITE, false));
+        frame.push_layer(plain(Rect::new(8, 8, 16, 16), Color::new(1.0, 0.0, 0.0, 1.0), true));
+        frame.push_layer(shader_layer(true));
+        frame.push_layer(plain(Rect::new(0, 0, 8, 8), Color::new(0.0, 1.0, 0.0, 1.0), true));
+        frame.push_damage(Rect::new(0, 0, 64, 64));
+
+        let input = frame.backdrop_input(2).expect("the layer samples the backdrop");
+        assert_eq!(input.region, Rect::new(10, 10, 20, 20));
+        assert_eq!(
+            input.frame.damage(),
+            &[Rect::new(10, 10, 20, 20)],
+            "only the layer's own rectangle is drawn"
+        );
+        let layers = input.frame.layers();
+        assert_eq!(
+            layers.len(),
+            2,
+            "the shader's layer and the ones above it are not behind it"
+        );
+        assert!(matches!(&layers[0], Layer::Solid(solid) if solid.colour == Color::WHITE && !solid.secure));
+        match &layers[1] {
+            Layer::Solid(solid) => {
+                assert_eq!(
+                    solid.colour,
+                    Color::BLACK,
+                    "a secure layer reads as black, whatever the capture setting"
+                );
+                assert_eq!(solid.dst, Rect::new(8, 8, 16, 16), "in its own place");
+                assert!(!solid.secure, "the mask is a plain rectangle");
+            }
+            other => panic!("expected a black rectangle, got {other:?}"),
+        }
+        assert!(frame.has_secure(), "the frame itself still shows the secure layers");
+    }
+
+    #[test]
+    fn a_secure_overlay_reads_as_black_too() {
+        let image = Image::new(gnoblin_types::Size { width: 1, height: 1 }, 4, vec![255; 4])
+            .expect("a one-pixel image is valid");
+        let card = Overlay::new(Rect::new(0, 0, 4, 4), &image)
+            .expect("a non-empty overlay is valid")
+            .with_secure(true);
+        let mut frame = OutputFrame::new();
+        frame.push_layer(Layer::Overlay(card));
+        frame.push_layer(shader_layer(true));
+        let input = frame.backdrop_input(1).expect("the layer samples the backdrop");
+        assert!(matches!(&input.frame.layers()[0], Layer::Solid(solid) if solid.colour == Color::BLACK));
+    }
+
+    #[test]
+    fn a_layer_that_does_not_sample_the_backdrop_has_no_backdrop_input() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(plain(Rect::new(0, 0, 64, 64), Color::WHITE, false));
+        frame.push_layer(shader_layer(false));
+        frame.push_layer(plain(Rect::new(0, 0, 8, 8), Color::WHITE, false));
+        assert!(frame.backdrop_input(1).is_none(), "the shader does not read it");
+        assert!(frame.backdrop_input(2).is_none(), "the layer has no shader");
+        assert!(frame.backdrop_input(9).is_none(), "there is no such layer");
     }
 }

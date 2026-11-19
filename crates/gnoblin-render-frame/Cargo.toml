@@ -28,3 +28,5 @@ gnoblin-types.workspace = true
 gnoblin-render = { path = "../gnoblin-render" }
 # `[tag]` log lines for a refused frame or a client buffer that went away.
 gnoblin-log = { path = "../gnoblin-log" }
+# The front end and the validator of the user shader pass (`shader::user`), the same `naga` the renderers compile with.
+naga.workspace = true

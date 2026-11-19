@@ -127,6 +127,12 @@ pub const RULES: &[ApplyRule] = &[
     ),
     restart(
         "compositor",
+        "user-shaders",
+        StartProcess::Compositor,
+        "the tree host decides whether a shader effect is accepted when the compositor starts",
+    ),
+    restart(
+        "compositor",
         "gpu-memory-budget-mib",
         StartProcess::Compositor,
         "the memory ledger is created when the compositor starts",

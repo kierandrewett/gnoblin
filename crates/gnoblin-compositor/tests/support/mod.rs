@@ -160,26 +160,32 @@ impl Session {
     /// the test's own, which `window.kill` refuses, so a kill test names its victim here.
     /// Passing `Some(WindowProcess::Unknown)` reports the process as unknown.
     pub fn start_with_window_process(ipc: Option<PathBuf>, process: Option<gnoblin_wayland::WindowProcess>) -> Session {
+        Session::start_configured(ipc, |config| config.wayland.window_process_override = process)
+    }
+
+    /// Starts a session that serves `ipc` instead of the directory's default, and lets `configure` set what the test
+    /// needs of its [`SessionConfig`] before the compositor runs.
+    pub fn start_configured(ipc: Option<PathBuf>, configure: impl FnOnce(&mut SessionConfig)) -> Session {
         let directory = private_directory();
         let ipc = ipc.unwrap_or_else(|| directory.path().join("ipc.sock"));
         let wayland = directory.path().join("wayland-0.sock");
         let stop = StopHandle::new();
         let eis = EisGate::default();
         let input = gnoblin_compositor::InputTap::new();
-        let config = SessionConfig {
+        let mut config = SessionConfig {
             ipc_socket: Some(ipc.clone()),
             stop: Some(stop.clone()),
             eis: eis.clone(),
             input_tap: Some(input.clone()),
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
-                window_process_override: process,
                 gpu_memory_period: Duration::ZERO,
                 ..gnoblin_wayland::Config::default()
             },
             providers: stock_providers(),
             ..SessionConfig::default()
         };
+        configure(&mut config);
         let thread = std::thread::Builder::new()
             .name("compositor".to_owned())
             .spawn(move || Compositor::run(config))

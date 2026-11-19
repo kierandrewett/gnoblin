@@ -1004,6 +1004,10 @@ impl Painter<'_> {
                 }
                 // A border is a stroke over the layer's own pixels, so it waits until they are down.
                 Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) => {}
+                // The user shader pass is the shader lane's: this renderer does not draw it yet and does not list the kind in
+                // `RendererKind::effect_kinds`, so the node's `skipped` names it. The pass to draw is `ShaderPass`
+                // (`gnoblin_render_frame::shader::user::validate` gives the module, `OutputFrame::backdrop_input` the backdrop).
+                Pass::Shader(_) => {}
             }
         }
         // A grouped layer is drawn at full opacity into its group, which then fades as one.

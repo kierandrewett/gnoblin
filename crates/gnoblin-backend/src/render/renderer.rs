@@ -76,10 +76,14 @@ impl RendererKind {
     /// with hard edges (`gnoblin-render-software`'s `shape` module) and leaves a blur undrawn. The Vulkan renderer
     /// does not draw effects yet: it rounds a layer's corners, the radius is not an effect, and it reports every
     /// effect kind as skipped.
+    ///
+    /// No renderer draws the `shader` kind yet, so none lists it: a node's shader pass is accepted by the tree
+    /// (while `compositor.user-shaders` is on) and named in its `skipped` list as `shader: unsupported-by-renderer`.
+    /// The renderer that draws it adds `"shader"` to its list here.
     #[must_use]
     pub const fn effect_kinds(self) -> &'static [&'static str] {
         match self {
-            Self::Gles => gnoblin_render::Pass::NAMES,
+            Self::Gles => &["blur", "shadow", "border"],
             Self::Software => &["shadow", "border"],
             Self::Vulkan => &[],
         }

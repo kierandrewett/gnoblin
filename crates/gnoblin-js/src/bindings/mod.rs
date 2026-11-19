@@ -202,7 +202,7 @@ impl<'js> IntoJs<'js> for JsHostValue {
 }
 
 /// The keys of an `effect` object a script writes, named as the schema names them.
-const EFFECT_KEYS: [&str; 18] = [
+const EFFECT_KEYS: [&str; 20] = [
     "kind",
     "downscale",
     "passes",
@@ -221,6 +221,8 @@ const EFFECT_KEYS: [&str; 18] = [
     "offset",
     "inset",
     "frame",
+    "source",
+    "params",
 ];
 
 fn effect_to_js<'js>(ctx: &Ctx<'js>, entry: &effect::Properties) -> rquickjs::Result<Object<'js>> {
@@ -243,12 +245,14 @@ fn effect_to_js<'js>(ctx: &Ctx<'js>, entry: &effect::Properties) -> rquickjs::Re
     object.set("offset", entry.offset)?;
     object.set("inset", entry.inset)?;
     object.set("frame", entry.frame)?;
+    object.set("source", entry.source.as_str())?;
+    object.set("params", entry.params.clone())?;
     Ok(object)
 }
 
 /// The effect a script's object describes, or `None` when it has a key the schema does not, a field of the wrong
-/// type, a number that is not finite, or a negative or fractional `downscale` or `passes`. A field the object
-/// leaves out keeps the wire's zero value, so a script that wants the documented defaults writes them.
+/// type, a number that is not finite (a `params` entry included), or a negative or fractional `downscale` or `passes`.
+/// A field the object leaves out keeps the wire's zero value, so a script that wants the documented defaults writes them.
 pub(crate) fn effect_from_js(object: &Object<'_>) -> Option<effect::Properties> {
     for key in object.keys::<String>() {
         if !EFFECT_KEYS.contains(&key.ok()?.as_str()) {
@@ -270,6 +274,10 @@ pub(crate) fn effect_from_js(object: &Object<'_>) -> Option<effect::Properties> 
         (n >= 0.0 && n.fract() == 0.0).then_some(n as u64)
     };
     let flag = |name: &str| -> Option<bool> { object.get::<_, Option<bool>>(name).ok().map(Option::unwrap_or_default) };
+    let numbers = |name: &str| -> Option<Vec<f64>> {
+        let list = object.get::<_, Option<Vec<f64>>>(name).ok()?.unwrap_or_default();
+        list.iter().all(|n| n.is_finite()).then_some(list)
+    };
     Some(effect::Properties {
         kind: text("kind")?,
         downscale: whole("downscale")?,
@@ -289,5 +297,7 @@ pub(crate) fn effect_from_js(object: &Object<'_>) -> Option<effect::Properties> 
         offset: number("offset")?,
         inset: flag("inset")?,
         frame: flag("frame")?,
+        source: text("source")?,
+        params: numbers("params")?,
     })
 }

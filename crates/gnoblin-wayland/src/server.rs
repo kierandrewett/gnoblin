@@ -190,6 +190,9 @@ pub struct Config {
     /// The bounds on what clients and the session may hold (`gpu_memory::MemoryLimits`): per-client buffer bytes and
     /// surfaces, and the session's aggregate budget. A zero value turns that bound off.
     pub gpu_limits: crate::gpu_memory::MemoryLimits,
+    /// Whether the tree accepts a `shader` effect (`compositor.user-shaders`). The seat publishes it as `user_shaders`; the tree
+    /// host, which the compositor builds from the same value, does the refusing.
+    pub user_shaders: bool,
     /// The source of the session clock. The loop reads it once per turn and advances the
     /// session clock by the time elapsed since the previous turn, so idle and a rest focus
     /// fire without a caller advancing it. A test that must not depend on wall time passes a
@@ -292,6 +295,7 @@ impl Default for Config {
             check_alive_timeout: Duration::from_secs(5),
             gpu_memory_period: crate::gpu_memory::DEFAULT_PERIOD,
             gpu_limits: crate::gpu_memory::MemoryLimits::default(),
+            user_shaders: false,
             clock: Arc::new(SystemClock),
             observer: None,
             tree: crate::tree_frame::TreeHooks::default(),
@@ -481,6 +485,8 @@ impl Server {
         state.composer.set_secure_treatment(backend.secure_treatment());
         // A node asks for effects the renderer may not draw: the composer names those in its `skipped` list.
         state.composer.set_effect_kinds(backend.effect_kinds());
+        // Whether the tree accepts a shader effect: the seat says so, so a shell can adapt before it writes one.
+        state.composer.set_user_shaders(config.user_shaders);
         // A renderer that draws a View's subtree into a texture takes the View's description instead of its pixels.
         state.composer.set_gpu_views(backend.gpu_views());
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);

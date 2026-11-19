@@ -430,6 +430,8 @@ object effect since 0.2.0 secret false
   property offset type double since 0.2.0 secret false
   property inset type bool since 0.2.0 secret false
   property frame type bool since 0.2.0 secret false
+  property source type string since 0.2.0 secret false
+  property params type list<double> since 0.2.0 secret false
 object lock since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type object:node since 0.2.0 secret false
@@ -691,6 +693,7 @@ object seat since 0.2.0 secret false
   property workspaces type list<string> since 0.2.0 secret false
   property reduced_motion type bool since 0.2.0 secret false
   property effect_kinds type list<string> since 0.2.0 secret false
+  property user_shaders type bool since 0.2.0 secret false
   property decorations_available type bool since 0.2.0 secret false
   property builtin_motion type bool since 0.2.0 secret false
   property grabbed type string since 0.2.0 secret false
@@ -1959,6 +1962,10 @@ message Effect {
     bool inset = 17;
     // since 0.2.0
     bool frame = 18;
+    // since 0.2.0
+    string source = 19;
+    // since 0.2.0; list
+    repeated double params = 20;
   }
 }
 
@@ -2552,21 +2559,23 @@ message Seat {
     // since 0.2.0; list
     repeated string effect_kinds = 39;
     // since 0.2.0
-    bool decorations_available = 40;
+    bool user_shaders = 40;
     // since 0.2.0
-    bool builtin_motion = 41;
+    bool decorations_available = 41;
     // since 0.2.0
-    string grabbed = 42;
+    bool builtin_motion = 42;
     // since 0.2.0
-    string cursor_shape = 43;
+    string grabbed = 43;
     // since 0.2.0
-    bytes cursor_image = 44;
+    string cursor_shape = 44;
     // since 0.2.0
-    int64 cursor_hotspot_x = 45;
+    bytes cursor_image = 45;
     // since 0.2.0
-    int64 cursor_hotspot_y = 46;
+    int64 cursor_hotspot_x = 46;
     // since 0.2.0
-    bool cursor_hidden = 47;
+    int64 cursor_hotspot_y = 47;
+    // since 0.2.0
+    bool cursor_hidden = 48;
   }
 
   // Method `warp`, since 0.2.0.

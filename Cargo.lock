@@ -1950,6 +1950,7 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-render",
  "gnoblin-types",
+ "naga",
  "smithay",
 ]
 

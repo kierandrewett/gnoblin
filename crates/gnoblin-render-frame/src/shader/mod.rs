@@ -7,18 +7,26 @@
 //! | Module       | Owns                                                                   |
 //! | ------------ | ---------------------------------------------------------------------- |
 //! | `sources`    | the WGSL of the passes (`wgsl/*.wgsl`)                                 |
-//! | `uniforms`   | the uniform values of a pass and the byte layout of the block          |
+//! | `uniforms`   | the uniform values of a pass and the byte layout of the blocks         |
 //! | `error`      | [`ShaderError`], the line-numbered refusal a broken pass answers       |
+//! | `user`       | the validator of a shell's own shader and the module it compiles to    |
+//! | `cache`      | [`ShaderCache`], the 64-entry least-recently-used compiled-shader cache |
 //!
 //! The *compilers* are not here, because each one ends in an API: the GLES program module
 //! turns the WGSL into GLSL ES 3.10 for a driver, and the Vulkan shader module turns it
-//! into SPIR-V. Both enter a module through [`ENTRY`]. The shipped passes are the only
-//! shaders: there is no user shader (survey 16.6, decision O7).
+//! into SPIR-V. Both enter a module through [`ENTRY`]. Besides the shipped passes there is
+//! one pass a shell writes: `user::validate` checks its source and returns the module
+//! (`Validated::wgsl`) that the same compilers take, with `sources::USER_PREFIX` and
+//! `sources::USER_SUFFIX` around the shell's text and `uniforms::UserBlock` as its second
+//! uniform block.
 
+pub mod cache;
 mod error;
 pub mod sources;
 pub mod uniforms;
+pub mod user;
 
+pub use cache::{SHADER_CACHE_ENTRIES, ShaderCache};
 pub use error::ShaderError;
 pub use error::Stage;
 

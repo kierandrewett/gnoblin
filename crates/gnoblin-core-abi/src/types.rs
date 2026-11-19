@@ -122,6 +122,8 @@ abi_consts! {
     pub const EFFECT_SHADOW: u32 = 2;
     /// `GnoblinEffect.kind`: a border stroke.
     pub const EFFECT_BORDER: u32 = 3;
+    /// `GnoblinEffect.kind`: a user shader pass, written in WGSL (`source` and `params`).
+    pub const EFFECT_SHADER: u32 = 4;
     /// `GnoblinValue.kind`: opaque bytes in `ptr` and `len`.
     pub const VALUE_BYTES: u32 = 10;
     /// `GnoblinValue.kind`: secret text in `ptr` and `len`. Never logged; the receiver copies it out.
@@ -328,7 +330,7 @@ abi_structs! {
     pub struct GnoblinEffect {
         /// Size of this struct, set by the caller.
         pub size: u32,
-        /// `EFFECT_BLUR`, `EFFECT_SHADOW` or `EFFECT_BORDER`.
+        /// `EFFECT_BLUR`, `EFFECT_SHADOW`, `EFFECT_BORDER` or `EFFECT_SHADER`.
         pub kind: u32,
         /// Blur: the backdrop is sampled at `1 / downscale` of full resolution.
         pub downscale: u32,
@@ -364,6 +366,12 @@ abi_structs! {
         pub tint: GnoblinStr,
         /// Shadow and border: the colour as `#rrggbb` or `#rrggbbaa`.
         pub colour: GnoblinStr,
+        /// Shader: the WGSL source, at most 16 KiB; empty for any other kind.
+        pub source: GnoblinStr,
+        /// Shader: the numbers the source reads as `p[0]` to `p[7]`, `n_params` of them; null when `n_params` is zero.
+        pub params: *const f64,
+        /// Shader: how many numbers `params` points at, at most 8.
+        pub n_params: usize,
     }
 
     /// How a timed write plays: the argument of `write_set_timed`. A struct that starts with `size` may grow.

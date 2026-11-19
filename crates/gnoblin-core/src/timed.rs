@@ -49,6 +49,8 @@ pub enum EffectKind {
     Shadow,
     /// A stroke around the node.
     Border,
+    /// A shader the shell wrote, in WGSL.
+    Shader,
 }
 
 /// One entry of a node's `effects` list, with the schema's field names. A field the kind does not use is ignored by the
@@ -91,6 +93,10 @@ pub struct Effect {
     pub inset: bool,
     /// Shadow: the shadow follows the whole frame.
     pub frame: bool,
+    /// Shader: the WGSL source, at most 16 KiB.
+    pub source: String,
+    /// Shader: the numbers the source reads as `p[0]` to `p[7]`, at most 8.
+    pub params: Vec<f64>,
 }
 
 impl Effect {
@@ -115,6 +121,19 @@ impl Effect {
             offset: 0.0,
             inset: false,
             frame: false,
+            source: String::new(),
+            params: Vec::new(),
+        }
+    }
+
+    /// A shader effect: `source` is WGSL that defines `fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) ->
+    /// vec4<f32>`, and `params` (at most 8) is what it reads as `p`. The compositor refuses it, and the whole list with it,
+    /// when `compositor.user-shaders` is off (the seat's `user_shaders` says) or the source does not validate.
+    pub fn shader(source: &str, params: &[f64]) -> Effect {
+        Effect {
+            source: source.to_owned(),
+            params: params.to_vec(),
+            ..Effect::new(EffectKind::Shader)
         }
     }
 
@@ -134,6 +153,7 @@ impl Effect {
                 EffectKind::Blur => abi::EFFECT_BLUR,
                 EffectKind::Shadow => abi::EFFECT_SHADOW,
                 EffectKind::Border => abi::EFFECT_BORDER,
+                EffectKind::Shader => abi::EFFECT_SHADER,
             },
             downscale: self.downscale,
             passes: self.passes,
@@ -152,6 +172,13 @@ impl Effect {
             algorithm: text(&self.algorithm),
             tint: text(&self.tint),
             colour: text(&self.colour),
+            source: text(&self.source),
+            params: if self.params.is_empty() {
+                core::ptr::null()
+            } else {
+                self.params.as_ptr()
+            },
+            n_params: self.params.len(),
         }
     }
 }

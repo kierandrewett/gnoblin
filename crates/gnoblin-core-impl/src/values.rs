@@ -21,6 +21,10 @@ use gnoblin_tree_client::tree_mirror::{MirrorValue, effect};
 use crate::catalog::DefaultDef;
 use crate::memory;
 
+/// The most numbers a shader effect takes (the `effect` record's `params`). The compositor refuses more; reading stops here
+/// so a length that is wrong cannot make this side read far past what the caller holds.
+const MAX_SHADER_PARAMS: usize = 8;
+
 /// A value the compositor side publishes with an event, or the core keeps for one. Owned, so it outlives the queue.
 #[derive(Clone, Debug, PartialEq)]
 pub enum OwnedValue {
@@ -492,7 +496,19 @@ pub(crate) unsafe fn read_value(raw: *const GnoblinValue, want: u32) -> Result<M
                         abi::EFFECT_BLUR => "blur",
                         abi::EFFECT_SHADOW => "shadow",
                         abi::EFFECT_BORDER => "border",
+                        abi::EFFECT_SHADER => "shader",
                         other => return Err(ValueError::Type(format!("{other} is not an effect kind"))),
+                    };
+                    let params = if item.n_params == 0 {
+                        Vec::new()
+                    } else if item.params.is_null() || item.n_params > MAX_SHADER_PARAMS {
+                        return Err(ValueError::Malformed(format!(
+                            "a shader takes at most {MAX_SHADER_PARAMS} params, got {} at {:?}",
+                            item.n_params, item.params
+                        )));
+                    } else {
+                        // SAFETY: the caller guarantees `params` points at `n_params` numbers.
+                        unsafe { slice::from_raw_parts(item.params, item.n_params) }.to_vec()
                     };
                     Ok(effect::Properties {
                         kind: kind.to_owned(),
@@ -513,6 +529,8 @@ pub(crate) unsafe fn read_value(raw: *const GnoblinValue, want: u32) -> Result<M
                         offset: item.offset,
                         inset: item.inset != 0,
                         frame: item.frame != 0,
+                        source: text(&item.source)?,
+                        params,
                     })
                 })
                 .collect::<Result<Vec<effect::Properties>, _>>()
