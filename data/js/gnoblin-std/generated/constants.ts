@@ -23,6 +23,9 @@ export const EventKind = {
   DECORATION_CHANGED: 9,
   MODE_CHANGED: 10,
   TRANSITION_FINISHED: 11,
+  DISPLAYS: 20,
+  APPLIED: 21,
+  NOTE: 22,
 } as const;
 export type EventKind = (typeof EventKind)[keyof typeof EventKind];
 
@@ -121,6 +124,59 @@ export const SnapKind = {
   MARGIN: 4,
 } as const;
 export type SnapKind = (typeof SnapKind)[keyof typeof SnapKind];
+
+/** The `STD_PRESENT_*` constants. */
+export const PresentKind = {
+  SINGLE: 0,
+  MIRROR: 1,
+  SPAN: 2,
+} as const;
+export type PresentKind = (typeof PresentKind)[keyof typeof PresentKind];
+
+/** The `STD_SELECT_*` constants. */
+export const SelectKind = {
+  PROFILE: 1,
+  OUTPUT: 2,
+} as const;
+export type SelectKind = (typeof SelectKind)[keyof typeof SelectKind];
+
+/** The `STD_PROFILE_*` constants. */
+export const ProfileFlags = {
+  HAS_SCALE: 1,
+  HAS_SUPERSAMPLE: 2,
+  HAS_VRR: 4,
+  VRR_ON: 8,
+  HAS_ENABLED: 16,
+  ENABLED_ON: 32,
+} as const;
+export type ProfileFlags = (typeof ProfileFlags)[keyof typeof ProfileFlags];
+
+/** The `STD_POSITION_*` constants. */
+export const PositionKind = {
+  NONE: 0,
+  ABSOLUTE: 1,
+  RIGHT_OF: 2,
+  LEFT_OF: 3,
+  ABOVE: 4,
+  BELOW: 5,
+} as const;
+export type PositionKind = (typeof PositionKind)[keyof typeof PositionKind];
+
+/** The `STD_ALIGN_*` constants. */
+export const AlignKind = {
+  START: 0,
+  CENTER: 1,
+  END: 2,
+} as const;
+export type AlignKind = (typeof AlignKind)[keyof typeof AlignKind];
+
+/** The `STD_DISPLAY_*` constants. */
+export const DisplayFlags = {
+  IMPLICIT: 1,
+  LISTED: 2,
+  HAS_DESK: 4,
+} as const;
+export type DisplayFlags = (typeof DisplayFlags)[keyof typeof DisplayFlags];
 
 /** The `STD_EASING_*` constants. */
 export const EasingKind = {

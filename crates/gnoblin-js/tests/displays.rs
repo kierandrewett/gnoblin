@@ -31,6 +31,12 @@ g.b = new OutputProfile({ match: { connector: \"HDMI-A-1\" } });\n";
 /// A shell over screen `A` (`DP-1`, 1000 by 800, primary) and, when `second`, screen `B` (`HDMI-A-1`, 600 by 400 at
 /// x 1000), a seat and one window (id 3), running `START` and then `extra`.
 fn world(second: bool, extra: &str) -> Rig {
+    world_noting(second, extra, &[])
+}
+
+/// [`world`] for a file whose profile earns a sentence for the diagnostics: the library applies the profile in its first turn, so the
+/// sentence arrives with the first frames and is the one in `allowed`; any other diagnostic fails the world.
+fn world_noting(second: bool, extra: &str, allowed: &[&str]) -> Rig {
     let init = format!("{START}{extra}\n");
     let mut rig = rig_setup(IMPORTS, &init, move |comp| {
         comp.add_node(
@@ -88,7 +94,12 @@ fn world(second: bool, extra: &str) -> Rig {
         );
     });
     let diagnostics = rig.settle();
-    assert!(diagnostics.is_empty(), "{diagnostics:?} {:?}", rig.load_diagnostics);
+    assert!(
+        diagnostics.iter().all(|line| allowed.contains(&line.as_str())),
+        "{diagnostics:?} {:?}",
+        rig.load_diagnostics
+    );
+    rig.load_diagnostics.extend(diagnostics);
     rig
 }
 
@@ -460,6 +471,83 @@ fn a_profile_applies_again_when_its_monitor_returns_and_a_refusal_is_reported_by
 }
 
 #[test]
+fn the_compositors_answer_to_a_profiles_request_reaches_the_listeners_of_the_output_as_it_does_for_apply() {
+    let mut rig = world(
+        false,
+        "g.log = [];\n\
+         gnoblin.outputs.addListener(new (class extends OutputListener {\n\
+             onApplied(o, error) { g.log.push(o.connector + ' ' + error); }\n\
+         })());\n\
+         g.p = new OutputProfile({ match: { connector: 'DP-1' }, scale: 2 });\n\
+         gnoblin.outputs.profiles.add(g.p);",
+    );
+    let sent = rig.comp.applies();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(rig.eval("g.log.join('|')"), "", "nothing is answered yet");
+    rig.comp.answer(sent[0].2, "", "");
+    settle(&mut rig);
+    assert_eq!(
+        rig.eval("g.log.join('|')"),
+        "DP-1 null",
+        "a taken request is announced with no error"
+    );
+    exec(&mut rig, "g.p.scale = 3;");
+    settle(&mut rig);
+    let again = rig.comp.applies();
+    assert_eq!(again.len(), 2, "{again:?}");
+    rig.comp
+        .answer(again[1].2, "", "scale: the backend does not take 3 here");
+    settle(&mut rig);
+    assert_eq!(
+        rig.eval("g.log.join('|')"),
+        "DP-1 null|DP-1 scale: the backend does not take 3 here",
+        "a refused one carries the compositor's words"
+    );
+}
+
+#[test]
+fn a_profile_waits_for_the_answer_to_its_own_request_before_it_sends_the_next() {
+    let mut rig = world(
+        false,
+        "g.p = new OutputProfile({ match: { connector: 'DP-1' }, scale: 2 });\ngnoblin.outputs.profiles.add(g.p);",
+    );
+    let sent = rig.comp.applies();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    exec(&mut rig, "g.p.scale = 3;");
+    settle(&mut rig);
+    assert_eq!(
+        rig.comp.applies().len(),
+        1,
+        "the output has a request in flight: the new scale waits for its answer"
+    );
+    rig.comp.answer(sent[0].2, "", "");
+    settle(&mut rig);
+    let after = rig.comp.applies();
+    assert_eq!(after.len(), 2, "{after:?}");
+    assert_eq!(after[1].1, "scale=3");
+}
+
+#[test]
+fn a_display_the_shell_keeps_is_the_librarys_and_its_object_is_made_when_the_script_asks() {
+    let mut rig = world(true, "");
+    assert_eq!(
+        rig.eval("[...gnoblin.displays].map((d) => d.constructor.name + ':' + d.id + ':' + d.mode).sort().join(' ')"),
+        "Display:display-DP-1:single Display:display-HDMI-A-1:single"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.displays.get('display-DP-1') === gnoblin.displays.get('display-DP-1'))"),
+        "true",
+        "the object for a handle is the one object"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.displays.remove(gnoblin.displays.get('display-DP-1')))"),
+        "false",
+        "the display of the shell's own stays: removing it answers false"
+    );
+    assert_eq!(rig.eval("String(gnoblin.displays.length)"), "2");
+}
+
+#[test]
 fn profiles_match_by_make_model_and_serial_and_report_vrr_as_not_applied() {
     let mut rig = world(true, "");
     rig.comp.external_set(B, "make", text("BOE"));
@@ -755,11 +843,13 @@ fn a_factor_that_is_not_recommended_is_accepted_with_one_diagnostic() {
 
 #[test]
 fn a_profile_with_a_supersample_sends_it_and_reports_a_factor_that_is_not_recommended_once() {
-    let mut rig = world(
+    let mut rig = world_noting(
         false,
         "g.hd = new OutputProfile({ match: { connector: 'DP-1' }, supersample: 3 });\ngnoblin.outputs.profiles.add(g.hd);",
+        &[NOT_RECOMMENDED_3],
     );
-    // The profile applies while the file loads, so its notice is among the load diagnostics and not repeated after.
+    // The library applies the profile in its first turn, so the notice comes with the first frames of the shell and is not repeated
+    // after (it was among the load diagnostics when the TypeScript manager applied the profile while the file loaded).
     let mut diagnostics = rig.load_diagnostics.clone();
     diagnostics.extend(settle(&mut rig));
     assert_eq!(requests(&rig, A), vec!["supersample=3"]);

@@ -109,6 +109,8 @@ modular:
     cargo xtask stage
     cargo test --locked -p gnoblin --test modular --test abi_upgrade --test native_shell --test native_shell_failures --test native_shell_verbs --test native_shell_spelling --test std_providers --test reload_session --test reload_scripts --test startup --test failed_start --test roles
     cargo test --locked -p gnoblin-core-impl -p gnoblin-shell-host -p gnoblin-std-impl
+    # `gnoblinctl check` is the launcher's `check` role over the staged libraries: the launcher the line above built.
+    cargo test --locked -p gnoblinctl
 
 # Fail on a -sys crate whose system package the CI install list lacks (scripts/ci-install-system-libraries.sh).
 native-libs:

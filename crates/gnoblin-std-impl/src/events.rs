@@ -35,7 +35,20 @@ const WINDOW_PROPERTIES: [&str; 12] = [
 ];
 
 /// The screen properties whose changes the library watches.
-const SCREEN_PROPERTIES: [&str; 8] = ["x", "y", "width", "height", "mode", "enabled", "mirror_of", "primary"];
+const SCREEN_PROPERTIES: [&str; 12] = [
+    "x",
+    "y",
+    "width",
+    "height",
+    "mode",
+    "enabled",
+    "mirror_of",
+    "primary",
+    "connector",
+    "make",
+    "model",
+    "identity",
+];
 
 impl State {
     pub(crate) fn new(g: Gnoblin, ctx: GnoblinCtx) -> State {
@@ -47,6 +60,7 @@ impl State {
             clients: Vec::new(),
             rec: HashMap::new(),
             outputs: Vec::new(),
+            disp: crate::displays::Displays::default(),
             insets: HashMap::new(),
             workspaces: Vec::new(),
             ws: HashMap::new(),

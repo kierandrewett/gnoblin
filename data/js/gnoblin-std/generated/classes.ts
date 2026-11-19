@@ -4,7 +4,7 @@
 
 import { call } from "gnoblin-std/generated/native";
 import type { Init } from "gnoblin-std/generated/native";
-import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, OutputInfo, outputInfoToNative, outputInfoFromNative, Span, spanToNative, spanFromNative, Areas, areasToNative, areasFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutQuery, layoutQueryToNative, layoutQueryFromNative, FloatingQuery, floatingQueryToNative, floatingQueryFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, DragTile, dragTileToNative, dragTileFromNative, DragStep, dragStepToNative, dragStepFromNative, DragOutcome, dragOutcomeToNative, dragOutcomeFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
+import { Rect, rectToNative, rectFromNative, Split, splitToNative, splitFromNative, ClientState, clientStateToNative, clientStateFromNative, OutputInfo, outputInfoToNative, outputInfoFromNative, Span, spanToNative, spanFromNative, Areas, areasToNative, areasFromNative, Event, eventToNative, eventFromNative, QueryTerm, queryTermToNative, queryTermFromNative, ProfileSpec, profileSpecToNative, profileSpecFromNative, Selector, selectorToNative, selectorFromNative, DisplaySpec, displaySpecToNative, displaySpecFromNative, DisplayInfo, displayInfoToNative, displayInfoFromNative, Placement, placementToNative, placementFromNative, LayoutContext, layoutContextToNative, layoutContextFromNative, LayoutQuery, layoutQueryToNative, layoutQueryFromNative, FloatingQuery, floatingQueryToNative, floatingQueryFromNative, LayoutSpec, layoutSpecToNative, layoutSpecFromNative, WorkspaceSpec, workspaceSpecToNative, workspaceSpecFromNative, WorkspaceInfo, workspaceInfoToNative, workspaceInfoFromNative, Show, showToNative, showFromNative, OutputPolicy, outputPolicyToNative, outputPolicyFromNative, WorkspacePolicy, workspacePolicyToNative, workspacePolicyFromNative, Option, optionToNative, optionFromNative, RingSlot, ringSlotToNative, ringSlotFromNative, DragEvent, dragEventToNative, dragEventFromNative, GestureEvent, gestureEventToNative, gestureEventFromNative, BindingSpec, bindingSpecToNative, bindingSpecFromNative, DragTile, dragTileToNative, dragTileFromNative, DragStep, dragStepToNative, dragStepFromNative, DragOutcome, dragOutcomeToNative, dragOutcomeFromNative, Stats, statsToNative, statsFromNative, Prop, propToNative, propFromNative, TransitionOptions, transitionOptionsToNative, transitionOptionsFromNative, TransitionInfo, transitionInfoToNative, transitionInfoFromNative, StyleEntry, styleEntryToNative, styleEntryFromNative } from "gnoblin-std/generated/records";
 
 function handleOf(value: { handle: number } | { node: number } | number): number {
   if (typeof value === "number") {
@@ -655,6 +655,124 @@ export class Floating {
   static place(query: Init<FloatingQuery>): Rect {
     const raw = call("floating_place", floatingQueryToNative(query));
     return (rectFromNative(raw));
+  }
+}
+
+export class Profile {
+  constructor(readonly handle: number) {}
+
+  // Makes an output profile and writes its handle to `out`. It is not in the list of profiles until `profile_add`. `E_TYPE`
+  // for a spec with no id or no match key, or a value out of range.
+  static new(spec: Init<ProfileSpec>): Profile | null {
+    const raw = call("profile_new", profileSpecToNative(spec));
+    return (raw == null ? null : new Profile(raw));
+  }
+  // Replaces the settings of the profile (not its id or its match); the next reconciliation applies them. `E_TYPE` for a value
+  // out of range, or a position that depends on itself through other profiles.
+  set(spec: Init<ProfileSpec>): number {
+    const raw = call("profile_set", this.handle, profileSpecToNative(spec));
+    return raw;
+  }
+  // Adds the profile to the list of profiles and applies it to the output it is for, now or when it connects. `E_BUSY` when a
+  // profile with its id is there already.
+  add(): number {
+    const raw = call("profile_add", this.handle);
+    return raw;
+  }
+  // Takes the profile out of the list: 1 when it left, 0 when it was not in it. The compositor keeps the arrangement it applied
+  // last.
+  remove(): boolean {
+    const raw = call("profile_remove", this.handle);
+    return raw !== 0;
+  }
+  // Writes the profiles in the list, in order, to `out`. The array is valid until the next call into the library on this thread.
+  static list(): number[] {
+    const raw = call("profile_list");
+    return (Array.from(raw as number[]));
+  }
+}
+
+export class Display {
+  constructor(readonly handle: number) {}
+
+  // Makes a display and writes its handle to `out`. It is not in the list of displays until `display_add`. `E_TYPE` for a spec
+  // with no id, no selector, or a `single` display of several selectors.
+  static new(spec: Init<DisplaySpec>): Display | null {
+    const raw = call("display_new", displaySpecToNative(spec));
+    return (raw == null ? null : new Display(raw));
+  }
+  // Sets how the display presents its outputs; the next reconciliation enacts it. `E_TYPE` for a `single` display of several
+  // selectors.
+  setMode(mode: number): number {
+    const raw = call("display_set_mode", this.handle, mode);
+    return raw;
+  }
+  // Adds the display to the list and reconciles. `E_BUSY` when a display already has its id, `E_REFUSED` when another display
+  // presents one of its outputs (the words name both).
+  add(): number {
+    const raw = call("display_add", this.handle);
+    return raw;
+  }
+  // Takes a display of the shell's script out of the list: its mirror and span end and each of its outputs gets a display of the
+  // library's. 1 when it left, 0 for a display of the library's own and for one that is not in the list.
+  remove(): boolean {
+    const raw = call("display_remove", this.handle);
+    return raw !== 0;
+  }
+  // Swaps `old` for `next` as one validated change: `old` and every other display of the script that shares an output with
+  // `next` leave, and `next` takes `old`'s place. Nothing changes on failure: `E_STALE` when `old` is not a display of the script,
+  // `E_BUSY` when `next` is in the list or a display that stays has its id.
+  replace(next: Display | number): number {
+    const raw = call("display_replace", this.handle, handleOf(next));
+    return raw;
+  }
+  // Takes every display of the script out of the list.
+  static clear(): number {
+    const raw = call("display_clear");
+    return raw;
+  }
+  // Writes the displays in the list, in order, to `out`. The array is valid until the next call into the library on this thread.
+  static list(): number[] {
+    const raw = call("display_list");
+    return (Array.from(raw as number[]));
+  }
+  // Fills `out` with what the display is now.
+  info(): DisplayInfo {
+    const raw = call("display_info", this.handle);
+    return (displayInfoFromNative(raw));
+  }
+  // Writes the output nodes the display presents now, in the order of its selectors, to `out`. The array is valid until the next
+  // call into the library on this thread.
+  outputs(): number[] {
+    const raw = call("display_outputs", this.handle);
+    return (Array.from(raw as number[]));
+  }
+  // Writes the display under the point (in the compositor's logical space), else the primary output's, to `out`; zero when no
+  // display has an output.
+  static at(x: number, y: number): Display | null {
+    const raw = call("display_at", x, y);
+    return (raw == null ? null : new Display(raw));
+  }
+  // Shows the workspace on the display, or keeps it for when the display has an output with a desk. `E_REFUSED` when the
+  // workspace is not added.
+  assign(workspace: Workspace | number): number {
+    const raw = call("display_assign", this.handle, handleOf(workspace));
+    return raw;
+  }
+  // Remembers what each display waits to show, and writes the token that `display_restore` takes to `out`.
+  static snapshot(): number {
+    const raw = call("display_snapshot");
+    return (raw);
+  }
+  // Puts back what `display_snapshot` remembered (once: the token is spent). The displays that left since are not restored.
+  static restore(token: number): number {
+    const raw = call("display_restore", token);
+    return raw;
+  }
+  // Reconciles the profiles and displays with the connected outputs now, if something changed since the last time.
+  static reflow(): number {
+    const raw = call("display_reflow");
+    return raw;
   }
 }
 

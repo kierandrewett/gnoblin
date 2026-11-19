@@ -41,6 +41,8 @@ mod camera;
 mod client_state;
 mod collection;
 mod desks;
+mod display_api;
+mod displays;
 mod error;
 mod events;
 mod exports;

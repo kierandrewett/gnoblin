@@ -3,7 +3,7 @@
 // catalog 0x8d9a5c8fd0c2c922, core-abi 1.0, std-abi 1.0
 
 import type { Init } from "gnoblin-std/generated/native";
-import { CollectionKind, EventKind, TermKind, LayoutKind, PlaceKind, PlacementFlags, QueryFlags, OutputsKind, WorkspacesKind, AxisKind, ClientFlags, OutputFlags, AreasFlags, SnapKind, EasingKind, PropKind, TransitionKind, ControlKind, StyleKind, EntryKind, SceneKind, BuiltinKind, ValueKind, BindingKind, DragKind, ConstraintKind, GestureKind, WayKind, SideFlags, OutcomeFlags } from "gnoblin-std/generated/constants";
+import { CollectionKind, EventKind, TermKind, LayoutKind, PlaceKind, PlacementFlags, QueryFlags, OutputsKind, WorkspacesKind, AxisKind, ClientFlags, OutputFlags, AreasFlags, SnapKind, PresentKind, SelectKind, ProfileFlags, PositionKind, AlignKind, DisplayFlags, EasingKind, PropKind, TransitionKind, ControlKind, StyleKind, EntryKind, SceneKind, BuiltinKind, ValueKind, BindingKind, DragKind, ConstraintKind, GestureKind, WayKind, SideFlags, OutcomeFlags } from "gnoblin-std/generated/constants";
 
 // A rectangle in the compositor's logical pixels.
 export interface Rect {
@@ -289,6 +289,15 @@ export const Event = {
   transitionFinished(member: number = 0, flag: number = 0): Event {
     return { kind: EventKind.TRANSITION_FINISHED, flag, collection: 0, member, text: "", rect: { x: 0, y: 0, width: 0, height: 0 } };
   },
+  displays(member: number = 0): Event {
+    return { kind: EventKind.DISPLAYS, flag: 0, collection: 0, member, text: "", rect: { x: 0, y: 0, width: 0, height: 0 } };
+  },
+  applied(member: number = 0, text: string = ""): Event {
+    return { kind: EventKind.APPLIED, flag: 0, collection: 0, member, text, rect: { x: 0, y: 0, width: 0, height: 0 } };
+  },
+  note(text: string = ""): Event {
+    return { kind: EventKind.NOTE, flag: 0, collection: 0, member: 0, text, rect: { x: 0, y: 0, width: 0, height: 0 } };
+  },
 };
 
 // One condition of a `collection_where` query: a property of the members and the value it has to equal. Terms of the same
@@ -333,6 +342,156 @@ export const QueryTerm = {
     return { kind: TermKind.BOOL, flag, key: "", text: "", number: 0 };
   },
 };
+
+// An output profile: the argument of `profile_new` and `profile_set`. A struct that starts with `size` may grow.
+export interface ProfileSpec {
+  flags: number;
+  id: string;
+  connector: string;
+  make: string;
+  model: string;
+  serial: string;
+  mode: string;
+  transform: string;
+  scale: number;
+  supersample: number;
+  position: number;
+  align: number;
+  x: number;
+  y: number;
+  targetKind: number;
+  target: number;
+}
+
+export function profileSpecToNative(value: Init<ProfileSpec>): Record<string, unknown> {
+  return {
+    flags: value.flags,
+    id: value.id,
+    connector: value.connector,
+    make: value.make,
+    model: value.model,
+    serial: value.serial,
+    mode: value.mode,
+    transform: value.transform,
+    scale: value.scale,
+    supersample: value.supersample,
+    position: value.position,
+    align: value.align,
+    x: value.x,
+    y: value.y,
+    target_kind: value.targetKind,
+    target: value.target,
+  };
+}
+
+export function profileSpecFromNative(data: any): ProfileSpec {
+  return {
+    flags: data.flags,
+    id: data.id,
+    connector: data.connector,
+    make: data.make,
+    model: data.model,
+    serial: data.serial,
+    mode: data.mode,
+    transform: data.transform,
+    scale: data.scale,
+    supersample: data.supersample,
+    position: data.position,
+    align: data.align,
+    x: data.x,
+    y: data.y,
+    targetKind: data.target_kind,
+    target: data.target,
+  };
+}
+
+// One thing a display presents: an output profile, or an output.
+export interface Selector {
+  kind: SelectKind;
+  target: number;
+}
+
+export function selectorToNative(value: Init<Selector>): Record<string, unknown> {
+  return {
+    kind: value.kind,
+    target: value.target,
+  };
+}
+
+export function selectorFromNative(data: any): Selector {
+  return {
+    kind: data.kind as SelectKind,
+    target: data.target,
+  };
+}
+
+/** The kinds of `Selector`, each with the fields it reads. */
+export const Selector = {
+  profile(): Selector {
+    return { kind: SelectKind.PROFILE, target: 0 };
+  },
+  output(): Selector {
+    return { kind: SelectKind.OUTPUT, target: 0 };
+  },
+};
+
+// A logical display: the argument of `display_new`. A struct that starts with `size` may grow.
+export interface DisplaySpec {
+  mode: number;
+  id: string;
+  selectors: Selector[];
+  wanted: number;
+}
+
+export function displaySpecToNative(value: Init<DisplaySpec>): Record<string, unknown> {
+  return {
+    mode: value.mode,
+    id: value.id,
+    selectors: value.selectors === undefined ? undefined : value.selectors.map(selectorToNative),
+    wanted: value.wanted,
+  };
+}
+
+export function displaySpecFromNative(data: any): DisplaySpec {
+  return {
+    mode: data.mode,
+    id: data.id,
+    selectors: (Array.from(data.selectors) as any[]).map(selectorFromNative),
+    wanted: data.wanted,
+  };
+}
+
+// What a display is now: filled by `display_info`.
+export interface DisplayInfo {
+  flags: number;
+  mode: number;
+  id: string;
+  shown: number;
+  content: number;
+  wanted: number;
+}
+
+export function displayInfoToNative(value: Init<DisplayInfo>): Record<string, unknown> {
+  return {
+    flags: value.flags,
+    mode: value.mode,
+    id: value.id,
+    shown: value.shown,
+    content: value.content,
+    wanted: value.wanted,
+  };
+}
+
+export function displayInfoFromNative(data: any): DisplayInfo {
+  return {
+    flags: data.flags,
+    mode: data.mode,
+    id: data.id,
+    shown: data.shown,
+    content: data.content,
+    wanted: data.wanted,
+  };
+}
 
 // Where one client goes: what a layout's `compute` hands to `GnoblinStdLayoutContext.emit`. A client the layout gives no
 // placement is placed with the defaults (not tiled, shown, no depth, no rotation, unit scale).

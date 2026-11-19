@@ -70,6 +70,32 @@ const | STD_SNAP_LEFT | u32 = 1 | 1.0
 const | STD_SNAP_RIGHT | u32 = 2 | 1.0
 const | STD_SNAP_TOP | u32 = 3 | 1.0
 const | STD_EVENT_TRANSITION_FINISHED | u32 = 11 | 1.0
+const | STD_EVENT_DISPLAYS | u32 = 20 | 1.0
+const | STD_EVENT_APPLIED | u32 = 21 | 1.0
+const | STD_EVENT_NOTE | u32 = 22 | 1.0
+const | STD_PRESENT_SINGLE | u32 = 0 | 1.0
+const | STD_PRESENT_MIRROR | u32 = 1 | 1.0
+const | STD_PRESENT_SPAN | u32 = 2 | 1.0
+const | STD_SELECT_PROFILE | u32 = 1 | 1.0
+const | STD_SELECT_OUTPUT | u32 = 2 | 1.0
+const | STD_PROFILE_HAS_SCALE | u32 = 1 | 1.0
+const | STD_PROFILE_HAS_SUPERSAMPLE | u32 = 2 | 1.0
+const | STD_PROFILE_HAS_VRR | u32 = 4 | 1.0
+const | STD_PROFILE_VRR_ON | u32 = 8 | 1.0
+const | STD_PROFILE_HAS_ENABLED | u32 = 16 | 1.0
+const | STD_PROFILE_ENABLED_ON | u32 = 32 | 1.0
+const | STD_POSITION_NONE | u32 = 0 | 1.0
+const | STD_POSITION_ABSOLUTE | u32 = 1 | 1.0
+const | STD_POSITION_RIGHT_OF | u32 = 2 | 1.0
+const | STD_POSITION_LEFT_OF | u32 = 3 | 1.0
+const | STD_POSITION_ABOVE | u32 = 4 | 1.0
+const | STD_POSITION_BELOW | u32 = 5 | 1.0
+const | STD_ALIGN_START | u32 = 0 | 1.0
+const | STD_ALIGN_CENTER | u32 = 1 | 1.0
+const | STD_ALIGN_END | u32 = 2 | 1.0
+const | STD_DISPLAY_IMPLICIT | u32 = 1 | 1.0
+const | STD_DISPLAY_LISTED | u32 = 2 | 1.0
+const | STD_DISPLAY_HAS_DESK | u32 = 4 | 1.0
 const | STD_EASING_LINEAR | u32 = 0 | 1.0
 const | STD_EASING_EASE | u32 = 1 | 1.0
 const | STD_EASING_EASE_IN | u32 = 2 | 1.0
@@ -180,6 +206,8 @@ alias | GnoblinStdWorkspace | u64 | 1.0
 alias | GnoblinStdTransition | u64 | 1.0
 alias | GnoblinStdStyle | u64 | 1.0
 alias | GnoblinStdBuiltin | u64 | 1.0
+alias | GnoblinStdProfile | u64 | 1.0
+alias | GnoblinStdDisplay | u64 | 1.0
 
 callback | GnoblinStdEventFn | unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinStdEvent) -> i32 | 1.0
 callback | GnoblinStdComputeFn | unsafe extern "C" fn(user: *mut c_void, cx: *const GnoblinStdLayoutContext) -> i32 | 1.0
@@ -283,6 +311,53 @@ field | GnoblinStdQueryTerm.reserved | u32 @12 +4 | 1.0
 field | GnoblinStdQueryTerm.key | GnoblinStr @16 +16 | 1.0
 field | GnoblinStdQueryTerm.text | GnoblinStr @32 +16 | 1.0
 field | GnoblinStdQueryTerm.number | f64 @48 +8 | 1.0
+
+struct | GnoblinStdProfileSpec | size 176 align 8 extensible | 1.0
+
+field | GnoblinStdProfileSpec.size | u32 @0 +4 | 1.0
+field | GnoblinStdProfileSpec.flags | u32 @4 +4 | 1.0
+field | GnoblinStdProfileSpec.id | GnoblinStr @8 +16 | 1.0
+field | GnoblinStdProfileSpec.connector | GnoblinStr @24 +16 | 1.0
+field | GnoblinStdProfileSpec.make | GnoblinStr @40 +16 | 1.0
+field | GnoblinStdProfileSpec.model | GnoblinStr @56 +16 | 1.0
+field | GnoblinStdProfileSpec.serial | GnoblinStr @72 +16 | 1.0
+field | GnoblinStdProfileSpec.mode | GnoblinStr @88 +16 | 1.0
+field | GnoblinStdProfileSpec.transform | GnoblinStr @104 +16 | 1.0
+field | GnoblinStdProfileSpec.scale | f64 @120 +8 | 1.0
+field | GnoblinStdProfileSpec.supersample | f64 @128 +8 | 1.0
+field | GnoblinStdProfileSpec.position | u32 @136 +4 | 1.0
+field | GnoblinStdProfileSpec.align | u32 @140 +4 | 1.0
+field | GnoblinStdProfileSpec.x | f64 @144 +8 | 1.0
+field | GnoblinStdProfileSpec.y | f64 @152 +8 | 1.0
+field | GnoblinStdProfileSpec.target_kind | u32 @160 +4 | 1.0
+field | GnoblinStdProfileSpec.reserved | u32 @164 +4 | 1.0
+field | GnoblinStdProfileSpec.target | u64 @168 +8 | 1.0
+
+struct | GnoblinStdSelector | size 16 align 8 fixed | 1.0
+
+field | GnoblinStdSelector.kind | u32 @0 +4 | 1.0
+field | GnoblinStdSelector.reserved | u32 @4 +4 | 1.0
+field | GnoblinStdSelector.target | u64 @8 +8 | 1.0
+
+struct | GnoblinStdDisplaySpec | size 48 align 8 extensible | 1.0
+
+field | GnoblinStdDisplaySpec.size | u32 @0 +4 | 1.0
+field | GnoblinStdDisplaySpec.mode | u32 @4 +4 | 1.0
+field | GnoblinStdDisplaySpec.id | GnoblinStr @8 +16 | 1.0
+field | GnoblinStdDisplaySpec.selectors | *const GnoblinStdSelector @24 +8 | 1.0
+field | GnoblinStdDisplaySpec.n_selectors | usize @32 +8 | 1.0
+field | GnoblinStdDisplaySpec.wanted | GnoblinStdWorkspace @40 +8 | 1.0
+
+struct | GnoblinStdDisplayInfo | size 56 align 8 extensible | 1.0
+
+field | GnoblinStdDisplayInfo.size | u32 @0 +4 | 1.0
+field | GnoblinStdDisplayInfo.flags | u32 @4 +4 | 1.0
+field | GnoblinStdDisplayInfo.mode | u32 @8 +4 | 1.0
+field | GnoblinStdDisplayInfo.reserved | u32 @12 +4 | 1.0
+field | GnoblinStdDisplayInfo.id | GnoblinStr @16 +16 | 1.0
+field | GnoblinStdDisplayInfo.shown | GnoblinStdWorkspace @32 +8 | 1.0
+field | GnoblinStdDisplayInfo.content | GnoblinStdWorkspace @40 +8 | 1.0
+field | GnoblinStdDisplayInfo.wanted | GnoblinStdWorkspace @48 +8 | 1.0
 
 struct | GnoblinStdMembers | size 16 align 8 fixed | 1.0
 
@@ -576,7 +651,7 @@ struct | GnoblinStdStyleEntries | size 16 align 8 fixed | 1.0
 field | GnoblinStdStyleEntries.ptr | *const GnoblinStdStyleEntry @0 +8 | 1.0
 field | GnoblinStdStyleEntries.len | usize @8 +8 | 1.0
 
-struct | GnoblinStdApi | size 840 align 8 extensible | 1.0
+struct | GnoblinStdApi | size 992 align 8 extensible | 1.0
 
 field | GnoblinStdApi.size | u32 @0 +4 | 1.0
 field | GnoblinStdApi.major | u32 @4 +4 | 1.0
@@ -685,3 +760,22 @@ field | GnoblinStdApi.floating_place | unsafe extern "C" fn(ctx: GnoblinCtx, que
 field | GnoblinStdApi.style_rank | unsafe extern "C" fn(ctx: GnoblinCtx, style: GnoblinStdStyle, rank: f64) -> i32 @816 +8 | 1.0
 field | GnoblinStdApi.scene_children | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinStdMembers) -> i32 @824 +8 | 1.0
 field | GnoblinStdApi.scene_parent | unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinNode) -> i32 @832 +8 | 1.0
+field | GnoblinStdApi.profile_new | unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdProfileSpec, out: *mut GnoblinStdProfile) -> i32 @840 +8 | 1.0
+field | GnoblinStdApi.profile_set | unsafe extern "C" fn(ctx: GnoblinCtx, profile: GnoblinStdProfile, spec: *const GnoblinStdProfileSpec) -> i32 @848 +8 | 1.0
+field | GnoblinStdApi.profile_add | unsafe extern "C" fn(ctx: GnoblinCtx, profile: GnoblinStdProfile) -> i32 @856 +8 | 1.0
+field | GnoblinStdApi.profile_remove | unsafe extern "C" fn(ctx: GnoblinCtx, profile: GnoblinStdProfile) -> i32 @864 +8 | 1.0
+field | GnoblinStdApi.profile_list | unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinStdMembers) -> i32 @872 +8 | 1.0
+field | GnoblinStdApi.display_new | unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdDisplaySpec, out: *mut GnoblinStdDisplay) -> i32 @880 +8 | 1.0
+field | GnoblinStdApi.display_set_mode | unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay, mode: u32) -> i32 @888 +8 | 1.0
+field | GnoblinStdApi.display_add | unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay) -> i32 @896 +8 | 1.0
+field | GnoblinStdApi.display_remove | unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay) -> i32 @904 +8 | 1.0
+field | GnoblinStdApi.display_replace | unsafe extern "C" fn(ctx: GnoblinCtx, old: GnoblinStdDisplay, next: GnoblinStdDisplay) -> i32 @912 +8 | 1.0
+field | GnoblinStdApi.display_clear | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @920 +8 | 1.0
+field | GnoblinStdApi.display_list | unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinStdMembers) -> i32 @928 +8 | 1.0
+field | GnoblinStdApi.display_info | unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay, out: *mut GnoblinStdDisplayInfo) -> i32 @936 +8 | 1.0
+field | GnoblinStdApi.display_outputs | unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay, out: *mut GnoblinStdMembers) -> i32 @944 +8 | 1.0
+field | GnoblinStdApi.display_at | unsafe extern "C" fn(ctx: GnoblinCtx, x: f64, y: f64, out: *mut GnoblinStdDisplay) -> i32 @952 +8 | 1.0
+field | GnoblinStdApi.display_assign | unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay, workspace: GnoblinStdWorkspace) -> i32 @960 +8 | 1.0
+field | GnoblinStdApi.display_snapshot | unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut u64) -> i32 @968 +8 | 1.0
+field | GnoblinStdApi.display_restore | unsafe extern "C" fn(ctx: GnoblinCtx, token: u64) -> i32 @976 +8 | 1.0
+field | GnoblinStdApi.display_reflow | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @984 +8 | 1.0

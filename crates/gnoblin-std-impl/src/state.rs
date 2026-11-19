@@ -194,6 +194,8 @@ pub(crate) struct State {
     pub(crate) rec: HashMap<NodeId, ClientRec>,
     /// Every connected output, in the order it appeared.
     pub(crate) outputs: Vec<NodeId>,
+    /// The output profiles and the displays, and what reconciles them with the outputs (`displays.rs`).
+    pub(crate) disp: crate::displays::Displays,
     /// The room the shell's own bars take from the top and the bottom of each output (`output_set_insets`).
     pub(crate) insets: HashMap<NodeId, (f64, f64)>,
     /// The added workspaces, in order.

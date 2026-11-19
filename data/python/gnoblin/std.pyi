@@ -37,6 +37,9 @@ class EventKind(IntEnum):
     DECORATION_CHANGED = 9
     MODE_CHANGED = 10
     TRANSITION_FINISHED = 11
+    DISPLAYS = 20
+    APPLIED = 21
+    NOTE = 22
 
 class TermKind(IntEnum):
     """The `STD_TERM_*` constants."""
@@ -121,6 +124,53 @@ class SnapKind(IntEnum):
     RIGHT = 2
     TOP = 3
     MARGIN = 4
+
+class PresentKind(IntEnum):
+    """The `STD_PRESENT_*` constants."""
+
+    SINGLE = 0
+    MIRROR = 1
+    SPAN = 2
+
+class SelectKind(IntEnum):
+    """The `STD_SELECT_*` constants."""
+
+    PROFILE = 1
+    OUTPUT = 2
+
+class ProfileFlags(IntFlag):
+    """The `STD_PROFILE_*` constants."""
+
+    HAS_SCALE = 1
+    HAS_SUPERSAMPLE = 2
+    HAS_VRR = 4
+    VRR_ON = 8
+    HAS_ENABLED = 16
+    ENABLED_ON = 32
+
+class PositionKind(IntEnum):
+    """The `STD_POSITION_*` constants."""
+
+    NONE = 0
+    ABSOLUTE = 1
+    RIGHT_OF = 2
+    LEFT_OF = 3
+    ABOVE = 4
+    BELOW = 5
+
+class AlignKind(IntEnum):
+    """The `STD_ALIGN_*` constants."""
+
+    START = 0
+    CENTER = 1
+    END = 2
+
+class DisplayFlags(IntFlag):
+    """The `STD_DISPLAY_*` constants."""
+
+    IMPLICIT = 1
+    LISTED = 2
+    HAS_DESK = 4
 
 class EasingKind(IntEnum):
     """The `STD_EASING_*` constants."""
@@ -446,6 +496,15 @@ class Event:
     @classmethod
     def of_transition_finished(cls, member: int = ..., flag: int = ...) -> Event: ...
 
+    @classmethod
+    def of_displays(cls, member: int = ...) -> Event: ...
+
+    @classmethod
+    def of_applied(cls, member: int = ..., text: str = ...) -> Event: ...
+
+    @classmethod
+    def of_note(cls, text: str = ...) -> Event: ...
+
     def _to_dyn(self) -> dict[str, Any]: ...
 
     @classmethod
@@ -476,6 +535,80 @@ class QueryTerm:
 
     @classmethod
     def _from_dyn(cls, data: dict[str, Any]) -> QueryTerm: ...
+
+@dataclass
+class ProfileSpec:
+    """An output profile: the argument of `profile_new` and `profile_set`. A struct that starts with `size` may grow."""
+
+    flags: int = ...
+    id: str = ...
+    connector: str = ...
+    make: str = ...
+    model: str = ...
+    serial: str = ...
+    mode: str = ...
+    transform: str = ...
+    scale: float = ...
+    supersample: float = ...
+    position: int = ...
+    align: int = ...
+    x: float = ...
+    y: float = ...
+    target_kind: int = ...
+    target: int = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> ProfileSpec: ...
+
+@dataclass
+class Selector:
+    """One thing a display presents: an output profile, or an output."""
+
+    kind: SelectKind = ...
+    target: int = ...
+
+    @classmethod
+    def of_profile(cls) -> Selector: ...
+
+    @classmethod
+    def of_output(cls) -> Selector: ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> Selector: ...
+
+@dataclass
+class DisplaySpec:
+    """A logical display: the argument of `display_new`. A struct that starts with `size` may grow."""
+
+    mode: int = ...
+    id: str = ...
+    selectors: list[Selector] = ...
+    wanted: int = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DisplaySpec: ...
+
+@dataclass
+class DisplayInfo:
+    """What a display is now: filled by `display_info`."""
+
+    flags: int = ...
+    mode: int = ...
+    id: str = ...
+    shown: int = ...
+    content: int = ...
+    wanted: int = ...
+
+    def _to_dyn(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DisplayInfo: ...
 
 @dataclass
 class Placement:
@@ -1639,6 +1772,132 @@ class Floating:
         with `STD_FLOAT_APART` as it keeps windows off one another's corner. Reads nothing of the library's state: it never starts
         the desktop. `E_TYPE` for a mode that is not `STD_PLACE_*` or a number that is not finite.
         """
+        ...
+
+class Profile:
+    """An output profile (a persistent selector for one monitor and the settings it gets), by the library's own id. Zero is nil; an
+    id is never reused in one process.
+    """
+
+    handle: int
+    def __init__(self, handle: int | Profile) -> None: ...
+
+    @staticmethod
+    def new(spec: ProfileSpec | dict[str, Any]) -> Optional[Profile]:
+        """Makes an output profile and writes its handle to `out`. It is not in the list of profiles until `profile_add`. `E_TYPE`
+        for a spec with no id or no match key, or a value out of range.
+        """
+        ...
+
+    def set(self, spec: ProfileSpec | dict[str, Any]) -> int:
+        """Replaces the settings of the profile (not its id or its match); the next reconciliation applies them. `E_TYPE` for a value
+        out of range, or a position that depends on itself through other profiles.
+        """
+        ...
+
+    def add(self) -> int:
+        """Adds the profile to the list of profiles and applies it to the output it is for, now or when it connects. `E_BUSY` when a
+        profile with its id is there already.
+        """
+        ...
+
+    def remove(self) -> bool:
+        """Takes the profile out of the list: 1 when it left, 0 when it was not in it. The compositor keeps the arrangement it applied
+        last.
+        """
+        ...
+
+    @staticmethod
+    def list() -> list[int]:
+        """Writes the profiles in the list, in order, to `out`. The array is valid until the next call into the library on this thread."""
+        ...
+
+class Display:
+    """A logical display (one viewport shown on one output, copied to several or stretched over their union), by the library's own
+    id. Zero is nil; an id is never reused in one process.
+    """
+
+    handle: int
+    def __init__(self, handle: int | Display) -> None: ...
+
+    @staticmethod
+    def new(spec: DisplaySpec | dict[str, Any]) -> Optional[Display]:
+        """Makes a display and writes its handle to `out`. It is not in the list of displays until `display_add`. `E_TYPE` for a spec
+        with no id, no selector, or a `single` display of several selectors.
+        """
+        ...
+
+    def set_mode(self, mode: int) -> int:
+        """Sets how the display presents its outputs; the next reconciliation enacts it. `E_TYPE` for a `single` display of several
+        selectors.
+        """
+        ...
+
+    def add(self) -> int:
+        """Adds the display to the list and reconciles. `E_BUSY` when a display already has its id, `E_REFUSED` when another display
+        presents one of its outputs (the words name both).
+        """
+        ...
+
+    def remove(self) -> bool:
+        """Takes a display of the shell's script out of the list: its mirror and span end and each of its outputs gets a display of the
+        library's. 1 when it left, 0 for a display of the library's own and for one that is not in the list.
+        """
+        ...
+
+    def replace(self, next: Display | int) -> int:
+        """Swaps `old` for `next` as one validated change: `old` and every other display of the script that shares an output with
+        `next` leave, and `next` takes `old`'s place. Nothing changes on failure: `E_STALE` when `old` is not a display of the script,
+        `E_BUSY` when `next` is in the list or a display that stays has its id.
+        """
+        ...
+
+    @staticmethod
+    def clear() -> int:
+        """Takes every display of the script out of the list."""
+        ...
+
+    @staticmethod
+    def list() -> list[int]:
+        """Writes the displays in the list, in order, to `out`. The array is valid until the next call into the library on this thread."""
+        ...
+
+    def info(self) -> DisplayInfo:
+        """Fills `out` with what the display is now."""
+        ...
+
+    def outputs(self) -> list[int]:
+        """Writes the output nodes the display presents now, in the order of its selectors, to `out`. The array is valid until the next
+        call into the library on this thread.
+        """
+        ...
+
+    @staticmethod
+    def at(x: float, y: float) -> Optional[Display]:
+        """Writes the display under the point (in the compositor's logical space), else the primary output's, to `out`; zero when no
+        display has an output.
+        """
+        ...
+
+    def assign(self, workspace: Workspace | int) -> int:
+        """Shows the workspace on the display, or keeps it for when the display has an output with a desk. `E_REFUSED` when the
+        workspace is not added.
+        """
+        ...
+
+    @staticmethod
+    def snapshot() -> int:
+        """Remembers what each display waits to show, and writes the token that `display_restore` takes to `out`."""
+        ...
+
+    @staticmethod
+    def restore(token: int) -> int:
+        """Puts back what `display_snapshot` remembered (once: the token is spent). The displays that left since are not restored."""
+        ...
+
+    @staticmethod
+    def reflow() -> int:
+        """Reconciles the profiles and displays with the connected outputs now, if something changed since the last time."""
         ...
 
 class Registration:

@@ -2,63 +2,29 @@
 
 import { Display } from "gnoblin-std/display/display";
 import { attachDisplays } from "gnoblin-std/display/state";
-import type { OutputConfig } from "gnoblin-core/output_config";
 import type { OutputProfile } from "gnoblin-std/display/output_profile";
 import { DisplayManager } from "gnoblin-std/display_manager/manager";
 import type { DisplayBackend, OutputSet } from "gnoblin-std/display_manager/backend";
 import { GnoblinError } from "gnoblin-core/errors";
+import type { ErrorCode } from "gnoblin-core/errors";
 import { CREATE } from "gnoblin-core/host/bridge";
-import { holders, recompute } from "gnoblin-core/host/collection_events";
+import { emitMember, holders, recompute } from "gnoblin-core/host/collection_events";
 import { collectionState, rootState } from "gnoblin-core/host/collection_state";
 import { Collection } from "gnoblin-core/host/collections";
 import { ctx } from "gnoblin-core/host/context";
 import { std } from "gnoblin-std/host/state";
-import { hasDesk, liveOutputs, outputInfo, primaryOutput, shownOn } from "gnoblin-std/host/desks";
-import { nativeOutput } from "gnoblin-std/host/library";
-import { Collection as NativeCollection, Output as NativeOutput } from "gnoblin-std/generated/classes";
+import { failureCode, FAILED, nativeOutput, throughLibrary } from "gnoblin-std/host/library";
+import { Collection as NativeCollection, Workspace as NativeWorkspace } from "gnoblin-std/generated/classes";
 import { CollectionKind, EventKind } from "gnoblin-std/generated/constants";
 import { queueFor, say } from "gnoblin-core/host/dispatch";
 import { Output } from "gnoblin-core/host/output";
-import { applyOutput } from "gnoblin-core/host/output_apply";
-import { showWorkspace } from "gnoblin-std/host/show";
+import { stateOf } from "gnoblin-core/host/node_state";
 import { Workspace } from "gnoblin-std/host/workspace";
-import { syncMembership } from "gnoblin-std/host/membership";
+import { workspaceOf, wsState } from "gnoblin-std/host/workspace_state";
 
 /** Whether two lists hold the same outputs in the same order. */
 function sameOutputs(a: readonly Output[], b: readonly Output[]): boolean {
     return a.length === b.length && a.every((output, at) => output === b[at]);
-}
-
-/** Makes the desk of `lead` show one workspace over `members` (the desks of the other members show nothing of their own and
- * cover the same workspace), or ends the span with null. Asking for the span that holds changes nothing.
- */
-function spanDesks(lead: Output, members: readonly Output[] | null): void {
-    // An output the library has not heard of yet has no desk to span: its arrival asks the manager again.
-    if (outputInfo(lead) === null) {
-        return;
-    }
-    NativeOutput.span({
-        lead: nativeOutput(lead).node,
-        members: (members ?? [])
-            .filter((output) => outputInfo(output) !== null)
-            .map((output) => nativeOutput(output).node),
-    });
-    syncMembership();
-}
-
-/** Sends an output request on behalf of a profile or display; a request the shell cannot send is reported, not
- * thrown.
- */
-function requestOutput(
-    output: Output,
-    setting: Omit<OutputConfig, "mirrorOf"> & { mirrorOf?: Output | string | null },
-    path: string,
-): void {
-    try {
-        applyOutput(output, setting, `gnoblin.${path}`, path);
-    } catch (error) {
-        say(`${path}: ${error instanceof Error ? error.message : String(error)}`);
-    }
 }
 
 /** A `Collection<Output>` for one display, kept equal to what the display presents. */
@@ -104,44 +70,65 @@ function announceMember(member: Display | OutputProfile, joined: boolean): void 
 /** Makes the display manager and attaches `Display` to it. */
 export function installDisplays(): void {
     const displayBackend: DisplayBackend = {
-        outputs: () => liveOutputs(),
-        primary: () => primaryOutput(),
-        hasDesk: (output) => hasDesk(output as Output),
-        shownOn: (output) => shownOn(output as Output),
-        attached: (workspace) => (workspace as Workspace).index >= 0,
-        show: (workspace, output) => showWorkspace(workspace as Workspace, { output: output as Output }),
-        span: (lead, members) => spanDesks(lead as Output, members as readonly Output[] | null),
-        mirrorOf: (output) => (output as Output).mirrorOf,
-        mirror: (output, source, path) => requestOutput(output as Output, { mirrorOf: source as Output | null }, path),
-        apply: (output, setting, path) => requestOutput(output as Output, setting as OutputConfig, path),
-        pending: (output) => [...ctx.applications.values()].some((pending) => pending.output === output),
+        outputOf: (node) => (ctx.outputsByNode.get(node) as Output | undefined) ?? null,
+        workspaceOf: (handle) => workspaceOf(new NativeWorkspace(handle)),
+        workspaceHandle: (workspace) => wsState(workspace as Workspace).native.handle,
+        outputNode: (output) => nativeOutput(output as Output).node,
+        through(target, known, call) {
+            const codes: Record<number, ErrorCode> = {};
+            if (known.busy !== undefined) codes[FAILED.busy] = known.busy;
+            if (known.refused !== undefined) codes[FAILED.refused] = known.refused;
+            if (known.stale !== undefined) codes[FAILED.stale] = known.stale;
+            return throughLibrary(target, codes, () => {
+                try {
+                    return call();
+                } catch (error) {
+                    // The library's words start with the name of the code; the script's error is about the call.
+                    if (error instanceof Error) {
+                        error.message = error.message.replace(/^E_[A-Z_]+: /, "");
+                    }
+                    throw error;
+                }
+            });
+        },
+        isStale: (error) => failureCode(error) === FAILED.stale,
         say,
-        error: (code, target, message) => new GnoblinError(code, target, message),
         outputSet: makeOutputSet,
         listed: (member) => announceMember(member, true),
         unlisted: (member) => announceMember(member, false),
     };
 
-    // Reconciles the script's profiles and displays with the connected outputs.
+    // The library reconciles the script's profiles and displays with the connected outputs; the manager keeps the shell's
+    // collections equal to what it did.
     std.displayManager = new DisplayManager(
         displayBackend,
         std.profileRoot.list as OutputProfile[],
         std.displayRoot.list as Display[],
     );
 
-    // The library hears of an output a turn after the engine does, and an output it has a desk for is what a display shows on.
+    // What the library says about displays reaches the shell as events of the root collection of outputs: the lists changed, an
+    // answer to a request it sent for an output, and a sentence for the diagnostics.
     const connected = NativeCollection.root(CollectionKind.OUTPUTS);
-    for (const event of [EventKind.ADDED, EventKind.REMOVED]) {
-        connected?.listen(event, 0, () => std.displayManager.changed());
-    }
+    connected?.listen(EventKind.DISPLAYS, 0, () => std.displayManager.sync());
+    connected?.listen(EventKind.NOTE, 0, (event) => say(event.text));
+    connected?.listen(EventKind.APPLIED, 0, (event) => {
+        const output = ctx.outputsByNode.get(event.member) as Output | undefined;
+        if (output !== undefined && stateOf(output).alive) {
+            emitMember(output, holders(ctx.outputRoot, output), "onApplied", [
+                output,
+                event.text === "" ? null : event.text,
+            ]);
+        }
+    });
 
     attachDisplays({
-        changed: () => std.displayManager.changed(),
         isWorkspace: (value) => value instanceof Workspace,
         isOutput: (value) => value instanceof Output,
         error: (code, target, message) => new GnoblinError(code, target, message),
         shown: (display) => std.displayManager.shown(display),
         show: (display, workspace) => std.displayManager.assignContent(display, workspace),
         outputs: (display) => std.displayManager.outputsOf(display),
+        workspaceHandle: (workspace) => wsState(workspace as Workspace).native.handle,
+        outputNode: (output) => nativeOutput(output as Output).node,
     });
 }

@@ -37,19 +37,6 @@ export const lifecycle: Partial<HostHooks> = {
         forgetClient(client);
     },
 
-    // The display manager reconciles the outputs it was told about on its next frame.
-    outputAdded() {
-        std.displayManager.changed();
-    },
-
-    outputLeft() {
-        std.displayManager.changed();
-    },
-
-    outputChange() {
-        std.displayManager.changed();
-    },
-
     nodeDestroyed: (node) => uiNodeGone(node),
 
     nodesDestroyed: (nodes) => sceneForget(nodes),

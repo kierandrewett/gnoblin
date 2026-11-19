@@ -39,6 +39,9 @@ class EventKind(IntEnum):
     DECORATION_CHANGED = 9
     MODE_CHANGED = 10
     TRANSITION_FINISHED = 11
+    DISPLAYS = 20
+    APPLIED = 21
+    NOTE = 22
 
 class TermKind(IntEnum):
     """The `STD_TERM_*` constants."""
@@ -123,6 +126,53 @@ class SnapKind(IntEnum):
     RIGHT = 2
     TOP = 3
     MARGIN = 4
+
+class PresentKind(IntEnum):
+    """The `STD_PRESENT_*` constants."""
+
+    SINGLE = 0
+    MIRROR = 1
+    SPAN = 2
+
+class SelectKind(IntEnum):
+    """The `STD_SELECT_*` constants."""
+
+    PROFILE = 1
+    OUTPUT = 2
+
+class ProfileFlags(IntFlag):
+    """The `STD_PROFILE_*` constants."""
+
+    HAS_SCALE = 1
+    HAS_SUPERSAMPLE = 2
+    HAS_VRR = 4
+    VRR_ON = 8
+    HAS_ENABLED = 16
+    ENABLED_ON = 32
+
+class PositionKind(IntEnum):
+    """The `STD_POSITION_*` constants."""
+
+    NONE = 0
+    ABSOLUTE = 1
+    RIGHT_OF = 2
+    LEFT_OF = 3
+    ABOVE = 4
+    BELOW = 5
+
+class AlignKind(IntEnum):
+    """The `STD_ALIGN_*` constants."""
+
+    START = 0
+    CENTER = 1
+    END = 2
+
+class DisplayFlags(IntFlag):
+    """The `STD_DISPLAY_*` constants."""
+
+    IMPLICIT = 1
+    LISTED = 2
+    HAS_DESK = 4
 
 class EasingKind(IntEnum):
     """The `STD_EASING_*` constants."""
@@ -581,6 +631,24 @@ class Event:
         # listener hears it once.
         return cls(kind=EventKind.TRANSITION_FINISHED, member=member, flag=flag)
 
+    @classmethod
+    def of_displays(cls, member: int = 0) -> Event:
+        # `GnoblinStdEvent.kind`: the displays or the profiles changed (one joined or left the list, or a display presents other
+        # outputs now). Heard on the root collection of outputs; `member` is zero.
+        return cls(kind=EventKind.DISPLAYS, member=member)
+
+    @classmethod
+    def of_applied(cls, member: int = 0, text: str = "") -> Event:
+        # `GnoblinStdEvent.kind`: the compositor answered a request the library sent for an output (a profile's settings, a mirror).
+        # Heard on the root collection of outputs; `member` is the output, `text` the compositor's words or empty for success.
+        return cls(kind=EventKind.APPLIED, member=member, text=text)
+
+    @classmethod
+    def of_note(cls, text: str = "") -> Event:
+        # `GnoblinStdEvent.kind`: something the library did not apply or has to say, once per generation. Heard on the root collection of
+        # outputs; `text` is the sentence for the shell's diagnostics.
+        return cls(kind=EventKind.NOTE, text=text)
+
     def _to_dyn(self) -> dict[str, Any]:
         return {
             "kind": self.kind,
@@ -646,6 +714,156 @@ class QueryTerm:
             key=data["key"],
             text=data["text"],
             number=data["number"],
+        )
+
+@dataclass
+class ProfileSpec:
+    """An output profile: the argument of `profile_new` and `profile_set`. A struct that starts with `size` may grow."""
+
+    flags: int = 0
+    id: str = ""
+    connector: str = ""
+    make: str = ""
+    model: str = ""
+    serial: str = ""
+    mode: str = ""
+    transform: str = ""
+    scale: float = 0.0
+    supersample: float = 0.0
+    position: int = 0
+    align: int = 0
+    x: float = 0.0
+    y: float = 0.0
+    target_kind: int = 0
+    target: int = 0
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "flags": self.flags,
+            "id": self.id,
+            "connector": self.connector,
+            "make": self.make,
+            "model": self.model,
+            "serial": self.serial,
+            "mode": self.mode,
+            "transform": self.transform,
+            "scale": self.scale,
+            "supersample": self.supersample,
+            "position": self.position,
+            "align": self.align,
+            "x": self.x,
+            "y": self.y,
+            "target_kind": self.target_kind,
+            "target": self.target,
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> ProfileSpec:
+        return cls(
+            flags=data["flags"],
+            id=data["id"],
+            connector=data["connector"],
+            make=data["make"],
+            model=data["model"],
+            serial=data["serial"],
+            mode=data["mode"],
+            transform=data["transform"],
+            scale=data["scale"],
+            supersample=data["supersample"],
+            position=data["position"],
+            align=data["align"],
+            x=data["x"],
+            y=data["y"],
+            target_kind=data["target_kind"],
+            target=data["target"],
+        )
+
+@dataclass
+class Selector:
+    """One thing a display presents: an output profile, or an output."""
+
+    kind: SelectKind = 0
+    target: int = 0
+
+    @classmethod
+    def of_profile(cls) -> Selector:
+        # `GnoblinStdSelector.kind`: the target is an output profile (`GnoblinStdProfile`), a selector that persists.
+        return cls(kind=SelectKind.PROFILE)
+
+    @classmethod
+    def of_output(cls) -> Selector:
+        # `GnoblinStdSelector.kind`: the target is an output (`GnoblinNode`) of the tree.
+        return cls(kind=SelectKind.OUTPUT)
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "target": self.target,
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> Selector:
+        return cls(
+            kind=_b.kind(SelectKind, data["kind"]),
+            target=data["target"],
+        )
+
+@dataclass
+class DisplaySpec:
+    """A logical display: the argument of `display_new`. A struct that starts with `size` may grow."""
+
+    mode: int = 0
+    id: str = ""
+    selectors: list[Selector] = field(default_factory=list)
+    wanted: int = 0
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "id": self.id,
+            "selectors": [item._to_dyn() for item in self.selectors],
+            "wanted": self.wanted,
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DisplaySpec:
+        return cls(
+            mode=data["mode"],
+            id=data["id"],
+            selectors=[Selector._from_dyn(item) for item in data["selectors"]],
+            wanted=data["wanted"],
+        )
+
+@dataclass
+class DisplayInfo:
+    """What a display is now: filled by `display_info`."""
+
+    flags: int = 0
+    mode: int = 0
+    id: str = ""
+    shown: int = 0
+    content: int = 0
+    wanted: int = 0
+
+    def _to_dyn(self) -> dict[str, Any]:
+        return {
+            "flags": self.flags,
+            "mode": self.mode,
+            "id": self.id,
+            "shown": self.shown,
+            "content": self.content,
+            "wanted": self.wanted,
+        }
+
+    @classmethod
+    def _from_dyn(cls, data: dict[str, Any]) -> DisplayInfo:
+        return cls(
+            flags=data["flags"],
+            mode=data["mode"],
+            id=data["id"],
+            shown=data["shown"],
+            content=data["content"],
+            wanted=data["wanted"],
         )
 
 @dataclass
@@ -2361,6 +2579,155 @@ class Floating(_b.Handle):
         """
         raw = _call("floating_place", _b.dyn(query))
         return Rect._from_dyn(raw)
+
+class Profile(_b.Handle):
+    """An output profile (a persistent selector for one monitor and the settings it gets), by the library's own id. Zero is nil; an
+    id is never reused in one process.
+    """
+
+    __slots__ = ("handle",)
+
+    def __init__(self, handle: int | Profile) -> None:
+        self.handle = _b.ident(handle)
+
+    @staticmethod
+    def new(spec: ProfileSpec | dict[str, Any]) -> Optional[Profile]:
+        """Makes an output profile and writes its handle to `out`. It is not in the list of profiles until `profile_add`. `E_TYPE`
+        for a spec with no id or no match key, or a value out of range.
+        """
+        raw = _call("profile_new", _b.dyn(spec))
+        return _b.wrap(Profile, raw)
+
+    def set(self, spec: ProfileSpec | dict[str, Any]) -> int:
+        """Replaces the settings of the profile (not its id or its match); the next reconciliation applies them. `E_TYPE` for a value
+        out of range, or a position that depends on itself through other profiles.
+        """
+        raw = _call("profile_set", self.handle, _b.dyn(spec))
+        return raw
+
+    def add(self) -> int:
+        """Adds the profile to the list of profiles and applies it to the output it is for, now or when it connects. `E_BUSY` when a
+        profile with its id is there already.
+        """
+        raw = _call("profile_add", self.handle)
+        return raw
+
+    def remove(self) -> bool:
+        """Takes the profile out of the list: 1 when it left, 0 when it was not in it. The compositor keeps the arrangement it applied
+        last.
+        """
+        raw = _call("profile_remove", self.handle)
+        return bool(raw)
+
+    @staticmethod
+    def list() -> list[int]:
+        """Writes the profiles in the list, in order, to `out`. The array is valid until the next call into the library on this thread."""
+        raw = _call("profile_list")
+        return list(raw)
+
+class Display(_b.Handle):
+    """A logical display (one viewport shown on one output, copied to several or stretched over their union), by the library's own
+    id. Zero is nil; an id is never reused in one process.
+    """
+
+    __slots__ = ("handle",)
+
+    def __init__(self, handle: int | Display) -> None:
+        self.handle = _b.ident(handle)
+
+    @staticmethod
+    def new(spec: DisplaySpec | dict[str, Any]) -> Optional[Display]:
+        """Makes a display and writes its handle to `out`. It is not in the list of displays until `display_add`. `E_TYPE` for a spec
+        with no id, no selector, or a `single` display of several selectors.
+        """
+        raw = _call("display_new", _b.dyn(spec))
+        return _b.wrap(Display, raw)
+
+    def set_mode(self, mode: int) -> int:
+        """Sets how the display presents its outputs; the next reconciliation enacts it. `E_TYPE` for a `single` display of several
+        selectors.
+        """
+        raw = _call("display_set_mode", self.handle, _b.dyn(mode))
+        return raw
+
+    def add(self) -> int:
+        """Adds the display to the list and reconciles. `E_BUSY` when a display already has its id, `E_REFUSED` when another display
+        presents one of its outputs (the words name both).
+        """
+        raw = _call("display_add", self.handle)
+        return raw
+
+    def remove(self) -> bool:
+        """Takes a display of the shell's script out of the list: its mirror and span end and each of its outputs gets a display of the
+        library's. 1 when it left, 0 for a display of the library's own and for one that is not in the list.
+        """
+        raw = _call("display_remove", self.handle)
+        return bool(raw)
+
+    def replace(self, next: Display | int) -> int:
+        """Swaps `old` for `next` as one validated change: `old` and every other display of the script that shares an output with
+        `next` leave, and `next` takes `old`'s place. Nothing changes on failure: `E_STALE` when `old` is not a display of the script,
+        `E_BUSY` when `next` is in the list or a display that stays has its id.
+        """
+        raw = _call("display_replace", self.handle, _b.dyn(next))
+        return raw
+
+    @staticmethod
+    def clear() -> int:
+        """Takes every display of the script out of the list."""
+        raw = _call("display_clear")
+        return raw
+
+    @staticmethod
+    def list() -> list[int]:
+        """Writes the displays in the list, in order, to `out`. The array is valid until the next call into the library on this thread."""
+        raw = _call("display_list")
+        return list(raw)
+
+    def info(self) -> DisplayInfo:
+        """Fills `out` with what the display is now."""
+        raw = _call("display_info", self.handle)
+        return DisplayInfo._from_dyn(raw)
+
+    def outputs(self) -> list[int]:
+        """Writes the output nodes the display presents now, in the order of its selectors, to `out`. The array is valid until the next
+        call into the library on this thread.
+        """
+        raw = _call("display_outputs", self.handle)
+        return list(raw)
+
+    @staticmethod
+    def at(x: float, y: float) -> Optional[Display]:
+        """Writes the display under the point (in the compositor's logical space), else the primary output's, to `out`; zero when no
+        display has an output.
+        """
+        raw = _call("display_at", _b.dyn(x), _b.dyn(y))
+        return _b.wrap(Display, raw)
+
+    def assign(self, workspace: Workspace | int) -> int:
+        """Shows the workspace on the display, or keeps it for when the display has an output with a desk. `E_REFUSED` when the
+        workspace is not added.
+        """
+        raw = _call("display_assign", self.handle, _b.dyn(workspace))
+        return raw
+
+    @staticmethod
+    def snapshot() -> int:
+        """Remembers what each display waits to show, and writes the token that `display_restore` takes to `out`."""
+        raw = _call("display_snapshot")
+        return raw
+
+    @staticmethod
+    def restore(token: int) -> int:
+        """Puts back what `display_snapshot` remembered (once: the token is spent). The displays that left since are not restored."""
+        raw = _call("display_restore", _b.dyn(token))
+        return raw
+
+    @staticmethod
+    def reflow() -> int:
+        """Reconciles the profiles and displays with the connected outputs now, if something changed since the last time."""
+        raw = _call("display_reflow")
+        return raw
 
 class Registration(_b.Handle):
     """A registration the std library holds for a shell: a listener on a collection. Owned by the generation that made it;

@@ -67,6 +67,9 @@ pub(crate) fn turn(std: &Rc<Std>) {
         }
         st.flush_geometry();
         st.anim_flush();
+        if st.desktop {
+            st.reflow_displays();
+        }
     }
     std.drain();
     layout_pass(std, &g);

@@ -85,10 +85,11 @@ subclasses them, with no second owner. `gnoblin.workspaces.show` stays and is wh
 not the documented way any more.
 
 **Where it lives.** `data/js/gnoblin-std/display/` holds the objects a script makes (`OutputProfile`, `Display`,
-`Viewport`, `Camera2D`; `display.ts` is the import path that lists them) and `display_manager/` the `DisplayManager`
-that reconciles them with the connected outputs (`display_manager.ts` is its import path).
-The host module (`data/js/gnoblin-core/host.ts`) owns the collections, the desks and the output requests, and gives
-the manager a `DisplayBackend`. The compositor and its protocol are unchanged: everything below is the existing
+`Viewport`, `Camera2D`; `display.ts` is the import path that lists them) and `display_manager/` the `DisplayManager`,
+which keeps the script's collections equal to the library's. The reconciling of profiles and displays with the connected
+outputs is `libgnoblin-std`'s (`crates/gnoblin-std-impl/src/displays.rs`; `design/modular-framework.md`, section 25.4):
+the objects a script makes each hold a handle on the library's. The host module (`data/js/gnoblin-std/host/displays.ts`)
+gives the manager a `DisplayBackend`. The compositor and its protocol are unchanged: everything below is the existing
 `screen.apply` text, mirror and the per-output desks.
 
 **`OutputProfile`.** A profile matches a connected output by `connector`, `make`, `model` and `serial` (the third part

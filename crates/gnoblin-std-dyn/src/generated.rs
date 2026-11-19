@@ -648,6 +648,120 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         scriptable: true,
         standalone: true,
     },
+    FunctionInfo {
+        name: "profile_new",
+        inputs: &["spec"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "profile_set",
+        inputs: &["profile", "spec"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "profile_add",
+        inputs: &["profile"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "profile_remove",
+        inputs: &["profile"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "profile_list",
+        inputs: &[],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_new",
+        inputs: &["spec"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_set_mode",
+        inputs: &["display", "mode"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_add",
+        inputs: &["display"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_remove",
+        inputs: &["display"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_replace",
+        inputs: &["old", "next"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_clear",
+        inputs: &[],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_list",
+        inputs: &[],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_info",
+        inputs: &["display"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_outputs",
+        inputs: &["display"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_at",
+        inputs: &["x", "y"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_assign",
+        inputs: &["display", "workspace"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_snapshot",
+        inputs: &[],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_restore",
+        inputs: &["token"],
+        scriptable: true,
+        standalone: false,
+    },
+    FunctionInfo {
+        name: "display_reflow",
+        inputs: &[],
+        scriptable: true,
+        standalone: false,
+    },
 ];
 
 pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
@@ -755,6 +869,25 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "style_rank" => style_rank(lib, ctx, args),
         "scene_children" => scene_children(lib, ctx, args),
         "scene_parent" => scene_parent(lib, ctx, args),
+        "profile_new" => profile_new(lib, ctx, args),
+        "profile_set" => profile_set(lib, ctx, args),
+        "profile_add" => profile_add(lib, ctx, args),
+        "profile_remove" => profile_remove(lib, ctx, args),
+        "profile_list" => profile_list(lib, ctx, args),
+        "display_new" => display_new(lib, ctx, args),
+        "display_set_mode" => display_set_mode(lib, ctx, args),
+        "display_add" => display_add(lib, ctx, args),
+        "display_remove" => display_remove(lib, ctx, args),
+        "display_replace" => display_replace(lib, ctx, args),
+        "display_clear" => display_clear(lib, ctx, args),
+        "display_list" => display_list(lib, ctx, args),
+        "display_info" => display_info(lib, ctx, args),
+        "display_outputs" => display_outputs(lib, ctx, args),
+        "display_at" => display_at(lib, ctx, args),
+        "display_assign" => display_assign(lib, ctx, args),
+        "display_snapshot" => display_snapshot(lib, ctx, args),
+        "display_restore" => display_restore(lib, ctx, args),
+        "display_reflow" => display_reflow(lib, ctx, args),
         other => Err(StdError::unsupported(other)),
     }
 }
@@ -3243,6 +3376,418 @@ fn scene_parent(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
     Ok(if out == 0 { Dyn::Nil } else { Dyn::Uint(out) })
 }
 
+#[allow(unused_mut, unused_variables)]
+fn profile_new(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, profile_new) + size_of::<usize>()) {
+        return Err(StdError::unsupported("profile_new"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`profile_new` takes 1 arguments (spec), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let spec = write_gnoblin_std_profile_spec(&mut arena, &args[0], "argument `spec` of `profile_new`")?;
+    let mut out: u64 = 0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.profile_new)(ctx, &raw const spec, &raw mut out) };
+    let status = lib.check("profile_new", returned)?;
+    arena.adopt();
+    Ok(if out == 0 { Dyn::Nil } else { Dyn::Uint(out) })
+}
+
+#[allow(unused_mut, unused_variables)]
+fn profile_set(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, profile_set) + size_of::<usize>()) {
+        return Err(StdError::unsupported("profile_set"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`profile_set` takes 2 arguments (profile, spec), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let profile = args[0].to_u64("argument `profile` of `profile_set`")?;
+    let spec = write_gnoblin_std_profile_spec(&mut arena, &args[1], "argument `spec` of `profile_set`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.profile_set)(ctx, profile, &raw const spec) };
+    let status = lib.check("profile_set", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn profile_add(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, profile_add) + size_of::<usize>()) {
+        return Err(StdError::unsupported("profile_add"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`profile_add` takes 1 arguments (profile), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let profile = args[0].to_u64("argument `profile` of `profile_add`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.profile_add)(ctx, profile) };
+    let status = lib.check("profile_add", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn profile_remove(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, profile_remove) + size_of::<usize>()) {
+        return Err(StdError::unsupported("profile_remove"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`profile_remove` takes 1 arguments (profile), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let profile = args[0].to_u64("argument `profile` of `profile_remove`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.profile_remove)(ctx, profile) };
+    let status = lib.check("profile_remove", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn profile_list(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, profile_list) + size_of::<usize>()) {
+        return Err(StdError::unsupported("profile_list"));
+    }
+    if args.len() != 0 {
+        return Err(StdError::type_error(format!(
+            "`profile_list` takes 0 arguments (), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    // SAFETY: an all-zero `GnoblinStdMembers` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdMembers = unsafe { zeroed() };
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.profile_list)(ctx, &raw mut out) };
+    let status = lib.check("profile_list", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_members(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_new(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_new) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_new"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`display_new` takes 1 arguments (spec), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let spec = write_gnoblin_std_display_spec(&mut arena, &args[0], "argument `spec` of `display_new`")?;
+    let mut out: u64 = 0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_new)(ctx, &raw const spec, &raw mut out) };
+    let status = lib.check("display_new", returned)?;
+    arena.adopt();
+    Ok(if out == 0 { Dyn::Nil } else { Dyn::Uint(out) })
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_set_mode(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_set_mode) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_set_mode"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`display_set_mode` takes 2 arguments (display, mode), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let display = args[0].to_u64("argument `display` of `display_set_mode`")?;
+    let mode = args[1].to_u32("argument `mode` of `display_set_mode`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_set_mode)(ctx, display, mode) };
+    let status = lib.check("display_set_mode", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_add(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_add) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_add"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`display_add` takes 1 arguments (display), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let display = args[0].to_u64("argument `display` of `display_add`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_add)(ctx, display) };
+    let status = lib.check("display_add", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_remove(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_remove) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_remove"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`display_remove` takes 1 arguments (display), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let display = args[0].to_u64("argument `display` of `display_remove`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_remove)(ctx, display) };
+    let status = lib.check("display_remove", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_replace(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_replace) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_replace"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`display_replace` takes 2 arguments (old, next), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let old = args[0].to_u64("argument `old` of `display_replace`")?;
+    let next = args[1].to_u64("argument `next` of `display_replace`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_replace)(ctx, old, next) };
+    let status = lib.check("display_replace", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_clear(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_clear) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_clear"));
+    }
+    if args.len() != 0 {
+        return Err(StdError::type_error(format!(
+            "`display_clear` takes 0 arguments (), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_clear)(ctx) };
+    let status = lib.check("display_clear", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_list(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_list) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_list"));
+    }
+    if args.len() != 0 {
+        return Err(StdError::type_error(format!(
+            "`display_list` takes 0 arguments (), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    // SAFETY: an all-zero `GnoblinStdMembers` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdMembers = unsafe { zeroed() };
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_list)(ctx, &raw mut out) };
+    let status = lib.check("display_list", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_members(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_info(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_info) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_info"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`display_info` takes 1 arguments (display), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let display = args[0].to_u64("argument `display` of `display_info`")?;
+    // SAFETY: an all-zero `GnoblinStdDisplayInfo` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdDisplayInfo = unsafe { zeroed() };
+    out.size = size_of::<GnoblinStdDisplayInfo>() as u32;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_info)(ctx, display, &raw mut out) };
+    let status = lib.check("display_info", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_display_info(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_outputs(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_outputs) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_outputs"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`display_outputs` takes 1 arguments (display), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let display = args[0].to_u64("argument `display` of `display_outputs`")?;
+    // SAFETY: an all-zero `GnoblinStdMembers` is valid: numbers, null pointers and absent functions.
+    let mut out: GnoblinStdMembers = unsafe { zeroed() };
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_outputs)(ctx, display, &raw mut out) };
+    let status = lib.check("display_outputs", returned)?;
+    arena.adopt();
+    Ok(read_gnoblin_std_members(&out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_at(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_at) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_at"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`display_at` takes 2 arguments (x, y), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let x = args[0].to_f64("argument `x` of `display_at`")?;
+    let y = args[1].to_f64("argument `y` of `display_at`")?;
+    let mut out: u64 = 0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_at)(ctx, x, y, &raw mut out) };
+    let status = lib.check("display_at", returned)?;
+    arena.adopt();
+    Ok(if out == 0 { Dyn::Nil } else { Dyn::Uint(out) })
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_assign(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_assign) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_assign"));
+    }
+    if args.len() != 2 {
+        return Err(StdError::type_error(format!(
+            "`display_assign` takes 2 arguments (display, workspace), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let display = args[0].to_u64("argument `display` of `display_assign`")?;
+    let workspace = args[1].to_u64("argument `workspace` of `display_assign`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_assign)(ctx, display, workspace) };
+    let status = lib.check("display_assign", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_snapshot(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_snapshot) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_snapshot"));
+    }
+    if args.len() != 0 {
+        return Err(StdError::type_error(format!(
+            "`display_snapshot` takes 0 arguments (), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let mut out: u64 = 0;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_snapshot)(ctx, &raw mut out) };
+    let status = lib.check("display_snapshot", returned)?;
+    arena.adopt();
+    Ok(Dyn::Uint(out))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_restore(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_restore) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_restore"));
+    }
+    if args.len() != 1 {
+        return Err(StdError::type_error(format!(
+            "`display_restore` takes 1 arguments (token), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    let token = args[0].to_u64("argument `token` of `display_restore`")?;
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_restore)(ctx, token) };
+    let status = lib.check("display_restore", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn display_reflow(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, display_reflow) + size_of::<usize>()) {
+        return Err(StdError::unsupported("display_reflow"));
+    }
+    if args.len() != 0 {
+        return Err(StdError::type_error(format!(
+            "`display_reflow` takes 0 arguments (), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.display_reflow)(ctx) };
+    let status = lib.check("display_reflow", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
 fn read_gnoblin_std_stats(record: &GnoblinStdStats) -> Dyn {
     // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
     Dyn::Map(vec![
@@ -3533,6 +4078,18 @@ fn read_gnoblin_std_areas(record: &GnoblinStdAreas) -> Dyn {
         ("flags".to_owned(), Dyn::Uint(u64::from(record.flags))),
         ("output".to_owned(), read_gnoblin_std_rect(&record.output)),
         ("area".to_owned(), read_gnoblin_std_rect(&record.area)),
+    ])
+}
+
+fn read_gnoblin_std_display_info(record: &GnoblinStdDisplayInfo) -> Dyn {
+    // SAFETY: the library filled the record; the texts and arrays it lends are readable for this call.
+    Dyn::Map(vec![
+        ("flags".to_owned(), Dyn::Uint(u64::from(record.flags))),
+        ("mode".to_owned(), Dyn::Uint(u64::from(record.mode))),
+        ("id".to_owned(), Dyn::Text(unsafe { copy_str(record.id) })),
+        ("shown".to_owned(), Dyn::Uint(record.shown)),
+        ("content".to_owned(), Dyn::Uint(record.content)),
+        ("wanted".to_owned(), Dyn::Uint(record.wanted)),
     ])
 }
 
@@ -4230,6 +4787,117 @@ fn write_gnoblin_std_floating_query(
         // SAFETY: `kept` points at the vector the arena owns for the call.
         record.occupied = unsafe { (*kept).as_ptr() };
         record.n_occupied = unsafe { (*kept).len() };
+    }
+    reader.finish()?;
+    Ok(record)
+}
+
+#[allow(unused_mut)]
+fn write_gnoblin_std_profile_spec(
+    arena: &mut Arena,
+    value: &Dyn,
+    what: &str,
+) -> Result<GnoblinStdProfileSpec, StdError> {
+    let mut reader = MapReader::new(value, what)?;
+    // SAFETY: an all-zero `GnoblinStdProfileSpec` is valid: numbers, null pointers and absent functions.
+    let mut record: GnoblinStdProfileSpec = unsafe { zeroed() };
+    record.size = size_of::<GnoblinStdProfileSpec>() as u32;
+    if let Some(item) = reader.take("flags") {
+        record.flags = item.to_u32(&reader.path("flags"))?;
+    }
+    if let Some(item) = reader.take("id") {
+        record.id = arena.text(item.to_text(&reader.path("id"))?);
+    }
+    if let Some(item) = reader.take("connector") {
+        record.connector = arena.text(item.to_text(&reader.path("connector"))?);
+    }
+    if let Some(item) = reader.take("make") {
+        record.make = arena.text(item.to_text(&reader.path("make"))?);
+    }
+    if let Some(item) = reader.take("model") {
+        record.model = arena.text(item.to_text(&reader.path("model"))?);
+    }
+    if let Some(item) = reader.take("serial") {
+        record.serial = arena.text(item.to_text(&reader.path("serial"))?);
+    }
+    if let Some(item) = reader.take("mode") {
+        record.mode = arena.text(item.to_text(&reader.path("mode"))?);
+    }
+    if let Some(item) = reader.take("transform") {
+        record.transform = arena.text(item.to_text(&reader.path("transform"))?);
+    }
+    if let Some(item) = reader.take("scale") {
+        record.scale = item.to_f64(&reader.path("scale"))?;
+    }
+    if let Some(item) = reader.take("supersample") {
+        record.supersample = item.to_f64(&reader.path("supersample"))?;
+    }
+    if let Some(item) = reader.take("position") {
+        record.position = item.to_u32(&reader.path("position"))?;
+    }
+    if let Some(item) = reader.take("align") {
+        record.align = item.to_u32(&reader.path("align"))?;
+    }
+    if let Some(item) = reader.take("x") {
+        record.x = item.to_f64(&reader.path("x"))?;
+    }
+    if let Some(item) = reader.take("y") {
+        record.y = item.to_f64(&reader.path("y"))?;
+    }
+    if let Some(item) = reader.take("target_kind") {
+        record.target_kind = item.to_u32(&reader.path("target_kind"))?;
+    }
+    if let Some(item) = reader.take("target") {
+        record.target = item.to_u64(&reader.path("target"))?;
+    }
+    reader.finish()?;
+    Ok(record)
+}
+
+#[allow(unused_mut)]
+fn write_gnoblin_std_display_spec(
+    arena: &mut Arena,
+    value: &Dyn,
+    what: &str,
+) -> Result<GnoblinStdDisplaySpec, StdError> {
+    let mut reader = MapReader::new(value, what)?;
+    // SAFETY: an all-zero `GnoblinStdDisplaySpec` is valid: numbers, null pointers and absent functions.
+    let mut record: GnoblinStdDisplaySpec = unsafe { zeroed() };
+    record.size = size_of::<GnoblinStdDisplaySpec>() as u32;
+    if let Some(item) = reader.take("mode") {
+        record.mode = item.to_u32(&reader.path("mode"))?;
+    }
+    if let Some(item) = reader.take("id") {
+        record.id = arena.text(item.to_text(&reader.path("id"))?);
+    }
+    if let Some(item) = reader.take("selectors") {
+        let list = item.to_list(&reader.path("selectors"))?;
+        let values: Vec<GnoblinStdSelector> = list
+            .iter()
+            .map(|entry| write_gnoblin_std_selector(arena, entry, &reader.path("selectors")))
+            .collect::<Result<_, _>>()?;
+        let kept = arena.keep(values);
+        // SAFETY: `kept` points at the vector the arena owns for the call.
+        record.selectors = unsafe { (*kept).as_ptr() };
+        record.n_selectors = unsafe { (*kept).len() };
+    }
+    if let Some(item) = reader.take("wanted") {
+        record.wanted = item.to_u64(&reader.path("wanted"))?;
+    }
+    reader.finish()?;
+    Ok(record)
+}
+
+#[allow(unused_mut)]
+fn write_gnoblin_std_selector(arena: &mut Arena, value: &Dyn, what: &str) -> Result<GnoblinStdSelector, StdError> {
+    let mut reader = MapReader::new(value, what)?;
+    // SAFETY: an all-zero `GnoblinStdSelector` is valid: numbers, null pointers and absent functions.
+    let mut record: GnoblinStdSelector = unsafe { zeroed() };
+    if let Some(item) = reader.take("kind") {
+        record.kind = item.to_u32(&reader.path("kind"))?;
+    }
+    if let Some(item) = reader.take("target") {
+        record.target = item.to_u64(&reader.path("target"))?;
     }
     reader.finish()?;
     Ok(record)

@@ -464,7 +464,13 @@ fn event_fits(kind: u32, event: u32) -> bool {
         }
         a::STD_COLLECTION_OUTPUTS => matches!(
             event,
-            a::STD_EVENT_ADDED | a::STD_EVENT_REMOVED | a::STD_EVENT_GEOMETRY_CHANGED | a::STD_EVENT_MODE_CHANGED
+            a::STD_EVENT_ADDED
+                | a::STD_EVENT_REMOVED
+                | a::STD_EVENT_GEOMETRY_CHANGED
+                | a::STD_EVENT_MODE_CHANGED
+                | a::STD_EVENT_DISPLAYS
+                | a::STD_EVENT_APPLIED
+                | a::STD_EVENT_NOTE
         ),
         a::STD_COLLECTION_WORKSPACES => matches!(event, a::STD_EVENT_ADDED | a::STD_EVENT_REMOVED),
         _ => false,
@@ -1031,6 +1037,25 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     style_rank: crate::style::table::style_rank,
     scene_children: crate::scene::table::scene_children,
     scene_parent: crate::scene::table::scene_parent,
+    profile_new: crate::display_api::profile_new,
+    profile_set: crate::display_api::profile_set,
+    profile_add: crate::display_api::profile_add,
+    profile_remove: crate::display_api::profile_remove,
+    profile_list: crate::display_api::profile_list,
+    display_new: crate::display_api::display_new,
+    display_set_mode: crate::display_api::display_set_mode,
+    display_add: crate::display_api::display_add,
+    display_remove: crate::display_api::display_remove,
+    display_replace: crate::display_api::display_replace,
+    display_clear: crate::display_api::display_clear,
+    display_list: crate::display_api::display_list,
+    display_info: crate::display_api::display_info,
+    display_outputs: crate::display_api::display_outputs,
+    display_at: crate::display_api::display_at,
+    display_assign: crate::display_api::display_assign,
+    display_snapshot: crate::display_api::display_snapshot,
+    display_restore: crate::display_api::display_restore,
+    display_reflow: crate::display_api::display_reflow,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };

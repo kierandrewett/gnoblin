@@ -290,6 +290,12 @@ drag decides is the library's: each hook gives `libgnoblin-std` one step (`drag_
 match the chord as well uses `Binding.drag`, `Binding.gesture` or `new MoveBinding().start()` from `gnoblin-std/native`; those start
 the library's desktop, so a shell that keeps its own workspaces uses the engine's `KeyBinding` and `PointerDragBinding`.
 
+`OutputProfile` and `Display` are thin objects over the library's profiles and displays (`profile_*`, `display_*`): what a script writes is checked
+here, in the words of the property that is wrong, and the library applies each profile when its monitor connects and again when it returns,
+gives every output a display, mirrors and spans, and shows a viewport's workspace. Its requests to the compositor go out as one `apply` per
+output, and an output with a request in flight is not asked again until the compositor has answered (the answer reaches the output's
+`onApplied` listeners). A shell on `gnoblin-std/native` alone gets the same behaviour from `Profile` and `Display`.
+
 `examples/03-typescript-std/` has the shells the tests run. The hand-written part of the binding is `gnoblin-std/native`
 itself (`clients()`, `tile`, `createWorkspace`).
 

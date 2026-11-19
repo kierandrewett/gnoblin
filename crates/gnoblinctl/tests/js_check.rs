@@ -2,6 +2,9 @@
 //! driven through the real parse, the real command functions and the real exit codes on
 //! temporary directories. Neither command opens a connection, so the connection here is one
 //! that fails if it is ever used.
+//!
+//! `check` runs the module in the dry-run host, which is the `gnoblin` launcher of the build tree over the staged libraries, so the tests
+//! need `cargo xtask stage` and `cargo build -p gnoblin` first (`cargo test --workspace` builds the launcher on its own).
 
 use std::ffi::OsString;
 use std::fs;

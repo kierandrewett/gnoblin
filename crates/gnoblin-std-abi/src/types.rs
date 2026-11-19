@@ -35,6 +35,12 @@ abi_aliases! {
     /// the state its kind keeps (a dwindle's tree). Owned by the generation that made it; `builtin_free` ends it, and the
     /// generation's retirement ends the rest. Zero is nil.
     pub type GnoblinStdBuiltin = u64;
+    /// An output profile (a persistent selector for one monitor and the settings it gets), by the library's own id. Zero is nil; an
+    /// id is never reused in one process.
+    pub type GnoblinStdProfile = u64;
+    /// A logical display (one viewport shown on one output, copied to several or stretched over their union), by the library's own
+    /// id. Zero is nil; an id is never reused in one process.
+    pub type GnoblinStdDisplay = u64;
 }
 
 abi_callbacks! {
@@ -201,6 +207,61 @@ abi_consts! {
     /// `GnoblinStdEvent.kind`: a transition ended. `member` is the transition, `flag` is 1 when it did not reach its target. The
     /// listener hears it once.
     pub const STD_EVENT_TRANSITION_FINISHED: u32 = 11;
+    /// `GnoblinStdEvent.kind`: the displays or the profiles changed (one joined or left the list, or a display presents other
+    /// outputs now). Heard on the root collection of outputs; `member` is zero.
+    pub const STD_EVENT_DISPLAYS: u32 = 20;
+    /// `GnoblinStdEvent.kind`: the compositor answered a request the library sent for an output (a profile's settings, a mirror).
+    /// Heard on the root collection of outputs; `member` is the output, `text` the compositor's words or empty for success.
+    pub const STD_EVENT_APPLIED: u32 = 21;
+    /// `GnoblinStdEvent.kind`: something the library did not apply or has to say, once per generation. Heard on the root collection of
+    /// outputs; `text` is the sentence for the shell's diagnostics.
+    pub const STD_EVENT_NOTE: u32 = 22;
+    /// `GnoblinStdDisplaySpec.mode`: the display presents one output.
+    pub const STD_PRESENT_SINGLE: u32 = 0;
+    /// `GnoblinStdDisplaySpec.mode`: the display copies its first output to the others (the compositor mirrors them).
+    pub const STD_PRESENT_MIRROR: u32 = 1;
+    /// `GnoblinStdDisplaySpec.mode`: one workspace is laid out over the union of the display's outputs.
+    pub const STD_PRESENT_SPAN: u32 = 2;
+    /// `GnoblinStdSelector.kind`: the target is an output profile (`GnoblinStdProfile`), a selector that persists.
+    pub const STD_SELECT_PROFILE: u32 = 1;
+    /// `GnoblinStdSelector.kind`: the target is an output (`GnoblinNode`) of the tree.
+    pub const STD_SELECT_OUTPUT: u32 = 2;
+    /// `GnoblinStdProfileSpec.flags`: `scale` is set.
+    pub const STD_PROFILE_HAS_SCALE: u32 = 1;
+    /// `GnoblinStdProfileSpec.flags`: `supersample` is set.
+    pub const STD_PROFILE_HAS_SUPERSAMPLE: u32 = 2;
+    /// `GnoblinStdProfileSpec.flags`: variable refresh rate is asked for or refused (`STD_PROFILE_VRR_ON`).
+    pub const STD_PROFILE_HAS_VRR: u32 = 4;
+    /// `GnoblinStdProfileSpec.flags`: with `STD_PROFILE_HAS_VRR`, it is asked for.
+    pub const STD_PROFILE_VRR_ON: u32 = 8;
+    /// `GnoblinStdProfileSpec.flags`: `enabled` is set (`STD_PROFILE_ENABLED_ON`).
+    pub const STD_PROFILE_HAS_ENABLED: u32 = 16;
+    /// `GnoblinStdProfileSpec.flags`: with `STD_PROFILE_HAS_ENABLED`, the output is on.
+    pub const STD_PROFILE_ENABLED_ON: u32 = 32;
+    /// `GnoblinStdProfileSpec.position`: the profile has no position.
+    pub const STD_POSITION_NONE: u32 = 0;
+    /// `GnoblinStdProfileSpec.position`: a pixel position (`x`, `y`).
+    pub const STD_POSITION_ABSOLUTE: u32 = 1;
+    /// `GnoblinStdProfileSpec.position`: to the right of the target.
+    pub const STD_POSITION_RIGHT_OF: u32 = 2;
+    /// `GnoblinStdProfileSpec.position`: to the left of the target.
+    pub const STD_POSITION_LEFT_OF: u32 = 3;
+    /// `GnoblinStdProfileSpec.position`: above the target.
+    pub const STD_POSITION_ABOVE: u32 = 4;
+    /// `GnoblinStdProfileSpec.position`: below the target.
+    pub const STD_POSITION_BELOW: u32 = 5;
+    /// `GnoblinStdProfileSpec.align`: the start of the shared edge (top or left).
+    pub const STD_ALIGN_START: u32 = 0;
+    /// `GnoblinStdProfileSpec.align`: the middle of the shared edge.
+    pub const STD_ALIGN_CENTER: u32 = 1;
+    /// `GnoblinStdProfileSpec.align`: the end of the shared edge (bottom or right).
+    pub const STD_ALIGN_END: u32 = 2;
+    /// `GnoblinStdDisplayInfo.flags`: a display the library made for an output no other display presents.
+    pub const STD_DISPLAY_IMPLICIT: u32 = 1;
+    /// `GnoblinStdDisplayInfo.flags`: the display is in the list of displays.
+    pub const STD_DISPLAY_LISTED: u32 = 2;
+    /// `GnoblinStdDisplayInfo.flags`: the display's first output is connected and has a desk, so `shown` says what it shows.
+    pub const STD_DISPLAY_HAS_DESK: u32 = 4;
 
     /// `easing` argument: no easing.
     pub const STD_EASING_LINEAR: u32 = 0;
@@ -598,6 +659,93 @@ abi_structs! {
         pub text: GnoblinStr,
         /// The value of a `STD_TERM_NUMBER` term.
         pub number: f64,
+    }
+
+    /// An output profile: the argument of `profile_new` and `profile_set`. A struct that starts with `size` may grow.
+    pub struct GnoblinStdProfileSpec {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_PROFILE_*` flags.
+        pub flags: u32,
+        /// The profile's name in the list of profiles. `profile_set` leaves it as it is.
+        pub id: GnoblinStr,
+        /// Which hardware the profile is for: the connector (`DP-1`), or empty. At least one of the four is not empty. `profile_set`
+        /// leaves them as they are.
+        pub connector: GnoblinStr,
+        /// The manufacturer as the display reports it, or empty.
+        pub make: GnoblinStr,
+        /// The model as the display reports it, or empty.
+        pub model: GnoblinStr,
+        /// The serial number of the monitor's identity, or empty.
+        pub serial: GnoblinStr,
+        /// The mode to request: `preferred` or `WIDTHxHEIGHT@HERTZ`, or empty for none.
+        pub mode: GnoblinStr,
+        /// The transform to request (`normal`, `90`, `flipped-270`, and so on), or empty for none.
+        pub transform: GnoblinStr,
+        /// With `STD_PROFILE_HAS_SCALE`: the scale, from 0.5 to 4.
+        pub scale: f64,
+        /// With `STD_PROFILE_HAS_SUPERSAMPLE`: the supersample factor, from 1 to 16.
+        pub supersample: f64,
+        /// `STD_POSITION_*`: where the output goes.
+        pub position: u32,
+        /// `STD_ALIGN_*`: along the shared edge, for a relative position.
+        pub align: u32,
+        /// With `STD_POSITION_ABSOLUTE`: the horizontal position in logical pixels.
+        pub x: f64,
+        /// With `STD_POSITION_ABSOLUTE`: the vertical position in logical pixels.
+        pub y: f64,
+        /// For a relative position: `STD_SELECT_PROFILE` or `STD_SELECT_OUTPUT`.
+        pub target_kind: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// For a relative position: the profile or output the position is against.
+        pub target: u64,
+    }
+
+    /// One thing a display presents: an output profile, or an output.
+    pub struct GnoblinStdSelector {
+        /// `STD_SELECT_PROFILE` or `STD_SELECT_OUTPUT`.
+        pub kind: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The `GnoblinStdProfile` or the output's node.
+        pub target: u64,
+    }
+
+    /// A logical display: the argument of `display_new`. A struct that starts with `size` may grow.
+    pub struct GnoblinStdDisplaySpec {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_PRESENT_*`.
+        pub mode: u32,
+        /// The display's name in the list of displays.
+        pub id: GnoblinStr,
+        /// What the display presents, in order; at least one.
+        pub selectors: *const GnoblinStdSelector,
+        /// Number of selectors.
+        pub n_selectors: usize,
+        /// The workspace the display shows as soon as it has an output with a desk, or zero.
+        pub wanted: GnoblinStdWorkspace,
+    }
+
+    /// What a display is now: filled by `display_info`.
+    pub struct GnoblinStdDisplayInfo {
+        /// Size of this struct, set by the caller.
+        pub size: u32,
+        /// `STD_DISPLAY_*` flags.
+        pub flags: u32,
+        /// `STD_PRESENT_*`.
+        pub mode: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The display's name. Valid until the next call into the library on this thread.
+        pub id: GnoblinStr,
+        /// With `STD_DISPLAY_HAS_DESK`: the workspace the display's first output shows, or zero for none.
+        pub shown: GnoblinStdWorkspace,
+        /// The workspace the display last showed or was given, or zero. What a display with no desk (parked) keeps.
+        pub content: GnoblinStdWorkspace,
+        /// The workspace the display waits to show (it has no desk to show it on, or the workspace is not added yet), or zero.
+        pub wanted: GnoblinStdWorkspace,
     }
 
     /// An array of member ids the library lends for the call: `ptr` points at `len` ids, valid until the next call into the
@@ -1462,6 +1610,57 @@ abi_structs! {
         pub scene_children: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinStdMembers) -> i32,
         /// Writes the parent of a node to `out`, or zero for a node that has none.
         pub scene_parent: unsafe extern "C" fn(ctx: GnoblinCtx, node: GnoblinNode, out: *mut GnoblinNode) -> i32,
+        /// Makes an output profile and writes its handle to `out`. It is not in the list of profiles until `profile_add`. `E_TYPE`
+        /// for a spec with no id or no match key, or a value out of range.
+        pub profile_new: unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdProfileSpec, out: *mut GnoblinStdProfile) -> i32,
+        /// Replaces the settings of the profile (not its id or its match); the next reconciliation applies them. `E_TYPE` for a value
+        /// out of range, or a position that depends on itself through other profiles.
+        pub profile_set: unsafe extern "C" fn(ctx: GnoblinCtx, profile: GnoblinStdProfile, spec: *const GnoblinStdProfileSpec) -> i32,
+        /// Adds the profile to the list of profiles and applies it to the output it is for, now or when it connects. `E_BUSY` when a
+        /// profile with its id is there already.
+        pub profile_add: unsafe extern "C" fn(ctx: GnoblinCtx, profile: GnoblinStdProfile) -> i32,
+        /// Takes the profile out of the list: 1 when it left, 0 when it was not in it. The compositor keeps the arrangement it applied
+        /// last.
+        pub profile_remove: unsafe extern "C" fn(ctx: GnoblinCtx, profile: GnoblinStdProfile) -> i32,
+        /// Writes the profiles in the list, in order, to `out`. The array is valid until the next call into the library on this thread.
+        pub profile_list: unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinStdMembers) -> i32,
+        /// Makes a display and writes its handle to `out`. It is not in the list of displays until `display_add`. `E_TYPE` for a spec
+        /// with no id, no selector, or a `single` display of several selectors.
+        pub display_new: unsafe extern "C" fn(ctx: GnoblinCtx, spec: *const GnoblinStdDisplaySpec, out: *mut GnoblinStdDisplay) -> i32,
+        /// Sets how the display presents its outputs; the next reconciliation enacts it. `E_TYPE` for a `single` display of several
+        /// selectors.
+        pub display_set_mode: unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay, mode: u32) -> i32,
+        /// Adds the display to the list and reconciles. `E_BUSY` when a display already has its id, `E_REFUSED` when another display
+        /// presents one of its outputs (the words name both).
+        pub display_add: unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay) -> i32,
+        /// Takes a display of the shell's script out of the list: its mirror and span end and each of its outputs gets a display of the
+        /// library's. 1 when it left, 0 for a display of the library's own and for one that is not in the list.
+        pub display_remove: unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay) -> i32,
+        /// Swaps `old` for `next` as one validated change: `old` and every other display of the script that shares an output with
+        /// `next` leave, and `next` takes `old`'s place. Nothing changes on failure: `E_STALE` when `old` is not a display of the script,
+        /// `E_BUSY` when `next` is in the list or a display that stays has its id.
+        pub display_replace: unsafe extern "C" fn(ctx: GnoblinCtx, old: GnoblinStdDisplay, next: GnoblinStdDisplay) -> i32,
+        /// Takes every display of the script out of the list.
+        pub display_clear: unsafe extern "C" fn(ctx: GnoblinCtx) -> i32,
+        /// Writes the displays in the list, in order, to `out`. The array is valid until the next call into the library on this thread.
+        pub display_list: unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut GnoblinStdMembers) -> i32,
+        /// Fills `out` with what the display is now.
+        pub display_info: unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay, out: *mut GnoblinStdDisplayInfo) -> i32,
+        /// Writes the output nodes the display presents now, in the order of its selectors, to `out`. The array is valid until the next
+        /// call into the library on this thread.
+        pub display_outputs: unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay, out: *mut GnoblinStdMembers) -> i32,
+        /// Writes the display under the point (in the compositor's logical space), else the primary output's, to `out`; zero when no
+        /// display has an output.
+        pub display_at: unsafe extern "C" fn(ctx: GnoblinCtx, x: f64, y: f64, out: *mut GnoblinStdDisplay) -> i32,
+        /// Shows the workspace on the display, or keeps it for when the display has an output with a desk. `E_REFUSED` when the
+        /// workspace is not added.
+        pub display_assign: unsafe extern "C" fn(ctx: GnoblinCtx, display: GnoblinStdDisplay, workspace: GnoblinStdWorkspace) -> i32,
+        /// Remembers what each display waits to show, and writes the token that `display_restore` takes to `out`.
+        pub display_snapshot: unsafe extern "C" fn(ctx: GnoblinCtx, out: *mut u64) -> i32,
+        /// Puts back what `display_snapshot` remembered (once: the token is spent). The displays that left since are not restored.
+        pub display_restore: unsafe extern "C" fn(ctx: GnoblinCtx, token: u64) -> i32,
+        /// Reconciles the profiles and displays with the connected outputs now, if something changed since the last time.
+        pub display_reflow: unsafe extern "C" fn(ctx: GnoblinCtx) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]

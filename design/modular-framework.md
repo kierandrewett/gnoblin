@@ -2987,9 +2987,28 @@ for on both refusal codes (`E_NO_SUCH_NODE`, `E_NO_SUCH_MEMBER`; `whenKnown`). A
 earlier one's frames took (`clearInheritedFrames`). The native floating layout leaves a window that has floating bounds where the shell put
 it, and its first placement writes the whole rectangle (a window the compositor has not placed reads as its committed size, so a placement
 that only repeated it left the place unset). The lock-session helpers of `crates/gnoblin/tests/support/lock_session.rs` run their shells over a
-core with the std library, like `js_shell.rs`. **Still TypeScript:** `DisplayManager` (profiles, logical displays, mirror requests): its
-backend is native but its reconciliation has no table counterpart; `FloatingLayout.place`/`onClientAdded` and `placeRect` (a standalone
-`floating_place` is the next step).
+core with the std library, like `js_shell.rs`.
+
+**Output profiles and displays moved (lane TsStdObjects).** `DisplayManager`'s reconciliation is the library's (`displays.rs`, `display_api.rs`);
+what remains in `display_manager/manager.ts` keeps `gnoblin.displays` and `gnoblin.outputs.profiles` equal to the library's lists and reports what a
+camera asks of a renderer that has none. The table gained `profile_new`, `profile_set`, `profile_add`, `profile_remove`, `profile_list` and
+`display_new`, `display_set_mode`, `display_add`, `display_remove`, `display_replace`, `display_clear`, `display_list`, `display_info`,
+`display_outputs`, `display_at`, `display_assign`, `display_snapshot`, `display_restore`, `display_reflow`, with `GnoblinStdProfileSpec`,
+`GnoblinStdSelector`, `GnoblinStdDisplaySpec`, `GnoblinStdDisplayInfo` and the constants `STD_PRESENT_*`, `STD_SELECT_*`, `STD_PROFILE_*`,
+`STD_POSITION_*`, `STD_ALIGN_*`, `STD_DISPLAY_*`. The library reconciles in every turn (and in the calls that change a list): it applies each profile
+to the first connected output it matches, one `apply` request for its own settings and, once that is answered, one for a relative position
+from the neighbour's rectangle (a neighbour first); settles who presents which output (an output belongs to one display, the first in the list;
+the second is reported as not applied); gives every output with a desk that no display of the script presents a `single` display of its own;
+mirrors or spans each display's outputs (`mirror_of=` requests, `output_span`); and shows a viewport's workspace when its display has a desk. The
+shell hears three events of the root collection of outputs: `STD_EVENT_DISPLAYS` (a list or what a display presents changed), `STD_EVENT_APPLIED` (the
+compositor answered a request the library sent: `onApplied` of the output's listeners) and `STD_EVENT_NOTE` (a sentence for the diagnostics, once per
+generation). A profile or display handle is the library's id; `E_BUSY` is a name taken (`already_exists`), `E_REFUSED` an output another display presents
+(`busy`) and `E_STALE` a display that is not the script's (`invalid_argument`). **Observable changes:** the library applies a profile in its first turn,
+so a profile's refusal and its `supersample` notice reach the diagnostics with the first frames and no longer while the file loads; a profile or
+mirror request waits for the answer to the library's own earlier request on that output, but no longer for a script's own `Output.apply` in flight.
+The pointer rules of `Display.outputs`, `viewport.content`, `gnoblin.displays.replace` and `InputContext.activeDisplay` are as they were.
+**Still TypeScript:** the checks of what a script wrote (`OutputProfile.match`, `.position`, a `Display`'s selectors), which name the key in the
+error a script reads; the camera notices; and the output set collection of each display.
 
 ### 25.5 Compatibility of the migrated layouts, `floating_place` and the installed declarations (lane TsStdNative2)
 

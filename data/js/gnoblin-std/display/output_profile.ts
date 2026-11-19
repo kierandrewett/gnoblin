@@ -1,5 +1,6 @@
-// `OutputProfile`, a persistent selector for one monitor and the settings it gets when connected, with the checked
-// state the manager reads through `profileState`.
+// `OutputProfile`, a persistent selector for one monitor and the settings it gets when connected. The library applies it
+// (`libgnoblin-std`, `displays.rs`): this class checks what a script wrote, keeps it in the form it was written, and tells the
+// library's profile what it says.
 
 import { outputRequest } from "gnoblin-core/output_config";
 import type { OutputSetting, OutputTransform } from "gnoblin-core/output_config";
@@ -9,10 +10,12 @@ import type {
     OutputProfileInit,
     OutputProfileMode,
     OutputProfilePosition,
-    OutputView,
     PlacementTarget,
 } from "gnoblin-std/display/types";
 import { shell } from "gnoblin-std/display/state";
+import { Profile as NativeProfile } from "gnoblin-std/generated/classes";
+import type { ProfileSpec } from "gnoblin-std/generated/records";
+import { AlignKind, PositionKind, ProfileFlags, SelectKind } from "gnoblin-std/generated/constants";
 
 // ---- OutputProfile ------------------------------------------------------------------------------------------------
 
@@ -25,7 +28,10 @@ const ALIGN_ALONG: Record<(typeof SIDES)[number], readonly OutputAlign[]> = {
     below: ["left", "center", "right"],
 };
 
-/** The state of one profile. Not exported to scripts: the manager reads it. */
+/**
+ * The state of one profile as the script gave it, and the library's profile, which applies it. The library holds what is applied
+ * (`libgnoblin-std`, `displays.rs`); this is what the properties read back, in the form the script wrote them.
+ */
 export interface ProfileState {
     /** Stable profile identifier used in collection paths. */
     id: string;
@@ -45,6 +51,8 @@ export interface ProfileState {
     position: OutputProfilePosition | undefined;
     /** Whether the output is enabled, if set. */
     enabled: boolean | undefined;
+    /** The library's profile. */
+    native: NativeProfile;
 }
 
 const profiles = new WeakMap<OutputProfile, ProfileState>();
@@ -168,7 +176,9 @@ export class OutputProfile {
         if (typeof name !== "string" || name === "") {
             throw new TypeError("OutputProfile.id: must be a non-empty string");
         }
-        profiles.set(this, {
+        // The settings are checked one by one, so the message names the key that is wrong, and the library's profile is made
+        // from what they said.
+        const state: Omit<ProfileState, "native"> = {
             id: name,
             match: checked,
             mode: undefined,
@@ -178,14 +188,20 @@ export class OutputProfile {
             vrr: undefined,
             position: undefined,
             enabled: undefined,
-        });
-        if (mode !== undefined) this.mode = mode;
-        if (scale !== undefined) this.scale = scale;
-        if (supersample !== undefined) this.supersample = supersample;
-        if (transform !== undefined) this.transform = transform;
-        if (vrr !== undefined) this.vrr = vrr;
-        if (position !== undefined) this.position = position;
-        if (enabled !== undefined) this.enabled = enabled;
+        };
+        profiles.set(this, state as ProfileState);
+        if (mode !== undefined) this.#check("mode", mode, { mode: modeText(mode, `OutputProfile "${name}"`) });
+        if (scale !== undefined) this.#check("scale", scale, { scale });
+        if (supersample !== undefined) this.#check("supersample", supersample, { supersample });
+        if (transform !== undefined) this.#check("transform", transform, { transform });
+        if (vrr !== undefined) this.#checkVrr(vrr);
+        if (position !== undefined) this.#checkPosition(position);
+        if (enabled !== undefined) this.#check("enabled", enabled, { enabled });
+        const native = NativeProfile.new({ ...specOf(state as ProfileState), id: name, ...matchOf(checked) });
+        if (native === null) {
+            throw new TypeError("OutputProfile: the library made no profile");
+        }
+        (state as ProfileState).native = native;
     }
 
     /** The profile's name in `gnoblin.outputs.profiles`. */
@@ -240,11 +256,8 @@ export class OutputProfile {
     }
     /** Requests whether variable refresh rate is enabled. */
     set vrr(value: boolean) {
-        if (typeof value !== "boolean") {
-            throw new TypeError(`OutputProfile "${this.id}".vrr: must be true or false`);
-        }
-        profileState(this).vrr = value;
-        shell().changed();
+        this.#checkVrr(value);
+        this.#push();
     }
 
     /** The output position, in logical pixels, or a relative placement. */
@@ -253,17 +266,8 @@ export class OutputProfile {
     }
     /** Sets an absolute or relative position in logical pixels. */
     set position(value: OutputProfilePosition) {
-        const checked = checkPosition(value, `OutputProfile "${this.id}"`);
-        const state = profileState(this);
-        const before = state.position;
-        state.position = checked;
-        try {
-            assertAcyclic(this);
-        } catch (error) {
-            state.position = before;
-            throw error;
-        }
-        shell().changed();
+        this.#checkPosition(value);
+        this.#push();
     }
 
     /** Whether the output is enabled, if set. */
@@ -280,10 +284,44 @@ export class OutputProfile {
         value: ProfileState[K],
         check: OutputSetting,
     ): void {
-        // The same checks `Output.apply` makes: a bad value throws here, naming `OutputProfile "id".key`.
+        this.#check(key, value, check);
+        this.#push();
+    }
+
+    /** Checks a setting as `Output.apply` does (a bad value throws, naming `OutputProfile "id".key`) and keeps it. */
+    #check<K extends "mode" | "scale" | "supersample" | "transform" | "enabled">(
+        key: K,
+        value: ProfileState[K],
+        check: OutputSetting,
+    ): void {
         outputRequest(check, `OutputProfile "${this.id}"`);
         profileState(this)[key] = value;
-        shell().changed();
+    }
+
+    #checkVrr(value: boolean): void {
+        if (typeof value !== "boolean") {
+            throw new TypeError(`OutputProfile "${this.id}".vrr: must be true or false`);
+        }
+        profileState(this).vrr = value;
+    }
+
+    #checkPosition(value: OutputProfilePosition): void {
+        const checked = checkPosition(value, `OutputProfile "${this.id}"`);
+        const state = profileState(this);
+        const before = state.position;
+        state.position = checked;
+        try {
+            assertAcyclic(this);
+        } catch (error) {
+            state.position = before;
+            throw error;
+        }
+    }
+
+    /** Tells the library's profile what the profile says now. */
+    #push(): void {
+        const state = profileState(this);
+        state.native.set(specOf(state));
     }
 
     /** Formats the profile as `OutputProfile#id`. */
@@ -326,32 +364,56 @@ export function relativeTarget(
     return { side, target: given[side] as PlacementTarget, align: given.align as OutputAlign | undefined };
 }
 
-/** The serial number in an EDID identity `MAN:product:serial`, or "". */
-export function serialOf(identity: string): string {
-    const parts = identity.split(":");
-    return parts.length < 3 ? "" : parts.slice(2).join(":");
+/** The library's profile spec of a profile's settings: the flags and values the library reads, and nothing it applies on its own. */
+function specOf(state: ProfileState): Partial<ProfileSpec> & { id?: string } {
+    let flags = 0;
+    if (state.scale !== undefined) flags |= ProfileFlags.HAS_SCALE;
+    if (state.supersample !== undefined) flags |= ProfileFlags.HAS_SUPERSAMPLE;
+    if (state.vrr !== undefined) flags |= ProfileFlags.HAS_VRR | (state.vrr ? ProfileFlags.VRR_ON : 0);
+    if (state.enabled !== undefined) flags |= ProfileFlags.HAS_ENABLED | (state.enabled ? ProfileFlags.ENABLED_ON : 0);
+    const spec: Partial<ProfileSpec> = {
+        flags,
+        mode: state.mode === undefined ? "" : modeText(state.mode, `OutputProfile "${state.id}"`),
+        transform: state.transform ?? "",
+        scale: state.scale ?? 0,
+        supersample: state.supersample ?? 0,
+        position: PositionKind.NONE,
+    };
+    const position = state.position;
+    if (position !== undefined) {
+        const relative = relativeTarget(position);
+        if (relative === null) {
+            const pixel = position as { x: number; y: number };
+            Object.assign(spec, { position: PositionKind.ABSOLUTE, x: pixel.x, y: pixel.y });
+        } else {
+            const target = relative.target;
+            const profile = target instanceof OutputProfile;
+            Object.assign(spec, {
+                position: PositionKind[SIDE_KIND[relative.side]],
+                align: alignOf(relative.align),
+                targetKind: profile ? SelectKind.PROFILE : SelectKind.OUTPUT,
+                target: profile ? profileState(target).native.handle : shell().outputNode(target),
+            });
+        }
+    }
+    return spec;
 }
 
-/** Whether `output` is the hardware `profile` is for. */
-export function profileMatches(profile: OutputProfile, output: OutputView): boolean {
-    const { match } = profileState(profile);
-    return (
-        (match.connector === undefined || output.connector === match.connector) &&
-        (match.make === undefined || output.make === match.make) &&
-        (match.model === undefined || output.model === match.model) &&
-        (match.serial === undefined || serialOf(output.identity) === match.serial)
-    );
+const SIDE_KIND = { rightOf: "RIGHT_OF", leftOf: "LEFT_OF", above: "ABOVE", below: "BELOW" } as const;
+
+/** The side of the shared edge an alignment names: the start (top or left), the middle or the end (bottom or right). */
+function alignOf(align: OutputAlign | undefined): number {
+    if (align === "center") return AlignKind.CENTER;
+    if (align === "bottom" || align === "right") return AlignKind.END;
+    return AlignKind.START;
 }
 
-/** The request lines a profile makes of its output, leaving out a relative position, which needs its neighbour. */
-export function profileSetting(profile: OutputProfile): OutputSetting {
-    const state = profileState(profile);
-    const setting: Record<string, unknown> = {};
-    if (state.mode !== undefined) setting.mode = modeText(state.mode, `OutputProfile "${state.id}"`);
-    if (state.scale !== undefined) setting.scale = state.scale;
-    if (state.supersample !== undefined) setting.supersample = state.supersample;
-    if (state.transform !== undefined) setting.transform = state.transform;
-    if (state.enabled !== undefined) setting.enabled = state.enabled;
-    if (state.position !== undefined && relativeTarget(state.position) === null) setting.position = state.position;
-    return setting as OutputSetting;
+/** The match keys of a profile, as the library's spec names them (empty for a key the profile does not match on). */
+function matchOf(match: Readonly<OutputMatch>): Pick<ProfileSpec, "connector" | "make" | "model" | "serial"> {
+    return {
+        connector: match.connector ?? "",
+        make: match.make ?? "",
+        model: match.model ?? "",
+        serial: match.serial ?? "",
+    };
 }

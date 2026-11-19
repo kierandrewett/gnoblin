@@ -100,7 +100,7 @@ const STD_CONTEXT: &[(&str, Part)] = &[
     ("workspaceRoot", State),
     ("inherited", State),
     ("displayRoot", State),
-    ("displayManager", Wakes("display manager")),
+    ("displayManager", State),
     ("gestureTools", State),
     ("xrRuntime", Wakes("xr session")),
     (

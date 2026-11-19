@@ -59,11 +59,7 @@ export class Viewport {
     /** The workspace this viewport shows, or null if it has none. */
     get content(): object | null {
         const state = viewportState(this);
-        if (state.display === null) {
-            return state.content;
-        }
-        const shown = shell().shown(state.display);
-        return shown === undefined ? state.content : shown;
+        return state.display === null ? state.content : shell().shown(state.display);
     }
     /** Shows `value` on the assigned display and stores it as the viewport content. */
     set content(value: object) {
@@ -103,7 +99,6 @@ export class Viewport {
             throw new TypeError("Viewport.clearColor: must be a colour such as #101820");
         }
         viewportState(this).clearColor = value;
-        shell().changed();
     }
 
     /** Returns the fixed name `Viewport`. */

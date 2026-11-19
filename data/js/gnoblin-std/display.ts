@@ -19,17 +19,10 @@ export type {
 } from "gnoblin-std/display/types";
 export { attachDisplays } from "gnoblin-std/display/state";
 export type { DisplayHooks } from "gnoblin-std/display/state";
-export {
-    profileState,
-    OutputProfile,
-    relativeTarget,
-    serialOf,
-    profileMatches,
-    profileSetting,
-} from "gnoblin-std/display/output_profile";
+export { profileState, OutputProfile, relativeTarget } from "gnoblin-std/display/output_profile";
 export type { ProfileState } from "gnoblin-std/display/output_profile";
 export { Camera2D, isIdentity } from "gnoblin-std/display/camera2d";
 export { viewportState, Viewport } from "gnoblin-std/display/viewport";
 export type { ViewportState } from "gnoblin-std/display/viewport";
-export { displayState, Display, implicitDisplay } from "gnoblin-std/display/display";
+export { displayState, Display } from "gnoblin-std/display/display";
 export type { DisplayState } from "gnoblin-std/display/display";

@@ -9,7 +9,7 @@ import type { Output } from "gnoblin-core/host/output";
 import { Client as NativeClient, Output as NativeOutput, open } from "gnoblin-std/generated/classes";
 
 /** The library's failure codes (`gnoblin-core-abi`'s `E_*`) a call here tells apart. */
-export const FAILED = { type: -10, refused: -11, busy: -13, noSuchNode: -8, noSuchMember: -9 } as const;
+export const FAILED = { type: -10, refused: -11, busy: -13, noSuchNode: -8, noSuchMember: -9, stale: -6 } as const;
 
 /** Opens the library for this generation: the desktop it holds (workspaces, desks, the layout pass) starts here. */
 export function openLibrary(): void {

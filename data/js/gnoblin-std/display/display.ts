@@ -3,32 +3,31 @@
 
 import type { DisplayInit, DisplayModeName, DisplayOutputCollection, OutputView } from "gnoblin-std/display/types";
 import { nextDisplayNumber, shell } from "gnoblin-std/display/state";
-import { OutputProfile } from "gnoblin-std/display/output_profile";
+import { OutputProfile, profileState } from "gnoblin-std/display/output_profile";
 import { Viewport, viewportState } from "gnoblin-std/display/viewport";
+import { Display as NativeDisplay } from "gnoblin-std/generated/classes";
+import { PresentKind, SelectKind } from "gnoblin-std/generated/constants";
 
 // ---- Display ------------------------------------------------------------------------------------------------------
 
-/** The manager's checked state for one display. */
+/**
+ * What a display keeps in the script's own terms: its name, how it was asked to present, the selectors as written, its viewport and
+ * the library's display, which reconciles them with the connected outputs (`libgnoblin-std`, `displays.rs`).
+ */
 export interface DisplayState {
     /** Stable identifier used in collection errors and `toString()`. */
     id: string;
     /** Presentation mode: one output, mirrored outputs, or a shared span. */
     mode: DisplayModeName;
-    /** Profile or output selectors, in the order resolved by the manager. */
+    /** Profile or output selectors, as the script wrote them. */
     selectors: readonly (OutputProfile | OutputView)[];
     /** Viewport associated with this display. */
     viewport: Viewport;
-    /** A display the shell made for an output nobody else presents. It is in `gnoblin.displays` until one is. */
+    /** A display the library made for an output no display of the script presents. */
     implicit: boolean;
-    /** The connected outputs the display presents now, in selector order. */
-    live: OutputView[];
-    /** The workspace assigned while the display could not show it (parked, or not in the registry yet). */
-    wanted: object | null;
-    /** The mirrored outputs this display made, and what each mirrors. */
-    mirrored: Map<OutputView, OutputView>;
-    /** The output this display spans from, while it does. */
-    spanLead: OutputView | null;
-    /** The `Collection<Output>` of `live`, once someone asked for it. */
+    /** The library's display. */
+    native: NativeDisplay;
+    /** The `Collection<Output>` of the outputs the display presents, once someone asked for it. */
     outputs: { collection: DisplayOutputCollection; set(outputs: readonly OutputView[]): void } | null;
 }
 
@@ -97,16 +96,29 @@ export class Display {
         if (owner !== null) {
             throw new TypeError(`Display.viewport: already shown by display "${owner.id}"`);
         }
-        displays.set(this, {
-            id: id ?? `display-${nextDisplayNumber()}`,
-            mode: checkMode(mode ?? "single", outputs.length, "Display"),
+        const name = id ?? `display-${nextDisplayNumber()}`;
+        const kind = checkMode(mode ?? "single", outputs.length, "Display");
+        const wanted = viewportState(own).content;
+        const native = NativeDisplay.new({
+            mode: PRESENT[kind],
+            id: name,
+            selectors: outputs.map((selector) =>
+                selector instanceof OutputProfile
+                    ? { kind: SelectKind.PROFILE, target: profileState(selector).native.handle }
+                    : { kind: SelectKind.OUTPUT, target: shell().outputNode(selector) },
+            ),
+            wanted: wanted === null ? 0 : shell().workspaceHandle(wanted),
+        });
+        if (native === null) {
+            throw new TypeError("Display: the library made no display");
+        }
+        adopt(this, {
+            id: name,
+            mode: kind,
             selectors: Object.freeze([...outputs]),
             viewport: own,
             implicit: false,
-            live: [],
-            wanted: viewportState(own).content,
-            mirrored: new Map(),
-            spanLead: null,
+            native,
             outputs: null,
         });
         viewportState(own).display = this;
@@ -125,7 +137,7 @@ export class Display {
     set mode(value: DisplayModeName) {
         const state = displayState(this);
         state.mode = checkMode(value, state.selectors.length, `Display "${state.id}"`);
-        shell().changed();
+        state.native.setMode(PRESENT[state.mode]);
     }
 
     /**
@@ -147,9 +159,52 @@ export class Display {
     }
 }
 
-/** Makes the display the shell keeps for an output no script display presents. Used by the manager only. */
-export function implicitDisplay(output: OutputView, id: string): Display {
-    const display = new Display({ id, outputs: [output] });
-    displayState(display).implicit = true;
+/** The library's presentation mode of a mode name. */
+const PRESENT: Readonly<Record<DisplayModeName, number>> = {
+    single: PresentKind.SINGLE,
+    mirror: PresentKind.MIRROR,
+    span: PresentKind.SPAN,
+};
+
+/** The name of a presentation mode the library reports. */
+export function modeNameOf(mode: number): DisplayModeName {
+    return mode === PresentKind.MIRROR ? "mirror" : mode === PresentKind.SPAN ? "span" : "single";
+}
+
+/** The displays by the library's handle. The library makes a display for every output no display of the script presents. */
+const byHandle = new Map<number, WeakRef<Display>>();
+
+function adopt(display: Display, state: DisplayState): void {
+    displays.set(display, state);
+    byHandle.set(state.native.handle, new WeakRef(display));
+}
+
+/** The display of the library's handle, if the script has an object for it. */
+export function displayOfHandle(handle: number): Display | undefined {
+    return byHandle.get(handle)?.deref();
+}
+
+/** Forgets a display the library dropped for good. */
+export function forgetHandle(handle: number): void {
+    byHandle.delete(handle);
+}
+
+/**
+ * The object for a display the library made (the one it keeps for an output no display of the script presents): it presents
+ * `output` on a viewport of its own.
+ */
+export function wrapDisplay(native: NativeDisplay, id: string, mode: DisplayModeName, output: OutputView): Display {
+    const display = Object.create(Display.prototype) as Display;
+    const viewport = new Viewport();
+    adopt(display, {
+        id,
+        mode,
+        selectors: Object.freeze([output]),
+        viewport,
+        implicit: true,
+        native,
+        outputs: null,
+    });
+    viewportState(viewport).display = display;
     return display;
 }

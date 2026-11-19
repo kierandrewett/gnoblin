@@ -4,13 +4,11 @@
 // never runs it.
 //
 // The core host has always booted by then (the shell loads `gnoblin-core/host` before any config), and has adopted the
-// compositor's outputs and windows. What std does for an object as it is adopted it does for the outputs that were
-// already there at the end of this install, in the order core adopted them.
+// compositor's outputs and windows. The library has taken stock of the same ones, and reconciles displays and profiles with them.
 
 import { host } from "gnoblin-core/host/bridge";
 import { ctx } from "gnoblin-core/host/context";
 import { hooks, installFeature } from "gnoblin-core/host/hooks";
-import type { Output } from "gnoblin-core/host/output";
 import { installDisplays } from "gnoblin-std/host/displays";
 import { registerInspectors } from "gnoblin-std/host/console";
 import { lifecycle } from "gnoblin-std/host/lifecycle";
@@ -53,9 +51,6 @@ function installStd(): void {
     extendObjectModel();
     installFocus();
     registerInspectors();
-    for (const output of ctx.outputRoot.list as Output[]) {
-        hooks.outputAdded(output);
-    }
     // A package imported after the shell opened (frames ran before the entry) gets what the opening gives it: the stock
     // workspace and a workspace for each window that has none.
     if (ctx.flags.opened) {
