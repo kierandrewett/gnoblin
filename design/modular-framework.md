@@ -3309,10 +3309,15 @@ The recorded reasoning is short. It is an economy argument, not a safety argumen
 - The refusal today is `pass_from_wire` in `gnoblin-compositor/src/ipc/tree_effects.rs`: "user shaders were removed: use a
   `blur`, `shadow` or `border` effect, or draw a `Canvas`".
 
-What O7 does not say: that shaders are unsafe, or that WGSL is the wrong dialect. D12 (`rust-compositor.md`) already says "Write
-every effect and user shader once, in one shader language, and compile it per backend with `naga`", and `vulkan-backend.md` says
-"user shaders must be compiled at runtime whichever route is taken". So the pipeline a user shader needs exists; what was missing was
-a user. Section 4 of the spec (low-level interfaces for custom rendering policies) is the new reason to reopen it.
+What O7 does not say:
+
+- That shaders are unsafe, or that WGSL is the wrong dialect.
+- D12 (`rust-compositor.md`) already says "Write every effect and user shader once, in one shader language, and compile it per
+  backend with `naga`".
+- `vulkan-backend.md` says "user shaders must be compiled at runtime whichever route is taken".
+
+So the pipeline a user shader needs exists; what was missing was a user. Section 4 of the spec (low-level interfaces for custom
+rendering policies) is the new reason to reopen it.
 
 ### 37.2 The concerns, and how each would be met
 
@@ -3337,17 +3342,19 @@ a user. Section 4 of the spec (low-level interfaces for custom rendering policie
   at most 4 shader passes per node and the existing 16-effect cap; compile off the draw path where the driver allows, so a slow
   compile is a late effect and not a dropped frame.
 - **Portability.** One dialect, WGSL, compiled by `naga` to GLSL ES 3.10 (GLES) and SPIR-V (Vulkan), exactly as the shipped passes are.
-  The software renderer has no compiler and no interpreter. Validation is renderer-independent, so a bad shader is refused at write
-  time everywhere; whether the active renderer can draw a valid one is not. Recommended: the software renderer accepts it and leaves
-  it undrawn, listed in `skipped`, which is how it already treats a backdrop blur. The alternative (refuse at write time under
-  software) makes a shell's behaviour depend on the machine and is not recommended. Results are not bit-identical across GLES and
-  Vulkan (float precision, texture filtering); a pixel test compares with a tolerance.
+  The software renderer has no compiler and no interpreter.
+    - Validation is renderer-independent, so a bad shader is refused at write time everywhere.
+    - Whether the active renderer can draw a valid one is not. Recommended: software accepts it and leaves it undrawn, listed in
+      `skipped`, which is how it already treats a backdrop blur.
+    - Refusing at write time under software makes a shell's behaviour depend on the machine; not recommended.
+    - Results are not bit-identical across GLES and Vulkan (float precision, filtering); a pixel test uses a tolerance.
 
 ### 37.3 A minimal design
 
-- **Tree.** The `effects` record (`gnoblin-schema/schema/tree/effect.toml`) gains the kind `shader`, with `source` (text), and
-  `params` (a list of at most 8 numbers, read in the shader as `p[0..8]`). `entry` is fixed, not a property. The record keeps its
-  flat shape; `source` and `params` are ignored by the other kinds, as `blur_radius` is ignored by `shadow`.
+- **Tree.** The `effects` record (`gnoblin-schema/schema/tree/effect.toml`) gains the kind `shader`.
+    - New properties: `source` (text) and `params` (at most 8 numbers, read in the shader as `p[0..8]`).
+    - `entry` is fixed, not a property.
+    - The record keeps its flat shape; the other kinds ignore both, as `shadow` ignores `blur_radius`.
 - **Shader contract.** The user writes `fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32>`:
   the node's premultiplied colour at `uv`, the params, and a built-in time in seconds. The wrapper (the shipped `preamble.wgsl`
   and `quad.wgsl`) supplies the vertex stage, the block, and the texture.
