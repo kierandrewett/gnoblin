@@ -2321,6 +2321,15 @@ class Style(_b.Handle):
         raw = _call("style_rank", self.handle, _b.dyn(rank))
         return raw
 
+    @staticmethod
+    def reset() -> int:
+        """Drops every style scope and what was applied for the windows, and makes the library the owner of their styles: its pass then
+        applies them, an empty style included, so a window an earlier script generation styled is taken back to what the style says.
+        A script generation calls it first when it may start over a library state an earlier one left.
+        """
+        raw = _call("style_reset")
+        return raw
+
 class Scene(_b.Handle):
     """Functions of `scene` that need no handle."""
 

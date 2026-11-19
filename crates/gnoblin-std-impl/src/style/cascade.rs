@@ -68,12 +68,30 @@ pub(crate) struct StyleState {
     pub(crate) selections: Vec<Id>,
     /// What a selection ranks by among the selections that style a client: higher wins (`style_rank`); absent is 0.
     ranks: HashMap<Id, f64>,
+    /// The library owns the styles of the windows (`style_reset` or a first scope): its pass applies them, an empty style included.
+    owned: bool,
+    /// The library held styles or applied ones when `style_reset` ran: an earlier script generation may have left effects on the windows.
+    inherited: bool,
     /// Goes up by one for every accepted change of any style; the application compares it between turns.
     pub(crate) epoch: u64,
     clients: HashMap<u64, Applied>,
 }
 
 impl StyleState {
+    /// Drops every scope and what was applied, and makes the library the styles' owner: a script generation that starts over a library
+    /// state an earlier one left (a reload that stays in one core generation) styles on a clean slate, and its first pass takes
+    /// what the earlier one drew off the windows.
+    pub(crate) fn reset(&mut self) {
+        self.inherited = !self.stores.is_empty() || !self.clients.is_empty();
+        self.stores.clear();
+        self.by_scope.clear();
+        self.selections.clear();
+        self.ranks.clear();
+        self.clients.clear();
+        self.owned = true;
+        self.epoch += 1;
+    }
+
     /// The rank of the selection `coll`.
     fn rank(&self, coll: Id) -> f64 {
         self.ranks.get(&coll).copied().unwrap_or(0.0)
@@ -310,9 +328,9 @@ impl State {
 
     /// Writes the resolved style of every client whose style or layers changed since it was last applied.
     pub(crate) fn apply_styles(&mut self) {
-        // A shell that keeps its styles itself (the TypeScript library, which has made no scope here) has this pass leave its windows
-        // alone: the first scope made here is what makes the library the styles' owner.
-        if self.styles.by_scope.is_empty() {
+        // A shell that keeps its styles itself (a native one, which has made no scope here) has this pass leave its windows alone: the
+        // first scope made here, or `style_reset`, is what makes the library the styles' owner.
+        if self.styles.by_scope.is_empty() && !self.styles.owned {
             return;
         }
         let epoch = self.styles.epoch;
@@ -352,8 +370,10 @@ impl State {
             ));
         } else {
             // A window an earlier generation styled keeps its effects: the first application clears them when the style has none.
+            // The tree's effects cannot be read back, so what an earlier generation left is not known: over a state one left
+            // (`inherited`) the first application writes, even an empty list; otherwise an empty list is what the window has.
             let unchanged = match &applied.effects {
-                None => mapping.effects.is_empty(),
+                None => !self.styles.inherited && mapping.effects.is_empty(),
                 Some(written) => *written == mapping.effects,
             };
             if !unchanged {
@@ -361,7 +381,15 @@ impl State {
             }
             applied.effects = Some(mapping.effects.clone());
         }
-        let opacity_before = applied.opacity.or_else(|| node.get_f64("opacity").ok());
+        // The first application takes the opacity of a window an earlier generation styled back to what the style says. A window whose
+        // opacity a running transition plays is the script's own: the tree holds the transition's target, which no style left there.
+        let opacity_before = applied.opacity.or_else(|| {
+            if self.plays(client, "opacity") {
+                Some(computed.opacity)
+            } else {
+                node.get_f64("opacity").ok()
+            }
+        });
         if opacity_before != Some(computed.opacity) {
             write_number(&g, client, "opacity", computed.opacity);
         }

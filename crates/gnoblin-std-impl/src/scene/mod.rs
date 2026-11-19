@@ -201,12 +201,13 @@ impl State {
             }
             "source" if kind == Kind::View => match prop {
                 Prop::Node(0) => write(self, node, &label, key, prop),
+                // A window the core has not heard of yet (the shell's engine sees a window a moment before the core's tree does) is
+                // taken on the engine's word that it is a client; a node the core knows must be a window.
                 Prop::Node(id)
-                    if self
-                        .g
-                        .node(NodeId(id))
-                        .class_name()
-                        .is_ok_and(|class| class == "window") =>
+                    if match self.g.node(NodeId(id)).class_name() {
+                        Ok(class) => class == "window",
+                        Err(error) => error.kind() == gnoblin_core::ErrorKind::NoSuchNode,
+                    } =>
                 {
                     write(self, node, &label, key, prop)
                 }

@@ -1547,6 +1547,14 @@ class Style:
         """
         ...
 
+    @staticmethod
+    def reset() -> int:
+        """Drops every style scope and what was applied for the windows, and makes the library the owner of their styles: its pass then
+        applies them, an empty style included, so a window an earlier script generation styled is taken back to what the style says.
+        A script generation calls it first when it may start over a library state an earlier one left.
+        """
+        ...
+
 class Scene:
     """Functions of `scene` that need no handle."""
 

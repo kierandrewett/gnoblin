@@ -762,6 +762,12 @@ pub const FUNCTIONS: &[FunctionInfo] = &[
         scriptable: true,
         standalone: false,
     },
+    FunctionInfo {
+        name: "style_reset",
+        inputs: &[],
+        scriptable: true,
+        standalone: true,
+    },
 ];
 
 pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> Result<Dyn, StdError> {
@@ -888,6 +894,7 @@ pub(crate) fn dispatch(lib: &StdLib, ctx: u64, function: &str, args: &[Dyn]) -> 
         "display_snapshot" => display_snapshot(lib, ctx, args),
         "display_restore" => display_restore(lib, ctx, args),
         "display_reflow" => display_reflow(lib, ctx, args),
+        "style_reset" => style_reset(lib, ctx, args),
         other => Err(StdError::unsupported(other)),
     }
 }
@@ -3784,6 +3791,26 @@ fn display_reflow(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError>
     // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
     let returned = unsafe { (api.display_reflow)(ctx) };
     let status = lib.check("display_reflow", returned)?;
+    arena.adopt();
+    Ok(Dyn::Int(i64::from(status)))
+}
+
+#[allow(unused_mut, unused_variables)]
+fn style_reset(lib: &StdLib, ctx: u64, args: &[Dyn]) -> Result<Dyn, StdError> {
+    if !lib.has(offset_of!(GnoblinStdApi, style_reset) + size_of::<usize>()) {
+        return Err(StdError::unsupported("style_reset"));
+    }
+    if args.len() != 0 {
+        return Err(StdError::type_error(format!(
+            "`style_reset` takes 0 arguments (), not {}",
+            args.len()
+        )));
+    }
+    let api = lib.api();
+    let mut arena = Arena::new();
+    // SAFETY: every pointer passed is a live local or lives in the arena for the call, and the table entry is present.
+    let returned = unsafe { (api.style_reset)(ctx) };
+    let status = lib.check("style_reset", returned)?;
     arena.adopt();
     Ok(Dyn::Int(i64::from(status)))
 }

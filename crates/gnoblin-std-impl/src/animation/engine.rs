@@ -566,6 +566,11 @@ impl State {
 }
 
 impl State {
+    /// Whether a transition has a track running on `key` of `node`.
+    pub(crate) fn plays(&self, node: u64, key: &str) -> bool {
+        self.anim.owners.contains_key(&(node, key.to_owned()))
+    }
+
     /// Ends the generation's hold on the compositor: the `tween` nodes of the transitions still running are destroyed.
     pub(crate) fn anim_release(&mut self) {
         for (tween, _) in std::mem::take(&mut self.anim.by_tween) {

@@ -21,6 +21,7 @@ import { installRoots } from "gnoblin-std/host/roots";
 import { installSnap } from "gnoblin-std/host/snap_host";
 import { installServices } from "gnoblin-std/host/services";
 import { installStaging } from "gnoblin-std/host/staging";
+import { installStyles } from "gnoblin-std/host/styles";
 import { std } from "gnoblin-std/host/state";
 import type { Workspace } from "gnoblin-std/host/workspace";
 import { installScene } from "gnoblin-std/host/xr_bridge";
@@ -47,6 +48,7 @@ function installStd(): void {
     installServices();
     installScene();
     installTransitions();
+    installStyles();
     installFeature("gnoblin-std", lifecycle);
     extendObjectModel();
     installFocus();

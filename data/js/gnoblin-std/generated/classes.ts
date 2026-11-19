@@ -441,6 +441,13 @@ export class Style {
     const raw = call("style_rank", this.handle, rank);
     return raw;
   }
+  // Drops every style scope and what was applied for the windows, and makes the library the owner of their styles: its pass then
+  // applies them, an empty style included, so a window an earlier script generation styled is taken back to what the style says.
+  // A script generation calls it first when it may start over a library state an earlier one left.
+  static reset(): number {
+    const raw = call("style_reset");
+    return raw;
+  }
 }
 
 export class Scene {

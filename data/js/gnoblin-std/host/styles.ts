@@ -7,12 +7,22 @@ import { ctx } from "gnoblin-core/host/context";
 import { say } from "gnoblin-core/host/dispatch";
 import { stateOf } from "gnoblin-core/host/node_state";
 import { everyStyle, pushStyles } from "gnoblin-std/host/style_scopes";
+import { Style as NativeStyle } from "gnoblin-std/generated/classes";
 import { notesOf } from "gnoblin-std/style/native";
 import { syncStyleLists } from "gnoblin-std/style/lists";
 import { styleEpoch } from "gnoblin-std/style/state";
 
 /** What the notes were last asked at, and how many frames more to ask: the library applies a style in the turn after the frame that gave it. */
 const noticed = { epoch: -1, clients: -1, frames: 0 };
+
+/**
+ * Starts this generation's styles from nothing in the library. A reload that stays in one core generation leaves the library's styles
+ * and what it drew on the windows, so the generation clears them first (its own styles are made after); a library that starts empty
+ * has nothing to clear. The library is then the owner of the styles, and its first pass takes what is left off the windows.
+ */
+export function installStyles(): void {
+    NativeStyle.reset();
+}
 
 /** Checks the arrays a script changed in place, gives the library the styles that moved, and says what it did not draw. */
 export function applyStyles(): void {

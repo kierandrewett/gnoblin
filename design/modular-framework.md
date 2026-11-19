@@ -3242,3 +3242,8 @@ fixed here.
 
 - F4, F5, F6, F7 above, and `9b3bb5ce0` not rerun.
 - The workflows listed in 36.1 that need distribution containers, Nix, wlcs or Terraform.
+**Styles under a reload (lane TsStdAnim).** A reload that stays in one core generation (the rig's, and the in-process JS runtime's) keeps the library's state, so the old script generation's style scopes and what its pass drew
+stayed: the new generation's pass found nothing changed, or, with no scope of its own, did not run at all, and the effects, opacity and corner radius stayed on the windows. `style_reset` (new table function, called by
+`installStyles` when `gnoblin-std` installs, before any style of the generation is made) drops the scopes and the applied record and sets `StyleState.owned`, which lets the pass run with no scope; its first application writes the
+effects (they cannot be read back from the tree) and the opacity and corner radius the style says, except the opacity of a window a running transition plays. A production reload opens a new core generation whose library starts empty, where
+the call clears nothing. Cost: every TypeScript std shell writes an empty `effects` list to each window once.

@@ -1662,6 +1662,11 @@ abi_structs! {
         /// Reconciles the profiles and displays with the connected outputs now, if something changed since the last time.
         pub display_reflow: unsafe extern "C" fn(ctx: GnoblinCtx) -> i32,
 
+        /// Drops every style scope and what was applied for the windows, and makes the library the owner of their styles: its pass then
+        /// applies them, an empty style included, so a window an earlier script generation styled is taken back to what the style says.
+        /// A script generation calls it first when it may start over a library state an earlier one left.
+        pub style_reset: unsafe extern "C" fn(ctx: GnoblinCtx) -> i32,
+
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]
         pub uptime_ms: unsafe extern "C" fn() -> u64,

@@ -1056,6 +1056,7 @@ pub(crate) static API: GnoblinStdApi = GnoblinStdApi {
     display_snapshot: crate::display_api::display_snapshot,
     display_restore: crate::display_api::display_restore,
     display_reflow: crate::display_api::display_reflow,
+    style_reset: crate::style::table::style_reset,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
