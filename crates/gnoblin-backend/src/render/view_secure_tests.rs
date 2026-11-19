@@ -904,6 +904,7 @@ fn a_secure_window_that_shows_a_gpu_buffer_stays_secure_while_it_fades() {
                 let label = format!("{buffer:?}, closing: {closing}, gpu: {gpu}");
                 let (mut composer, output, mut gles) = session(gpu, SecureTreatment::Mask);
                 composer.set_reduced_motion(false);
+                composer.set_stock_motion();
                 let node = map_window(&mut composer, buffer);
                 view_of(&mut composer, node);
                 composer.set_window_secure(WINDOW, true);

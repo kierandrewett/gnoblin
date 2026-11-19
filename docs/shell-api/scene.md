@@ -225,16 +225,18 @@ A shell that holds the tree controls two things the compositor does for each win
 over the owner socket by a shell of any language; the TypeScript library does not wrap them yet. A shell that writes
 none of them sees the compositor as before.
 
-**The compositor's own animations.** The compositor fades a window in when it maps, fades it out when it is closed,
-unmapped or hidden, and tweens a change of its placement over 200 ms. The seat's `builtin_motion` (boolean, `true` by
-default) turns all three off: a window then appears, moves and leaves at once, and only the shell's own timed writes
+**The compositor's own animations.** In a session that has the std library (a shell that imports `gnoblin-std`, or the stock
+desktop), the compositor fades a window in when it maps, fades it out when it is closed, unmapped or hidden, and tweens a
+change of its placement over 200 ms: the library sets those lengths as it opens. In a core-only session nothing sets them
+and they are zero, so a window appears, moves and leaves at once and the shell animates its own windows. The seat's
+`builtin_motion` (boolean, `true` by default) turns all three off in a session that has them: a window then appears, moves and leaves at once, and only the shell's own timed writes
 play.
 
 - It is one switch for the session, not a property of each window. The fade in starts as the window's node is made,
   before a shell has had a frame to write anything on that node.
 - It affects the changes that start after the write; a tween already running finishes.
-- It takes effect only while a shell holds the tree. With no shell the compositor's own desktop animates as it always
-  has, and the compositor sets `builtin_motion` back to `true` when the shell lets go.
+- It takes effect only while a shell holds the tree. With no shell the compositor's own desktop animates as the std
+  library set it, and the compositor sets `builtin_motion` back to `true` when the shell lets go.
 - Reduced motion (`reduced_motion` on the seat) still turns every animation off.
 
 **Frame callbacks.** A client draws its next frame when the compositor answers the frame callback it asked for. A

@@ -126,7 +126,9 @@ mod views;
 use views::{Landing, VIEW_DEPTH, ViewPicture};
 
 mod motion;
-use motion::{Flash, MOTION_MS, ShellPlay};
+#[cfg(test)]
+use motion::MOTION_MS;
+use motion::{Flash, ShellPlay};
 
 /// Reads a client's GPU buffer into a picture, or answers `None` when the backend cannot. A View of a window that
 /// shows a GPU buffer draws what this returns: see [`Composer::begin_frame_reading`].
@@ -198,13 +200,11 @@ impl MotionPolicy {
 }
 
 impl Default for MotionPolicy {
-    /// The compositor's historical look: [`MOTION_MS`] for each of the three.
+    /// Instant: a session with no std library to say how windows should move has windows that land at once, and a shell
+    /// that wants motion drives it itself (`design/modular-framework.md`, D11). The desktop's 200 ms look is the std
+    /// library's to set, through [`Setting::Motion`] (`libgnoblin-std`, `providers.rs`).
     fn default() -> Self {
-        Self {
-            map_fade_ms: MOTION_MS,
-            unmap_fade_ms: MOTION_MS,
-            retarget_ms: MOTION_MS,
-        }
+        Self::INSTANT
     }
 }
 
@@ -579,7 +579,7 @@ pub struct Composer {
     shell_ends: Vec<ShellTrackEnd>,
     /// When set, a change lands at once instead of being animated.
     reduced_motion: bool,
-    /// How long the compositor's own window motion takes, as the last [`Setting::Motion`] set it.
+    /// How long the compositor's own window motion takes, as the last [`Setting::Motion`] set it; instant until one does.
     motion_policy: MotionPolicy,
     /// The magnifier's factor, as the last [`Setting::Zoom`] set it.
     zoom: Option<f32>,

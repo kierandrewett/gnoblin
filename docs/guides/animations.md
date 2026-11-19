@@ -5,7 +5,8 @@ what moves today and how to move a window yourself.
 
 ## What animates
 
-The shell and compositor animate these on their own:
+The shell and compositor animate these on their own. The compositor's part (the fades below) is the desktop's look, which the std
+library sets: a session that runs a shell with no std library (a core-only shell) has none of it, and the shell animates its own windows.
 
 - **Workspace switch.** The windows of the workspace being left slide off one side and the new workspace's windows slide
   in from the same side. Each window moves by one output width over 200 ms with an ease-out cubic curve, and the side

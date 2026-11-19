@@ -6,6 +6,8 @@
 //!
 //! - the window manager that places and focuses windows while no shell holds the tree, `gnoblin-std-wm`'s `Fallback`;
 //! - the portal dialog UI, `gnoblin-std-portal`'s `PortalUi`;
+//! - the window motion: the compositor's fades and placement tween last 200 ms in a session that has std, and are instant in one that
+//!   does not (core's default), as `register_defaults` sets them;
 //! - the configuration observer, which turns the `window-management`, `accessibility` and `compositor` sections of the accepted
 //!   document into `setting_set` calls: the window management policy and titlebar gestures, the magnifier and colour filter,
 //!   and the visual bell.
@@ -28,6 +30,10 @@ use gnoblin_wm_api::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
 /// The zoom used when a document turns the magnifier on without naming a factor. It is the schema's own default, so the two
 /// never disagree.
 const DEFAULT_ZOOM: f64 = 2.0;
+
+/// How long the desktop's window fades and placement tween take, in milliseconds: the look the compositor played before motion became std's
+/// to set (`design/modular-framework.md`, D11).
+const STOCK_MOTION_MS: u64 = 200;
 
 /// The size of the frame a portal dialog is first drawn into, before the compositor says how large an output is.
 const DIALOG_FRAME: (usize, usize) = (1280, 800);
@@ -146,6 +152,20 @@ pub(crate) fn settings_of(config: &Config) -> Vec<(&'static str, SettingArg)> {
         ("a11y.zoom", SettingArg::Double(zoom)),
         ("a11y.filter", SettingArg::Bytes(filter)),
         ("bell.flash", SettingArg::Text(flash)),
+    ]
+    .into_iter()
+    .chain(stock_motion())
+    .collect()
+}
+
+/// The desktop's window motion: the compositor's built-in fades and placement tween last as long as the stock look says. The core's own
+/// default is none (a core-only shell moves its windows itself), so this is std's policy, set for every session that has std. The
+/// document has nothing to say about it yet (`animations` is a carried section that nothing reads).
+fn stock_motion() -> [(&'static str, SettingArg); 3] {
+    [
+        ("motion.map_fade_ms", SettingArg::Uint(STOCK_MOTION_MS)),
+        ("motion.unmap_fade_ms", SettingArg::Uint(STOCK_MOTION_MS)),
+        ("motion.retarget_ms", SettingArg::Uint(STOCK_MOTION_MS)),
     ]
 }
 
@@ -268,7 +288,7 @@ pub(crate) struct Registered {
     pub(crate) kept_by_others: Vec<&'static str>,
 }
 
-/// Registers std's window manager, portal dialog UI and configuration observer on `ctx`.
+/// Registers std's window manager, portal dialog UI and configuration observer on `ctx`, and sets the desktop's window motion.
 ///
 /// # Errors
 /// A provider the core would not take for a reason other than the kind being held: the text says which and why. The kinds
@@ -310,6 +330,18 @@ pub(crate) fn register_defaults(api: &'static GnoblinApi, ctx: GnoblinCtx) -> Re
             export_config(Box::new(move |document| observe(api, ctx, document))),
         )?,
     );
+    // The desktop's window motion is set as std opens, not only when a document is accepted: a session that has no document yet fades its
+    // windows too, and a session with no std (core only) never gets here and keeps the core's instant default.
+    let mut refused = Vec::new();
+    for (key, value) in stock_motion() {
+        let code = set(api, ctx, key, &value);
+        if code != abi::E_OK {
+            refused.push(format!("{key} ({code})"));
+        }
+    }
+    if !refused.is_empty() {
+        return Err(format!("the core refused {}", refused.join(", ")));
+    }
     Ok(Registered {
         taken,
         kept_by_others: kept,
@@ -330,6 +362,16 @@ mod tests {
             .find(|(name, _)| *name == key)
             .map(|(_, value)| value.clone())
             .unwrap_or_else(|| panic!("{key} is not set"))
+    }
+
+    #[test]
+    fn every_document_sets_the_desktops_window_motion_to_two_hundred_milliseconds() {
+        for json in ["{}", r#"{"compositor": {"visual-bell": true}}"#] {
+            let all = settings(json);
+            for key in ["motion.map_fade_ms", "motion.unmap_fade_ms", "motion.retarget_ms"] {
+                assert_eq!(value(&all, key), SettingArg::Uint(200), "{key} in {json}");
+            }
+        }
     }
 
     #[test]

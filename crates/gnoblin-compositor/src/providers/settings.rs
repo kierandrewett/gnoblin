@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use gnoblin_config::TitlebarAction;
 use gnoblin_render_frame::frame::{MAX_ZOOM, MIN_ZOOM};
-use gnoblin_wayland::{BellFlash, ControlHandle, Setting, TitlebarActions};
+use gnoblin_wayland::{BellFlash, ControlHandle, MotionPolicy, Setting, TitlebarActions};
 use gnoblin_wm_api::{DragConstraint, FocusMode, NewWindowFocus, WmOptions};
 
 /// A value a provider hands `setting_set`.
@@ -87,6 +87,8 @@ pub(super) struct HeldSettings {
     zoom: Option<Setting>,
     filter: Option<Setting>,
     bell: Option<Setting>,
+    /// The window motion, once a `motion.*` key set a part of it: the parts not set are instant.
+    motion: Option<MotionPolicy>,
 }
 
 impl Default for HeldSettings {
@@ -99,6 +101,7 @@ impl Default for HeldSettings {
             zoom: None,
             filter: None,
             bell: None,
+            motion: None,
         }
     }
 }
@@ -182,6 +185,19 @@ impl HeldSettings {
                 let setting = Setting::ColourFilter(matrix);
                 self.filter = Some(setting);
                 Ok(SettingEffect::Compositor(setting))
+            }
+            "motion.map_fade_ms" | "motion.unmap_fade_ms" | "motion.retarget_ms" => {
+                let ms = u32::try_from(unsigned(value)?).map_err(|_| {
+                    SettingError::Refused("a motion length is a number of milliseconds a u32 holds".to_owned())
+                })?;
+                let mut policy = self.motion.unwrap_or(MotionPolicy::INSTANT);
+                match key {
+                    "motion.map_fade_ms" => policy.map_fade_ms = ms,
+                    "motion.unmap_fade_ms" => policy.unmap_fade_ms = ms,
+                    _ => policy.retarget_ms = ms,
+                }
+                self.motion = Some(policy);
+                Ok(SettingEffect::Compositor(Setting::Motion(policy)))
             }
             "bell.flash" => {
                 let flash = match text(value)? {
@@ -313,6 +329,9 @@ impl HeldSettings {
         for setting in [&self.zoom, &self.filter, &self.bell].into_iter().flatten() {
             actions.push(SettingEffect::Compositor(*setting));
         }
+        if let Some(policy) = self.motion {
+            actions.push(SettingEffect::Compositor(Setting::Motion(policy)));
+        }
         actions
     }
 }
@@ -323,6 +342,42 @@ mod tests {
 
     fn matrix_bytes(matrix: &[[f32; 5]; 4]) -> Vec<u8> {
         matrix.iter().flatten().flat_map(|cell| cell.to_le_bytes()).collect()
+    }
+
+    #[test]
+    fn the_motion_keys_set_the_parts_of_one_policy_and_the_parts_not_set_are_instant() {
+        let mut settings = HeldSettings::default();
+        assert!(settings.all().is_empty(), "nothing is set until a provider sets it");
+        assert_eq!(
+            settings.set("motion.map_fade_ms", &SettingValue::Uint(200)),
+            Ok(SettingEffect::Compositor(Setting::Motion(MotionPolicy {
+                map_fade_ms: 200,
+                unmap_fade_ms: 0,
+                retarget_ms: 0,
+            })))
+        );
+        settings
+            .set("motion.unmap_fade_ms", &SettingValue::Uint(150))
+            .expect("a length");
+        let last = settings
+            .set("motion.retarget_ms", &SettingValue::Uint(100))
+            .expect("a length");
+        let policy = MotionPolicy {
+            map_fade_ms: 200,
+            unmap_fade_ms: 150,
+            retarget_ms: 100,
+        };
+        assert_eq!(last, SettingEffect::Compositor(Setting::Motion(policy)));
+        assert!(
+            settings
+                .all()
+                .contains(&SettingEffect::Compositor(Setting::Motion(policy)))
+        );
+        assert!(
+            settings
+                .set("motion.map_fade_ms", &SettingValue::Text("fast".into()))
+                .is_err()
+        );
     }
 
     #[test]

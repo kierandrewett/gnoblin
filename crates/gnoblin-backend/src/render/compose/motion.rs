@@ -5,7 +5,21 @@
 use super::*;
 
 /// How long a placement, move or other visual change takes to reach its target.
+#[cfg(test)]
 pub(super) const MOTION_MS: u32 = 200;
+
+#[cfg(test)]
+impl Composer {
+    /// Sets the desktop's window motion, as the std library does in a session: these tests are about what the compositor's own motion does,
+    /// and a composer nobody set motion on lands every change at once ([`MotionPolicy::default`]).
+    pub(super) fn set_stock_motion(&mut self) {
+        self.setting_set(Setting::Motion(MotionPolicy {
+            map_fade_ms: MOTION_MS,
+            unmap_fade_ms: MOTION_MS,
+            retarget_ms: MOTION_MS,
+        }));
+    }
+}
 
 /// How long a visual bell's flash takes to fade out, in milliseconds.
 pub(super) const FLASH_MS: u32 = 150;

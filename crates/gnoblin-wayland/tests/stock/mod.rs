@@ -7,17 +7,28 @@
 
 #![allow(dead_code)]
 
-use gnoblin_wayland::{Config, WindowManagerFactory};
+use gnoblin_wayland::{Config, MotionPolicy, Setting, WindowManagerFactory};
 
 /// The provider a test session starts with: the stock window manager.
 pub fn window_manager() -> Option<WindowManagerFactory> {
     Some(gnoblin_std_wm::factory())
 }
 
-/// The default session configuration of the test sessions: [`Config::default`] with [`window_manager`].
+/// The window motion the desktop has: the std library sets it in a session (`libgnoblin-std`, `providers.rs`), and a session with none
+/// has instant windows (`MotionPolicy::default`).
+pub fn motion() -> Setting {
+    Setting::Motion(MotionPolicy {
+        map_fade_ms: 200,
+        unmap_fade_ms: 200,
+        retarget_ms: 200,
+    })
+}
+
+/// The default session configuration of the test sessions: [`Config::default`] with [`window_manager`] and the desktop's [`motion`].
 pub fn config() -> Config {
     Config {
         window_manager: window_manager(),
+        settings: vec![motion()],
         ..Config::default()
     }
 }

@@ -8,7 +8,7 @@ use crate::support::native_shell::{Prefix, Start, start_script, start_script_wit
 use crate::{near, repo_root, screen_of, serving};
 
 /// A stock library of an installed prefix that has no std in it: `gnoblin-core` alone.
-fn core_only_library() -> tempfile::TempDir {
+pub(crate) fn core_only_library() -> tempfile::TempDir {
     let library = tempfile::tempdir().expect("a directory for the library");
     let core = library.path().join("gnoblin-core");
     copy_tree(&repo_root().join("data/js/gnoblin-core"), &core);

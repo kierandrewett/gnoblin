@@ -12,8 +12,16 @@ fn content() -> Content {
     }
 }
 
-fn screen() -> (Composer, OutputId) {
+/// A composer with the desktop's motion set, as the std library sets it: these tests are about what the compositor's own motion does, and
+/// a composer nobody set motion on lands every change at once (`MotionPolicy::default`).
+fn stock_composer() -> Composer {
     let mut composer = Composer::new();
+    composer.set_stock_motion();
+    composer
+}
+
+fn screen() -> (Composer, OutputId) {
+    let mut composer = stock_composer();
     let output = OutputId::new(0);
     composer.set_output(output, Rect::new(0, 0, 800, 600));
     // The output's first frame is not this test's subject: it is asked for and spent.
@@ -946,7 +954,7 @@ fn a_commit_damages_the_window_it_drew_into() {
 
 #[test]
 fn a_second_output_damages_its_own_coordinates() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let first = OutputId::new(0);
     let second = OutputId::new(1);
     composer.set_output(first, Rect::new(0, 0, 800, 600));
@@ -1216,12 +1224,21 @@ fn a_window_that_maps_with_reduced_motion_is_opaque_at_once() {
 }
 
 #[test]
-fn the_default_motion_policy_is_the_historical_two_hundred_milliseconds() {
-    let (composer, _output) = screen();
-    assert_eq!(composer.motion_policy(), MotionPolicy::default());
-    assert_eq!(composer.motion_policy().map_fade_ms, 200);
-    assert_eq!(composer.motion_policy().unmap_fade_ms, 200);
-    assert_eq!(composer.motion_policy().retarget_ms, 200);
+fn a_composer_nobody_set_motion_on_is_instant() {
+    let composer = Composer::new();
+    assert_eq!(composer.motion_policy(), MotionPolicy::INSTANT);
+    assert_eq!(MotionPolicy::default(), MotionPolicy::INSTANT);
+}
+
+#[test]
+fn a_core_default_composer_maps_a_window_opaque_and_in_place_at_once_without_any_setting() {
+    let mut composer = Composer::new();
+    let output = OutputId::new(0);
+    composer.set_output(output, Rect::new(0, 0, 800, 600));
+    let window = WindowId::new(1);
+    composer.insert_window(window, Rect::new(20, 30, 40, 50));
+    composer.set_window_content(window, Some(content()));
+    assert_eq!(drawn_pose(&composer, window), (Rect::new(20, 30, 40, 50), 1.0));
 }
 
 #[test]
@@ -1764,7 +1781,7 @@ fn a_flash_damages_every_output_it_covers() {
 
 #[test]
 fn the_lock_node_is_a_compositor_node_that_publishes_only_a_state_change() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let lock = composer.add_lock_node().expect("a lock node");
     let root = composer.with_scene(|scene| scene.root_ids()[0]);
     let (parent, class, state) = composer.with_scene(|scene| {
@@ -1805,7 +1822,7 @@ fn the_lock_node_is_a_compositor_node_that_publishes_only_a_state_change() {
 /// repeated publish does not ask again.
 #[test]
 fn the_lock_node_asks_the_shell_for_its_lock_screen_once_when_the_lock_leaves_not_locked() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let lock = composer.add_lock_node().expect("a lock node");
     assert!(composer.take_lock_requested().is_empty(), "no lock yet, nothing asked");
 
@@ -1825,7 +1842,7 @@ fn the_lock_node_asks_the_shell_for_its_lock_screen_once_when_the_lock_leaves_no
 
 #[test]
 fn the_lock_node_asks_once_when_the_lock_goes_straight_to_locked() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let lock = composer.add_lock_node().expect("a lock node");
 
     composer.set_lock_state("locked");
@@ -1840,7 +1857,7 @@ fn the_lock_node_asks_once_when_the_lock_goes_straight_to_locked() {
 /// shell reads on attach is the session's, not one the shell has to answer for.
 #[test]
 fn the_lock_node_returns_to_not_locked_when_the_session_unlocks_with_no_shell() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let lock = composer.add_lock_node().expect("a lock node");
     composer.set_lock_state("pending");
     composer.set_lock_state("locked");
@@ -1864,7 +1881,7 @@ fn the_lock_node_returns_to_not_locked_when_the_session_unlocks_with_no_shell() 
 
 #[test]
 fn the_main_seat_is_a_compositor_node_under_the_root() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     let root = composer.with_scene(|scene| scene.root_ids()[0]);
     let (parent, class, name) = composer.with_scene(|scene| {
@@ -1888,7 +1905,7 @@ fn the_main_seat_is_a_compositor_node_under_the_root() {
 
 #[test]
 fn the_main_seat_publishes_its_window_management_policy() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     composer.with_scene(|scene| {
         for key in ["edge_tiling", "focus_mode", "auto_raise_delay", "right_click"] {
@@ -1964,7 +1981,7 @@ fn the_main_seat_publishes_its_window_management_policy() {
 /// reads the same answer the compositor applies. Only a change is published.
 #[test]
 fn the_main_seat_publishes_reduced_motion_and_republishes_it_when_it_changes() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     let policy = MainSeatPolicy {
         edge_tiling: false,
@@ -2004,7 +2021,7 @@ fn the_main_seat_publishes_reduced_motion_and_republishes_it_when_it_changes() {
 
 #[test]
 fn the_main_seat_publishes_the_pointer_only_when_it_moves() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     composer.take_tree_changes();
     composer.set_main_seat_pointer(3.0, 4.0);
@@ -2026,7 +2043,7 @@ fn the_main_seat_publishes_the_pointer_only_when_it_moves() {
 
 #[test]
 fn the_main_seat_publishes_its_devices_only_when_the_list_changes() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     composer.take_tree_changes();
     let list = vec!["1:Desk Keyboard:keyboard".to_owned(), "2:Mouse:pointer".to_owned()];
@@ -2048,7 +2065,7 @@ fn the_main_seat_publishes_its_devices_only_when_the_list_changes() {
 
 #[test]
 fn the_main_seat_publishes_the_screen_under_the_pointer() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     composer.set_output(OutputId::new(0), Rect::new(0, 0, 800, 600));
     composer.set_output(OutputId::new(1), Rect::new(800, 0, 800, 600));
@@ -2084,7 +2101,7 @@ fn the_main_seat_publishes_the_screen_under_the_pointer() {
 
 #[test]
 fn the_main_seat_publishes_the_focused_window_node() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     let window = WindowId::new(1);
     composer.insert_window(window, Rect::new(10, 10, 100, 100));
@@ -2379,7 +2396,7 @@ fn a_window_marked_from_a_launcher_publishes_the_mark_once_it_has_a_node() {
 
 #[test]
 fn an_output_publishes_its_identity_mode_scale_and_primary_flag_only_when_they_change() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let output = OutputId::new(7);
     let info = ScreenInfo {
         make: "Gnoblin".to_owned(),
@@ -2892,7 +2909,7 @@ fn the_point_a_ray_lands_on_follows_the_views_camera() {
 
 #[test]
 fn a_new_output_is_a_screen_node_under_the_root_with_its_geometry() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let output = OutputId::new(7);
     composer.set_output(output, Rect::new(800, 0, 1920, 1080));
     let node = composer.screen_node(output).expect("the output has a screen node");
@@ -2913,7 +2930,7 @@ fn a_new_output_is_a_screen_node_under_the_root_with_its_geometry() {
 
 #[test]
 fn a_moved_output_publishes_only_the_geometry_that_changed() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let output = OutputId::new(7);
     composer.set_output(output, Rect::new(0, 0, 800, 600));
     composer.take_tree_changes();
@@ -2933,7 +2950,7 @@ fn a_moved_output_publishes_only_the_geometry_that_changed() {
 
 #[test]
 fn a_removed_output_destroys_its_screen_node() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     let output = OutputId::new(7);
     composer.set_output(output, Rect::new(0, 0, 800, 600));
     let node = composer.screen_node(output).expect("the output has a screen node");
@@ -4124,7 +4141,7 @@ fn an_effect_with_both_reasons_names_both_on_one_entry() {
 
 #[test]
 fn the_main_seat_publishes_the_effect_kinds_the_renderer_draws() {
-    let mut composer = Composer::new();
+    let mut composer = stock_composer();
     composer.set_effect_kinds(&[]);
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     assert_eq!(

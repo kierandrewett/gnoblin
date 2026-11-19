@@ -610,6 +610,7 @@ fn a_tree_given_before_the_window_has_a_node_is_built_with_it() {
 fn a_closing_window_takes_its_popups_with_it() {
     let (mut composer, output, window) = drawing();
     composer.set_reduced_motion(false);
+    composer.set_stock_motion();
     composer.advance_motion(MOTION_MS);
     composer.set_window_surfaces(window, vec![popup(10, (90, 90), (40, 40), BLUE)]);
     let node = node_of(&composer, window);
@@ -821,6 +822,7 @@ fn a_dmabuf_window_is_composed_as_a_dmabuf_layer() {
 fn a_window_that_shows_a_dmabuf_fades_out_drawing_the_dmabuf_itself() {
     let (mut composer, output, window) = drawing();
     composer.set_reduced_motion(false);
+    composer.set_stock_motion();
     composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
     composer.advance_motion(MOTION_MS);
     composer.close_window(window);
@@ -854,6 +856,7 @@ fn a_window_that_shows_a_dmabuf_fades_out_drawing_the_dmabuf_itself() {
 fn an_unmapped_window_that_shows_a_dmabuf_fades_and_stays_known() {
     let (mut composer, _output, window) = drawing();
     composer.set_reduced_motion(false);
+    composer.set_stock_motion();
     composer.set_window_source(window, Some(dmabuf_source(Size::new(100, 100))));
     composer.advance_motion(MOTION_MS);
     composer.unmap_window(window);

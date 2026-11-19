@@ -243,7 +243,8 @@ is its pace. It is sent in `send_frame_callbacks` (`gnoblin-wayland/src/state.rs
 
 **The compositor's own window animations (implemented, lane CoreFrameAnim; default selected, owner may revisit).** The
 compositor fades a window in when it maps, fades it out when it is closed, unmapped or hidden, and tweens a change of
-its placement over 200 ms (`compose/motion.rs`, `compose.rs`). The seat's `builtin_motion` (`bool`, default `true`,
+its placement over the lengths of the `MotionPolicy` setting, which the std library sets to 200 ms as it opens and which are zero in a
+core-only session (`compose/motion.rs`, `compose.rs`; `design/modular-framework.md`, D11). The seat's `builtin_motion` (`bool`, default `true`,
 written by the shell) turns all three off while a shell holds the tree.
 
 - A window then appears, moves and leaves at once, and only the shell's own timed writes play.

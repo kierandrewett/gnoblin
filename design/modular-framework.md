@@ -1345,7 +1345,7 @@ The `std-providers` feature, the `std_providers` module and `FocusOnMap` describ
 - **`interactive.rs`** stays in `gnoblin-wayland`, unchanged. Section 9.3 already keeps it: its start gating is `State::decider`, and its steps end in `WindowManager::set_rect`, so `NullWm` and `Fallback` both move the window.
 - **Focus on map and on click** needed no change. `may_take_focus` and `activate` have been provider calls since M1.3, and `NullWm` has no focus policy.
 - **Setting keys.** `Composer::setting_set` takes `Setting::Zoom` (`a11y.zoom`), `Setting::ColourFilter` (`a11y.filter`) and `Setting::BellFlash` (`bell.flash`) beside `Setting::Motion`. The composer owns the values. `Config::settings` sets them at start and `ControlHandle::setting_set` live. `VisualBellSettings`, `VisualBellScope` and `VisualAccessibilitySettings` left the engine's public API, so each setting has one owner.
-- **Motion default is not flipped.** `MotionPolicy::default()` is still 200 ms in core, and the stock providers write no `Setting::Motion`. D11 asks for an instant core default with std setting 200 ms. About 200 backend tests assume the fades, so the flip is its own change.
+- **Motion default.** This lane left `MotionPolicy::default()` at 200 ms in core and the stock providers wrote no `Setting::Motion`. Section 38 flipped it: core's default is instant, and std sets 200 ms.
 - **Reload.** `std_providers::commit` re-derives the window management, accessibility and bell settings from an accepted document. With the feature off a commit reads none of those sections.
 - **Portal dialogs.** `PortalService` drives a `portal::UiProvider`. `PortalService::new` starts the stock UI under `std-providers` and `NoUi` otherwise. With no UI the request is refused `no-ui` before it is held, so a consent that cannot be shown is never granted.
 - **Dialog style.** `portal::dialog_style` stays in core as a feature-gated call into `std_providers::portal_ui`. D7 keeps the lock card in core and it draws with the style. Without the feature the lock card, secret and polkit prompts draw the stock look.
@@ -2297,8 +2297,8 @@ last 30 s ...; DEGRADED ...; <callback> has run for 3.1s and has not returned`).
 Section 33 did the first and the last of these (`wake_fd` and the verbs; state retention in a real session). This is what the lane
 left:
 
-- **`wake_fd` and the verbs (`call`, `subscribe` of the `gnoblin` namespace)** were not implemented. Section 33 builds them: an epoll
-  set for the descriptor, and a connection to the owner socket for the verbs.
+- **`wake_fd` and the verbs (`call`, `subscribe` of the `gnoblin` namespace)** were not implemented here. Section 33 built them (33.1 and
+  33.2: an epoll set for the descriptor, and a connection to the owner socket for the verbs), with real-session tests.
 - **G6, layer surfaces** (resolved by lane LayerDraw): the compositor drew no layer-shell surface at all, so a rectangle the shell
   set was configured, published and used for the work area and the surface's popups, and never drawn. The test of pixels that was
   missing (`crates/gnoblin-wayland/tests/layer_draw.rs`: a real client's solid-colour buffer read back through the screenshot path)
@@ -2342,7 +2342,7 @@ Four small defects of the tip, and the full-workspace gate run on the result.
 ### 32.5 The script examples with `Super+N`
 
 - `examples/03-python-std/layouts.py` and `examples/03-typescript-std/layouts.ts` bind `Super+1` to `Super+6`. The chord parser accepts that spelling since lane RustSdkLeft (section 31), and `crates/gnoblin/tests/modular/std_layouts.rs` runs `gnoblin ./layouts.py` in a headless session: three real windows tile, `Super+5` gives them one rectangle, `Super+3` leaves it, and `Super+1` restores the master and stack. Example 7 was already a real-session test (`modular/script_binding.rs`).
-- **Not done.** `gnoblin ./layouts.ts` (`examples/03-typescript-std`) did not reach `the script shell serves in process` in the same harness (it stayed in the failed start state); the cause was not found, and the test for it was removed rather than left failing.
+- **Resolved later.** `gnoblin ./layouts.ts` did not reach `the script shell serves in process` in the harness of this lane, and the test was removed. After the std migration of lane TsStdNative2 (section 25.5) it runs: `modular/std_layouts.rs::example_3_the_typescript_layouts_shell_tiles_real_windows_for_its_super_n_chords` tiles three real windows, and section 38 records its run.
 
 ## 33. Implementation notes, `wake_fd`, the verbs and retention in a real session (lane RustSdkVerbs)
 
@@ -2471,7 +2471,7 @@ shells and `abi-check`, the install layout, and the examples and their tests bel
 | --- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
 | 1   | `examples/01-minimal-core-shell`                             | `native_shell.rs` (one core mapping, cascade, claimed chord); dependency facts in `abi_upgrade.rs`                                                            | 6 passed; abi_upgrade 7     |
 | 2   | `examples/02-std-prelude`                                    | `modular/native_std.rs::example_2_...` (new: std places windows, chord starts a terminal, one core and one std mapped)                                        | passed                      |
-| 3   | `examples/03-python-std`, `examples/03-typescript-std`       | Python: `modular/std_layouts.rs`, `single_core.rs`. TypeScript: no real-session test (see 34.7)                                                               | Python passed; TS not run   |
+| 3   | `examples/03-python-std`, `examples/03-typescript-std`       | Python and TypeScript: `modular/std_layouts.rs` (a test each), `single_core.rs`. The TypeScript test was added after this run (section 38)                    | passed (TS: section 38)     |
 | 4   | `examples/04-js-esm`                                         | `modular/js_esm.rs`, `single_core.rs`                                                                                                                         | passed                      |
 | 5   | `examples/05-ts-types`                                       | `modular/ts_types.rs`, `single_core.rs`                                                                                                                       | passed                      |
 | 6   | `examples/06-rust-layout`                                    | `modular/native_std.rs::example_6_...` (new: columns as windows open and close, `<Super>Tab` swaps)                                                           | passed                      |
@@ -2521,21 +2521,21 @@ checks. The scripts that were to run them are `lanes/Validation-tools/box/gates1
 
 ### 34.6 Decisions D1 to D21, final status
 
-| #                  | Status                                                                                                                                                                                                   |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1                 | As decided: in-process by default, `--isolate` runs the same host in its own process (`startup.rs`, `reload_session.rs`).                                                                                |
-| D2, D3             | As decided: five exports and one table, schema-addressed members (`exports.txt`, `abi.lock`).                                                                                                            |
-| D4                 | Partly. Native and Python shells use the core's mirror and builder. The JavaScript runtime keeps its own mirror over the relayed link (section 23.2).                                                    |
-| D5, D6             | As decided: SDK crates `gnoblin-core`, `gnoblin-std`; hyphenated SONAMEs and installed names.                                                                                                            |
-| D7                 | As decided: the lock card stays in core.                                                                                                                                                                 |
-| D8, D9, D10        | As decided: `gnoblin-js` stays client side as a runtime library; renderers and backends stay in the core; the tree classes stay in the core.                                                             |
-| D11                | Mechanism only. `MotionPolicy` and `Setting::Motion` exist and the compositor honours them, but nothing sets them, so the default is the historical 200 ms in every session, a core-only shell included. |
-| D12, D13, D14, D15 | As decided: PyO3, the `gnoblin-core` and `gnoblin-std` specifiers, `shell.*` and `GNOBLIN_SHELL`, ambiguity is an error that lists the candidates.                                                       |
-| D16                | As decided, and now proved in a real session at the bound of 32 (34.3).                                                                                                                                  |
-| D17, D18           | As decided: `E_RETIRED`, ABI 1.0 with `abi.lock` and golden shells checked by `cargo xtask abi-check`.                                                                                                   |
-| D19                | As decided: laid out to be published, `publish = false`.                                                                                                                                                 |
-| D20                | **Not done.** No shader pass (M7.9); it still needs the owner's decision, as it reverses O7.                                                                                                             |
-| D21                | As decided: XR stays the out-of-process `extensions/gnoblin-xr`.                                                                                                                                         |
+| #                  | Status                                                                                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1                 | As decided: in-process by default, `--isolate` runs the same host in its own process (`startup.rs`, `reload_session.rs`).                             |
+| D2, D3             | As decided: five exports and one table, schema-addressed members (`exports.txt`, `abi.lock`).                                                         |
+| D4                 | Partly. Native and Python shells use the core's mirror and builder. The JavaScript runtime keeps its own mirror over the relayed link (section 23.2). |
+| D5, D6             | As decided: SDK crates `gnoblin-core`, `gnoblin-std`; hyphenated SONAMEs and installed names.                                                         |
+| D7                 | As decided: the lock card stays in core.                                                                                                              |
+| D8, D9, D10        | As decided: `gnoblin-js` stays client side as a runtime library; renderers and backends stay in the core; the tree classes stay in the core.          |
+| D11                | As decided (38.1): core's default is instant, and std sets 200 ms as it opens.                                                                        |
+| D12, D13, D14, D15 | As decided: PyO3, the `gnoblin-core` and `gnoblin-std` specifiers, `shell.*` and `GNOBLIN_SHELL`, ambiguity is an error that lists the candidates.    |
+| D16                | As decided, and now proved in a real session at the bound of 32 (34.3).                                                                               |
+| D17, D18           | As decided: `E_RETIRED`, ABI 1.0 with `abi.lock` and golden shells checked by `cargo xtask abi-check`.                                                |
+| D19                | As decided: laid out to be published, `publish = false`.                                                                                              |
+| D20                | **Not done.** No shader pass (M7.9); it still needs the owner's decision, as it reverses O7.                                                          |
+| D21                | As decided: XR stays the out-of-process `extensions/gnoblin-xr`.                                                                                      |
 
 ### 34.7 Deviations and what is not done
 
@@ -2544,24 +2544,16 @@ checks. The scripts that were to run them are `lanes/Validation-tools/box/gates1
   have jobs of their own (`dist-check` stays a step of the workspace job).
 - Example 9 had no directory: it is `examples/09-native-linked`. `examples/README.md` indexes all 18.
 - Running example 8 for real found a defect in the Python tiler (it read `screen_*`, which the compositor leaves at zero); fixed.
-- Example 3 in TypeScript has no real-session test: a previous attempt did not start in the harness (section 32.5) and the std
-  migration of lane TsStdNative2 was still in flight, so the test was left for after it lands.
+- Example 3 in TypeScript had no real-session test when this section was written: a previous attempt did not start in the harness
+  (section 32.5) and the std migration of lane TsStdNative2 was still in flight. The test exists now (`modular/std_layouts.rs`, section 38).
 - Not done, from the notes above: the shader pass (D20); a reload of an isolated shell from the socket and a watch on a launcher
   file (27.6); timers and chords for a shell that runs its own loop inside `init` (33.1); verbs that need a power backend (33.5);
   frozen provider vtables (the ABI is unreleased); a golden shell for any language but Rust.
 
-- **`wake_fd` and the verbs (`call`, `subscribe` of the `gnoblin` namespace)** are not implemented. `wake_fd` needs an epoll set over an
-  eventfd, a timerfd and the link's descriptor, written from `publish` and `post` and drained by `dispatch`; the design of it is in the
-  notes of this lane but no code is left in the tree. The verbs need a `VerbLink` over the owner socket (`gnoblin_client::Client`) and a
-  feed of its answers and signals into the mailbox; the catalog already carries `gnoblin.session` and its signals, but not the signals'
-  field names, so the feed needs them first.
-- **G6, layer surfaces**: the compositor draws no layer-shell surface at all (`surface_shell.rs`, `design/node-core.md`: "the compositor
-  does not draw layer surfaces; their buffers are not in the scene"), so a rectangle the shell sets is configured, published and used for
-  the work area and the surface's popups, and never drawn. This was established by reading the composer and the layer-shell module, not by
-  a test of pixels, and no fix was made: drawing them needs the layer's buffer in the frame (below the windows for `background` and
-  `bottom`, above them for `top` and `overlay`), damage on commit, frame callbacks and pointer picking, which is a lane of its own.
-- **State retention and adoption across two reloads in a real session (M5.4)** was not run against the real binary. The fake-compositor
-  test of example 10 remains the proof (section 20).
+- Three items the lane left as "not done" were done later, so they are not open: `wake_fd` and the verbs (`call`, `subscribe` of the
+  `gnoblin` namespace) are implemented and tested in a real session (section 33.1 and 33.2); the compositor draws layer-shell surfaces
+  (lane LayerDraw, `crates/gnoblin-wayland/tests/layer_draw.rs`, section 31.3 and `design/node-core.md`, "Surface overrides"); and state
+  retention and adoption across two reloads were run against the real binary (`reload_session.rs`, section 33.3).
 
 ### 25.4 TypeScript std onto the native one (lane TsStdNative)
 
@@ -2904,8 +2896,8 @@ Two differences from the text of section 11, neither a failure:
 - `ldd` on a runtime library alone prints `libgnoblin-core.so.1 => not found`: the runtimes have no run path, and the loader opens
   them from a process that already maps the core, which satisfies the NEEDED by SONAME. Section 11's "`ldd` reports no `not found`"
   holds for the binary and for std; `dist-check` applies its own rule to runtimes (`check_runtime`) and passed.
-- `share/gnoblin/types/**` (section 11's table) is not installed. The TypeScript SDK ships as the `.ts` sources under
-  `share/gnoblin/js/`; the row is not implemented.
+- `share/gnoblin/types/**` (section 11's table) was not installed when this was written. `cargo xtask dist install` installs the
+  declarations of a TypeScript shell now (section 25.5).
 
 ### 35.4 Failures and their classification
 
@@ -3395,3 +3387,56 @@ further 8 to 10 days and needs the owner's separate approval.
 - Build it with backdrop sampling too. Cost: about 40 days and the secure-surface rule.
 
 D20 stays "not done, needs the owner" in 34 and 36. If the owner builds it, the lane brief is 37.3 and 37.4.
+
+## 38. D11, window motion as std policy, and the stale statements of sections 31 to 34 (lane TsStdObjects)
+
+### 38.1 D11
+
+The compositor's own window motion (a window fading in when it maps, fading out when it unmaps or closes, and a placement tween) is a
+desktop's look, so it is std's to set, as D11 says.
+
+- **Core.** `MotionPolicy::default()` is `MotionPolicy::INSTANT` (`gnoblin-backend/src/render/compose.rs`). A composer nobody set motion on lands
+  every change at once, so a core-only shell controls its own motion. The 200 ms constant (`MOTION_MS`) is left in core only for the backend's tests,
+  which set it as std does (`Composer::set_stock_motion`, `compose/motion.rs`).
+- **The settings.** The compositor's settings by key (`setting_set`, `gnoblin-compositor/src/providers/settings.rs`) take three more keys,
+  `motion.map_fade_ms`, `motion.unmap_fade_ms` and `motion.retarget_ms` (unsigned milliseconds), which together make one `Setting::Motion`. A part
+  that was not set is instant, and every value set is held and applied again when the session attaches after it was set.
+- **Std.** `libgnoblin-std` sets all three to 200 ms as it opens: `register_defaults` (`gnoblin-std-impl/src/providers.rs`) runs from
+  `gnoblin_std_init` (the compositor opening std for the stock session) and from `open` (a shell that imports `gnoblin-std`), and sets the motion
+  whether or not another registrant holds the configuration observer. `settings_of` lists the same three keys, so every accepted document sets them
+  again. The document has nothing to say about the lengths: `animations` is a carried section that nothing reads, and `window-management` has no
+  motion key, so the stock 200 ms is not configurable yet.
+- **Observable.** A session with std looks as it did. A core-only session no longer fades its windows: the seat's `builtin_motion` switch and
+  reduced motion are unchanged (they stop motion whatever the lengths are).
+- **Tests.** The 18 composer tests of `compose/tests.rs`, four of the surface-tree and secure-view tests and `gnoblin-wayland`'s
+  `dmabuf_capture.rs` that are about the fades set the motion as std does; `a_composer_nobody_set_motion_on_is_instant` and
+  `a_core_default_composer_maps_a_window_opaque_and_in_place_at_once_without_any_setting` replace the test that pinned 200 ms as the default; two unit
+  tests cover the settings keys and std's list. The real-session proof is `crates/gnoblin/tests/modular/motion.rs`: the same compositor, client and
+  stock library, closing a window, read over the tree socket. With a shell that imports `gnoblin-core` alone the closed window is gone from the tree in
+  the frame after the close (under 120 ms); with a shell that imports `gnoblin-std` it stays at least 120 ms and goes within 2 s, which is the 200 ms
+  fade. The boundary has slack for a loaded machine on both sides.
+
+### 38.2 Sections 31 to 34 brought to the present state
+
+Each statement below was true when its lane wrote it and was done afterwards. The sections keep their numbers and their history, and each now says
+where the item went.
+
+| Section          | Statement                                        | Now                                                                                                                                                                |
+| ---------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 21.2             | Motion default is not flipped                    | Flipped: 38.1                                                                                                                                                      |
+| 31.3             | `wake_fd` and the verbs were not implemented     | Section 33.1 and 33.2 built them, with real-session tests                                                                                                          |
+| 31.3             | G6, layer surfaces are not drawn                 | Drawn by lane LayerDraw (`b2fcefbcb`; `gnoblin-wayland/tests/layer_draw.rs`; `design/node-core.md`, "Surface overrides")                                           |
+| 31.3, 34.7       | M5.4 was not run against the real binary         | Run by section 33.3 (`reload_session.rs`)                                                                                                                          |
+| 32.5, 34.2, 34.7 | Example 3 in TypeScript has no real-session test | `modular/std_layouts.rs::example_3_the_typescript_layouts_...` runs `gnoblin ./layouts.ts` for real since lane TsStdNative2 (section 25.5); observed passing: 38.3 |
+| 34.6             | D11: mechanism only, 200 ms in every session     | As decided: 38.1                                                                                                                                                   |
+| 35.3             | `share/gnoblin/types/**` is not installed        | Installed by `cargo xtask dist install` (section 25.5)                                                                                                             |
+
+Still true in section 33.5 and 34.7: the verbs that need a power backend were not called against a real session, the shader pass (D20) is not done,
+and a reload of an isolated shell from the socket is not done (27.6).
+
+### 38.3 Observed
+
+On a fresh Agent37 box, after `cargo xtask stage` and `cargo build -p gnoblin`:
+
+- `cargo test -p gnoblin --test modular -- motion std_layouts` runs the motion test and both example 3 tests (Python and TypeScript). All three pass.
+- `gnoblin-backend` (449 lib tests and 5 integration), `gnoblin-std-impl --lib` (58) and `gnoblin-compositor` (344 lib tests and every integration file) pass.
