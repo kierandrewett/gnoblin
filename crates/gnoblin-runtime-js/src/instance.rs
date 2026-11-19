@@ -24,7 +24,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gnoblin_core_abi::{self as abi, GnoblinCtx};
-use gnoblin_js::{JsBytecodeCache, JsCommitLog, JsRole, JsRoleConfig, JsRoleLinks, stock_search_path};
+use gnoblin_js::{JsBytecodeCache, JsCommitLog, JsRole, JsRoleConfig, JsRoleLinks, JsShellError, stock_search_path};
 
 use crate::link::{RelayedLink, Serving};
 use crate::table::{CoreTable, set_log_context};
@@ -84,6 +84,10 @@ fn role_config(table: CoreTable, script: &Path, commits: &JsCommitLog) -> JsRole
     config.shell.xr_declared = env("GNOBLIN_XR").as_deref() == Some("1");
     config.shell.js.cache = JsBytecodeCache::from_environment_for(VERSION, &|name| env(name));
     config.resolve_console(&|name| env(name));
+    // A host that asks for the failure of a start as data wants the failure of the entry, not the starter that would run in its place.
+    if env(START_FAILURE).as_deref() == Some("json") {
+        config.shell.starter = None;
+    }
     // Every generation gets `__gnoblinStd`, the table of `libgnoblin-std` for the scripts that import `gnoblin-std/native`.
     config.shell.js.natives.push(crate::std_native::native());
     // And `__gnoblinCore`, the core's verbs and signals of the compositor's `gnoblin` namespace (`verbs` of `gnoblin-core`).
@@ -152,6 +156,49 @@ pub(crate) fn start(table: CoreTable, ctx: GnoblinCtx, script: &Path) -> Result<
     outcome
 }
 
+/// The environment variable that asks for the failure of a start as data.
+const START_FAILURE: &str = "GNOBLIN_START_FAILURE";
+
+/// The words a shell that could not start is reported with. A host that sets `GNOBLIN_START_FAILURE=json` (the dry run of
+/// `gnoblinctl check`) gets the failure of a script as one JSON object, `{"kind", "file", "line", "column", "message"}`, with the
+/// position in the author's own coordinates, and no starter runs in the place of an entry that fails; every other host gets a sentence.
+fn start_failure(error: &JsShellError) -> String {
+    if let JsShellError::Js(error) = error
+        && environment(START_FAILURE).as_deref() == Some("json")
+    {
+        let position = |value: Option<String>| value.unwrap_or_else(|| "null".to_owned());
+        let at = error.location.as_ref();
+        return format!(
+            "{{\"kind\":{},\"file\":{},\"line\":{},\"column\":{},\"message\":{}}}",
+            json_text(error.kind.word()),
+            position(at.map(|at| json_text(&at.file.display().to_string()))),
+            position(at.map(|at| at.line.to_string())),
+            position(at.map(|at| at.column.to_string())),
+            json_text(&error.message),
+        );
+    }
+    format!("the shell could not start: {error}")
+}
+
+/// `text` as a JSON string.
+fn json_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for ch in text.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            ch if (ch as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", ch as u32)),
+            ch => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
 fn boot(table: CoreTable, ctx: GnoblinCtx, script: &Path) -> Result<Instance, String> {
     let script = std::fs::canonicalize(script).map_err(|error| format!("cannot read {}: {error}", script.display()))?;
     let serving: Serving = Rc::new(std::cell::Cell::new(ctx));
@@ -162,7 +209,7 @@ fn boot(table: CoreTable, ctx: GnoblinCtx, script: &Path) -> Result<Instance, St
         JsRoleLinks::from_environment(&environment),
         role_config(table, &script, &commits),
     )
-    .map_err(|error| format!("the shell could not start: {error}"))?;
+    .map_err(|error| start_failure(&error))?;
     // The shell committed its document while it started. The guardian waits for the revision before it starts what reads the
     // document, and the host reports the shell ready once this returns.
     publish(table, ctx, &commits);

@@ -430,10 +430,15 @@ hint:  the module threw while loading, before any handler could run
 
 ### The dry-run shell
 
-`check` runs the file in the dry-run shell: the same evaluation the services
-role makes of a `shell.ts` before the runtime has committed anything. It is the
-shell's own library and objects over a tree with a root and one seat, and no
-windows, outputs or devices.
+`check` runs the file in the dry-run shell: the `gnoblin` launcher's `check`
+role, which loads the file the way a session does, in a core of its own, and
+prints its verdict. It is the shell's own library and objects over a tree with a
+root and one seat, and no windows, outputs or devices. A file that imports
+`gnoblin-std` runs it over the installed `libgnoblin-std.so.1`, so what the
+library refuses in a session it refuses here.
+
+The launcher is the `gnoblin` that is installed beside `gnoblinctl` (set
+`GNOBLIN_LAUNCHER` to name another). `check` without it says so and exits 1.
 
 A file that builds workspaces, binds keys and attaches listeners loads as
 written. Nothing starts: no program is spawned and no key is claimed.

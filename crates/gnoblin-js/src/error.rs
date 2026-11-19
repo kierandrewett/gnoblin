@@ -43,6 +43,34 @@ pub enum JsErrorKind {
     Engine,
 }
 
+impl JsErrorKind {
+    /// The kind as a word a script or a tool can branch on.
+    pub const fn word(self) -> &'static str {
+        match self {
+            JsErrorKind::Ts => "syntax",
+            JsErrorKind::Load => "load",
+            JsErrorKind::Exception => "exception",
+            JsErrorKind::Budget => "budget",
+            JsErrorKind::Memory => "memory",
+            JsErrorKind::Engine => "engine",
+        }
+    }
+
+    /// The kind a [`word`](Self::word) names.
+    pub fn from_word(word: &str) -> Option<JsErrorKind> {
+        [
+            JsErrorKind::Ts,
+            JsErrorKind::Load,
+            JsErrorKind::Exception,
+            JsErrorKind::Budget,
+            JsErrorKind::Memory,
+            JsErrorKind::Engine,
+        ]
+        .into_iter()
+        .find(|kind| kind.word() == word)
+    }
+}
+
 /// A position in an author's source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsLocation {

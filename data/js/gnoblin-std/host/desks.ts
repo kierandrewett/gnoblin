@@ -10,7 +10,7 @@ import { Workspace as NativeWorkspace } from "gnoblin-std/generated/classes";
 import { OutputFlags } from "gnoblin-std/generated/constants";
 import type { OutputInfo } from "gnoblin-std/generated/records";
 import { failureCode, FAILED, nativeOutput } from "gnoblin-std/host/library";
-import { workspaceOf } from "gnoblin-std/host/membership";
+import { workspaceOf } from "gnoblin-std/host/workspace_state";
 import type { Workspace } from "gnoblin-std/host/workspace";
 
 /** What the library knows of an output, or null while it has not heard of it: the engine hears of an output a turn before. */

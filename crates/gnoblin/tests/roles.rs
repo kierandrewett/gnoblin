@@ -46,7 +46,7 @@ fn an_unknown_role_is_a_command_line_error() {
     let output = gnoblin(&["--role", "daemon"]);
     assert_eq!(code(&output), 2, "a bad command line is exit 2");
     let message = stderr(&output);
-    for role in ["guardian", "compositor", "shell", "services"] {
+    for role in ["guardian", "compositor", "shell", "services", "check"] {
         assert!(message.contains(role), "the refusal lists `{role}`: {message}");
     }
     assert!(

@@ -33,6 +33,7 @@ use gnoblin_shell_host::guard;
 
 pub mod budget;
 mod catalog;
+mod check_role;
 mod events;
 mod exports;
 pub mod host;

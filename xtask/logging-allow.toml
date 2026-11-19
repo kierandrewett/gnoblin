@@ -24,3 +24,7 @@ reason = "the launcher's usage errors (a shell path that is not a file, or given
 [[allow]]
 path = "crates/gnoblin-core-impl/src/role.rs"
 reason = "the core's usage error for a command line it does not serve is for the person at the terminal and is written before the compositor's log is installed"
+
+[[allow]]
+path = "crates/gnoblin-core-impl/src/check_role.rs"
+reason = "the dry run of a shell module answers on standard output: the verdict is the protocol `gnoblinctl check` reads, and the role installs no log of the session's"

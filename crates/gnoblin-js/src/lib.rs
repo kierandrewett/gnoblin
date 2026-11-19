@@ -25,8 +25,6 @@
 //!   `shell.ts`, and owns the watcher, reloader and supervisor that swap a new generation in or keep the old one.
 //!   It holds the shell's two other owner connections: one for slots (the dialog observation of `gnoblin.dialogs`)
 //!   and one for the configuration document (what the device objects write to it).
-//! - [`evaluate_document`] reads a config's document in a throwaway shell over an inert tree, with no session: the
-//!   dry run of `gnoblinctl check`.
 //! - [`JsBytecodeCache`] keeps what a module compiles to under the user's cache directory, so a start loads the stock
 //!   library's bytecode instead of stripping and compiling it again.
 
@@ -37,7 +35,6 @@ mod config;
 mod console;
 mod diagnostics;
 mod dialogs;
-mod document;
 mod error;
 mod generation;
 mod host;
@@ -70,7 +67,6 @@ pub use console::{
     MAX_REQUEST, console_enabled, console_socket_path, evaluate_in, peer_allowed,
 };
 pub use diagnostics::{DIAGNOSTIC_LINE_BYTES, DIAGNOSTICS_KEPT};
-pub use document::{DOCUMENT_BUDGET, evaluate_document};
 pub use error::{JsError, JsErrorKind, JsLoadError, JsLocation, JsTsError};
 pub use generation::{JsConfig, JsGeneration};
 pub use host::{JsHost, JsPrepare};

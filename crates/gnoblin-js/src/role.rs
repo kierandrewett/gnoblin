@@ -38,7 +38,7 @@ use gnoblin_tree_client::tree_mirror::TreeLink;
 use crate::config::{JsClientConfigLink, JsCommitLog, JsConfigLink, JsRecordingLink};
 use crate::console::{JsConsole, JsConsoleSite, console_enabled, console_socket_path};
 use crate::diagnostics::{DIAGNOSTICS_KEPT, Diagnostics};
-use crate::error::{JsError, JsErrorKind};
+use crate::error::{JsError, JsErrorKind, JsLocation};
 use crate::generation::JsGeneration;
 use crate::host_idle::{JsClientIdleLink, JsIdleConnector, JsIdleLink};
 use crate::host_session::{JsClientSessionLink, JsSessionLink};
@@ -209,6 +209,23 @@ impl JsRoleLinks {
 
 /// The failure of a first load that has no starter to fall back on: every reason the reload gave, on one line.
 fn first_load_failed(report: &ReloadReport) -> JsShellError {
+    // One failure the engine described keeps its kind and its position in the author's own coordinates: a host that
+    // wants them as data (the dry run of `gnoblinctl check`) reads them from here.
+    if let [only] = report.errors.as_slice()
+        && report.warnings.is_empty()
+        && let Some(kind) = only.kind
+    {
+        return JsShellError::Js(JsError {
+            kind,
+            message: only.message.clone(),
+            location: (only.line > 0).then(|| JsLocation {
+                file: only.file.clone(),
+                line: only.line,
+                column: only.column,
+            }),
+            stack: None,
+        });
+    }
     let mut reasons: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
     reasons.extend(report.warnings.iter().cloned());
     JsShellError::Js(JsError {

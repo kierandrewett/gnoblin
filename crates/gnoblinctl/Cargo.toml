@@ -55,6 +55,15 @@ tempfile = "3.23.0"
 # `config_migrate.rs` boots the shell over an inert tree to compare the world a converted config builds with the
 # starter's.
 gnoblin-tree-client.workspace = true
+# ... and over the real libraries, as a session runs it: a config that imports `gnoblin-std` runs the std library, which is a guest of a
+# core generation (`tests/config_migrate.rs` makes one with the rig the launcher's tests share). The implementation crates are loaded
+# by file name in a session and are development dependencies only.
+gnoblin-core-impl = { path = "../gnoblin-core-impl" }
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-std-impl = { path = "../gnoblin-std-impl" }
+gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
+gnoblin-runtime-js = { path = "../gnoblin-runtime-js" }
+gnoblin-shell-host = { path = "../gnoblin-shell-host" }
 
 [lints]
 workspace = true

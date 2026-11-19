@@ -131,8 +131,8 @@ fn check_flags(matches: &clap::ArgMatches, role: role::Role) -> Result<(), Exit>
             return refuse("`--language`");
         }
     }
-    if role == role::Role::Shell && role::path_from_matches(matches).is_none() {
-        eprintln!("gnoblin: `--role shell` needs the shell module's path");
+    if matches!(role, role::Role::Shell | role::Role::Check) && role::path_from_matches(matches).is_none() {
+        eprintln!("gnoblin: `--role {}` needs the shell module's path", role.name());
         return Err(Exit(2));
     }
     Ok(())
@@ -191,7 +191,9 @@ fn core_exit(code: i32) -> Result<(), Exit> {
 /// Runs one role.
 fn dispatch(role: role::Role, matches: &clap::ArgMatches) -> Result<(), Exit> {
     match role {
-        role::Role::Compositor | role::Role::Shell => core_exit(core_link::main(&core_arguments(role, matches)?)),
+        role::Role::Compositor | role::Role::Shell | role::Role::Check => {
+            core_exit(core_link::main(&core_arguments(role, matches)?))
+        }
         role::Role::Guardian => guardian(matches),
         role::Role::Services => services(),
     }
@@ -200,7 +202,7 @@ fn dispatch(role: role::Role, matches: &clap::ArgMatches) -> Result<(), Exit> {
 /// The process role this executable's own log records for `role`, or `None` for the compositor, which the core library logs.
 fn log_role(role: &role::Role) -> Option<gnoblin_log::ProcessRole> {
     match role {
-        role::Role::Compositor | role::Role::Shell => None,
+        role::Role::Compositor | role::Role::Shell | role::Role::Check => None,
         role::Role::Guardian => Some(gnoblin_log::ProcessRole::Guardian),
         role::Role::Services => Some(gnoblin_log::ProcessRole::Services),
     }

@@ -22,7 +22,7 @@ import { clearClients, detachClient, swapClients, syncMembership, transferClient
 import { showWorkspace } from "gnoblin-std/host/show";
 import type { ShowOptions } from "gnoblin-std/host/show";
 import { std } from "gnoblin-std/host/state";
-import { wsState } from "gnoblin-std/host/workspace_state";
+import { attachWorkspaceWrap, wsState } from "gnoblin-std/host/workspace_state";
 import type { WorkspaceState } from "gnoblin-std/host/workspace_state";
 import type { Gaps, Layout } from "gnoblin-std/layout";
 import { FloatingLayout } from "gnoblin-std/layouts/floating";
@@ -236,3 +236,5 @@ export class Workspace extends NativeObject {
         return `Workspace#${wsState(this).id}`;
     }
 }
+
+attachWorkspaceWrap((native) => Workspace.wrap(native));

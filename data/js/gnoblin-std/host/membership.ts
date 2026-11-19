@@ -18,8 +18,8 @@ import { disposeBindingsOf, raiseSignal } from "gnoblin-core/properties";
 import { isKnown, whenKnown } from "gnoblin-std/host/client_state";
 import { nativeClient } from "gnoblin-std/host/library";
 import { std } from "gnoblin-std/host/state";
-import { Workspace } from "gnoblin-std/host/workspace";
-import { isWorkspace, wsState } from "gnoblin-std/host/workspace_state";
+import type { Workspace } from "gnoblin-std/host/workspace";
+import { isWorkspace, workspaceOf, wsState } from "gnoblin-std/host/workspace_state";
 import { Collection as NativeCollection, Workspace as NativeWorkspace } from "gnoblin-std/generated/classes";
 import { CollectionKind } from "gnoblin-std/generated/constants";
 
@@ -31,11 +31,6 @@ function sameList(a: readonly unknown[], b: readonly unknown[]): boolean {
 /** Puts `list` right where it is, so whoever holds the array sees the change. */
 function replaceIn(list: Member[], next: readonly Member[]): void {
     list.splice(0, list.length, ...next);
-}
-
-/** The `Workspace` object of a workspace the library holds: the one for its handle. */
-export function workspaceOf(native: NativeWorkspace): Workspace {
-    return std.byHandle.get(native.handle) ?? Workspace.wrap(native);
 }
 
 /** Makes `gnoblin.workspaces` the list the library holds, and tells the listeners and the selections what it changed. */

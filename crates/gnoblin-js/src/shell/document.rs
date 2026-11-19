@@ -121,7 +121,7 @@ impl JsShell {
 
     /// The document the running generation declares, as a tree: what the spec objects wrote to the document (the
     /// device settings). Nothing is committed; a throwaway shell over an inert tree reads a config's document this
-    /// way ([`evaluate_document`](crate::evaluate_document)).
+    /// way (the dry run of `gnoblinctl check` is the launcher's `check` role, which loads the module over a core).
     ///
     /// # Errors
     ///

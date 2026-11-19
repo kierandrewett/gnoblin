@@ -39,6 +39,13 @@ if [ "$#" -gt 0 ]; then
     files=("$@")
     npx --yes "${package_args[@]}" eslint --no-warn-ignored "${files[@]}"
 else
+    # A file the index still lists but the work tree no longer has (a deleted file whose removal is not staged, or a tree synced
+    # without its index) is not linted: eslint fails on a pattern that matches nothing.
     git ls-files -z '*.js' '*.mjs' '*.cjs' '*.ts' |
+        while IFS= read -r -d '' file; do
+            if [ -e "$file" ]; then
+                printf '%s\0' "$file"
+            fi
+        done |
         xargs -0 npx --yes "${package_args[@]}" eslint --no-warn-ignored
 fi

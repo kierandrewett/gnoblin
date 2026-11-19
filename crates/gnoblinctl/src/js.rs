@@ -1,6 +1,6 @@
 //! `check` for a TypeScript or JavaScript module, and `types init`.
 //!
-//! `check FILE` runs the module in the dry-run host, the evaluation `gnoblin_js::evaluate_document` makes: the
+//! `check FILE` runs the module in the dry-run host, the launcher's `check` role: the
 //! shell's own library and objects over an inert tree (the root and one seat, no windows, no
 //! outputs). A spec-style `shell.ts` that builds workspaces, binds keys and attaches listeners loads as written, and
 //! what a session refuses is refused here: a syntax error, an import that does not resolve, a name the `gnoblin`
@@ -70,16 +70,117 @@ pub(crate) fn theme(is_terminal: bool) -> OutputTheme {
     OutputTheme::resolve(ColorChoice::Auto, &OutputEnvironment::detect(is_terminal))
 }
 
-/// Runs `file` in the dry-run host: `gnoblin_js::evaluate_document`, the evaluation of an
-/// `shell.ts` over an inert tree. The shell's own library and objects run over an inert tree (the
-/// root and one seat, no windows, no outputs), so a spec-style file loads as written and every check a session makes
-/// is made here: a syntax error, an import that does not resolve, a name the `gnoblin` module does not export, a bad
-/// trigger, a refused value, a throw. Nothing starts and nothing is bound.
+/// Runs `file` in the dry-run host: the launcher's `check` role (`gnoblin --role check FILE`), which loads the module as a session
+/// does, in a core generation of its own over an inert tree (the root and one seat, no windows, no outputs). The shell's own
+/// libraries run (a module that imports `gnoblin-std` runs it over the installed std library), so a spec-style file loads as written
+/// and every check a session makes is made here: a syntax error, an import that does not resolve, a name the `gnoblin` module does
+/// not export, a bad trigger, a refused value, a throw. Nothing starts and nothing is bound.
 ///
 /// A file that decides something from live state sees an empty world, as it does at first boot. Reading a count or
 /// walking a collection is fine; dereferencing the first window is a throw, as it is in a session with no windows.
 fn evaluate(file: &Path) -> Result<(), JsError> {
-    gnoblin_js::evaluate_document(file, &stock_dirs()).map(drop)
+    let failed = |message: String| JsError {
+        kind: JsErrorKind::Load,
+        message,
+        location: None,
+        stack: None,
+    };
+    let entry =
+        std::fs::canonicalize(file).map_err(|error| failed(format!("cannot read {}: {error}", file.display())))?;
+    let launcher = launcher().ok_or_else(|| {
+        failed(
+            "the dry-run host is the `gnoblin` launcher, and none was found beside gnoblinctl (set GNOBLIN_LAUNCHER to its path)"
+                .to_owned(),
+        )
+    })?;
+    let mut command = Command::new(&launcher);
+    command
+        .args(["--role", "check"])
+        .arg(&entry)
+        .env("GNOBLIN_START_FAILURE", "json")
+        .stdin(std::process::Stdio::null());
+    // A build tree staged by `cargo xtask stage` keeps its runtimes in `runtimes/` beside the launcher; an installed prefix keeps them
+    // where the core finds them.
+    if std::env::var_os("GNOBLIN_RUNTIME_DIR").is_none()
+        && let Some(runtimes) = launcher.parent().map(|dir| dir.join("runtimes"))
+        && runtimes.is_dir()
+    {
+        command.env("GNOBLIN_RUNTIME_DIR", runtimes);
+    }
+    let output = command
+        .output()
+        .map_err(|error| failed(format!("cannot run {}: {error}", launcher.display())))?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut lines = text.lines();
+    match lines.next() {
+        Some("ok") => Ok(()),
+        Some("error") => Err(start_failure(&lines.collect::<Vec<_>>().join("\n"))),
+        _ => {
+            let said = String::from_utf8_lossy(&output.stderr);
+            Err(JsError {
+                kind: JsErrorKind::Engine,
+                message: format!(
+                    "the dry-run host {} said nothing about {}: {}",
+                    launcher.display(),
+                    entry.display(),
+                    said.lines().next().unwrap_or("it printed no verdict")
+                ),
+                location: None,
+                stack: None,
+            })
+        }
+    }
+}
+
+/// The `gnoblin` launcher: `$GNOBLIN_LAUNCHER`, or the one installed beside this executable (an installed prefix's `bin/`, or the
+/// directory above a test binary's `deps/`).
+fn launcher() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("GNOBLIN_LAUNCHER") {
+        return Some(PathBuf::from(path));
+    }
+    let exe = std::env::current_exe().ok()?;
+    let mut dir = exe.parent()?;
+    for _ in 0..2 {
+        let candidate = dir.join("gnoblin");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        dir = dir.parent()?;
+    }
+    None
+}
+
+/// The failure the check role printed: the JSON object the JavaScript runtime gives (`gnoblin-runtime-js`, `GNOBLIN_START_FAILURE`),
+/// somewhere in the words of the loader, or else the words themselves.
+fn start_failure(words: &str) -> JsError {
+    let parsed = words
+        .find("{\"kind\":")
+        .and_then(|at| serde_json::from_str::<Json>(&words[at..]).ok());
+    if let Some(object) = parsed
+        && let Some(kind) = object["kind"].as_str().and_then(JsErrorKind::from_word)
+    {
+        let number = |key: &str| object[key].as_u64().and_then(|n| u32::try_from(n).ok());
+        let location = match (object["file"].as_str(), number("line"), number("column")) {
+            (Some(file), Some(line), Some(column)) => Some(gnoblin_js::JsLocation {
+                file: PathBuf::from(file),
+                line,
+                column,
+            }),
+            _ => None,
+        };
+        return JsError {
+            kind,
+            message: object["message"].as_str().unwrap_or_default().to_owned(),
+            location,
+            stack: None,
+        };
+    }
+    JsError {
+        kind: JsErrorKind::Engine,
+        message: words.to_owned(),
+        location: None,
+        stack: None,
+    }
 }
 
 /// Files installed with this executable, which is where the prefix is looked for from.
@@ -147,18 +248,6 @@ fn hint(kind: JsErrorKind) -> Option<&'static str> {
     }
 }
 
-/// The kind as a word a script can branch on.
-fn kind_word(kind: JsErrorKind) -> &'static str {
-    match kind {
-        JsErrorKind::Ts => "syntax",
-        JsErrorKind::Load => "load",
-        JsErrorKind::Exception => "exception",
-        JsErrorKind::Budget => "budget",
-        JsErrorKind::Memory => "memory",
-        JsErrorKind::Engine => "engine",
-    }
-}
-
 /// Print the result for a person: the verdict on standard output, a problem on standard error, and
 /// the type checker's own words wherever it wrote them.
 fn write_text(
@@ -219,7 +308,7 @@ fn write_json(
             "ok": false,
             "file": file,
             "problems": [{
-                "kind": kind_word(error.kind),
+                "kind": error.kind.word(),
                 "file": error.location.as_ref().map(|at| &at.file),
                 "line": error.location.as_ref().map(|at| at.line),
                 "column": error.location.as_ref().map(|at| at.column),

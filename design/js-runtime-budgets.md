@@ -40,8 +40,8 @@ build, the stock desktop with 40 windows and 300 frames of title changes and new
     is not stuck in one listener while the compositor takes the lock screen back.
 
 - **Not changed.** `HOST_INSTALL_BUDGET` (the 5 s floor on installing the bundled library, which only matters when a
-  test shortens `stage_budget`), `DOCUMENT_BUDGET` (the 1 s of the `gnoblinctl check` dry run, which is a command and not
-  the session; under load a check can run out of it) and the honest-test budgets above.
+  test shortens `stage_budget`), the dry run of `gnoblinctl check` (the launcher's `check` role, which runs the shell under the runtime's own stage budget: it is a command and
+  not the session; under load a check can run out of it) and the honest-test budgets above.
 
 ## CPU time, and a wall-clock backstop
 

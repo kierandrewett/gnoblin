@@ -174,6 +174,25 @@ fn a_spec_style_init_loads_in_the_dry_run_host() {
 }
 
 #[test]
+fn a_refusal_of_the_std_library_is_refused_here_as_a_session_refuses_it() {
+    // The dry-run host is the launcher over the installed libraries: what `libgnoblin-std` refuses in a session it refuses here.
+    let dir = Dir::new();
+    let init = dir.write(
+        "shell.ts",
+        "import { Workspace } from 'gnoblin-std';\n\ngnoblin.workspaces.add(new Workspace({ id: 'web' }));\ngnoblin.workspaces.add(new Workspace({ id: 'web' }));\n",
+    );
+    let (code, out, err) = check(&init, &["--json"]);
+    assert_eq!(code, 1, "{err}");
+    let document: serde_json::Value = serde_json::from_str(out.trim()).expect("JSON");
+    assert_eq!(document["problems"][0]["kind"], "exception", "{out}");
+    let message = document["problems"][0]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("gnoblin.workspaces.add") && message.contains("already a workspace"),
+        "the library's words say what it refused: {out}"
+    );
+}
+
+#[test]
 fn a_binding_the_shell_would_refuse_is_refused_here() {
     // The stub host accepted anything; the dry-run host runs the shell's own checks.
     let dir = Dir::new();

@@ -48,6 +48,25 @@ export function wsState(workspace: unknown): WorkspaceState {
     return state;
 }
 
+let wrap: ((native: NativeWorkspace) => Workspace) | null = null;
+
+/** Gives the module the way to make the object of a workspace the library made itself (`Workspace.wrap`): a module below `Workspace` asks for it here. */
+export function attachWorkspaceWrap(next: (native: NativeWorkspace) => Workspace): void {
+    wrap = next;
+}
+
+/** The `Workspace` object of a workspace the library holds: the one for its handle. */
+export function workspaceOf(native: NativeWorkspace): Workspace {
+    const known = std.byHandle.get(native.handle);
+    if (known !== undefined) {
+        return known;
+    }
+    if (wrap === null) {
+        throw new TypeError("workspaces need `gnoblin-std/host/workspace`, which is not loaded");
+    }
+    return wrap(native);
+}
+
 /** Returns private workspace state for a client, or null when it has no workspace. */
 export function wsOf(client: Client): WorkspaceState | null {
     const workspace = std.membership.get(client);

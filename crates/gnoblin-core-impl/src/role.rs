@@ -37,6 +37,8 @@ pub enum CoreRole {
     Compositor,
     /// The shell host in a process of its own.
     Shell,
+    /// The dry run of a shell module over a tree with nothing in it (`check_role`).
+    Check,
 }
 
 /// The module a shell runs and how it is loaded and watched.
@@ -81,9 +83,10 @@ pub fn parse(args: &[OsString]) -> Result<CoreRequest, String> {
             role = Some(match name.as_deref() {
                 Some("compositor") => CoreRole::Compositor,
                 Some("shell") => CoreRole::Shell,
+                Some("check") => CoreRole::Check,
                 other => {
                     return Err(format!(
-                        "the core serves `--role compositor` and `--role shell`, not `--role {}`",
+                        "the core serves `--role compositor`, `--role shell` and `--role check`, not `--role {}`",
                         other.unwrap_or_default()
                     ));
                 }
@@ -102,11 +105,14 @@ pub fn parse(args: &[OsString]) -> Result<CoreRequest, String> {
         }
     }
     let Some(role) = role else {
-        return Err("the core serves `--role compositor` and `--role shell`; no role was named".to_owned());
+        return Err(
+            "the core serves `--role compositor`, `--role shell` and `--role check`; no role was named".to_owned(),
+        );
     };
     let shell = match path {
         Some(path) => Some(ShellModule { path, language, watch }),
         None if role == CoreRole::Shell => return Err("`--role shell` needs the shell module's path".to_owned()),
+        None if role == CoreRole::Check => return Err("`--role check` needs the shell module's path".to_owned()),
         None if watch || language.is_some() => {
             return Err("`--watch` and `--language` apply to a shell module, and none was given".to_owned());
         }
@@ -126,19 +132,23 @@ pub fn run(args: &[OsString]) -> i32 {
         }
     };
     // The configuration is read before the log exists, so a problem with it is reported once the log is installed. The
-    // defaults apply meanwhile.
-    let (logging, problem) = match logging_from_environment() {
-        Ok(logging) => (logging, None),
-        Err(problem) => (Logging::default(), Some(problem)),
-    };
-    let options = log_options(&logging);
-    let _log = init(ProcessRole::Compositor, &options);
-    if let Some(problem) = problem {
-        log::warn!(area = "logging", "{problem}; the default logging is used");
-    }
+    // defaults apply meanwhile. A dry run keeps its own quiet log (`check_role`) and never writes the session's file.
+    let _log = (request.role != CoreRole::Check).then(|| {
+        let (logging, problem) = match logging_from_environment() {
+            Ok(logging) => (logging, None),
+            Err(problem) => (Logging::default(), Some(problem)),
+        };
+        let options = log_options(&logging);
+        let guard = init(ProcessRole::Compositor, &options);
+        if let Some(problem) = problem {
+            log::warn!(area = "logging", "{problem}; the default logging is used");
+        }
+        guard
+    });
     match request.role {
         CoreRole::Compositor => serve(request.shell),
         CoreRole::Shell => crate::shell_role::serve_isolated(request.shell.expect("the shell role was given a module")),
+        CoreRole::Check => crate::check_role::serve(&request.shell.expect("the check role was given a module")),
     }
 }
 
@@ -286,6 +296,18 @@ mod tests {
                 })
             })
         );
+    }
+
+    #[test]
+    fn the_check_role_takes_a_module_and_refuses_to_run_without_one() {
+        assert_eq!(
+            parse(&args(&["gnoblin", "--role", "check", "/x/shell.ts"])),
+            Ok(CoreRequest {
+                role: CoreRole::Check,
+                shell: Some(module("/x/shell.ts"))
+            })
+        );
+        assert!(parse(&args(&["gnoblin", "--role", "check"])).is_err());
     }
 
     #[test]

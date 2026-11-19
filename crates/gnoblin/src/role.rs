@@ -31,11 +31,20 @@ pub enum Role {
     Shell,
     /// The D-Bus agents: polkit, GeoClue, prompts, privacy, screen saver, idle.
     Services,
+    /// The dry run of a shell module over a tree with nothing in it, which is what `gnoblinctl check` asks for. It prints its verdict
+    /// and exits; it starts no session.
+    Check,
 }
 
 impl Role {
     /// Every role, in the order the plan lists them.
-    pub const ALL: [Role; 4] = [Role::Guardian, Role::Compositor, Role::Shell, Role::Services];
+    pub const ALL: [Role; 5] = [
+        Role::Guardian,
+        Role::Compositor,
+        Role::Shell,
+        Role::Services,
+        Role::Check,
+    ];
 
     /// The word the command line uses.
     pub fn name(self) -> &'static str {
@@ -44,6 +53,7 @@ impl Role {
             Role::Compositor => "compositor",
             Role::Shell => "shell",
             Role::Services => "services",
+            Role::Check => "check",
         }
     }
 
@@ -54,7 +64,7 @@ impl Role {
 
     /// Whether this role loads a shell module, and so takes `--watch`, `--language` and a `PATH`.
     pub fn loads_shell(self) -> bool {
-        matches!(self, Role::Guardian | Role::Compositor | Role::Shell)
+        matches!(self, Role::Guardian | Role::Compositor | Role::Shell | Role::Check)
     }
 }
 
@@ -133,7 +143,8 @@ pub fn command() -> Command {
                 .help(
                     "The role this process plays. The default, `guardian`, supervises the session; `compositor` runs it \
                      in the foreground (with PATH, running that shell in its process; with none, alone); `shell` is the \
-                     isolated shell host and `services` the D-Bus agents.",
+                     isolated shell host, `services` the D-Bus agents and `check` the dry run of a shell module \
+                     (what `gnoblinctl check` asks for).",
                 ),
         )
         .arg(

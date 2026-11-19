@@ -20,6 +20,10 @@ use gnoblinctl::{ConnectFailure, Connection};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
+/// A core with the std library in this process, the shell's guest: the rig the launcher's tests share.
+#[path = "../../gnoblin/tests/support/core_rig.rs"]
+mod core_rig;
+
 /// The starter, `data/js/starter/shell.ts`: the packaged default shell.
 const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
 
@@ -131,7 +135,7 @@ fn tree(dir: &Path) -> BTreeMap<String, String> {
 const ROOT: u64 = 1;
 const SEAT: u64 = 2;
 
-/// A compositor with nothing in it: the root node and a seat, as `gnoblin_js::evaluate_document` boots the shell.
+/// A compositor with nothing in it: the root node and a seat, as the dry run of `gnoblinctl check` boots the shell (`gnoblin-core-impl`, `check_role.rs`).
 #[derive(Default)]
 struct InertTree {
     queue: Vec<TreeIncoming>,
@@ -252,7 +256,15 @@ fn world(init: &str, extra: &str) -> Value {
     config.js.stage_budget = Duration::from_secs(10);
     config.entry_budget = Duration::from_secs(10);
     config.frame_budget = Duration::from_secs(10);
-    let mut shell = JsShell::new(Box::<InertTree>::default(), config).expect("the shell boots");
+    // The shell runs over a core with the std library loaded, as in a session; the rig is dropped after the shell and gives the core up
+    // to the next test of this process.
+    let _turn = core_rig::Turn::wait();
+    let rig = core_rig::CoreRig::new(std::sync::Arc::clone(&config.clock)).expect("a core with the std library");
+    config.js.natives.push(rig.std_native());
+    let link = rig
+        .take_over(Box::<InertTree>::default())
+        .expect("the core takes the link");
+    let mut shell = JsShell::new(link, config).expect("the shell boots");
     fs::write(root.join("shell.ts"), init).expect("shell.ts is written");
     // One entry that runs the three in order: a second entry would be a second load, and a load that declares no
     // workspace gets the one floating `desktop` the shell keeps a script from being without.
@@ -262,6 +274,7 @@ fn world(init: &str, extra: &str) -> Value {
     )
     .expect("entry.ts is written");
     let diagnostics = shell.load_entry(Path::new("entry.ts")).expect("the config loads");
+    rig.dispatch(&shell);
     assert!(
         diagnostics.is_empty(),
         "the config loaded with diagnostics: {diagnostics:?}"
