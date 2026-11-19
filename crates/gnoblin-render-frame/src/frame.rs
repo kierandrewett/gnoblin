@@ -58,6 +58,7 @@ use gnoblin_render::{Effects, Mat4, Pass};
 use gnoblin_types::{Color, Rect, RectF};
 
 use super::image::Image;
+use super::shader::ShaderTimings;
 use super::view_scene::{SharedScene, ViewTexture};
 
 /// One thing a frame paints.
@@ -482,6 +483,9 @@ pub struct OutputFrame {
     view_scenes: Vec<SharedScene>,
     /// Every View alive on the GPU path.
     live_views: Vec<u64>,
+    /// Where a renderer records what each user shader pass cost this draw. It is not part of the description: `clear` keeps
+    /// it, a clone shares it, and whoever drew the frame takes the report.
+    shader_timings: ShaderTimings,
 }
 
 impl OutputFrame {
@@ -501,7 +505,15 @@ impl OutputFrame {
             colour_matrix: None,
             view_scenes: Vec::new(),
             live_views: Vec::new(),
+            shader_timings: ShaderTimings::default(),
         }
+    }
+
+    /// Where a renderer records what each user shader pass cost this draw (`ShaderTimings::record`), and where the host
+    /// that built the frame reads it after the draw.
+    #[must_use]
+    pub fn shader_timings(&self) -> &ShaderTimings {
+        &self.shader_timings
     }
 
     /// Empties the frame for the next description, keeping the allocation.
@@ -770,6 +782,7 @@ impl OutputFrame {
                 colour_matrix: None,
                 view_scenes: self.view_scenes.clone(),
                 live_views: self.live_views.clone(),
+                shader_timings: self.shader_timings.clone(),
             },
             region,
         })

@@ -11,6 +11,7 @@
 //! | `error`      | [`ShaderError`], the line-numbered refusal a broken pass answers       |
 //! | `user`       | the validator of a shell's own shader and the module it compiles to    |
 //! | `cache`      | [`ShaderCache`], the 64-entry least-recently-used compiled-shader cache |
+//! | `timings`    | [`ShaderTimings`], where a renderer records what each shader pass cost  |
 //!
 //! The *compilers* are not here, because each one ends in an API: the GLES program module
 //! turns the WGSL into GLSL ES 3.10 for a driver, and the Vulkan shader module turns it
@@ -23,12 +24,16 @@
 pub mod cache;
 mod error;
 pub mod sources;
+pub mod timings;
 pub mod uniforms;
 pub mod user;
 
 pub use cache::{SHADER_CACHE_ENTRIES, ShaderCache};
 pub use error::ShaderError;
 pub use error::Stage;
+pub use timings::{
+    FRAMES_OVER_BUDGET, SHADER_FRAME_BUDGET, STRIKES_TO_REFUSE, ShaderCost, ShaderReport, ShaderTimings,
+};
 
 /// The entry point name every generated module uses, in both stages.
 pub const ENTRY: &str = "gnoblin_entry";
