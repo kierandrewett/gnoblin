@@ -3055,3 +3055,190 @@ copy to drift. A shell's `tsconfig.json` extends the installed file and type-che
 - _What stays TypeScript._ The classes and their conversions (`rotationFrom`, `scaleFrom`, the quaternion and `{ x, y, z }` forms, `Transform3D`), the registry of the script's objects, the pointer handlers, `metresPerUnit`, the View of a workspace
   (`scene_mirror.ts`, which makes one child View per client from the script's workspace) and the XR extension.
 - _Not yet proven._ A script node inserted under a node only the engine knows (a UI canvas made in the same frame) is refused by the library; the toolkit mounts its canvases through `mountUnder`, and no test makes that case.
+
+## 36. Final integrated gate (lane GateTip, second run)
+
+Run on `f74453134` (the tip when the run began), on three fresh Agent37 boxes (2 CPUs, 12 GB). `e0eee3b50` is the same tree plus
+the lock fix of 36.3 F1; the clean-checkout proof ran on it. `rust-compositor` moved to `9b3bb5ce0` while the run went on; the tests
+that commit touches (`modular::transition_reload`) were not rerun on it.
+
+### 36.1 Gates (all `--locked`, exact CI recipes)
+
+| Gate                                                                                                                                              | Result |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `cargo fmt --check`, `cargo check --workspace --all-targets`, `cargo clippy --workspace --all-targets -- -D warnings`                             | pass   |
+| `xtask gen-sdks --check`, `abi-check`, `deps`, `layout`, `dupes --deny`, `logging`, `docs-parity`, `native-libs`                                  | pass   |
+| `scripts/js-typecheck.sh` (includes `js-types-check.sh`: the files `types init` writes, the starter and `tests/js-types`), `js-lint.sh`, prettier | pass   |
+| `scripts/check-packaging-targets.py` (the `packaging-targets` workflow)                                                                           | pass   |
+| docs build (`yarn build` in `infra/site`)                                                                                                         | pass   |
+| `just deny` and `just ext-deny` (cargo-deny 0.21.0, new)                                                                                          | pass   |
+| `just core-only`, `just dist-check`, `just pipewire-test`                                                                                         | pass   |
+| `just ext-fmt-check`, `ext-clippy`, `ext-test`                                                                                                    | pass   |
+| `just msrv` (toolchain 1.97.0, both workspaces)                                                                                                   | pass   |
+
+The `modular` CI job (`just modular`) was covered by running its test targets one by one (36.2); `abi`, `native-libs` and `gen-sdks` jobs
+are the gates above. Workflows that cannot run on a Debian box and why: `lua-runtime` (Fedora and Arch containers, the C/Mutter tree),
+`nix` (no Nix), `packages`, `package-repository`, `release`, `verify`, `rpm-target-probes`, `parity-reference` (distribution containers and
+package builds), `wlcs` (needs the wlcs build), `infra` (Terraform), `application-e2e` (a native desktop session), `gnome-release`,
+`nightly` (schedules and network checks). Not run.
+
+### 36.2 Tests per member
+
+Sums of every test target (`cargo test -p MEMBER`, one `--test NAME` per target for crates with many; doc tests where a library has
+them; the doc step of a cdylib-only crate is refused by cargo and is not counted). All rows are from `f74453134`.
+
+| Member                                       |   Passed | Failed | Ignored | Result                                           |
+| -------------------------------------------- | -------: | -----: | ------: | ------------------------------------------------ |
+| `gnoblin`                                    |      224 |      5 |       2 | fail: `js_shell` 4, `modular` 1 (36.3)           |
+| `gnoblin-a11y`                               |       45 |      0 |       0 | pass                                             |
+| `gnoblin-animation`                          |       26 |      0 |       0 | pass                                             |
+| `gnoblin-authority`                          |       21 |      0 |       0 | pass                                             |
+| `gnoblin-backend`                            |      453 |      0 |       2 | pass                                             |
+| `gnoblin-backend-drm`                        |      209 |      0 |       0 | pass                                             |
+| `gnoblin-capture`                            |       47 |      0 |       0 | pass                                             |
+| `gnoblin-cli-style`                          |       25 |      0 |       0 | pass                                             |
+| `gnoblin-client`                             |       82 |      0 |       0 | pass                                             |
+| `gnoblin-compat-core`                        |       37 |      0 |       1 | pass                                             |
+| `gnoblin-compat-dbus-a11y-keyboard-monitor`  |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-compat-dbus-gnome-session-manager`  |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-compat-dbus-gnome-shell-introspect` |       13 |      0 |       0 | pass                                             |
+| `gnoblin-compat-dbus-gnome-shell-screenshot` |        7 |      0 |       0 | pass                                             |
+| `gnoblin-compat-dbus-mutter-clipboard`       |        4 |      0 |       0 | pass                                             |
+| `gnoblin-compat-dbus-mutter-displayconfig`   |       19 |      0 |       0 | pass                                             |
+| `gnoblin-compat-dbus-mutter-idlemonitor`     |       17 |      0 |       0 | pass                                             |
+| `gnoblin-compat-dbus-mutter-inputcapture`    |        4 |      0 |       0 | pass                                             |
+| `gnoblin-compat-dbus-mutter-inputmapping`    |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-compat-dbus-mutter-remotedesktop`   |        4 |      0 |       0 | pass                                             |
+| `gnoblin-compat-dbus-mutter-screencast`      |       10 |      0 |       0 | pass                                             |
+| `gnoblin-compat-dbus-mutter-servicechannel`  |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-compat-gtk-dconf-settings`          |       10 |      0 |       0 | pass                                             |
+| `gnoblin-compat-host`                        |       13 |      0 |       0 | pass                                             |
+| `gnoblin-compat-qt-portal-settings`          |        5 |      0 |       0 | pass                                             |
+| `gnoblin-compat-wayland-gtk-shell1`          |        8 |      0 |       0 | pass                                             |
+| `gnoblin-compat-wayland-mutter-x11-interop`  |        7 |      0 |       0 | pass                                             |
+| `gnoblin-compat-x11-xsettings`               |        6 |      0 |       0 | pass                                             |
+| `gnoblin-compositor`                         |      614 |      0 |       0 | pass                                             |
+| `gnoblin-config`                             |      155 |      0 |       0 | pass                                             |
+| `gnoblin-config-codegen`                     |        3 |      0 |       0 | pass                                             |
+| `gnoblin-config-migrate`                     |       62 |      0 |       0 | pass                                             |
+| `gnoblin-core`                               |        7 |      0 |       7 | pass                                             |
+| `gnoblin-core-abi`                           |       11 |      0 |       0 | pass                                             |
+| `gnoblin-core-impl`                          |      156 |      0 |       0 | pass                                             |
+| `gnoblin-cursor`                             |       47 |      0 |       0 | pass                                             |
+| `gnoblin-example-hot-reload`                 |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-example-minimal-core-shell`         |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-example-native-linked`              |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-example-no-workspaces`              |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-example-rust-layout`                |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-example-std-prelude`                |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-launcher`                   |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-runtime-test`               |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-anim`                 |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-bindings`             |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-fault`                |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-hot`                  |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-layouts`              |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-min`                  |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-plus`                 |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-tiling`               |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-verbs`                |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-fixture-shell-wake`                 |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-input`                              |       95 |      0 |       0 | pass                                             |
+| `gnoblin-input-eis`                          |       56 |      0 |       0 | pass                                             |
+| `gnoblin-js`                                 |     1010 |      0 |       5 | pass                                             |
+| `gnoblin-js-types`                           |       18 |      0 |       0 | pass                                             |
+| `gnoblin-keyring-handoff`                    |       10 |      0 |       0 | pass                                             |
+| `gnoblin-keyring-store`                      |       23 |      0 |       0 | pass                                             |
+| `gnoblin-lock`                               |       38 |      0 |       0 | pass                                             |
+| `gnoblin-lock-auth`                          |       28 |      0 |       1 | pass                                             |
+| `gnoblin-log`                                |       35 |      0 |       2 | pass                                             |
+| `gnoblin-macros`                             |        0 |      0 |       1 | pass                                             |
+| `gnoblin-model`                              |       21 |      0 |       0 | pass                                             |
+| `gnoblin-output`                             |       42 |      0 |       0 | pass                                             |
+| `gnoblin-paint`                              |       57 |      0 |       0 | pass                                             |
+| `gnoblin-parity`                             |       70 |      0 |       0 | pass                                             |
+| `gnoblin-pipewire-export`                    |       19 |      0 |       0 | pass                                             |
+| `gnoblin-polkit-auth`                        |       22 |      0 |       1 | pass                                             |
+| `gnoblin-portal`                             |        7 |      0 |       0 | pass                                             |
+| `gnoblin-portal-appchooser`                  |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-portal-consent`                     |       41 |      0 |       0 | pass                                             |
+| `gnoblin-portal-core`                        |       11 |      0 |       0 | pass                                             |
+| `gnoblin-portal-filechooser`                 |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-portal-ui`                          |       24 |      0 |       0 | pass                                             |
+| `gnoblin-proto`                              |       54 |      0 |       0 | pass                                             |
+| `gnoblin-provider-wire`                      |       11 |      0 |       0 | pass                                             |
+| `gnoblin-render`                             |      281 |      0 |       0 | pass                                             |
+| `gnoblin-render-frame`                       |       44 |      0 |       0 | pass                                             |
+| `gnoblin-render-gles`                        |       82 |      0 |       0 | pass                                             |
+| `gnoblin-render-software`                    |       68 |      0 |       1 | pass                                             |
+| `gnoblin-render-vulkan`                      |       42 |      0 |       1 | pass                                             |
+| `gnoblin-runtime-js`                         |       10 |      0 |       0 | pass                                             |
+| `gnoblin-runtime-python`                     |       11 |      0 |       0 | pass                                             |
+| `gnoblin-schema`                             |       64 |      0 |       0 | pass                                             |
+| `gnoblin-secret`                             |        5 |      0 |       0 | pass                                             |
+| `gnoblin-service-core`                       |       12 |      0 |       0 | pass                                             |
+| `gnoblin-service-keyring`                    |       59 |      0 |       0 | pass                                             |
+| `gnoblin-service-location`                   |       28 |      0 |       0 | pass                                             |
+| `gnoblin-service-polkit`                     |        6 |      0 |       0 | pass (whole crate; see 36.3)                     |
+| `gnoblin-service-privacy`                    |       12 |      0 |       0 | pass                                             |
+| `gnoblin-service-screensaver`                |       32 |      0 |       0 | pass                                             |
+| `gnoblin-service-sessionidle`                |       11 |      0 |       0 | pass                                             |
+| `gnoblin-service-testkit`                    |        0 |      0 |       0 | no tests                                         |
+| `gnoblin-services`                           |       25 |      0 |       0 | pass                                             |
+| `gnoblin-session`                            |       79 |      0 |       0 | pass                                             |
+| `gnoblin-shell-discovery`                    |      163 |      0 |       0 | pass                                             |
+| `gnoblin-shell-host`                         |      101 |      0 |       0 | pass                                             |
+| `gnoblin-std`                                |       12 |      0 |       9 | pass                                             |
+| `gnoblin-std-abi`                            |       12 |      0 |       0 | pass                                             |
+| `gnoblin-std-dyn`                            |        5 |      0 |       0 | pass                                             |
+| `gnoblin-std-impl`                           |       87 |      0 |       0 | pass                                             |
+| `gnoblin-std-portal`                         |       17 |      0 |       0 | pass                                             |
+| `gnoblin-std-wm`                             |       34 |      0 |       0 | pass                                             |
+| `gnoblin-testkit`                            |       25 |      0 |       0 | pass                                             |
+| `gnoblin-tree-client`                        |       47 |      0 |       0 | pass                                             |
+| `gnoblin-types`                              |       33 |      0 |       0 | pass                                             |
+| `gnoblin-wayland`                            |      882 |      0 |       7 | pass                                             |
+| `gnoblin-wlcs`                               |        6 |      0 |       0 | pass                                             |
+| `gnoblin-wm-api`                             |       15 |      0 |       0 | pass                                             |
+| `gnoblin-xwayland`                           |       57 |      0 |       0 | pass                                             |
+| `gnoblinctl`                                 |      171 |      0 |       0 | pass (see 36.3: needs `gnoblin` built beside it) |
+| `pam-gnoblin-keyring`                        |        6 |      0 |       0 | pass                                             |
+| `xdg-desktop-portal-gnoblin`                 |       67 |      0 |       0 | pass                                             |
+| `xtask`                                      |      244 |      0 |       0 | pass                                             |
+| **116 members**                              | **6867** | **36** |  **40** |                                                  |
+
+### 36.3 Failures and their classification
+
+| Id  | Failure                                                                                                                                                                                                                                                     | Class                                                                            | Evidence and root cause                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1  | `cargo build -p gnoblin --locked` stopped: `cannot update the lock file`                                                                                                                                                                                    | **Fixed** (`e0eee3b50`)                                                          | `Cargo.lock` lacked the dev-dependencies `crates/gnoblin` gained (core-abi, core-impl, runtime-js, shell-host, std-dyn, std-impl). Every later gate ran on the regenerated lock; the first clean-checkout attempt on `f74453134` failed at this step and passed on `e0eee3b50`.                                                                                                                                                                                                                                                                                                         |
+| F2  | `gnoblinctl` `config_migrate` (10), `js_check` (18), `docs_examples`: `the dry-run host is the gnoblin launcher, and none was found beside gnoblinctl`                                                                                                      | **Environmental** (harness order)                                                | The dry run (`9664aa482`) needs `target/debug/gnoblin` and the staged core. `cargo test -p gnoblinctl` alone does not build another package's binary. After `cargo xtask stage` and `cargo build -p gnoblin`, the whole crate passes (171).                                                                                                                                                                                                                                                                                                                                             |
+| F3  | `gnoblin-service-polkit` `--test dbus` (2): `the fake helper example is not built`                                                                                                                                                                          | **Environmental** (my per-target split)                                          | `--test dbus` alone does not build the crate's examples; `cargo test -p gnoblin-service-polkit` passes (6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| F4  | `gnoblin` `js_shell` `a_corner_radius_a_border_and_a_shadow_...` and `a_global_style_becomes_the_effect_list_and_opacity_...`: `never reached: the reload clears the style` (opacity 0.8 and 0.5 and `corner_radius=12` stay on the nodes after the reload) | **Open, real, handed back to TsStdObjects (owner of the style and scene files)** | Not a stale build and not a flake. Reproduced 3 of 3: in the full `js_shell` run, and alone on a freshly staged tree (`cargo xtask stage`, then `cargo test -p gnoblin --test js_shell reload_clears_them`, both fail). The test build leaves `libgnoblin_std_impl.so`, `libgnoblin_core_impl.so` and `libgnoblin_runtime_js.so` byte-identical to the staged ones (`sha1sum` before and after). The first half of each test (style reaches the node) passes; only the clearing after the reload fails, with no shell diagnostic. I did not find the cause: the run budget ended first. |
+| F5  | `gnoblin` `js_shell` `a_master_stack_workspace_configures_three_real_clients_...`: `tiled window 1 is told edge 5: []` (`js_shell.rs:1968`)                                                                                                                 | **Open, real, handed back**                                                      | Failed once in the full run; not rerun alone. `[INFERENCE]` it is the same family as the 13 `js_shell` tests that TsStdNative2 reported.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| F6  | `gnoblin` `js_shell` `a_script_sets_a_client_view_to_capture_...`: `View#...content: must be a client or null` (`native_error.ts:84`)                                                                                                                       | **Open, real, handed back**                                                      | A shell that sets `View.content` to a client now throws in the library's check (`62b5a79da`, `scene/view.ts`/`native.ts`): the value reaches the library as something other than a client handle. Seen once in the full run.                                                                                                                                                                                                                                                                                                                                                            |
+| F7  | `modular` `transition_reload::a_running_transitions_tween_node_is_destroyed_...`: `never reached: the transition's tween node is in the tree`                                                                                                               | **Open, real; test changed upstream while I ran**                                | Deterministic alone on a staged tree (not a stale build). The log has no error: a transition started in `onAdded`, before the window is shown, leaves no tween node. `9b3bb5ce0` (TsStdAnim) moved the start to a second after the window is added; I did not rerun it. Whether a transition begun before a window is mapped should make no tween is a product question for the owner.                                                                                                                                                                                                  |
+| F8  | `gnoblinctl check --types` `FocusHistory` type error in `.gnoblin/lib/gnoblin-core/host/gnoblin.ts`                                                                                                                                                         | **Not reproduced**                                                               | `gnoblinctl config init` against a staged prefix, then `gnoblinctl check --types` with tsc 5.9.3, 6.0.3, 7.0.2 and latest: all exit 0, and an injected `const x: number = "a"` is reported at its line, so the compiler does run. `tsc --project` over the generated `tsconfig.json` also exits 0, as does `js-types-check.sh`. If the error was seen, it was on an older `.gnoblin/lib` copy (`types init` refreshes it).                                                                                                                                                              |
+
+The three suspects TsStdObjects listed on `62b5a79da` are therefore reproduced on `f74453134`, not stale-build or order effects. They are not
+fixed here.
+
+### 36.4 Clean checkout (box 3, empty target, `e0eee3b50`)
+
+| Step                                                                                                           | Result                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cargo build -p gnoblin --locked`                                                                              | Succeeds in 3 min and prints the `cargo xtask stage` warning. `--version` before staging: `libgnoblin-core.so.1: cannot open shared object file`.                                                                               |
+| `cargo xtask stage`; `--version`, `--list-shells`, no `LD_LIBRARY_PATH`                                        | Succeeds; `gnoblin 0.2.0 (build 0.2.0-alpha.0)`; an empty table.                                                                                                                                                                |
+| `cargo build --workspace`; `cargo xtask dist install --prefix /tmp/prefix --profile debug`                     | 278 files. Section 11 layout including `share/gnoblin/types/{gnoblin.d.ts,tsconfig.json,gnoblin-core,gnoblin-std}` (4 files) and 229 `js` and 20 `python` files.                                                                |
+| `readelf -d`, `ldd`                                                                                            | `bin/gnoblin`: NEEDED core once, RUNPATH `$ORIGIN:$ORIGIN/../lib:$ORIGIN/../lib64`, resolves to the prefix. Core: SONAME `libgnoblin-core.so.1`, `NODELETE`. Std: SONAME `libgnoblin-std.so.1`, NEEDED core, RUNPATH `$ORIGIN`. |
+| `env -i /tmp/prefix/bin/gnoblin --version`, `--list-shells`                                                    | `gnoblin 0.2.0 (build 0.2.0-alpha.0)`; `default 7 ts yes /tmp/prefix/share/gnoblin/default-shell/shell.ts (packaged)`.                                                                                                          |
+| `cargo xtask dist-check --prefix /tmp/prefix --run`                                                            | All checks passed; minimum glibc 2.35.                                                                                                                                                                                          |
+| A TS shell against the installed `share/gnoblin/types/tsconfig.json` (the packaged default shell, `tsc` 7.0.2) | Exit 0.                                                                                                                                                                                                                         |
+| `gnoblinctl config init`, `check`, `check --types` against the staged prefix                                   | All exit 0 (36.3 F8). Without a compiler, `check --types` prints `type check skipped: no TypeScript compiler found` and exits 0.                                                                                                |
+
+`share/gnoblin/types/**`, which the first run found missing, is installed now.
+
+### 36.5 Not done
+
+- F4, F5, F6, F7 above, and `9b3bb5ce0` not rerun.
+- The workflows listed in 36.1 that need distribution containers, Nix, wlcs or Terraform.
