@@ -3085,127 +3085,129 @@ package builds), `wlcs` (needs the wlcs build), `infra` (Terraform), `applicatio
 ### 36.2 Tests per member
 
 Sums of every test target (`cargo test -p MEMBER`, one `--test NAME` per target for crates with many; doc tests where a library has
-them; the doc step of a cdylib-only crate is refused by cargo and is not counted). All rows are from `f74453134`.
+them; the doc step of a cdylib-only crate is refused by cargo and is not counted). The table below is the **final** one of the last round
+(36.6); the first round's table, with 36 failures, was superseded: its `gnoblinctl` and `gnoblin-service-polkit` rows were the harness
+effects F2 and F3 (they pass whole), and its `gnoblin` rows were F4 to F7.
 
-| Member                                       |   Passed | Failed | Ignored | Result                                           |
-| -------------------------------------------- | -------: | -----: | ------: | ------------------------------------------------ |
-| `gnoblin`                                    |      224 |      5 |       2 | fail: `js_shell` 4, `modular` 1 (36.3)           |
-| `gnoblin-a11y`                               |       45 |      0 |       0 | pass                                             |
-| `gnoblin-animation`                          |       26 |      0 |       0 | pass                                             |
-| `gnoblin-authority`                          |       21 |      0 |       0 | pass                                             |
-| `gnoblin-backend`                            |      453 |      0 |       2 | pass                                             |
-| `gnoblin-backend-drm`                        |      209 |      0 |       0 | pass                                             |
-| `gnoblin-capture`                            |       47 |      0 |       0 | pass                                             |
-| `gnoblin-cli-style`                          |       25 |      0 |       0 | pass                                             |
-| `gnoblin-client`                             |       82 |      0 |       0 | pass                                             |
-| `gnoblin-compat-core`                        |       37 |      0 |       1 | pass                                             |
-| `gnoblin-compat-dbus-a11y-keyboard-monitor`  |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-compat-dbus-gnome-session-manager`  |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-compat-dbus-gnome-shell-introspect` |       13 |      0 |       0 | pass                                             |
-| `gnoblin-compat-dbus-gnome-shell-screenshot` |        7 |      0 |       0 | pass                                             |
-| `gnoblin-compat-dbus-mutter-clipboard`       |        4 |      0 |       0 | pass                                             |
-| `gnoblin-compat-dbus-mutter-displayconfig`   |       19 |      0 |       0 | pass                                             |
-| `gnoblin-compat-dbus-mutter-idlemonitor`     |       17 |      0 |       0 | pass                                             |
-| `gnoblin-compat-dbus-mutter-inputcapture`    |        4 |      0 |       0 | pass                                             |
-| `gnoblin-compat-dbus-mutter-inputmapping`    |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-compat-dbus-mutter-remotedesktop`   |        4 |      0 |       0 | pass                                             |
-| `gnoblin-compat-dbus-mutter-screencast`      |       10 |      0 |       0 | pass                                             |
-| `gnoblin-compat-dbus-mutter-servicechannel`  |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-compat-gtk-dconf-settings`          |       10 |      0 |       0 | pass                                             |
-| `gnoblin-compat-host`                        |       13 |      0 |       0 | pass                                             |
-| `gnoblin-compat-qt-portal-settings`          |        5 |      0 |       0 | pass                                             |
-| `gnoblin-compat-wayland-gtk-shell1`          |        8 |      0 |       0 | pass                                             |
-| `gnoblin-compat-wayland-mutter-x11-interop`  |        7 |      0 |       0 | pass                                             |
-| `gnoblin-compat-x11-xsettings`               |        6 |      0 |       0 | pass                                             |
-| `gnoblin-compositor`                         |      614 |      0 |       0 | pass                                             |
-| `gnoblin-config`                             |      155 |      0 |       0 | pass                                             |
-| `gnoblin-config-codegen`                     |        3 |      0 |       0 | pass                                             |
-| `gnoblin-config-migrate`                     |       62 |      0 |       0 | pass                                             |
-| `gnoblin-core`                               |        7 |      0 |       7 | pass                                             |
-| `gnoblin-core-abi`                           |       11 |      0 |       0 | pass                                             |
-| `gnoblin-core-impl`                          |      156 |      0 |       0 | pass                                             |
-| `gnoblin-cursor`                             |       47 |      0 |       0 | pass                                             |
-| `gnoblin-example-hot-reload`                 |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-example-minimal-core-shell`         |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-example-native-linked`              |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-example-no-workspaces`              |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-example-rust-layout`                |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-example-std-prelude`                |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-launcher`                   |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-runtime-test`               |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-anim`                 |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-bindings`             |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-fault`                |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-hot`                  |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-layouts`              |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-min`                  |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-plus`                 |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-tiling`               |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-verbs`                |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-fixture-shell-wake`                 |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-input`                              |       95 |      0 |       0 | pass                                             |
-| `gnoblin-input-eis`                          |       56 |      0 |       0 | pass                                             |
-| `gnoblin-js`                                 |     1010 |      0 |       5 | pass                                             |
-| `gnoblin-js-types`                           |       18 |      0 |       0 | pass                                             |
-| `gnoblin-keyring-handoff`                    |       10 |      0 |       0 | pass                                             |
-| `gnoblin-keyring-store`                      |       23 |      0 |       0 | pass                                             |
-| `gnoblin-lock`                               |       38 |      0 |       0 | pass                                             |
-| `gnoblin-lock-auth`                          |       28 |      0 |       1 | pass                                             |
-| `gnoblin-log`                                |       35 |      0 |       2 | pass                                             |
-| `gnoblin-macros`                             |        0 |      0 |       1 | pass                                             |
-| `gnoblin-model`                              |       21 |      0 |       0 | pass                                             |
-| `gnoblin-output`                             |       42 |      0 |       0 | pass                                             |
-| `gnoblin-paint`                              |       57 |      0 |       0 | pass                                             |
-| `gnoblin-parity`                             |       70 |      0 |       0 | pass                                             |
-| `gnoblin-pipewire-export`                    |       19 |      0 |       0 | pass                                             |
-| `gnoblin-polkit-auth`                        |       22 |      0 |       1 | pass                                             |
-| `gnoblin-portal`                             |        7 |      0 |       0 | pass                                             |
-| `gnoblin-portal-appchooser`                  |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-portal-consent`                     |       41 |      0 |       0 | pass                                             |
-| `gnoblin-portal-core`                        |       11 |      0 |       0 | pass                                             |
-| `gnoblin-portal-filechooser`                 |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-portal-ui`                          |       24 |      0 |       0 | pass                                             |
-| `gnoblin-proto`                              |       54 |      0 |       0 | pass                                             |
-| `gnoblin-provider-wire`                      |       11 |      0 |       0 | pass                                             |
-| `gnoblin-render`                             |      281 |      0 |       0 | pass                                             |
-| `gnoblin-render-frame`                       |       44 |      0 |       0 | pass                                             |
-| `gnoblin-render-gles`                        |       82 |      0 |       0 | pass                                             |
-| `gnoblin-render-software`                    |       68 |      0 |       1 | pass                                             |
-| `gnoblin-render-vulkan`                      |       42 |      0 |       1 | pass                                             |
-| `gnoblin-runtime-js`                         |       10 |      0 |       0 | pass                                             |
-| `gnoblin-runtime-python`                     |       11 |      0 |       0 | pass                                             |
-| `gnoblin-schema`                             |       64 |      0 |       0 | pass                                             |
-| `gnoblin-secret`                             |        5 |      0 |       0 | pass                                             |
-| `gnoblin-service-core`                       |       12 |      0 |       0 | pass                                             |
-| `gnoblin-service-keyring`                    |       59 |      0 |       0 | pass                                             |
-| `gnoblin-service-location`                   |       28 |      0 |       0 | pass                                             |
-| `gnoblin-service-polkit`                     |        6 |      0 |       0 | pass (whole crate; see 36.3)                     |
-| `gnoblin-service-privacy`                    |       12 |      0 |       0 | pass                                             |
-| `gnoblin-service-screensaver`                |       32 |      0 |       0 | pass                                             |
-| `gnoblin-service-sessionidle`                |       11 |      0 |       0 | pass                                             |
-| `gnoblin-service-testkit`                    |        0 |      0 |       0 | no tests                                         |
-| `gnoblin-services`                           |       25 |      0 |       0 | pass                                             |
-| `gnoblin-session`                            |       79 |      0 |       0 | pass                                             |
-| `gnoblin-shell-discovery`                    |      163 |      0 |       0 | pass                                             |
-| `gnoblin-shell-host`                         |      101 |      0 |       0 | pass                                             |
-| `gnoblin-std`                                |       12 |      0 |       9 | pass                                             |
-| `gnoblin-std-abi`                            |       12 |      0 |       0 | pass                                             |
-| `gnoblin-std-dyn`                            |        5 |      0 |       0 | pass                                             |
-| `gnoblin-std-impl`                           |       87 |      0 |       0 | pass                                             |
-| `gnoblin-std-portal`                         |       17 |      0 |       0 | pass                                             |
-| `gnoblin-std-wm`                             |       34 |      0 |       0 | pass                                             |
-| `gnoblin-testkit`                            |       25 |      0 |       0 | pass                                             |
-| `gnoblin-tree-client`                        |       47 |      0 |       0 | pass                                             |
-| `gnoblin-types`                              |       33 |      0 |       0 | pass                                             |
-| `gnoblin-wayland`                            |      882 |      0 |       7 | pass                                             |
-| `gnoblin-wlcs`                               |        6 |      0 |       0 | pass                                             |
-| `gnoblin-wm-api`                             |       15 |      0 |       0 | pass                                             |
-| `gnoblin-xwayland`                           |       57 |      0 |       0 | pass                                             |
-| `gnoblinctl`                                 |      171 |      0 |       0 | pass (see 36.3: needs `gnoblin` built beside it) |
-| `pam-gnoblin-keyring`                        |        6 |      0 |       0 | pass                                             |
-| `xdg-desktop-portal-gnoblin`                 |       67 |      0 |       0 | pass                                             |
-| `xtask`                                      |      244 |      0 |       0 | pass                                             |
-| **116 members**                              | **6867** | **36** |  **40** |                                                  |
+| Member                                       |   Passed | Failed | Ignored | Result   | Run on      |
+| -------------------------------------------- | -------: | -----: | ------: | -------- | ----------- |
+| `gnoblin`                                    |      230 |      0 |       2 | pass     | `20566938`  |
+| `gnoblin-a11y`                               |       45 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-animation`                          |       26 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-authority`                          |       21 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-backend`                            |      453 |      0 |       2 | pass     | `bb4ed744c` |
+| `gnoblin-backend-drm`                        |      209 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-capture`                            |       47 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-cli-style`                          |       25 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-client`                             |       82 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-core`                        |       37 |      0 |       1 | pass     | `bb4ed744c` |
+| `gnoblin-compat-dbus-a11y-keyboard-monitor`  |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-compat-dbus-gnome-session-manager`  |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-compat-dbus-gnome-shell-introspect` |       13 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-dbus-gnome-shell-screenshot` |        7 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-dbus-mutter-clipboard`       |        4 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-dbus-mutter-displayconfig`   |       19 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-dbus-mutter-idlemonitor`     |       17 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-dbus-mutter-inputcapture`    |        4 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-dbus-mutter-inputmapping`    |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-compat-dbus-mutter-remotedesktop`   |        4 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-dbus-mutter-screencast`      |       10 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-dbus-mutter-servicechannel`  |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-compat-gtk-dconf-settings`          |       10 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-host`                        |       13 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-qt-portal-settings`          |        5 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-wayland-gtk-shell1`          |        8 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-wayland-mutter-x11-interop`  |        7 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compat-x11-xsettings`               |        6 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-compositor`                         |      614 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-config`                             |      155 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-config-codegen`                     |        3 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-config-migrate`                     |       62 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-core`                               |        7 |      0 |       7 | pass     | `bb4ed744c` |
+| `gnoblin-core-abi`                           |       11 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-core-impl`                          |      156 |      0 |       0 | pass     | `20566938`  |
+| `gnoblin-cursor`                             |       47 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-example-hot-reload`                 |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-example-minimal-core-shell`         |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-example-native-linked`              |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-example-no-workspaces`              |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-example-rust-layout`                |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-example-std-prelude`                |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-launcher`                   |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-runtime-test`               |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-anim`                 |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-bindings`             |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-fault`                |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-hot`                  |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-layouts`              |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-min`                  |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-plus`                 |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-tiling`               |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-verbs`                |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-fixture-shell-wake`                 |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-input`                              |       95 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-input-eis`                          |       56 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-js`                                 |     1010 |      0 |       5 | pass     | `20566938`  |
+| `gnoblin-js-types`                           |       18 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-keyring-handoff`                    |       10 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-keyring-store`                      |       23 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-lock`                               |       38 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-lock-auth`                          |       28 |      0 |       1 | pass     | `bb4ed744c` |
+| `gnoblin-log`                                |       35 |      0 |       2 | pass     | `bb4ed744c` |
+| `gnoblin-macros`                             |        0 |      0 |       1 | pass     | `bb4ed744c` |
+| `gnoblin-model`                              |       21 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-output`                             |       42 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-paint`                              |       57 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-parity`                             |       70 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-pipewire-export`                    |       19 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-polkit-auth`                        |       22 |      0 |       1 | pass     | `bb4ed744c` |
+| `gnoblin-portal`                             |        7 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-portal-appchooser`                  |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-portal-consent`                     |       41 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-portal-core`                        |       11 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-portal-filechooser`                 |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-portal-ui`                          |       24 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-proto`                              |       54 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-provider-wire`                      |       11 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-render`                             |      281 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-render-frame`                       |       44 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-render-gles`                        |       82 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-render-software`                    |       68 |      0 |       1 | pass     | `bb4ed744c` |
+| `gnoblin-render-vulkan`                      |       42 |      0 |       1 | pass     | `bb4ed744c` |
+| `gnoblin-runtime-js`                         |       10 |      0 |       0 | pass     | `20566938`  |
+| `gnoblin-runtime-python`                     |       11 |      0 |       0 | pass     | `20566938`  |
+| `gnoblin-schema`                             |       64 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-secret`                             |        5 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-service-core`                       |       12 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-service-keyring`                    |       59 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-service-location`                   |       28 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-service-polkit`                     |        6 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-service-privacy`                    |       12 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-service-screensaver`                |       32 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-service-sessionidle`                |       11 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-service-testkit`                    |        0 |      0 |       0 | no tests | `bb4ed744c` |
+| `gnoblin-services`                           |       25 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-session`                            |       79 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-shell-discovery`                    |      163 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-shell-host`                         |      101 |      0 |       0 | pass     | `20566938`  |
+| `gnoblin-std`                                |       12 |      0 |       9 | pass     | `20566938`  |
+| `gnoblin-std-abi`                            |       12 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-std-dyn`                            |        5 |      0 |       0 | pass     | `20566938`  |
+| `gnoblin-std-impl`                           |       87 |      0 |       0 | pass     | `20566938`  |
+| `gnoblin-std-portal`                         |       17 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-std-wm`                             |       34 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-testkit`                            |       25 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-tree-client`                        |       47 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-types`                              |       33 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-wayland`                            |      882 |      0 |       7 | pass     | `bb4ed744c` |
+| `gnoblin-wlcs`                               |        6 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-wm-api`                             |       15 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblin-xwayland`                           |       57 |      0 |       0 | pass     | `bb4ed744c` |
+| `gnoblinctl`                                 |      171 |      0 |       0 | pass     | `bb4ed744c` |
+| `pam-gnoblin-keyring`                        |        6 |      0 |       0 | pass     | `bb4ed744c` |
+| `xdg-desktop-portal-gnoblin`                 |       67 |      0 |       0 | pass     | `bb4ed744c` |
+| `xtask`                                      |      244 |      0 |       0 | pass     | `20566938`  |
+| **116 members**                              | **6904** |  **0** |  **40** |          |             |
 
 ### 36.3 Failures and their classification
 
@@ -3242,8 +3244,45 @@ fixed here.
 
 - F4, F5, F6, F7 above, and `9b3bb5ce0` not rerun.
 - The workflows listed in 36.1 that need distribution containers, Nix, wlcs or Terraform.
-**Styles under a reload (lane TsStdAnim).** A reload that stays in one core generation (the rig's, and the in-process JS runtime's) keeps the library's state, so the old script generation's style scopes and what its pass drew
-stayed: the new generation's pass found nothing changed, or, with no scope of its own, did not run at all, and the effects, opacity and corner radius stayed on the windows. `style_reset` (new table function, called by
-`installStyles` when `gnoblin-std` installs, before any style of the generation is made) drops the scopes and the applied record and sets `StyleState.owned`, which lets the pass run with no scope; its first application writes the
-effects (they cannot be read back from the tree) and the opacity and corner radius the style says, except the opacity of a window a running transition plays. A production reload opens a new core generation whose library starts empty, where
-the call clears nothing. Cost: every TypeScript std shell writes an empty `effects` list to each window once.
+  **Styles under a reload (lane TsStdAnim).** A reload that stays in one core generation (the rig's, and the in-process JS runtime's) keeps the library's state, so the old script generation's style scopes and what its pass drew
+  stayed: the new generation's pass found nothing changed, or, with no scope of its own, did not run at all, and the effects, opacity and corner radius stayed on the windows. `style_reset` (new table function, called by
+  `installStyles` when `gnoblin-std` installs, before any style of the generation is made) drops the scopes and the applied record and sets `StyleState.owned`, which lets the pass run with no scope; its first application writes the
+  effects (they cannot be read back from the tree) and the opacity and corner radius the style says, except the opacity of a window a running transition plays. A production reload opens a new core generation whose library starts empty, where
+  the call clears nothing. Cost: every TypeScript std shell writes an empty `effects` list to each window once.
+
+### 36.6 Final round (lane GateTip, third run)
+
+Gates and the tests of the members not touched by the later fixes ran on `bb4ed744c` (TsStdAnim's fix for F4 and F6); the members
+marked `20566938` ran on `205669383f9c9bd3a2096ade298383a189cd4d30` (this section's own fixes, which only touch `gnoblin-std-impl`, a test of `gnoblin` and the changelog;
+`rust-compositor` held no other commit in between). Fresh boxes, the target wiped after each sync.
+
+**Gates on `bb4ed744c`, all pass:** fmt, check, clippy `-D warnings`, `gen-sdks --check`, `abi-check`, `deps`, `layout`, `dupes --deny`,
+`logging`, `docs-parity`, `native-libs`, `js-typecheck` (with `js-types-check`), `js-lint`, prettier, `check-packaging-targets`, the docs
+build, `just deny`, `ext-deny`, `core-only`, `ext-fmt-check`, `ext-clippy`, `ext-test`, `pipewire-test`, `dist-check`, `msrv`. On `205669383`
+the fmt, clippy (`-D warnings`, workspace) and `gen-sdks --check` gates were rerun and pass.
+
+**The previously failing targets, alone on a freshly staged tree (`cargo xtask stage`, empty target), on `bb4ed744c`:**
+
+| Target                                                   | Result                                                   |
+| -------------------------------------------------------- | -------------------------------------------------------- |
+| `gnoblin --test js_shell` (whole; F4, F5, F6)            | 59 passed, 1 ignored                                     |
+| `gnoblin --test modular` (whole; F7 `transition_reload`) | 25 passed; 1 failed, the new `style_reload` test (below) |
+
+**F4 is not fixed in production by `bb4ed744c` alone.** The fix clears the styles of an earlier script when a reload keeps the
+library's state, which is what the in-process `js_shell` rig does. A real session does not: retiring a generation drops the library's
+state (`state::retire`), so the next generation starts a fresh library. I wrote a real-session test,
+`crates/gnoblin/tests/modular/style_reload.rs` (the shipped binary, a TypeScript shell with a style, a real Wayland window, the window
+node's opacity, corner radius and effects read over the socket, a reload by a saved file and one by `gnoblinctl shell reload`). On
+`bb4ed744c` it fails: opacity and corner radius return to `1.0` and `0`, but the node keeps its shadow (`effects` 1, 2002 polls). The
+effects cannot be read back, and a fresh state wrote nothing for an empty list. Fixed in `205669383`: when `style_reset` runs over a
+library that is a reload (`reload_count > 0`) or holds an earlier script's state, the first application of a window writes its list, an
+empty one included; a first start writes nothing for an empty list. A first attempt that always wrote broke 3 tests of `gnoblin-js`
+(`workspaces`, `link_failures`, `stock_focus`) that count the fake compositor's writes; the reload-only form passes them. After the fix:
+`style_reload` passes, the two `js_shell` clear tests pass, and `gnoblin-std-impl` (70 tests) and `gnoblin-js` pass.
+
+**New failures of the round:** `gnoblin-core-impl` and `gnoblin-std-impl` failed on one box because their nested builds (1.5 to 2 GB
+each) filled the disk when run as whole crates (F9, environmental); with one target at a time they pass. Nothing else.
+
+**Not done:** the gates other than fmt, clippy and `gen-sdks --check` were not rerun on `205669383` (its diff is two `gnoblin-std-impl`
+files, one test, the changelog and this document); `gnoblin-compositor` and `gnoblin-wayland` ran on `bb4ed744c` only. The workflows of
+36.1 that need containers, Nix, wlcs or Terraform were not run.
