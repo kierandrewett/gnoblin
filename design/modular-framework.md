@@ -3286,3 +3286,105 @@ each) filled the disk when run as whole crates (F9, environmental); with one tar
 **Not done:** the gates other than fmt, clippy and `gen-sdks --check` were not rerun on `205669383` (its diff is two `gnoblin-std-impl`
 files, one test, the changelog and this document); `gnoblin-compositor` and `gnoblin-wayland` ran on `bb4ed744c` only. The workflows of
 36.1 that need containers, Nix, wlcs or Terraform were not run.
+
+## 37. The custom shader pass: analysis for the owner (D20, M7.9, O7)
+
+Status: **not built, on hold.** The question to the owner timed out and its default answer was "build it". A default after a
+timeout is not consent, and the answer reverses a decision the owner made (O7). Nothing in this section is implemented; no
+code, schema, ABI or SDK file changed. This is what the owner needs to decide.
+
+### 37.1 Why O7 refused it
+
+The recorded reasoning is short. It is an economy argument, not a safety argument. Quoted from the sources:
+
+- Survey 16.6, row O7: "(a) Add `shader` to the tree `effects` list and give `set_user_shader` a path. (b) Drop user shaders; delete
+  `data/shaders/tint.frag` and `UserShader`." Recommendation: "(b) unless a named user needs shaders: nothing in the tree reaches
+  `set_user_shader`." The decision was taken in lane 9A (`443dad7c8`, `573ee9494`).
+- Survey, open items: "(4) O7 stands: no shader effects."
+- `design/visuals-status.md`: "No production caller of `set_user_shader`. No crate outside `gnoblin-render` calls it. There is no
+  config loader." The GLES tests of the old pass (`a_user_shader_shades_its_layer`, `a_user_shader_reads_its_uniforms`,
+  `a_user_shader_refuses_a_mistyped_uniform`, `a_broken_user_shader_leaves_the_frame_drawn`) went with it and are in history.
+- `gnoblin-render/src/effect.rs`: "There is no user shader pass: the compositor ships blur, shadow and border, and the tree refuses
+  any other kind." `gnoblin-render-frame/src/shader/mod.rs`: "The shipped passes are the only shaders".
+- The refusal today is `pass_from_wire` in `gnoblin-compositor/src/ipc/tree_effects.rs`: "user shaders were removed: use a
+  `blur`, `shadow` or `border` effect, or draw a `Canvas`".
+
+What O7 does not say: that shaders are unsafe, or that WGSL is the wrong dialect. D12 (`rust-compositor.md`) already says "Write
+every effect and user shader once, in one shader language, and compile it per backend with `naga`", and `vulkan-backend.md` says
+"user shaders must be compiled at runtime whichever route is taken". So the pipeline a user shader needs exists; what was missing was
+a user. Section 4 of the spec (low-level interfaces for custom rendering policies) is the new reason to reopen it.
+
+### 37.2 The concerns, and how each would be met
+
+- **Untrusted shader code.** A shell is code the compositor already runs in its process (D1), so a shader adds no new trust
+  boundary for code execution. What it adds is a GPU program written by that code. The answers are mechanical:
+    - Validation at write time with `naga` (the front end and validator the renderers already use), with no capabilities enabled.
+    - The wrapper owns every binding; the user source supplies one function and may declare constants and helper functions only.
+      No storage buffers, atomics, compute, or extra textures.
+    - A privacy rule that matters more than the code: a shader that samples the backdrop reads other windows. It must see what a
+      screen capture sees (secure windows and the lock card drawn as black), and it has no read-back path to the shell.
+    - Phase 1 is node-only (the node's own texture and uniforms), which has no privacy question at all.
+- **GPU hangs and runaway cost.** The vulkan renderer already maps device loss and timeout to `RenderError::Lost`
+  (`gnoblin-render-vulkan/src/error.rs`); GLES has the robustness extension's reset status. Neither is a defence on its own. The
+  defence is to bound the program before it runs and to watch what it costs:
+    - Validation limits: source size (16 KiB), no `loop` or `while`, `for` only with a constant bound of at most 64, at most 16
+      texture samples, an expression-count ceiling on the `naga` module, no recursion (WGSL forbids it).
+    - A frame-cost watchdog: the pass is timed (GPU timestamps where present, otherwise the wall time of submit to fence). Three frames
+      over budget (for example 50 ms) disable the pass: the node draws without it, `skipped` names the pass, and a strike is logged.
+      Three strikes on one source hash refuse that hash for the session.
+    - A device loss with a shader pass in the frame goes through the existing recovery, with the hash struck first.
+- **Resource use.** A compiled-shader cache keyed by the hash of the source, bounded (for example 64 entries, least recently used);
+  at most 4 shader passes per node and the existing 16-effect cap; compile off the draw path where the driver allows, so a slow
+  compile is a late effect and not a dropped frame.
+- **Portability.** One dialect, WGSL, compiled by `naga` to GLSL ES 3.10 (GLES) and SPIR-V (Vulkan), exactly as the shipped passes are.
+  The software renderer has no compiler and no interpreter. Validation is renderer-independent, so a bad shader is refused at write
+  time everywhere; whether the active renderer can draw a valid one is not. Recommended: the software renderer accepts it and leaves
+  it undrawn, listed in `skipped`, which is how it already treats a backdrop blur. The alternative (refuse at write time under
+  software) makes a shell's behaviour depend on the machine and is not recommended. Results are not bit-identical across GLES and
+  Vulkan (float precision, texture filtering); a pixel test compares with a tolerance.
+
+### 37.3 A minimal design
+
+- **Tree.** The `effects` record (`gnoblin-schema/schema/tree/effect.toml`) gains the kind `shader`, with `source` (text), and
+  `params` (a list of at most 8 numbers, read in the shader as `p[0..8]`). `entry` is fixed, not a property. The record keeps its
+  flat shape; `source` and `params` are ignored by the other kinds, as `blur_radius` is ignored by `shadow`.
+- **Shader contract.** The user writes `fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32>`:
+  the node's premultiplied colour at `uv`, the params, and a built-in time in seconds. The wrapper (the shipped `preamble.wgsl`
+  and `quad.wgsl`) supplies the vertex stage, the block, and the texture.
+- **Errors.** A write the validator refuses answers a refusal that names the line and column of the user source
+  (`ShaderError` already carries them), through the existing `bad-value` path.
+- **Animation.** `params` is a list, and the tween player animates numbers and triples of numbers, not whole lists. The first
+  version animates through the built-in `t` and through writes; tweening `params` needs the tween player to interpolate a list
+  element-wise, which is a separate small change.
+- **Core table and SDKs.** The catalog and `gnoblin-core-abi` change only through the schema (a record gains fields), so the
+  regenerated SDKs gain `Effect::shader(source, params)` in Rust, the same in Python and TypeScript. `gen-sdks --check` and
+  `abi.lock` move with it.
+- **Std.** A `ShaderFilter` style element beside `BlurFilter` (TypeScript, Python, Rust) that maps onto the `shader` effect. It is
+  natural, because styles already map onto `effects`; it is small once the kind exists.
+- **Capability.** A setting `render.user_shaders` (default off until the owner confirms) and a capability in the session's
+  capability list, so a build or a user can disable the kind and the tree refuses it with today's message.
+
+### 37.4 Effort
+
+For one engineer who knows the renderers, in working days:
+
+- Validator and limits on `naga`, with the accept and reject tests: 4.
+- Schema, `effects` wire, catalog, `abi.lock`, generated Rust, Python and TypeScript surfaces: 3.
+- GLES pass: runtime compile, cache, uniforms, bounded draw, tests (the four deleted lane 9A tests are a start): 5.
+- Vulkan pass: a pipeline per shader at run time (the renderer builds its pipelines at start today), descriptors, tests: 6.
+- Software renderer (`skipped` only): 0.5.
+- Watchdog, strikes, device-loss path, per-renderer timing: 4.
+- Std element in three languages, docs page, changelog: 4.
+- A real-session test (Rust and TypeScript shell sets a tint shader, a headless pixel check, refusal cases): 3.
+
+About 30 working days, six weeks of calendar time with review. The risks are the Vulkan pipeline creation cost on the render
+thread, GLES driver compile stalls, and the backdrop privacy rule, which is why phase 1 is node-only. Backdrop sampling is a
+further 8 to 10 days and needs the owner's separate approval.
+
+### 37.5 What the owner decides
+
+- Keep O7 (no user shaders). Cost: none. The refusal text points at `Canvas`.
+- Build the node-only pass behind `render.user_shaders`, default off. Cost: about 30 days.
+- Build it with backdrop sampling too. Cost: about 40 days and the secure-surface rule.
+
+D20 stays "not done, needs the owner" in 34 and 36. If the owner builds it, the lane brief is 37.3 and 37.4.
