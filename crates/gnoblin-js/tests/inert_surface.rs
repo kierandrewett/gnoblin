@@ -99,7 +99,8 @@ const UNREAD: &[(&str, &str)] = &[
     ),
 ];
 
-/// The non-test source of the native crates, each file cut at its first `#[cfg(test)]`.
+/// The non-test source of the native crates, each file cut at its test module (`#[cfg(test)]` on a `mod`): a `#[cfg(test)]` on a `use` or
+/// a function higher up is one line of test code, and cutting there would drop the whole file below it.
 fn native_source() -> Vec<String> {
     let root = repo();
     let mut files = Vec::new();
@@ -113,7 +114,7 @@ fn native_source() -> Vec<String> {
             !name.contains("test") && !path.components().any(|part| part.as_os_str() == "tests")
         })
         .filter_map(|path| fs::read_to_string(path).ok())
-        .map(|text| match text.find("#[cfg(test)]") {
+        .map(|text| match text.find("#[cfg(test)]\nmod ") {
             Some(at) => text[..at].to_owned(),
             None => text,
         })
