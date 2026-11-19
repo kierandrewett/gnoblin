@@ -12,11 +12,11 @@ use crate::save;
 use crate::support::native_shell::{Start, start_script, wait_for_window};
 use crate::support::{Mapper, snapshot};
 
-/// A shell that, for the first window it hears of, starts a transition of the window's opacity that lasts a minute. The `generation` tag
+/// A shell that, a second after the first window it hears of is added (a transition started in `onAdded`, before the window is shown, was seen to leave no tween node in the tree), starts a transition of the window's opacity that lasts a minute. The `generation` tag
 /// tells the two generations' logs apart.
 fn shell_text(generation: &str, animate: bool) -> String {
     let body = if animate {
-        "gnoblin.requestTransition(() => { client.opacity = 0.5; }, { duration: 60000 });"
+        "gnoblin.timers.after(1000, () => { gnoblin.requestTransition(() => { client.opacity = 0.5; }, { duration: 60000 }); });"
     } else {
         ""
     };
