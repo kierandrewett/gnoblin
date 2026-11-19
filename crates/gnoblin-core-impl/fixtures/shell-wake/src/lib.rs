@@ -68,6 +68,15 @@ fn main(g: &Gnoblin) -> Result<(), Box<dyn std::error::Error>> {
     for thread in threads {
         let _ = thread.join();
     }
+    // A poster queues its work and then signals the descriptor, so the last closure can run (a dispatch sees the queue, woken by an
+    // earlier signal) before the last signal lands, which is a wake with nothing left to do. Every poster has finished, so one more
+    // `dispatch(0)` drains it, and the loop is quiet after that: the descriptor sleeps a loop when nothing is queued.
+    if readable(&fd, Duration::from_millis(50))? {
+        wakes += 1;
+        if g.dispatch(0)? == 0 {
+            spurious += 1;
+        }
+    }
     // Everything has run and been drained: the descriptor is quiet, so a loop would sleep now.
     let quiet = !readable(&fd, Duration::from_millis(150))?;
     say(&format!(
