@@ -458,7 +458,8 @@ pub(crate) unsafe extern "C" fn style_rank(ctx: GnoblinCtx, style: GnoblinStdSty
 pub(crate) unsafe extern "C" fn style_reset(ctx: GnoblinCtx) -> i32 {
     call("style_reset", || {
         mutate(ctx, |st| {
-            st.styles.reset();
+            let reloaded = st.g.info().is_ok_and(|info| info.reload_count > 0);
+            st.styles.reset(reloaded);
             Ok(())
         })?;
         Ok(abi::E_OK)

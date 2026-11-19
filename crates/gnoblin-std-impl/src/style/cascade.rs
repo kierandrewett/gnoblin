@@ -70,6 +70,10 @@ pub(crate) struct StyleState {
     ranks: HashMap<Id, f64>,
     /// The library owns the styles of the windows (`style_reset` or a first scope): its pass applies them, an empty style included.
     owned: bool,
+    /// An earlier script generation may have left effects on the windows (the library held styles or applied ones when `style_reset`
+    /// ran, or this generation is a reload): the tree's effects cannot be read back, so the first application of a window writes its
+    /// list, an empty one included. A first start has nothing to take off, and writes nothing for an empty list.
+    inherited: bool,
     /// Goes up by one for every accepted change of any style; the application compares it between turns.
     pub(crate) epoch: u64,
     clients: HashMap<u64, Applied>,
@@ -79,7 +83,8 @@ impl StyleState {
     /// Drops every scope and what was applied, and makes the library the styles' owner: a script generation that starts over a library
     /// state an earlier one left (a reload that stays in one core generation) styles on a clean slate, and its first pass takes
     /// what the earlier one drew off the windows.
-    pub(crate) fn reset(&mut self) {
+    pub(crate) fn reset(&mut self, reloaded: bool) {
+        self.inherited = reloaded || !self.stores.is_empty() || !self.clients.is_empty();
         self.stores.clear();
         self.by_scope.clear();
         self.selections.clear();
@@ -366,11 +371,11 @@ impl State {
                 mapping.effects.len()
             ));
         } else {
-            // A window an earlier generation styled keeps its effects, and the tree's effects cannot be read back: a reload that retires
-            // the generation's state hands the next one a library that never saw them, as a reload that keeps the state does. So the
-            // first application of a window always writes its list, an empty one included, and the later ones write what changed.
+            // A window an earlier generation styled keeps its effects: the first application clears them when the style has none. The
+            // tree's effects cannot be read back, so over a library that is a reload or holds an earlier script's state (`inherited`)
+            // the first application writes even an empty list; at a first start an empty list is what the window has.
             let unchanged = match &applied.effects {
-                None => false,
+                None => !self.styles.inherited && mapping.effects.is_empty(),
                 Some(written) => *written == mapping.effects,
             };
             if !unchanged {
