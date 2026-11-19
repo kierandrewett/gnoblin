@@ -70,8 +70,6 @@ pub(crate) struct StyleState {
     ranks: HashMap<Id, f64>,
     /// The library owns the styles of the windows (`style_reset` or a first scope): its pass applies them, an empty style included.
     owned: bool,
-    /// The library held styles or applied ones when `style_reset` ran: an earlier script generation may have left effects on the windows.
-    inherited: bool,
     /// Goes up by one for every accepted change of any style; the application compares it between turns.
     pub(crate) epoch: u64,
     clients: HashMap<u64, Applied>,
@@ -82,7 +80,6 @@ impl StyleState {
     /// state an earlier one left (a reload that stays in one core generation) styles on a clean slate, and its first pass takes
     /// what the earlier one drew off the windows.
     pub(crate) fn reset(&mut self) {
-        self.inherited = !self.stores.is_empty() || !self.clients.is_empty();
         self.stores.clear();
         self.by_scope.clear();
         self.selections.clear();
@@ -369,11 +366,11 @@ impl State {
                 mapping.effects.len()
             ));
         } else {
-            // A window an earlier generation styled keeps its effects: the first application clears them when the style has none.
-            // The tree's effects cannot be read back, so what an earlier generation left is not known: over a state one left
-            // (`inherited`) the first application writes, even an empty list; otherwise an empty list is what the window has.
+            // A window an earlier generation styled keeps its effects, and the tree's effects cannot be read back: a reload that retires
+            // the generation's state hands the next one a library that never saw them, as a reload that keeps the state does. So the
+            // first application of a window always writes its list, an empty one included, and the later ones write what changed.
             let unchanged = match &applied.effects {
-                None => !self.styles.inherited && mapping.effects.is_empty(),
+                None => false,
                 Some(written) => *written == mapping.effects,
             };
             if !unchanged {
