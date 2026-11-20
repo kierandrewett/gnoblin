@@ -1,0 +1,225 @@
+# The `idle` module of `gnoblin.model`: run code when the session has had no input for a set time, and hold the session awake.
+#
+# The compositor publishes how long the session has been idle (`idle_ms` of its `idle` object) and how many holds keep it awake
+# (`inhibitors`: Wayland idle-inhibit surfaces and the holders `inhibit` recorded). A watch is a threshold over that reading and nothing
+# else, so a shell's watch behaves like the compositor's own idle notifications: an inhibitor delays `idle` as it delays a screen blank, and
+# one that appears while the session is idle resumes it. The connection to the compositor is opened the first time a shell makes a watch or
+# a hold. A watch is told from the turn after the reading that moved it.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# What the compositor said about idleness.
+[[object]]
+name = "idle_reading"
+since = "0.2.0"
+kind = "record"
+
+# Milliseconds since the last input event.
+[[object.property]]
+name = "idle_ms"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# How many holds keep the session awake.
+[[object.property]]
+name = "inhibitors"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# One idle watch. It is not idle when it starts: the first `idle` comes when a reading shows the session idle for `ms`, and every idle
+# period after an input signals `idle` again until the watch is cancelled.
+[[object]]
+name = "idle_watch"
+since = "0.2.0"
+kind = "handle"
+
+# `idle-` and a number.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The idle time asked for, in milliseconds.
+[[object.property]]
+name = "ms"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# True while the session has been idle for `ms` with no inhibitor. (`idle` is the signal that tells it became so.)
+[[object.property]]
+name = "is_idle"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# True until the watch has been cancelled.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Ends the watch. Its `closed` is told once; a watch that has ended does nothing.
+[[object.method]]
+name = "cancel"
+since = "0.2.0"
+
+# The session has been idle for the watch's time and nothing inhibits idle.
+[[object.signal]]
+name = "idle"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "watch"
+type = "object:idle_watch"
+
+# The first input after an idle period, or an inhibitor that took the idle state away.
+[[object.signal]]
+name = "resume"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "watch"
+type = "object:idle_watch"
+
+# The watch has ended: `reason` is `cancelled`.
+[[object.signal]]
+name = "closed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "watch"
+type = "object:idle_watch"
+
+[[object.signal.field]]
+name = "reason"
+type = "string"
+
+# Observes one watch: pass it to `idle.watch`. Every method is optional.
+[[object]]
+name = "idle_listener"
+since = "0.2.0"
+kind = "interface"
+
+# The session has been idle for the watch's time and nothing inhibits idle.
+[[object.method]]
+name = "on_idle"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "watch"
+type = "object:idle_watch"
+
+# The first input after an idle period, or an inhibitor that took the idle state away.
+[[object.method]]
+name = "on_resume"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "watch"
+type = "object:idle_watch"
+
+# The watch has ended.
+[[object.method]]
+name = "on_closed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "watch"
+type = "object:idle_watch"
+
+[[object.method.param]]
+name = "reason"
+type = "string"
+
+# A hold on the session's idle state: while one is alive the session does not go idle.
+[[object]]
+name = "idle_inhibitor"
+since = "0.2.0"
+kind = "handle"
+
+# The name the hold is recorded under.
+[[object.property]]
+name = "holder"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# True until the hold is released, or the compositor refused it, or the connection to the compositor ended.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Gives the hold back. A hold that has ended does nothing.
+[[object.method]]
+name = "release"
+since = "0.2.0"
+
+# `gnoblin.idle`: the watches and holds of this generation, and the last reading of the compositor.
+[[object]]
+name = "idle"
+since = "0.2.0"
+kind = "service"
+
+# The last reading of the compositor, or nothing before it has said.
+[[object.property]]
+name = "reading"
+type = "object:idle_reading"
+since = "0.2.0"
+readonly = true
+
+# Milliseconds since the last input, as of the last reading; 0 before the compositor has said (`reading` says whether it has).
+[[object.property]]
+name = "idle_ms"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# How many holds keep the session awake, as of the last reading; 0 before the compositor has said.
+[[object.property]]
+name = "inhibitors"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The live watches, oldest first.
+[[object.property]]
+name = "watches"
+type = "list<object:idle_watch>"
+since = "0.2.0"
+readonly = true
+
+# Tells `listener` when the session has been idle for `ms` milliseconds, and when it is active again. `ms` is a number above 0 and at most
+# a day; a generation has at most 256 live watches.
+[[object.method]]
+name = "watch"
+since = "0.2.0"
+returns = "object:idle_watch"
+
+[[object.method.param]]
+name = "ms"
+type = "double"
+
+[[object.method.param]]
+name = "listener"
+type = "object:idle_listener"
+optional = true
+
+# Holds the session awake under `holder`, a name of your choice: the compositor counts the hold in `inhibitors` and sends no idle
+# notification while one stands. Holding again under a name that is held returns that hold. Every hold a generation made is given back when
+# it ends.
+[[object.method]]
+name = "inhibit"
+since = "0.2.0"
+returns = "object:idle_inhibitor"
+
+[[object.method.param]]
+name = "holder"
+type = "string"

@@ -1,0 +1,478 @@
+# The `session` module of `gnoblin.model`: the compositor's session (logout, power, suspend, lock), the configuration reload, and the build
+# identity.
+#
+# Each verb is one call on the compositor's `session` object and returns an `operation` that settles when the compositor answers:
+# nothing in a turn waits for logind. The calls and the signals travel on a connection to the compositor's owner socket that the library
+# opens the first time a shell asks for one; a shell with none (no compositor to ask) has every verb refused `unavailable`.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# The session lock's state, as the session announced it.
+[[enum]]
+name = "lock_state"
+since = "0.2.0"
+values = ["unlocked", "covering", "locked", "failsafe"]
+
+# Whether the session connection is there. `unavailable` means there is no compositor connection, not that the session is unlocked.
+[[enum]]
+name = "session_state"
+since = "0.2.0"
+values = ["running", "unavailable"]
+
+# The latest published session state.
+[[object]]
+name = "session_status"
+since = "0.2.0"
+kind = "record"
+
+# Whether the session connection is available.
+[[object.property]]
+name = "state"
+type = "enum:session_state"
+since = "0.2.0"
+
+# Whether the compositor has published a lock state.
+[[object.property]]
+name = "lock_available"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# How many lock state changes the session has published.
+[[object.property]]
+name = "revision"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# The current lock state, present when `lock_available` is true.
+[[object.property]]
+name = "lock_state"
+type = "enum:lock_state"
+since = "0.2.0"
+optional = true
+
+# The build identity (`gnoblin.version`). A field the build does not give is `unknown`; credentials are removed from the remote.
+[[object]]
+name = "build_version"
+since = "0.2.0"
+kind = "record"
+
+# Gnoblin version.
+[[object.property]]
+name = "gnoblin"
+type = "string"
+since = "0.2.0"
+
+# GNOME version.
+[[object.property]]
+name = "gnome"
+type = "string"
+since = "0.2.0"
+
+# Mutter version.
+[[object.property]]
+name = "mutter"
+type = "string"
+since = "0.2.0"
+
+# The script engine of the generation that asks: `quickjs-ng` for a JavaScript shell, `unknown` for any other.
+[[object.property]]
+name = "js"
+type = "string"
+since = "0.2.0"
+
+# The control API version, `major.minor.patch`.
+[[object.property]]
+name = "api"
+type = "string"
+since = "0.2.0"
+
+# Sanitised Git remote URL.
+[[object.property]]
+name = "git_remote"
+type = "string"
+since = "0.2.0"
+
+# Git commit identifier.
+[[object.property]]
+name = "git_sha"
+type = "string"
+since = "0.2.0"
+
+# Build identifier.
+[[object.property]]
+name = "build_id"
+type = "string"
+since = "0.2.0"
+
+# The result of a successful configuration reload.
+[[object]]
+name = "reload_result"
+since = "0.2.0"
+kind = "record"
+
+# The revision of the settings the compositor now holds.
+[[object.property]]
+name = "settings_revision"
+type = "uint"
+since = "0.2.0"
+
+# The sections the commit dropped, one sentence each.
+[[object.property]]
+name = "warnings"
+type = "list<string>"
+since = "0.2.0"
+
+# The settings accepted but not applied (read only at a process's start, or by nothing), one sentence each.
+[[object.property]]
+name = "not_applied"
+type = "list<string>"
+since = "0.2.0"
+
+# A reload the compositor accepted: the new configuration is in force.
+[[object]]
+name = "config_reloaded"
+since = "0.2.0"
+kind = "record"
+
+# The configuration file the reload read.
+[[object.property]]
+name = "path"
+type = "string"
+since = "0.2.0"
+
+# The number the compositor gave the committed document.
+[[object.property]]
+name = "revision"
+type = "uint"
+since = "0.2.0"
+
+# The problems of the sections the reload dropped, one string each. Empty when every section validated.
+[[object.property]]
+name = "warnings"
+type = "list<string>"
+since = "0.2.0"
+
+# The settings accepted without effect, one sentence each: `restart required`, or `no effect`.
+[[object.property]]
+name = "not_applied"
+type = "list<string>"
+since = "0.2.0"
+
+# How many reloads the compositor has accepted.
+[[object.property]]
+name = "sequence"
+type = "uint"
+since = "0.2.0"
+
+# The shell's monotonic clock when it happened. Not a wall clock.
+[[object.property]]
+name = "time"
+type = "uint"
+since = "0.2.0"
+
+# A reload the compositor refused: the old configuration stays.
+[[object]]
+name = "config_reload_failed"
+since = "0.2.0"
+kind = "record"
+
+# The configuration file the reload read.
+[[object.property]]
+name = "path"
+type = "string"
+since = "0.2.0"
+
+# Why: the first validation or evaluation failure.
+[[object.property]]
+name = "error"
+type = "string"
+since = "0.2.0"
+
+# How many reloads the compositor has refused.
+[[object.property]]
+name = "sequence"
+type = "uint"
+since = "0.2.0"
+
+# The shell's monotonic clock when it happened. Not a wall clock.
+[[object.property]]
+name = "time"
+type = "uint"
+since = "0.2.0"
+
+# Observes the session. Every method is optional.
+[[object]]
+name = "session_listener"
+since = "0.2.0"
+kind = "interface"
+
+# The session is up: the compositor's first announcement to the shell.
+[[object.method]]
+name = "on_ready"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "session"
+type = "object:session"
+
+# A client rang the terminal bell. `count` is how many bells the session has rung.
+[[object.method]]
+name = "on_bell"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "session"
+type = "object:session"
+
+[[object.method.param]]
+name = "count"
+type = "uint"
+
+# Somebody asked for a reload of the shell; `generation` is the generation that is running.
+[[object.method]]
+name = "on_reload_requested"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "session"
+type = "object:session"
+
+[[object.method.param]]
+name = "generation"
+type = "uint"
+
+# The lock changed state. Only `locked` confirms that the lock took. `revision` counts the changes the session has published.
+[[object.method]]
+name = "on_lock_state_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "session"
+type = "object:session"
+
+[[object.method.param]]
+name = "state"
+type = "enum:lock_state"
+
+[[object.method.param]]
+name = "revision"
+type = "uint"
+
+# Observes the configuration reloads of `runtime`. Every method is optional.
+[[object]]
+name = "runtime_listener"
+since = "0.2.0"
+kind = "interface"
+
+# A reload was accepted.
+[[object.method]]
+name = "on_config_reloaded"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "runtime"
+type = "object:runtime"
+
+[[object.method.param]]
+name = "reload"
+type = "object:config_reloaded"
+
+# A reload was refused.
+[[object.method]]
+name = "on_config_reload_failed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "runtime"
+type = "object:runtime"
+
+[[object.method.param]]
+name = "failure"
+type = "object:config_reload_failed"
+
+# `gnoblin.session`: the session's state and its logout, power, suspend and lock operations.
+[[object]]
+name = "session"
+since = "0.2.0"
+kind = "service"
+
+# The session as the compositor last published it. Read on each call.
+[[object.property]]
+name = "status"
+type = "object:session_status"
+since = "0.2.0"
+readonly = true
+
+# Ends the session. The compositor exits with the logout code, and the session wrapper returns to the login manager.
+[[object.method]]
+name = "logout"
+since = "0.2.0"
+returns = "object:operation"
+
+# Powers the machine off. The operation succeeds when the init system accepts.
+[[object.method]]
+name = "poweroff"
+since = "0.2.0"
+returns = "object:operation"
+
+# Restarts the machine.
+[[object.method]]
+name = "reboot"
+since = "0.2.0"
+returns = "object:operation"
+
+# Suspends to RAM after locking the session. Can fail with `denied`, `unsupported`, `busy`, `unavailable` or `timed_out`.
+[[object.method]]
+name = "suspend"
+since = "0.2.0"
+returns = "object:operation"
+
+# Hibernates to disk. Can fail with `unsupported` when the machine reports it cannot.
+[[object.method]]
+name = "hibernate"
+since = "0.2.0"
+returns = "object:operation"
+
+# Asks the compositor to lock the session. Read `status` to check whether it is locked.
+[[object.method]]
+name = "lock"
+since = "0.2.0"
+returns = "object:operation"
+
+# Attaches a listener; adding the same listener twice has no effect.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:session_listener"
+
+# Detaches a listener.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:session_listener"
+
+# The session is up: the compositor's first announcement to the shell.
+[[object.signal]]
+name = "ready"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "session"
+type = "object:session"
+
+# A client rang the terminal bell.
+[[object.signal]]
+name = "bell"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "session"
+type = "object:session"
+
+[[object.signal.field]]
+name = "count"
+type = "uint"
+
+# Somebody asked for a reload of the shell.
+[[object.signal]]
+name = "reload_requested"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "session"
+type = "object:session"
+
+[[object.signal.field]]
+name = "generation"
+type = "uint"
+
+# The lock changed state.
+[[object.signal]]
+name = "lock_state_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "session"
+type = "object:session"
+
+[[object.signal.field]]
+name = "state"
+type = "enum:lock_state"
+
+[[object.signal.field]]
+name = "revision"
+type = "uint"
+
+# `gnoblin.runtime`: the configuration reload.
+[[object]]
+name = "runtime"
+since = "0.2.0"
+kind = "service"
+
+# What the last accepted reload this shell asked for gave, or nothing before one did.
+[[object.property]]
+name = "last_reload"
+type = "object:reload_result"
+since = "0.2.0"
+readonly = true
+
+# Reloads the configuration. The operation succeeds when the compositor accepts it (`last_reload` holds the result), or fails with
+# `config_rejected` and the reason. A failed reload keeps the current configuration; a successful reload replaces this generation, so its
+# callbacks end. Hear the outcome with a runtime listener. Refused while the configuration is loading.
+[[object.method]]
+name = "reload_config"
+since = "0.2.0"
+returns = "object:operation"
+
+# Attaches a listener; adding the same listener twice has no effect.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:runtime_listener"
+
+# Detaches a listener.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:runtime_listener"
+
+# A reload was accepted.
+[[object.signal]]
+name = "config_reloaded"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "runtime"
+type = "object:runtime"
+
+[[object.signal.field]]
+name = "reload"
+type = "object:config_reloaded"
+
+# A reload was refused.
+[[object.signal]]
+name = "config_reload_failed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "runtime"
+type = "object:runtime"
+
+[[object.signal.field]]
+name = "failure"
+type = "object:config_reload_failed"

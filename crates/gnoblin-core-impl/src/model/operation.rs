@@ -31,6 +31,18 @@ pub(super) struct OperationState {
 }
 
 impl OperationState {
+    /// An operation the library started for a shell: no output behind it.
+    pub(super) fn pending() -> OperationState {
+        OperationState {
+            status: OpStatus::Pending,
+            error: String::new(),
+            code: String::new(),
+            on_done: Vec::new(),
+            on_failed: Vec::new(),
+            output: None,
+        }
+    }
+
     pub(super) fn for_output(output: Obj) -> OperationState {
         OperationState {
             status: OpStatus::Pending,
@@ -68,6 +80,11 @@ fn failure_code(refusal: &str) -> &'static str {
 
 /// Settles an operation once: it succeeded, or failed with the compositor's words. Its listeners are told from the next turn.
 pub(super) fn settle(cx: &Cx<'_>, op: Obj, outcome: Result<(), &str>) {
+    settle_coded(cx, op, outcome.map_err(|words| (failure_code(words), words)));
+}
+
+/// Settles an operation once, as [`settle`], with a failure that names its own code (`denied`, `unavailable`, `config_rejected`, ...).
+pub(super) fn settle_coded(cx: &Cx<'_>, op: Obj, outcome: Result<(), (&str, &str)>) {
     let told = cx.with_state::<OperationState, _>(op, |state| {
         if state.status != OpStatus::Pending {
             return None;
@@ -77,10 +94,10 @@ pub(super) fn settle(cx: &Cx<'_>, op: Obj, outcome: Result<(), &str>) {
                 state.status = OpStatus::Succeeded;
                 (std::mem::take(&mut state.on_done), std::mem::take(&mut state.on_failed))
             }
-            Err(error) => {
+            Err((code, error)) => {
                 state.status = OpStatus::Failed;
                 state.error = error.to_owned();
-                state.code = failure_code(error).to_owned();
+                state.code = code.to_owned();
                 (std::mem::take(&mut state.on_failed), std::mem::take(&mut state.on_done))
             }
         };
@@ -92,6 +109,27 @@ pub(super) fn settle(cx: &Cx<'_>, op: Obj, outcome: Result<(), &str>) {
     };
     cx.emit_on(op, "settled", vec![cx.object_value(op)]);
     queue_calls(cx, op, run, ok, error, code);
+}
+
+/// A new pending operation the library holds until it settles, whatever the shell does with the value it got: the request the library
+/// itself makes of the compositor or of the system (a session verb, a process's end).
+pub(super) fn begin(cx: &Cx<'_>) -> Res<Obj> {
+    let op = cx.spawn("operation", OperationState::pending())?;
+    cx.hold(op)?;
+    Ok(op)
+}
+
+/// Settles an operation [`begin`] made, and lets go of it once the shell has been told.
+pub(super) fn finish(cx: &Cx<'_>, op: Obj, outcome: Result<(), (&str, &str)>) {
+    settle_coded(cx, op, outcome);
+    cx.later_on(op, move |cx| cx.unhold(op));
+}
+
+/// An operation that has failed already, as the value a call returns: `unavailable` for a request that could not go out.
+pub(super) fn failed(cx: &Cx<'_>, code: &str, message: &str) -> Res<Val> {
+    let op = begin(cx)?;
+    finish(cx, op, Err((code, message)));
+    cx.handout(op)
 }
 
 fn drop_all(closures: Vec<Rc<dyn Callable>>) {

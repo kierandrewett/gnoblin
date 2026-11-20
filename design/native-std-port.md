@@ -1539,6 +1539,45 @@ session: the compositor publishes a title at the window's commit, and the order 
   idle watch firing and resuming, a launch timing out, a dialog policy refusing a request, an operation settling. The
   existing `js_lock*` and `host_*` tests are the TypeScript half at NpFlip.
 
+**What exists.** The core services are classes of `gnoblin.model`, served by `libgnoblin-core` from eight schema files
+(`session`, `process`, `idle`, `launches`, `dialogs`, `lock`, `virtual_output`, `inset`) and `gnoblin-core-impl/src/model/`. Each service is one
+object a generation makes on first use, with its state kept per generation; the `gnoblin` service reaches them as `session`, `runtime`,
+`process`, `idle`, `launches`, `dialogs`, `authentication`, `lock` and `version`, and spawns programs with `spawn` and `shell`. What happens
+outside a call of the shell (a program ended, the compositor answered, a request was offered) arrives as an event of the host's mailbox and is
+told from the turn after, so nothing runs inside the call that caused it. Two connections carry the compositor's side: the owner connection of
+`verbs.rs` (now also keeping the `session` and `idle` properties, and making `lock` and `reload-config` on connections of their own), and the new
+`slots.rs`, a thread-served slot connection for the dialogs. Both are seams (`host::set_verb_link_provider`, `host::set_slot_link_provider`) that
+the tests fill with fakes. `output_config` and the operation classes were already native (NpCoreModel); the error codes are the ABI's and the
+operation's `error_code`, and `wake` has no counterpart because the timers and the turn are the core's.
+
+**The dialog slot is fail-closed across a reload.** The claim on `dialogs.observe` belongs to the shell instance, not to a generation. A
+generation's end does not give it back, and the connection never lets silence reach the built-in dialog: a request the shell has not answered
+within the hold (150 ms, inside the compositor's 250 ms window) is answered `deny`, and a request shown to a generation that ends is refused, not
+passed. A generation that takes over finds the claim held and answers from its own listeners; a replacement that fails and is retired leaves the
+claim and the previous generation's listeners as they were. A claim that no generation observes for ten seconds is given back, because the shell
+that held the policy is gone and the built-in dialogs then serve as they do without a shell. `crates/gnoblin-core-impl/tests/services.rs` tests the
+gap, a failed reload and a successful one.
+
+**What is tested.** `crates/gnoblin-core-impl/tests/services.rs` (43 tests, over the object protocol and fake owner and slot connections;
+programs are real) covers the behaviours of the TypeScript tests `host_api`, `host_idle`, `host_launches`, `lock` and `xr` that belong to these
+services: session status with and without a published lock state and with no connection; each verb settling, a refusal's code and words, a call
+that cannot go out; `lock` and `reload_config` as requests of their own with the reload's result and refusal; the session's and the
+configuration's signals in order; the build identity; a spawned process (handle, one `wait`, exit record, capture, `stdin`, `env`, timeout, kill,
+listing, `by_id`, refusals); idle watches (not idle at the start, idle once, resume, per-watch times, a watch made while idle, inhibitors, holds
+sent once and given back, a refused hold, cancel, the limits, a lost connection, no connection, holds given back at the generation's end);
+launches (pending at once, started with `closed` last, a window that was there already, focus and application changes, the oldest match, the
+deadline, `finish`, a replaced token, the 64-launch registry, the argument limits); dialogs and authentication (decline, pass, an unknown kind, a
+request that ended in its window, the polkit description, the claim and its release); the session lock (state, node, screen, `engage`,
+`authenticate`, an answer told once, the heartbeat rate, the 30-second deadline); virtual outputs and insets. Not covered, and left to the flip: the
+refusal of `reload_config` while the configuration loads, `error_codes` (the code table is generated from the catalog at the flip), the TypeScript
+and Python halves, and `modular::native_services` with its example; the existing `host_*`, `lock` and `xr` tests stay the TypeScript half.
+
+**Deviations from the TypeScript surface.** A spawn option `env` is a list of `NAME=value`. The process and idle listener methods are `on_exited`,
+`on_idle`, `on_resume` and `on_closed` (and the signals of those names), and a watch's `idle` property is `is_idle` because `idle` is its signal. A
+process listener is given the process, and its `exit_code` is read from it. `process.by_id` answers nothing for an unknown id. `idle` has a `reading`
+record beside `idle_ms` and `inhibitors`, which read 0 before the compositor has said anything. The owner connection is shared and is not closed when the
+last watch ends. The `js` field of the build identity is `quickjs-ng` for a JavaScript shell and `unknown` for any other.
+
 #### NpCoreInput (14 days)
 
 - **Owns:** `gnoblin-core-impl/src/model/input/**`, catalog `input.toml`, `gnoblin-core/src/input.rs` wrappers.

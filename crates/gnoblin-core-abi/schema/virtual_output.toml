@@ -1,0 +1,59 @@
+# The `virtual_output` module of `gnoblin.model`: the description of an output with no display behind it.
+#
+# A viewer-attached output follows the headset (`docs/xr.md`). The description is checked when it is made; handing it to the compositor
+# (`output_collection.add`) is refused with `unsupported` until the compositor serves virtual outputs.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# Where a virtual output sits.
+[[enum]]
+name = "virtual_output_attachment"
+since = "0.2.0"
+values = ["viewer"]
+
+# What a virtual output is: a name, a size in pixels, and optionally where it is attached. Checked when it is made: a name that is
+# empty, a size that is not a whole number of pixels above zero, a scale that is not above zero or an attachment that is not `viewer`
+# is refused, and the message names the field.
+[[object]]
+name = "virtual_output"
+since = "0.2.0"
+kind = "handle"
+ctor = ["name", "width", "height", "scale", "attachment"]
+
+# The connector name the output gets, such as `XR-HUD`. A layer-shell client picks an output by it.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The width in pixels. A whole number above zero.
+[[object.property]]
+name = "width"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The height in pixels. A whole number above zero.
+[[object.property]]
+name = "height"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The scale of the output's pixels. 1 when it is left out.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+default = 1.0
+readonly = true
+
+# `viewer` keeps the output in front of the headset, so it follows the head. Without it the output has no place in the room.
+[[object.property]]
+name = "attachment"
+type = "enum:virtual_output_attachment"
+since = "0.2.0"
+optional = true
+readonly = true

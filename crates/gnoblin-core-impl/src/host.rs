@@ -59,6 +59,20 @@ pub fn set_verb_link_provider(provider: Box<dyn crate::verbs::VerbLinkProvider>)
     crate::session::with(|session| session.set_verb_provider(provider));
 }
 
+/// Gives the shell thread a way to reach the compositor's dialog slot: what opens the first time a shell wants to observe the
+/// compositor's own dialogs (`gnoblin.dialogs`). The in-process compositor edge provides the owner socket
+/// ([`crate::slots::OwnerSlots`]); a test provides a link that offers requests from a script. The provider makes the link on the
+/// connection's own thread.
+pub fn set_slot_link_provider(provider: std::sync::Arc<dyn crate::slots::SlotLinkProvider>) {
+    crate::session::with(|session| session.set_slot_provider(provider));
+}
+
+/// Sets how long a dialog request waits for the shell's verdict before the slot connection refuses it, and how long a claim stands while no
+/// generation observes the slot. The defaults are 150 ms and 10 s. Tests shorten them.
+pub fn set_slot_timings(timings: crate::slots::SlotTimings) {
+    crate::session::with(|session| session.set_slot_timings(timings));
+}
+
 /// Replaces the clock this thread's timers read. Tests give a manual one so that no assertion rests on how fast the machine is.
 pub fn set_clock(clock: std::sync::Arc<dyn gnoblin_shell_host::supervisor::Clock>) {
     crate::session::with(|session| session.set_clock(clock));

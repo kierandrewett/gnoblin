@@ -78,6 +78,7 @@ member | client_query.title | property string rw,optional | 0.2.0
 member | client_query.width | property double rw,optional | 0.2.0
 member | client_query.x | property double rw,optional | 0.2.0
 member | client_query.y | property double rw,optional | 0.2.0
+member | output_collection.add | method (output:object:virtual_output) | 0.2.0
 member | output_collection.add_listener | method (listener:object:output_collection_listener) | 0.2.0
 member | output_collection.added | signal (output:object:output, collection:object:output_collection) | 0.2.0
 member | output_collection.alive | property bool ro | 0.2.0

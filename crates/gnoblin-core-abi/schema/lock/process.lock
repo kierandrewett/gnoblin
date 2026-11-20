@@ -1,0 +1,55 @@
+# The public surface of the `process` module of the `gnoblin.model` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-core-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+enum | process_signal | values term kill int hup usr1 usr2 stop cont | 0.2.0
+enum | process_status | values running exited | 0.2.0
+enum | stream_mode | values inherit discard capture | 0.2.0
+
+member | process.alive | property bool ro | 0.2.0
+member | process.argv | property list<string> ro | 0.2.0
+member | process.exit | property object:process_exit ro | 0.2.0
+member | process.exit_code | property int ro,optional | 0.2.0
+member | process.exited | signal (process:object:process) | 0.2.0
+member | process.id | property uint ro | 0.2.0
+member | process.kill | method (signal?:enum:process_signal) -> object:operation | 0.2.0
+member | process.pid | property uint ro | 0.2.0
+member | process.signal | property string ro,optional | 0.2.0
+member | process.status | property enum:process_status ro | 0.2.0
+member | process.timed_out | property bool ro | 0.2.0
+member | process.wait | method () -> object:operation | 0.2.0
+member | process_exit.exit_code | property int rw,optional | 0.2.0
+member | process_exit.signal | property string rw,optional | 0.2.0
+member | process_exit.stderr | property string rw,optional | 0.2.0
+member | process_exit.stderr_truncated | property bool rw | 0.2.0
+member | process_exit.stdout | property string rw,optional | 0.2.0
+member | process_exit.stdout_truncated | property bool rw | 0.2.0
+member | process_exit.timed_out | property bool rw | 0.2.0
+member | process_listener.on_exited | method (process:object:process) | 0.2.0
+member | processes.add_listener | method (listener:object:process_listener) | 0.2.0
+member | processes.by_id | method (id:uint) -> object:process | 0.2.0
+member | processes.exited | signal (process:object:process) | 0.2.0
+member | processes.list | method () -> list<object:process> | 0.2.0
+member | processes.remove_listener | method (listener:object:process_listener) | 0.2.0
+member | processes.shell | method (command:string, options?:object:spawn_options) -> object:process | 0.2.0
+member | processes.spawn | method (argv:list<string>, options?:object:spawn_options) -> object:process | 0.2.0
+member | spawn_options.cwd | property string rw,optional | 0.2.0
+member | spawn_options.env | property list<string> rw,optional | 0.2.0
+member | spawn_options.output_limit | property int rw,optional | 0.2.0
+member | spawn_options.stderr | property enum:stream_mode rw,optional | 0.2.0
+member | spawn_options.stdin | property string rw,optional | 0.2.0
+member | spawn_options.stdout | property enum:stream_mode rw,optional | 0.2.0
+member | spawn_options.timeout | property double rw,optional | 0.2.0
+
+object | process | base none | 0.2.0
+object | process_exit | base none record | 0.2.0
+object | process_listener | base none interface | 0.2.0
+object | processes | base none service | 0.2.0
+object | spawn_options | base none record | 0.2.0

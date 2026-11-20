@@ -28,6 +28,7 @@ use crate::catalog;
 use crate::events::{AnswerNotice, ClaimNotice, ExitNotice, NodeNotice, ShellEvent, SignalDelivery};
 use crate::hub::{Hub, HubLink, SharedHub};
 use crate::log;
+use crate::slots::{SlotConnection, SlotLinkProvider, SlotTimings};
 use crate::values::OwnedValue;
 use crate::verbs::{VerbLink, VerbLinkProvider};
 
@@ -146,6 +147,10 @@ pub(crate) struct Session {
     /// How to reach the compositor's verbs, and the connection once a shell asked for it.
     verb_provider: Option<Box<dyn VerbLinkProvider>>,
     verbs: Option<Box<dyn VerbLink>>,
+    /// How to reach the compositor's dialog slot, and the connection once a shell wanted it.
+    slot_provider: Option<Arc<dyn SlotLinkProvider>>,
+    slots: Option<SlotConnection>,
+    slot_timings: SlotTimings,
 }
 
 impl Default for Session {
@@ -172,6 +177,9 @@ impl Default for Session {
             reported_revision: None,
             verb_provider: None,
             verbs: None,
+            slot_provider: None,
+            slots: None,
+            slot_timings: SlotTimings::default(),
         }
     }
 }
@@ -230,6 +238,44 @@ impl Session {
             .ok_or_else(|| (abi::E_ERR, "the verbs connection is gone".to_owned()))
     }
 
+    /// The connection for verbs if a shell opened it already: a call that only reads (the status) never opens one.
+    pub(crate) fn verbs_if_open(&self) -> Option<&dyn VerbLink> {
+        self.verbs.as_deref()
+    }
+
+    /// Installs the way to reach the compositor's dialog slot, replacing any earlier one. It outlives [`Self::reset`]; the connection is
+    /// not opened until a shell wants it.
+    pub(crate) fn set_slot_provider(&mut self, provider: Arc<dyn SlotLinkProvider>) {
+        self.slot_provider = Some(provider);
+    }
+
+    /// Sets how long a request waits for a verdict and how long an unobserved claim stands, for connections opened from now on.
+    pub(crate) fn set_slot_timings(&mut self, timings: SlotTimings) {
+        self.slot_timings = timings;
+    }
+
+    /// The connection for the dialog slot, opened through the provider the first time it is asked for.
+    ///
+    /// # Errors
+    ///
+    /// The host gave the core no way to reach the slot, or the connection could not start.
+    pub(crate) fn slots(&mut self) -> Result<&SlotConnection, String> {
+        if self.slots.is_none() {
+            let Some(provider) = self.slot_provider.as_ref() else {
+                return Err("this core has no slot connection to the compositor (the host gave it none)".to_owned());
+            };
+            self.slots = Some(SlotConnection::start(Arc::clone(provider), self.slot_timings)?);
+        }
+        self.slots
+            .as_ref()
+            .ok_or_else(|| "the slot connection is gone".to_owned())
+    }
+
+    /// The slot connection if a shell opened it already: answering a request or giving a claim back never opens one.
+    pub(crate) fn slots_if_open(&self) -> Option<&SlotConnection> {
+        self.slots.as_ref()
+    }
+
     /// Installs where the shell's reports to the guardian go. Like the provider, it outlives [`Self::reset`].
     pub(crate) fn set_reports(&mut self, reports: Arc<dyn ShellReports>) {
         self.reports = Some(reports);
@@ -258,6 +304,8 @@ impl Session {
             clock: Arc::clone(&self.clock),
             reports: self.reports.take(),
             verb_provider: self.verb_provider.take(),
+            slot_provider: self.slot_provider.take(),
+            slot_timings: self.slot_timings,
             ..Session::default()
         };
     }
@@ -616,6 +664,11 @@ impl Session {
     /// The limit or the program was refused.
     pub(crate) fn spawn(&mut self, argv: &[String], options: &SpawnOptions) -> Result<Started, ProcessError> {
         self.processes.spawn(argv, options)
+    }
+
+    /// The operating system's process id of a program, or nothing once it ended or before it started.
+    pub(crate) fn pid(&self, process: u64) -> Option<u32> {
+        self.processes.pid(process)
     }
 
     /// Sends a signal to a program's process group.

@@ -1,0 +1,216 @@
+# The `dialogs` module of `gnoblin.model`: policy over the compositor's own consent, passphrase and authentication dialogs.
+#
+# The compositor draws these dialogs itself; a shell never does. A shell that observes them is shown each request for a short window before
+# the dialog opens and may decline it. The library holds the compositor's `dialogs.observe` slot while any listener could use it, and gives
+# every request back as one of two fixed verdicts: `deny` when a listener declined it and `pass` for everything else, so a request waits on
+# no shell. There is no way to allow a request and none to read or give a secret: a listener that did nothing, one that failed, one that
+# ran out its budget and a shell that is not there all leave the request to the built-in dialog.
+#
+# `authentication` is the same slot seen from polkit: its requests are the ones the compositor offers for an authentication.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# What a request is: a consent dialog for a portal request, the compositor's passphrase prompt, or a polkit authentication.
+[[enum]]
+name = "dialog_kind"
+since = "0.2.0"
+values = ["consent", "secret", "auth"]
+
+# A request the compositor is about to open a dialog for. It lives for the observation window and no longer: `decline` after the window
+# has closed does nothing.
+[[object]]
+name = "dialog_request"
+since = "0.2.0"
+kind = "handle"
+
+# The kind of dialog request.
+[[object.property]]
+name = "kind"
+type = "enum:dialog_kind"
+since = "0.2.0"
+readonly = true
+
+# The app id the compositor verified for whoever asks. Empty when the request names none, and always for an authentication.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# What is asked about. For a consent request, the portal interface (`Screenshot`, `ScreenCast`, ...). For a passphrase request, the app's
+# own prompt text, which is the app's words and not to be trusted as identity. For an authentication, the program asking.
+[[object.property]]
+name = "subject"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# When the compositor takes the request back, in milliseconds on its own clock.
+[[object.property]]
+name = "deadline"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# Whether the observation window is still open: a `decline` is heard while it is.
+[[object.property]]
+name = "open"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Refuses the request by policy. The requester is told it was refused and the dialog never opens. `reason` is for the log. The first call
+# wins and a call after the window has closed does nothing; there is no counterpart that allows a request.
+[[object.method]]
+name = "decline"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "reason"
+type = "string"
+optional = true
+
+# A polkit authentication, as an authentication listener sees it. It carries nothing the password check needs.
+[[object]]
+name = "authentication_request"
+since = "0.2.0"
+kind = "handle"
+base = "dialog_request"
+
+# The polkit action, for example `org.freedesktop.policykit.exec`.
+[[object.property]]
+name = "action_id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The sentence polkit wants shown, in the session's language.
+[[object.property]]
+name = "message"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Who may authenticate, as polkit writes them: `unix-user:alice`.
+[[object.property]]
+name = "identities"
+type = "list<string>"
+since = "0.2.0"
+readonly = true
+
+# Observes the requests of the compositor's dialogs. Every method is optional.
+[[object]]
+name = "dialog_listener"
+since = "0.2.0"
+kind = "interface"
+
+# A consent dialog is about to open. `request.subject` is the portal interface.
+[[object.method]]
+name = "on_consent_request"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request"
+type = "object:dialog_request"
+
+# The passphrase prompt is about to open. `request.subject` is the app's own prompt text.
+[[object.method]]
+name = "on_secret_request"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request"
+type = "object:dialog_request"
+
+# Observes the session's polkit authentications. Every method is optional.
+[[object]]
+name = "authentication_listener"
+since = "0.2.0"
+kind = "interface"
+
+# An authentication is about to be asked of the user. `request.decline(reason)` refuses it: polkitd is told it was not authorized and the
+# dialog never opens. Doing nothing leaves it to the dialog.
+[[object.method]]
+name = "on_authentication_request"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request"
+type = "object:authentication_request"
+
+# `gnoblin.dialogs`: the listeners, and the requests they have been shown and not yet settled.
+[[object]]
+name = "dialogs"
+since = "0.2.0"
+kind = "service"
+
+# Adds a listener once; adding it again does nothing.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:dialog_listener"
+
+# Removes a listener. A listener that is not there is ignored.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:dialog_listener"
+
+# A consent dialog is about to open.
+[[object.signal]]
+name = "consent_request"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "request"
+type = "object:dialog_request"
+
+# The passphrase prompt is about to open.
+[[object.signal]]
+name = "secret_request"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "request"
+type = "object:dialog_request"
+
+# `gnoblin.authentication`: the listeners that watch the session's polkit authentications. It is a view of `dialogs`, which holds the one
+# observation slot.
+[[object]]
+name = "authentication"
+since = "0.2.0"
+kind = "service"
+
+# Adds a listener once; adding it again does nothing.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:authentication_listener"
+
+# Removes a listener that was added. A listener that is not there is ignored.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:authentication_listener"
+
+# An authentication is about to be asked of the user.
+[[object.signal]]
+name = "authentication_request"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "request"
+type = "object:authentication_request"

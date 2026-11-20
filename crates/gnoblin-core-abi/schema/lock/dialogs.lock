@@ -1,0 +1,45 @@
+# The public surface of the `dialogs` module of the `gnoblin.model` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-core-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+enum | dialog_kind | values consent secret auth | 0.2.0
+
+member | authentication.add_listener | method (listener:object:authentication_listener) | 0.2.0
+member | authentication.authentication_request | signal (request:object:authentication_request) | 0.2.0
+member | authentication.remove_listener | method (listener:object:authentication_listener) | 0.2.0
+member | authentication_listener.on_authentication_request | method (request:object:authentication_request) | 0.2.0
+member | authentication_request.action_id | property string ro | 0.2.0
+member | authentication_request.app_id | property string ro | 0.2.0
+member | authentication_request.deadline | property double ro | 0.2.0
+member | authentication_request.decline | method (reason?:string) | 0.2.0
+member | authentication_request.identities | property list<string> ro | 0.2.0
+member | authentication_request.kind | property enum:dialog_kind ro | 0.2.0
+member | authentication_request.message | property string ro | 0.2.0
+member | authentication_request.open | property bool ro | 0.2.0
+member | authentication_request.subject | property string ro | 0.2.0
+member | dialog_listener.on_consent_request | method (request:object:dialog_request) | 0.2.0
+member | dialog_listener.on_secret_request | method (request:object:dialog_request) | 0.2.0
+member | dialog_request.app_id | property string ro | 0.2.0
+member | dialog_request.deadline | property double ro | 0.2.0
+member | dialog_request.decline | method (reason?:string) | 0.2.0
+member | dialog_request.kind | property enum:dialog_kind ro | 0.2.0
+member | dialog_request.open | property bool ro | 0.2.0
+member | dialog_request.subject | property string ro | 0.2.0
+member | dialogs.add_listener | method (listener:object:dialog_listener) | 0.2.0
+member | dialogs.consent_request | signal (request:object:dialog_request) | 0.2.0
+member | dialogs.remove_listener | method (listener:object:dialog_listener) | 0.2.0
+member | dialogs.secret_request | signal (request:object:dialog_request) | 0.2.0
+
+object | authentication | base none service | 0.2.0
+object | authentication_listener | base none interface | 0.2.0
+object | authentication_request | base dialog_request | 0.2.0
+object | dialog_listener | base none interface | 0.2.0
+object | dialog_request | base none | 0.2.0
+object | dialogs | base none service | 0.2.0

@@ -1,0 +1,116 @@
+# The `inset` module of `gnoblin.model`: the room a window's frame takes on each side of its content, and the arithmetic on it.
+#
+# Layouts and window operations use these pure functions to place a frame and its content consistently. They need no desktop, so they are
+# functions of the service `insets`: a shell calls them as `Insets.grow(content, inset)`, and the generated JavaScript and Python
+# modules also export them under the names the TypeScript library had (`growRect`, `shrinkRect`, `isNoInset`, `sameInset`, `noInset`).
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# The room a window's frame takes outside its content, in pixels. Every side is 0 or more.
+[[object]]
+name = "frame_inset"
+since = "0.2.0"
+kind = "record"
+
+# Space reserved above the content, in logical pixels.
+[[object.property]]
+name = "top"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Space reserved to the right of the content, in logical pixels.
+[[object.property]]
+name = "right"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Space reserved below the content, in logical pixels.
+[[object.property]]
+name = "bottom"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Space reserved to the left of the content, in logical pixels.
+[[object.property]]
+name = "left"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The functions on insets and the rectangles they frame.
+[[object]]
+name = "insets"
+since = "0.2.0"
+kind = "service"
+
+# No room on any side: the inset of a window with no frame, and of a fullscreen one.
+[[object.method]]
+name = "none"
+since = "0.2.0"
+function = true
+returns = "object:frame_inset"
+export = { js = "noInset", py = "no_inset" }
+
+# Whether `inset` takes no room on any side.
+[[object.method]]
+name = "is_none"
+since = "0.2.0"
+function = true
+returns = "bool"
+export = { js = "isNoInset", py = "is_no_inset" }
+
+[[object.method.param]]
+name = "inset"
+type = "object:frame_inset"
+
+# Whether two insets are the same on every side.
+[[object.method]]
+name = "same"
+since = "0.2.0"
+function = true
+returns = "bool"
+export = { js = "sameInset", py = "same_inset" }
+
+[[object.method.param]]
+name = "a"
+type = "object:frame_inset"
+
+[[object.method.param]]
+name = "b"
+type = "object:frame_inset"
+
+# The frame of a content rectangle: `content` with `inset` added on each side.
+[[object.method]]
+name = "grow"
+since = "0.2.0"
+function = true
+returns = "object:rect"
+export = { js = "growRect", py = "grow_rect" }
+
+[[object.method.param]]
+name = "content"
+type = "object:rect"
+
+[[object.method.param]]
+name = "inset"
+type = "object:frame_inset"
+
+# The content rectangle of a frame: `frame` less `inset` on each side, never smaller than nothing.
+[[object.method]]
+name = "shrink"
+since = "0.2.0"
+function = true
+returns = "object:rect"
+export = { js = "shrinkRect", py = "shrink_rect" }
+
+[[object.method.param]]
+name = "frame"
+type = "object:rect"
+
+[[object.method.param]]
+name = "inset"
+type = "object:frame_inset"

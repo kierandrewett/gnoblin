@@ -98,6 +98,52 @@ pub struct ExitNotice {
     pub truncated: u32,
 }
 
+/// What the connection to the compositor's owner socket learned that is not a signal or an answer.
+#[derive(Clone, Debug, PartialEq)]
+pub enum OwnerNotice {
+    /// A property of the one object of `class` (`session`, `idle`) changed, or was first published. The new value is the link's
+    /// `property`.
+    Property {
+        /// The object's type without its namespace.
+        class: String,
+        /// The property's schema name.
+        name: String,
+    },
+    /// The connection ended. Nothing more arrives on it.
+    Lost(String),
+}
+
+/// What the shell's slot connection learned: the requests the compositor offers to a slot the shell claimed.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SlotNotice {
+    /// A request was offered to a slot this connection claimed.
+    Offered {
+        /// The compositor's id for the request.
+        request: u64,
+        /// When the compositor takes the request back, on its own clock in milliseconds.
+        deadline: u64,
+        /// The slot it was offered to.
+        slot: String,
+        /// The request's title: `consent:<interface>`, `secret` or `auth`.
+        title: String,
+        /// The text the request carries.
+        message: String,
+        /// What the request is about, as the offering client chose it.
+        subject: Vec<u8>,
+    },
+    /// A request ended: answered, ended by its requester, refused, or timed out.
+    Finished {
+        /// The compositor's id for the request.
+        request: u64,
+        /// `answered`, `ended`, `refused` or `timed-out`.
+        completion: String,
+    },
+    /// The connection is gone: the compositor released every claim, and the built-in dialogs serve from here on.
+    Lost(String),
+    /// A claim or a release was refused, or the connection could not be opened.
+    Refused(String),
+}
+
 /// Everything a registration can be told.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ShellEvent {
@@ -113,4 +159,8 @@ pub enum ShellEvent {
     Timer(u64),
     /// A program ended.
     Exit(ExitNotice),
+    /// The owner connection learned a property or was lost.
+    Owner(OwnerNotice),
+    /// The slot connection learned of a request.
+    Slot(SlotNotice),
 }

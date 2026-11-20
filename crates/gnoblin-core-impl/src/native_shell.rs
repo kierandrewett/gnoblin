@@ -114,6 +114,7 @@ fn run(module: &ShellModule, link: Box<dyn TreeLink>, context: &InProcContext) -
     host::reset_session();
     host::set_tree_link_provider(Box::new(OneLink(RefCell::new(Some(link)))));
     host::set_verb_link_provider(Box::new(crate::verbs::OwnerSocket::from_environment()));
+    host::set_slot_link_provider(std::sync::Arc::new(crate::slots::OwnerSlots::from_environment()));
     let outcome = serve(
         module,
         "in process",

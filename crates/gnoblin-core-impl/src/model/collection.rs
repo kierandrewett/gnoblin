@@ -242,6 +242,8 @@ fn register_collection(builder: &mut Builder, class: &'static str, kind: CollKin
                 let _ = &cx;
                 Ok(Val::None)
             });
+    } else {
+        collection = collection.method("add", |_, _, args| super::virtual_output::add(args));
     }
     let _ = collection;
 }

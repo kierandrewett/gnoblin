@@ -896,6 +896,69 @@ type = "object:focus_history"
 since = "0.2.0"
 readonly = true
 
+# The session: logout, power, suspend and lock (`session` module).
+[[object.property]]
+name = "session"
+type = "object:session"
+since = "0.2.0"
+readonly = true
+
+# The configuration reload (`session` module).
+[[object.property]]
+name = "runtime"
+type = "object:runtime"
+since = "0.2.0"
+readonly = true
+
+# The programs this generation started (`process` module): `gnoblin.process` of the TypeScript library.
+[[object.property]]
+name = "process"
+type = "object:processes"
+since = "0.2.0"
+readonly = true
+
+# Idle watches and holds on the session (`idle` module).
+[[object.property]]
+name = "idle"
+type = "object:idle"
+since = "0.2.0"
+readonly = true
+
+# Launch feedback (`launches` module).
+[[object.property]]
+name = "launches"
+type = "object:launches"
+since = "0.2.0"
+readonly = true
+
+# Policy over the compositor's consent, passphrase and authentication dialogs (`dialogs` module).
+[[object.property]]
+name = "dialogs"
+type = "object:dialogs"
+since = "0.2.0"
+readonly = true
+
+# The session's polkit authentications (`dialogs` module).
+[[object.property]]
+name = "authentication"
+type = "object:authentication"
+since = "0.2.0"
+readonly = true
+
+# The session lock as a lock screen reads it (`lock` module).
+[[object.property]]
+name = "lock"
+type = "object:session_lock"
+since = "0.2.0"
+readonly = true
+
+# The build identity: Gnoblin, GNOME, Mutter, the script engine and the control API, and the commit and build that made this one.
+[[object.property]]
+name = "version"
+type = "object:build_version"
+since = "0.2.0"
+readonly = true
+
 # The live windows that match `query`, in list order; every window when it is left out. For a test a table cannot say, take
 # `clients.to_list()` and filter it in the shell's own language.
 [[object.method]]
@@ -939,6 +1002,36 @@ type = "callback:timer_fn"
 name = "now"
 since = "0.2.0"
 returns = "double"
+
+# Starts a program: `process.spawn`. Returns its handle at once.
+[[object.method]]
+name = "spawn"
+since = "0.2.0"
+returns = "object:process"
+
+[[object.method.param]]
+name = "argv"
+type = "list<string>"
+
+[[object.method.param]]
+name = "options"
+type = "object:spawn_options"
+optional = true
+
+# Starts a command line under `/bin/sh -c`: `process.shell`.
+[[object.method]]
+name = "shell"
+since = "0.2.0"
+returns = "object:process"
+
+[[object.method.param]]
+name = "command"
+type = "string"
+
+[[object.method.param]]
+name = "options"
+type = "object:spawn_options"
+optional = true
 
 # A window appeared: told for every window that joins `clients`, and from the next turn for each one there already when a listener
 # is added. The same as `clients.added`.

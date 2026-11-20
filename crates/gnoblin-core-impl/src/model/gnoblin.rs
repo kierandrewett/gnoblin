@@ -11,7 +11,7 @@ use gnoblin_object::{Fail, Obj, Res, Val};
 use super::collection::query_of;
 use super::values::fields_of;
 use super::world::{CollKind, items, matches};
-use super::{handout, operation, with_world};
+use super::{glue, handout, operation, process, session as session_service, with_world};
 use crate::session;
 
 /// The service.
@@ -143,6 +143,26 @@ pub(super) fn register(builder: &mut Builder) {
                 obj: history.1,
             })
         })
+        .get("session", |_, cx| glue::service_value(cx.ctx(), "session"))
+        .get("runtime", |_, cx| glue::service_value(cx.ctx(), "runtime"))
+        .get("process", |_, cx| glue::service_value(cx.ctx(), "processes"))
+        .get("idle", |_, cx| glue::service_value(cx.ctx(), "idle"))
+        .get("launches", |_, cx| glue::service_value(cx.ctx(), "launches"))
+        .get("dialogs", |_, cx| glue::service_value(cx.ctx(), "dialogs"))
+        .get("authentication", |_, cx| {
+            glue::service_value(cx.ctx(), "authentication")
+        })
+        .get("lock", |_, cx| glue::service_value(cx.ctx(), "session_lock"))
+        .get("version", |_, cx| session_service::version(cx))
+        .method("spawn", |_, cx, args| {
+            let argv = args[0]
+                .list()?
+                .iter()
+                .map(|part| part.text().map(str::to_owned))
+                .collect::<Res<Vec<String>>>()?;
+            process::spawn(cx, argv, args.get(1))
+        })
+        .method("shell", |_, cx, args| process::shell(cx, args[0].text()?, args.get(1)))
         .method("find_clients", |_, cx, args| find(cx, CollKind::Client, args.first()))
         .method("find_outputs", |_, cx, args| find(cx, CollKind::Output, args.first()))
         .method("timer", |_, cx, args| {

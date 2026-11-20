@@ -50,6 +50,7 @@ mod registry;
 mod role;
 mod session;
 mod shell_role;
+pub mod slots;
 pub mod std_host;
 mod table;
 mod tree;

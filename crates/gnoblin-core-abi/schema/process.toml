@@ -1,0 +1,334 @@
+# The `process` module of `gnoblin.model`: the programs a shell starts, and how each one ended.
+#
+# The core owns the children (one waiter thread per child, a process group of its own, a timeout and bounded capture). A shell asks for a
+# program with `processes.spawn` (an argument vector) or `processes.shell` (a command line for `/bin/sh -c`) and holds a `process`. The end of
+# a program is told from the turn after it was seen: to the process's own `exited` signal and to the `exited` signal of `processes`.
+#
+# A program a generation's `init` starts waits until that generation takes over, and one a reload starts again with the same arguments is
+# adopted, not doubled. A program a handler starts belongs to the user, and a reload leaves it running.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# Where one standard stream goes: the session log, nowhere, or into the end record (up to `output_limit` bytes).
+[[enum]]
+name = "stream_mode"
+since = "0.2.0"
+values = ["inherit", "discard", "capture"]
+
+# The signals `process.kill` sends, to the process group.
+[[enum]]
+name = "process_signal"
+since = "0.2.0"
+values = ["term", "kill", "int", "hup", "usr1", "usr2", "stop", "cont"]
+
+# Whether a program still runs.
+[[enum]]
+name = "process_status"
+since = "0.2.0"
+values = ["running", "exited"]
+
+# The options of a spawn. Every one is optional.
+[[object]]
+name = "spawn_options"
+since = "0.2.0"
+kind = "record"
+
+# The working directory: an absolute path. The runtime's own by default.
+[[object.property]]
+name = "cwd"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Variables added to the session environment, each as `NAME=value`, at most 128.
+[[object.property]]
+name = "env"
+type = "list<string>"
+since = "0.2.0"
+optional = true
+
+# Text written to standard input, at most 1 MiB, which is then closed. Standard input is empty by default.
+[[object.property]]
+name = "stdin"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Where standard output goes. `inherit` by default.
+[[object.property]]
+name = "stdout"
+type = "enum:stream_mode"
+since = "0.2.0"
+optional = true
+
+# Where standard error goes. `inherit` by default.
+[[object.property]]
+name = "stderr"
+type = "enum:stream_mode"
+since = "0.2.0"
+optional = true
+
+# Bytes kept from each captured stream, 0 to 4194304. 65536 by default.
+[[object.property]]
+name = "output_limit"
+type = "int"
+since = "0.2.0"
+optional = true
+
+# Milliseconds before the group gets SIGTERM, and SIGKILL 2000 ms later. More than 0, at most 86400000.
+[[object.property]]
+name = "timeout"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# How a process ended. A captured stream is decoded as UTF-8, with the replacement character for bad bytes.
+[[object]]
+name = "process_exit"
+since = "0.2.0"
+kind = "record"
+
+# The exit status after a normal exit; absent when a signal ended it.
+[[object.property]]
+name = "exit_code"
+type = "int"
+since = "0.2.0"
+optional = true
+
+# The name of the signal that ended it (`term`, `kill`, ...); absent after a normal exit.
+[[object.property]]
+name = "signal"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The `timeout` option ended it.
+[[object.property]]
+name = "timed_out"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# What standard output held, for a stream set to `capture`; absent otherwise.
+[[object.property]]
+name = "stdout"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# What standard error held, for a stream set to `capture`; absent otherwise.
+[[object.property]]
+name = "stderr"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Standard output passed `output_limit` and the rest was dropped.
+[[object.property]]
+name = "stdout_truncated"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# Standard error passed `output_limit` and the rest was dropped.
+[[object.property]]
+name = "stderr_truncated"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# One started program. `alive` is true from the spawn until its end is seen, and the fields that say how it ended are absent until then.
+[[object]]
+name = "process"
+since = "0.2.0"
+kind = "handle"
+
+# The id the library gave the process. It is the handle's identity within this generation.
+[[object.property]]
+name = "id"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The program and its arguments. A command line is `["/bin/sh", "-c", command]`.
+[[object.property]]
+name = "argv"
+type = "list<string>"
+since = "0.2.0"
+readonly = true
+
+# The operating system's process id. A program the config's top level spawns starts when the config takes over, so until then its `pid`
+# is 0; a program the same config started before and that a reload keeps has its pid at once. 0 after the program ended.
+[[object.property]]
+name = "pid"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# True from the spawn until the end is seen.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# `running` until the end is seen, then `exited`.
+[[object.property]]
+name = "status"
+type = "enum:process_status"
+since = "0.2.0"
+readonly = true
+
+# The exit status, absent while the process runs and after a signal ended it.
+[[object.property]]
+name = "exit_code"
+type = "int"
+since = "0.2.0"
+optional = true
+readonly = true
+
+# The name of the signal that ended the process, or absent.
+[[object.property]]
+name = "signal"
+type = "string"
+since = "0.2.0"
+optional = true
+readonly = true
+
+# True when the `timeout` option ended the process.
+[[object.property]]
+name = "timed_out"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# What the process ended with, or absent while it runs.
+[[object.property]]
+name = "exit"
+type = "object:process_exit"
+since = "0.2.0"
+readonly = true
+
+# An operation that succeeds when the process ends, whatever its exit status. Every call returns the same operation. How it ended is
+# `exit`.
+[[object.method]]
+name = "wait"
+since = "0.2.0"
+returns = "object:operation"
+
+# Sends a signal to the process group (`term` by default). The operation fails `not_found` once the process has ended. Ending a process
+# is allowed while the session is locked.
+[[object.method]]
+name = "kill"
+since = "0.2.0"
+returns = "object:operation"
+
+[[object.method.param]]
+name = "signal"
+type = "enum:process_signal"
+optional = true
+
+# The process ended, however it ended. `exit_code` is its exit status, absent when a signal ended it (`signal` says which).
+[[object.signal]]
+name = "exited"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "process"
+type = "object:process"
+
+# Observes the processes a shell started. Every method is optional.
+[[object]]
+name = "process_listener"
+since = "0.2.0"
+kind = "interface"
+
+# A process ended, however it ended.
+[[object.method]]
+name = "on_exited"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "process"
+type = "object:process"
+
+# The programs this generation started: `gnoblin.spawn` and `gnoblin.process` of the TypeScript library.
+[[object]]
+name = "processes"
+since = "0.2.0"
+kind = "service"
+
+# Starts a program and returns its handle at once. Refuses when the program cannot start, saying why: an option out of range is a type
+# error, a program that cannot be found is `not_found`, and too many running programs is `busy`.
+[[object.method]]
+name = "spawn"
+since = "0.2.0"
+returns = "object:process"
+
+[[object.method.param]]
+name = "argv"
+type = "list<string>"
+
+[[object.method.param]]
+name = "options"
+type = "object:spawn_options"
+optional = true
+
+# Starts a command line under `/bin/sh -c`.
+[[object.method]]
+name = "shell"
+since = "0.2.0"
+returns = "object:process"
+
+[[object.method.param]]
+name = "command"
+type = "string"
+
+[[object.method.param]]
+name = "options"
+type = "object:spawn_options"
+optional = true
+
+# The processes this generation started that have not ended, oldest first.
+[[object.method]]
+name = "list"
+since = "0.2.0"
+returns = "list<object:process>"
+
+# The running process with this id, or nothing: an ended process is known only to whoever holds its handle.
+[[object.method]]
+name = "by_id"
+since = "0.2.0"
+returns = "object:process"
+
+[[object.method.param]]
+name = "id"
+type = "uint"
+
+# Adds a listener once; adding it again does nothing.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:process_listener"
+
+# Removes a listener. A listener that is not there is ignored.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:process_listener"
+
+# A process of this generation ended.
+[[object.signal]]
+name = "exited"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "process"
+type = "object:process"

@@ -1,0 +1,229 @@
+# The `launches` module of `gnoblin.model`: launch feedback, the time between starting an application and its window appearing.
+#
+# A shell records a pending launch with `begin`. A window of the application that appears, takes focus or names its application starts the
+# oldest pending launch that matches; a launch that no window answers times out at its deadline. A window that existed before the launch
+# does not start it. The registry keeps 64 launches: the oldest finished one is dropped for a new one, and with all pending, `begin` ends
+# the new launch at once.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# Where a launch is. It begins `pending` and leaves it once, for one of the other three.
+[[enum]]
+name = "launch_state"
+since = "0.2.0"
+values = ["pending", "started", "timed_out", "ended"]
+
+# Observes one launch: pass it to `launches.begin` as `listener`. Every method is optional.
+[[object]]
+name = "launch_listener"
+since = "0.2.0"
+kind = "interface"
+
+# A field changed; `fields` names them.
+[[object.method]]
+name = "on_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "launch"
+type = "object:launch"
+
+[[object.method.param]]
+name = "fields"
+type = "list<string>"
+
+# A window of the application appeared or took focus.
+[[object.method]]
+name = "on_started"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "launch"
+type = "object:launch"
+
+# The deadline passed first.
+[[object.method]]
+name = "on_timed_out"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "launch"
+type = "object:launch"
+
+# The launch left `pending`, for any reason; it is told after the other methods. `reason` is the new state, `replaced` or a refusal.
+[[object.method]]
+name = "on_closed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "launch"
+type = "object:launch"
+
+[[object.method.param]]
+name = "reason"
+type = "string"
+
+# What `launches.begin` takes beside the token and the application.
+[[object]]
+name = "launch_options"
+since = "0.2.0"
+kind = "record"
+
+# The deadline of the launch in milliseconds, 100 to 10000. 3000 when it is left out.
+[[object.property]]
+name = "timeout_ms"
+type = "int"
+since = "0.2.0"
+optional = true
+
+# Told of the launch's changes.
+[[object.property]]
+name = "listener"
+type = "object:launch_listener"
+since = "0.2.0"
+optional = true
+
+# One launch. It is the same object for as long as it is in the registry.
+[[object]]
+name = "launch"
+since = "0.2.0"
+kind = "handle"
+
+# The caller's unique key for matching this launch.
+[[object.property]]
+name = "token"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The application identifier used to match a window, such as `org.example.App.desktop`.
+[[object.property]]
+name = "application"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The deadline asked for, in milliseconds.
+[[object.property]]
+name = "timeout_ms"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Unix time in milliseconds when `begin` was called.
+[[object.property]]
+name = "started_at"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The current state, from `pending` to one terminal state.
+[[object.property]]
+name = "state"
+type = "enum:launch_state"
+since = "0.2.0"
+readonly = true
+
+# True while the launch is `pending`.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Counts the changes of the launch; 0 until the first.
+[[object.property]]
+name = "revision"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Ends a pending launch: the program was cancelled or has started. A launch that is not pending is unchanged.
+[[object.method]]
+name = "finish"
+since = "0.2.0"
+
+# A field changed; `fields` names them.
+[[object.signal]]
+name = "changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "launch"
+type = "object:launch"
+
+[[object.signal.field]]
+name = "fields"
+type = "list<string>"
+
+# A window of the application appeared or took focus.
+[[object.signal]]
+name = "started"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "launch"
+type = "object:launch"
+
+# The deadline passed first.
+[[object.signal]]
+name = "timed_out"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "launch"
+type = "object:launch"
+
+# The launch left `pending`, for any reason; it is told after the other signals.
+[[object.signal]]
+name = "closed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "launch"
+type = "object:launch"
+
+[[object.signal.field]]
+name = "reason"
+type = "string"
+
+# `gnoblin.launches`: the launches the shell tracks, and the windows that answer them.
+[[object]]
+name = "launches"
+since = "0.2.0"
+kind = "service"
+
+# Whether a pending launch still waits for a window or its deadline.
+[[object.property]]
+name = "pending"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The launches the registry keeps, oldest first, pending and finished.
+[[object.method]]
+name = "list"
+since = "0.2.0"
+returns = "list<object:launch>"
+
+# Tracks a launch of `application` under `token`. It is returned `pending`, with revision 0. A token that is already in use ends the
+# earlier launch (`closed` with the reason `replaced`). A launch the registry cannot take, because it holds 64 pending ones, comes back
+# `ended` with that reason in its `closed`. The token is 1 to 128 characters and the application 1 to 512.
+[[object.method]]
+name = "begin"
+since = "0.2.0"
+returns = "object:launch"
+
+[[object.method.param]]
+name = "token"
+type = "string"
+
+[[object.method.param]]
+name = "application"
+type = "string"
+
+[[object.method.param]]
+name = "options"
+type = "object:launch_options"
+optional = true

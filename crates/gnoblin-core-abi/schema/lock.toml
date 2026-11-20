@@ -1,0 +1,112 @@
+# The `lock` module of `gnoblin.model`: what a shell's lock screen reads of the compositor's session lock, and what it asks of it.
+#
+# The compositor's tree has one `lock` node. Its `state` is `not-locked`, `pending` or `locked`; the shell records that its lock screen is
+# up with `engage`, and asks the compositor to check a password with `authenticate`. The compositor answers later, and unlocks the session
+# itself on an accepted check: nothing here can unlock. The stock lock screen is `gnoblin.std`'s (`lock`); a shell with none leaves the
+# compositor's own lock card in charge (`docs/session-lock.md`).
+#
+# The password is the call's secret text. It goes straight into the transaction, which wipes it once it is sent, and is never kept, logged
+# or put in a retry. The copy a script held is the script's to clear.
+#
+# The screen is alive only while the compositor says so: it renews a lease with `heartbeat`, and a check the compositor does not answer
+# within 30 seconds is answered `failed` here. Without either, a lock screen that hung or lost a check would hold the lock UI with
+# nothing to type into.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# The lock's state as the compositor last published it. A tree with no lock node is `not-locked`.
+[[enum]]
+name = "lock_condition"
+since = "0.2.0"
+values = ["not-locked", "pending", "locked"]
+
+# The compositor's answer to a password check: `result` is `ok`, or the wait in milliseconds under `rate-limited`.
+[[object]]
+name = "lock_answer"
+since = "0.2.0"
+kind = "record"
+
+# Identifies the password check that produced this answer: what `authenticate` returned.
+[[object.property]]
+name = "token"
+type = "uint"
+since = "0.2.0"
+
+# The outcome of the check: `ok`, or the wait in milliseconds for a rate-limited one.
+[[object.property]]
+name = "result"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# Error detail the compositor supplied, or an empty string.
+[[object.property]]
+name = "error"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# `gnoblin.lock`: the session lock as a lock screen reads it.
+[[object]]
+name = "session_lock"
+since = "0.2.0"
+kind = "service"
+
+# The session lock's state. `not-locked` while the tree has no lock node.
+[[object.property]]
+name = "state"
+type = "enum:lock_condition"
+since = "0.2.0"
+readonly = true
+
+# The lock node, which the screen is mounted under; 0 when the tree has none.
+[[object.property]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The size of the screen the lock screen covers: the primary one, else the first. Nothing before the tree has one.
+[[object.property]]
+name = "screen"
+type = "object:size"
+since = "0.2.0"
+readonly = true
+
+# Records whether this screen is up. The compositor reads it to know the lock UI is held, and routes the keys typed under its own lock
+# to the focused node while it is true. Refused when the tree has no lock node.
+[[object.method]]
+name = "engage"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "engaged"
+type = "bool"
+
+# Asks the compositor to check `password` against the session user and returns the token the answer comes back under (`answered`).
+# Refused when the tree has no lock node.
+[[object.method]]
+name = "authenticate"
+since = "0.2.0"
+returns = "uint"
+
+[[object.method.param]]
+name = "password"
+type = "string"
+secret = true
+
+# Renews the lease the compositor gives the screen. A screen that stops renewing it (hung, or failing every frame) loses the password
+# entry to the compositor's own lock card. At most twice a second is sent; a call that comes sooner does nothing.
+[[object.method]]
+name = "heartbeat"
+since = "0.2.0"
+
+# The compositor answered a password check, or none did within 30 seconds (`error` begins `failed`).
+[[object.signal]]
+name = "answered"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "answer"
+type = "object:lock_answer"

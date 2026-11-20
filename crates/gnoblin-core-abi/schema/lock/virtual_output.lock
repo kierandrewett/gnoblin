@@ -1,0 +1,20 @@
+# The public surface of the `virtual_output` module of the `gnoblin.model` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-core-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+enum | virtual_output_attachment | values viewer | 0.2.0
+
+member | virtual_output.attachment | property enum:virtual_output_attachment ro,optional | 0.2.0
+member | virtual_output.height | property uint ro | 0.2.0
+member | virtual_output.name | property string ro | 0.2.0
+member | virtual_output.scale | property double ro | 0.2.0
+member | virtual_output.width | property uint ro | 0.2.0
+
+object | virtual_output | base none ctor(name, width, height, scale, attachment) | 0.2.0

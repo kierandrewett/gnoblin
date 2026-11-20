@@ -1213,6 +1213,16 @@ returns = "bool"
 name = "member"
 type = "object:output"
 
+# Asks the compositor for an output with no display behind it. It is refused with `unsupported` until the compositor serves virtual
+# outputs; the description (`virtual_output`) was checked when it was made.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:virtual_output"
+
 # A snapshot of the members, in order: it does not follow later changes.
 [[object.method]]
 name = "to_list"

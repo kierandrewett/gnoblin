@@ -8,7 +8,10 @@
 //! - [`gnoblin`]: the service that holds the roots, `find`, the timers and the focus history;
 //! - [`operation`]: the request an output's `apply` makes, and the timer;
 //! - [`properties`]: bindings that follow the properties a function reads;
-//! - [`listener`]: what `add_listener` does with a listener the shell implements.
+//! - [`listener`]: what `add_listener` does with a listener the shell implements;
+//! - the services of the session, each one object a generation makes on first use and a module of its own: [`session`] (the session, the
+//!   configuration reload and the build identity), [`process`], [`idle`], [`launches`], [`dialogs`] (and the polkit view of them),
+//!   [`lock`] (what a lock screen reads of the session lock), [`virtual_output`] and [`inset`]; [`glue`] is what they share.
 //!
 //! The model of a generation is made on first use and told what the compositor sent by [`pumped`], which the dispatch loop calls once
 //! for each pump of the link. Nothing a listener does happens inside the call or the pump that caused it: the library queues every
@@ -25,12 +28,21 @@ use crate::events::ShellEvent;
 
 mod client;
 mod collection;
+mod dialogs;
+mod glue;
 mod gnoblin;
+mod idle;
+mod inset;
+mod launches;
 mod listener;
+mod lock;
 mod operation;
 mod output;
+mod process;
 mod properties;
+mod session;
 mod values;
+mod virtual_output;
 mod world;
 
 use world::{PumpBatch, World};
@@ -48,6 +60,14 @@ pub(crate) fn register(builder: &mut Builder) {
     gnoblin::register(builder);
     operation::register(builder);
     properties::register(builder);
+    session::register(builder);
+    process::register(builder);
+    idle::register(builder);
+    launches::register(builder);
+    dialogs::register(builder);
+    lock::register(builder);
+    virtual_output::register(builder);
+    inset::register(builder);
 }
 
 /// Makes the model of the generation of `cx` when it has none.
@@ -117,6 +137,12 @@ pub(crate) fn pumped(ctx: GnoblinCtx, events: &[ShellEvent]) {
 pub(crate) fn forget(ctx: GnoblinCtx) {
     WORLDS.with(|worlds| worlds.borrow_mut().remove(&ctx));
     properties::retire(ctx);
+    session::forget(ctx);
+    process::forget(ctx);
+    idle::forget(ctx);
+    launches::forget(ctx);
+    dialogs::forget(ctx);
+    lock::forget(ctx);
 }
 
 /// The object of `obj` as a value for the shell, with a reference it must release.

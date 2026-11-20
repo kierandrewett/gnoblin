@@ -32,7 +32,7 @@ use gnoblin_proto::Version;
 use rustix::event::{EventfdFlags, PollFd, PollFlags, eventfd, poll};
 
 use crate::catalog::DefaultDef;
-use crate::events::{AnswerNotice, ShellEvent, SignalDelivery};
+use crate::events::{AnswerNotice, OwnerNotice, ShellEvent, SignalDelivery};
 use crate::values::OwnedValue;
 use crate::{catalog, log, registry};
 
@@ -69,6 +69,16 @@ pub struct VerbFailure {
     pub code: String,
 }
 
+/// A request of the owner connection that is not a method of an object of the compositor's graph: each one is a short conversation on a
+/// connection of its own, which a reload that waits for this very process may hold for a long time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OwnerRequest {
+    /// Take the session lock: attach to the lock node and ask for it.
+    Lock,
+    /// Reload the configuration as `gnoblinctl config reload` does.
+    ReloadConfig,
+}
+
 /// The shell instance's connection for verbs and the `gnoblin` namespace's signals.
 pub trait VerbLink {
     /// Starts `call`. The answer is published with [`answered`] when the compositor gives it, from any thread; an `Err` here is a
@@ -78,6 +88,23 @@ pub trait VerbLink {
     ///
     /// The connection is gone.
     fn call(&mut self, call: VerbCall) -> Result<(), String>;
+
+    /// What the compositor last published for `name` of the one object of `class` (`session`, `idle`), or nothing when it published
+    /// none or the link keeps none.
+    fn property(&self, class: &str, name: &str) -> Option<Value> {
+        let _ = (class, name);
+        None
+    }
+
+    /// Starts `request`. Its answer is published with [`answered_text`] under `token`.
+    ///
+    /// # Errors
+    ///
+    /// The link cannot make the request, or the connection is gone.
+    fn request(&mut self, token: u64, request: OwnerRequest) -> Result<(), String> {
+        let _ = (token, request);
+        Err("this connection cannot make that request".to_owned())
+    }
 }
 
 /// What the host gives the core to reach the compositor's verbs: a way to open a link, on the shell thread, the first time a shell
@@ -107,6 +134,37 @@ pub fn answered(token: u64, outcome: Result<Option<Value>, VerbFailure>) {
         },
     };
     registry::publish_event(ShellEvent::Answer(notice));
+}
+
+/// Publishes the answer to an [`OwnerRequest`] that went out under `token`: its value as text, or the failure as the compositor's code
+/// and the words that came with it (`config-rejected` and why). Any thread.
+pub fn answered_text(token: u64, outcome: Result<String, (String, String)>) {
+    let notice = match outcome {
+        Ok(text) => AnswerNotice {
+            token,
+            result: text.into_bytes(),
+            error: String::new(),
+        },
+        Err((code, message)) => AnswerNotice {
+            token,
+            result: message.into_bytes(),
+            error: code,
+        },
+    };
+    registry::publish_event(ShellEvent::Answer(notice));
+}
+
+/// Tells the shell that a property of the one object of `class` changed: the link's `property` now answers the new value. Any thread.
+pub fn property_changed(class: &str, name: &str) {
+    registry::publish_event(ShellEvent::Owner(OwnerNotice::Property {
+        class: class.to_owned(),
+        name: name.to_owned(),
+    }));
+}
+
+/// Tells the shell that the owner connection ended. Any thread.
+pub fn owner_lost(why: &str) {
+    registry::publish_event(ShellEvent::Owner(OwnerNotice::Lost(why.to_owned())));
 }
 
 /// Publishes a signal `object` of type `class` raised: `signal`, with its `fields` by their schema names. The payload is built in
@@ -240,20 +298,31 @@ impl VerbLinkProvider for OwnerSocket {
         let path = self.path.as_ref().map_err(Clone::clone)?;
         let transport =
             UnixTransport::connect(path).map_err(|error| format!("cannot connect to {}: {error}", path.display()))?;
-        let version = {
-            let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
-            Version::new(major, minor, patch)
-        };
+        let version = ipc_version();
         let mut client = Client::connect(transport, version).map_err(|error| error.to_string())?;
         client
             .set_read_timeout(Some(FRAME_WAIT))
             .map_err(|error| error.to_string())?;
-        Ok(Box::new(OwnerSocketLink::start(client)?))
+        Ok(Box::new(OwnerSocketLink::start(client, path.clone(), version)?))
     }
 }
 
+/// The version of the owner protocol this core speaks.
+fn ipc_version() -> Version {
+    let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
+    Version::new(major, minor, patch)
+}
+
+/// The properties the link keeps of the objects of the `gnoblin` namespace it follows (`session`, `idle`): by the object's type and the
+/// property's name.
+type Props = Arc<Mutex<BTreeMap<(String, String), Value>>>;
+
+/// The objects whose properties the link keeps. The compositor publishes one of each.
+const FOLLOWED: &[&str] = &["session", "idle"];
+
 /// [`VerbLink`] over a connection to the owner socket, served by a thread of its own: it subscribes to the whole object graph (so
-/// it knows each object's type and sees every signal), makes the calls it is given and publishes what comes back.
+/// it knows each object's type and sees every signal), makes the calls it is given and publishes what comes back. It keeps the
+/// properties of the `session` and `idle` objects as the compositor publishes them and says when one changed.
 pub struct OwnerSocketLink {
     commands: Sender<VerbCall>,
     /// Written to wake the thread when a command is waiting.
@@ -262,12 +331,17 @@ pub struct OwnerSocketLink {
     thread: Option<JoinHandle<()>>,
     /// Set by the thread when the connection ends, so a call after that fails at once.
     lost: Arc<Mutex<Option<String>>>,
+    props: Props,
+    /// Where a request of its own connects, and as which version.
+    path: PathBuf,
+    version: Version,
 }
 
 impl OwnerSocketLink {
-    fn start(mut client: Client<UnixTransport>) -> Result<Self, String> {
+    fn start(mut client: Client<UnixTransport>, path: PathBuf, version: Version) -> Result<Self, String> {
         let snapshot = client.subscribe(Filter::All).map_err(|error| error.to_string())?;
-        let mut graph = ObjectGraph::default();
+        let props: Props = Arc::new(Mutex::new(BTreeMap::new()));
+        let mut graph = ObjectGraph::new(Arc::clone(&props));
         for view in snapshot.objects() {
             graph.learn(view);
         }
@@ -289,13 +363,55 @@ impl OwnerSocketLink {
             stop,
             thread: Some(thread),
             lost,
+            props,
+            path,
+            version,
         })
+    }
+
+    /// Why the connection ended, once it has.
+    fn gone(&self) -> Option<String> {
+        self.lost.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+}
+
+/// What a request of its own does on its connection: the answer, as the text the shell reads.
+fn run_request(client: &mut Client<UnixTransport>, request: OwnerRequest) -> Result<String, ClientError> {
+    match request {
+        OwnerRequest::Lock => {
+            client.watch_lock()?;
+            client.lock_session()?;
+            Ok(String::new())
+        }
+        OwnerRequest::ReloadConfig => {
+            let committed = client.reload_config()?;
+            // The revision, then one accepted-but-not-applied sentence a line.
+            let mut text = committed.revision.to_string();
+            for notice in committed.notices {
+                text.push('\n');
+                text.push_str(&notice.text.replace('\n', " "));
+            }
+            Ok(text)
+        }
+    }
+}
+
+/// How long a reload may take before the connection that asked gives up. The runtime answers when its turn comes and the compositor
+/// has accepted the document, so a longer wait is a runtime that is stuck.
+const RELOAD_WAIT: Duration = Duration::from_secs(60);
+
+/// The code a refusal is reported under, and the words that come with it.
+fn refusal_of(error: &ClientError) -> (String, String) {
+    match error {
+        ClientError::Refused { code, message, .. } => (code.clone(), message.clone()),
+        ClientError::Disconnected | ClientError::Codec(_) => ("unavailable".to_owned(), error.to_string()),
+        other => ("internal".to_owned(), other.to_string()),
     }
 }
 
 impl VerbLink for OwnerSocketLink {
     fn call(&mut self, call: VerbCall) -> Result<(), String> {
-        if let Some(why) = self.lost.lock().unwrap_or_else(PoisonError::into_inner).clone() {
+        if let Some(why) = self.gone() {
             return Err(format!("the owner connection is gone: {why}"));
         }
         self.commands
@@ -303,6 +419,45 @@ impl VerbLink for OwnerSocketLink {
             .map_err(|_| "the owner connection is gone".to_owned())?;
         let _ = rustix::io::write(&self.wake, &1_u64.to_ne_bytes());
         Ok(())
+    }
+
+    fn property(&self, class: &str, name: &str) -> Option<Value> {
+        self.props
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&(class.to_owned(), name.to_owned()))
+            .cloned()
+    }
+
+    fn request(&mut self, token: u64, request: OwnerRequest) -> Result<(), String> {
+        if let Some(why) = self.gone() {
+            return Err(format!("the owner connection is gone: {why}"));
+        }
+        let (path, version) = (self.path.clone(), self.version);
+        std::thread::Builder::new()
+            .name("gnoblin-owner-request".to_owned())
+            .spawn(move || {
+                let outcome = UnixTransport::connect(&path)
+                    .map_err(|error| {
+                        (
+                            "unavailable".to_owned(),
+                            format!("cannot connect to {}: {error}", path.display()),
+                        )
+                    })
+                    .and_then(|transport| {
+                        Client::connect(transport, version)
+                            .map_err(|error| ("unavailable".to_owned(), error.to_string()))
+                    })
+                    .and_then(|mut client| {
+                        client
+                            .set_read_timeout(Some(RELOAD_WAIT))
+                            .map_err(|error| refusal_of(&error))?;
+                        run_request(&mut client, request).map_err(|error| refusal_of(&error))
+                    });
+                answered_text(token, outcome);
+            })
+            .map(drop)
+            .map_err(|error| format!("cannot start the request: {error}"))
     }
 }
 
@@ -316,18 +471,49 @@ impl Drop for OwnerSocketLink {
     }
 }
 
-/// What the thread knows of the compositor's objects: each one's type.
-#[derive(Default)]
+/// What the thread knows of the compositor's objects: each one's type, and the properties of the ones the link follows.
 struct ObjectGraph {
     types: BTreeMap<ObjectId, (String, String)>,
+    props: Props,
 }
 
 impl ObjectGraph {
+    fn new(props: Props) -> Self {
+        Self {
+            types: BTreeMap::new(),
+            props,
+        }
+    }
+
+    /// The followed class an object is of, if it is of one.
+    fn followed(&self, object: ObjectId) -> Option<&str> {
+        let (namespace, name) = self.types.get(&object)?;
+        (namespace == "gnoblin")
+            .then(|| FOLLOWED.iter().copied().find(|followed| *followed == name))
+            .flatten()
+    }
+
     fn learn(&mut self, view: &ObjectView) {
-        self.types.insert(
-            view.id(),
-            (view.ty().namespace().to_owned(), view.ty().name().to_owned()),
-        );
+        let (namespace, name) = (view.ty().namespace().to_owned(), view.ty().name().to_owned());
+        if namespace == "gnoblin" && FOLLOWED.contains(&name.as_str()) {
+            let mut props = self.props.lock().unwrap_or_else(PoisonError::into_inner);
+            for (property, value) in view.properties() {
+                props.insert((name.clone(), property.to_owned()), value.clone());
+            }
+        }
+        self.types.insert(view.id(), (namespace, name));
+    }
+
+    /// Keeps a published change of a followed object and says so.
+    fn changed(&self, object: ObjectId, property: &str, value: &Value) {
+        let Some(class) = self.followed(object) else {
+            return;
+        };
+        self.props
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert((class.to_owned(), property.to_owned()), value.clone());
+        property_changed(class, property);
     }
 
     /// The object a call is for: `object` when it is one of that type, or the one object of the type when `object` is zero.
@@ -370,6 +556,7 @@ fn serve(
     let mut pending: HashMap<OperationId, u64> = HashMap::new();
     let end = |why: String, pending: &mut HashMap<OperationId, u64>| {
         log::warn!(area = "verbs", "the owner connection ended: {why}");
+        owner_lost(&why);
         *lost.lock().unwrap_or_else(PoisonError::into_inner) = Some(why);
         for (_, token) in pending.drain() {
             answered(
@@ -430,7 +617,16 @@ fn serve(
             Ok(Event::Model(observation)) => match observation {
                 Observation::Opened { view, .. } => graph.learn(&view),
                 Observation::Closed { object, .. } => {
+                    let followed = graph.followed(object).map(str::to_owned);
                     graph.types.remove(&object);
+                    if followed.as_deref() == Some("idle") {
+                        graph
+                            .props
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .retain(|(class, _), _| class != "idle");
+                        owner_lost("the idle object went away");
+                    }
                 }
                 Observation::Signalled {
                     object, signal, fields, ..
@@ -453,7 +649,12 @@ fn serve(
                         );
                     }
                 }
-                Observation::Changed { .. } => {}
+                Observation::Changed {
+                    object,
+                    property,
+                    value,
+                    ..
+                } => graph.changed(object, &property, &value),
             },
             Ok(_) | Err(ClientError::Idle) => {}
             Err(error) => {
