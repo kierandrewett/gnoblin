@@ -2,7 +2,7 @@
 //! answered a frame, and who gets the keyboard when the user clicks it.
 //!
 //! The protocol side (the rectangle, the configure, the exclusive zone, the exclusive keyboard) is
-//! `protocols/zwlr_layer_shell_v1.rs`, and the pixels are the composer's (`gnoblin-backend`, `render/compose/layers.rs`).
+//! `layer_shell.rs`, and the pixels are the composer's (`gnoblin-backend`, `render/compose/layers.rs`).
 //! This module is the part of the protocol that is neither: what a layer surface is to the seat.
 //!
 //! # Where the pointer finds a layer surface

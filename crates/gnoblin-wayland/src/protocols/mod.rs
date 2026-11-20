@@ -31,8 +31,6 @@ pub mod wl_data_device_manager;
 pub mod wl_seat;
 /// `xdg_shell`: toplevels, popups, configure and ack.
 pub mod xdg_shell;
-/// `zwlr_layer_shell_v1`: layer surfaces for bars and docks.
-pub mod zwlr_layer_shell_v1;
 /// `zwlr_screencopy_manager_v1`: one-shot screencopy of an output or region.
 pub mod zwlr_screencopy_v1;
 /// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.

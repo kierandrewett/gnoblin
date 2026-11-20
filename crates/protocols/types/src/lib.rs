@@ -10,4 +10,5 @@
 
 pub mod activation;
 pub mod decoration;
+pub mod layer;
 pub mod output;

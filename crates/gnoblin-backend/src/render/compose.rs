@@ -114,8 +114,8 @@ use canvases::CanvasPicture;
 mod lock_ui;
 
 mod layers;
+use gnoblin_wayland_types::layer::{LayerBand, LayerNodeInfo, LayerOverride};
 use layers::LayerNode;
-pub use layers::{LayerBand, LayerNodeInfo, LayerOverride};
 
 mod surface_shell;
 pub use surface_shell::{PickSurface, SurfaceShell};

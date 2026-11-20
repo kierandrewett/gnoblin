@@ -31,6 +31,7 @@ pub use gnoblin_wayland_xdg_toplevel_tag_v1 as xdg_toplevel_tag_v1;
 pub use gnoblin_wayland_zwlr_data_control_v1 as zwlr_data_control_v1;
 pub use gnoblin_wayland_zwlr_foreign_toplevel_management_v1 as zwlr_foreign_toplevel_management_v1;
 pub use gnoblin_wayland_zwlr_gamma_control_v1 as zwlr_gamma_control_v1;
+pub use gnoblin_wayland_zwlr_layer_shell_v1 as zwlr_layer_shell_v1;
 pub use gnoblin_wayland_zwlr_output_management_v1 as zwlr_output_management_v1;
 pub use gnoblin_wayland_zwlr_output_power_management_v1 as zwlr_output_power_management_v1;
 pub use gnoblin_wayland_zwp_idle_inhibit_v1 as zwp_idle_inhibit_v1;
@@ -81,6 +82,7 @@ pub const ALL: &[&ProtocolInfo] = &[
     &zwp_text_input_v3::PROTOCOL,
     &ext_foreign_toplevel_list_v1::PROTOCOL,
     &zwlr_foreign_toplevel_management_v1::PROTOCOL,
+    &zwlr_layer_shell_v1::PROTOCOL,
     &xdg_activation_v1::PROTOCOL,
     &zxdg_decoration_v1::PROTOCOL,
     &zwlr_output_management_v1::PROTOCOL,

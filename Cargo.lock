@@ -2434,6 +2434,7 @@ dependencies = [
  "gnoblin-wayland-zwlr-data-control-v1",
  "gnoblin-wayland-zwlr-foreign-toplevel-management-v1",
  "gnoblin-wayland-zwlr-gamma-control-v1",
+ "gnoblin-wayland-zwlr-layer-shell-v1",
  "gnoblin-wayland-zwlr-output-management-v1",
  "gnoblin-wayland-zwlr-output-power-management-v1",
  "gnoblin-wayland-zwp-idle-inhibit-v1",
@@ -2639,6 +2640,16 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-types",
  "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwlr-layer-shell-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "gnoblin-wayland-types",
  "smithay",
 ]
 

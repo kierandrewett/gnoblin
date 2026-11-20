@@ -218,6 +218,7 @@ mod gpu_memory;
 mod interactive;
 mod keyboard;
 mod layer_draw;
+mod layer_shell;
 mod liveness;
 mod lock_auth;
 mod lock_card;

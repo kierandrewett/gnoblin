@@ -90,17 +90,17 @@ use crate::protocols::capture_shared::CaptureTables;
 use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
 use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
-use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
 use crate::window_request::{Decider, WindowRequest, X11Flags};
-use gnoblin_wayland_api::access::{Access, AccessPolicy, ClientRole, Global};
+use gnoblin_wayland_api::access::{Access, ClientRole, Global};
 use gnoblin_wayland_protocols::ext_idle_notify_v1::{ExtIdleNotifyV1Tables, IdleNotifyExt as _};
 use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
 use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
 use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
 use gnoblin_wayland_protocols::xdg_activation_v1::XdgActivationV1;
 use gnoblin_wayland_protocols::zwlr_foreign_toplevel_management_v1::ForeignToplevels;
+use gnoblin_wayland_protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
 use gnoblin_wayland_protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::ShortcutInhibitExt as _;
 use gnoblin_wayland_protocols::zwp_pointer_constraints_v1::{
@@ -698,10 +698,7 @@ impl State {
             None => (None, None),
         };
 
-        let layer_shell_state = WlrLayerShellState::new_with_filter::<Self, _>(&display_handle, {
-            let access = Arc::clone(&access);
-            move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::LayerShell)
-        });
+        let layer_shell_state = gnoblin_wayland_protocols::zwlr_layer_shell_v1::register::<Self>(&registrar);
         let foreign_toplevel_list_state =
             gnoblin_wayland_protocols::ext_foreign_toplevel_list_v1::register::<Self>(&registrar);
         let activation_state = gnoblin_wayland_protocols::xdg_activation_v1::register::<Self>(&registrar);
@@ -3133,7 +3130,7 @@ impl State {
             capture_sessions: self.capture.sessions(),
             idle_ms: self.activity.idle_ticks(self.clock),
             inhibitors: self.idle_inhibitors(),
-            layers: self.layers.observed(),
+            layers: crate::layer_shell::observed(&self.layers),
             activation_denied: self.activation.denied().cloned(),
             bells: self.bells,
             menu_requests: self.menu_requests.iter().cloned().collect(),

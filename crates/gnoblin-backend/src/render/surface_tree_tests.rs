@@ -8,6 +8,7 @@
 use gnoblin_render::{Actor, Pass, Shadow};
 use gnoblin_render_software::Software;
 use gnoblin_types::Scale;
+use gnoblin_wayland_types::layer::{LayerBand, LayerNodeInfo, LayerOverride};
 
 use super::*;
 

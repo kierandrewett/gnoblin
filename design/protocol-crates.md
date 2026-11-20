@@ -11,16 +11,16 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `OutputHost`), the aggregate `gnoblin-wayland-protocols` (the `ALL` table), `xtask/protocols.toml`,
   `cargo xtask protocol-crates [--check]`, and the deps rules `protocol-layering` and `protocol-root`;
 - `access` moved into the api crate, and `Registrar` carries the roster (`Registrar::filter`);
-- the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 38 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
+- the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 39 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
   `zwp-relative-pointer-v1`, `zwp-idle-inhibit-v1`, `xdg-system-bell-v1`, `xdg-toplevel-icon-v1`,
   `xdg-toplevel-tag-v1`, `xdg-dialog-v1`, `wl-output`, `wl-shm`, `zwp-primary-selection-v1`, `wp-content-type-v1`,
   `wp-fifo-v1`, `wp-fractional-scale-v1`, `wp-tearing-control-v1`, `wp-presentation-time`,
-  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`. Their forwarding
+  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`, `zwlr-layer-shell-v1`. Their forwarding
   impls are in `crates/gnoblin-wayland/src/glue/`, one file per crate.
 
 Not yet done, in the order of [Migration order and gates](#migration-order-and-gates): every crate that needs the
 access roster (ProtoRetire has removed session host from `access.rs`; view source is on hold by the owner, so the move can start), the capture family (waits for ProtoRetire's decision on
-`capture_views`), the large protocols (`xdg-shell`, layer shell, tablet, session lock), `wl-compositor`, `wl-seat`,
+`capture_views`), the large protocols (`xdg-shell`, tablet, session lock), `wl-compositor`, `wl-seat`,
 `wl-data-device-manager`, `zwp-linux-dmabuf-v1`,
 ProtoMissing's five protocols, the
 real-client test move and `gnoblin-wayland-testkit`, and the advertised-globals test.
@@ -33,7 +33,6 @@ Shared crates must end in `-shared`, so `image_copy_session` will be `gnoblin-wa
 
 The protocols still in `gnoblin-wayland` name types that live in the compositor, so their crates cannot depend only on the api crate. The blockers, by module:
 
-- `zwlr_layer_shell_v1`: `LayerBand`, `LayerNodeInfo`, `LayerOverride` and `TreeOwner` from `gnoblin-backend`'s compose module, which protocol crates may not name.
 - `xdg_shell`, `wl_compositor`, `wl_seat`: `WindowRequest`, `TreeRequest` and the seat's own tables.
 - `zwp_linux_dmabuf_v1`: the backend's `Backend` and the GPU ledger.
 - the capture family: the frame pixel path, the lock embargo and `gnoblin_pipewire_export`.
@@ -43,6 +42,9 @@ Each needs its shared types moved down first, into the types crate below. `zwlr_
 `WindowDecoration` moved from `gnoblin-backend`'s compose module, which now names them from the types crate.
 `xdg_activation_v1` was the third: `ActivationDenial` moved from the observation module, and the token rules are generic over a `Host`
 that says what a connection has earned, what the session's clock reads and what an allowed activation does to a window.
+`zwlr_layer_shell_v1` was the fourth: `LayerBand`, `LayerNodeInfo` and `LayerOverride` moved from the composer; the crate holds the
+global, the table of surfaces and the arithmetic that places one, and the compositor's `layer_shell` module arranges, configures
+and draws them.
 
 ### The types crate
 

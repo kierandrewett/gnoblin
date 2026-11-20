@@ -267,6 +267,14 @@ needs = ["foreign-toplevel-shared"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
 
 [[crate]]
+name = "zwlr-layer-shell-v1"
+description = "The zwlr_layer_shell_v1 Wayland protocol of gnoblin-wayland: bars, docks and overlays anchored to an output, and the strip they reserve."
+kind = "protocol"
+interfaces = [["zwlr_layer_shell_v1", 5]]
+needs = ["types"]
+deps = ["smithay", "gnoblin-types"]
+
+[[crate]]
 name = "xdg-activation-v1"
 description = "The xdg_activation_v1 Wayland protocol of gnoblin-wayland: who may raise a window, by token."
 kind = "protocol"

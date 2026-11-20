@@ -29,6 +29,7 @@ mod xdg_toplevel_tag_v1;
 mod zwlr_data_control_v1;
 mod zwlr_foreign_toplevel_management_v1;
 mod zwlr_gamma_control_v1;
+mod zwlr_layer_shell_v1;
 mod zwlr_output_management_v1;
 mod zwlr_output_power_management_v1;
 mod zwp_idle_inhibit_v1;

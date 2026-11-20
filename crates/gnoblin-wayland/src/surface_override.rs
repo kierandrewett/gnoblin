@@ -20,7 +20,7 @@
 //!    see must not keep the keyboard and the pointer. Nothing else about a popup's grab changes: it is still the
 //!    client's, ended by a press elsewhere as the protocol says.
 //!
-//! A layer surface's part is in `protocols/zwlr_layer_shell_v1.rs`. Overrides apply only while a shell holds the tree and
+//! A layer surface's part is in `layer_shell.rs`. Overrides apply only while a shell holds the tree and
 //! the session is unlocked ([`State::surface_overrides_apply`]); the composer gives the placement back on detach.
 //!
 //! # Failure modes
