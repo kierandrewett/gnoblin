@@ -1550,15 +1550,33 @@ told from the turn after, so nothing runs inside the call that caused it. Two co
 the tests fill with fakes. `output_config` and the operation classes were already native (NpCoreModel); the error codes are the ABI's and the
 operation's `error_code`, and `wake` has no counterpart because the timers and the turn are the core's.
 
-**The dialog slot is fail-closed across a reload.** The claim on `dialogs.observe` belongs to the shell instance, not to a generation. A
-generation's end does not give it back, and the connection never lets silence reach the built-in dialog: a request the shell has not answered
-within the hold (150 ms, inside the compositor's 250 ms window) is answered `deny`, and a request shown to a generation that ends is refused, not
-passed. A generation that takes over finds the claim held and answers from its own listeners; a replacement that fails and is retired leaves the
-claim and the previous generation's listeners as they were. A claim that no generation observes for ten seconds is given back, because the shell
-that held the policy is gone and the built-in dialogs then serve as they do without a shell. `crates/gnoblin-core-impl/tests/services.rs` tests the
-gap, a failed reload and a successful one.
+**What the dialog policy decides, and what the built-in dialog checks.** A shell's policy is arbitrary code of its own: a listener sees the kind of
+request (consent, passphrase, authentication), the verified application id, the subject (the portal interface, the application's own prompt
+text, or the program asking polkit) and the deadline, and its only power is to refuse (`DialogRequest.decline`, `data/js/gnoblin-core/dialogs.ts:135`;
+the host sends the two fixed words `deny` and `pass`, `crates/gnoblin-js/src/dialogs.rs:25,29,161`, and this core does the same in `model/dialogs.rs`).
+The built-in dialog (`crates/gnoblin-compositor/src/ipc/portal.rs:383-390`, "the dialogs observer let the request through; the built-in dialog
+serves it") shows the request to the user and applies none of the shell's rules: it has no per-application or per-interface policy at all. So a
+request served by it is checked by the user only, and a policy such as "no screenshots except for the shell" is lost if it serves in the policy
+shell's place. That is why silence is never left to it while a policy shell may come back.
 
-**What is tested.** `crates/gnoblin-core-impl/tests/services.rs` (43 tests, over the object protocol and fake owner and slot connections;
+**The dialog slot is fail-closed, across a reload and after the shell has gone.** The claim on `dialogs.observe` belongs to the shell instance,
+not to a generation. A generation's end does not give it back, and the slot connection never lets silence reach the built-in dialog: a request
+the shell has not answered within the hold (150 ms, inside the compositor's 250 ms window) is answered `deny`, and a request shown to a generation
+that ends is refused, not passed. A generation that takes over finds the claim held and answers from its own listeners; a replacement that fails
+and is retired leaves the claim and the previous generation's listeners as they were. Once no generation has observed the slot for the grace
+(ten seconds), what happens is one constant, `slots::AFTER_GRACE`:
+
+- `AfterGrace::Deny`, the default: the claim stays and every request is refused until a shell that installs a policy runs again. The built-in
+  dialog never serves them.
+- `AfterGrace::BuiltIn`: the claim is given back and the compositor's built-in dialog serves from then on. It is the compositor's own dialog, so
+  it still waits for the user: the core answers nothing for these requests, approves none (the only words it ever sends are `deny` and `pass`), and
+  the policy of the shell that is gone does not apply. This is the owner's pending choice 50 on the Doop canvas; flip the constant to apply it.
+
+A session in which no shell ever installed a dialog policy holds no claim, so neither setting applies: the built-in dialog serves every request as
+it always has. `crates/gnoblin-core-impl/tests/services.rs` tests the gap, a failed reload, a successful one, the post-grace path under both
+settings, and the session with no policy.
+
+**What is tested.** `crates/gnoblin-core-impl/tests/services.rs` (46 tests, over the object protocol and fake owner and slot connections;
 programs are real) covers the behaviours of the TypeScript tests `host_api`, `host_idle`, `host_launches`, `lock` and `xr` that belong to these
 services: session status with and without a published lock state and with no connection; each verb settling, a refusal's code and words, a call
 that cannot go out; `lock` and `reload_config` as requests of their own with the reload's result and refusal; the session's and the

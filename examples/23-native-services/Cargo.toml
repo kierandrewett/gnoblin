@@ -1,0 +1,20 @@
+[package]
+name = "gnoblin-example-native-services"
+description = "Example 23: a native shell that uses the session services of libgnoblin-core: a spawned process, an idle watch, a launch that times out, the session lock and the build identity."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "native_services"
+crate-type = ["cdylib"]
+
+# The shell depends on the core SDK and nothing else. The classes it uses (`gnoblin_core::objects`) are written at build time from the
+# library's catalog and call the library through its object table.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+
+[lints]
+workspace = true

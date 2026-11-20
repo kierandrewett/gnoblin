@@ -134,6 +134,7 @@ members = [
     "examples/20-native-object",
     "examples/21-native-model",
     "examples/22-native-ui",
+    "examples/23-native-services",
     "examples/24-native-scene",
     "xtask",
 ]

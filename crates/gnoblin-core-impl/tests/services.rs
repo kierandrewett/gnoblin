@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_core_abi::{self as abi, GnoblinStr};
 use gnoblin_core_impl::host::{self, AttachMode, TreeLinkProvider};
-use gnoblin_core_impl::slots::{SlotLinkProvider, SlotTimings};
+use gnoblin_core_impl::slots::{AfterGrace, SlotLinkProvider, SlotTimings};
 use gnoblin_core_impl::verbs::{self, OwnerRequest, VerbCall, VerbLink, VerbLinkProvider};
 use gnoblin_model::Value;
 use gnoblin_object::client::{Api, closure};
@@ -133,6 +133,10 @@ struct SlotState {
     claimed: Vec<String>,
     released: Vec<String>,
     answers: Vec<(u64, Vec<u8>)>,
+    /// Whether the compositor has a shell holding the slot now.
+    live: bool,
+    /// The requests the compositor's built-in dialog took because no shell held the slot: they wait for the user.
+    builtin: Vec<u64>,
 }
 
 #[derive(Clone, Default)]
@@ -144,7 +148,13 @@ impl Slot {
     }
 
     fn offer(&self, request: u64, title: &str, message: &str, subject: &[u8]) {
-        self.state().events.push_back(SlotEvent::Offered {
+        let mut state = self.state();
+        // The compositor offers a request to the shell that holds the slot, and shows its own dialog when none does.
+        if !state.live {
+            state.builtin.push(request);
+            return;
+        }
+        state.events.push_back(SlotEvent::Offered {
             request,
             deadline: 250,
             slot: "dialogs.observe".to_owned(),
@@ -189,11 +199,13 @@ struct SlotLinkOf(Slot);
 impl SlotLink for SlotLinkOf {
     fn claim_slot(&mut self, slot: &str) -> Result<(), LinkError> {
         self.0.state().claimed.push(slot.to_owned());
+        self.0.state().live = true;
         Ok(())
     }
 
     fn release_slot(&mut self, slot: &str) -> Result<(), LinkError> {
         self.0.state().released.push(slot.to_owned());
+        self.0.state().live = false;
         Ok(())
     }
 
@@ -267,6 +279,7 @@ impl Rig {
         host::set_slot_timings(SlotTimings {
             hold: Duration::from_millis(80),
             grace: Duration::from_millis(900),
+            after_grace: gnoblin_core_impl::slots::AFTER_GRACE,
         });
         let ctx = host::open_generation("services", abi::LANG_NATIVE).expect("a generation opens");
         // SAFETY: `tree_attach` is a function of the core's table.
@@ -1442,12 +1455,117 @@ fn a_request_in_the_reload_gap_is_refused_never_served_by_the_built_in_dialog() 
             .all(|(_, answer)| answer.as_slice() != b"pass"),
         "nothing was served unfiltered"
     );
-    // A claim that no generation observes is given back after the grace: the shell that held the policy is gone.
+    // Past the grace the claim stays, by default: see `after_the_grace...` for the switch.
+    std::thread::sleep(Duration::from_millis(1200));
+    assert!(
+        rig.slot.state().released.is_empty(),
+        "the default keeps the claim: the built-in dialog does not serve"
+    );
+}
+
+/// What the slot connection does once the policy shell has really gone and the grace has passed, with the switch (`slots::AFTER_GRACE`)
+/// set to `BuiltIn`: the claim is given back, so the compositor's built-in dialog takes every request. It is the compositor's
+/// dialog, so it waits for the user: the core answers nothing for these requests and approves none, and every verdict it ever sent was `deny`
+/// or `pass`, the two words that exist.
+#[test]
+fn with_the_switch_on_the_built_in_dialog_serves_after_the_grace_and_waits_for_the_user() {
+    let rig = Rig::new();
+    host::set_slot_timings(SlotTimings {
+        hold: Duration::from_millis(80),
+        grace: Duration::from_millis(900),
+        after_grace: AfterGrace::BuiltIn,
+    });
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let dialogs = rig.service("dialogs");
+    rig.call(dialogs, "add_listener", &[dialog_listener(&rig, &log, &["Screenshot"])]);
+    rig.until("the claim", || !rig.slot.state().claimed.is_empty());
+    host::close_generation(rig.ctx);
     let end = Instant::now() + Duration::from_secs(5);
     while rig.slot.state().released.is_empty() {
         assert!(Instant::now() < end, "the unobserved claim was never given back");
         std::thread::sleep(Duration::from_millis(10));
     }
+    assert!(!rig.slot.state().live, "no shell holds the slot any more");
+    rig.slot.offer(51, "consent:Screenshot", "", b"app");
+    std::thread::sleep(Duration::from_millis(250));
+    let state = rig.slot.state();
+    assert_eq!(state.builtin, vec![51], "the compositor's own dialog took the request");
+    assert!(
+        state.answers.iter().all(|(request, _)| *request != 51),
+        "the core answered nothing for it"
+    );
+    assert!(
+        state
+            .answers
+            .iter()
+            .all(|(_, answer)| answer.as_slice() == b"deny" || answer.as_slice() == b"pass"),
+        "no verdict but `deny` and `pass` exists: {:?}",
+        state.answers
+    );
+    assert!(
+        log.borrow().is_empty(),
+        "the policy listener of the ended generation heard nothing"
+    );
+}
+
+/// The default (`slots::AFTER_GRACE` is `Deny`): the claim stays and every request is refused until a policy shell runs again.
+#[test]
+fn by_default_after_the_grace_the_claim_stays_and_every_request_is_refused_until_a_shell_returns() {
+    assert_eq!(gnoblin_core_impl::slots::AFTER_GRACE, AfterGrace::Deny);
+    let rig = Rig::new();
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let dialogs = rig.service("dialogs");
+    rig.call(dialogs, "add_listener", &[dialog_listener(&rig, &log, &[])]);
+    rig.until("the claim", || !rig.slot.state().claimed.is_empty());
+    host::close_generation(rig.ctx);
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(
+        rig.slot.state().released.is_empty(),
+        "the claim was kept past the grace"
+    );
+    rig.slot.offer(61, "consent:Screenshot", "", b"app");
+    let end = Instant::now() + Duration::from_secs(5);
+    while rig.slot.answered(61).is_none() {
+        assert!(Instant::now() < end, "the request was never answered");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(rig.slot.answered(61).as_deref(), Some("deny"));
+    assert!(
+        rig.slot.state().builtin.is_empty(),
+        "the built-in dialog served nothing"
+    );
+    // A shell that comes back takes the slot and answers from its own listeners again.
+    let next = Generation::start("back");
+    let log = Rc::new(RefCell::new(Vec::new()));
+    on(&rig, &next).add_dialog_listener(&log, &[]);
+    rig.slot.offer(62, "consent:Other", "", b"app");
+    let end = Instant::now() + Duration::from_secs(5);
+    while rig.slot.answered(62).is_none() {
+        assert!(Instant::now() < end, "the returning shell's request was never answered");
+        // SAFETY: `dispatch` is a function of the core's table.
+        unsafe { (host::api().dispatch)(next.ctx, 5) };
+    }
+    assert_eq!(rig.slot.answered(62).as_deref(), Some("pass"));
+    // The request the gap refused was shown to the returning shell late, and its verdict is moot: only the refusal was ever sent.
+    assert_eq!(rig.slot.verdicts(61), 1);
+    assert_eq!(rig.slot.answered(61).as_deref(), Some("deny"));
+    assert!(log.borrow().contains(&"Other".to_owned()));
+    host::close_generation(next.ctx);
+}
+
+/// A session in which no shell ever installed a dialog policy holds no claim: the compositor's built-in dialog serves every request as it
+/// always has, and the core answers nothing and refuses nothing.
+#[test]
+fn a_session_that_never_installed_a_policy_leaves_every_request_to_the_built_in_dialog() {
+    let rig = Rig::new();
+    rig.settle();
+    std::thread::sleep(Duration::from_millis(1200));
+    rig.slot.offer(71, "consent:Screenshot", "", b"app");
+    std::thread::sleep(Duration::from_millis(300));
+    let state = rig.slot.state();
+    assert!(state.claimed.is_empty(), "no policy, no claim");
+    assert_eq!(state.builtin, vec![71]);
+    assert!(state.answers.is_empty(), "the core answered nothing");
 }
 
 #[test]

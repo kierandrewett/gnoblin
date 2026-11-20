@@ -28,6 +28,22 @@ use crate::{log, registry};
 /// How long the thread waits for the compositor before it looks at its commands again, when the link has no descriptor to wait on.
 const IDLE_WAIT: Duration = Duration::from_millis(4);
 
+/// What the slot connection does once no generation has observed the slot for the grace: the owner's decision about a shell that never comes
+/// back. The one place it is set is [`AFTER_GRACE`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AfterGrace {
+    /// Give the claim back. The compositor's built-in dialog serves the requests from then on, and still needs the user: nothing is
+    /// answered for them and nothing is approved.
+    BuiltIn,
+    /// Keep the claim and go on refusing every request until a generation observes the slot again. The default: a shell that installed a
+    /// policy and is gone does not leave its requests to a dialog that has none of its checks.
+    Deny,
+}
+
+/// What happens after the grace. Flip this one constant to change it for the whole core. It matters only for a session in which a shell
+/// installed a dialog policy and has gone: a session in which none ever did holds no claim, and the built-in dialog serves as it always has.
+pub const AFTER_GRACE: AfterGrace = AfterGrace::Deny;
+
 /// How long the connection holds a request the shell has not answered before it refuses it itself, and how long it keeps a claim that
 /// no generation observes.
 ///
@@ -40,6 +56,8 @@ pub struct SlotTimings {
     pub hold: Duration,
     /// How long a claim is kept while no generation observes the slot.
     pub grace: Duration,
+    /// What is done when that time has passed.
+    pub after_grace: AfterGrace,
 }
 
 impl Default for SlotTimings {
@@ -47,6 +65,7 @@ impl Default for SlotTimings {
         Self {
             hold: Duration::from_millis(150),
             grace: Duration::from_secs(10),
+            after_grace: AFTER_GRACE,
         }
     }
 }
@@ -201,6 +220,8 @@ fn serve(
     };
     let mut claimed: BTreeSet<String> = BTreeSet::new();
     let mut unanswered: BTreeMap<u64, Instant> = BTreeMap::new();
+    // Requests this connection refused itself: a verdict that comes for one later is moot, and is not sent.
+    let mut refused: BTreeSet<u64> = BTreeSet::new();
     let mut gap_since: Option<Instant> = None;
     while !stop.load(Ordering::Relaxed) {
         while let Ok(command) = commands.try_recv() {
@@ -225,6 +246,9 @@ fn serve(
                 }
                 Command::Answer { request, answer } => {
                     unanswered.remove(&request);
+                    if refused.remove(&request) {
+                        continue;
+                    }
                     // A request that ended already is not an error: the observation window is short.
                     if let Err(error) = link.claim_request(request).and_then(|()| link.answer(request, answer)) {
                         log::debug!(area = "slots", request, "the verdict was not delivered: {error}");
@@ -242,6 +266,7 @@ fn serve(
                         }
                         SlotEvent::Finished { request, .. } => {
                             unanswered.remove(request);
+                            refused.remove(request);
                         }
                         _ => {}
                     }
@@ -283,6 +308,7 @@ fn serve(
             .collect();
         for request in late {
             unanswered.remove(&request);
+            refused.insert(request);
             log::warn!(
                 area = "slots",
                 request,
@@ -291,7 +317,8 @@ fn serve(
             let _ = link.claim_request(request).and_then(|()| link.answer(request, b"deny"));
         }
         // A claim that no generation observes for the grace is given back: the shell that held the policy is gone.
-        if gap_since.is_some_and(|since| since.elapsed() >= timings.grace) {
+        if timings.after_grace == AfterGrace::BuiltIn && gap_since.is_some_and(|since| since.elapsed() >= timings.grace)
+        {
             gap_since = None;
             for slot in std::mem::take(&mut claimed) {
                 let _ = link.release_slot(&slot);

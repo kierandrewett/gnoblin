@@ -55,6 +55,8 @@ pub struct Shells {
     pub plus: PathBuf,
     /// Example 21: follows the windows through the object model of the core and logs what it is told.
     pub model: PathBuf,
+    /// Example 23: the session services of the core: a program, an idle watch, a launch that times out, the session lock.
+    pub services: PathBuf,
 }
 
 /// Builds the shells into a target directory of their own, so this does not wait for the lock of the one the test run holds.
@@ -93,6 +95,8 @@ fn build_shells() -> Result<Shells, String> {
             "gnoblin-fixture-shell-plus",
             "-p",
             "gnoblin-example-native-model",
+            "-p",
+            "gnoblin-example-native-services",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -112,6 +116,7 @@ fn build_shells() -> Result<Shells, String> {
         verbs: debug.join("libshell_verbs.so"),
         plus: debug.join("libshell_plus.so"),
         model: debug.join("libnative_model.so"),
+        services: debug.join("libnative_services.so"),
     })
 }
 

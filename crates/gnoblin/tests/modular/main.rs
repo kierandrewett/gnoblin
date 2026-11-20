@@ -21,6 +21,7 @@ mod motion;
 mod native_model;
 mod native_object;
 mod native_scene;
+mod native_services;
 mod native_std;
 mod native_ui;
 mod no_std;

@@ -43,6 +43,7 @@ A std shell (examples 2, 6, 9, 19 and 20) links `libgnoblin-std.so.1`. In a sour
 | 20  | [`20-native-object-py`](20-native-object-py/shell.py)       | Python                   | Core, std | `gnoblin ./examples/20-native-object-py/shell.py`, then `<Super>e` types into the entry the shell made                                               |
 | 21  | [`21-native-model`](21-native-model/src/lib.rs)             | Rust, Python             | Core      | `gnoblin ./target/debug/libnative_model.so`, then open and close windows; Python: `gnoblin ./examples/21-native-model-py/shell.py` and read the log  |
 | 22  | [`22-native-ui`](22-native-ui/src/lib.rs)                   | Rust                     | Core, std | `gnoblin ./target/debug/libnative_ui.so`, then type into the entry the shell put over the windows and press Return                                   |
+| 23  | [`23-native-services`](23-native-services/src/lib.rs)       | Rust, TypeScript, Python | Core      | `gnoblin ./target/debug/libnative_services.so` (or `gnoblin ./examples/23-native-services-ts/shell.ts`), then `<Super>e` asks for the session lock   |
 | 24  | [`24-native-scene`](24-native-scene/src/lib.rs)             | Rust, TypeScript, Python | Core, std | `gnoblin ./target/debug/libnative_scene.so` (or `gnoblin ./24-native-scene-ts/shell.ts`), then read the view and camera nodes with `gnoblinctl tree` |
 
 Example 19 sets a custom shader. A window draws it unless the compositor's `compositor.user-shaders` setting is switched off, and only on a renderer that draws shaders; see
