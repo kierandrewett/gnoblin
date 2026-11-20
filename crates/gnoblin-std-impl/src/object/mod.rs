@@ -5,7 +5,7 @@
 //! is added by a catalog file and an implementation here, and needs no function in `GnoblinStdApi`.
 #![allow(unsafe_code)]
 
-mod entry_model;
+pub(crate) mod entry_model;
 mod focus;
 
 use gnoblin_core::LogLevel;
@@ -33,6 +33,12 @@ impl Provider for Std {
     }
 }
 
+/// Runs `work` with the library that serves `gnoblin.std` on this thread: for the toolkit's turn, which acts on objects from outside
+/// a call.
+pub(crate) fn with_lib<R>(work: impl FnOnce(&Library) -> R) -> R {
+    LIB.with(work)
+}
+
 /// The object protocol of `gnoblin.std`, behind `GnoblinStdApi::object_api`.
 pub(crate) static API: GnoblinObjectApi = api_table::<Std>(CATALOG_HASH);
 
@@ -40,6 +46,7 @@ fn build() -> Library {
     let mut builder = Builder::new(&CATALOG);
     entry_model::register(&mut builder);
     focus::register(&mut builder);
+    crate::ui::register(&mut builder);
     builder.finish(HOOKS)
 }
 

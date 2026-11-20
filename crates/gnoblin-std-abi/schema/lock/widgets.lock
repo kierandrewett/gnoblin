@@ -9,6 +9,170 @@
 # to the version that ships, and from then on its entries are frozen.
 released none
 
+callback | bar_question | () -> bool | 0.2.0
+callback | cover_question | (output:uint) -> bool | 0.2.0
+callback | output_source | () -> uint | 0.2.0
+callback | submit_handler | (text:string) | 0.2.0
+callback | time_source | () -> double | 0.2.0
+
+enum | bar_edge | values top bottom | 0.2.0
+
+member | bar.add | method (child:object:canvas) | 0.2.0
+member | bar.alive | property bool ro | 0.2.0
+member | bar.arrange_default | method () | 0.2.0
+member | bar.behaviour | property object:widget rw | 0.2.0
+member | bar.children | property list<object:canvas> rw | 0.2.0
+member | bar.clear_height | method () | 0.2.0
+member | bar.clear_width | method () | 0.2.0
+member | bar.contains | method (other:object:canvas) -> bool | 0.2.0
+member | bar.direction | property enum:direction rw | 0.2.0
+member | bar.edge | property enum:bar_edge rw | 0.2.0
+member | bar.failures | property uint ro | 0.2.0
+member | bar.fill | property string rw | 0.2.0
+member | bar.focus | method () | 0.2.0
+member | bar.focus_changed | signal (focused:bool) | 0.2.0
+member | bar.focused | property bool ro | 0.2.0
+member | bar.gap | property double rw | 0.2.0
+member | bar.give_way_to | function (covered?:callback:cover_question) | 0.2.0
+member | bar.gone | signal () | 0.2.0
+member | bar.grow | property double rw | 0.2.0
+member | bar.height | property double rw | 0.2.0
+member | bar.hide_when | property callback:bar_question rw | 0.2.0
+member | bar.input | property bool rw | 0.2.0
+member | bar.insets | function (output?:uint) -> object:bar_insets | 0.2.0
+member | bar.invalidate | method () | 0.2.0
+member | bar.key | signal (event:object:ui_key_event) | 0.2.0
+member | bar.mount | method (parent:uint) | 0.2.0
+member | bar.mount_top | method () | 0.2.0
+member | bar.natural_height | property double ro | 0.2.0
+member | bar.natural_width | property double ro | 0.2.0
+member | bar.node | property uint ro | 0.2.0
+member | bar.on_key | property callback:key_handler rw | 0.2.0
+member | bar.on_outputs | function (primary?:callback:output_source) | 0.2.0
+member | bar.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | bar.opacity | property double rw | 0.2.0
+member | bar.output | property uint rw | 0.2.0
+member | bar.padding | property double rw | 0.2.0
+member | bar.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | bar.parent | property object:canvas ro | 0.2.0
+member | bar.placement | property enum:placement rw | 0.2.0
+member | bar.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | bar.radius | property double rw | 0.2.0
+member | bar.remove | method (child:object:canvas) | 0.2.0
+member | bar.secure | property bool rw | 0.2.0
+member | bar.shown | property bool ro | 0.2.0
+member | bar.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | bar.visible | property bool rw | 0.2.0
+member | bar.width | property double rw | 0.2.0
+member | bar.x | property double rw | 0.2.0
+member | bar.y | property double rw | 0.2.0
+member | bar_insets.bottom | property double rw | 0.2.0
+member | bar_insets.top | property double rw | 0.2.0
+member | clock.add | method (child:object:canvas) | 0.2.0
+member | clock.alive | property bool ro | 0.2.0
+member | clock.arrange_default | method () | 0.2.0
+member | clock.ascent | property double ro | 0.2.0
+member | clock.behaviour | property object:widget rw | 0.2.0
+member | clock.children | property list<object:canvas> rw | 0.2.0
+member | clock.clear_height | method () | 0.2.0
+member | clock.clear_width | method () | 0.2.0
+member | clock.color | property string rw | 0.2.0
+member | clock.contains | method (other:object:canvas) -> bool | 0.2.0
+member | clock.direction | property enum:direction rw | 0.2.0
+member | clock.ellipsize | property bool rw | 0.2.0
+member | clock.failures | property uint ro | 0.2.0
+member | clock.fill | property string rw | 0.2.0
+member | clock.focus | method () | 0.2.0
+member | clock.focus_changed | signal (focused:bool) | 0.2.0
+member | clock.focused | property bool ro | 0.2.0
+member | clock.font | property string rw | 0.2.0
+member | clock.format | property string rw | 0.2.0
+member | clock.gap | property double rw | 0.2.0
+member | clock.gone | signal () | 0.2.0
+member | clock.grow | property double rw | 0.2.0
+member | clock.height | property double rw | 0.2.0
+member | clock.input | property bool rw | 0.2.0
+member | clock.invalidate | method () | 0.2.0
+member | clock.key | signal (event:object:ui_key_event) | 0.2.0
+member | clock.metrics | property object:text_metrics ro | 0.2.0
+member | clock.mount | method (parent:uint) | 0.2.0
+member | clock.mount_top | method () | 0.2.0
+member | clock.natural_height | property double ro | 0.2.0
+member | clock.natural_width | property double ro | 0.2.0
+member | clock.node | property uint ro | 0.2.0
+member | clock.now | property callback:time_source rw | 0.2.0
+member | clock.on_key | property callback:key_handler rw | 0.2.0
+member | clock.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | clock.opacity | property double rw | 0.2.0
+member | clock.padding | property double rw | 0.2.0
+member | clock.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | clock.parent | property object:canvas ro | 0.2.0
+member | clock.placement | property enum:placement rw | 0.2.0
+member | clock.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | clock.radius | property double rw | 0.2.0
+member | clock.remove | method (child:object:canvas) | 0.2.0
+member | clock.secure | property bool rw | 0.2.0
+member | clock.shown | method () -> string | 0.2.0
+member | clock.size | property double rw | 0.2.0
+member | clock.text | property string rw | 0.2.0
+member | clock.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | clock.visible | property bool rw | 0.2.0
+member | clock.width | property double rw | 0.2.0
+member | clock.x | property double rw | 0.2.0
+member | clock.y | property double rw | 0.2.0
+member | entry.add | method (child:object:canvas) | 0.2.0
+member | entry.alive | property bool ro | 0.2.0
+member | entry.arrange_default | method () | 0.2.0
+member | entry.behaviour | property object:widget rw | 0.2.0
+member | entry.changed | signal () | 0.2.0
+member | entry.children | property list<object:canvas> rw | 0.2.0
+member | entry.clear_height | method () | 0.2.0
+member | entry.clear_width | method () | 0.2.0
+member | entry.color | property string rw | 0.2.0
+member | entry.contains | method (other:object:canvas) -> bool | 0.2.0
+member | entry.direction | property enum:direction rw | 0.2.0
+member | entry.failures | property uint ro | 0.2.0
+member | entry.fill | property string rw | 0.2.0
+member | entry.focus | method () | 0.2.0
+member | entry.focus_changed | signal (focused:bool) | 0.2.0
+member | entry.focused | property bool ro | 0.2.0
+member | entry.font | property string rw | 0.2.0
+member | entry.gap | property double rw | 0.2.0
+member | entry.gone | signal () | 0.2.0
+member | entry.grow | property double rw | 0.2.0
+member | entry.height | property double rw | 0.2.0
+member | entry.input | property bool rw | 0.2.0
+member | entry.invalidate | method () | 0.2.0
+member | entry.key | signal (event:object:ui_key_event) | 0.2.0
+member | entry.model | property object:entry_model ro | 0.2.0
+member | entry.mount | method (parent:uint) | 0.2.0
+member | entry.mount_top | method () | 0.2.0
+member | entry.natural_height | property double ro | 0.2.0
+member | entry.natural_width | property double ro | 0.2.0
+member | entry.node | property uint ro | 0.2.0
+member | entry.on_key | property callback:key_handler rw | 0.2.0
+member | entry.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | entry.on_submit | property callback:submit_handler rw | 0.2.0
+member | entry.opacity | property double rw | 0.2.0
+member | entry.padding | property double rw | 0.2.0
+member | entry.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | entry.parent | property object:canvas ro | 0.2.0
+member | entry.placement | property enum:placement rw | 0.2.0
+member | entry.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | entry.radius | property double rw | 0.2.0
+member | entry.remove | method (child:object:canvas) | 0.2.0
+member | entry.secret | property bool rw | 0.2.0
+member | entry.secure | property bool rw | 0.2.0
+member | entry.selection_fill | property string rw | 0.2.0
+member | entry.shown | method (text:string) -> string | 0.2.0
+member | entry.size | property double rw | 0.2.0
+member | entry.submit | signal (text:string) | 0.2.0
+member | entry.text | property string rw | 0.2.0
+member | entry.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | entry.visible | property bool rw | 0.2.0
+member | entry.width | property double rw | 0.2.0
+member | entry.x | property double rw | 0.2.0
+member | entry.y | property double rw | 0.2.0
 member | entry_model.anchor | property uint ro | 0.2.0
 member | entry_model.backspace | method () | 0.2.0
 member | entry_model.before | method (at:int) -> string | 0.2.0
@@ -29,6 +193,62 @@ member | entry_model.selection | property object:text_range ro | 0.2.0
 member | entry_model.text | property string rw | 0.2.0
 member | text_range.end | property uint rw | 0.2.0
 member | text_range.start | property uint rw | 0.2.0
+member | time_format.format_time | function (format:string, milliseconds:double) -> string | 0.2.0
+member | toast.add | method (child:object:canvas) | 0.2.0
+member | toast.alive | property bool ro | 0.2.0
+member | toast.arrange_default | method () | 0.2.0
+member | toast.behaviour | property object:widget rw | 0.2.0
+member | toast.children | property list<object:canvas> rw | 0.2.0
+member | toast.clear_height | method () | 0.2.0
+member | toast.clear_width | method () | 0.2.0
+member | toast.clock | property callback:time_source rw | 0.2.0
+member | toast.contains | method (other:object:canvas) -> bool | 0.2.0
+member | toast.direction | property enum:direction rw | 0.2.0
+member | toast.fade_in | property double rw | 0.2.0
+member | toast.fade_out | property double rw | 0.2.0
+member | toast.failures | property uint ro | 0.2.0
+member | toast.fill | property string rw | 0.2.0
+member | toast.focus | method () | 0.2.0
+member | toast.focus_changed | signal (focused:bool) | 0.2.0
+member | toast.focused | property bool ro | 0.2.0
+member | toast.gap | property double rw | 0.2.0
+member | toast.gone | signal () | 0.2.0
+member | toast.grow | property double rw | 0.2.0
+member | toast.height | property double rw | 0.2.0
+member | toast.hold | property double rw | 0.2.0
+member | toast.input | property bool rw | 0.2.0
+member | toast.invalidate | method () | 0.2.0
+member | toast.key | signal (event:object:ui_key_event) | 0.2.0
+member | toast.message | property object:text ro | 0.2.0
+member | toast.mount | method (parent:uint) | 0.2.0
+member | toast.mount_top | method () | 0.2.0
+member | toast.natural_height | property double ro | 0.2.0
+member | toast.natural_width | property double ro | 0.2.0
+member | toast.node | property uint ro | 0.2.0
+member | toast.on_key | property callback:key_handler rw | 0.2.0
+member | toast.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | toast.opacity | property double rw | 0.2.0
+member | toast.padding | property double rw | 0.2.0
+member | toast.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | toast.parent | property object:canvas ro | 0.2.0
+member | toast.placement | property enum:placement rw | 0.2.0
+member | toast.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | toast.radius | property double rw | 0.2.0
+member | toast.remove | method (child:object:canvas) | 0.2.0
+member | toast.secure | property bool rw | 0.2.0
+member | toast.show | function (text:string, fade_in?:double, hold?:double, fade_out?:double, clock?:callback:time_source) -> object:toast | 0.2.0
+member | toast.text | property string rw | 0.2.0
+member | toast.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | toast.visible | property bool rw | 0.2.0
+member | toast.width | property double rw | 0.2.0
+member | toast.x | property double rw | 0.2.0
+member | toast.y | property double rw | 0.2.0
 
+object | bar | base box retained | 0.2.0
+object | bar_insets | base none record | 0.2.0
+object | clock | base text retained | 0.2.0
+object | entry | base box retained | 0.2.0
 object | entry_model | base none ctor(text) | 0.2.0
 object | text_range | base none record | 0.2.0
+object | time_format | base none | 0.2.0
+object | toast | base box retained | 0.2.0

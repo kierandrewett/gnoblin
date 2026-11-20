@@ -1,0 +1,311 @@
+# The public surface of the `ui` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | frame_hook | () | 0.2.0
+callback | key_handler | (event:object:ui_key_event) -> bool | 0.2.0
+callback | pointer_handler | (event:object:ui_pointer_event) -> bool | 0.2.0
+callback | request_hook | (request:object:ui_request) | 0.2.0
+
+enum | direction | values row column none | 0.2.0
+enum | paint_kind | values rect line text icon push-clip pop-clip push-opacity pop-opacity | 0.2.0
+enum | placement | values frame over under | 0.2.0
+enum | pointer_kind | values press release motion scroll enter leave | 0.2.0
+
+member | box.add | method (child:object:canvas) | 0.2.0
+member | box.alive | property bool ro | 0.2.0
+member | box.arrange_default | method () | 0.2.0
+member | box.behaviour | property object:widget rw | 0.2.0
+member | box.children | property list<object:canvas> rw | 0.2.0
+member | box.clear_height | method () | 0.2.0
+member | box.clear_width | method () | 0.2.0
+member | box.contains | method (other:object:canvas) -> bool | 0.2.0
+member | box.direction | property enum:direction rw | 0.2.0
+member | box.failures | property uint ro | 0.2.0
+member | box.fill | property string rw | 0.2.0
+member | box.focus | method () | 0.2.0
+member | box.focus_changed | signal (focused:bool) | 0.2.0
+member | box.focused | property bool ro | 0.2.0
+member | box.gap | property double rw | 0.2.0
+member | box.gone | signal () | 0.2.0
+member | box.grow | property double rw | 0.2.0
+member | box.height | property double rw | 0.2.0
+member | box.input | property bool rw | 0.2.0
+member | box.invalidate | method () | 0.2.0
+member | box.key | signal (event:object:ui_key_event) | 0.2.0
+member | box.mount | method (parent:uint) | 0.2.0
+member | box.mount_top | method () | 0.2.0
+member | box.natural_height | property double ro | 0.2.0
+member | box.natural_width | property double ro | 0.2.0
+member | box.node | property uint ro | 0.2.0
+member | box.on_key | property callback:key_handler rw | 0.2.0
+member | box.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | box.opacity | property double rw | 0.2.0
+member | box.padding | property double rw | 0.2.0
+member | box.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | box.parent | property object:canvas ro | 0.2.0
+member | box.placement | property enum:placement rw | 0.2.0
+member | box.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | box.radius | property double rw | 0.2.0
+member | box.remove | method (child:object:canvas) | 0.2.0
+member | box.secure | property bool rw | 0.2.0
+member | box.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | box.visible | property bool rw | 0.2.0
+member | box.width | property double rw | 0.2.0
+member | box.x | property double rw | 0.2.0
+member | box.y | property double rw | 0.2.0
+member | canvas.add | method (child:object:canvas) | 0.2.0
+member | canvas.alive | property bool ro | 0.2.0
+member | canvas.arrange_default | method () | 0.2.0
+member | canvas.behaviour | property object:widget rw | 0.2.0
+member | canvas.children | property list<object:canvas> rw | 0.2.0
+member | canvas.clear_height | method () | 0.2.0
+member | canvas.clear_width | method () | 0.2.0
+member | canvas.contains | method (other:object:canvas) -> bool | 0.2.0
+member | canvas.failures | property uint ro | 0.2.0
+member | canvas.focus | method () | 0.2.0
+member | canvas.focus_changed | signal (focused:bool) | 0.2.0
+member | canvas.focused | property bool ro | 0.2.0
+member | canvas.gone | signal () | 0.2.0
+member | canvas.height | property double rw | 0.2.0
+member | canvas.input | property bool rw | 0.2.0
+member | canvas.invalidate | method () | 0.2.0
+member | canvas.key | signal (event:object:ui_key_event) | 0.2.0
+member | canvas.mount | method (parent:uint) | 0.2.0
+member | canvas.mount_top | method () | 0.2.0
+member | canvas.natural_height | property double ro | 0.2.0
+member | canvas.natural_width | property double ro | 0.2.0
+member | canvas.node | property uint ro | 0.2.0
+member | canvas.on_key | property callback:key_handler rw | 0.2.0
+member | canvas.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | canvas.opacity | property double rw | 0.2.0
+member | canvas.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | canvas.parent | property object:canvas ro | 0.2.0
+member | canvas.placement | property enum:placement rw | 0.2.0
+member | canvas.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | canvas.remove | method (child:object:canvas) | 0.2.0
+member | canvas.secure | property bool rw | 0.2.0
+member | canvas.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | canvas.visible | property bool rw | 0.2.0
+member | canvas.width | property double rw | 0.2.0
+member | canvas.x | property double rw | 0.2.0
+member | canvas.y | property double rw | 0.2.0
+member | grid.add | method (child:object:canvas) | 0.2.0
+member | grid.alive | property bool ro | 0.2.0
+member | grid.arrange_default | method () | 0.2.0
+member | grid.behaviour | property object:widget rw | 0.2.0
+member | grid.children | property list<object:canvas> rw | 0.2.0
+member | grid.clear_height | method () | 0.2.0
+member | grid.clear_width | method () | 0.2.0
+member | grid.contains | method (other:object:canvas) -> bool | 0.2.0
+member | grid.direction | property enum:direction rw | 0.2.0
+member | grid.failures | property uint ro | 0.2.0
+member | grid.fill | property string rw | 0.2.0
+member | grid.focus | method () | 0.2.0
+member | grid.focus_changed | signal (focused:bool) | 0.2.0
+member | grid.focused | property bool ro | 0.2.0
+member | grid.gap | property double rw | 0.2.0
+member | grid.gone | signal () | 0.2.0
+member | grid.grow | property double rw | 0.2.0
+member | grid.height | property double rw | 0.2.0
+member | grid.input | property bool rw | 0.2.0
+member | grid.invalidate | method () | 0.2.0
+member | grid.key | signal (event:object:ui_key_event) | 0.2.0
+member | grid.mount | method (parent:uint) | 0.2.0
+member | grid.mount_top | method () | 0.2.0
+member | grid.natural_height | property double ro | 0.2.0
+member | grid.natural_width | property double ro | 0.2.0
+member | grid.node | property uint ro | 0.2.0
+member | grid.on_key | property callback:key_handler rw | 0.2.0
+member | grid.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | grid.opacity | property double rw | 0.2.0
+member | grid.padding | property double rw | 0.2.0
+member | grid.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | grid.parent | property object:canvas ro | 0.2.0
+member | grid.placement | property enum:placement rw | 0.2.0
+member | grid.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | grid.radius | property double rw | 0.2.0
+member | grid.remove | method (child:object:canvas) | 0.2.0
+member | grid.secure | property bool rw | 0.2.0
+member | grid.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | grid.visible | property bool rw | 0.2.0
+member | grid.width | property double rw | 0.2.0
+member | grid.x | property double rw | 0.2.0
+member | grid.y | property double rw | 0.2.0
+member | icon.add | method (child:object:canvas) | 0.2.0
+member | icon.alive | property bool ro | 0.2.0
+member | icon.arrange_default | method () | 0.2.0
+member | icon.behaviour | property object:widget rw | 0.2.0
+member | icon.children | property list<object:canvas> rw | 0.2.0
+member | icon.clear_height | method () | 0.2.0
+member | icon.clear_width | method () | 0.2.0
+member | icon.color | property string rw | 0.2.0
+member | icon.contains | method (other:object:canvas) -> bool | 0.2.0
+member | icon.direction | property enum:direction rw | 0.2.0
+member | icon.failures | property uint ro | 0.2.0
+member | icon.fill | property string rw | 0.2.0
+member | icon.focus | method () | 0.2.0
+member | icon.focus_changed | signal (focused:bool) | 0.2.0
+member | icon.focused | property bool ro | 0.2.0
+member | icon.gap | property double rw | 0.2.0
+member | icon.gone | signal () | 0.2.0
+member | icon.grow | property double rw | 0.2.0
+member | icon.height | property double rw | 0.2.0
+member | icon.icon | property string rw | 0.2.0
+member | icon.input | property bool rw | 0.2.0
+member | icon.invalidate | method () | 0.2.0
+member | icon.key | signal (event:object:ui_key_event) | 0.2.0
+member | icon.mount | method (parent:uint) | 0.2.0
+member | icon.mount_top | method () | 0.2.0
+member | icon.natural_height | property double ro | 0.2.0
+member | icon.natural_width | property double ro | 0.2.0
+member | icon.node | property uint ro | 0.2.0
+member | icon.on_key | property callback:key_handler rw | 0.2.0
+member | icon.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | icon.opacity | property double rw | 0.2.0
+member | icon.padding | property double rw | 0.2.0
+member | icon.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | icon.parent | property object:canvas ro | 0.2.0
+member | icon.placement | property enum:placement rw | 0.2.0
+member | icon.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | icon.radius | property double rw | 0.2.0
+member | icon.remove | method (child:object:canvas) | 0.2.0
+member | icon.secure | property bool rw | 0.2.0
+member | icon.size | property double rw | 0.2.0
+member | icon.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | icon.visible | property bool rw | 0.2.0
+member | icon.width | property double rw | 0.2.0
+member | icon.x | property double rw | 0.2.0
+member | icon.y | property double rw | 0.2.0
+member | paint_op.alpha | property double rw,optional | 0.2.0
+member | paint_op.color | property string rw,optional | 0.2.0
+member | paint_op.fill | property string rw,optional | 0.2.0
+member | paint_op.font | property string rw,optional | 0.2.0
+member | paint_op.height | property double rw,optional | 0.2.0
+member | paint_op.name | property string rw,optional | 0.2.0
+member | paint_op.op | property enum:paint_kind rw | 0.2.0
+member | paint_op.radius | property double rw,optional | 0.2.0
+member | paint_op.size | property double rw,optional | 0.2.0
+member | paint_op.stroke | property string rw,optional | 0.2.0
+member | paint_op.stroke_width | property double rw,optional | 0.2.0
+member | paint_op.text | property string rw,optional | 0.2.0
+member | paint_op.width | property double rw,optional | 0.2.0
+member | paint_op.x | property double rw,optional | 0.2.0
+member | paint_op.x1 | property double rw,optional | 0.2.0
+member | paint_op.x2 | property double rw,optional | 0.2.0
+member | paint_op.y | property double rw,optional | 0.2.0
+member | paint_op.y1 | property double rw,optional | 0.2.0
+member | paint_op.y2 | property double rw,optional | 0.2.0
+member | text.add | method (child:object:canvas) | 0.2.0
+member | text.alive | property bool ro | 0.2.0
+member | text.arrange_default | method () | 0.2.0
+member | text.ascent | property double ro | 0.2.0
+member | text.behaviour | property object:widget rw | 0.2.0
+member | text.children | property list<object:canvas> rw | 0.2.0
+member | text.clear_height | method () | 0.2.0
+member | text.clear_width | method () | 0.2.0
+member | text.color | property string rw | 0.2.0
+member | text.contains | method (other:object:canvas) -> bool | 0.2.0
+member | text.direction | property enum:direction rw | 0.2.0
+member | text.ellipsize | property bool rw | 0.2.0
+member | text.failures | property uint ro | 0.2.0
+member | text.fill | property string rw | 0.2.0
+member | text.focus | method () | 0.2.0
+member | text.focus_changed | signal (focused:bool) | 0.2.0
+member | text.focused | property bool ro | 0.2.0
+member | text.font | property string rw | 0.2.0
+member | text.gap | property double rw | 0.2.0
+member | text.gone | signal () | 0.2.0
+member | text.grow | property double rw | 0.2.0
+member | text.height | property double rw | 0.2.0
+member | text.input | property bool rw | 0.2.0
+member | text.invalidate | method () | 0.2.0
+member | text.key | signal (event:object:ui_key_event) | 0.2.0
+member | text.metrics | property object:text_metrics ro | 0.2.0
+member | text.mount | method (parent:uint) | 0.2.0
+member | text.mount_top | method () | 0.2.0
+member | text.natural_height | property double ro | 0.2.0
+member | text.natural_width | property double ro | 0.2.0
+member | text.node | property uint ro | 0.2.0
+member | text.on_key | property callback:key_handler rw | 0.2.0
+member | text.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | text.opacity | property double rw | 0.2.0
+member | text.padding | property double rw | 0.2.0
+member | text.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | text.parent | property object:canvas ro | 0.2.0
+member | text.placement | property enum:placement rw | 0.2.0
+member | text.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | text.radius | property double rw | 0.2.0
+member | text.remove | method (child:object:canvas) | 0.2.0
+member | text.secure | property bool rw | 0.2.0
+member | text.shown | method () -> string | 0.2.0
+member | text.size | property double rw | 0.2.0
+member | text.text | property string rw | 0.2.0
+member | text.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | text.visible | property bool rw | 0.2.0
+member | text.width | property double rw | 0.2.0
+member | text.x | property double rw | 0.2.0
+member | text.y | property double rw | 0.2.0
+member | text_metrics.ascent | property double rw | 0.2.0
+member | text_metrics.height | property double rw | 0.2.0
+member | text_metrics.width | property double rw | 0.2.0
+member | ui.canvas_count | function () -> uint | 0.2.0
+member | ui.focus | function (node:uint) | 0.2.0
+member | ui.focused | function () -> uint | 0.2.0
+member | ui.locked | function () -> bool | 0.2.0
+member | ui.now | function () -> double | 0.2.0
+member | ui.on_frame | function (hook:callback:frame_hook) -> object:ui_hook | 0.2.0
+member | ui.on_request | function (hook:callback:request_hook) -> object:ui_hook | 0.2.0
+member | ui.pointer | function () -> object:ui_point | 0.2.0
+member | ui.screen | function () -> object:ui_size | 0.2.0
+member | ui.seat_action | function (key:string) -> string | 0.2.0
+member | ui_hook.remove | method () | 0.2.0
+member | ui_key_event.key | property string rw | 0.2.0
+member | ui_key_event.pressed | property bool rw | 0.2.0
+member | ui_key_event.target | property object:canvas rw | 0.2.0
+member | ui_key_event.text | property string rw | 0.2.0
+member | ui_point.x | property double rw | 0.2.0
+member | ui_point.y | property double rw | 0.2.0
+member | ui_pointer_event.button | property uint rw | 0.2.0
+member | ui_pointer_event.dx | property double rw | 0.2.0
+member | ui_pointer_event.dy | property double rw | 0.2.0
+member | ui_pointer_event.kind | property enum:pointer_kind rw | 0.2.0
+member | ui_pointer_event.target | property object:canvas rw | 0.2.0
+member | ui_pointer_event.x | property double rw | 0.2.0
+member | ui_pointer_event.y | property double rw | 0.2.0
+member | ui_request.node | property uint rw | 0.2.0
+member | ui_request.request | property string rw | 0.2.0
+member | ui_request.x | property double rw | 0.2.0
+member | ui_request.y | property double rw | 0.2.0
+member | ui_size.height | property double rw | 0.2.0
+member | ui_size.width | property double rw | 0.2.0
+member | widget.arrange | method () native-default | 0.2.0
+member | widget.natural_height | method () -> double native-default | 0.2.0
+member | widget.natural_width | method () -> double native-default | 0.2.0
+member | widget.on_key | method (event:object:ui_key_event) -> bool native-default | 0.2.0
+member | widget.on_pointer | method (event:object:ui_pointer_event) -> bool native-default | 0.2.0
+member | widget.paint | method () -> list<object:paint_op> native-default | 0.2.0
+member | widget.refresh | method () native-default | 0.2.0
+
+object | box | base canvas retained | 0.2.0
+object | canvas | base none retained | 0.2.0
+object | grid | base box retained | 0.2.0
+object | icon | base box retained | 0.2.0
+object | paint_op | base none record | 0.2.0
+object | text | base box retained | 0.2.0
+object | text_metrics | base none record | 0.2.0
+object | ui | base none | 0.2.0
+object | ui_hook | base none retained | 0.2.0
+object | ui_key_event | base none record | 0.2.0
+object | ui_point | base none record | 0.2.0
+object | ui_pointer_event | base none record | 0.2.0
+object | ui_request | base none record | 0.2.0
+object | ui_size | base none record | 0.2.0
+object | widget | base none interface | 0.2.0

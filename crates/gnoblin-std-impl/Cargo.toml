@@ -18,6 +18,9 @@ crate-type = ["cdylib", "rlib"]
 next-minor = ["gnoblin-std-abi/next-minor"]
 # Test only: a std library that reports ABI major 2 (its file is still `libgnoblin-std.so.1`). See `gnoblin-std-abi`.
 next-major = ["gnoblin-std-abi/next-major"]
+# Test only: the hooks of the toolkit's tests (a fixed measurer of text). Enabled for this crate's own tests by a development dependency
+# on itself; a shell never turns it on.
+testing = []
 
 [dependencies]
 # The object protocol: the server that gives this library its classes (its `object` module).
@@ -36,8 +39,15 @@ gnoblin-std-portal = { path = "../gnoblin-std-portal" }
 gnoblin-wm-api = { path = "../gnoblin-wm-api" }
 gnoblin-config = { path = "../gnoblin-config" }
 gnoblin-a11y = { path = "../gnoblin-a11y" }
+# The paint list the compositor decodes and draws with: the toolkit writes its encoding and measures text with its painter, so a text's
+# size is the size the compositor draws it in.
+gnoblin-paint = { path = "../gnoblin-paint" }
+# The local time of a clock: libc's zone rules, as the rest of the session's `localtime` reads them.
+libc = "0.2"
 
 [dev-dependencies]
+# The toolkit's tests replace its measurer: this crate, with its `testing` feature.
+gnoblin-std-impl = { path = ".", features = ["testing"] }
 # The parity test drives the TypeScript std over the same fake compositor script as the native one, and compares what each wrote.
 gnoblin-js = { path = "../gnoblin-js" }
 # ...over a core with this library loaded, in the test's own process (`tests/reference`).

@@ -168,3 +168,347 @@ type = "int"
 [[object.signal]]
 name = "changed"
 since = "0.2.0"
+
+# ---- the widgets of the toolkit ----------------------------------------------------------------------------------------------------
+#
+# `entry`, `clock`, `bar` and `toast` are canvases (`ui`) that the library draws and updates itself. Their members are the public
+# members of `Entry`, `Clock`, `Bar` and `Toast` in the TypeScript toolkit; the colour and strings keep the names they had.
+
+# Called with the text when Return is pressed in an entry.
+[[callback]]
+name = "submit_handler"
+since = "0.2.0"
+
+[[callback.param]]
+name = "text"
+type = "string"
+
+# The time to show, in milliseconds since the Unix epoch.
+[[callback]]
+name = "time_source"
+since = "0.2.0"
+returns = "double"
+
+# A question a bar asks of the shell: a boolean answer.
+[[callback]]
+name = "bar_question"
+since = "0.2.0"
+returns = "bool"
+
+# Which output (by node) a bar sits on when it names none: the primary one. Zero for none.
+[[callback]]
+name = "output_source"
+since = "0.2.0"
+returns = "uint"
+
+# Whether a fullscreen window covers `output` (a node, or zero for the primary output), so that bars on it give way.
+[[callback]]
+name = "cover_question"
+since = "0.2.0"
+returns = "bool"
+
+[[callback.param]]
+name = "output"
+type = "uint"
+
+# Which edge of the screen a bar sits on.
+[[enum]]
+name = "bar_edge"
+since = "0.2.0"
+values = ["top", "bottom"]
+
+# The room the bars take from the top and the bottom of an output.
+[[object]]
+name = "bar_insets"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "top"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "bottom"
+type = "double"
+since = "0.2.0"
+
+# A line of text you type into. Give it the keyboard (`focus`) and it reads the keys: letters type, BackSpace and Delete remove, Left,
+# Right, Home and End move the caret (with Shift held they select), Control+A selects all, and Return calls `on_submit` with the text.
+# Each key it uses it stops, so a parent does not hear it too.
+#
+# The caret and the selection are drawn from the width of the text before them, measured by the painter that draws it.
+[[object]]
+name = "entry"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# The text, the caret and the selection. It is the library's `entry_model`, which lives as long as the entry.
+[[object.property]]
+name = "model"
+type = "object:entry_model"
+since = "0.2.0"
+readonly = true
+
+# The text being edited. Setting it moves the caret to the end and clears the selection.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+
+# Shows a `*` for each character instead of the text: a password.
+[[object.property]]
+name = "secret"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The text size in logical pixels.
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.2.0"
+default = 14.0
+
+# The text colour.
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+default = "#cdd6f4"
+
+# The font name.
+[[object.property]]
+name = "font"
+type = "string"
+since = "0.2.0"
+default = "sans"
+
+# The selection's highlight colour.
+[[object.property]]
+name = "selection_fill"
+type = "string"
+since = "0.2.0"
+default = "#585b70"
+
+# Called with the text when Return is pressed.
+[[object.property]]
+name = "on_submit"
+type = "callback:submit_handler"
+since = "0.2.0"
+
+# What is drawn for `text`: the text itself, or a `*` for each character of a secret.
+[[object.method]]
+name = "shown"
+since = "0.2.0"
+returns = "string"
+
+[[object.method.param]]
+name = "text"
+type = "string"
+
+# Return was pressed: the text. Told from the next turn.
+[[object.signal]]
+name = "submit"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "text"
+type = "string"
+
+# The text, the caret or the selection changed. Told once for each turn that changed them.
+[[object.signal]]
+name = "changed"
+since = "0.2.0"
+
+# A text that shows the time, as `format` says. It follows the clock a frame at a time, and asks for a frame when its text is due to
+# change: every second for a format with the `%S` or `%T` field, every minute otherwise, on the system clock's boundaries.
+[[object]]
+name = "clock"
+since = "0.2.0"
+base = "text"
+retained = true
+
+# A strftime-style format: `%H` `%M` `%S`, `%I` `%p`, `%d` `%e` `%m` `%y` `%Y` `%j`, `%a` `%A` `%b` `%B`, `%T` `%R` `%F` and `%%`. Any
+# other `%` sequence stays as written.
+[[object.property]]
+name = "format"
+type = "string"
+since = "0.2.0"
+default = "%H:%M"
+
+# The time to show, in milliseconds since the Unix epoch. Left out, the system clock.
+[[object.property]]
+name = "now"
+type = "callback:time_source"
+since = "0.2.0"
+
+# A strip along the top or bottom of an output (the primary one unless `output` names another), over the windows, that takes its room
+# from the windows there: the layouts place windows in what the bars leave (`bar_insets`). It is a row of boxes (`padding` 6, `gap` 12)
+# as wide as the output. Bars on one edge of one output stack in the order they were made.
+[[object]]
+name = "bar"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# The screen edge the bar occupies.
+[[object.property]]
+name = "edge"
+type = "enum:bar_edge"
+since = "0.2.0"
+default = "top"
+
+# When this answers true the bar is hidden and takes no room: a fullscreen window covers the screen.
+[[object.property]]
+name = "hide_when"
+type = "callback:bar_question"
+since = "0.2.0"
+
+# The output the bar sits on, by node. Zero, the primary output; a bar whose own output is unplugged is hidden.
+[[object.property]]
+name = "output"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# Whether the bar is on show, and so takes room.
+[[object.property]]
+name = "shown"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Makes every bar give way (hidden, taking no room) while `covered` answers true for the output the bar sits on. The shell passes "a
+# fullscreen window is showing on the workspace that output shows". A bar's own `hide_when` still applies.
+[[object.method]]
+name = "give_way_to"
+since = "0.2.0"
+function = true
+
+[[object.method.param]]
+name = "covered"
+type = "callback:cover_question"
+optional = true
+
+# Tells the bars which output is the primary one, the output a bar with no `output` of its own sits on.
+[[object.method]]
+name = "on_outputs"
+since = "0.2.0"
+function = true
+
+[[object.method.param]]
+name = "primary"
+type = "callback:output_source"
+optional = true
+
+# The room the bars take from the top and the bottom of `output` (the primary output when none is given). Windows are laid out in
+# what is left.
+[[object.method]]
+name = "insets"
+since = "0.2.0"
+function = true
+returns = "object:bar_insets"
+
+[[object.method.param]]
+name = "output"
+type = "uint"
+optional = true
+
+# A card with one message that fades in, holds, fades out and destroys itself, in the screen's top-right corner, over the windows.
+[[object]]
+name = "toast"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# The message's text.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+
+# The message's canvas.
+[[object.property]]
+name = "message"
+type = "object:text"
+since = "0.2.0"
+readonly = true
+
+# Milliseconds to fade in.
+[[object.property]]
+name = "fade_in"
+type = "double"
+since = "0.2.0"
+default = 120.0
+
+# Milliseconds at full strength.
+[[object.property]]
+name = "hold"
+type = "double"
+since = "0.2.0"
+default = 4000.0
+
+# Milliseconds to fade out.
+[[object.property]]
+name = "fade_out"
+type = "double"
+since = "0.2.0"
+default = 300.0
+
+# The clock in milliseconds. Left out, the toolkit's.
+[[object.property]]
+name = "clock"
+type = "callback:time_source"
+since = "0.2.0"
+
+# Shows `text` in a toast, over the windows. It removes itself after 4420 ms unless the options say otherwise.
+[[object.method]]
+name = "show"
+since = "0.2.0"
+function = true
+returns = "object:toast"
+
+[[object.method.param]]
+name = "text"
+type = "string"
+
+[[object.method.param]]
+name = "fade_in"
+type = "double"
+optional = true
+
+[[object.method.param]]
+name = "hold"
+type = "double"
+optional = true
+
+[[object.method.param]]
+name = "fade_out"
+type = "double"
+optional = true
+
+[[object.method.param]]
+name = "clock"
+type = "callback:time_source"
+optional = true
+
+# Formats a time as `format` says (see `clock.format`), in local time. `milliseconds` counts from the Unix epoch.
+[[object]]
+name = "time_format"
+since = "0.2.0"
+
+[[object.method]]
+name = "format_time"
+since = "0.2.0"
+function = true
+returns = "string"
+
+[[object.method.param]]
+name = "format"
+type = "string"
+
+[[object.method.param]]
+name = "milliseconds"
+type = "double"

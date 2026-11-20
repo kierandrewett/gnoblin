@@ -7,8 +7,8 @@ use gnoblin_object::server::{Builder, ClassBuilder, Cx};
 use gnoblin_object::{Res, Val};
 
 /// The model's state.
-#[derive(Clone, PartialEq, Eq)]
-struct EntryModel {
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct EntryModel {
     chars: Vec<char>,
     caret: usize,
     anchor: usize,
@@ -21,6 +21,11 @@ fn typed(c: char) -> bool {
 }
 
 impl EntryModel {
+    /// A model with no text.
+    pub(crate) fn empty() -> EntryModel {
+        EntryModel::default()
+    }
+
     fn text(&self) -> String {
         self.chars.iter().collect()
     }

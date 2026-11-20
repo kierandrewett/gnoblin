@@ -1,0 +1,939 @@
+//! The rig the toolkit's replay tests share: the real core and the real `libgnoblin-std` in this process, over the fake compositor, with a
+//! shell's side written as Rust over the object protocol (`Api`), and the recorder that turns what happened into the shape of an
+//! oracle fixture.
+//!
+//! A scenario of `crates/gnoblin-js/tests/oracle/ui.rs` is a TypeScript shell that the TypeScript toolkit ran; the replays here do what
+//! it did through the native classes and compare what they find with the fixture's:
+//!
+//! - each step's `log` (what the scenario recorded with `rec`) and the lines the toolkit reported (`diagnostics`);
+//! - the shell's nodes, whole, after every step: the fixture's writes are folded into the state they leave (a node's class, its parent,
+//!   its children in order, its properties), and the native run must leave the same;
+//! - the snapshots `trees` and `paints`, with the paint lists' bytes.
+//!
+//! What a step wrote on the way is not compared. The TypeScript toolkit asked the compositor to measure text and drew an estimate
+//! until the answer came, and drew again; the native toolkit measures at once and draws once. The measurer of this rig gives the
+//! estimate for a text until `answer_measures` and the fixed rule after, as the oracle's compositor did, so the states agree at every
+//! step; the writes between them are what O9 of the design removes.
+#![allow(dead_code, unsafe_code)]
+
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashSet};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
+
+use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinStr};
+use gnoblin_core_impl::host::{self, AttachMode, TreeLinkProvider};
+use gnoblin_object::client::{Api, closure};
+use gnoblin_object::{Obj, Val};
+use gnoblin_paint::decode;
+use gnoblin_shell_host::supervisor::ManualClock;
+use gnoblin_std_abi::{ABI_MAJOR, ABI_MINOR, GnoblinStdApi};
+use gnoblin_std_impl::ui_testing::{self, Measurer};
+use gnoblin_testkit::compositor::FakeCompositor;
+use gnoblin_testkit::oracle::{Fixtures, Map, Value, Writes, hex, json, number};
+use gnoblin_tree_client::tree_mirror::{LinkError, MirrorValue, TreeLink};
+
+/// The compositor's buttons.
+pub const LEFT: u64 = 272;
+pub const RIGHT: u64 = 273;
+pub const MIDDLE: u64 = 274;
+
+/// What the core opens when the shell attaches: a clone of the fake compositor.
+struct Provider(FakeCompositor);
+
+impl TreeLinkProvider for Provider {
+    fn open(&self, _mode: AttachMode) -> Result<Box<dyn TreeLink>, LinkError> {
+        Ok(Box::new(self.0.clone()))
+    }
+}
+
+fn process_lock() -> MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn last_error() -> String {
+    // SAFETY: with a null buffer and zero capacity the call only returns the length.
+    let len = unsafe { gnoblin_std_impl::gnoblin_std_last_error(std::ptr::null_mut(), 0) };
+    let mut buf = vec![0_u8; len + 1];
+    // SAFETY: `buf` is writable for `len + 1` bytes.
+    let written = unsafe { gnoblin_std_impl::gnoblin_std_last_error(buf.as_mut_ptr(), buf.len()) };
+    buf.truncate(written.min(len));
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
+// ---- text, as the oracle's compositor measured it ------------------------------------------------------------------------------
+
+/// What the toolkit estimates a string at: half the size a character, a line and a half.
+fn estimate(text: &str, size: f64) -> (u32, u32, u32) {
+    let mut widest = 0.0_f64;
+    let mut lines = 0.0_f64;
+    for line in text.split('\n') {
+        widest = widest.max(((line.chars().count() as f64) * size / 2.0).floor());
+        lines += 1.0;
+    }
+    (
+        widest as u32,
+        (lines * (size * 3.0 / 2.0).floor()) as u32,
+        ((size * 11.0) / 10.0).floor() as u32,
+    )
+}
+
+/// The oracle's measurer: a text is estimated until `answer_measures` and then a font with a fixed advance measures it: 0.6 of the
+/// size a glyph, 1.2 a line, 0.9 to the baseline, each rounded up.
+#[derive(Default)]
+pub struct Fixed {
+    answered: RefCell<HashSet<String>>,
+    asked: RefCell<Vec<String>>,
+}
+
+impl Fixed {
+    fn key(font: &str, size: f64, text: &str) -> String {
+        format!("{font}\u{1}{size}\u{1}{text}")
+    }
+
+    /// The compositor answers every measurement asked so far.
+    pub fn answer(&self) {
+        let asked = std::mem::take(&mut *self.asked.borrow_mut());
+        self.answered.borrow_mut().extend(asked);
+        ui_testing::measurements_changed();
+    }
+}
+
+impl Measurer for Fixed {
+    fn measure(&self, font: &str, size: f64, text: &str) -> Result<(u32, u32, u32), &'static str> {
+        let key = Fixed::key(font, size, text);
+        if !self.answered.borrow().contains(&key) {
+            let mut asked = self.asked.borrow_mut();
+            if !asked.contains(&key) {
+                asked.push(key);
+            }
+            return Ok(estimate(text, size));
+        }
+        let widest = text.lines().map(|line| line.chars().count()).max().unwrap_or(0) as f64;
+        let lines = text.lines().count().max(1) as f64;
+        Ok((
+            (widest * size * 0.6).ceil() as u32,
+            (lines * size * 1.2).ceil() as u32,
+            (size * 0.9).ceil() as u32,
+        ))
+    }
+}
+
+// ---- objects --------------------------------------------------------------------------------------------------------------------
+
+/// An object of the toolkit, by what a shell holds: the protocol, its class and its handle.
+#[derive(Clone, Copy)]
+pub struct W {
+    pub api: Api,
+    pub class: u32,
+    pub obj: Obj,
+}
+
+pub fn d(value: f64) -> Val {
+    Val::Double(value)
+}
+
+pub fn t(value: &str) -> Val {
+    Val::Text(value.to_owned())
+}
+
+pub fn b(value: bool) -> Val {
+    Val::Bool(value)
+}
+
+/// A value of an enum, by its place (counted from one).
+pub fn en(value: u32) -> Val {
+    Val::Enum { class: 0, value }
+}
+
+pub const ROW: u32 = 1;
+pub const COLUMN: u32 = 2;
+
+/// A number as a script's JSON shows it: a whole one without a fraction.
+pub fn js(value: f64) -> Value {
+    if value.fract() == 0.0 && value.abs() < 9.0e15 {
+        json!(value as i64)
+    } else {
+        json!(value)
+    }
+}
+
+impl W {
+    fn member(&self, kind: u32, name: &str) -> u32 {
+        self.api
+            .member(self.class, kind, name)
+            .unwrap_or_else(|fail| panic!("class {} has no {name}: {fail}", self.class))
+    }
+
+    pub fn set(&self, name: &str, value: Val) {
+        let member = self.member(abi::MEMBER_PROPERTY, name);
+        self.api
+            .set(self.obj, member, &value)
+            .unwrap_or_else(|fail| panic!("set {name}: {fail}"));
+    }
+
+    pub fn try_set(&self, name: &str, value: Val) -> Result<(), gnoblin_object::Fail> {
+        let member = self.member(abi::MEMBER_PROPERTY, name);
+        self.api.set(self.obj, member, &value)
+    }
+
+    pub fn get(&self, name: &str) -> Val {
+        let member = self.member(abi::MEMBER_PROPERTY, name);
+        self.api
+            .get(self.obj, member)
+            .unwrap_or_else(|fail| panic!("get {name}: {fail}"))
+    }
+
+    pub fn call(&self, name: &str, args: &[Val]) -> Val {
+        self.try_call(name, args)
+            .unwrap_or_else(|fail| panic!("call {name}: {fail}"))
+    }
+
+    pub fn try_call(&self, name: &str, args: &[Val]) -> Result<Val, gnoblin_object::Fail> {
+        let member = self.member(abi::MEMBER_METHOD, name);
+        self.api.call(self.obj, member, args)
+    }
+
+    pub fn num(&self, name: &str) -> f64 {
+        self.get(name).double().unwrap_or_else(|fail| panic!("{name}: {fail}"))
+    }
+
+    pub fn text(&self, name: &str) -> String {
+        self.get(name)
+            .text()
+            .unwrap_or_else(|fail| panic!("{name}: {fail}"))
+            .to_owned()
+    }
+
+    pub fn flag(&self, name: &str) -> bool {
+        self.get(name).bool().unwrap_or_else(|fail| panic!("{name}: {fail}"))
+    }
+
+    pub fn node(&self) -> u64 {
+        self.get("node").uint().expect("a node id")
+    }
+
+    /// The object as a value to pass to a call.
+    pub fn val(&self) -> Val {
+        Val::Object {
+            class: self.class,
+            obj: self.obj,
+        }
+    }
+
+    /// `add`, which answers the canvas so calls chain, as the toolkit's did.
+    pub fn add(&self, child: W) -> W {
+        self.call("add", &[child.val()]);
+        *self
+    }
+
+    pub fn mount_top(&self) -> W {
+        self.call("mount_top", &[]);
+        *self
+    }
+
+    pub fn focus(&self) {
+        self.call("focus", &[]);
+    }
+
+    /// An object a property holds.
+    pub fn obj(&self, name: &str) -> W {
+        match self.get(name) {
+            Val::Object { class, obj } => W {
+                api: self.api,
+                class,
+                obj,
+            },
+            other => panic!("{name} is {other:?}, not an object"),
+        }
+    }
+
+    /// The children, in order.
+    pub fn kids(&self) -> Vec<W> {
+        self.get("children")
+            .list()
+            .expect("a list of canvases")
+            .iter()
+            .map(|kid| match kid {
+                Val::Object { class, obj } => W {
+                    api: self.api,
+                    class: *class,
+                    obj: *obj,
+                },
+                other => panic!("a child that is {other:?}"),
+            })
+            .collect()
+    }
+
+    pub fn kid(&self, index: usize) -> W {
+        self.kids()[index]
+    }
+
+    /// Ends the object and what it holds, as a shell's `destroy` does.
+    pub fn destroy(&self) {
+        self.api.destroy(self.obj).expect("the object ends");
+    }
+}
+
+/// A node of a snapshot of a subtree: its id, class, parent and properties.
+type Snapshot = (u64, String, u64, Vec<(String, MirrorValue)>);
+
+/// A node of the shell's, as the compositor holds it: its id, the name the recorder gave it, class, parent, children and properties.
+type Held = (u64, String, String, u64, Vec<u64>, Vec<(String, MirrorValue)>);
+
+// ---- the rig --------------------------------------------------------------------------------------------------------------------
+
+/// A place where the fixture holds a value that is an artifact of how the TypeScript toolkit measured text, and the value the native
+/// toolkit holds instead (see [`Rig::allow`]).
+struct Allowance {
+    step: &'static str,
+    node: &'static str,
+    key: &'static str,
+    fixture: f64,
+    native: f64,
+}
+
+/// The shell's side and the recorder.
+pub struct Rig {
+    pub api: Api,
+    pub ctx: GnoblinCtx,
+    pub comp: FakeCompositor,
+    pub clock: ManualClock,
+    pub fixed: Rc<Fixed>,
+    pub log: Rc<RefCell<Vec<Value>>>,
+    writes: Writes,
+    mark: usize,
+    name: &'static str,
+    steps: Vec<Value>,
+    diagnostics: Vec<String>,
+    expected: Vec<Value>,
+    fold: Fold,
+    allowances: Vec<Allowance>,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl Rig {
+    /// A generation of the core with the std library and a desktop of `width` by `height` and no window.
+    pub fn new(name: &'static str, width: f64, height: f64) -> Rig {
+        Rig::open(name, width, height, false)
+    }
+
+    /// A generation with no fixture behind it: a test of what the toolkit does on its own terms.
+    pub fn scratch(width: f64, height: f64) -> Rig {
+        Rig::open("scratch", width, height, true)
+    }
+
+    fn open(name: &'static str, width: f64, height: f64, scratch: bool) -> Rig {
+        let lock = process_lock();
+        // SAFETY: the tests of this file run one at a time under `process_lock`, and nothing else reads the environment meanwhile.
+        unsafe { std::env::set_var("TZ", "UTC") };
+        host::reset_session();
+        let comp = FakeCompositor::new();
+        comp.add_desktop(width, height);
+        comp.borrow_mut().refuse_every = 0;
+        host::set_tree_link_provider(Box::new(Provider(comp.clone())));
+        let clock = ManualClock::default();
+        host::set_clock(Arc::new(clock.clone()));
+        let fixed = Rc::new(Fixed::default());
+        ui_testing::set_measurer(Rc::clone(&fixed) as Rc<dyn Measurer>);
+        let _ = ui_testing::take_diagnostics();
+        let ctx = host::open_generation(name, abi::LANG_NATIVE).expect("a generation opens");
+        let mut table: *const GnoblinStdApi = std::ptr::null();
+        // SAFETY: `table` is a live local the library writes.
+        let code = unsafe { gnoblin_std_impl::gnoblin_std_get_api(ABI_MAJOR, ABI_MINOR, &raw mut table) };
+        assert_eq!(code, abi::E_OK);
+        // SAFETY: the library's table is static.
+        let table = unsafe { &*table };
+        let mut raw: *const abi::GnoblinObjectApi = std::ptr::null();
+        // SAFETY: `raw` is a live local the library writes.
+        let code = unsafe { (table.object_api)(ctx, GnoblinStr::borrowed("gnoblin.std"), &raw mut raw) };
+        assert_eq!(code, abi::E_OK, "{}", last_error());
+        // SAFETY: the table `object_api` returns is static.
+        let api = Api::new(unsafe { &*raw }, ctx, last_error);
+        Rig {
+            api,
+            ctx,
+            comp,
+            clock,
+            fixed,
+            log: Rc::new(RefCell::new(Vec::new())),
+            writes: Writes::with_bytes(render_bytes),
+            mark: 0,
+            name,
+            steps: Vec::new(),
+            diagnostics: Vec::new(),
+            expected: if scratch {
+                Vec::new()
+            } else {
+                Fixtures::new("crates/gnoblin-std-impl/tests/fixtures/reference").read_json(name)["steps"]
+                    .as_array()
+                    .expect("the fixture's steps")
+                    .clone()
+            },
+            fold: Fold::default(),
+            allowances: Vec::new(),
+            _lock: lock,
+        }
+    }
+
+    /// One turn of the core: what is posted runs, the compositor's events are heard, the timers that are due fire.
+    pub fn dispatch(&self) {
+        // SAFETY: the core's table is static and `dispatch` takes plain values.
+        unsafe { (host::api().dispatch)(self.ctx, 0) };
+    }
+
+    /// Runs turns until nothing is left to say: six, as the scenarios' frames were.
+    pub fn settle(&mut self) {
+        for _ in 0..6 {
+            self.dispatch();
+        }
+        self.diagnostics.extend(ui_testing::take_diagnostics());
+    }
+
+    /// The lines the toolkit reported since the last call.
+    pub fn reported(&mut self) -> Vec<String> {
+        self.diagnostics.extend(ui_testing::take_diagnostics());
+        std::mem::take(&mut self.diagnostics)
+    }
+
+    /// Moves the shell's clock on and settles.
+    pub fn advance(&mut self, ms: u64) {
+        self.clock.advance(Duration::from_millis(ms));
+        self.settle();
+    }
+
+    /// The compositor answers every measurement asked.
+    pub fn answer_measures(&mut self) {
+        self.fixed.answer();
+        self.settle();
+    }
+
+    /// Makes an object of `class` with `inits`.
+    pub fn make(&self, class: &str, inits: &[(&str, Val)]) -> W {
+        let class_id = self.api.class(class).expect("the class");
+        let mut ids = Vec::new();
+        for (name, value) in inits {
+            let member = self
+                .api
+                .member(class_id, abi::MEMBER_PROPERTY, name)
+                .unwrap_or_else(|fail| panic!("{class} has no {name}: {fail}"));
+            ids.push((member, value.clone()));
+        }
+        let obj = self
+            .api
+            .create(class_id, &ids)
+            .unwrap_or_else(|fail| panic!("a {class}: {fail}"));
+        W {
+            api: self.api,
+            class: class_id,
+            obj,
+        }
+    }
+
+    /// A function of a class.
+    pub fn function(&self, class: &str, name: &str, args: &[Val]) -> Val {
+        let class = self.api.class(class).expect("the class");
+        let member = self
+            .api
+            .member(class, abi::MEMBER_METHOD, name)
+            .unwrap_or_else(|fail| panic!("{name}: {fail}"));
+        self.api
+            .call_static(class, member, args)
+            .unwrap_or_else(|fail| panic!("{name}: {fail}"))
+    }
+
+    /// Records `value` under `label` in the step being made.
+    pub fn rec(&self, label: &str, value: Value) {
+        self.log.borrow_mut().push(json!({ "label": label, "value": value }));
+    }
+
+    // ---- the recorder ------------------------------------------------------------------------------------------------------
+
+    /// Says that at step `step` the fixture holds `fixture` for `key` of the node `node` (the compositor's `nK` for the K-th canvas the
+    /// shell made) because of how the TypeScript toolkit measured text, and that the native toolkit holds `native`. Nothing else may
+    /// differ: the fixture's value must be exactly what is named, the native value is what the run must leave, and from this step on
+    /// the fixture's state is taken to hold the native value until a write of the fixture's own sets it again.
+    ///
+    /// The one case is the entry's third hidden text. It asks the compositor to measure the empty text, is shown the old answer for it
+    /// (it measured the empty text earlier) and not asked again, and then the answer to an older question reaches it, which it takes
+    /// for the answer to the current one: the TypeScript toolkit draws an estimate for a step before it asks again. The native
+    /// toolkit measures at once and has no old question to be answered.
+    pub fn allow(&mut self, step: &'static str, node: &'static str, key: &'static str, fixture: f64, native: f64) {
+        self.allowances.push(Allowance {
+            step,
+            node,
+            key,
+            fixture,
+            native,
+        });
+    }
+
+    /// Ends a step: what the shell logged and reported since the last one, and the shell's nodes as they stand, held against the
+    /// fixture's: the log, what the toolkit reported, and the state the fixture's writes leave.
+    pub fn step(&mut self, label: &str) {
+        let index = self.steps.len();
+        let want = self
+            .expected
+            .get(index)
+            .unwrap_or_else(|| panic!("`{}` has no step number {index} (`{label}`)", self.name))
+            .clone();
+        assert_eq!(
+            want["step"], label,
+            "step number {index} of `{}` is `{}` in the fixture",
+            self.name, want["step"]
+        );
+        let batches = self.comp.sent_since(self.mark);
+        self.mark = self.comp.sent_count();
+        let writes: Vec<Value> = batches
+            .iter()
+            .filter(|batch| !batch.is_empty())
+            .map(|batch| Value::Array(self.writes.ops(batch)))
+            .collect();
+        let log = Value::Array(std::mem::take(&mut *self.log.borrow_mut()));
+        let diagnostics = json!(std::mem::take(&mut self.diagnostics));
+        assert_eq!(log, want["log"], "step `{label}` of `{}`: the log", self.name);
+        compare_diagnostics(&diagnostics, &want["diagnostics"], label, self.name);
+        self.fold.apply(&want["writes"]);
+        for allowance in self.allowances.iter().filter(|held| held.step == label) {
+            self.fold.override_number(allowance);
+        }
+        let shared = self.fold.shared_keys();
+        let actual = Value::Object(self.state(&shared).into_iter().collect());
+        let wanted = Value::Object(self.fold.state().into_iter().collect());
+        assert!(
+            actual == wanted,
+            "step `{label}` of `{}`: the shell's nodes differ:\n{}",
+            self.name,
+            differences(&actual, &wanted)
+        );
+        let mut step = Map::new();
+        step.insert("step".to_owned(), json!(label));
+        step.insert("writes".to_owned(), Value::Array(writes));
+        self.steps.push(Value::Object(step));
+    }
+
+    fn attach(&mut self, key: &str, item: Value) {
+        let step = self
+            .steps
+            .last_mut()
+            .and_then(Value::as_object_mut)
+            .expect("a snapshot follows a step");
+        step.entry(key.to_owned())
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .expect("a list")
+            .push(item);
+    }
+
+    /// A snapshot of the subtree under the node `root`.
+    pub fn tree(&mut self, label: &str, root: u64) {
+        let nodes: Vec<Snapshot> = {
+            let borrowed = self.comp.borrow();
+            borrowed
+                .subtree(root)
+                .into_iter()
+                .filter_map(|id| {
+                    borrowed.nodes.get(&id).map(|node| {
+                        (
+                            id,
+                            node.class.clone(),
+                            node.parent,
+                            node.props
+                                .iter()
+                                .map(|(key, value)| (key.clone(), value.clone()))
+                                .collect(),
+                        )
+                    })
+                })
+                .collect()
+        };
+        let listed: Vec<Value> = nodes
+            .iter()
+            .map(|(id, class, parent, props)| {
+                let mut map = Map::new();
+                for (key, value) in props {
+                    map.insert(key.clone(), self.writes.value(value));
+                }
+                json!({
+                    "node": self.writes.node(*id),
+                    "class": class,
+                    "parent": self.writes.node(*parent),
+                    "props": map,
+                })
+            })
+            .collect();
+        let item = json!({ "tree": label, "root": self.writes.node(root), "nodes": listed });
+        self.attach("trees", item);
+    }
+
+    /// The paint lists of every canvas under the node `root`, in tree order, as the oracle holds them.
+    pub fn paint(&mut self, label: &str, root: u64) {
+        let canvases: Vec<(u64, f64, f64, f64, f64, Vec<u8>)> = {
+            let borrowed = self.comp.borrow();
+            borrowed
+                .subtree(root)
+                .into_iter()
+                .filter_map(|id| {
+                    let node = borrowed.nodes.get(&id)?;
+                    let content = match node.props.get("content") {
+                        Some(MirrorValue::Bytes(bytes)) => bytes.clone(),
+                        _ => return None,
+                    };
+                    let double = |key: &str| match node.props.get(key) {
+                        Some(MirrorValue::Double(value)) => *value,
+                        _ => 0.0,
+                    };
+                    Some((id, double("x"), double("y"), double("width"), double("height"), content))
+                })
+                .collect()
+        };
+        let mut file = Vec::new();
+        let mut listed = Vec::new();
+        for (id, x, y, width, height, content) in &canvases {
+            file.extend_from_slice(&(content.len() as u32).to_le_bytes());
+            file.extend_from_slice(content);
+            listed.push(json!({
+                "node": self.writes.node(*id),
+                "rect": [x, y, width, height],
+                "bytes": content.len(),
+                "paint": render_bytes(content)["paint"].clone(),
+            }));
+        }
+        let name = format!("{}.{label}", self.name);
+        let committed = Fixtures::new("crates/gnoblin-js/tests/fixtures/paint").read_bytes(&name);
+        assert_eq!(
+            hex(&file),
+            hex(&committed),
+            "the paint lists of `{name}` are not the bytes the TypeScript toolkit wrote"
+        );
+        let item = json!({ "paint": label, "file": format!("{name}.bin"), "canvases": listed });
+        self.attach("paints", item);
+    }
+
+    /// The shell's nodes, whole, as the compositor holds them now: class, parent, children and properties by the names the recorder
+    /// gave them. `shared` names the properties of the compositor's own nodes that the fixture's writes touched.
+    fn state(&mut self, shared: &[(String, String)]) -> BTreeMap<String, Value> {
+        let made = self.writes.names();
+        let mut out = BTreeMap::new();
+        let nodes: Vec<Held> = {
+            let borrowed = self.comp.borrow();
+            made.iter()
+                .filter_map(|(id, name)| {
+                    borrowed.nodes.get(id).map(|node| {
+                        (
+                            *id,
+                            name.clone(),
+                            node.class.clone(),
+                            node.parent,
+                            node.children.clone(),
+                            node.props
+                                .iter()
+                                .map(|(key, value)| (key.clone(), value.clone()))
+                                .collect(),
+                        )
+                    })
+                })
+                .collect()
+        };
+        for (_, name, class, parent, children, props) in nodes {
+            let mut map = Map::new();
+            for (key, value) in &props {
+                map.insert(key.clone(), self.writes.value(value));
+            }
+            let parent = self.writes.node(parent);
+            let children: Vec<Value> = children.iter().map(|id| self.writes.node(*id)).collect();
+            out.insert(
+                name,
+                json!({ "class": class, "parent": parent, "children": children, "props": map }),
+            );
+        }
+        for (node, key) in shared {
+            let id: u64 = node.parse().expect("a compositor node");
+            let value = self.comp.value(id, key).map(|value| self.writes.value(&value));
+            out.insert(format!("{node}.{key}"), value.unwrap_or(Value::Null));
+        }
+        out
+    }
+
+    /// Compares the snapshots of every step with the fixture's, and that no step is missing.
+    pub fn finish(mut self) {
+        assert_eq!(
+            self.steps.len(),
+            self.expected.len(),
+            "`{}` ran {} steps and the fixture has {}",
+            self.name,
+            self.steps.len(),
+            self.expected.len()
+        );
+        for (step, want) in self.steps.iter().zip(&mut self.expected) {
+            let label = want["step"].as_str().unwrap_or("").to_owned();
+            for allowance in self.allowances.iter().filter(|held| held.step == label) {
+                override_rect(want, allowance);
+            }
+            assert_eq!(
+                step["trees"], want["trees"],
+                "step `{label}` of `{}`: the trees",
+                self.name
+            );
+            assert_eq!(
+                step["paints"], want["paints"],
+                "step `{label}` of `{}`: the paints",
+                self.name
+            );
+        }
+    }
+}
+
+/// Where two states differ, node by node and property by property: `native` is what the run left, `fixture` what the fixture's writes
+/// leave.
+fn differences(native: &Value, fixture: &Value) -> String {
+    let mut out = String::new();
+    let (Some(native), Some(fixture)) = (native.as_object(), fixture.as_object()) else {
+        return "not objects".to_owned();
+    };
+    for (name, want) in fixture {
+        match native.get(name) {
+            None => out.push_str(&format!(
+                "  {name}: the native run has no such node (fixture: {want})\n"
+            )),
+            Some(got) if got == want => {}
+            Some(got) => {
+                for part in ["class", "parent", "children"] {
+                    if got[part] != want[part] {
+                        out.push_str(&format!(
+                            "  {name}.{part}: native {} fixture {}\n",
+                            got[part], want[part]
+                        ));
+                    }
+                }
+                let (gp, wp) = (got["props"].as_object(), want["props"].as_object());
+                if let (Some(gp), Some(wp)) = (gp, wp) {
+                    for (key, value) in wp {
+                        if gp.get(key) != Some(value) {
+                            out.push_str(&format!("  {name}.{key}: native {:?} fixture {value}\n", gp.get(key)));
+                        }
+                    }
+                    for key in gp.keys() {
+                        if !wp.contains_key(key) {
+                            out.push_str(&format!("  {name}.{key}: native {} fixture none\n", gp[key]));
+                        }
+                    }
+                } else if got != want {
+                    out.push_str(&format!("  {name}: native {got} fixture {want}\n"));
+                }
+            }
+        }
+    }
+    for name in native.keys() {
+        if !fixture.contains_key(name) {
+            out.push_str(&format!("  {name}: the fixture has no such node\n"));
+        }
+    }
+    out
+}
+
+/// A paint list as its ops (for a person) and its bytes (the proof).
+fn render_bytes(bytes: &[u8]) -> Value {
+    match decode(bytes) {
+        Ok(list) => json!({
+            "paint": list.ops.iter().map(|op| format!("{op:?}")).collect::<Vec<_>>(),
+            "bytes": hex(bytes),
+        }),
+        Err(_) => json!({ "bytes": hex(bytes) }),
+    }
+}
+
+/// What the toolkit reported and what the TypeScript toolkit reported are the same lines in two languages: they agree in how many
+/// there were and in what went wrong, the part after the last `: `. A shell's closure that fails is the one exception: the library
+/// learns only that it did (`the callback failed`), and the language's own words are the runtime's to log.
+fn compare_diagnostics(actual: &Value, expected: &Value, label: &str, name: &str) {
+    // The fixture's lines have a node number's digits taken out (`#rgb` reads `#Nrgb`): so do these.
+    let tail = |line: &Value, number: bool| {
+        let line = line.as_str().unwrap_or("");
+        let line = if number {
+            line.replace('#', "#N")
+        } else {
+            line.to_owned()
+        };
+        line.rsplit(": ").next().unwrap_or(&line).to_owned()
+    };
+    let got: Vec<String> = actual
+        .as_array()
+        .map(|lines| lines.iter().map(|line| tail(line, true)).collect())
+        .unwrap_or_default();
+    let want: Vec<String> = expected
+        .as_array()
+        .map(|lines| lines.iter().map(|line| tail(line, false)).collect())
+        .unwrap_or_default();
+    assert_eq!(
+        got.len(),
+        want.len(),
+        "step `{label}` of `{name}`: what the toolkit reported: {got:?} against {want:?}"
+    );
+    for (got, want) in got.iter().zip(&want) {
+        assert!(
+            got == want || got == "the callback failed",
+            "step `{label}` of `{name}`: the toolkit reported `{got}`, the TypeScript toolkit `{want}`"
+        );
+    }
+}
+
+// ---- folding writes into a state --------------------------------------------------------------------------------------------
+
+/// The state a run of writes leaves: the nodes a shell made (class, parent, children, properties), and the properties of the
+/// compositor's own nodes that it set.
+#[derive(Default)]
+struct Fold {
+    nodes: BTreeMap<String, Value>,
+    shared: BTreeMap<String, Value>,
+}
+
+fn key_of(node: &Value) -> String {
+    match node {
+        Value::String(name) => name.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// The rectangle of a canvas in the snapshot of paint lists, with `key` replaced.
+fn override_rect(step: &mut Value, allowance: &Allowance) {
+    let at = match allowance.key {
+        "x" => 0,
+        "y" => 1,
+        "width" => 2,
+        _ => 3,
+    };
+    for paint in step["paints"].as_array_mut().into_iter().flatten() {
+        for canvas in paint["canvases"].as_array_mut().into_iter().flatten() {
+            if canvas["node"] == allowance.node {
+                assert_eq!(
+                    canvas["rect"][at],
+                    number(allowance.fixture),
+                    "the fixture's {} of {} is not what was allowed for",
+                    allowance.key,
+                    allowance.node
+                );
+                canvas["rect"][at] = number(allowance.native);
+            }
+        }
+    }
+}
+
+impl Fold {
+    /// Replaces a number the fixture holds with the one the native toolkit does (an [`Allowance`]).
+    fn override_number(&mut self, allowance: &Allowance) {
+        let entry = self
+            .nodes
+            .get_mut(allowance.node)
+            .unwrap_or_else(|| panic!("no node {} to allow for", allowance.node));
+        assert_eq!(
+            entry["props"][allowance.key],
+            number(allowance.fixture),
+            "the fixture's {} of {} is not what was allowed for",
+            allowance.key,
+            allowance.node
+        );
+        entry["props"][allowance.key] = number(allowance.native);
+    }
+
+    fn apply(&mut self, steps_writes: &Value) {
+        for batch in steps_writes.as_array().into_iter().flatten() {
+            for op in batch.as_array().into_iter().flatten() {
+                let node = key_of(&op["node"]);
+                match op["op"].as_str().unwrap_or("") {
+                    "new" => {
+                        self.nodes.insert(
+                            node,
+                            json!({ "class": op["class"], "parent": 0, "children": [], "props": {} }),
+                        );
+                    }
+                    "insert" => self.insert(&node, &op["parent"], op["index"].as_i64().unwrap_or(-1)),
+                    "set" => {
+                        let key = op["key"].as_str().unwrap_or("").to_owned();
+                        match self.nodes.get_mut(&node) {
+                            Some(entry) => {
+                                entry["props"][&key] = op["value"].clone();
+                            }
+                            None => {
+                                self.shared.insert(format!("{node}.{key}"), op["value"].clone());
+                            }
+                        }
+                    }
+                    "destroy" => self.destroy(&node),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn detach(&mut self, node: &str) {
+        let parent = self.nodes.get(node).map(|entry| key_of(&entry["parent"]));
+        if let Some(parent) = parent
+            && let Some(entry) = self.nodes.get_mut(&parent)
+            && let Some(children) = entry["children"].as_array_mut()
+        {
+            children.retain(|child| key_of(child) != node);
+        }
+    }
+
+    fn insert(&mut self, node: &str, parent: &Value, index: i64) {
+        self.detach(node);
+        let named = key_of(parent);
+        if let Some(entry) = self.nodes.get_mut(node) {
+            entry["parent"] = parent.clone();
+        }
+        if let Some(entry) = self.nodes.get_mut(&named)
+            && let Some(children) = entry["children"].as_array_mut()
+        {
+            let at = usize::try_from(index).map_or(children.len(), |at| at.min(children.len()));
+            children.insert(at, json!(node));
+        }
+    }
+
+    fn destroy(&mut self, node: &str) {
+        self.detach(node);
+        let mut doomed = vec![node.to_owned()];
+        while let Some(next) = doomed.pop() {
+            if let Some(entry) = self.nodes.remove(&next) {
+                doomed.extend(entry["children"].as_array().into_iter().flatten().map(key_of));
+            }
+        }
+    }
+
+    /// The compositor's nodes' properties the writes touched, as `node.key`.
+    fn shared_keys(&self) -> Vec<(String, String)> {
+        self.shared
+            .keys()
+            .filter_map(|key| key.split_once('.').map(|(node, key)| (node.to_owned(), key.to_owned())))
+            .collect()
+    }
+
+    fn state(&self) -> BTreeMap<String, Value> {
+        let mut out = self.nodes.clone();
+        for (key, value) in &self.shared {
+            out.insert(key.clone(), value.clone());
+        }
+        out
+    }
+}
+
+/// A record as the closure of a handler gets it: its fields.
+pub fn fields(args: &[Val]) -> Vec<Val> {
+    match &args[0] {
+        Val::Record { fields, .. } => fields.clone(),
+        other => panic!("a record, got {other:?}"),
+    }
+}
+
+/// A closure value for a callback property.
+pub fn callback(run: impl FnMut(&[Val]) -> gnoblin_object::Res<Val> + 'static) -> Val {
+    let mut run = run;
+    Val::Closure(closure(move |_, args| run(args)))
+}
+
+/// A number as the oracle's writes show it.
+pub fn double(value: f64) -> Value {
+    number(value)
+}

@@ -1,0 +1,950 @@
+# The `ui` module of `gnoblin.std`: the canvas toolkit a shell draws its own interface with.
+#
+# A canvas is a node of the compositor's tree that paints a list of drawing operations and holds other canvases. The library owns all
+# of the toolkit's behaviour: the canvas tree and its update pass, box and grid layout, text measured in the library's own process,
+# the byte encoding of paint lists, pointer and key delivery with bubbling, key focus, and the per-frame work. A shell passes
+# closures (`on_pointer`, `on_key`, `on_frame`) or implements the `widget` interface for what only it can say (a custom paint,
+# measure or arrange). Its members are the public members of the TypeScript toolkit it replaces, with the same meanings.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# Where a canvas that is a child of a window sits.
+[[enum]]
+name = "placement"
+since = "0.2.0"
+values = ["frame", "over", "under"]
+
+# How a box places its children.
+[[enum]]
+name = "direction"
+since = "0.2.0"
+values = ["row", "column", "none"]
+
+# What the pointer did.
+[[enum]]
+name = "pointer_kind"
+since = "0.2.0"
+values = ["press", "release", "motion", "scroll", "enter", "leave"]
+
+# The operation a `paint_op` is.
+[[enum]]
+name = "paint_kind"
+since = "0.2.0"
+values = ["rect", "line", "text", "icon", "push-clip", "pop-clip", "push-opacity", "pop-opacity"]
+
+# A handler of a pointer event. It answers `true` to keep the event from the canvas's parents.
+[[callback]]
+name = "pointer_handler"
+since = "0.2.0"
+returns = "bool"
+
+[[callback.param]]
+name = "event"
+type = "object:ui_pointer_event"
+
+# A handler of a key. It answers `true` to keep the key from the canvas's parents.
+[[callback]]
+name = "key_handler"
+since = "0.2.0"
+returns = "bool"
+
+[[callback.param]]
+name = "event"
+type = "object:ui_key_event"
+
+# Work to run once a frame of the toolkit, after the events are delivered and before the canvases update.
+[[callback]]
+name = "frame_hook"
+since = "0.2.0"
+
+# A request the compositor made of a window, such as its menu.
+[[callback]]
+name = "request_hook"
+since = "0.2.0"
+
+[[callback.param]]
+name = "request"
+type = "object:ui_request"
+
+# A pointer event on a canvas. `x` and `y` are in the coordinates of the canvas whose handler runs.
+[[object]]
+name = "ui_pointer_event"
+since = "0.2.0"
+kind = "record"
+
+# What the pointer did.
+[[object.property]]
+name = "kind"
+type = "enum:pointer_kind"
+since = "0.2.0"
+
+# Horizontal position in logical pixels, relative to the canvas whose handler is running.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+# Vertical position in logical pixels, relative to the canvas whose handler is running.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# The button number of a press or a release.
+[[object.property]]
+name = "button"
+type = "uint"
+since = "0.2.0"
+
+# Horizontal movement or scroll distance in logical pixels.
+[[object.property]]
+name = "dx"
+type = "double"
+since = "0.2.0"
+
+# Vertical movement or scroll distance in logical pixels.
+[[object.property]]
+name = "dy"
+type = "double"
+since = "0.2.0"
+
+# The canvas the compositor addressed.
+[[object.property]]
+name = "target"
+type = "object:canvas"
+since = "0.2.0"
+
+# A key sent to the canvas that holds the keyboard focus. Typed text may be a passphrase: it is never logged.
+[[object]]
+name = "ui_key_event"
+since = "0.2.0"
+kind = "record"
+
+# The xkbcommon keysym name, such as `Return`, `Escape` or `a`.
+[[object.property]]
+name = "key"
+type = "string"
+since = "0.2.0"
+
+# The text the key typed, empty when it typed none.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+
+# True for a press and false for its release.
+[[object.property]]
+name = "pressed"
+type = "bool"
+since = "0.2.0"
+
+# The canvas that held the keyboard focus.
+[[object.property]]
+name = "target"
+type = "object:canvas"
+since = "0.2.0"
+
+# A request the compositor made of a window: its `menu`, with the anchor in logical screen pixels.
+[[object]]
+name = "ui_request"
+since = "0.2.0"
+kind = "record"
+
+# The window's node.
+[[object.property]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+
+# The request kind, such as `menu`.
+[[object.property]]
+name = "request"
+type = "string"
+since = "0.2.0"
+
+# Horizontal anchor position in logical screen pixels.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+# Vertical anchor position in logical screen pixels.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# The measured width and height of text, and the distance from the top to its first baseline, in logical pixels.
+[[object]]
+name = "text_metrics"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# The baseline's distance from the top of the first line.
+[[object.property]]
+name = "ascent"
+type = "double"
+since = "0.2.0"
+
+# A size in logical pixels.
+[[object]]
+name = "ui_size"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# A place in logical screen pixels.
+[[object]]
+name = "ui_point"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# One drawing operation. Later operations paint over earlier ones; coordinates are the canvas's logical pixels. Which fields an
+# operation reads depends on its `op`; every other field is ignored, and a field it reads and the caller left out has the default
+# named here. A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. A number that is not finite, or a colour that is none of those,
+# refuses the whole list: `draw op N: ...` names the position.
+[[object]]
+name = "paint_op"
+since = "0.2.0"
+kind = "record"
+
+# `rect`, `line`, `text`, `icon`, `push-clip`, `pop-clip`, `push-opacity` or `pop-opacity`.
+[[object.property]]
+name = "op"
+type = "enum:paint_kind"
+since = "0.2.0"
+
+# `rect`, `text`, `icon` and `push-clip`: the left edge (default 0).
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# `rect`, `text`, `icon` and `push-clip`: the top edge (default 0).
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# `rect` and `push-clip`: the width (default 0).
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# `rect` and `push-clip`: the height (default 0).
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# `rect` and `push-clip`: the corner radius (default 0).
+[[object.property]]
+name = "radius"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# `rect`: the fill colour (default transparent).
+[[object.property]]
+name = "fill"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `rect`: the outline colour (default transparent).
+[[object.property]]
+name = "stroke"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `rect`: the outline width (default 0).
+[[object.property]]
+name = "stroke_width"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# `line`: where it starts (default 0).
+[[object.property]]
+name = "x1"
+type = "double"
+since = "0.2.0"
+optional = true
+
+[[object.property]]
+name = "y1"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# `line`: where it ends (default 0).
+[[object.property]]
+name = "x2"
+type = "double"
+since = "0.2.0"
+optional = true
+
+[[object.property]]
+name = "y2"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# `line`: the stroke width (default 1). `text`: the font size in pixels (default 14). `icon`: the icon size (default 16).
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# `line`, `text` and `icon`: the colour (default opaque white).
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `text`: the string to draw. It is not optional for a `text` operation.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `text`: the font name (default `sans`).
+[[object.property]]
+name = "font"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `icon`: the icon's name in the installed theme. It is not optional for an `icon` operation.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# `push-opacity`: the opacity of the group that follows (default 1).
+[[object.property]]
+name = "alpha"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# What a shell says of a canvas that only it can: its own refresh, measure, arrange or paint. A member the shell leaves out is never
+# called across the library's boundary, and the library's own behaviour runs instead. Every hook runs on the shell thread from the
+# toolkit's turn.
+[[object]]
+name = "widget"
+since = "0.2.0"
+kind = "interface"
+
+# Updates the canvas's fields from live state, once a frame, before its children are arranged. It runs after the library's own refresh.
+[[object.method]]
+name = "refresh"
+since = "0.2.0"
+default = "native"
+
+# Places the children, in place of the library's own arrangement (`arrange_default` runs that one).
+[[object.method]]
+name = "arrange"
+since = "0.2.0"
+default = "native"
+
+# The operations the canvas paints, in place of its own (`paint_default` answers those). Called once a frame.
+[[object.method]]
+name = "paint"
+since = "0.2.0"
+returns = "list<object:paint_op>"
+default = "native"
+
+# The natural width in logical pixels, when the canvas has no width of its own.
+[[object.method]]
+name = "natural_width"
+since = "0.2.0"
+returns = "double"
+default = "native"
+
+# The natural height in logical pixels, when the canvas has no height of its own.
+[[object.method]]
+name = "natural_height"
+since = "0.2.0"
+returns = "double"
+default = "native"
+
+# A pointer event for the canvas. It answers `true` to keep the event from the canvas's parents.
+[[object.method]]
+name = "on_pointer"
+since = "0.2.0"
+returns = "bool"
+default = "native"
+
+[[object.method.param]]
+name = "event"
+type = "object:ui_pointer_event"
+
+# A key for the canvas. It answers `true` to keep the key from the canvas's parents.
+[[object.method]]
+name = "on_key"
+since = "0.2.0"
+returns = "bool"
+default = "native"
+
+[[object.method.param]]
+name = "event"
+type = "object:ui_key_event"
+
+# A canvas is a compositor node that paints a list of drawing operations and can contain other canvases. Its node is made with it and
+# destroyed with `destroy`, which ends its children too. It stays on screen when a shell lets go of it. Every frame the toolkit
+# refreshes it, arranges its children, updates them, and writes what changed: the node's properties, and the paint list when its bytes
+# differ from the last ones.
+[[object]]
+name = "canvas"
+since = "0.2.0"
+retained = true
+
+# The node's id in the tree.
+[[object.property]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The canvas this one is a child of, or none for the root of a tree (or one mounted on a window).
+[[object.property]]
+name = "parent"
+type = "object:canvas"
+since = "0.2.0"
+readonly = true
+
+# The child canvases in paint and event order. Setting it adds each canvas in the list as the last child, in order, and removes
+# none: it is how a box is given its first children in its options.
+[[object.property]]
+name = "children"
+type = "list<object:canvas>"
+since = "0.2.0"
+
+# Horizontal position in logical pixels relative to the parent.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Vertical position in logical pixels relative to the parent.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The width in logical pixels: the assigned width, or the content's natural width. `clear_width` returns to the natural width.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+# The height in logical pixels: the assigned height, or the content's natural height. `clear_height` returns to the natural height.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# Whether the canvas is painted and receives pointer input.
+[[object.property]]
+name = "visible"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# Opacity from 0 (transparent) to 1 (opaque).
+[[object.property]]
+name = "opacity"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# Whether a capture of the screen masks this canvas. Set it on what shows a secure window's text.
+[[object.property]]
+name = "secure"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# Whether the pointer lands on this canvas. With false it goes through to what is under it, as it does for the empty layer of a frame;
+# the canvas's children are still tested.
+[[object.property]]
+name = "input"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# Where the canvas sits among a window's content and frame. `frame` is in front of the window's content and part of the window's
+# frame, so rounded corners, the border and a frame shadow follow it; `over` is in front and not part of the frame; `under` is
+# painted behind the window's content and not part of the frame. Under any other parent a canvas is painted in tree order and
+# `placement` only says whether it counts as part of a frame.
+[[object.property]]
+name = "placement"
+type = "enum:placement"
+since = "0.2.0"
+default = "frame"
+
+# Whether the canvas still exists in the compositor's tree.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# How many steps of the update pass (refresh, arrange, paint) have failed for this canvas and every canvas under it. A paint fails when
+# the shell's paint throws or the compositor refuses what is written. A screen that has to prove it is alive (the lock screen) reads
+# this before and after a frame: a count that grew is a frame that did not draw. Handlers do not count.
+[[object.property]]
+name = "failures"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Whether this canvas holds the keyboard focus.
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The natural width: what a width the canvas was never given reads as.
+[[object.property]]
+name = "natural_width"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The natural height: what a height the canvas was never given reads as.
+[[object.property]]
+name = "natural_height"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# What a shell implements of this canvas (`widget`): its refresh, arrange, paint, natural size and handlers. A shell that subclasses a
+# canvas in its own language sets this to the subclass.
+[[object.property]]
+name = "behaviour"
+type = "object:widget"
+since = "0.2.0"
+
+# Handles pointer events that reach the canvas, before they go up to its parent. Answer `true` to stop them there.
+[[object.property]]
+name = "on_pointer"
+type = "callback:pointer_handler"
+since = "0.2.0"
+
+# Handles keys that reach the canvas, before they go up to its parent. Answer `true` to stop them there.
+[[object.property]]
+name = "on_key"
+type = "callback:key_handler"
+since = "0.2.0"
+
+# Sets the width back to the content's natural width.
+[[object.method]]
+name = "clear_width"
+since = "0.2.0"
+
+# Sets the height back to the content's natural height.
+[[object.method]]
+name = "clear_height"
+since = "0.2.0"
+
+# Puts `child` last among this canvas's children. A child that was somewhere else is moved. A canvas cannot be its own ancestor.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "child"
+type = "object:canvas"
+
+# Removes and destroys `child`, including its descendants.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "child"
+type = "object:canvas"
+
+# Mounts this canvas as the last child of a node that is not a canvas, such as a client's window.
+[[object.method]]
+name = "mount"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "parent"
+type = "uint"
+
+# Mounts this canvas at the root, above every window, for overlays such as menus, dialogs or bars.
+[[object.method]]
+name = "mount_top"
+since = "0.2.0"
+
+# Gives this canvas the seat's keyboard focus: the keys go to its handlers here and up through its parents.
+[[object.method]]
+name = "focus"
+since = "0.2.0"
+
+# Whether `other` is this canvas or one of its descendants.
+[[object.method]]
+name = "contains"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "other"
+type = "object:canvas"
+
+# Asks for the canvas to be updated in the next turn, for a shell whose own state changed in a way the library cannot see.
+[[object.method]]
+name = "invalidate"
+since = "0.2.0"
+
+# The operations the canvas paints by itself, as the library draws it: what `widget.paint` falls back on and may extend.
+[[object.method]]
+name = "paint_default"
+since = "0.2.0"
+returns = "list<object:paint_op>"
+
+# Places the children as the library does (a box in a row or a column, a grid in cells): what `widget.arrange` falls back on.
+[[object.method]]
+name = "arrange_default"
+since = "0.2.0"
+
+# Maps a point of this canvas to logical screen pixels by adding the offsets of this canvas and its parents.
+[[object.method]]
+name = "to_global"
+since = "0.2.0"
+returns = "object:ui_point"
+
+[[object.method.param]]
+name = "x"
+type = "double"
+
+[[object.method.param]]
+name = "y"
+type = "double"
+
+# A pointer event reached this canvas (target or an ancestor of it, before a handler stopped it). Told from the next turn.
+[[object.signal]]
+name = "pointer"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "event"
+type = "object:ui_pointer_event"
+
+# A key reached this canvas, told from the next turn.
+[[object.signal]]
+name = "key"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "event"
+type = "object:ui_key_event"
+
+# The canvas gained or lost the keyboard focus.
+[[object.signal]]
+name = "focus_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "focused"
+type = "bool"
+
+# The canvas's node went, with its window or by `destroy`: the canvas is no longer alive.
+[[object.signal]]
+name = "gone"
+since = "0.2.0"
+
+# A canvas that fills itself and lays its child boxes out: a `row` or a `column` is a small flexbox, the main axis in order with `gap`
+# between and `padding` around; a child with `grow` takes its share of what is left; every child is stretched across the other axis.
+# Children that are not boxes stay where they are.
+[[object]]
+name = "box"
+since = "0.2.0"
+base = "canvas"
+retained = true
+
+# How the box arranges its child boxes.
+[[object.property]]
+name = "direction"
+type = "enum:direction"
+since = "0.2.0"
+default = "none"
+
+# Logical-pixel space between arranged children.
+[[object.property]]
+name = "gap"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Logical-pixel space around arranged children.
+[[object.property]]
+name = "padding"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Relative share of the main-axis space left over in the parent's row or column; zero keeps the child's own size.
+[[object.property]]
+name = "grow"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The background colour: `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
+[[object.property]]
+name = "fill"
+type = "string"
+since = "0.2.0"
+default = "#00000000"
+
+# The corner radius in logical pixels.
+[[object.property]]
+name = "radius"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Places children in a near-square grid of equal cells, with `padding` around the grid and `gap` between cells. Cell sizes are rounded
+# down to whole pixels; the spare pixels stay along the right and bottom edges.
+[[object]]
+name = "grid"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# Text: a box that paints one string and takes the size of that string.
+[[object]]
+name = "text"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# The string.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+
+# The font size in logical pixels.
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.2.0"
+default = 14.0
+
+# The text colour.
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+default = "#cdd6f4"
+
+# The font name.
+[[object.property]]
+name = "font"
+type = "string"
+since = "0.2.0"
+default = "sans"
+
+# Whether to shorten text wider than the canvas: it ends with an ellipsis.
+[[object.property]]
+name = "ellipsize"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The size of the string as the library's painter lays it out, measured at once.
+[[object.property]]
+name = "metrics"
+type = "object:text_metrics"
+since = "0.2.0"
+readonly = true
+
+# The baseline's distance from the top of the first line, in logical pixels.
+[[object.property]]
+name = "ascent"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The string that is drawn: the whole text, or the part that fits the width with an ellipsis when `ellipsize` is on.
+[[object.method]]
+name = "shown"
+since = "0.2.0"
+returns = "string"
+
+# A box that paints one icon from the installed icon theme, at `size` logical pixels square unless its node has another size.
+[[object]]
+name = "icon"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# The icon's name in the theme.
+[[object.property]]
+name = "icon"
+type = "string"
+since = "0.2.0"
+
+# The icon's size in logical pixels.
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.2.0"
+default = 16.0
+
+# The icon's colour.
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+default = "#cdd6f4"
+
+# A handle on a hook the toolkit runs (`ui.on_frame`, `ui.on_request`).
+[[object]]
+name = "ui_hook"
+since = "0.2.0"
+retained = true
+
+# Stops the hook. Removing it twice does nothing.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+
+# The session values the toolkit shares and its hooks, all functions of the class.
+[[object]]
+name = "ui"
+since = "0.2.0"
+
+# Milliseconds on a clock that only moves forward.
+[[object.method]]
+name = "now"
+since = "0.2.0"
+function = true
+returns = "double"
+
+# The node that holds the seat's keyboard focus, or zero when none does.
+[[object.method]]
+name = "focused"
+since = "0.2.0"
+function = true
+returns = "uint"
+
+# Gives the seat's keyboard focus to a window or a canvas by node, or takes it away with zero.
+[[object.method]]
+name = "focus"
+since = "0.2.0"
+function = true
+
+[[object.method.param]]
+name = "node"
+type = "uint"
+
+# Whether the session is locked or about to lock.
+[[object.method]]
+name = "locked"
+since = "0.2.0"
+function = true
+returns = "bool"
+
+# The pointer's place in logical screen pixels, or none when the tree has no seat.
+[[object.method]]
+name = "pointer"
+since = "0.2.0"
+function = true
+returns = "object:ui_point"
+
+# The size of the primary screen in logical pixels, or none when there is no screen.
+[[object.method]]
+name = "screen"
+since = "0.2.0"
+function = true
+returns = "object:ui_size"
+
+# What a titlebar click does, as the seat configures it: `double_click`, `middle_click` or `right_click`. Empty when the tree has no seat.
+[[object.method]]
+name = "seat_action"
+since = "0.2.0"
+function = true
+returns = "string"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+
+# How many canvases are alive. For tests and diagnostics.
+[[object.method]]
+name = "canvas_count"
+since = "0.2.0"
+function = true
+returns = "uint"
+
+# Runs `hook` once each frame of the toolkit, after the events are delivered and before the canvases update.
+[[object.method]]
+name = "on_frame"
+since = "0.2.0"
+function = true
+returns = "object:ui_hook"
+
+[[object.method.param]]
+name = "hook"
+type = "callback:frame_hook"
+
+# Runs `hook` for each request the compositor makes of a window (its `menu`).
+[[object.method]]
+name = "on_request"
+since = "0.2.0"
+function = true
+returns = "object:ui_hook"
+
+[[object.method.param]]
+name = "hook"
+type = "callback:request_hook"

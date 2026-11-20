@@ -61,6 +61,13 @@ mod state;
 mod style;
 mod table;
 mod turn;
+mod ui;
 mod workspace;
 
 pub use exports::{gnoblin_std_abi_version, gnoblin_std_get_api, gnoblin_std_last_error};
+
+/// What a test of the toolkit may change (the measurer of text). Not part of the library's interface: it is built for this crate's own
+/// tests, which enable the feature through a development dependency on the crate itself.
+#[cfg(feature = "testing")]
+#[doc(hidden)]
+pub use ui::testing as ui_testing;
