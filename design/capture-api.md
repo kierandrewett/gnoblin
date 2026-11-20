@@ -361,7 +361,7 @@ Risks, in order of size:
    window id's string and is merely copied onto the node.
 
 Findings: E-flat is about eight and a half days on the compositor side, and about fourteen with XR and the spike's findings, and it
-gives windows without effects. E-full is about twelve to sixteen more. It is the right route only if the shell's rounded corners, borders
+gives windows without effects. E-full is four to eight days more. It is the right route only if the shell's rounded corners, borders
 and shadow are not required in the headset, or if the owner accepts the longer route. Nothing was implemented.
 
 ## Needs Kieran
