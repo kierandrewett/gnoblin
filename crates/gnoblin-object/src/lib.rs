@@ -17,6 +17,7 @@ pub mod catalog;
 pub mod client;
 mod error;
 pub mod server;
+pub mod typed;
 mod value;
 pub mod wire;
 

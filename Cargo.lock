@@ -1591,6 +1591,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-fixture-object-probe"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+ "gnoblin-object",
+ "gnoblin-sdkgen",
+]
+
+[[package]]
 name = "gnoblin-fixture-runtime-test"
 version = "0.2.0-alpha.0"
 dependencies = [

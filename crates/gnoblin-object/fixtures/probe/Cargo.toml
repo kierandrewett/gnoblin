@@ -1,0 +1,19 @@
+[package]
+name = "gnoblin-fixture-object-probe"
+description = "Test fixture: a catalog with an enum, a record, a list, a closure property, an interface, a static function and a signal, rendered by gnoblin-sdkgen into the library's static tables and the typed Rust API, and served by gnoblin-object, so the generated code is compiled and run end to end."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-core-abi = { path = "../../../gnoblin-core-abi" }
+gnoblin-object = { path = "../.." }
+
+[build-dependencies]
+# The catalog and the typed API are generated at build time and never committed.
+gnoblin-sdkgen = { path = "../../../gnoblin-sdkgen" }
+
+[lints]
+workspace = true

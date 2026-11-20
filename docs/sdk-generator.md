@@ -72,14 +72,39 @@ A generated file starts with a banner that names the generator, the target and t
 protocol (`GnoblinObjectApi`, [the ABI page](abi-compatibility.md)). Their catalogs are schema files beside the ABI crates,
 `crates/gnoblin-core-abi/schema/` and `crates/gnoblin-std-abi/schema/`, one file per module, each with `local = true`. A local file may use
 the keys a compositor file may not: `kind` (`handle`, `record`, `interface`, `service`), `ctor`, `retained`, `[[enum]]`, `[[callback]]`,
-`returns`, `required` and `default = "native"` on a method of an interface, `python = { dunder = ".." }`, `inert`, `abi = "fn:<name>"`,
+`returns`, `required` and `default = "native"` on a method of an interface, `optional` on a property (a record may leave the field out),
+`python = { dunder = ".." }`, `inert`, `abi = "fn:<name>"`,
 `export = { js, py, rust }`, and a `base` of another namespace's class. The wire never carries such a namespace and the `gnoblin`
 catalog hash (`gnoblin_catalog_hash`) does not include it; the namespace has a hash of its own (`Catalog::namespace_fingerprint`), which
 its object table reports.
 
-| Target    | Writes                                                                                               | Consumed by                                    |
-| --------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `objects` | `rust-objects/{model,std}_catalog.rs`: the static `CATALOG` of each namespace and its `CATALOG_HASH` | `build.rs` of `gnoblin-core-impl`, `-std-impl` |
+| Target       | Writes                                                                                               | Consumed by                                    |
+| ------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `objects`    | `rust-objects/{model,std}_catalog.rs`: the static `CATALOG` of each namespace and its `CATALOG_HASH` | `build.rs` of `gnoblin-core-impl`, `-std-impl` |
+| `object-api` | `rust-objects/{model,std}_api.rs`: the typed Rust API of each namespace, over the protocol's client  | `build.rs` of `gnoblin-core`, `gnoblin-std`    |
+
+The typed Rust API (`gnoblin_core::objects`, `gnoblin_std::objects`; a shell gets the handle from `g.objects()` and `std.objects()`) is one
+Rust type for each catalog type:
+
+- an **enum** is a Rust enum whose discriminants are the ids the protocol numbers its values with (`ALL`, `as_str`);
+- a **record** is a struct of its properties in catalog order. A field with a schema default starts at it, an `optional` field is an
+  `Option` that starts as `None`, and any other field is always there: a record that has some is made with `new`, and one that has none
+  has `Default`;
+- a **handle** or a **service** is a struct that holds a reference and releases it when dropped: a constructor (`new`, or `get` for a
+  service), a getter and a setter for each property (an object or a record reads as an `Option`), a method for each method, an associated
+  function that takes the `Objects` for each `function`, and `on_<signal>` and `on_<property>_changed` listeners that end when the
+  returned guard is dropped (`keep` lets one last until the generation ends);
+- an **interface** is a struct of handlers, one boxed closure per method (an `Option` of one for a method the library has a native
+  default for), and `implement` makes the object the library calls them through;
+- a **callback** type is a Rust closure wherever a property, a constructor or a method takes one.
+
+The ids of a class are looked up by name the first time a call needs them, so a shell built against an older catalog runs against a newer
+library and fails only on a name the library lacks. A member whose type names a class of another namespace is refused at build time with a
+message that says so: a typed reference across two libraries needs both libraries' `Objects`, which no catalog needs yet.
+
+A crate that serves a catalog of its own, as a test fixture, renders the same two files with `gnoblin_sdkgen::emit_catalog_for_build`
+(`crates/gnoblin-object/fixtures/probe` covers one class of every kind, so the generated tables and the generated typed API are compiled
+and run by its tests).
 
 A library implements the classes of its catalog with a `gnoblin_object::server::Builder` (`crates/gnoblin-std-impl/src/object/`), and the
 two-way completeness test of the library (`Library::problems`) fails when a class or a member of the catalog has no implementation, or an

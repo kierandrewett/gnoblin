@@ -142,6 +142,7 @@ const CLIENT_SIDE: &[&str] = &[
 const SDK: &[&str] = &[
     "gnoblin-core-abi",
     "gnoblin-macros",
+    "gnoblin-object",
     "gnoblin-core",
     "gnoblin-std-abi",
     "gnoblin-std-dyn",
@@ -150,7 +151,7 @@ const SDK: &[&str] = &[
 
 /// The part of [`SDK`] that belongs to core. `gnoblin-std` sits above it, so it may name them; nothing
 /// below std may name `gnoblin-std` (see [`std_below_core`]).
-const SDK_CORE: &[&str] = &["gnoblin-core-abi", "gnoblin-macros", "gnoblin-core"];
+const SDK_CORE: &[&str] = &["gnoblin-core-abi", "gnoblin-macros", "gnoblin-object", "gnoblin-core"];
 
 /// The implementation tier: the cdylibs that carry the C ABI symbols and the only crates besides the
 /// existing FFI shims that may contain `unsafe` (see [`impl_unsafe`]). Nothing links one as a normal
@@ -1341,6 +1342,8 @@ const SDKGEN_ALLOWED: &[&str] = &["gnoblin-schema", "gnoblin-core-abi", "gnoblin
 /// rendered files), so the generator is never part of a shell, a library or the session.
 const SDKGEN_USERS: &[&str] = &[
     "gnoblin-core",
+    "gnoblin-std",
+    "gnoblin-fixture-object-probe",
     "gnoblin-std-dyn",
     "gnoblin-js",
     "gnoblin-runtime-python",

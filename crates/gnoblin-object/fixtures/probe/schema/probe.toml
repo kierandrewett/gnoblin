@@ -1,0 +1,257 @@
+# The `probe` namespace: one class of every kind the object protocol has, so the generated tables and the generated typed API are
+# compiled and run by `tests/typed.rs`. It is a fixture: no library of the desktop serves it.
+namespace = "probe"
+version = "0.1.0"
+local = true
+
+# A closed set of names. `half-tone` needs a Rust name the mechanical conversion makes.
+[[enum]]
+name = "shade"
+since = "0.1.0"
+values = ["light", "dark", "half-tone"]
+
+# A closure the shell gives a property: it takes a number and answers one.
+[[callback]]
+name = "tick"
+since = "0.1.0"
+returns = "int"
+
+[[callback.param]]
+name = "x"
+type = "int"
+
+# A value: two numbers with defaults, an optional label, and an enum with a default.
+[[object]]
+name = "point"
+since = "0.1.0"
+kind = "record"
+
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.1.0"
+default = 0.0
+
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.1.0"
+default = 0.0
+
+[[object.property]]
+name = "label"
+type = "string"
+since = "0.1.0"
+optional = true
+
+[[object.property]]
+name = "shade"
+type = "enum:shade"
+since = "0.1.0"
+default = "dark"
+
+# A record with fields that are always there, which a value of it is made with.
+[[object]]
+name = "span"
+since = "0.1.0"
+kind = "record"
+
+[[object.property]]
+name = "start"
+type = "double"
+since = "0.1.0"
+
+[[object.property]]
+name = "end"
+type = "double"
+since = "0.1.0"
+
+[[object.property]]
+name = "closed"
+type = "bool"
+since = "0.1.0"
+optional = true
+
+# What a probe asks the shell: the shell implements it, and the library calls it from its turn.
+[[object]]
+name = "paint"
+since = "0.1.0"
+kind = "interface"
+
+[[object.method]]
+name = "colour"
+since = "0.1.0"
+returns = "string"
+required = true
+
+[[object.method]]
+name = "size"
+since = "0.1.0"
+returns = "double"
+default = "native"
+
+[[object.method]]
+name = "scaled"
+since = "0.1.0"
+returns = "double"
+default = "native"
+
+[[object.method.param]]
+name = "factor"
+type = "double"
+
+# The class under test.
+[[object]]
+name = "probe"
+since = "0.1.0"
+kind = "handle"
+ctor = ["count"]
+
+[[object.property]]
+name = "count"
+type = "int"
+since = "0.1.0"
+default = 0
+
+[[object.property]]
+name = "shade"
+type = "enum:shade"
+since = "0.1.0"
+default = "light"
+
+[[object.property]]
+name = "origin"
+type = "object:point"
+since = "0.1.0"
+
+[[object.property]]
+name = "names"
+type = "list<string>"
+since = "0.1.0"
+
+[[object.property]]
+name = "on_tick"
+type = "callback:tick"
+since = "0.1.0"
+
+[[object.property]]
+name = "painter"
+type = "object:paint"
+since = "0.1.0"
+
+[[object.property]]
+name = "last"
+type = "int"
+since = "0.1.0"
+readonly = true
+
+[[object.property]]
+name = "last_colour"
+type = "string"
+since = "0.1.0"
+readonly = true
+
+[[object.method]]
+name = "add"
+since = "0.1.0"
+returns = "int"
+
+[[object.method.param]]
+name = "a"
+type = "int"
+
+[[object.method.param]]
+name = "b"
+type = "int"
+
+# Greets `name`; `loud` is optional.
+[[object.method]]
+name = "greet"
+since = "0.1.0"
+returns = "string"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "loud"
+type = "bool"
+optional = true
+
+# The distance of a point from the origin.
+[[object.method]]
+name = "reach"
+since = "0.1.0"
+returns = "double"
+
+[[object.method.param]]
+name = "from"
+type = "object:point"
+
+# The length of a span, one more when it is closed.
+[[object.method]]
+name = "length_of"
+since = "0.1.0"
+returns = "double"
+
+[[object.method.param]]
+name = "span"
+type = "object:span"
+
+# A point made from the probe's count.
+[[object.method]]
+name = "mark"
+since = "0.1.0"
+returns = "object:point"
+
+# The sum of the x of the points.
+[[object.method]]
+name = "total"
+since = "0.1.0"
+returns = "double"
+
+[[object.method.param]]
+name = "points"
+type = "list<object:point>"
+
+# Tells `on_tick` about `x` from the next turn, and then the `ticked` signal.
+[[object.method]]
+name = "fire"
+since = "0.1.0"
+
+[[object.method.param]]
+name = "x"
+type = "int"
+
+# Asks the painter for its colour from the next turn, and keeps the answer in `last_colour`.
+[[object.method]]
+name = "paint"
+since = "0.1.0"
+
+# The value held between two numbers.
+[[object.method]]
+name = "clamp"
+since = "0.1.0"
+function = true
+returns = "int"
+
+[[object.method.param]]
+name = "value"
+type = "int"
+
+[[object.method.param]]
+name = "low"
+type = "int"
+
+[[object.method.param]]
+name = "high"
+type = "int"
+
+[[object.signal]]
+name = "ticked"
+since = "0.1.0"
+
+[[object.signal.field]]
+name = "x"
+type = "int"

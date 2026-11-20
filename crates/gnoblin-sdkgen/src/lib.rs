@@ -27,6 +27,7 @@
 pub mod abi_c;
 mod layouts;
 mod model;
+mod object_api;
 mod objects;
 mod python;
 mod python_std;
@@ -84,6 +85,7 @@ pub fn targets() -> Vec<Box<dyn Target>> {
         Box::new(python::PythonTarget),
         Box::new(typescript::TypeScriptTarget),
         Box::new(objects::ObjectsTarget),
+        Box::new(object_api::ObjectApiTarget),
     ]
 }
 
@@ -268,6 +270,47 @@ pub fn emit_for_build(wanted: &[&str]) -> Vec<String> {
             std::process::exit(1);
         }
     }
+}
+
+/// What the `build.rs` of a crate that serves a catalog of its own calls (a test fixture, not a library of the desktop): renders the
+/// static catalog (`rust-objects/<stem>_catalog.rs`) and the typed API (`rust-objects/<stem>_api.rs`) of the namespace in the schema
+/// files under `dirs`, relative to the crate, into `OUT_DIR`. The namespace is the one `dirs` declare.
+pub fn emit_catalog_for_build(dirs: &[&str], stem: &str) {
+    if let Err(error) = emit_catalog(dirs, stem) {
+        eprintln!("[sdkgen] {error}");
+        std::process::exit(1);
+    }
+}
+
+fn emit_catalog(dirs: &[&str], stem: &str) -> Result<(), String> {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").map_err(|_| "CARGO_MANIFEST_DIR is not set".to_owned())?;
+    let out = std::env::var("OUT_DIR").map_err(|_| "OUT_DIR is not set".to_owned())?;
+    let paths: Vec<PathBuf> = dirs.iter().map(|dir| Path::new(&manifest).join(dir)).collect();
+    for path in &paths {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    let refs: Vec<&Path> = paths.iter().map(PathBuf::as_path).collect();
+    let catalog = gnoblin_schema::Catalog::load_dirs(&refs, &[])
+        .map_err(|error| format!("the catalog does not load: {error}"))?;
+    let namespaces = catalog.namespaces();
+    let [namespace] = namespaces.as_slice() else {
+        return Err(format!(
+            "expected one namespace under {dirs:?}, found {}",
+            namespaces.len()
+        ));
+    };
+    let files = vec![
+        (
+            format!("rust-objects/{stem}_catalog.rs"),
+            objects::render(&catalog, namespace)?,
+        ),
+        (
+            format!("rust-objects/{stem}_api.rs"),
+            object_api::render(&catalog, namespace)?,
+        ),
+    ];
+    write_files(Path::new(&out), &files)?;
+    Ok(())
 }
 
 fn emit(wanted: &[&str]) -> Result<Vec<String>, String> {

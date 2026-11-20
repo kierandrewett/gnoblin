@@ -23,11 +23,7 @@ impl Target for ObjectsTarget {
     fn generate(&self, spec: &SdkSpec) -> Result<Vec<File>, String> {
         let mut files = Vec::new();
         for namespace in spec.objects.namespaces() {
-            let stem = match namespace.as_str() {
-                "gnoblin.model" => "model",
-                "gnoblin.std" => "std",
-                other => return Err(format!("no library serves the namespace `{other}`")),
-            };
+            let stem = stem_of(&namespace)?;
             files.push(File {
                 path: format!("rust-objects/{stem}_catalog.rs"),
                 comment: Some(Comment::Slashes),
@@ -38,15 +34,40 @@ impl Target for ObjectsTarget {
     }
 }
 
+/// The file stem of the namespace a library serves, which names its generated files (`rust-objects/<stem>_catalog.rs`).
+pub(super) fn stem_of(namespace: &Namespace) -> Result<&'static str, String> {
+    match namespace.as_str() {
+        "gnoblin.model" => Ok("model"),
+        "gnoblin.std" => Ok("std"),
+        other => Err(format!("no library serves the namespace `{other}`")),
+    }
+}
+
+/// The members of the base class of `object` when it belongs to another namespace, in the ids they have there, and that namespace.
+/// A class of one library may extend a class the other serves; the derived catalog lists these members first.
+pub(super) fn foreign_base<'a>(catalog: &'a Catalog, object: &ObjectType) -> Option<(Namespace, Vec<Member<'a>>)> {
+    let (home, bare) = object.base.as_deref()?.rsplit_once('.')?;
+    let home = Namespace::parse(home).ok()?;
+    let by_name: BTreeMap<&'a str, &'a ObjectType> = catalog
+        .schemas()
+        .iter()
+        .filter(|schema| schema.namespace == home)
+        .flat_map(|schema| schema.objects.iter())
+        .map(|candidate| (candidate.name.as_str(), candidate))
+        .collect();
+    let members = flatten(&by_name, by_name.get(bare)?);
+    Some((home, members))
+}
+
 /// One member of a class, before it is written.
-enum Member<'a> {
+pub(super) enum Member<'a> {
     Property(&'a Property),
     Method(&'a Method),
     Signal(&'a Signal),
 }
 
 impl Member<'_> {
-    fn name(&self) -> &str {
+    pub(super) fn name(&self) -> &str {
         match self {
             Member::Property(property) => &property.name,
             Member::Method(method) => &method.name,
@@ -56,7 +77,7 @@ impl Member<'_> {
 }
 
 /// The members of `object` as ids number them: its base class's first, then its own.
-fn flatten<'a>(by_name: &BTreeMap<&str, &'a ObjectType>, object: &'a ObjectType) -> Vec<Member<'a>> {
+pub(super) fn flatten<'a>(by_name: &BTreeMap<&str, &'a ObjectType>, object: &'a ObjectType) -> Vec<Member<'a>> {
     let mut list = match object.base.as_deref() {
         Some(base) if !base.contains('.') => by_name.get(base).map(|base| flatten(by_name, base)).unwrap_or_default(),
         _ => Vec::new(),
@@ -259,7 +280,7 @@ fn flags_source(flags: &[&str]) -> String {
     }
 }
 
-fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String, String> {
+pub(super) fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String, String> {
     let objects: BTreeMap<&str, &ObjectType> = catalog
         .objects(namespace)
         .map(|object| (object.name.as_str(), object))
@@ -285,27 +306,16 @@ fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String, String> {
             ObjectKind::Interface => "CLASS_INTERFACE",
             ObjectKind::Service => "CLASS_SERVICE",
         };
+        // The base class may belong to another library: its members come first, with the ids they have there, and the derived class
+        // forwards them. Their types are the base namespace's.
         let mut foreign = Vec::new();
-        let foreign_base = object
-            .base
-            .as_deref()
-            .and_then(|base| base.rsplit_once('.'))
-            .and_then(|(home, bare)| Namespace::parse(home).ok().map(|home| (home, bare)));
-        if let Some((home, bare)) = foreign_base {
-            // The base class belongs to another library: its members come first, with the ids they have there, and the derived
-            // class forwards them. Their types are the base namespace's.
-            let by_name: BTreeMap<&str, &ObjectType> = catalog
-                .objects(&home)
-                .map(|candidate| (candidate.name.as_str(), candidate))
+        if let Some((home, base_members)) = foreign_base(catalog, object) {
+            types.namespace = home;
+            foreign = base_members
+                .iter()
+                .map(|member| member_source(&mut types, member))
                 .collect();
-            if let Some(base) = by_name.get(bare) {
-                types.namespace = home.clone();
-                foreign = flatten(&by_name, base)
-                    .iter()
-                    .map(|member| member_source(&mut types, member))
-                    .collect();
-                types.namespace = namespace.clone();
-            }
+            types.namespace = namespace.clone();
         }
         let foreign_members = foreign.len();
         let mut members = foreign;
@@ -363,4 +373,93 @@ fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String, String> {
         classes.into_values().collect::<Vec<_>>().join(",\n    ")
     );
     Ok(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use gnoblin_schema::{Catalog, Namespace};
+
+    use super::render;
+    use crate::object_api;
+
+    fn write(dir: &Path, name: &str, text: &str) {
+        fs::create_dir_all(dir).expect("a directory");
+        fs::write(dir.join(name), text).expect("a schema file");
+    }
+
+    /// Two namespaces: `lib.a` serves `thing`, and `lib.b` serves `fancy`, which extends it. `extra` is added to `thing`.
+    fn catalog(extra: &str) -> (tempfile::TempDir, Catalog) {
+        let root = tempfile::tempdir().expect("a directory");
+        let a = root.path().join("a");
+        let b = root.path().join("b");
+        write(
+            &a,
+            "thing.toml",
+            &format!(
+                "namespace = \"lib.a\"\nversion = \"0.1.0\"\nlocal = true\n\n[[object]]\nname = \"thing\"\nsince = \"0.1.0\"\nkind = \"handle\"\n\n\
+                 [[object.property]]\nname = \"count\"\ntype = \"int\"\nsince = \"0.1.0\"\n\n\
+                 [[object.method]]\nname = \"bump\"\nsince = \"0.1.0\"\nreturns = \"int\"\n{extra}"
+            ),
+        );
+        write(
+            &b,
+            "fancy.toml",
+            "namespace = \"lib.b\"\nversion = \"0.1.0\"\nlocal = true\n\n[[object]]\nname = \"fancy\"\nsince = \"0.1.0\"\nkind = \"handle\"\nbase = \"lib.a.thing\"\n\n\
+             [[object.property]]\nname = \"label\"\ntype = \"string\"\nsince = \"0.1.0\"\n",
+        );
+        let catalog = Catalog::load_dirs(&[a.as_path(), b.as_path()], &[]).expect("the catalogs load together");
+        (root, catalog)
+    }
+
+    #[test]
+    fn a_class_that_extends_another_namespaces_class_lists_the_base_members_first() {
+        let (_root, catalog) = catalog("");
+        let derived = Namespace::parse("lib.b").expect("a namespace");
+        let text = render(&catalog, &derived).expect("the derived catalog renders");
+        assert!(
+            text.contains("foreign_members: 2"),
+            "the base's two members are the base library's:\n{text}"
+        );
+        let at = |name: &str| {
+            text.find(&format!("name: {name:?}, kind: abi::MEMBER"))
+                .unwrap_or_else(|| panic!("`{name}` is missing:\n{text}"))
+        };
+        assert!(
+            at("count") < at("bump") && at("bump") < at("label"),
+            "base members first, in the base's order:\n{text}"
+        );
+
+        let typed = object_api::render(&catalog, &derived).expect("the typed API renders");
+        for member in ["pub fn count(", "pub fn bump(", "pub fn label("] {
+            assert!(
+                typed.contains(member),
+                "`{member}` is a method of the derived class:\n{typed}"
+            );
+        }
+        let ids = typed
+            .find("p_count: go::typed::property")
+            .expect("an id for the base property");
+        assert!(
+            ids < typed
+                .find("p_label: go::typed::property")
+                .expect("an id for its own property")
+        );
+    }
+
+    #[test]
+    fn the_typed_api_refuses_a_base_member_that_names_a_class_of_the_other_namespace() {
+        let (_root, catalog) =
+            catalog("\n[[object.method]]\nname = \"twin\"\nsince = \"0.1.0\"\nreturns = \"object:thing\"\n");
+        let derived = Namespace::parse("lib.b").expect("a namespace");
+        let refused = object_api::render(&catalog, &derived).expect_err("a typed reference across two libraries");
+        assert!(
+            refused.contains("twin") && refused.contains("another namespace"),
+            "the message names the member and the reason: {refused}"
+        );
+        // The catalog tables carry the type either way: the library that serves the base checks it.
+        render(&catalog, &derived).expect("the tables render");
+    }
 }
