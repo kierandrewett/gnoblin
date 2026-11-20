@@ -5,8 +5,7 @@
 //! and turned, and the shell is sent nothing for the View. With `capture` the shell is sent the View's edges and the
 //! client nothing. With `input` unset (`none`) the View is a miss and the pointer reaches what lies under it.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use gnoblin_backend::InputEvent;
 use gnoblin_render::transaction::TreeValue;

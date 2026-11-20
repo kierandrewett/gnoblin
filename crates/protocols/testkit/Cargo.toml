@@ -1,0 +1,29 @@
+[package]
+name = "gnoblin-wayland-testkit"
+description = "The real-client harness the Wayland protocol crates' tests share: a headless session on a socket of its own, and a client that binds the globals a test exercises."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# The session under test.
+gnoblin-wayland = { path = "../../gnoblin-wayland" }
+gnoblin-backend = { path = "../../gnoblin-backend" }
+gnoblin-config = { path = "../../gnoblin-config" }
+gnoblin-types.workspace = true
+gnoblin-render = { path = "../../gnoblin-render" }
+gnoblin-render-frame = { path = "../../gnoblin-render-frame" }
+gnoblin-secret.workspace = true
+# The stock window manager the sessions run, so a suite acts on the desktop users get.
+gnoblin-std-wm = { path = "../../gnoblin-std-wm" }
+# The real client: a `wayland-client` connection over the session's own socket proves the round trip.
+wayland-client = "0.31.14"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+wayland-protocols-plasma = { version = "0.3.12", features = ["client"] }
+tempfile = "3.23.0"

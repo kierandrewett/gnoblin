@@ -12,10 +12,10 @@
 //! module). The host here is a second implementation of the data-device protocols only in the sense that it is not the
 //! nested backend; a different host (Sway, Weston) is run against the same scenarios by `scripts/real-host-conformance.sh`.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 mod nested_host;
-mod session;
+use gnoblin_wayland_testkit::session;
 
 use std::io::Read;
 use std::os::fd::AsFd;
@@ -28,93 +28,10 @@ use gnoblin_backend::nested::{Nested, NestedConfig};
 use gnoblin_backend::{Backend, SelectionTarget};
 use gnoblin_wayland::{Config, NewWindowFocus, Server, WmOptions};
 use wayland_client::protocol::{wl_data_device_manager, wl_data_source};
-use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
-use wayland_protocols::wp::primary_selection::zv1::client::{
-    zwp_primary_selection_device_manager_v1, zwp_primary_selection_device_v1, zwp_primary_selection_offer_v1,
-    zwp_primary_selection_source_v1,
-};
+use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_device_manager_v1;
 
 use nested_host::{Probe, Session as HostSession};
-use session::{App, CLIPBOARD_BYTES, Client, TIMEOUT};
-
-// ---- a primary selection client --------------------------------------------------------------------------------------
-
-impl Dispatch<zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1, ()> for App {
-    fn event(
-        _: &mut Self,
-        _: &zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1,
-        _: zwp_primary_selection_device_manager_v1::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
-}
-
-impl Dispatch<zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, ()> for App {
-    fn event(
-        state: &mut Self,
-        _: &zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1,
-        event: zwp_primary_selection_device_v1::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        match event {
-            zwp_primary_selection_device_v1::Event::DataOffer { offer } => {
-                state.primary_offers.insert(offer.id().protocol_id(), Vec::new());
-            }
-            zwp_primary_selection_device_v1::Event::Selection { id } => {
-                state.primary = id
-                    .as_ref()
-                    .and_then(|offer| state.primary_offers.get(&offer.id().protocol_id()).cloned());
-                state.primary_offer = id;
-            }
-            _ => {}
-        }
-    }
-
-    wayland_client::event_created_child!(App, zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, [
-        zwp_primary_selection_device_v1::EVT_DATA_OFFER_OPCODE =>
-            (zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, ()),
-    ]);
-}
-
-impl Dispatch<zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, ()> for App {
-    fn event(
-        state: &mut Self,
-        offer: &zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1,
-        event: zwp_primary_selection_offer_v1::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        if let zwp_primary_selection_offer_v1::Event::Offer { mime_type } = event {
-            state
-                .primary_offers
-                .entry(offer.id().protocol_id())
-                .or_default()
-                .push(mime_type);
-        }
-    }
-}
-
-impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()> for App {
-    fn event(
-        state: &mut Self,
-        _: &zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1,
-        event: zwp_primary_selection_source_v1::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        if let zwp_primary_selection_source_v1::Event::Send { mime_type, fd } = event {
-            state.primary_sends.push(mime_type);
-            let mut file = std::fs::File::from(fd);
-            let _ = std::io::Write::write_all(&mut file, CLIPBOARD_BYTES);
-        }
-    }
-}
+use session::{CLIPBOARD_BYTES, Client, TIMEOUT};
 
 // ---- the rig ---------------------------------------------------------------------------------------------------------
 

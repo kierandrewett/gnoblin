@@ -42,11 +42,8 @@ use gnoblin_wayland::{
 use gnoblin_xwayland::{Capabilities, Handle, Settings, Status, Xwayland};
 
 /// The stand-in shell the window-request tests of `gnoblin-wayland` use: it holds the tree, reads what the compositor
-/// publishes and writes the answers a real shell writes. It is the same file, so the two suites cannot drift apart.
-#[path = "../../gnoblin-wayland/tests/session/shell.rs"]
-#[allow(dead_code)]
-mod shell;
-use shell::Shell;
+/// publishes and writes the answers a real shell writes. It is the same code, so the two suites cannot drift apart.
+use gnoblin_wayland_testkit::session::shell::Shell;
 
 /// How long a test waits for a state before failing.
 const TIMEOUT: Duration = Duration::from_secs(20);

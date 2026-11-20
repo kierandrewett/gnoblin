@@ -21,8 +21,7 @@
 //! the lock's View pictures in the unit tests of `src/gpu_memory.rs`, and the idle cost of the published numbers in
 //! the `gnoblin` crate's `a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens`.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::thread;
 use std::time::{Duration, Instant};

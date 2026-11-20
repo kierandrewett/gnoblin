@@ -11,11 +11,11 @@
 //! drawn after it (another surface committed later), so an absent surface means "the frame had it to draw and did not"
 //! and not "the frame was not made yet".
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
+use gnoblin_wayland_testkit::session::frame::Answers;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -25,8 +25,6 @@ use gnoblin_types::{Point, Rect};
 use gnoblin_wayland::TreeHooks;
 use session::shell::Shell;
 use session::{App, BTN_LEFT, Client, Handle, LayerWindow, PopupPlace, Session};
-use wayland_client::protocol::wl_callback;
-use wayland_client::{Connection, Dispatch, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 type Layer = zwlr_layer_shell_v1::Layer;
@@ -199,24 +197,6 @@ fn place_window(session: &Handle, title: &str, rect: Rect, colour: [u8; 4]) -> C
     session.control.move_window(id, rect);
     session.wait_for(|observation| observation.titled(title).is_some_and(|window| window.geometry == rect));
     client
-}
-
-/// How many frame callbacks a client has been answered.
-type Answers = Arc<AtomicU32>;
-
-impl Dispatch<wl_callback::WlCallback, Answers> for App {
-    fn event(
-        _: &mut Self,
-        _: &wl_callback::WlCallback,
-        event: wl_callback::Event,
-        answers: &Answers,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        if let wl_callback::Event::Done { .. } = event {
-            answers.fetch_add(1, Ordering::SeqCst);
-        }
-    }
 }
 
 fn answered(answers: &Answers) -> u32 {

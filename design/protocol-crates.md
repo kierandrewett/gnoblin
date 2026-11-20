@@ -11,6 +11,7 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `OutputHost`), the aggregate `gnoblin-wayland-protocols` (the `ALL` table), `xtask/protocols.toml`,
   `cargo xtask protocol-crates [--check]`, and the deps rules `protocol-layering` and `protocol-root`;
 - `access` moved into the api crate, and `Registrar` carries the roster (`Registrar::filter`);
+- the real-client harness is the crate `gnoblin-wayland-testkit` (`crates/protocols/testkit`): the headless session on a socket of its own, the client that binds the globals a test exercises, the stock window manager, and the client halves of the protocols whose events a test reads (tablet, KDE decoration, primary selection, workspaces, frame callbacks). `gnoblin-wayland`'s integration tests and the Xwayland test depend on it as a development dependency;
 - the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 50 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
   `zwp-relative-pointer-v1`, `zwp-idle-inhibit-v1`, `xdg-system-bell-v1`, `xdg-toplevel-icon-v1`,
   `xdg-toplevel-tag-v1`, `xdg-dialog-v1`, `wl-output`, `wl-shm`, `zwp-primary-selection-v1`, `wp-content-type-v1`,
@@ -21,8 +22,7 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
 Not yet done: the capture family (`capture_shared`, `image_copy_session`, `zwlr_screencopy_v1`, `ext_image_copy_capture_v1`,
 `ext_image_capture_source_v1`, `capture_dmabuf`),
 the `gnoblin_view_source_v1` and `capture_views` modules (they wait for the owner's decision on view source),
-ProtoMissing's five protocols, the real-client test move and `gnoblin-wayland-testkit`, the advertised-globals test, and
-deleting `protocols/mod.rs` with the last of them. What each one needs first is under
+the move of each protocol's real-client tests into its crate, and deleting `protocols/mod.rs` with the last of them. What each one needs first is under
 [What blocks the rest](#what-blocks-the-rest).
 
 Two decisions made while doing the work differ from the text below. The table lives in `xtask/protocols.toml`, not in

@@ -10,8 +10,7 @@
 //! name and read none of it back, so a surface's layer, its zone, its keyboard and its popups are the protocol's
 //! alone. Each of these passes on the tree before the registry went and on the tree after it.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::thread;
 use std::time::{Duration, Instant};

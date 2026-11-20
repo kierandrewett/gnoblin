@@ -5,8 +5,8 @@
 //! the seat's keymap while it is in use, so each test is a protocol-level check: what the
 //! server accepts, refuses, or ends the connection over.
 
+use gnoblin_wayland_testkit::stock;
 mod owned;
-mod stock;
 
 use std::io::{Seek, SeekFrom, Write};
 use std::os::fd::{AsFd, BorrowedFd};

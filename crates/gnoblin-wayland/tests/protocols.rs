@@ -29,7 +29,7 @@
 //!   `a_keyboard_repeat_committed_after_start_reaches_the_client`,
 //!   `a_layout_committed_after_start_reaches_the_client` — `keyboard`
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use gnoblin_secret::SecretText;
 use std::io::{Read, Seek};

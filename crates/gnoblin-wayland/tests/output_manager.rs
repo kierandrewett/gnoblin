@@ -3,8 +3,8 @@
 //! The composition root publishes the headless outputs as heads when the server starts, so
 //! a fresh manager announces them under the serial its first publish set.
 
+use gnoblin_wayland_testkit::stock;
 mod owned;
-mod stock;
 
 use std::collections::HashMap;
 use std::sync::Arc;

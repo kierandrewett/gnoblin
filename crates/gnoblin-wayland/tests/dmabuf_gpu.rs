@@ -18,7 +18,7 @@
 //! The behaviour that does not need a device (the protocol, the offer, every refusal, the surface
 //! life of a dmabuf window) is in `tests/dmabuf.rs` and runs everywhere.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;

@@ -5,7 +5,7 @@
 //! output and can never have one, so the loop returns a failure instead of serving nothing for ever. The headless
 //! backend states both through its handle, the same events a nested session's parent produces.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

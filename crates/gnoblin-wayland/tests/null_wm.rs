@@ -5,8 +5,7 @@
 //! applies a request nobody else decides, and a holder attached to the tree decides in its place, as it does over
 //! the stock provider.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::thread;
 use std::time::Duration;

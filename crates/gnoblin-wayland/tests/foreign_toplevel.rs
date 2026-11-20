@@ -7,8 +7,7 @@
 //! manager did — because a request that reaches the manager and a request that is
 //! merely acknowledged look identical from the protocol.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::thread;
 use std::time::{Duration, Instant};

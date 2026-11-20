@@ -14,8 +14,8 @@
 //! - a client of the innermost session draws into the host's screenshot, and a click on the host reaches it.
 
 mod nested_host;
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
+use gnoblin_wayland_testkit::stock;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;

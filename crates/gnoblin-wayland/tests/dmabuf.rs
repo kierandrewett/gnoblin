@@ -27,7 +27,7 @@
 //!   `a_refused_import_releases_nothing_it_did_not_take`,
 //!   `a_gpu_buffer_past_the_clients_limit_is_refused_before_the_importer_sees_it`
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::io::Read;
 use std::os::fd::{AsFd, OwnedFd};

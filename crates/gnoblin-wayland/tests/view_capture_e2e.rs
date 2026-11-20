@@ -13,9 +13,9 @@
 //! those are the only globals the role is shown. A capture that passes here passes with the
 //! restricted role, not with a role that merely sits beside the globals it uses.
 
+use gnoblin_wayland_testkit::stock;
 mod mock_gpu;
 mod owned;
-mod stock;
 
 use std::fs::File;
 use std::io::Write;

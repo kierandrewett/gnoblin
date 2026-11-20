@@ -3153,3 +3153,87 @@ left = "gnoblin-core::WindowRequest"
 right = "gnoblin-wayland-types::WindowRequest"
 kind = "same-name"
 reason = "the shell SDK's event names a request by its wire string for the shell to read; the compositor's is the typed ask that becomes that event, so the name is shared and the shape is not"
+
+[[allow]]
+left = "gnoblin-capture::Session"
+right = "gnoblin-wayland-testkit::Session"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-client::Client"
+right = "gnoblin-wayland-testkit::Client"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-compositor::Session"
+right = "gnoblin-wayland-testkit::Session"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-core-impl::Session"
+right = "gnoblin-wayland-testkit::Session"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-parity::Popup"
+right = "gnoblin-wayland-testkit::Popup"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-parity::Toplevel"
+right = "gnoblin-wayland-testkit::Toplevel"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-render-vulkan::App"
+right = "gnoblin-wayland-testkit::App"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-std::Client"
+right = "gnoblin-wayland-testkit::Client"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-wayland-testkit::Handle"
+right = "gnoblin-xwayland::Handle"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-wayland-testkit::Handle"
+right = "xdg-desktop-portal-gnoblin::Handle"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-wayland-testkit::Session"
+right = "xdg-desktop-portal-gnoblin::Session"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-wayland-testkit::Shell"
+right = "gnoblinctl::Shell"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-wayland-testkit::Window"
+right = "gnoblin-wm-api::Window"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-wayland::Session"
+right = "gnoblin-wayland-testkit::Session"
+kind = "same-name"
+reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"

@@ -6,8 +6,7 @@
 //! shell the window manager decides, as it always has. Each test asserts on both ends: what the shell was sent, and
 //! what the client was configured to.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::thread;
 use std::time::{Duration, Instant};

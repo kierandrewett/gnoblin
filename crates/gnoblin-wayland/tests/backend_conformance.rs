@@ -36,8 +36,8 @@ use gnoblin_render_frame::frame::Solid;
 use gnoblin_testkit::backend_status::{CellStatus, ColumnCheck, StatusTable};
 use gnoblin_types::{DeviceId, OutputId, Point, Rect, Scale};
 
+use gnoblin_wayland_testkit::stock;
 mod nested_host;
-mod stock;
 use nested_host::*;
 
 /// The design document: the table the code is held to is the committed one.

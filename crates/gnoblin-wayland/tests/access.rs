@@ -6,8 +6,7 @@
 //! ordinary socket, and one inside an application sandbox. Each test connects a real
 //! client on a real socket and asks what the registry answered.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::os::fd::AsFd;
 use std::os::unix::fs::PermissionsExt;

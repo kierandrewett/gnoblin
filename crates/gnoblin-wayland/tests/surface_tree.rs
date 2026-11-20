@@ -14,7 +14,7 @@
 //! popup hanging past a window's edge, or a layer behind its parent, is the kind of thing one renderer can get wrong
 //! that the frame the composer describes does not show.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::io::Write;
 use std::os::fd::AsFd;

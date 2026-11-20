@@ -26,11 +26,11 @@ use gnoblin_config::NestedDecorations;
 use gnoblin_render::transaction::TreeValue;
 use gnoblin_types::{DeviceId, OutputId, Point, Size};
 
+use gnoblin_wayland_testkit::stock;
 mod nested_host;
-mod stock;
 use nested_host::*;
 
-mod session;
+use gnoblin_wayland_testkit::session;
 use session::shell::Shell;
 
 const BORDER: i32 = FRAME_BORDER as i32;

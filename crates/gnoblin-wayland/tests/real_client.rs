@@ -17,7 +17,7 @@
 //! The tests below are the crate's "failure modes first" list, one to an item; the
 //! crate documentation names which test covers which mode.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;

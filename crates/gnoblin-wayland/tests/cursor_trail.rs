@@ -13,7 +13,7 @@
 //! The nested scenarios hold the parent's frame callbacks, which is the only way to make "the parent is behind" a
 //! fact of the test rather than a race: a session pointer moves faster than a parent answers frame callbacks.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

@@ -111,6 +111,8 @@ gnoblin-wayland-api = { path = "../protocols/api" }
 gnoblin-wayland-types = { path = "../protocols/types" }
 
 [dev-dependencies]
+# The real-client harness the protocol crates' tests share: the session on a socket of its own and the client that binds.
+gnoblin-wayland-testkit = { path = "../protocols/testkit" }
 # The stock window manager the test sessions run. A development edge only: this crate holds and links no stock provider
 # (design/modular-framework.md, 9.4), and a session with none runs `NullWm`.
 gnoblin-std-wm = { path = "../gnoblin-std-wm" }

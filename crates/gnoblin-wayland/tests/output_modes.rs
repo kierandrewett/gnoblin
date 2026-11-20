@@ -6,8 +6,7 @@
 //! and reads pixels back through the backend. A stand-in shell sends the `apply` calls over the tree and places
 //! windows. What it does not prove: a DRM modeset on hardware, or the GLES renderer's readback of a mirror.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::time::{Duration, Instant};
 

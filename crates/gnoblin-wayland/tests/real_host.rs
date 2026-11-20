@@ -13,8 +13,8 @@
 //! What a headless real host cannot show is named in `docs/backends.md`: it has no tablet, no pointer of the person's
 //! to lock, and (here) no GPU for the dmabuf path.
 
+use gnoblin_wayland_testkit::stock;
 mod nested_host;
-mod stock;
 
 use std::io::Read;
 use std::os::fd::OwnedFd;

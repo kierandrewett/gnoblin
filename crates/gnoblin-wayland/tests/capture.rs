@@ -16,7 +16,7 @@
 //! protocol finished, which is why every pixel test crops the region it cares about
 //! instead of trusting the protocol's `ready`.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::fs::File;
 use std::io::Write;

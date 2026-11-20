@@ -5,8 +5,7 @@
 //! data. The privileged managers are asserted from both sides of the socket the
 //! connection arrived on, which is the only thing that decides their visibility.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::io::Read;
 use std::os::fd::AsFd;

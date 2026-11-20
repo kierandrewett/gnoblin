@@ -16,8 +16,7 @@
 //! What it does not prove: the memory a driver holds for a buffer that is accepted (see `tests/gpu_memory_soak.rs` in
 //! the `gnoblin` crate for the series), and a real GPU's dmabuf import.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::thread;
 use std::time::{Duration, Instant};

@@ -6,8 +6,7 @@
 //! attach. The cases here are the same rule from a client that does not use the wlcs harness, plus the cases it must
 //! leave alone: an acknowledged surface, a surface whose `xdg_surface` is gone, and the null attach that unmaps.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use session::{Client, Session};
 use wayland_client::backend::WaylandError;

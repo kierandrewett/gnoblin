@@ -4,8 +4,8 @@
 //! sandboxed promise made here must not reach a test that expects an unprivileged
 //! client.
 
+use gnoblin_wayland_testkit::stock;
 mod owned;
-mod stock;
 
 use std::os::unix::net::UnixStream;
 

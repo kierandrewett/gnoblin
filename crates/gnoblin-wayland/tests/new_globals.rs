@@ -20,7 +20,7 @@
 //! Smithay posts a protocol error by closing the offending connection. The refusal test
 //! reads the error code the client receives and checks a second client still connects.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;

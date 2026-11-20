@@ -11,7 +11,7 @@
 //! (gVisor, no `/dev/dri`), so there it prints what was missing and returns; it is compiled and linked on every gate and
 //! only *run* on a machine with a GPU or a virtual one (`vkms`, `virtio-gpu`). A skip is deliberate and loud.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;

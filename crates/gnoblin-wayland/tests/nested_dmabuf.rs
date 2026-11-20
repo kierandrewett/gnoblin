@@ -17,9 +17,9 @@
 //! copy into a buffer it allocated: `gnoblin-render-gles`'s own tests and `tests/dmabuf_capture_gpu.rs` prove the copy on a
 //! machine with a GPU, and `docs/real-hardware-verification.md` lists the owner-run check of the whole path.
 
+use gnoblin_wayland_testkit::stock;
 mod mock_gpu;
 mod nested_host;
-mod stock;
 
 use std::fs::File;
 use std::os::unix::fs::FileExt;

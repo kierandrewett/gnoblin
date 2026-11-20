@@ -3,8 +3,7 @@
 //! (`from_launcher`). Both are published on the window's node, so a shell can centre a dialog in its parent and keep a
 //! launched window from stealing focus.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use gnoblin_render::transaction::TreeValue;
 use session::shell::Shell;

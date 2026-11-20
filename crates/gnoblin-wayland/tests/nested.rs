@@ -39,8 +39,8 @@ use gnoblin_output::DisplayMode;
 use gnoblin_render_frame::frame::Solid;
 use gnoblin_types::{DeviceId, OutputId, Point, Rect, Scale, Size};
 
+use gnoblin_wayland_testkit::stock;
 mod nested_host;
-mod stock;
 use nested_host::*;
 
 #[test]

@@ -4,19 +4,13 @@
 //! no menu: it publishes the address on the window's node, which is what a shell that shows a global menu reads, so
 //! each test reads the node's `appmenu_service` and `appmenu_path` through the shell stand-in.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use gnoblin_render::transaction::TreeValue;
 use gnoblin_types::NodeId;
 use session::shell::Shell;
 use session::{Client, Session};
-use wayland_protocols_plasma::appmenu::client::{
-    org_kde_kwin_appmenu::OrgKdeKwinAppmenu, org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager,
-};
-
-wayland_client::delegate_noop!(session::App: ignore OrgKdeKwinAppmenuManager);
-wayland_client::delegate_noop!(session::App: ignore OrgKdeKwinAppmenu);
+use wayland_protocols_plasma::appmenu::client::org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager;
 
 fn text(value: &str) -> TreeValue {
     TreeValue::Text(value.to_owned())

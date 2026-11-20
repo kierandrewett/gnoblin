@@ -2343,6 +2343,7 @@ dependencies = [
  "gnoblin-types",
  "gnoblin-wayland-api",
  "gnoblin-wayland-protocols",
+ "gnoblin-wayland-testkit",
  "gnoblin-wayland-types",
  "gnoblin-wm-api",
  "png",
@@ -2509,6 +2510,25 @@ dependencies = [
  "gnoblin-wayland-zwp-virtual-keyboard-v1",
  "gnoblin-wayland-zxdg-decoration-v1",
  "gnoblin-wayland-zxdg-output-v1",
+]
+
+[[package]]
+name = "gnoblin-wayland-testkit"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-backend",
+ "gnoblin-config",
+ "gnoblin-render",
+ "gnoblin-render-frame",
+ "gnoblin-secret",
+ "gnoblin-std-wm",
+ "gnoblin-types",
+ "gnoblin-wayland",
+ "tempfile",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-plasma",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]
@@ -2926,6 +2946,7 @@ dependencies = [
  "gnoblin-std-wm",
  "gnoblin-types",
  "gnoblin-wayland",
+ "gnoblin-wayland-testkit",
  "tempfile",
  "x11rb",
 ]

@@ -5,8 +5,7 @@
 //! `wp_fractional_scale_manager_v1` and the capture protocols, and pixels are read back through the backend. What it
 //! does not prove: scan-out on a DRM device and the GLES downscale pass (`gnoblin-render-gles`'s own tests do).
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::os::unix::net::UnixStream;
 use std::path::Path;

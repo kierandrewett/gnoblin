@@ -24,7 +24,7 @@
 //! A View of a GPU-backed window is tested in `tests/view_capture_e2e.rs` (`a_view_of_a_gpu_window_shows_its_real_pixels_to_every_reader`,
 //! `a_secure_gpu_window_never_reaches_a_capture_of_a_view`, the two cast tests).
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 mod mock_gpu;
 

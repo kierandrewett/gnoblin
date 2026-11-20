@@ -6,8 +6,8 @@
 //! output's state through [`HeadlessHandle`](gnoblin_backend::headless::HeadlessHandle)
 //! rather than trusting what the client was told.
 
+use gnoblin_wayland_testkit::stock;
 mod owned;
-mod stock;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};

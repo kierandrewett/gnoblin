@@ -10,7 +10,7 @@
 //! The last tests put a shell on the session's tree and have it choose the cursor (`Seat.cursor_*`): what is drawn is
 //! read back the same way, through the screencopy overlay.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::fs::File;
 use std::io::Write;

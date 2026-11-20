@@ -6,8 +6,7 @@
 //! the manager is `tests/access.rs`: the manager is in its `PRIVILEGED` list, so an application and a sandbox are
 //! refused it and the privileged socket is not.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
@@ -18,9 +17,6 @@ use wayland_client::protocol::wl_pointer;
 use wayland_protocols_wlr::virtual_pointer::v1::client::{
     zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1, zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1,
 };
-
-wayland_client::delegate_noop!(session::App: ignore ZwlrVirtualPointerManagerV1);
-wayland_client::delegate_noop!(session::App: ignore ZwlrVirtualPointerV1);
 
 /// Where a click inside the test window lands, as the window's surface sees it.
 const INSIDE: (f64, f64) = (100.0, 75.0);

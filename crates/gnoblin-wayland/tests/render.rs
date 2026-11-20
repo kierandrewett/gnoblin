@@ -32,7 +32,7 @@
 //! talks to the session through the control handle, which is `Send`, exactly as a
 //! test kit would.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::io::Write;
 use std::os::fd::AsFd;

@@ -8,8 +8,7 @@
 //! reaches. The composer's own cases (position, drawing, popups, Views) are `src/render/surface_tree_tests.rs`, and the
 //! pixels a real client draws are `tests/surface_tree.rs`.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::time::{Duration, Instant};
 

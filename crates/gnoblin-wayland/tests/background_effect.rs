@@ -4,8 +4,8 @@
 //! capability the bind announces, a region that is staged until `wl_surface.commit`,
 //! the unset that clears it, and a region that never reaches another surface.
 
+use gnoblin_wayland_testkit::stock;
 mod owned;
-mod stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

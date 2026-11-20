@@ -10,8 +10,8 @@
 //! exactly the capture globals, and a global it was never told about is refused when it guesses
 //! the name (`design/xr-extension.md`, G7).
 
+use gnoblin_wayland_testkit::stock;
 mod owned;
-mod stock;
 
 use gnoblin_wayland::ClientRole;
 use owned::protocols::gnoblin_view_source_v1::ext_image_capture_source_v1::ExtImageCaptureSourceV1;

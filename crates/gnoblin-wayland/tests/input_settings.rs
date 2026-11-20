@@ -6,7 +6,7 @@
 //! that arrive afterwards, and a device that goes away is forgotten. The headless backend records what each
 //! virtual device was given, so the test reads back what reached it and does not trust what was sent.
 
-mod stock;
+use gnoblin_wayland_testkit::stock;
 
 use std::thread;
 use std::time::{Duration, Instant};

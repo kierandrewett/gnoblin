@@ -24,6 +24,8 @@ gnoblin-config = { path = "../gnoblin-config" }
 # The real test: a headless `gnoblin-wayland` server with Xwayland inside it. A
 # development-only edge, so the shipped crate still does not link the Wayland engine.
 gnoblin-wayland = { path = "../gnoblin-wayland" }
+# The stand-in shell of the window-request tests, shared with `gnoblin-wayland`'s suites.
+gnoblin-wayland-testkit = { path = "../protocols/testkit" }
 # The stock window manager the test session runs, so an X11 window is placed and focused as on the desktop.
 gnoblin-std-wm = { path = "../gnoblin-std-wm" }
 # The tree's change and value types, which the node test reads from the batches the session

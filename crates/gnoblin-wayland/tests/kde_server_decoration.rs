@@ -5,51 +5,19 @@
 //! `default_mode`) and, where a shell is attached, what the shell was told (`decoration_wanted` and `decoration`
 //! on the window's node), the same two sides `tests/decoration.rs` reads.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use gnoblin_render::transaction::TreeValue;
 use session::shell::Shell;
-use session::{App, Client, Session, Window};
-use wayland_client::{Connection, Dispatch, QueueHandle};
+use session::{Client, Session, Window};
 use wayland_protocols_plasma::server_decoration::client::{
-    org_kde_kwin_server_decoration::{self as decoration, OrgKdeKwinServerDecoration},
-    org_kde_kwin_server_decoration_manager::{self as manager, OrgKdeKwinServerDecorationManager},
+    org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
+    org_kde_kwin_server_decoration_manager::OrgKdeKwinServerDecorationManager,
 };
 
 /// The protocol's `mode` values.
 const CLIENT: u32 = 1;
 const SERVER: u32 = 2;
-
-impl Dispatch<OrgKdeKwinServerDecorationManager, ()> for App {
-    fn event(
-        state: &mut Self,
-        _: &OrgKdeKwinServerDecorationManager,
-        event: manager::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        if let manager::Event::DefaultMode { mode } = event {
-            state.kde_default_mode = Some(mode);
-        }
-    }
-}
-
-impl Dispatch<OrgKdeKwinServerDecoration, ()> for App {
-    fn event(
-        state: &mut Self,
-        _: &OrgKdeKwinServerDecoration,
-        event: decoration::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        if let decoration::Event::Mode { mode } = event {
-            state.kde_modes.push(mode);
-        }
-    }
-}
 
 fn text(value: &str) -> TreeValue {
     TreeValue::Text(value.to_owned())

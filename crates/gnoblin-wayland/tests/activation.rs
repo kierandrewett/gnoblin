@@ -4,8 +4,7 @@
 //! an `activation-denied` observation — so these tests assert on both sides: what the
 //! focused window is, and what the session recorded about the request.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::thread;
 use std::time::Duration;

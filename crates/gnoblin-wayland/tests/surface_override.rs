@@ -12,63 +12,22 @@
 //! 4. A hidden popup that holds a grab is dismissed.
 //! 5. A locked session ignores the shell's placement, and gives it back at the unlock.
 
-mod stock;
-
-mod session;
+use gnoblin_wayland_testkit::session;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
 use gnoblin_render::transaction::TreeValue;
 use gnoblin_types::{DeviceId, NodeId, Point};
+use gnoblin_wayland_testkit::session::noops::Locked;
 use session::shell::Shell;
 use session::{Client, Handle, Popup, PopupPlace, Session, TIMEOUT, Window};
 use wayland_client::protocol::{wl_subcompositor, wl_subsurface, wl_surface};
-use wayland_client::{Connection, Dispatch, QueueHandle};
-use wayland_protocols::ext::session_lock::v1::client::{
-    ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1,
-};
+use wayland_protocols::ext::session_lock::v1::client::ext_session_lock_manager_v1;
 use wayland_protocols::xdg::shell::client::xdg_positioner;
-
-wayland_client::delegate_noop!(session::App: ignore wl_subcompositor::WlSubcompositor);
-wayland_client::delegate_noop!(session::App: ignore wl_subsurface::WlSubsurface);
-wayland_client::delegate_noop!(session::App: ignore ext_session_lock_manager_v1::ExtSessionLockManagerV1);
-
-/// Whether a lock object told its client `locked`.
-type Locked = Arc<AtomicBool>;
-
-impl Dispatch<ext_session_lock_v1::ExtSessionLockV1, Locked> for session::App {
-    fn event(
-        _: &mut Self,
-        _: &ext_session_lock_v1::ExtSessionLockV1,
-        event: ext_session_lock_v1::Event,
-        locked: &Locked,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        if let ext_session_lock_v1::Event::Locked = event {
-            locked.store(true, Ordering::SeqCst);
-        }
-    }
-}
-
-impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ()> for session::App {
-    fn event(
-        _: &mut Self,
-        surface: &ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
-        event: ext_session_lock_surface_v1::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        if let ext_session_lock_surface_v1::Event::Configure { serial, .. } = event {
-            surface.ack_configure(serial);
-        }
-    }
-}
 
 fn number(value: f64) -> TreeValue {
     TreeValue::Double(value)

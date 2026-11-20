@@ -52,7 +52,13 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
+pub mod frame;
+pub mod kde;
+pub mod noops;
+pub mod primary;
 pub mod shell;
+pub mod tablet;
+pub mod workspace;
 
 /// How long a test waits for a state before failing.
 pub const TIMEOUT: Duration = Duration::from_secs(10);

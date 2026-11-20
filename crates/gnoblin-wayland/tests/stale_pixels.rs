@@ -10,8 +10,7 @@
 //! asks it of the pointer's cursor, which a screenshot leaves out; this file asks it where the composer meets the
 //! session: window management and a scale change. The lock's reveal is in `session_lock.rs`.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::thread;
 use std::time::{Duration, Instant};

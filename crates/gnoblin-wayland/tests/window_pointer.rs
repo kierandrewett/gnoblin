@@ -5,8 +5,7 @@
 //! client as `wl_pointer` events. A window the shell places is on an output as a window the compositor places is, so
 //! its client hears `wl_surface.enter` and, when the shell hides it, `wl_surface.leave`.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use gnoblin_backend::InputEvent;
 use gnoblin_render::transaction::TreeValue;

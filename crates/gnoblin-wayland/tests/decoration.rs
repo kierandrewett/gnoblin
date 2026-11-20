@@ -4,8 +4,7 @@
 //! `decoration`). Every test runs a real client over a real socket and reads what the client was told and what the
 //! shell was told.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use gnoblin_render::transaction::TreeValue;
 use session::shell::Shell;

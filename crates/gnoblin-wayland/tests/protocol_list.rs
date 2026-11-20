@@ -14,8 +14,7 @@
 //! When it fails, the message names the row to add, change or remove. Adding a global to the compositor without a row
 //! here fails `every_advertised_global_is_documented`; the list cannot drift.
 
-mod session;
-mod stock;
+use gnoblin_wayland_testkit::session;
 
 use std::collections::BTreeMap;
 use std::path::Path;
