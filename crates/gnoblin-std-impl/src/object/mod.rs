@@ -7,6 +7,7 @@
 
 pub(crate) mod entry_model;
 mod focus;
+pub(crate) mod record;
 
 use gnoblin_core::LogLevel;
 use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinObjectApi};
@@ -48,6 +49,8 @@ fn build() -> Library {
     focus::register(&mut builder);
     crate::ui::register(&mut builder);
     crate::scene::register(&mut builder);
+    crate::style::objects::register(&mut builder);
+    crate::animation::objects::register(&mut builder);
     builder.finish(HOOKS)
 }
 

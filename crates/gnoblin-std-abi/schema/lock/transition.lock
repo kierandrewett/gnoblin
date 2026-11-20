@@ -1,0 +1,51 @@
+# The public surface of the `transition` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | rollback | () | 0.2.0
+callback | staged_work | () | 0.2.0
+
+enum | easing | values linear ease ease-in ease-out ease-in-out | 0.2.0
+enum | transition_state | values running finished cancelled | 0.2.0
+
+member | transition.abort | function () | 0.2.0
+member | transition.animate | function (node:uint, key:string, value:object:transition_value, options:object:transition_options) -> object:transition | 0.2.0
+member | transition.begin | function (options:object:transition_options, rollback?:callback:rollback) | 0.2.0
+member | transition.cancel | method () | 0.2.0
+member | transition.commit | function () -> object:transition | 0.2.0
+member | transition.duration | property double ro | 0.2.0
+member | transition.finished | signal (cancelled:bool) | 0.2.0
+member | transition.id | property uint ro | 0.2.0
+member | transition.pause | method () | 0.2.0
+member | transition.paused | property bool ro | 0.2.0
+member | transition.peek | function (node:uint, key:string) -> object:transition_value | 0.2.0
+member | transition.play | method () | 0.2.0
+member | transition.progress | property double rw | 0.2.0
+member | transition.release | function (node:uint, key:string) | 0.2.0
+member | transition.request | function (work:callback:staged_work, options?:object:transition_options, rollback?:callback:rollback) -> object:transition | 0.2.0
+member | transition.reverse | method () | 0.2.0
+member | transition.reversed | property bool ro | 0.2.0
+member | transition.running | property bool ro | 0.2.0
+member | transition.sample | function (easing:enum:easing, t:double) -> double | 0.2.0
+member | transition.set | function (node:uint, key:string, value:object:transition_value) | 0.2.0
+member | transition.state | property enum:transition_state ro | 0.2.0
+member | transition_options.autoplay | property bool rw | 0.2.0
+member | transition_options.delay | property double rw | 0.2.0
+member | transition_options.duration | property double rw | 0.2.0
+member | transition_options.easing | property enum:easing rw | 0.2.0
+member | transition_value.flag | property bool rw,optional | 0.2.0
+member | transition_value.node | property uint rw,optional | 0.2.0
+member | transition_value.number | property double rw,optional | 0.2.0
+member | transition_value.text | property string rw,optional | 0.2.0
+member | transition_value.triple | property list<double> rw,optional | 0.2.0
+
+object | transition | base none | 0.2.0
+object | transition_options | base none record | 0.2.0
+object | transition_value | base none record | 0.2.0

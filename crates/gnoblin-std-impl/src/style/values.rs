@@ -184,47 +184,111 @@ impl Prop {
     }
 }
 
+/// A list element as it arrives, before it is checked: what the wire form of an entry carries, whichever way it came (the table's
+/// `GnoblinStdStyleEntry` or a record of the object protocol).
+pub(crate) struct Draft<'a> {
+    pub(crate) kind: u32,
+    pub(crate) inset: bool,
+    pub(crate) a: f64,
+    pub(crate) b: f64,
+    pub(crate) c: f64,
+    pub(crate) d: f64,
+    pub(crate) color: &'a str,
+    pub(crate) source: &'a str,
+    pub(crate) params: &'a [f64],
+}
+
+/// Text a raw entry points at, or the failure for text that is not UTF-8.
+///
+/// # Safety
+///
+/// `ptr` must be null (with `len` zero) or point at `len` readable bytes that stay valid for the returned borrow.
+unsafe fn raw_text<'a>(ptr: *const u8, len: usize, path: &str, what: &str) -> Res<&'a str> {
+    if ptr.is_null() || len == 0 {
+        return Ok("");
+    }
+    // SAFETY: forwarded from the caller.
+    std::str::from_utf8(unsafe { std::slice::from_raw_parts(ptr, len) })
+        .map_err(|_| fail(&format!("{path}.{what}"), "must be UTF-8 text"))
+}
+
 /// The element a raw list entry stands for, checked, with `path` at the front of every failure.
 pub(crate) fn entry_in(list: ListProp, raw: &abi::GnoblinStdStyleEntry, path: &str) -> Res<Entry> {
-    let color = |what: &str| -> Res<Color> {
-        let text = if raw.color.ptr.is_null() || raw.color.len == 0 {
-            ""
-        } else {
-            // SAFETY: the caller of the table function guarantees the colour is `len` readable bytes.
-            std::str::from_utf8(unsafe { std::slice::from_raw_parts(raw.color.ptr, raw.color.len) })
-                .map_err(|_| fail(&format!("{path}.{what}"), "must be UTF-8 text"))?
-        };
-        colour(&format!("{path}.{what}"), text)
+    let uses_colour = matches!(raw.kind, abi::STD_ENTRY_BORDER | abi::STD_ENTRY_SHADOW);
+    let color = if uses_colour {
+        // SAFETY: the caller of the table function guarantees the colour is `len` readable bytes.
+        unsafe { raw_text(raw.color.ptr, raw.color.len, path, "color") }?
+    } else {
+        ""
     };
-    let field = |name: &str| format!("{path}.{name}");
-    match (list, raw.kind) {
-        (ListProp::Borders, abi::STD_ENTRY_BORDER) => Ok(Entry::Border {
-            width: non_negative(&field("width"), raw.a)?,
-            color: color("color")?,
-            offset: finite(&field("offset"), raw.b)?,
+    let shader = raw.kind == abi::STD_ENTRY_SHADER;
+    let source = if shader {
+        // SAFETY: the caller of the table function guarantees the source is `len` readable bytes.
+        unsafe { raw_text(raw.source.ptr, raw.source.len, path, "source") }?
+    } else {
+        ""
+    };
+    if shader && (raw.n_params > MAX_SHADER_PARAMS || (raw.n_params > 0 && raw.params.is_null())) {
+        return Err(fail(
+            &format!("{path}.params"),
+            &format!("holds at most {MAX_SHADER_PARAMS} numbers, got {}", raw.n_params),
+        ));
+    }
+    let params: &[f64] = if !shader || raw.n_params == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller of the table function guarantees `n_params` readable numbers at `params`.
+        unsafe { std::slice::from_raw_parts(raw.params, raw.n_params) }
+    };
+    entry_from(
+        list,
+        &Draft {
+            kind: raw.kind,
             inset: raw.inset != 0,
+            a: raw.a,
+            b: raw.b,
+            c: raw.c,
+            d: raw.d,
+            color,
+            source,
+            params,
+        },
+        path,
+    )
+}
+
+/// The element a draft stands for, checked, with `path` at the front of every failure.
+pub(crate) fn entry_from(list: ListProp, draft: &Draft<'_>, path: &str) -> Res<Entry> {
+    let color = || colour(&format!("{path}.color"), draft.color);
+    let field = |name: &str| format!("{path}.{name}");
+    match (list, draft.kind) {
+        (ListProp::Borders, abi::STD_ENTRY_BORDER) => Ok(Entry::Border {
+            width: non_negative(&field("width"), draft.a)?,
+            color: color()?,
+            offset: finite(&field("offset"), draft.b)?,
+            inset: draft.inset,
         }),
         (ListProp::Shadows, abi::STD_ENTRY_SHADOW) => Ok(Entry::Shadow {
-            x: finite(&field("x"), raw.a)?,
-            y: finite(&field("y"), raw.b)?,
-            blur: radius(&field("blur"), raw.c)?,
-            spread: spread(&field("spread"), raw.d)?,
-            color: color("color")?,
-            inset: raw.inset != 0,
+            x: finite(&field("x"), draft.a)?,
+            y: finite(&field("y"), draft.b)?,
+            blur: radius(&field("blur"), draft.c)?,
+            spread: spread(&field("spread"), draft.d)?,
+            color: color()?,
+            inset: draft.inset,
         }),
         (ListProp::Filter | ListProp::BackdropFilter, abi::STD_ENTRY_BLUR) => {
-            Ok(Entry::Blur(radius(&field("radius"), raw.a)?))
+            Ok(Entry::Blur(radius(&field("radius"), draft.a)?))
         }
         (ListProp::Filter | ListProp::BackdropFilter, abi::STD_ENTRY_SATURATE) => {
-            Ok(Entry::Saturate(grade(&field("amount"), raw.a)?))
+            Ok(Entry::Saturate(grade(&field("amount"), draft.a)?))
         }
         (ListProp::Filter | ListProp::BackdropFilter, abi::STD_ENTRY_BRIGHTNESS) => {
-            Ok(Entry::Brightness(grade(&field("amount"), raw.a)?))
+            Ok(Entry::Brightness(grade(&field("amount"), draft.a)?))
         }
         (ListProp::Filter | ListProp::BackdropFilter, abi::STD_ENTRY_CONTRAST) => {
-            Ok(Entry::Contrast(grade(&field("amount"), raw.a)?))
+            Ok(Entry::Contrast(grade(&field("amount"), draft.a)?))
         }
-        (ListProp::Filter | ListProp::BackdropFilter, abi::STD_ENTRY_SHADER) => shader_in(raw, path),
+        (ListProp::Filter | ListProp::BackdropFilter, abi::STD_ENTRY_SHADER) => shader_from(draft, path),
         (ListProp::Borders, _) => Err(fail(path, "must be a Border")),
         (ListProp::Shadows, _) => Err(fail(path, "must be a Shadow")),
         _ => Err(fail(
@@ -237,39 +301,27 @@ pub(crate) fn entry_in(list: ListProp, raw: &abi::GnoblinStdStyleEntry, path: &s
 /// A shader filter: WGSL source of at most [`MAX_SHADER_SOURCE_BYTES`] and at most [`MAX_SHADER_PARAMS`] finite numbers. Whether the
 /// source is valid WGSL is the compositor's to say (it checks the source before it accepts it); the library cannot, for it has no
 /// shader compiler.
-fn shader_in(raw: &abi::GnoblinStdStyleEntry, path: &str) -> Res<Entry> {
-    let source = if raw.source.ptr.is_null() || raw.source.len == 0 {
-        ""
-    } else {
-        // SAFETY: the caller of the table function guarantees the source is `len` readable bytes.
-        std::str::from_utf8(unsafe { std::slice::from_raw_parts(raw.source.ptr, raw.source.len) })
-            .map_err(|_| fail(&format!("{path}.source"), "must be UTF-8 text"))?
-    };
-    if source.trim().is_empty() || source.len() > MAX_SHADER_SOURCE_BYTES {
+fn shader_from(draft: &Draft<'_>, path: &str) -> Res<Entry> {
+    if draft.source.trim().is_empty() || draft.source.len() > MAX_SHADER_SOURCE_BYTES {
         return Err(fail(
             &format!("{path}.source"),
             &format!("must be WGSL of 1 to {MAX_SHADER_SOURCE_BYTES} bytes"),
         ));
     }
-    if raw.n_params > MAX_SHADER_PARAMS || (raw.n_params > 0 && raw.params.is_null()) {
+    if draft.params.len() > MAX_SHADER_PARAMS {
         return Err(fail(
             &format!("{path}.params"),
-            &format!("holds at most {MAX_SHADER_PARAMS} numbers, got {}", raw.n_params),
+            &format!("holds at most {MAX_SHADER_PARAMS} numbers, got {}", draft.params.len()),
         ));
     }
-    let numbers: &[f64] = if raw.n_params == 0 {
-        &[]
-    } else {
-        // SAFETY: the caller of the table function guarantees `n_params` readable numbers at `params`.
-        unsafe { std::slice::from_raw_parts(raw.params, raw.n_params) }
-    };
-    let params = numbers
+    let params = draft
+        .params
         .iter()
         .enumerate()
         .map(|(at, value)| finite(&format!("{path}.params[{at}]"), *value))
         .collect::<Res<Vec<f64>>>()?;
     Ok(Entry::Shader {
-        source: source.to_owned(),
+        source: draft.source.to_owned(),
         params,
     })
 }

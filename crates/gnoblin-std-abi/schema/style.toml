@@ -1,0 +1,908 @@
+# The `style` module of `gnoblin.std`: what a window looks like, set for every window, for a workspace, for a selection or for one window.
+#
+# A style holds only what was set on its scope. A property nobody set is inherited, from the scopes below it: every window's style, then
+# its workspace's, then the selections that hold it (a higher `priority` wins over a lower one, and of equal ones the selection that first
+# got a style is lower), then its own. Of each property the highest scope that sets it wins, and a list a scope sets replaces the
+# inherited list whole. A style is changed with `set`ting its properties, which are checked at once (a bad value is refused with the path
+# of the property, and changes nothing). What the compositor can draw of the resolved style is written to the window's node in the next
+# turn; what it cannot draw is kept in `warnings`.
+#
+# A style is one object for each scope. A property reads what the scope sets, and where it sets nothing, what it inherits. `is_set` says
+# which, and `unset` takes the property back to inheriting. A list is a value: read it, change it, write it back, or edit it in place
+# through its list object (`shadow_list`, `border_list` and `filter_list`), where the first change to a list the scope inherits makes a
+# copy that the scope owns, and the scopes it was copied from are not touched.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# A property of a style.
+[[enum]]
+name = "style_property"
+since = "0.2.0"
+values = ["opacity", "corner_radius", "background", "borders", "shadows", "filter", "backdrop_filter"]
+
+# What a filter does to the picture. A `blur` softens it, `saturate`, `brightness` and `contrast` grade its colours, and a `shader` is a
+# program of the shell's own.
+[[enum]]
+name = "filter_kind"
+since = "0.2.0"
+values = ["blur", "saturate", "brightness", "contrast", "shader"]
+
+# A shadow behind a window, or inside it with `inset`. `x` and `y` move it, `blur` softens its edge and `spread` grows it, all in pixels.
+[[object]]
+name = "shadow"
+since = "0.2.0"
+kind = "record"
+
+# The horizontal offset in pixels.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The vertical offset in pixels.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The blur radius in pixels, from 0 to 100.
+[[object.property]]
+name = "blur"
+type = "double"
+since = "0.2.0"
+default = 12.0
+
+# The spread in pixels, from -100 to 100.
+[[object.property]]
+name = "spread"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The colour as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`: translucent black until one is given.
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+default = "#00000080"
+
+# Draws the shadow inside the window.
+[[object.property]]
+name = "inset"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# One stroke around a window. Several make concentric rings, `offset` apart.
+[[object]]
+name = "border"
+since = "0.2.0"
+kind = "record"
+
+# The stroke's width in pixels, 0 or more.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# The colour as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`: white until one is given.
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+default = "#ffffff"
+
+# How far the ring is from the frame in pixels; below 0 it is moved inwards.
+[[object.property]]
+name = "offset"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Draws the stroke inside the frame.
+[[object.property]]
+name = "inset"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# A program of the shell's own, drawn over a window. `source` defines `fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) ->
+# vec4<f32>`: `c` is the window's premultiplied colour at `uv` (the window's rectangle, `(0, 0)` at the top left), `p` is `params` and `t`
+# is the time in seconds, and the source may call `backdrop(uv)` for the colour of what is behind the window. The compositor draws it
+# unless `compositor.user-shaders` is switched off (it is on by default); while it is off the window's `warnings` say so. The compositor
+# checks the source, and a source it refuses leaves the window's whole effect list as it was.
+[[object]]
+name = "shader"
+since = "0.2.0"
+kind = "record"
+
+# The WGSL source: not blank, at most 16 KiB.
+[[object.property]]
+name = "source"
+type = "string"
+since = "0.2.0"
+
+# The numbers the source reads as `p[0]` to `p[7]`: at most 8, each finite. Left out for none.
+[[object.property]]
+name = "params"
+type = "list<double>"
+since = "0.2.0"
+optional = true
+
+# One entry of a `filter` or `backdrop_filter` list: what it does is its `kind`. Of a `backdrop_filter` a `blur` is the one the compositor
+# draws.
+[[object]]
+name = "filter"
+since = "0.2.0"
+kind = "record"
+
+# What the filter does.
+[[object.property]]
+name = "kind"
+type = "enum:filter_kind"
+since = "0.2.0"
+
+# For a `blur`, the radius in pixels, from 0 to 100 (12 when left out). For `saturate`, `brightness` and `contrast`, the gain from 0 to 2,
+# where 1 changes nothing (1 when left out).
+[[object.property]]
+name = "amount"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# For a `shader`, the program. Any other kind has none.
+[[object.property]]
+name = "shader"
+type = "object:shader"
+since = "0.2.0"
+optional = true
+
+# The radius of a window's corners in pixels, each 0 or more: one for all of them as `all`, or one for each corner as the four fields
+# (every one of them is then required). Giving `all` with a corner is refused.
+[[object]]
+name = "corner_radius"
+since = "0.2.0"
+kind = "record"
+
+# One radius for every corner.
+[[object.property]]
+name = "all"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The top left corner.
+[[object.property]]
+name = "top_left"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The top right corner.
+[[object.property]]
+name = "top_right"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The bottom right corner.
+[[object.property]]
+name = "bottom_right"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The bottom left corner.
+[[object.property]]
+name = "bottom_left"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# What a style sets, as one value: a property left out is not set by it. `values` answers it for a style, and `assign` makes a style hold
+# exactly it.
+[[object]]
+name = "style_values"
+since = "0.2.0"
+kind = "record"
+
+# From 0 (invisible) to 1.
+[[object.property]]
+name = "opacity"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The corner radii.
+[[object.property]]
+name = "corner_radius"
+type = "object:corner_radius"
+since = "0.2.0"
+optional = true
+
+# A colour, or the empty text for no background.
+[[object.property]]
+name = "background"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The borders, in place of the inherited ones.
+[[object.property]]
+name = "borders"
+type = "list<object:border>"
+since = "0.2.0"
+optional = true
+
+# The shadows, in place of the inherited ones. The first is on top.
+[[object.property]]
+name = "shadows"
+type = "list<object:shadow>"
+since = "0.2.0"
+optional = true
+
+# The filters of the window's own picture, in place of the inherited ones.
+[[object.property]]
+name = "filter"
+type = "list<object:filter>"
+since = "0.2.0"
+optional = true
+
+# The filters of what is behind the window, in place of the inherited ones.
+[[object.property]]
+name = "backdrop_filter"
+type = "list<object:filter>"
+since = "0.2.0"
+optional = true
+
+# Which windows a selection holds: a field that is given must equal the window's, or for an `any_` field be one of its values. Fields of
+# one selection are all required to match.
+[[object]]
+name = "style_query"
+since = "0.2.0"
+kind = "record"
+
+# The window's id.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The application id.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The title.
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The id of the workspace the window is on.
+[[object.property]]
+name = "workspace"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Whether the window has the keyboard.
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Whether the window is fullscreen.
+[[object.property]]
+name = "fullscreen"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Whether the window is maximised.
+[[object.property]]
+name = "maximised"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Whether the window is minimised.
+[[object.property]]
+name = "minimised"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# The window's left edge.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The window's top edge.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The window's width.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The window's height.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# One of these ids.
+[[object.property]]
+name = "any_id"
+type = "list<string>"
+since = "0.2.0"
+optional = true
+
+# One of these application ids.
+[[object.property]]
+name = "any_app_id"
+type = "list<string>"
+since = "0.2.0"
+optional = true
+
+# One of these titles.
+[[object.property]]
+name = "any_title"
+type = "list<string>"
+since = "0.2.0"
+optional = true
+
+# Where each property of a window's resolved style came from: `default`, `global`, `workspace:<id>`, `where(<query>)` or `client`.
+[[object]]
+name = "style_origin"
+since = "0.2.0"
+kind = "record"
+
+# The scope the window's `opacity` comes from.
+[[object.property]]
+name = "opacity"
+type = "string"
+since = "0.2.0"
+
+# The scope the window's `corner_radius` comes from.
+[[object.property]]
+name = "corner_radius"
+type = "string"
+since = "0.2.0"
+
+# The scope the window's `background` comes from.
+[[object.property]]
+name = "background"
+type = "string"
+since = "0.2.0"
+
+# The scope the window's `borders` comes from.
+[[object.property]]
+name = "borders"
+type = "string"
+since = "0.2.0"
+
+# The scope the window's `shadows` comes from.
+[[object.property]]
+name = "shadows"
+type = "string"
+since = "0.2.0"
+
+# The scope the window's `filter` comes from.
+[[object.property]]
+name = "filter"
+type = "string"
+since = "0.2.0"
+
+# The scope the window's `backdrop_filter` comes from.
+[[object.property]]
+name = "backdrop_filter"
+type = "string"
+since = "0.2.0"
+
+# A window's resolved style: what every scope above it said, as plain values, and which scope each property came from. A value of it does
+# not change when the style does.
+[[object]]
+name = "computed_style"
+since = "0.2.0"
+kind = "record"
+
+# From 0 (transparent) to 1.
+[[object.property]]
+name = "opacity"
+type = "double"
+since = "0.2.0"
+
+# The corner radii: `all`, or the four corners.
+[[object.property]]
+name = "corner_radius"
+type = "object:corner_radius"
+since = "0.2.0"
+
+# The background colour, or the empty text for none.
+[[object.property]]
+name = "background"
+type = "string"
+since = "0.2.0"
+
+# The borders.
+[[object.property]]
+name = "borders"
+type = "list<object:border>"
+since = "0.2.0"
+
+# The shadows.
+[[object.property]]
+name = "shadows"
+type = "list<object:shadow>"
+since = "0.2.0"
+
+# The filters of the window's own picture.
+[[object.property]]
+name = "filter"
+type = "list<object:filter>"
+since = "0.2.0"
+
+# The filters of what is behind the window.
+[[object.property]]
+name = "backdrop_filter"
+type = "list<object:filter>"
+since = "0.2.0"
+
+# Where each property comes from.
+[[object.property]]
+name = "origin"
+type = "object:style_origin"
+since = "0.2.0"
+
+# The style of one scope: every window, a workspace's windows, a selection of windows or one window. There is one object for each scope,
+# and asking for a scope again gives it. Its functions work on windows by their node, which is what the window's `id` says as a number.
+[[object]]
+name = "style"
+since = "0.2.0"
+retained = true
+
+# What names the scope in a refusal: `gnoblin.clients.style`, `Client#42.style`.
+[[object.property]]
+name = "path"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# False for the style of a window that is gone: it still reads, and every change is refused.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# What a selection ranks by among the selections that style a window: higher wins, 0 until it is set. A scope that is not a selection has
+# none, and setting it is refused.
+[[object.property]]
+name = "priority"
+type = "double"
+since = "0.2.0"
+
+# From 0 (invisible) to 1: written to the window's node. Reads what the scope sets, else what it inherits (1 where nothing sets it).
+[[object.property]]
+name = "opacity"
+type = "double"
+since = "0.2.0"
+
+# The corner radii: one for all corners or one each. The compositor draws one radius for all; a window whose corners differ is told so in
+# `warnings`.
+[[object.property]]
+name = "corner_radius"
+type = "object:corner_radius"
+since = "0.2.0"
+
+# The background colour as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`, or the empty text for no background. The empty text is a value of
+# the scope: `unset` takes the property back to inheriting. Nothing draws it yet.
+[[object.property]]
+name = "background"
+type = "string"
+since = "0.2.0"
+
+# The borders, outermost first. Writing the list sets it whole; at most 8.
+[[object.property]]
+name = "borders"
+type = "list<object:border>"
+since = "0.2.0"
+
+# The shadows behind the window; the first is on top. Writing the list sets it whole; at most 8.
+[[object.property]]
+name = "shadows"
+type = "list<object:shadow>"
+since = "0.2.0"
+
+# The filters of the window's own picture. Nothing draws any but a `shader` yet. Writing the list sets it whole; at most 8.
+[[object.property]]
+name = "filter"
+type = "list<object:filter>"
+since = "0.2.0"
+
+# The filters of what is behind the window. A `blur` in it is the one the compositor draws. Writing the list sets it whole; at most 8.
+[[object.property]]
+name = "backdrop_filter"
+type = "list<object:filter>"
+since = "0.2.0"
+
+# Whether the scope sets `property`, rather than inheriting it.
+[[object.method]]
+name = "is_set"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "property"
+type = "enum:style_property"
+
+# Takes `property` back to inheriting.
+[[object.method]]
+name = "unset"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "property"
+type = "enum:style_property"
+
+# Takes every property back to inheriting.
+[[object.method]]
+name = "reset"
+since = "0.2.0"
+
+# What the scope sets, as one value: a property it inherits is left out.
+[[object.method]]
+name = "values"
+since = "0.2.0"
+returns = "object:style_values"
+
+# Makes the scope set exactly `values`: every property it left out is taken back to inheriting. A value that is refused leaves the scope
+# as it was.
+[[object.method]]
+name = "assign"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "values"
+type = "object:style_values"
+
+# The style of the selection of this scope's windows that match `query`. The selection follows the windows as they come, go and change.
+# `priority` ranks it among the selections that style a window (higher wins, 0 when left out). Only a scope of windows (every window, a
+# workspace's, a selection) has selections.
+[[object.method]]
+name = "where"
+since = "0.2.0"
+returns = "object:style"
+
+[[object.method.param]]
+name = "query"
+type = "object:style_query"
+
+[[object.method.param]]
+name = "priority"
+type = "double"
+optional = true
+
+# The shadows as a list to edit in place.
+[[object.method]]
+name = "shadow_list"
+since = "0.2.0"
+returns = "object:shadow_list"
+
+# The borders as a list to edit in place.
+[[object.method]]
+name = "border_list"
+since = "0.2.0"
+returns = "object:border_list"
+
+# The filters of the window's own picture as a list to edit in place.
+[[object.method]]
+name = "filter_list"
+since = "0.2.0"
+returns = "object:filter_list"
+
+# The filters of what is behind the window as a list to edit in place.
+[[object.method]]
+name = "backdrop_filter_list"
+since = "0.2.0"
+returns = "object:filter_list"
+
+# The style of every window, `gnoblin.clients.style`.
+[[object.method]]
+name = "of_clients"
+since = "0.2.0"
+function = true
+returns = "object:style"
+
+# The style of the window with this node. A window the library does not know is refused.
+[[object.method]]
+name = "of_client"
+since = "0.2.0"
+function = true
+returns = "object:style"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# The style of the windows of the workspace with this id. A workspace the library does not hold is refused.
+[[object.method]]
+name = "of_workspace"
+since = "0.2.0"
+function = true
+returns = "object:style"
+
+[[object.method.param]]
+name = "workspace"
+type = "string"
+
+# The resolved style of the window with this node: what its scopes say, resolved. A window that is gone answers what it last had.
+[[object.method]]
+name = "computed"
+since = "0.2.0"
+function = true
+returns = "object:computed_style"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# What the window's style asks for that nothing draws, one sentence each: a border or a content filter no renderer draws, corners that
+# differ, a shader the compositor refuses. Empty when all of it is drawn.
+[[object.method]]
+name = "warnings"
+since = "0.2.0"
+function = true
+returns = "list<string>"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# One list of a style, edited in place. The first change to a list the scope inherits copies it into the scope, so the scopes it came from
+# are not touched. A change that is refused (a bad entry, a ninth entry) leaves the list as it was. What the list holds is read as `items`
+# of its own kind.
+[[object]]
+name = "style_list"
+since = "0.2.0"
+
+# The style the list belongs to.
+[[object.property]]
+name = "style"
+type = "object:style"
+since = "0.2.0"
+readonly = true
+
+# Which list it is.
+[[object.property]]
+name = "property"
+type = "enum:style_property"
+since = "0.2.0"
+readonly = true
+
+# How many entries it holds now.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Whether the scope sets the list, rather than inheriting it.
+[[object.property]]
+name = "overridden"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Takes out the entry at `index`, counted from the end when negative.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+# Makes the scope's list empty: the scope sets no entries, which hides what it inherits.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# Takes the list back to inheriting.
+[[object.method]]
+name = "unset"
+since = "0.2.0"
+
+# The shadows of a style, edited in place.
+[[object]]
+name = "shadow_list"
+since = "0.2.0"
+base = "style_list"
+
+# The shadows: the scope's own, else the inherited ones. Writing sets the list whole.
+[[object.property]]
+name = "items"
+type = "list<object:shadow>"
+since = "0.2.0"
+
+# The entry at `index`, counted from the end when negative.
+[[object.method]]
+name = "at"
+since = "0.2.0"
+returns = "object:shadow"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+# Appends an entry and answers it. Refused when the list holds 8 already.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+returns = "object:shadow"
+
+[[object.method.param]]
+name = "entry"
+type = "object:shadow"
+
+# Puts an entry in before `index`, which may be the length to append.
+[[object.method]]
+name = "insert"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+[[object.method.param]]
+name = "entry"
+type = "object:shadow"
+
+# Replaces the entry at `index`, counted from the end when negative.
+[[object.method]]
+name = "replace"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+[[object.method.param]]
+name = "entry"
+type = "object:shadow"
+
+# The borders of a style, edited in place.
+[[object]]
+name = "border_list"
+since = "0.2.0"
+base = "style_list"
+
+# The borders: the scope's own, else the inherited ones. Writing sets the list whole.
+[[object.property]]
+name = "items"
+type = "list<object:border>"
+since = "0.2.0"
+
+# The entry at `index`, counted from the end when negative.
+[[object.method]]
+name = "at"
+since = "0.2.0"
+returns = "object:border"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+# Appends an entry and answers it. Refused when the list holds 8 already.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+returns = "object:border"
+
+[[object.method.param]]
+name = "entry"
+type = "object:border"
+
+# Puts an entry in before `index`, which may be the length to append.
+[[object.method]]
+name = "insert"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+[[object.method.param]]
+name = "entry"
+type = "object:border"
+
+# Replaces the entry at `index`, counted from the end when negative.
+[[object.method]]
+name = "replace"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+[[object.method.param]]
+name = "entry"
+type = "object:border"
+
+# The filters of a style, edited in place.
+[[object]]
+name = "filter_list"
+since = "0.2.0"
+base = "style_list"
+
+# The filters: the scope's own, else the inherited ones. Writing sets the list whole.
+[[object.property]]
+name = "items"
+type = "list<object:filter>"
+since = "0.2.0"
+
+# The entry at `index`, counted from the end when negative.
+[[object.method]]
+name = "at"
+since = "0.2.0"
+returns = "object:filter"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+# Appends an entry and answers it. Refused when the list holds 8 already.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+returns = "object:filter"
+
+[[object.method.param]]
+name = "entry"
+type = "object:filter"
+
+# Puts an entry in before `index`, which may be the length to append.
+[[object.method]]
+name = "insert"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+[[object.method.param]]
+name = "entry"
+type = "object:filter"
+
+# Replaces the entry at `index`, counted from the end when negative.
+[[object.method]]
+name = "replace"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+[[object.method.param]]
+name = "entry"
+type = "object:filter"

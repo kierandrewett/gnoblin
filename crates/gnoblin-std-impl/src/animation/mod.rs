@@ -5,5 +5,6 @@
 
 pub(crate) mod easing;
 pub(crate) mod engine;
+pub(crate) mod objects;
 pub(crate) mod staging;
 pub(crate) mod table;

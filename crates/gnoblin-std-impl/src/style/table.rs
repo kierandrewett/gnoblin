@@ -7,11 +7,11 @@ use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinNode, GnoblinStr};
 use gnoblin_std_abi as sabi;
 use gnoblin_std_abi::{GnoblinStdProp, GnoblinStdStyle, GnoblinStdStyleEntries, GnoblinStdStyleEntry};
 
-use super::cascade::{Computed, Scalar, Scope, Store};
+use super::cascade::{Computed, Scalar, Scope};
+use super::edit::ScalarIn;
 use super::values::{self, Entry, Prop, Radii, ScalarProp};
 use crate::animation::table::prop_struct;
 use crate::error::{Fail, Res};
-use crate::state::{State, next_id};
 // The style functions need no desktop: they open the library's model alone (`state::lookup_quiet`).
 use crate::table::{call, fill_out, lent, mutate_quiet as mutate, put, read_ext, read_quiet as read};
 
@@ -35,34 +35,6 @@ thread_local! {
     };
     /// The text a read lent.
     static LENT_TEXT: RefCell<String> = const { RefCell::new(String::new()) };
-}
-
-/// The scope a style handle is for, or why there is none.
-fn scope_of(st: &State, style: GnoblinStdStyle) -> Res<Scope> {
-    st.styles
-        .stores
-        .get(&style)
-        .map(|store| store.scope)
-        .ok_or_else(|| Fail::stale(format!("style {style} does not exist")))
-}
-
-/// Fails for a style whose client is gone.
-fn guard(st: &State, scope: Scope) -> Res<()> {
-    match scope {
-        Scope::Client(node) if !crate::nodes::alive(&st.g, node) => Err(Fail::new(
-            abi::E_NO_SUCH_NODE,
-            format!("{}: the client is gone", st.style_path(scope)),
-        )),
-        _ => Ok(()),
-    }
-}
-
-/// The store of `style`, for a change.
-fn store_mut(st: &mut State, style: GnoblinStdStyle) -> Res<&mut Store> {
-    st.styles
-        .stores
-        .get_mut(&style)
-        .ok_or_else(|| Fail::stale(format!("style {style} does not exist")))
 }
 
 /// Lends `entries` as an array valid until the next call on this thread.
@@ -165,43 +137,7 @@ pub(crate) unsafe extern "C" fn style_scope(
             sabi::STD_STYLE_SCOPE_CLIENT => Scope::Client(target),
             other => return Err(Fail::type_error(format!("{other} is not a style scope"))),
         };
-        let id = mutate(ctx, |st| {
-            match scope {
-                Scope::Collection(id) => {
-                    let coll = st
-                        .colls
-                        .get(&id)
-                        .ok_or_else(|| Fail::stale(format!("collection {id} does not exist")))?;
-                    if coll.kind != gnoblin_std_abi::STD_COLLECTION_CLIENTS {
-                        return Err(Fail::type_error("style: only a collection of clients has a style"));
-                    }
-                }
-                Scope::Client(node) => {
-                    if !st.rec.contains_key(&node) || !crate::nodes::alive(&st.g, node) {
-                        return Err(Fail::new(abi::E_NO_SUCH_NODE, format!("Client#{node} is not a client")));
-                    }
-                }
-            }
-            if let Some(existing) = st.styles.by_scope.get(&scope) {
-                return Ok(*existing);
-            }
-            let id = next_id();
-            st.styles.stores.insert(
-                id,
-                Store {
-                    scope,
-                    scalars: Default::default(),
-                    lists: Default::default(),
-                },
-            );
-            st.styles.by_scope.insert(scope, id);
-            if let Scope::Collection(coll) = scope
-                && st.colls.get(&coll).is_some_and(|coll| coll.parent.is_some())
-            {
-                st.styles.selections.push(coll);
-            }
-            Ok(id)
-        })?;
+        let id = mutate(ctx, |st| st.style_for(scope))?;
         // SAFETY: the caller guarantees `out` is null or a writable handle.
         unsafe { put(out, id) }?;
         Ok(abi::E_OK)
@@ -221,23 +157,21 @@ pub(crate) unsafe extern "C" fn style_set(
         // SAFETY: the caller guarantees `value` is null or a readable struct; its text is read below, for the call.
         let raw = unsafe { read_ext(value, "a style value") }?;
         mutate(ctx, |st| {
-            let scope = scope_of(st, style)?;
-            guard(st, scope)?;
+            let scope = st.style_scope_of(style)?;
+            st.style_guard(scope)?;
             let path = format!("{}.{}", st.style_path(scope), Prop::Scalar(prop).name());
-            let checked = match (prop, raw.kind) {
-                (_, sabi::STD_PROP_UNSET) => None,
-                (ScalarProp::Opacity, sabi::STD_PROP_NUMBER) => Some(Scalar::Opacity(values::unit(&path, raw.a)?)),
-                (ScalarProp::CornerRadius, sabi::STD_PROP_NUMBER) => {
-                    Some(Scalar::CornerRadius(values::corner_radius(&path, Radii::All(raw.a))?))
+            let input = match (prop, raw.kind) {
+                (_, sabi::STD_PROP_UNSET) => return st.style_remove(style, Some(Prop::Scalar(prop))),
+                (ScalarProp::Opacity, sabi::STD_PROP_NUMBER) => ScalarIn::Opacity(raw.a),
+                (ScalarProp::CornerRadius, sabi::STD_PROP_NUMBER) => ScalarIn::CornerRadius(Radii::All(raw.a)),
+                (ScalarProp::CornerRadius, sabi::STD_PROP_CORNERS) => {
+                    ScalarIn::CornerRadius(Radii::Corners([raw.a, raw.b, raw.c, raw.d]))
                 }
-                (ScalarProp::CornerRadius, sabi::STD_PROP_CORNERS) => Some(Scalar::CornerRadius(
-                    values::corner_radius(&path, Radii::Corners([raw.a, raw.b, raw.c, raw.d]))?,
-                )),
-                (ScalarProp::Background, sabi::STD_PROP_NULL) => Some(Scalar::Background(None)),
+                (ScalarProp::Background, sabi::STD_PROP_NULL) => ScalarIn::Background(None),
                 (ScalarProp::Background, sabi::STD_PROP_TEXT) => {
                     // SAFETY: the caller guarantees the text is readable for the call.
                     let text = unsafe { crate::table::utf8(raw.text.ptr, raw.text.len) }?;
-                    Some(Scalar::Background(Some(values::colour(&path, text)?)))
+                    ScalarIn::Background(Some(text.to_owned()))
                 }
                 (ScalarProp::Opacity, _) => return Err(values::fail(&path, "must be a finite number between 0 and 1")),
                 (ScalarProp::CornerRadius, _) => {
@@ -253,17 +187,7 @@ pub(crate) unsafe extern "C" fn style_set(
                     ));
                 }
             };
-            let store = store_mut(st, style)?;
-            match checked {
-                Some(scalar) => {
-                    store.scalars.insert(prop, scalar);
-                }
-                None => {
-                    store.scalars.remove(&prop);
-                }
-            }
-            st.style_changed();
-            Ok(())
+            st.style_put_scalar(style, &input)
         })?;
         Ok(abi::E_OK)
     })
@@ -287,8 +211,8 @@ pub(crate) unsafe extern "C" fn style_set_list(
             unsafe { std::slice::from_raw_parts(entries, n) }
         };
         mutate(ctx, |st| {
-            let scope = scope_of(st, style)?;
-            guard(st, scope)?;
+            let scope = st.style_scope_of(style)?;
+            st.style_guard(scope)?;
             let path = format!("{}.{}", st.style_path(scope), Prop::List(list).name());
             if raws.len() > values::MAX_STYLE_LIST {
                 return Err(values::fail(
@@ -301,9 +225,7 @@ pub(crate) unsafe extern "C" fn style_set_list(
                 .enumerate()
                 .map(|(at, raw)| values::entry_in(list, raw, &format!("{path}[{at}]")))
                 .collect::<Res<Vec<Entry>>>()?;
-            store_mut(st, style)?.lists.insert(list, checked);
-            st.style_changed();
-            Ok(())
+            st.style_put_entries(style, list, checked)
         })?;
         Ok(abi::E_OK)
     })
@@ -316,25 +238,7 @@ pub(crate) unsafe extern "C" fn style_unset(ctx: GnoblinCtx, style: GnoblinStdSt
         } else {
             Some(Prop::from_abi(prop).ok_or_else(|| Fail::type_error(format!("{prop} is not a style property")))?)
         };
-        mutate(ctx, |st| {
-            let scope = scope_of(st, style)?;
-            guard(st, scope)?;
-            let store = store_mut(st, style)?;
-            for each in Prop::ALL {
-                if which.is_none_or(|which| which == each) {
-                    match each {
-                        Prop::Scalar(scalar) => {
-                            store.scalars.remove(&scalar);
-                        }
-                        Prop::List(list) => {
-                            store.lists.remove(&list);
-                        }
-                    }
-                }
-            }
-            st.style_changed();
-            Ok(())
-        })?;
+        mutate(ctx, |st| st.style_remove(style, which))?;
         Ok(abi::E_OK)
     })
 }
@@ -465,24 +369,7 @@ pub(crate) unsafe extern "C" fn style_notes(ctx: GnoblinCtx, client: GnoblinNode
 
 pub(crate) unsafe extern "C" fn style_rank(ctx: GnoblinCtx, style: GnoblinStdStyle, rank: f64) -> i32 {
     call("style_rank", || {
-        if !rank.is_finite() {
-            return Err(Fail::type_error("a selection's rank must be a finite number"));
-        }
-        mutate(ctx, |st| {
-            let scope = st
-                .styles
-                .stores
-                .get(&style)
-                .map(|store| store.scope)
-                .ok_or_else(|| Fail::stale(format!("style {style} does not exist")))?;
-            match scope {
-                Scope::Collection(coll) if st.colls.get(&coll).is_some_and(|coll| coll.parent.is_some()) => {
-                    st.styles.set_rank(coll, rank);
-                    Ok(())
-                }
-                _ => Err(Fail::type_error("only the style of a `where` selection has a rank")),
-            }
-        })?;
+        mutate(ctx, |st| st.style_set_rank(style, rank))?;
         Ok(abi::E_OK)
     })
 }

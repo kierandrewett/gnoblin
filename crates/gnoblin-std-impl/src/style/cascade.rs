@@ -95,7 +95,7 @@ impl StyleState {
     }
 
     /// The rank of the selection `coll`.
-    fn rank(&self, coll: Id) -> f64 {
+    pub(crate) fn rank(&self, coll: Id) -> f64 {
         self.ranks.get(&coll).copied().unwrap_or(0.0)
     }
 
@@ -104,6 +104,35 @@ impl StyleState {
         self.ranks.insert(coll, rank);
         self.epoch += 1;
     }
+
+    /// What every style holds now.
+    pub(crate) fn snapshot(&self) -> StyleSnapshot {
+        StyleSnapshot {
+            stores: self
+                .stores
+                .iter()
+                .map(|(id, store)| (*id, (store.scalars.clone(), store.lists.clone())))
+                .collect(),
+            ranks: self.ranks.clone(),
+        }
+    }
+
+    /// Puts back what a snapshot held: a style that is not in it (one made since) is emptied.
+    pub(crate) fn restore(&mut self, snapshot: StyleSnapshot) {
+        let StyleSnapshot { mut stores, ranks } = snapshot;
+        for (id, store) in &mut self.stores {
+            (store.scalars, store.lists) = stores.remove(id).unwrap_or_default();
+        }
+        self.ranks = ranks;
+        self.epoch += 1;
+    }
+}
+
+/// What the styles held at one moment: a transition that does not commit puts it back.
+#[derive(Clone, Debug)]
+pub(crate) struct StyleSnapshot {
+    stores: HashMap<Id, (BTreeMap<ScalarProp, Scalar>, BTreeMap<ListProp, Vec<Entry>>)>,
+    ranks: HashMap<Id, f64>,
 }
 
 /// A layer of a client's cascade.

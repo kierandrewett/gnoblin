@@ -84,6 +84,11 @@ pub(crate) fn turn(std: &Rc<Std>) {
     if let Some(world) = crate::scene::registry::find(ctx) {
         world.mirror_turn();
     }
+    // The objects of the transitions that settled hear it from the next turn.
+    let settled = std.st.borrow_mut().anim_take_settled();
+    if !settled.is_empty() {
+        crate::animation::objects::announce(ctx, settled);
+    }
 }
 
 /// The passes of a turn that a staged transition runs against its staged state, so what they write is staged with the callback's:

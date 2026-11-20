@@ -107,6 +107,10 @@ pub(crate) struct AnimState {
     settle_next: Vec<Id>,
     /// Finished transitions in the order they ended, so the oldest can be forgotten.
     ended: Vec<Id>,
+    /// What the transition being staged can put back, when it was begun through the object protocol.
+    undo: Option<staging::Undo>,
+    /// The transitions that settled since the turn last told the objects that stand for them: `(transition, cancelled)`.
+    settled: Vec<(Id, bool)>,
 }
 
 /// How many finished transitions are remembered for `transition_info`.
@@ -188,6 +192,32 @@ impl State {
     pub(crate) fn transition_abort(&mut self) {
         staging::end();
         self.anim.pending = None;
+    }
+
+    /// Starts staging for the object protocol: the callback's writes are held, and what the library holds that they may change, with the
+    /// shell's rollback, is kept to put back.
+    pub(crate) fn transition_begin_undoable(
+        &mut self,
+        raw: &abi::GnoblinStdTransitionOptions,
+        rollback: Option<std::rc::Rc<dyn gnoblin_object::Callable>>,
+    ) -> Res<()> {
+        self.transition_begin(raw)?;
+        self.anim.undo = Some(staging::Undo {
+            rollback,
+            styles: self.styles.snapshot(),
+        });
+        Ok(())
+    }
+
+    /// The undo of the transition that was being staged: none for one begun through the table. A transition that committed has none
+    /// to put back; its rollback is let go.
+    pub(crate) fn transition_take_undo(&mut self) -> Option<staging::Undo> {
+        self.anim.undo.take()
+    }
+
+    /// The transitions that settled since the last call.
+    pub(crate) fn anim_take_settled(&mut self) -> Vec<(Id, bool)> {
+        std::mem::take(&mut self.anim.settled)
     }
 
     /// Stages a write of the shell's, or makes it at once when nothing is staged (and lets go of the property a transition held).
@@ -510,6 +540,7 @@ impl State {
             abi::STD_TRANSITION_FINISHED
         };
         self.anim.ended.push(id);
+        self.anim.settled.push((id, cancelled));
         let heard: Vec<Id> = self
             .regs
             .iter()

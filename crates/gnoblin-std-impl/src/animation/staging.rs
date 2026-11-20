@@ -7,12 +7,20 @@
 //!
 //! A plain write made outside staging tells [`released`], so that a transition that owned the property lets it go: the engine takes the
 //! queue at the start of its next call and of every turn.
+//!
+//! A transition begun through the object protocol also holds an [`Undo`]: the shell's `rollback` callback, and what the library holds
+//! that a failed callback may have changed (the styles). The TypeScript engine took the same two things around its callback
+//! (`host/rollback.ts`): a snapshot of the workspaces and the styles, put back when the callback or the commit threw. Here the library
+//! puts back its own, and the shell's callback puts back what only the shell knows.
 
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use gnoblin_core::{Gnoblin, NodeId, Value};
+use gnoblin_object::Callable;
 
 use crate::error::{Fail, Res};
+use crate::style::cascade::StyleSnapshot;
 
 /// A value as it goes to the tree.
 #[derive(Clone, Debug, PartialEq)]
@@ -174,5 +182,22 @@ pub(crate) fn check(g: &Gnoblin, node: u64, key: &str, value: &Prop, timed: bool
         Err(Fail::type_error(format!(
             "`{key}` of node {node} does not take {value:?}"
         )))
+    }
+}
+
+/// What a transition begun through the object protocol can put back when it does not commit (the callback failed, the commit was
+/// refused, or the shell aborted it).
+pub(crate) struct Undo {
+    /// The shell's own rollback, called after the library has put back its own state and before the failing call answers.
+    pub(crate) rollback: Option<Rc<dyn Callable>>,
+    /// The styles as they were when staging began.
+    pub(crate) styles: StyleSnapshot,
+}
+
+impl std::fmt::Debug for Undo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Undo")
+            .field("rollback", &self.rollback.is_some())
+            .finish_non_exhaustive()
     }
 }

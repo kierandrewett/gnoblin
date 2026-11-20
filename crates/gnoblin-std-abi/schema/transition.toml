@@ -1,0 +1,351 @@
+# The `transition` module of `gnoblin.std`: changes that play over time instead of happening at once.
+#
+# A transition is made of the writes a callback stages. While one is being staged, a write of the shell's (`Transition.set`) and the
+# library's own layout and style passes are held, and a read (`Transition.peek`) sees the held value first. `commit` runs those passes
+# against the staged state, ends staging, writes what was held as timed writes joined to one `tween` node, and answers the transition. The
+# compositor plays the tracks and says when each ends: a transition ends when its tracks do, not by the shell's clock. When two
+# transitions write one property the newer owns it and the older goes on with what it still owns; a plain write of a property a transition
+# plays takes it from the transition.
+#
+# A transition that fails leaves the tree as it was: what was staged is dropped, and the library puts back its own state that the callback
+# changed (the styles). What only the shell knows (a layout it assigned, a value of its own) it puts back itself in the `rollback` it
+# gave, which the library calls when the transition is aborted or its commit is refused, before the call that failed answers.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# How an animation moves from its start to its end. Each name is the CSS timing function of the same name: `ease-out` is `cubic-bezier(0,
+# 0, 0.58, 1)`.
+[[enum]]
+name = "easing"
+since = "0.2.0"
+values = ["linear", "ease", "ease-in", "ease-out", "ease-in-out"]
+
+# What a transition is. It is `running` until its tracks end, `finished` when they reached their targets, and `cancelled` when a newer
+# write took the last of them, it was cancelled, or it ran back to its start.
+[[enum]]
+name = "transition_state"
+since = "0.2.0"
+values = ["running", "finished", "cancelled"]
+
+# The callback of `request`: it stages the changes with `Transition.set`, with the writes of scene nodes and styles, and with whatever
+# else the library holds. It runs once, and at once.
+[[callback]]
+name = "staged_work"
+since = "0.2.0"
+
+# What a shell does to put back the state of its own that a transition's callback changed. It runs when the transition is aborted or its
+# commit is refused, after the library has put back its own, and before the call that failed answers.
+[[callback]]
+name = "rollback"
+since = "0.2.0"
+
+# How a transition plays.
+[[object]]
+name = "transition_options"
+since = "0.2.0"
+kind = "record"
+
+# The milliseconds it takes, 0 or more. Zero commits the change at once, still as one transaction. 0 while the seat asks for reduced
+# motion.
+[[object.property]]
+name = "duration"
+type = "double"
+since = "0.2.0"
+default = 250.0
+
+# The curve of every track.
+[[object.property]]
+name = "easing"
+type = "enum:easing"
+since = "0.2.0"
+default = "ease-out"
+
+# The milliseconds the compositor holds the start state before the animation begins, 0 or more.
+[[object.property]]
+name = "delay"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# False stages the transition with its tracks held at the start: `progress` scrubs them, `play` and `reverse` run them, `pause` holds
+# them.
+[[object.property]]
+name = "autoplay"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# The value of a property of a node, as a transition writes it: exactly one of the fields is given. A property of a window or a node of
+# the scene is a number, a flag, a text, three numbers (`rotation`, `scale`) or a node.
+[[object]]
+name = "transition_value"
+since = "0.2.0"
+kind = "record"
+
+# A number (`x`, `opacity`).
+[[object.property]]
+name = "number"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# A flag (`visible`).
+[[object.property]]
+name = "flag"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# A text.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Three numbers (`rotation`, `scale`).
+[[object.property]]
+name = "triple"
+type = "list<double>"
+since = "0.2.0"
+optional = true
+
+# A node of the tree.
+[[object.property]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# One transition: the tracks a commit started. Its functions stage and make transitions, and it controls and reports one. A transition the
+# library has forgotten (it keeps the last 256 that ended) still answers what it was when it ended.
+[[object]]
+name = "transition"
+since = "0.2.0"
+
+# A number that names the transition for as long as it lives.
+[[object.property]]
+name = "id"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The milliseconds the tracks take: 0 under reduced motion.
+[[object.property]]
+name = "duration"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# What it is now.
+[[object.property]]
+name = "state"
+type = "enum:transition_state"
+since = "0.2.0"
+readonly = true
+
+# True from the commit until the transition finishes or is cancelled.
+[[object.property]]
+name = "running"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the tracks are held: with `autoplay` off until `play` or `reverse`, and after `pause`.
+[[object.property]]
+name = "paused"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the tracks run back to their start.
+[[object.property]]
+name = "reversed"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Where the tracks were last put, from 0 (the start) to 1 (the target), before the easing. Writing it moves every track to that point of
+# its duration at once and draws it; it neither plays nor pauses. Reading it gives what was last written, 0 before that: the compositor
+# does not report a running transition's place. A number outside 0 to 1 is refused.
+[[object.property]]
+name = "progress"
+type = "double"
+since = "0.2.0"
+
+# Lets the tracks run on towards the target, from where they are. Refused inside a callback; nothing happens once the transition ended.
+[[object.method]]
+name = "play"
+since = "0.2.0"
+
+# Holds the tracks where they are. Refused inside a callback; nothing happens once the transition ended.
+[[object.method]]
+name = "pause"
+since = "0.2.0"
+
+# Runs the tracks back towards their start from where they are. When they get there the transition is `cancelled` and the start values are
+# back in the tree. Refused inside a callback; nothing happens once the transition ended.
+[[object.method]]
+name = "reverse"
+since = "0.2.0"
+
+# Stops the transition: every property it still owns is written at its end value at once, which ends the compositor's track, and the
+# transition is `cancelled`. The target was committed when the transition began, so cancelling puts what is drawn there and does not go
+# back. Nothing happens once it ended.
+[[object.method]]
+name = "cancel"
+since = "0.2.0"
+
+# The transition ended: `cancelled` is true when it did not reach its target (`cancel`, a newer write that took its last track, or a run
+# back to the start). A listener added after the end is told from the next turn.
+[[object.signal]]
+name = "finished"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "cancelled"
+type = "bool"
+
+# Starts staging: the writes of `set`, of scene nodes and of styles, and the library's own layout and style passes, are held until
+# `commit`. `rollback` is called if the transition is aborted or its commit is refused. Refused while another transition is being staged.
+[[object.method]]
+name = "begin"
+since = "0.2.0"
+function = true
+
+[[object.method.param]]
+name = "options"
+type = "object:transition_options"
+
+[[object.method.param]]
+name = "rollback"
+type = "callback:rollback"
+optional = true
+
+# Stages a write of `key` of `node`, or makes it at once when nothing is being staged (and lets go of the property a transition played). A
+# write the tree would refuse (a node that is gone, a property that does not exist or is read-only, a value of another kind) is refused
+# here, naming the property.
+[[object.method]]
+name = "set"
+since = "0.2.0"
+function = true
+
+[[object.method.param]]
+name = "node"
+type = "uint"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+
+[[object.method.param]]
+name = "value"
+type = "object:transition_value"
+
+# The staged value of `key` of `node` while a transition is staged, else the tree's. Every field of the answer is left out when the node
+# has no such property.
+[[object.method]]
+name = "peek"
+since = "0.2.0"
+function = true
+returns = "object:transition_value"
+
+[[object.method.param]]
+name = "node"
+type = "uint"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+
+# Says that the shell wrote `key` of `node` by other means: the transition that played the property lets it go.
+[[object.method]]
+name = "release"
+since = "0.2.0"
+function = true
+
+[[object.method.param]]
+name = "node"
+type = "uint"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+
+# Ends staging and starts the transition: the layout and style passes run against the staged state, and what was held goes to the
+# compositor as timed writes that share one `tween` node. A layout that fails fails the commit; nothing staged is sent, the library puts
+# back its own state and calls the `rollback`. A transition with no track settles `finished` from the next turn.
+[[object.method]]
+name = "commit"
+since = "0.2.0"
+function = true
+returns = "object:transition"
+
+# Ends staging and drops what was staged. The library puts back its own state that the callback changed and calls the `rollback`. Nothing
+# happens when nothing is being staged.
+[[object.method]]
+name = "abort"
+since = "0.2.0"
+function = true
+
+# Runs `work` once, at once, and commits what it staged as one transition: `begin`, `work`, `commit`. When `work` fails the transition is
+# aborted and the failure is answered as it was; the `rollback` runs first.
+[[object.method]]
+name = "request"
+since = "0.2.0"
+function = true
+returns = "object:transition"
+
+[[object.method.param]]
+name = "work"
+type = "callback:staged_work"
+
+[[object.method.param]]
+name = "options"
+type = "object:transition_options"
+optional = true
+
+[[object.method.param]]
+name = "rollback"
+type = "callback:rollback"
+optional = true
+
+# One timed write of the shell's own: a transition of one property that plays at once, or, while a transition is being staged, a write
+# staged with a curve of its own (answers none then). A property the tree cannot animate is refused.
+[[object.method]]
+name = "animate"
+since = "0.2.0"
+function = true
+returns = "object:transition"
+
+[[object.method.param]]
+name = "node"
+type = "uint"
+
+[[object.method.param]]
+name = "key"
+type = "string"
+
+[[object.method.param]]
+name = "value"
+type = "object:transition_value"
+
+[[object.method.param]]
+name = "options"
+type = "object:transition_options"
+
+# The eased progress at `t` (0 to 1) of the curve `easing`.
+[[object.method]]
+name = "sample"
+since = "0.2.0"
+function = true
+returns = "double"
+
+[[object.method.param]]
+name = "easing"
+type = "enum:easing"
+
+[[object.method.param]]
+name = "t"
+type = "double"

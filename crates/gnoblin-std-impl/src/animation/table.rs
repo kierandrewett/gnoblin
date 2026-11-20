@@ -172,34 +172,40 @@ pub(crate) unsafe extern "C" fn transition_get(
     })
 }
 
+/// Ends staging and starts the transition the staged writes make: the layout and style passes run against the staged state, so their
+/// writes are staged with the callback's, and what was held goes to the compositor as timed writes. The table's `transition_commit` and
+/// the object protocol's `Transition.commit` are this.
+pub(crate) fn commit_staged(std: &Rc<state::Std>) -> Res<state::Id> {
+    if !staging::active() {
+        return Err(Fail::stale(
+            "no transition is being staged: call `transition_begin` first",
+        ));
+    }
+    std.st.borrow_mut().compute_failed = None;
+    crate::turn::settle(std);
+    let entries = staging::end();
+    let failed = std.st.borrow_mut().compute_failed.take();
+    if let Some(message) = failed {
+        // A layout that fails fails the transition: nothing staged is sent, and the shell puts back what it changed.
+        let _ = std.st.borrow_mut().anim_take_pending();
+        return Err(Fail::refused(format!("the layout's compute failed: {message}")));
+    }
+    let result = {
+        let mut st = std.st.borrow_mut();
+        match st.anim_take_pending() {
+            Some(options) => st.transition_commit(entries, &options),
+            None => Err(Fail::stale("no transition is being staged")),
+        }
+    };
+    schedule(std);
+    result
+}
+
 pub(crate) unsafe extern "C" fn transition_commit(ctx: GnoblinCtx, out: *mut GnoblinStdTransition) -> i32 {
     call("transition_commit", || {
-        let std = std_of(ctx)?;
-        if !staging::active() {
-            return Err(Fail::stale(
-                "no transition is being staged: call `transition_begin` first",
-            ));
-        }
-        // The layout and style passes run against the staged state, so their writes are staged with the callback's.
-        std.st.borrow_mut().compute_failed = None;
-        crate::turn::settle(&std);
-        let entries = staging::end();
-        let failed = std.st.borrow_mut().compute_failed.take();
-        if let Some(message) = failed {
-            // A layout that fails fails the transition: nothing staged is sent, and the shell puts back what it changed.
-            let _ = std.st.borrow_mut().anim_take_pending();
-            return Err(Fail::refused(format!("the layout's compute failed: {message}")));
-        }
-        let result = {
-            let mut st = std.st.borrow_mut();
-            match st.anim_take_pending() {
-                Some(options) => st.transition_commit(entries, &options),
-                None => Err(Fail::stale("no transition is being staged")),
-            }
-        };
-        schedule(&std);
+        let made = commit_staged(&std_of(ctx)?)?;
         // SAFETY: the caller guarantees `out` is null or a writable handle.
-        unsafe { put(out, result?) }?;
+        unsafe { put(out, made) }?;
         Ok(abi::E_OK)
     })
 }

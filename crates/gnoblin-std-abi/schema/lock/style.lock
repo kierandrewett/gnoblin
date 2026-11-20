@@ -1,0 +1,154 @@
+# The public surface of the `style` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+enum | filter_kind | values blur saturate brightness contrast shader | 0.2.0
+enum | style_property | values opacity corner_radius background borders shadows filter backdrop_filter | 0.2.0
+
+member | border.color | property string rw | 0.2.0
+member | border.inset | property bool rw | 0.2.0
+member | border.offset | property double rw | 0.2.0
+member | border.width | property double rw | 0.2.0
+member | border_list.add | method (entry:object:border) -> object:border | 0.2.0
+member | border_list.at | method (index:int) -> object:border | 0.2.0
+member | border_list.clear | method () | 0.2.0
+member | border_list.insert | method (index:int, entry:object:border) | 0.2.0
+member | border_list.items | property list<object:border> rw | 0.2.0
+member | border_list.length | property uint ro | 0.2.0
+member | border_list.overridden | property bool ro | 0.2.0
+member | border_list.property | property enum:style_property ro | 0.2.0
+member | border_list.remove | method (index:int) | 0.2.0
+member | border_list.replace | method (index:int, entry:object:border) | 0.2.0
+member | border_list.style | property object:style ro | 0.2.0
+member | border_list.unset | method () | 0.2.0
+member | computed_style.backdrop_filter | property list<object:filter> rw | 0.2.0
+member | computed_style.background | property string rw | 0.2.0
+member | computed_style.borders | property list<object:border> rw | 0.2.0
+member | computed_style.corner_radius | property object:corner_radius rw | 0.2.0
+member | computed_style.filter | property list<object:filter> rw | 0.2.0
+member | computed_style.opacity | property double rw | 0.2.0
+member | computed_style.origin | property object:style_origin rw | 0.2.0
+member | computed_style.shadows | property list<object:shadow> rw | 0.2.0
+member | corner_radius.all | property double rw,optional | 0.2.0
+member | corner_radius.bottom_left | property double rw,optional | 0.2.0
+member | corner_radius.bottom_right | property double rw,optional | 0.2.0
+member | corner_radius.top_left | property double rw,optional | 0.2.0
+member | corner_radius.top_right | property double rw,optional | 0.2.0
+member | filter.amount | property double rw,optional | 0.2.0
+member | filter.kind | property enum:filter_kind rw | 0.2.0
+member | filter.shader | property object:shader rw,optional | 0.2.0
+member | filter_list.add | method (entry:object:filter) -> object:filter | 0.2.0
+member | filter_list.at | method (index:int) -> object:filter | 0.2.0
+member | filter_list.clear | method () | 0.2.0
+member | filter_list.insert | method (index:int, entry:object:filter) | 0.2.0
+member | filter_list.items | property list<object:filter> rw | 0.2.0
+member | filter_list.length | property uint ro | 0.2.0
+member | filter_list.overridden | property bool ro | 0.2.0
+member | filter_list.property | property enum:style_property ro | 0.2.0
+member | filter_list.remove | method (index:int) | 0.2.0
+member | filter_list.replace | method (index:int, entry:object:filter) | 0.2.0
+member | filter_list.style | property object:style ro | 0.2.0
+member | filter_list.unset | method () | 0.2.0
+member | shader.params | property list<double> rw,optional | 0.2.0
+member | shader.source | property string rw | 0.2.0
+member | shadow.blur | property double rw | 0.2.0
+member | shadow.color | property string rw | 0.2.0
+member | shadow.inset | property bool rw | 0.2.0
+member | shadow.spread | property double rw | 0.2.0
+member | shadow.x | property double rw | 0.2.0
+member | shadow.y | property double rw | 0.2.0
+member | shadow_list.add | method (entry:object:shadow) -> object:shadow | 0.2.0
+member | shadow_list.at | method (index:int) -> object:shadow | 0.2.0
+member | shadow_list.clear | method () | 0.2.0
+member | shadow_list.insert | method (index:int, entry:object:shadow) | 0.2.0
+member | shadow_list.items | property list<object:shadow> rw | 0.2.0
+member | shadow_list.length | property uint ro | 0.2.0
+member | shadow_list.overridden | property bool ro | 0.2.0
+member | shadow_list.property | property enum:style_property ro | 0.2.0
+member | shadow_list.remove | method (index:int) | 0.2.0
+member | shadow_list.replace | method (index:int, entry:object:shadow) | 0.2.0
+member | shadow_list.style | property object:style ro | 0.2.0
+member | shadow_list.unset | method () | 0.2.0
+member | style.alive | property bool ro | 0.2.0
+member | style.assign | method (values:object:style_values) | 0.2.0
+member | style.backdrop_filter | property list<object:filter> rw | 0.2.0
+member | style.backdrop_filter_list | method () -> object:filter_list | 0.2.0
+member | style.background | property string rw | 0.2.0
+member | style.border_list | method () -> object:border_list | 0.2.0
+member | style.borders | property list<object:border> rw | 0.2.0
+member | style.computed | function (client:uint) -> object:computed_style | 0.2.0
+member | style.corner_radius | property object:corner_radius rw | 0.2.0
+member | style.filter | property list<object:filter> rw | 0.2.0
+member | style.filter_list | method () -> object:filter_list | 0.2.0
+member | style.is_set | method (property:enum:style_property) -> bool | 0.2.0
+member | style.of_client | function (client:uint) -> object:style | 0.2.0
+member | style.of_clients | function () -> object:style | 0.2.0
+member | style.of_workspace | function (workspace:string) -> object:style | 0.2.0
+member | style.opacity | property double rw | 0.2.0
+member | style.path | property string ro | 0.2.0
+member | style.priority | property double rw | 0.2.0
+member | style.reset | method () | 0.2.0
+member | style.shadow_list | method () -> object:shadow_list | 0.2.0
+member | style.shadows | property list<object:shadow> rw | 0.2.0
+member | style.unset | method (property:enum:style_property) | 0.2.0
+member | style.values | method () -> object:style_values | 0.2.0
+member | style.warnings | function (client:uint) -> list<string> | 0.2.0
+member | style.where | method (query:object:style_query, priority?:double) -> object:style | 0.2.0
+member | style_list.clear | method () | 0.2.0
+member | style_list.length | property uint ro | 0.2.0
+member | style_list.overridden | property bool ro | 0.2.0
+member | style_list.property | property enum:style_property ro | 0.2.0
+member | style_list.remove | method (index:int) | 0.2.0
+member | style_list.style | property object:style ro | 0.2.0
+member | style_list.unset | method () | 0.2.0
+member | style_origin.backdrop_filter | property string rw | 0.2.0
+member | style_origin.background | property string rw | 0.2.0
+member | style_origin.borders | property string rw | 0.2.0
+member | style_origin.corner_radius | property string rw | 0.2.0
+member | style_origin.filter | property string rw | 0.2.0
+member | style_origin.opacity | property string rw | 0.2.0
+member | style_origin.shadows | property string rw | 0.2.0
+member | style_query.any_app_id | property list<string> rw,optional | 0.2.0
+member | style_query.any_id | property list<string> rw,optional | 0.2.0
+member | style_query.any_title | property list<string> rw,optional | 0.2.0
+member | style_query.app_id | property string rw,optional | 0.2.0
+member | style_query.focused | property bool rw,optional | 0.2.0
+member | style_query.fullscreen | property bool rw,optional | 0.2.0
+member | style_query.height | property double rw,optional | 0.2.0
+member | style_query.id | property string rw,optional | 0.2.0
+member | style_query.maximised | property bool rw,optional | 0.2.0
+member | style_query.minimised | property bool rw,optional | 0.2.0
+member | style_query.title | property string rw,optional | 0.2.0
+member | style_query.width | property double rw,optional | 0.2.0
+member | style_query.workspace | property string rw,optional | 0.2.0
+member | style_query.x | property double rw,optional | 0.2.0
+member | style_query.y | property double rw,optional | 0.2.0
+member | style_values.backdrop_filter | property list<object:filter> rw,optional | 0.2.0
+member | style_values.background | property string rw,optional | 0.2.0
+member | style_values.borders | property list<object:border> rw,optional | 0.2.0
+member | style_values.corner_radius | property object:corner_radius rw,optional | 0.2.0
+member | style_values.filter | property list<object:filter> rw,optional | 0.2.0
+member | style_values.opacity | property double rw,optional | 0.2.0
+member | style_values.shadows | property list<object:shadow> rw,optional | 0.2.0
+
+object | border | base none record | 0.2.0
+object | border_list | base style_list | 0.2.0
+object | computed_style | base none record | 0.2.0
+object | corner_radius | base none record | 0.2.0
+object | filter | base none record | 0.2.0
+object | filter_list | base style_list | 0.2.0
+object | shader | base none record | 0.2.0
+object | shadow | base none record | 0.2.0
+object | shadow_list | base style_list | 0.2.0
+object | style | base none retained | 0.2.0
+object | style_list | base none | 0.2.0
+object | style_origin | base none record | 0.2.0
+object | style_query | base none record | 0.2.0
+object | style_values | base none record | 0.2.0
