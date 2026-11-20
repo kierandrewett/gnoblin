@@ -253,6 +253,33 @@ impl State {
         }
     }
 
+    /// The id of the workspace the primary output shows, which is the one the desktop shows now.
+    fn primary_workspace_id(&self) -> Option<String> {
+        let desk = self.primary_desk()?;
+        let shown = self.desk(self.effective_desk(desk))?.shown?;
+        self.ws.get(&shown).map(|ws| ws.id.clone())
+    }
+
+    /// Writes the id of the workspace the primary output shows to the seat's `active_workspace`, which the compositor serves to a client of
+    /// `ext-workspace-v1` as that workspace's `active` state (`design/wayland-protocol-gaps.md`). It is written when it changes, and once
+    /// a shell uses the workspace classes; a seat without the property, or none, is left alone.
+    pub(crate) fn publish_active_workspace(&mut self) {
+        if !self.desktop || !self.publish_active {
+            return;
+        }
+        let Some(id) = self.primary_workspace_id() else {
+            return;
+        };
+        if self.active_written.as_deref() == Some(id.as_str()) {
+            return;
+        }
+        if let Some(seat) = nodes::seat(&self.g)
+            && seat.set("active_workspace", id.clone()).is_ok()
+        {
+            self.active_written = Some(id);
+        }
+    }
+
     // ---- work areas -----------------------------------------------------------------------------------------------------
 
     /// What a layout tiles in on `output`: its rectangle less the room the shell's own bars take from the top and the bottom

@@ -218,6 +218,12 @@ pub(crate) struct State {
     pub(crate) policy: Policy,
     /// The window that had the keyboard at the end of the last turn.
     pub(crate) last_focus: Option<NodeId>,
+    /// The id of the workspace this library last wrote to the seat's `active_workspace`, which the compositor serves to a client of
+    /// `ext-workspace-v1` (`desks.rs`, `State::publish_active_workspace`).
+    pub(crate) active_written: Option<String>,
+    /// A shell uses the workspace classes (`gnoblin.workspaces`): only then does the library write `active_workspace`. A shell that
+    /// drives workspaces through the std table (the oracle's fixtures run one) leaves the seat's property alone.
+    pub(crate) publish_active: bool,
     pub(crate) counters: Counters,
     /// The pass wrote a placement: the compositor's answer to the transaction that carries it is awaited.
     pub(crate) placements_written: bool,

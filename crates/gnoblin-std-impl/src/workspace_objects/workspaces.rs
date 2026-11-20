@@ -82,7 +82,9 @@ fn id_of(st: &State, handle: Id) -> crate::error::Res<String> {
 /// for as long as it has the layout, and lets the object of the layout it had go.
 fn assign_layout(cx: &mut Cx<'_>, held: &mut WorkspaceRef, value: &Val) -> Res<()> {
     let obj = value.object()?;
-    if held.layout == Some(obj) {
+    // The layout the workspace has now, which is not the one held when a transition that gave it was rolled back.
+    let current = look(held.ctx, |st| st.workspace(held.handle).map(|ws| Rc::clone(&ws.layout)))?;
+    if held.layout == Some(obj) && layouts::is_current(cx, obj, &current) {
         return Ok(());
     }
     let layout = layouts::adopt(cx, obj, Some(held.handle))?;
@@ -292,8 +294,13 @@ fn register_list(builder: &mut Builder) {
         .ctor(|cx, _| {
             let ctx = cx.ctx();
             LIST_OBJECTS.with(|held| held.borrow_mut().insert(ctx, cx.me()));
-            // The desktop starts with the list: its default workspace, and the adoption of the windows that wait.
+            // The desktop starts with the list: its default workspace, and the adoption of the windows that wait. A shell that has the
+            // list is a shell of the classes, whose workspaces the compositor is told of (`State::publish_active_workspace`).
             crate::events::open(ctx).map_err(Fail::from)?;
+            edit(ctx, |st| {
+                st.publish_active = true;
+                Ok(())
+            })?;
             Ok(())
         })
         .get("list", |_, cx| list_of(cx).map(Val::List))

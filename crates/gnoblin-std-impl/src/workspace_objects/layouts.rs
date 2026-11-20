@@ -126,6 +126,11 @@ pub(super) fn adopt(cx: &mut Cx<'_>, obj: Obj, owner: Option<Id>) -> Res<Rc<Layo
     })?
 }
 
+/// Whether `layout` is the layout the object `obj` stands for.
+pub(super) fn is_current(cx: &Cx<'_>, obj: Obj, layout: &Rc<LayoutObj>) -> bool {
+    known(cx, layout) == Some(obj)
+}
+
 /// Records that the workspace `owner` has the layout `obj`.
 pub(super) fn claimed(cx: &Cx<'_>, obj: Obj, owner: Id) {
     let _ = cx.with_state(obj, |held: &mut OwnedLayout| held.on = Some(owner));

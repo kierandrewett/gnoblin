@@ -205,6 +205,7 @@ impl State {
         self.anim.undo = Some(staging::Undo {
             rollback,
             styles: self.styles.snapshot(),
+            workspaces: self.snapshot_workspaces(),
         });
         Ok(())
     }

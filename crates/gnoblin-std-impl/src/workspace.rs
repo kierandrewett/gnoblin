@@ -51,6 +51,9 @@ pub(crate) struct Workspace {
     pub(crate) auto: bool,
 }
 
+/// What a workspace had when a transition began staging: its layout, its gaps and its name.
+pub(crate) type WorkspaceSnapshot = Vec<(Id, Rc<LayoutObj>, (f64, f64), String)>;
+
 /// A gap that is a finite number of at least zero.
 pub(crate) fn check_gap(value: f64, what: &str) -> Res<f64> {
     if value.is_finite() && value >= 0.0 {
@@ -63,6 +66,47 @@ pub(crate) fn check_gap(value: f64, what: &str) -> Res<f64> {
 }
 
 impl State {
+    /// The layout, the gaps and the name of every workspace, for a transition that may have to put them back.
+    pub(crate) fn snapshot_workspaces(&self) -> WorkspaceSnapshot {
+        self.ws
+            .iter()
+            .map(|(id, ws)| {
+                (
+                    *id,
+                    Rc::clone(&ws.layout),
+                    (ws.gap_inner, ws.gap_outer),
+                    ws.name.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// Puts back what [`State::snapshot_workspaces`] kept, for the workspaces that are still there: a layout a callback gave goes to
+    /// the graveyard, and a workspace whose layout, gaps or name changed is laid out again. A workspace made or removed since is not
+    /// touched.
+    pub(crate) fn restore_workspaces(&mut self, snapshot: WorkspaceSnapshot) {
+        for (id, layout, gaps, name) in snapshot {
+            let Some(ws) = self.ws.get_mut(&id) else { continue };
+            let mut changed = false;
+            if !Rc::ptr_eq(&ws.layout, &layout) {
+                let given = std::mem::replace(&mut ws.layout, layout);
+                ws.revision = None;
+                self.graveyard.push(given);
+                changed = true;
+            }
+            if (ws.gap_inner, ws.gap_outer) != gaps {
+                (ws.gap_inner, ws.gap_outer) = gaps;
+                changed = true;
+            }
+            if ws.name != name {
+                ws.name = name;
+            }
+            if changed {
+                ws.dirty = true;
+            }
+        }
+    }
+
     /// A floating layout with the default options.
     pub(crate) fn default_layout() -> Rc<LayoutObj> {
         LayoutObj::floating(PlaceMode::FreeSpace, DEFAULT_CASCADE_STEP)

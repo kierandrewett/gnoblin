@@ -378,6 +378,11 @@ impl Rig {
         Rig::open("scratch", width, height, true, 0, Shape::Sized)
     }
 
+    /// A generation over the policy session (a screen and a seat) that records nothing: for a test that is not held to a fixture.
+    pub fn scratch_policy(count: u64) -> Rig {
+        Rig::open("scratch", 1000.0, 800.0, true, count, Shape::Policy)
+    }
+
     /// As [`Rig::scratch`] with `count` windows, as [`Rig::with_windows`] makes them.
     pub fn scratch_with_windows(width: f64, height: f64, count: u64) -> Rig {
         Rig::open("scratch", width, height, true, count, Shape::Sized)

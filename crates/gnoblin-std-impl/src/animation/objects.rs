@@ -203,8 +203,18 @@ fn roll_back(ctx: GnoblinCtx) {
     let Ok(std) = quiet_of(ctx) else { return };
     let undo = std.st.borrow_mut().transition_take_undo();
     let Some(undo) = undo else { return };
-    let staging::Undo { rollback, styles } = undo;
-    std.st.borrow_mut().styles.restore(styles);
+    let staging::Undo {
+        rollback,
+        styles,
+        workspaces,
+    } = undo;
+    {
+        let mut st = std.st.borrow_mut();
+        st.styles.restore(styles);
+        st.restore_workspaces(workspaces);
+    }
+    // The layouts a transition's callback gave are dropped outside every borrow: dropping one runs the shell's `drop_user`.
+    std.drain();
     schedule(&std);
     if let Some(rollback) = rollback
         && let Err(fail) = rollback.call(0, &[])

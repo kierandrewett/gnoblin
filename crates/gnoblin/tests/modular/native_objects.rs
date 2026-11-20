@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use crate::support::native_shell::{Gnoblin, Start, start_script, std_shells};
-use crate::support::{Mapper, scene};
+use crate::support::{Mapper, scene, snapshot};
 use crate::{copy_example, serving};
 
 use super::native_std::{assert_one_core_one_std, start_std};
@@ -27,6 +27,17 @@ fn rects(session: &Gnoblin) -> Rects {
 fn the_workspace_is_laid_out_by_the_library_and_by_the_shell(session: &mut Gnoblin) {
     session.wait_log("the workspace is in the list", |line| {
         line.contains("objects: the workspace main is in the list at index 0")
+    });
+    // The library tells the compositor which workspace the primary output shows: the seat's `active_workspace`, which an
+    // `ext-workspace-v1` client is served as that workspace's `active` state.
+    session.wait_for("the seat's active workspace is the shell's workspace", |session| {
+        snapshot(&session.ipc()).iter().any(|node| {
+            node.class == "seat"
+                && node
+                    .props
+                    .iter()
+                    .any(|prop| prop.key == "active_workspace" && prop.value_text == "main")
+        })
     });
     let mut mapper = Mapper::connect(&session.wayland());
     for name in ["a", "b"] {

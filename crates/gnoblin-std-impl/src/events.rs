@@ -74,6 +74,8 @@ impl State {
             holding: HashMap::new(),
             policy: Policy::default(),
             last_focus: None,
+            active_written: None,
+            publish_active: false,
             counters: Counters::default(),
             placements_written: false,
             compute_failed: None,

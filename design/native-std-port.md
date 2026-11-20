@@ -1891,7 +1891,30 @@ membership,members,snap_host,xr_bridge}.ts`; `host/show.ts` by `host/{members,po
 and the layouts `arc`, `dwindle`, `floating`, `grid`, `master-stack`, `native` and `strip`; the other `layouts/*` by `index.ts`, `workspace.ts` and
 `host/{layout_bridge,workspace}.ts`. All paths are under `data/js/gnoblin-std/`.
 
-Not yet (slice 3): the rollback of a transition for workspaces, `View.content` as a workspace, and the `active_workspace` writer.
+**Slice 3.** (1) A transition that does not commit puts back the workspaces too: `animation/staging.rs` `Undo` holds each workspace's layout, gaps and
+name from the `begin` (`State::snapshot_workspaces`), and an abort, a refused commit or a callback that fails restores them with the styles
+(`State::restore_workspaces`) before the shell's `rollback` runs; a layout the callback gave is dropped outside every borrow, and a workspace made
+or removed meanwhile is not touched. The test is `an_aborted_transition_puts_back_the_layouts_gaps_and_names_of_the_workspaces` (`tests/style.rs`);
+no oracle fixture covers it. (2) `view.show_workspace(workspace)` and
+`view.show_client(client)` take a workspace object and a client as the text of its node number (`source` is a `uint` and so cannot name a client
+in JavaScript). (3) **`active_workspace`** is not in the design's tables; `design/wayland-protocol-gaps.md` assigns it to this port. The library
+writes the id of the workspace the primary output shows to the seat's `active_workspace` (`State::publish_active_workspace`, after the layout pass of
+a turn, when it changes), but only for a shell that uses the workspace classes (it makes `gnoblin.workspaces`): the oracle's fixtures run a shell over the std table,
+and writing the property for it would change 94 recorded files. The test is
+`the_workspace_the_primary_output_shows_is_the_seats_active_workspace` (`tests/style.rs`, over the fake compositor), and
+`modular::native_objects` reads the seat's `active_workspace` from the real compositor's tree in a real session, in all three languages. What a
+client of `ext_workspace_manager_v1` sees of that property is `crates/protocols/ext-workspace-v1/tests` (`the_shells_active_workspace_is_the_active_one`,
+with a stand-in shell writing the same property); no single test joins the two ends, which would need a Wayland client that binds the manager in
+the modular suite (it has none yet). (4) The typed `gnoblin_std::objects` API of these classes is generated (`std_api.rs`); example 26 and `shell-objects` use it. The hand-written
+`gnoblin-std/src/{workspace,collection,client_state,desktop,layout,layouts,split}.rs` still call the std table and are not yet generated or moved
+onto the objects (their names do not change when they are).
+
+**Exact remaining items of the replay.** (a) The nine binding fixtures (`binding_priority`, `directed_gesture`, `dwindle_drag`, `gesture_cancel_on_close`,
+`pointer_move_resize`, `resize_limits`, `snap`, `split_resize_drag`, `tile_swap`) need the binding classes (NpStdPolicy, NpCoreInput). (b)
+`examples_tiling_layouts` needs `shell-layouts` over the classes with a swap binding (a); `examples_floating_placement` needs the example 2 shell over
+the classes (`workspaces`, `desks.workspaces` policy, `client_collection.added`); `anim_style_transitions` needs `shell-anim` over the classes
+(workspaces and layouts of the transition scenarios, today made through the table, allowance 11 of the style replay). (c) The gate for the
+`ext-workspace` change in a real session (above).
 
 #### NpStdDisplay (4 days)
 

@@ -46,9 +46,8 @@ Activate, assign and create requests are ignored, because no capabilities are ad
   implicit workspace, `1`) and the id the shell writes to the new seat property `active_workspace`.
 - No capabilities are offered. `activate`, `deactivate`, `remove`, `assign` and `create_workspace` are ignored.
 - A session with one workspace always reports it active.
-- Making the stock shell write `active_workspace` is not small. A workspace's `active` is native state of the std engine
-  (per output, so several can be active), and the write needs a new host binding in `gnoblin-js` and the TypeScript host
-  types, a hook on each activation change, and a real-session test. It belongs with the native std port.
+- The native std writes it for a shell that uses the workspace classes (`State::publish_active_workspace`, NpStdObjects): the id of the workspace the
+  primary output shows, when it changes.
 
 ## Not built
 

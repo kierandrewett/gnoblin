@@ -21,6 +21,7 @@ use gnoblin_object::Callable;
 
 use crate::error::{Fail, Res};
 use crate::style::cascade::StyleSnapshot;
+use crate::workspace::WorkspaceSnapshot;
 
 /// A value as it goes to the tree.
 #[derive(Clone, Debug, PartialEq)]
@@ -192,6 +193,8 @@ pub(crate) struct Undo {
     pub(crate) rollback: Option<Rc<dyn Callable>>,
     /// The styles as they were when staging began.
     pub(crate) styles: StyleSnapshot,
+    /// The workspaces' layouts, gaps and names as they were when staging began.
+    pub(crate) workspaces: WorkspaceSnapshot,
 }
 
 impl std::fmt::Debug for Undo {

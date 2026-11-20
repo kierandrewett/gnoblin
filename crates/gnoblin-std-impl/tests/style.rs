@@ -1015,6 +1015,9 @@ fn shader_filters() {
 // ---- transitions ------------------------------------------------------------------------------------------------------------------
 
 use std::cell::{Cell, RefCell};
+
+/// The seat of the policy session.
+const SEAT: u64 = 21;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -1964,4 +1967,80 @@ fn transition_held() {
     nothing_logged(&desk.r);
     desk.r.step("cancel");
     desk.r.rig.finish();
+}
+
+// ---- the workspaces of a transition that does not commit --------------------------------------------------------------------------
+
+/// A transition that is aborted puts back what its callback did to the workspaces: their layouts, gaps and names, as it puts back the
+/// styles (`workspace.rs`, `State::restore_workspaces`). The oracle's fixtures do not cover it: the replays above put the workspaces
+/// back with the shell's own `rollback`.
+#[test]
+fn an_aborted_transition_puts_back_the_layouts_gaps_and_names_of_the_workspaces() {
+    let rig = Rig::scratch(1000.0, 800.0);
+    let api = rig.api;
+    let workspace = rig.make("workspace", &[("id", t("w"))]);
+    let list = rig.make("workspaces", &[]);
+    list.call("add", &[workspace.val()]);
+    let first = rig.make("floating_layout", &[]);
+    workspace.set("layout", first.val());
+    workspace.set("gaps", rec_of(vec![d(4.0), d(8.0)]));
+    let before = workspace.get("layout");
+
+    let rolled = Rc::new(Cell::new(0_u32));
+    let counted = Rc::clone(&rolled);
+    tfn(
+        api,
+        "begin",
+        &[
+            plain(100.0),
+            callback(move |_| {
+                counted.set(counted.get() + 1);
+                Ok(Val::None)
+            }),
+        ],
+    )
+    .expect("staging begins");
+    let second = rig.make("grid_layout", &[]);
+    workspace.set("layout", second.val());
+    workspace.set("gaps", rec_of(vec![d(20.0), d(30.0)]));
+    workspace.set("name", t("renamed"));
+    assert_eq!(workspace.text("name"), "renamed");
+    tfn(api, "abort", &[]).expect("the transition aborts");
+
+    assert_eq!(rolled.get(), 1, "the shell's rollback runs once");
+    assert_eq!(workspace.text("name"), "w", "the name is put back");
+    let gaps = workspace.get("gaps");
+    assert_eq!(num(&field(&gaps, 0)), 4.0);
+    assert_eq!(num(&field(&gaps, 1)), 8.0);
+    assert_eq!(
+        workspace.get("layout").object().expect("an object"),
+        before.object().expect("an object"),
+        "the layout it had is the layout it has"
+    );
+}
+
+// ---- the seat's `active_workspace` ------------------------------------------------------------------------------------------------
+
+/// The workspace the primary output shows is written to the seat's `active_workspace`, which the compositor serves to a client of
+/// `ext-workspace-v1` as that workspace's `active` state; it follows `show`.
+#[test]
+fn the_workspace_the_primary_output_shows_is_the_seats_active_workspace() {
+    let mut rig = Rig::scratch_policy(0);
+    let list = rig.make("workspaces", &[]);
+    let first = rig.make("workspace", &[("id", t("code"))]);
+    let second = rig.make("workspace", &[("id", t("web"))]);
+    list.call("add", &[first.val()]);
+    list.call("add", &[second.val()]);
+    rig.settle();
+    let seat = |rig: &Rig| match rig.comp.value(SEAT, "active_workspace") {
+        Some(MirrorValue::Text(text)) => text,
+        other => panic!("the seat's active workspace is {other:?}"),
+    };
+    assert_eq!(seat(&rig), "code", "the first workspace is shown first");
+    second.call("show", &[n()]);
+    rig.settle();
+    assert_eq!(seat(&rig), "web", "showing a workspace makes it the active one");
+    first.call("show", &[n()]);
+    rig.settle();
+    assert_eq!(seat(&rig), "code");
 }
