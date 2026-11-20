@@ -130,6 +130,8 @@ pub struct StdShells {
     pub shader_tint: PathBuf,
     /// Example 20: the typed object API of std: an entry model edited and listened to, and a focus decision; `<Super>e` types into it.
     pub object: PathBuf,
+    /// Example 22: the toolkit: a text and a focused entry over the windows; Return logs what was typed.
+    pub ui: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -160,6 +162,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-shader-tint",
             "-p",
             "gnoblin-example-native-object",
+            "-p",
+            "gnoblin-example-native-ui",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -177,6 +181,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         linked: debug.join("libnative_linked.so"),
         shader_tint: debug.join("libshader_tint.so"),
         object: debug.join("libnative_object.so"),
+        ui: debug.join("libnative_ui.so"),
     })
 }
 
@@ -1000,6 +1005,8 @@ pub const KEY_RIGHT: u32 = 106;
 pub const KEY_DOWN: u32 = 108;
 pub const KEY_E: u32 = 18;
 pub const KEY_TAB: u32 = 15;
+pub const KEY_A: u32 = 30;
+pub const KEY_B: u32 = 48;
 
 /// The `Mod4` bit of an xkb modifier mask, which `pc+us` gives the Super keys.
 const MOD_SUPER: u32 = 1 << 6;
@@ -1057,6 +1064,13 @@ impl Typist {
     fn key(&mut self, code: u32, pressed: bool) {
         self.clock += 10;
         self.keyboard.key(self.clock, code, u32::from(pressed));
+    }
+
+    /// Presses `key` and lets it go.
+    pub fn tap(&mut self, key: u32) {
+        self.key(key, true);
+        self.key(key, false);
+        self.queue.roundtrip(&mut Typing).expect("the keys are delivered");
     }
 
     /// Presses `Super` and `key` together and lets both go.

@@ -307,6 +307,43 @@ close it by dropping it. A `Poster` has the same `wake_fd`, for a thread that is
 
 Only the shell thread may call `dispatch`.
 
+## Draw your own interface
+
+`libgnoblin-std` carries a toolkit for the interface a shell draws itself: bars, entries, toasts and your own widgets. A canvas is a
+node of the compositor's tree that paints a list of drawing operations. The classes are in `gnoblin_std::objects`:
+
+- `Canvas`, `UiBox`, `Grid`, `Text` and `Icon` for layout and drawing;
+- `Entry`, `Clock`, `Bar` and `Toast` for the widgets the library keeps up to date.
+
+The library lays out, measures text, encodes the paint list and delivers pointer events and keys. You set properties and hear
+signals:
+
+```rust
+let entry = Entry::new(&objects)?;
+entry.set_width(320.0)?;
+entry.set_height(36.0)?;
+entry.mount_top()?;
+entry.focus()?;
+entry.set_on_submit(move |text| {
+    g.log(&format!("submitted {text:?}"));
+    Ok(())
+})?;
+```
+
+A canvas stays on screen when you let go of the value that made it. `destroy` ends it and what is under it. A canvas the compositor
+ends, because its window closed, reads as it was with `alive` false until you let go.
+
+Text is measured at once by the painter the compositor draws with. A `Text` has its size the moment you set its string.
+
+What only your shell can say is the `Widget` interface (`WidgetHandlers::implement`), given to a canvas as its `behaviour`:
+
+- a custom paint, measure or arrangement, and a handler for pointer events or keys;
+- anything you leave out, the library does itself;
+- a handler answers `true` to keep an event from the canvas's parent;
+- `paint_default` and `arrange_default` answer what the library would have done, so an override can extend it.
+
+Example 22 (`examples/22-native-ui`) puts a text and an entry over the windows.
+
 ## Link to the installed libraries
 
 A shell links the libraries the way any program does. Check what a built shell asks for:

@@ -1569,6 +1569,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-native-ui"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
 name = "gnoblin-example-no-workspaces"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -2286,17 +2294,20 @@ dependencies = [
  "gnoblin-core-impl",
  "gnoblin-js",
  "gnoblin-object",
+ "gnoblin-paint",
  "gnoblin-provider-wire",
  "gnoblin-runtime-js",
  "gnoblin-sdkgen",
  "gnoblin-shell-host",
  "gnoblin-std-abi",
  "gnoblin-std-dyn",
+ "gnoblin-std-impl",
  "gnoblin-std-portal",
  "gnoblin-std-wm",
  "gnoblin-testkit",
  "gnoblin-tree-client",
  "gnoblin-wm-api",
+ "libc",
  "tempfile",
 ]
 

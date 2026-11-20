@@ -133,6 +133,7 @@ members = [
     "examples/19-shader-tint",
     "examples/20-native-object",
     "examples/21-native-model",
+    "examples/22-native-ui",
     "xtask",
 ]
 # `extensions/` packages are separate workspaces with their own lockfiles and target dirs (design/xr-extension.md).

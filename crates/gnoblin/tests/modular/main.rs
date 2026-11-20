@@ -21,6 +21,7 @@ mod motion;
 mod native_model;
 mod native_object;
 mod native_std;
+mod native_ui;
 mod no_std;
 mod no_workspaces;
 mod script_binding;
