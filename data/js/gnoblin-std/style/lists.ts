@@ -50,7 +50,7 @@ function filterEntry(value: unknown, path: string, target: StyleElement[]): Styl
             const checked = entry.check((value as Record<string, unknown>)[key], `${path}.${key}`);
             styleState.building += 1;
             try {
-                return (entry.make as (checked: unknown) => StyleElement)(checked);
+                return (entry.make as unknown as (checked: unknown) => StyleElement)(checked);
             } finally {
                 styleState.building -= 1;
             }

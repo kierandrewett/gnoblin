@@ -640,7 +640,7 @@ impl Launch {
 /// A running `gnoblin`, its log and the directories it owns. Killed on drop.
 pub struct Gnoblin {
     child: Option<Child>,
-    home: Home,
+    home: Option<Home>,
     fixture: PathBuf,
     lines: Arc<Mutex<Vec<Line>>>,
     _bus: Option<Bus>,
@@ -727,7 +727,7 @@ impl Gnoblin {
         }
         Self {
             child: Some(child),
-            home,
+            home: Some(home),
             fixture,
             lines,
             _bus: bus,
@@ -736,7 +736,9 @@ impl Gnoblin {
 
     /// The directory the session runs in.
     pub fn home(&self) -> &Home {
-        &self.home
+        self.home
+            .as_ref()
+            .expect("the home is held until the session is taken apart")
     }
 
     /// The process id of the process `gnoblin` was started as.
@@ -746,12 +748,12 @@ impl Gnoblin {
 
     /// The tree's socket.
     pub fn ipc(&self) -> PathBuf {
-        self.home.root().join("ipc.sock")
+        self.home().root().join("ipc.sock")
     }
 
     /// The Wayland socket clients connect to.
     pub fn wayland(&self) -> PathBuf {
-        self.home.root().join(gnoblin_wayland::DEFAULT_SOCKET_NAME)
+        self.home().root().join(gnoblin_wayland::DEFAULT_SOCKET_NAME)
     }
 
     /// The directory the test and the fixture shell command each other through.
@@ -868,8 +870,17 @@ impl Gnoblin {
     }
 }
 
-impl Drop for Gnoblin {
-    fn drop(&mut self) {
+impl Gnoblin {
+    /// Ends the session, and gives back its home: the directories and files it ran in, for a session that starts over them (a
+    /// setting the first login wrote and only the next one reads).
+    pub fn into_home(mut self) -> Home {
+        self.stop();
+        self.home
+            .take()
+            .expect("the home is held until the session is taken apart")
+    }
+
+    fn stop(&mut self) {
         if let Some(mut child) = self.child.take() {
             // A guardian's children are in their own process groups; ending the guardian ends them in its stop order.
             let _ = rustix::process::kill_process(
@@ -886,6 +897,12 @@ impl Drop for Gnoblin {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+}
+
+impl Drop for Gnoblin {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 

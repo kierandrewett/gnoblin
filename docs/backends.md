@@ -14,7 +14,7 @@ The backend is chosen once, when the compositor starts. Two things name it:
 
 - The `GNOBLIN_BACKEND` environment variable, for a session wrapper or a test. It wins over everything else.
 - The `compositor.backend` setting of the accepted configuration, which holds the same words. `shell.ts` has no object for
-  the `compositor` section yet (see [settings with no TypeScript home](/js-settings#dropped-settings)), so the variable is the way to choose.
+  this leaf of the `compositor` section yet (see [settings with no TypeScript home](/js-settings#dropped-settings)), so the variable is the way to choose.
 
 Both take `auto`, `headless`, `nested` or `drm`. Anything else stops the start and names the accepted values:
 

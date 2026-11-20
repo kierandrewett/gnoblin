@@ -29,9 +29,12 @@ import type { ErrorCode } from "gnoblin-core/errors";
 /** The `input` document groups a device setting is written to. */
 type Group = "keyboard" | "mouse" | "touchpad";
 
+/** Where a setting sits in the document: a group of the `input` section, or the `compositor` section itself. */
+type Place = Group | "compositor";
+
 /** One setting: where it goes in the document, how a value is checked and what the document is given for it. */
 interface Setting<T> {
-    readonly group: Group;
+    readonly group: Place;
     /** The document key, in the schema's spelling. */
     readonly key: string;
     /** The accepted values, for the error text. */
@@ -109,6 +112,14 @@ const SETTINGS = {
         accept: (value: unknown): value is number => Number.isInteger(value) && isNumberIn(1, 10000)(value),
         document: identity,
     } satisfies Setting<number>,
+    // The compositor's own settings are read when it starts: a change is accepted and applies at the next login.
+    userShaders: {
+        group: "compositor",
+        key: "user-shaders",
+        accepts: "true or false",
+        accept: isBoolean,
+        document: identity,
+    } satisfies Setting<boolean>,
 } as const;
 
 type SettingName = keyof typeof SETTINGS;
@@ -141,15 +152,27 @@ export function deviceSettingsRevision(): number {
 
 type Table = { [key: string]: unknown };
 
-/** The `input` section the written device settings make, `{}` when none is written. */
+/** The `input` and `compositor` sections the written settings make, `{}` when none is written. */
 export function deviceDocument(): Table {
     const groups: Table = {};
+    const compositor: Table = {};
     for (const [name, value] of ledger) {
         const setting: Setting<never> = SETTINGS[name] as Setting<never>;
+        if (setting.group === "compositor") {
+            compositor[setting.key] = setting.document(value as never);
+            continue;
+        }
         const group = (groups[setting.group] ??= {}) as Table;
         group[setting.key] = setting.document(value as never);
     }
-    return Object.keys(groups).length === 0 ? {} : { input: groups };
+    const document: Table = {};
+    if (Object.keys(groups).length > 0) {
+        document.input = groups;
+    }
+    if (Object.keys(compositor).length > 0) {
+        document.compositor = compositor;
+    }
+    return document;
 }
 
 /** Fails as `shell` does when it is attached, else as a plain `Error`. */
@@ -170,7 +193,10 @@ function writeSetting(name: SettingName, value: unknown, target: string): void {
         throw new RangeError(`${target}: must be ${setting.accepts}, got ${String(value)}`);
     }
     if (shell !== null) {
-        const probe: Table = { input: { [setting.group]: { [setting.key]: setting.document(value) } } };
+        const probe: Table =
+            setting.group === "compositor"
+                ? { compositor: { [setting.key]: setting.document(value) } }
+                : { input: { [setting.group]: { [setting.key]: setting.document(value) } } };
         const problem = shell.check(JSON.stringify(probe));
         if (problem !== undefined) {
             throw refuse("config_rejected", target, `the configuration refused it: ${problem}`);
@@ -184,6 +210,29 @@ function writeSetting(name: SettingName, value: unknown, target: string): void {
 
 function readSetting<T>(name: SettingName): T | undefined {
     return ledger.get(name) as T | undefined;
+}
+
+// ---- The compositor's settings ----
+
+/**
+ * The settings of the compositor itself that a shell may write: `gnoblin.compositor`. They are written to the `compositor` section of
+ * the configuration document, which the compositor reads when it starts, so a change is accepted at once and applies at the next
+ * login. `undefined` takes a setting back to the default.
+ */
+export class CompositorSettings extends NativeObject {
+    /**
+     * Whether a shell may give a window its own shader (a `ShaderFilter` in a style). Written to
+     * `compositor.user-shaders`, which defaults to `false` and is read when the compositor starts: after the first login that
+     * sets it, log out and in again. See docs/custom-shaders.md.
+     */
+    get userShaders(): boolean | undefined {
+        return readSetting("userShaders");
+    }
+
+    /** Sets whether the compositor accepts a shader effect from a shell, from the next login. */
+    set userShaders(value: boolean | undefined) {
+        writeSetting("userShaders", value, "gnoblin.compositor.userShaders");
+    }
 }
 
 // ---- Devices ----

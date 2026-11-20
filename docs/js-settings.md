@@ -117,17 +117,31 @@ gnoblin.dialogs.addListener(
 );
 ```
 
+## Compositor settings
+
+`gnoblin.compositor` holds the settings of the compositor itself that a shell may write. The compositor reads them when it
+starts, so a change is accepted at once and applies from the next login. Set a property to `undefined` to take it back to
+the default.
+
+| Property      | Accepted values   | Default | Effect                                                                                   |
+| ------------- | ----------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `userShaders` | `true` or `false` | `false` | Whether a shell may give a window its own shader. See [custom shaders](/custom-shaders). |
+
+```ts
+gnoblin.compositor.userShaders = true;
+```
+
 ## Settings with no TypeScript home yet {#dropped-settings}
 
 No object of the shell carries these settings, so `shell.ts` cannot set them. The shell keeps its default for each. The
 table says what stays in each case.
 
-| Setting                                                                                                                                                            | What stays                                       |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| Window rules (`rules`)                                                                                                                                             | Listeners and `where(...).style`: see above      |
-| Focus mode, new-window focus, raise, auto raise, `edgeTiling`, `dragConstraint`                                                                                    | Click focus, raise on click, edge snapping on    |
-| `autostart`                                                                                                                                                        | `gnoblin.spawn` at the top of `shell.ts`         |
-| `protocols`, `keyring`, `compositor`, `appearance`, `accessibility`, `layerShell`, `auth`, `location`, `xwayland`, `cursor`, `monitors`, `dialogs.style`           | The default of each                              |
-| `touchpadGestures` (drawn paths), `workspaceSets`, `launcher`, `inputSources`, tablets, styluses, trackballs, pointing sticks, `orientationLock`, keyboard options | A swipe or pinch is `input.bind`; the rest: none |
+| Setting                                                                                                                                                                          | What stays                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Window rules (`rules`)                                                                                                                                                           | Listeners and `where(...).style`: see above      |
+| Focus mode, new-window focus, raise, auto raise, `edgeTiling`, `dragConstraint`                                                                                                  | Click focus, raise on click, edge snapping on    |
+| `autostart`                                                                                                                                                                      | `gnoblin.spawn` at the top of `shell.ts`         |
+| `protocols`, `keyring`, `compositor` (all but `userShaders`), `appearance`, `accessibility`, `layerShell`, `auth`, `location`, `xwayland`, `cursor`, `monitors`, `dialogs.style` | The default of each                              |
+| `touchpadGestures` (drawn paths), `workspaceSets`, `launcher`, `inputSources`, tablets, styluses, trackballs, pointing sticks, `orientationLock`, keyboard options               | A swipe or pinch is `input.bind`; the rest: none |
 
 Window rules, titlebar clicks and the other seat policy have no replacement yet.

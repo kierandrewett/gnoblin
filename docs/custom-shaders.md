@@ -11,9 +11,21 @@ draw. Custom shaders are off by default: read [Turn them on](#turn-them-on) firs
 The setting is `compositor.user-shaders`. It takes `true` or `false` and defaults to `false`. It is read when the compositor
 starts, so a change needs a new session.
 
-`shell.ts` has no object for the `compositor` section yet (see
-[settings with no TypeScript home](/js-settings#dropped-settings)), so no line of `shell.ts` turns the setting on. The
-compositor reads it from the last configuration document it accepted, and `gnoblinctl config get` prints that document.
+Set it in `shell.ts`, with the other settings of the compositor itself:
+
+```ts
+gnoblin.compositor.userShaders = true;
+```
+
+The shell commits the setting with the rest of its configuration, and the compositor keeps it in the last configuration
+document it accepted. The running compositor does not change: it started without shaders. Log out and in again, or restart
+`gnoblin`, and the next session starts with them. Delete the line to go back to the default after the next login.
+`gnoblinctl config get` prints the document the compositor holds, and `gnoblinctl check shell.ts` runs the file without a
+session to show that the setting is accepted.
+
+A shell written in Rust or Python commits no configuration document of its own. The compositor reads the document of the
+`shell.ts` in your configuration directory, so run that file as your shell once with the line above; the setting stays in
+the last accepted document until another login commits a document without it.
 
 Whether the setting is on is also a fact a shell can read. The seat has a read-only `user_shaders` property that is `true`
 while the compositor accepts shaders, and `effect_kinds`, which lists the effect kinds the active renderer draws. A shader

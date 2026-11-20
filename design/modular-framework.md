@@ -3574,9 +3574,11 @@ What the real-session tests prove, with the shipped binary on a headless backend
 and a Python shell each put one `shader` effect with the shell's source and numbers on the window's node while `compositor.user-shaders` is on;
 with it off the node holds the rest of the style and no shader, and the shell is told (the TypeScript log, the Rust style warnings); a source the
 validator refuses is logged by the compositor with its line and column and leaves the node with none of the list's effects, and the corrected
-source written next is accepted. The setting is written to the last accepted configuration document the binary reads at start, because
-`shell.ts` has no object for the `compositor` section (docs/js-settings.md), so there is no line of a user's shell that turns it on yet; a decision
-for the owner when the default is confirmed (37.9).
+source written next is accepted. The TypeScript tests supply the setting as a user does: `shell.ts` sets `gnoblin.compositor.userShaders = true`, the
+first login commits it (the compositor keeps it without applying it), and a second login over the same home reads it. A user turns it on with that
+line (the second round of lane ShaderStd: the setting joins the device settings' ledger in `data/js/gnoblin-core/devices.ts` and is committed with
+the shell's document). A Rust or a Python shell commits no
+document, so for those the setting is the last accepted document that a TypeScript configuration committed.
 
 What they do not prove is a pixel. A headless session draws with the software renderer, which has no shader compiler, so the node's `skipped` lists
 `shader: unsupported-by-renderer` and the test asserts that listing (and asserts that nothing is listed when the seat's `effect_kinds` holds

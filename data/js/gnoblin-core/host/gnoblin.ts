@@ -1,5 +1,6 @@
 // The public object exposed to configuration scripts and the console.
 
+import { CompositorSettings } from "gnoblin-core/devices";
 import type { Client } from "gnoblin-core/host/client";
 import type { Collection } from "gnoblin-core/host/collections";
 import { CLIENT_EVENTS, COLLECTION_EVENTS, OUTPUT_EVENTS } from "gnoblin-core/host/listeners";
@@ -49,6 +50,8 @@ export class Gnoblin {
     readonly session = ctx.hostApi.session;
     /** What a script asks of the process that runs it: `reloadConfig`. */
     readonly runtime = ctx.hostApi.runtime;
+    /** The compositor's own settings, read when it starts: `userShaders`. A change applies at the next login. */
+    readonly compositor = new CompositorSettings();
     /** The windows in the order they were last focused. */
     readonly focus = ctx.hostApi.focus as FocusHistory<Client>;
 
