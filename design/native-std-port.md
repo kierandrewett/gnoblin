@@ -1498,8 +1498,11 @@ there, from the next turn), and native listeners (`Cx::listen`) that `add_listen
 | Rust names: the service is `ModelRoot`, `get` of a collection is `get_by_id`, and five signals carry a `client_` or `output_` prefix                   | Python and TypeScript keep the catalog names; NpObjectAbiB reports a clash if it meets one                                    | Acceptable                                                                                                                                                                    |
 | The focus filters `workspace_id` and `monitor_id` match nothing in the core alone                                                                      | A window of the core has no workspace and no output; std's class extending `client` answers for both                          | Acceptable                                                                                                                                                                    |
 
-**Pending.** The Python half of `modular::native_model` waits for the Python generator of NpObjectAbiB (`object_native.rs`), which
-is not on `rust-compositor` yet. The Rust half is `examples/21-native-model` and `crates/gnoblin/tests/modular/native_model.rs`.
+**Acceptance.** `modular::native_model` runs example 21 in a real session from Rust (`examples/21-native-model`) and from Python
+(`examples/21-native-model-py`, through `gnoblin.objects.model`): a window of the selected application joins a `where` selection, and the
+close of a window is heard through the `gnoblin` object with its last title still readable. A retitle is not asserted in a real
+session: the compositor publishes a title at the window's commit, and the order of the title listeners is proved by
+`crates/gnoblin-core-impl/tests/model.rs`. The TypeScript half waits for NpFlip, as the lane says.
 
 #### NpCoreServices (9 days)
 

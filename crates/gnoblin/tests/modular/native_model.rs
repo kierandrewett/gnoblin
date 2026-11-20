@@ -6,12 +6,26 @@
 //! of a window heard through the `gnoblin` object with its last title still readable.
 
 use crate::support::Mapper;
-use crate::support::native_shell::{Gnoblin, Start, shells};
+use crate::support::native_shell::{Gnoblin, Start, shells, start_script};
+use crate::{copy_example, serving};
 
 #[test]
 fn example_21_a_core_shell_follows_the_windows_through_the_object_model() {
     let mut session = Gnoblin::start(Start::Compositor, &shells().model, &[], &[]);
     session.wait_serving();
+    follows_the_windows(&mut session);
+}
+
+#[test]
+fn example_21_a_python_shell_follows_the_windows_through_the_generated_classes() {
+    let dir = copy_example("21-native-model-py");
+    let mut session = start_script(Start::Compositor, &dir.path().join("shell.py"), &[]);
+    serving(&mut session);
+    follows_the_windows(&mut session);
+}
+
+/// What either shell of the example logs as windows come and go.
+fn follows_the_windows(session: &mut Gnoblin) {
     session.wait_log("the shell is running", |line| line.contains("model: running"));
 
     let mut mapper = Mapper::connect(&session.wayland());
