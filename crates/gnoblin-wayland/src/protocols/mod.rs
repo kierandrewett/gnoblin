@@ -65,8 +65,6 @@ pub mod zwlr_screencopy_v1;
 pub mod zwp_input_method_v2;
 /// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.
 pub mod zwp_linux_dmabuf_v1;
-/// `zwp_pointer_constraints_v1`: locked and confined pointers.
-pub mod zwp_pointer_constraints_v1;
 /// `zwp_tablet_manager_v2`: drawing tablets, their tools and pads.
 pub mod zwp_tablet_v2;
 /// `zwp_text_input_manager_v3`: the text-input conversation.

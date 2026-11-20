@@ -97,7 +97,6 @@ use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
 use crate::protocols::xdg_activation_v1::XdgActivationV1;
 use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
 use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
-use crate::protocols::zwp_pointer_constraints_v1::ZwpPointerConstraintsV1Tables;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
 use crate::window_request::{Decider, WindowRequest, X11Flags};
@@ -106,6 +105,9 @@ use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
 use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
 use gnoblin_wayland_protocols::xdg_output::XdgOutputExt as _;
 use gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::ShortcutInhibitExt as _;
+use gnoblin_wayland_protocols::zwp_pointer_constraints_v1::{
+    PointerConstraintsExt as _, ZwpPointerConstraintsV1Tables,
+};
 
 use crate::log;
 
@@ -344,7 +346,7 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) relative_pointer_state: RelativePointerManagerState,
     /// Kept alive so `zwp_pointer_constraints_v1` stays registered; the handler in
-    /// [`crate::protocols::zwp_pointer_constraints_v1`] decides which constraints are active.
+    /// `gnoblin-wayland-zwp-pointer-constraints-v1` decides which constraints are active.
     #[allow(dead_code)]
     pub(crate) pointer_constraints_state: PointerConstraintsState,
     /// Kept alive so `zwp_pointer_gestures_v1` stays registered.
@@ -489,7 +491,7 @@ pub struct State {
     /// The seat's keyboard features: sources, layout memory and delivery order.
     pub(crate) keyboard_tables: KeyboardTables,
     /// The pointer constraints a client holds.
-    pub(crate) constraint_tables: ZwpPointerConstraintsV1Tables,
+    pub(crate) constraint_tables: ZwpPointerConstraintsV1Tables<State>,
     /// The idle notifications and inhibitors.
     pub(crate) idle_tables: ExtIdleNotifyV1Tables,
     /// The presentation feedback bookkeeping.
@@ -769,7 +771,8 @@ impl State {
         let fractional_scale_global = gnoblin_wayland_protocols::wp_fractional_scale_v1::register::<Self>(&registrar);
         let cursor_shape_state = gnoblin_wayland_protocols::wp_cursor_shape_v1::register::<Self>(&registrar);
         let relative_pointer_state = gnoblin_wayland_protocols::zwp_relative_pointer_v1::register::<Self>(&registrar);
-        let pointer_constraints_state = crate::protocols::zwp_pointer_constraints_v1::global(&display_handle);
+        let pointer_constraints_state =
+            gnoblin_wayland_protocols::zwp_pointer_constraints_v1::register::<Self>(&registrar);
         let pointer_gestures_state = gnoblin_wayland_protocols::zwp_pointer_gestures_v1::register::<Self>(&registrar);
         let tablets = crate::protocols::zwp_tablet_v2::global(&display_handle);
         let idle_inhibit_state = gnoblin_wayland_protocols::zwp_idle_inhibit_v1::register::<Self>(&registrar);

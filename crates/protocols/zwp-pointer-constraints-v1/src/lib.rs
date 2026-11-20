@@ -7,7 +7,7 @@
 //! relative motion) or to stay inside a rectangle of the surface (a confine, which a
 //! remote-desktop viewer uses so the client's cursor cannot escape its window). Both
 //! are *constraints on the compositor's own state*, not on the client, so the whole of
-//! the decision is here and in [`crate::State`]'s motion path.
+//! the decision is here and in `crate::State`'s motion path.
 //!
 //! ## Lifetimes
 //!
@@ -22,7 +22,7 @@
 //!
 //! ## When the compositor activates one
 //!
-//! A constraint is active while all of these hold, and [`State::update_pointer_constraints`]
+//! A constraint is active while all of these hold, and `State::update_pointer_constraints`
 //! settles it whenever one of them can have changed (a new constraint, the pointer's focus
 //! moving, the keyboard's focus moving):
 //!
@@ -61,31 +61,70 @@
 //!    held no lock and no confinement and sent no relative motion at all, so a game
 //!    played with a mouse had neither: `a_locked_pointer_reports_a_mouse_as_relative_motion`.
 
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
+use smithay::backend::renderer::utils::RendererSurfaceStateUserData;
+use smithay::input::SeatHandler;
 use smithay::input::pointer::PointerHandle;
-use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::reexports::wayland_server::Resource;
+use smithay::reexports::wayland_protocols::wp::pointer_constraints::zv1::server::{
+    zwp_confined_pointer_v1::ZwpConfinedPointerV1, zwp_locked_pointer_v1::ZwpLockedPointerV1,
+    zwp_pointer_constraints_v1::ZwpPointerConstraintsV1,
+};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::{Dispatch, GlobalDispatch, Resource};
 use smithay::utils::{Logical, Point, Rectangle};
+use smithay::wayland::GlobalData;
 use smithay::wayland::compositor::{RectangleKind, get_parent, with_states};
 use smithay::wayland::pointer_constraints::{
-    ConstraintRemove, PointerConstraint, PointerConstraintRef, PointerConstraintsHandler, PointerConstraintsState,
-    with_pointer_constraint,
+    PointerConstraint, PointerConstraintRef, PointerConstraintUserData, PointerConstraintsHandler,
+    PointerConstraintsState, with_pointer_constraint,
 };
 
-use smithay::backend::renderer::utils::RendererSurfaceStateUserData;
+gnoblin_log::logger!(log = "wayland");
 
-use crate::State;
+/// What this protocol advertises.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "zwp-pointer-constraints-v1",
+    interfaces: &[ServedInterface::new("zwp_pointer_constraints_v1", 1)],
+    privilege: Privilege::Core,
+};
 
-use crate::log;
+/// What the protocol needs of the compositor: the pointer and keyboard it follows, and where its tables live.
+pub trait Host: SeatHandler<PointerFocus = WlSurface> + PointerConstraintsHandler + Sized + 'static {
+    /// The session's pointer.
+    fn pointer(&self) -> &PointerHandle<Self>;
+
+    /// The surface that has the keyboard, if any.
+    fn keyboard_focus(&self) -> Option<WlSurface>;
+
+    /// The origin, in the layout, of the surface the pointer is on, if it is on one.
+    fn pointer_origin(&self) -> Option<Point<f64, Logical>>;
+
+    /// The pointer's place in the layout.
+    fn pointer_position(&self) -> Point<f64, Logical>;
+
+    /// Whether the session is unlocked: a covered session holds no constraint.
+    fn session_unlocked(&self) -> bool;
+
+    /// The constraints the session holds.
+    fn constraint_tables(&mut self) -> &mut ZwpPointerConstraintsV1Tables<Self>;
+}
 
 /// Creates the `zwp_pointer_constraints_v1` global.
-pub(crate) fn global(display: &DisplayHandle) -> PointerConstraintsState {
-    PointerConstraintsState::new::<State>(display)
+pub fn register<D>(registrar: &Registrar<'_>) -> PointerConstraintsState
+where
+    D: GlobalDispatch<ZwpPointerConstraintsV1, GlobalData>
+        + Dispatch<ZwpPointerConstraintsV1, GlobalData>
+        + Dispatch<ZwpLockedPointerV1, PointerConstraintUserData<D>>
+        + Dispatch<ZwpConfinedPointerV1, PointerConstraintUserData<D>>
+        + SeatHandler
+        + 'static,
+{
+    PointerConstraintsState::new::<D>(registrar.display())
 }
 
 /// What a client asked the pointer to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ZwpPointerConstraintsV1Kind {
+pub enum ZwpPointerConstraintsV1Kind {
     /// The pointer stays where it is and reports relative motion.
     Locked,
     /// The pointer stays inside a region of the surface.
@@ -93,12 +132,11 @@ pub(crate) enum ZwpPointerConstraintsV1Kind {
 }
 
 /// One constraint the compositor holds active for a surface.
-#[derive(Clone, Debug)]
-pub(crate) struct ZwpPointerConstraintsV1HeldConstraint {
+pub struct ZwpPointerConstraintsV1HeldConstraint<H: SeatHandler> {
     /// The surface the client asked for.
-    pub(crate) surface: WlSurface,
+    pub surface: WlSurface,
     /// The pointer the constraint applies to.
-    pub(crate) pointer: PointerHandle<State>,
+    pub pointer: PointerHandle<H>,
 }
 
 /// The constraints the session holds.
@@ -107,12 +145,20 @@ pub(crate) struct ZwpPointerConstraintsV1HeldConstraint {
 /// and the list is read on every motion: a vector scan of two entries is cheaper than a
 /// hash, and the order is the order the clients asked, which is what the release order
 /// reports.
-#[derive(Default, Debug)]
-pub(crate) struct ZwpPointerConstraintsV1Tables {
+pub struct ZwpPointerConstraintsV1Tables<H: SeatHandler> {
     /// Every constraint that is currently active.
-    pub(crate) held: Vec<ZwpPointerConstraintsV1HeldConstraint>,
+    pub held: Vec<ZwpPointerConstraintsV1HeldConstraint<H>>,
     /// Where the client says it draws the cursor while locked, per pointer.
-    pub(crate) hints: Vec<(WlSurface, Point<f64, Logical>)>,
+    pub hints: Vec<(WlSurface, Point<f64, Logical>)>,
+}
+
+impl<H: SeatHandler> Default for ZwpPointerConstraintsV1Tables<H> {
+    fn default() -> Self {
+        Self {
+            held: Vec::new(),
+            hints: Vec::new(),
+        }
+    }
 }
 
 /// The surface a surface is a subsurface of, however deep: the one a window's keyboard focus names.
@@ -133,32 +179,16 @@ fn surface_extent(surface: &WlSurface) -> Option<Rectangle<i32, Logical>> {
     })
 }
 
-impl State {
+pub trait PointerConstraintsExt: Host {
     /// The surface whose client holds an active pointer lock, if any.
     ///
     /// The answer is read per motion from Smithay's own record, so a lock the client
     /// destroyed or the pointer left cannot be seen as held, and one that has not started
     /// yet (its window does not have the keyboard) does not hold the pointer.
     #[must_use]
-    pub(crate) fn locked_surface(&self) -> Option<WlSurface> {
-        let focus = self.pointer.current_focus()?;
+    fn locked_surface(&self) -> Option<WlSurface> {
+        let focus = self.pointer().current_focus()?;
         (self.active_constraint_of(&focus) == Some(ZwpPointerConstraintsV1Kind::Locked)).then_some(focus)
-    }
-
-    /// What the session's clients hold the pointer to now, for a backend whose pointer is another compositor's.
-    ///
-    /// It is read per turn from the same record [`State::locked_surface`] reads, so a constraint the client destroyed,
-    /// or one that has not started because its window lacks the keyboard, is not asked of the host.
-    #[must_use]
-    pub(crate) fn backend_pointer_constraint(&self) -> gnoblin_backend::PointerConstraint {
-        let Some(focus) = self.pointer.current_focus() else {
-            return gnoblin_backend::PointerConstraint::Free;
-        };
-        match self.active_constraint_of(&focus) {
-            Some(ZwpPointerConstraintsV1Kind::Locked) => gnoblin_backend::PointerConstraint::Locked,
-            Some(ZwpPointerConstraintsV1Kind::Confined) => gnoblin_backend::PointerConstraint::Confined,
-            None => gnoblin_backend::PointerConstraint::Free,
-        }
     }
 
     /// Holds a position inside the region of the surface that holds the pointer, if that
@@ -170,14 +200,14 @@ impl State {
     /// is exactly the one that has to be held, and nothing lies under where it would land.
     /// A position is returned as it came when nothing is confined.
     #[must_use]
-    pub(crate) fn confine(&self, position: Point<f64, Logical>) -> Point<f64, Logical> {
-        let Some(surface) = self.pointer.current_focus() else {
+    fn confine(&self, position: Point<f64, Logical>) -> Point<f64, Logical> {
+        let Some(surface) = self.pointer().current_focus() else {
             return position;
         };
         if self.active_constraint_of(&surface) != Some(ZwpPointerConstraintsV1Kind::Confined) {
             return position;
         }
-        let (Some(origin), Some(bounds)) = (self.pointer_origin, self.constraint_bounds(&surface)) else {
+        let (Some(origin), Some(bounds)) = (self.pointer_origin(), self.constraint_bounds(&surface)) else {
             return position;
         };
         let local = position - origin;
@@ -195,10 +225,10 @@ impl State {
     /// The kind comes from Smithay's own record of the constraint, so a constraint the
     /// client destroyed cannot be seen as held here: the two cannot disagree.
     fn active_constraint_of(&self, surface: &WlSurface) -> Option<ZwpPointerConstraintsV1Kind> {
-        let pointer = self.pointer.clone();
+        let pointer = self.pointer().clone();
         with_pointer_constraint(surface, &pointer, |constraint| {
             constraint
-                .filter(|constraint: &PointerConstraintRef<'_, State>| constraint.is_active())
+                .filter(|constraint: &PointerConstraintRef<'_, Self>| constraint.is_active())
                 .map(|constraint| match &*constraint {
                     PointerConstraint::Locked(_) => ZwpPointerConstraintsV1Kind::Locked,
                     PointerConstraint::Confined(_) => ZwpPointerConstraintsV1Kind::Confined,
@@ -216,7 +246,7 @@ impl State {
     /// Refusing the subtraction is the safe direction of that approximation.
     fn constraint_bounds(&self, surface: &WlSurface) -> Option<Rectangle<i32, Logical>> {
         let extent = surface_extent(surface)?;
-        let pointer = self.pointer.clone();
+        let pointer = self.pointer().clone();
         let region = with_pointer_constraint(surface, &pointer, |constraint| constraint?.region().cloned());
         let Some(region) = region else {
             return Some(extent);
@@ -236,11 +266,11 @@ impl State {
     /// The protocol promises a client that the pointer is inside its region when the
     /// constraint starts, so a constraint whose region does not hold the pointer waits.
     fn pointer_in_constraint_region(&self, surface: &WlSurface) -> bool {
-        let Some(origin) = self.pointer_origin else {
+        let Some(origin) = self.pointer_origin() else {
             return false;
         };
-        let local = self.pointer_position - origin;
-        let pointer = self.pointer.clone();
+        let local = self.pointer_position() - origin;
+        let pointer = self.pointer().clone();
         let region = with_pointer_constraint(surface, &pointer, |constraint| constraint?.region().cloned());
         match region {
             // No region: the surface's own input region, which the pointer has focus through.
@@ -253,11 +283,11 @@ impl State {
     ///
     /// It has to hold the pointer's focus and its window the keyboard, and the session must not be covered.
     fn constraint_target(&self) -> Option<WlSurface> {
-        if self.lock.state() != gnoblin_lock::State::Unlocked {
+        if !self.session_unlocked() {
             return None;
         }
-        let surface = self.pointer.current_focus()?;
-        let keyboard = self.keyboard.current_focus()?;
+        let surface = self.pointer().current_focus()?;
+        let keyboard = self.keyboard_focus()?;
         (root_of(&surface) == root_of(&keyboard)).then_some(surface)
     }
 
@@ -267,12 +297,12 @@ impl State {
     /// qualifies starts. It is called wherever the pointer's focus or the keyboard's moves,
     /// and when a constraint is made, so a client hears `locked` and `unlocked` as the
     /// window it asked for is chosen and left, however many times that happens.
-    pub(crate) fn update_pointer_constraints(&mut self) {
+    fn update_pointer_constraints(&mut self) {
         let target = self.constraint_target();
-        let held = std::mem::take(&mut self.constraint_tables.held);
+        let held = std::mem::take(&mut self.constraint_tables().held);
         for entry in held {
             if target.as_ref() == Some(&entry.surface) {
-                self.constraint_tables.held.push(entry);
+                self.constraint_tables().held.push(entry);
                 continue;
             }
             with_pointer_constraint(&entry.surface, &entry.pointer, |constraint| {
@@ -285,10 +315,15 @@ impl State {
         let Some(surface) = target else {
             return;
         };
-        if self.constraint_tables.held.iter().any(|entry| entry.surface == surface) {
+        if self
+            .constraint_tables()
+            .held
+            .iter()
+            .any(|entry| entry.surface == surface)
+        {
             return;
         }
-        let pointer = self.pointer.clone();
+        let pointer = self.pointer().clone();
         let startable = self.pointer_in_constraint_region(&surface);
         let started = with_pointer_constraint(&surface, &pointer, |constraint| match constraint {
             Some(constraint) if startable => {
@@ -299,7 +334,7 @@ impl State {
         });
         if started {
             log::debug!(area = "pointer-constraints", surface = ?surface.id(), "activated");
-            self.constraint_tables
+            self.constraint_tables()
                 .held
                 .push(ZwpPointerConstraintsV1HeldConstraint { surface, pointer });
         }
@@ -311,8 +346,8 @@ impl State {
     /// be able to keep the pointer captured. A persistent constraint stays asked for and
     /// starts again by the rules above once the cover is gone and the pointer is back on
     /// a window that has the keyboard.
-    pub(crate) fn release_constraints(&mut self) {
-        let held = std::mem::take(&mut self.constraint_tables.held);
+    fn release_constraints(&mut self) {
+        let held = std::mem::take(&mut self.constraint_tables().held);
         for entry in held {
             with_pointer_constraint(&entry.surface, &entry.pointer, |constraint| {
                 if let Some(constraint) = constraint {
@@ -323,31 +358,29 @@ impl State {
                 }
             });
         }
-        self.constraint_tables.hints.clear();
+        self.constraint_tables().hints.clear();
     }
 }
 
-impl PointerConstraintsHandler for State {
-    fn new_constraint(&mut self, _surface: &WlSurface, _pointer: &PointerHandle<Self>) {
-        // A covered session has no client surface under the pointer, so nothing may be
-        // locked or confined: the constraint is held by the client and answered when
-        // the session is revealed and the pointer arrives. A surface that has the
-        // pointer but not the keyboard waits for the keyboard in the same way.
-        self.update_pointer_constraints();
-    }
+impl<T: Host> PointerConstraintsExt for T {}
 
-    fn remove_constraint(&mut self, surface: &WlSurface, _pointer: &PointerHandle<Self>, _reason: ConstraintRemove) {
-        self.constraint_tables.held.retain(|entry| entry.surface != *surface);
-        self.constraint_tables.hints.retain(|(held, _)| held != surface);
-    }
+/// A constraint was made for `surface`: the constraints are brought in line with where the pointer and keyboard are.
+pub fn new_constraint<H: Host>(host: &mut H) {
+    // A covered session has no client surface under the pointer, so nothing may be
+    // locked or confined: the constraint is held by the client and answered when
+    // the session is revealed and the pointer arrives. A surface that has the
+    // pointer but not the keyboard waits for the keyboard in the same way.
+    host.update_pointer_constraints();
+}
 
-    fn cursor_position_hint(
-        &mut self,
-        surface: &WlSurface,
-        _pointer: &PointerHandle<Self>,
-        location: Point<f64, Logical>,
-    ) {
-        self.constraint_tables.hints.retain(|(held, _)| held != surface);
-        self.constraint_tables.hints.push((surface.clone(), location));
-    }
+/// A constraint of `surface` ended.
+pub fn remove_constraint<H: Host>(host: &mut H, surface: &WlSurface) {
+    host.constraint_tables().held.retain(|entry| entry.surface != *surface);
+    host.constraint_tables().hints.retain(|(held, _)| held != surface);
+}
+
+/// The client told where it draws the cursor while `surface` is locked.
+pub fn cursor_position_hint<H: Host>(host: &mut H, surface: &WlSurface, location: Point<f64, Logical>) {
+    host.constraint_tables().hints.retain(|(held, _)| held != surface);
+    host.constraint_tables().hints.push((surface.clone(), location));
 }

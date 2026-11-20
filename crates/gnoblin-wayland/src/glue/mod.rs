@@ -21,5 +21,6 @@ mod xdg_toplevel_icon_v1;
 mod xdg_toplevel_tag_v1;
 mod zwp_idle_inhibit_v1;
 mod zwp_keyboard_shortcuts_inhibit_v1;
+mod zwp_pointer_constraints_v1;
 mod zwp_primary_selection_v1;
 mod zxdg_output_v1;

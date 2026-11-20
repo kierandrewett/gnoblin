@@ -23,6 +23,7 @@ pub use gnoblin_wayland_xdg_toplevel_icon_v1 as xdg_toplevel_icon_v1;
 pub use gnoblin_wayland_xdg_toplevel_tag_v1 as xdg_toplevel_tag_v1;
 pub use gnoblin_wayland_zwp_idle_inhibit_v1 as zwp_idle_inhibit_v1;
 pub use gnoblin_wayland_zwp_keyboard_shortcuts_inhibit_v1 as zwp_keyboard_shortcuts_inhibit_v1;
+pub use gnoblin_wayland_zwp_pointer_constraints_v1 as zwp_pointer_constraints_v1;
 pub use gnoblin_wayland_zwp_pointer_gestures_v1 as zwp_pointer_gestures_v1;
 pub use gnoblin_wayland_zwp_primary_selection_v1 as zwp_primary_selection_v1;
 pub use gnoblin_wayland_zwp_relative_pointer_v1 as zwp_relative_pointer_v1;
@@ -50,4 +51,5 @@ pub const ALL: &[&ProtocolInfo] = &[
     &wp_viewporter::PROTOCOL,
     &wp_cursor_shape_v1::PROTOCOL,
     &xdg_output::PROTOCOL,
+    &zwp_pointer_constraints_v1::PROTOCOL,
 ];

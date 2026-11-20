@@ -162,3 +162,10 @@ description = "The zxdg_output_manager_v1 Wayland protocol of gnoblin-wayland: t
 kind = "protocol"
 interfaces = [["zxdg_output_manager_v1", 3]]
 deps = ["smithay", "gnoblin-types"]
+
+[[crate]]
+name = "zwp-pointer-constraints-v1"
+description = "The zwp_pointer_constraints_v1 Wayland protocol of gnoblin-wayland: locked and confined pointers."
+kind = "protocol"
+interfaces = [["zwp_pointer_constraints_v1", 1]]
+deps = ["smithay", "gnoblin-log"]
