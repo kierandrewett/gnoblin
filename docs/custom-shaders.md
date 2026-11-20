@@ -171,7 +171,7 @@ nothing extra.
 
 ## When a shader is not drawn
 
-A shader can fail to appear for four reasons. Each one leaves the window drawn without it and says why.
+A shader can fail to appear for five reasons. Each one leaves the window drawn without it and says why.
 
 ### The setting is off
 
@@ -208,6 +208,18 @@ the compositor does not draw the effect shader: unsupported-by-renderer
 The GLES and Vulkan renderers draw shaders. The software renderer has no shader compiler, so it never does. A session with a GPU renderer that draws them
 lists `shader` in `effect_kinds`. Results are not bit-identical between renderers: precision and filtering differ a little,
 so compare colours with a tolerance.
+
+### The shader is too slow
+
+The compositor times each shader source in every frame it draws. A source that takes more than 50 ms in three frames in a
+row is switched off for ten seconds: the window is drawn without it, the node's `skipped` list says `shader: over-budget`,
+and the compositor logs a warning with the source's hash. It comes back, at the window's next repaint, when the ten
+seconds are up. A source that is switched off three times, or whose frame was in flight when the graphics device was lost
+three times, is refused for the rest of the session: `skipped` says `shader: refused-for-session`, and writing the same
+source again is refused `bad-value` before it is validated. A different source is not affected. Make the shader cheaper
+(fewer texture reads, a smaller loop, fewer `backdrop` calls) and write it again; a changed source has a new hash.
+
+A renderer that cannot build a program for a valid source says why instead: `shader: <reason>`. That is not a strike.
 
 Read the warnings of a client with `client.styleWarnings` in TypeScript and `Client::style_warnings` in Rust.
 

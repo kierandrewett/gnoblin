@@ -3281,10 +3281,11 @@ files, one test, the changelog and this document); `gnoblin-compositor` and `gno
 
 ## 37. The custom shader pass: analysis for the owner (D20, M7.9, O7)
 
-Status: **phase A is built**, and the GLES pass (37.10) and the Vulkan pass (37.11). The owner approved the pass with backdrop sampling, which reverses O7 (D20, M7.9).
-Built: the validator, the `shader` effect kind and its wire path, the setting and the capability, the frame data, the secure-surface input,
-the software renderer's skipped listing, the catalog, the C ABI and the SDKs (37.6), the GLES and Vulkan passes (37.10, 37.11), and the std element,
-the docs page, the examples and the real-session tests (37.12). Not built here: the frame-cost watchdog; 37.8 gives each lane its seam. 37.1 to 37.4 are the analysis the build
+Status: **phase A is built, and so are the GLES pass (37.10), the Vulkan pass (37.11), the std element, docs page and real-session tests (37.12), the
+ABI repair (37.13) and the watchdog (37.14)**. The owner approved the pass with backdrop sampling, which reverses O7 (D20, M7.9). Built: the
+validator, the `shader` effect kind and its wire path, the setting and the capability, the frame data, the secure-surface input, the software renderer's
+skipped listing, the catalog, the C ABI and the SDKs (37.6), the GLES and Vulkan passes, the std element and its tests, the array stride that lets a shell
+built before the shader fields keep running, and the frame-cost watchdog with the timing interface the renderers call. 37.8 gives each lane its seam. 37.1 to 37.4 are the analysis the build
 followed, with the corrections noted in 37.3.
 
 ### 37.1 Why O7 refused it
@@ -3429,8 +3430,9 @@ line and column go to the compositor's log (`an effect was refused`, field `reas
   `ShaderCache<Result<Program, ShaderError>>` by `pass.key()`. Add `"shader"` to the GLES list in `RendererKind::effect_kinds` when it draws.
 - **Vulkan.** `crates/gnoblin-render-vulkan/src/pipeline.rs`: group 0 gains a second uniform binding and group 2 the backdrop; one pipeline per
   `ShaderKey`, created at draw time and kept in the same `ShaderCache`; list the kind when it draws.
-- **Watchdog.** Strikes are keyed by `ShaderKey::get()`; refuse a struck key before compiling; `ShaderCache::drain` on `RenderError::Lost`.
-  `Composer::skipped_effects` (`gnoblin-backend/src/render/compose.rs`) builds `<kind>: <reasons>` and needs a reason for a struck pass.
+- **Watchdog.** Built (37.14). A renderer calls `frame.shader_timings().record(pass.key(), elapsed)` after each shader pass it draws, and
+  `record_refused(key, reason)` for a program it could not build; it drains its `ShaderCache` on `RenderError::Lost`. It never sees a switched-off
+  pass: the frame leaves it out.
 - **Std.** A `ShaderFilter` maps onto `Effect::shader` beside the blur mapping in `gnoblin-std-impl/src/style/cascade.rs` (TypeScript and
   Python write an `effects` entry with `kind: "shader"`, `source`, `params`) and checks `seat.user_shaders` first. The docs page for the contract
   belongs to this lane.
@@ -3448,7 +3450,9 @@ line and column go to the compositor's log (`an effect was refused`, field `reas
 5. The wrapper clamps `effect`'s result to a valid premultiplied colour and applies the layer's tint, opacity and rounded corners.
 6. The module has a second uniform block and a third bind group, which the renderer lanes pay for.
 7. `params` are `f32` in the scene; a value an `f32` cannot hold is refused.
-8. `GnoblinEffect` grew by 32 bytes (appended, as the ABI rules allow); the struct is passed as an array, so a shell built before has to be rebuilt.
+8. `GnoblinEffect` grew by 32 bytes (appended, as the ABI rules allow). The struct is passed as an array, so phase A needed a rebuilt
+   shell; that broke the promise that a library upgrade needs no recompile, and 37.13 repairs it: the array's stride is the `size` of its
+   first record, not the core's `sizeof`.
 
 ### 37.10 The GLES pass (lane ShaderGles)
 
@@ -3558,6 +3562,50 @@ for the owner when the default is confirmed (37.9).
 What they do not prove is a pixel. A headless session draws with the software renderer, which has no shader compiler, so the node's `skipped` lists
 `shader: unsupported-by-renderer` and the test asserts that listing (and asserts that nothing is listed when the seat's `effect_kinds` holds
 `shader`). The drawing is proved by the renderer lanes' own tests (37.8).
+
+### 37.13 The ABI repair: the stride of an effect array (lane ShaderWatch)
+
+Phase A appended `source`, `params` and `n_params` to `GnoblinEffect` (152 to 184 bytes) and read the array with the core's own `sizeof`, so a
+shell built before had to be rebuilt. That broke the promise of `docs/abi-compatibility.md` (a library upgrade needs no recompile), and 37.9 item
+8 recorded it as a decision for the owner. It is repaired, not accepted.
+
+- **The rule.** The stride of a `VALUE_EFFECTS` array is the `size` of its first record, and every record carries that `size`. A shell sets `size`
+  from the struct it was built with, so records of 152 bytes (built before) and of 184 (built after) both read; a longer struct from a later
+  minor reads too. `gnoblin-core-impl/src/values.rs` `effect_records` copies each record into a zeroed `GnoblinEffect`, so a field the shell's
+  record ends before is zero (an empty `source`, no `params`), and a `size` below 152, not a multiple of 8, or different between records is
+  `E_ERR`. It is the existing extensible-struct convention (`size` first) applied to an array, so the struct layout, `abi.lock` and the SDKs are unchanged.
+- **Other designs weighed.** A separate record for shaders through its own value kind would split one ordered list in two and lose the order of
+  the passes; a stride field in `GnoblinValue` would need every shell built before to have set it. The `size` the struct already carries is
+  the only thing a shell built before is certain to have set.
+- **The proof.** `tests/modular/golden/bin/libgolden_effects_shell.so` is a core-only shell built against the SDK of the last commit before the
+  shader fields (`239370c00`, 152-byte `GnoblinEffect`), stored and hashed like the other two goldens. It writes four effects in one array to each
+  window. `abi_upgrade` runs it on the libraries of this tree and on the 1.1 libraries, and the node's `skipped` must name the two blurs (the
+  software renderer leaves a blur undrawn) and the write must not be refused: a core that indexed by its own size refuses it at the second record.
+  `values.rs` also reads a 152-byte array, a current one and a longer one, and refuses the three malformed sizes.
+
+### 37.14 The frame-cost watchdog (lane ShaderWatch)
+
+- **What it does.** Per source, keyed by `ShaderKey::get()`: three frames in a row in which a source took more than 50 ms
+  (`SHADER_FRAME_BUDGET`, `gnoblin-render-frame/src/shader/timings.rs`, the one place the numbers live) are a strike; a frame within the budget
+  ends the run. A strike switches the source off for 10 s (`DISABLE_FOR`): the frame builder leaves its passes out (`OutputFrame::drop_shader_passes`
+  in `Composer::compose`), the node's `skipped` names `shader: over-budget`, a warning is logged (`hash`, `strikes`, the cost), and the nodes that
+  carry it are damaged so the pixels the slow pass drew are replaced. The pass comes back at the node's next repaint after the time is up. Three
+  strikes refuse the source for the session: `shader: refused-for-session`, and a write of it answers `bad-value` before it is validated
+  (`ShaderWrites`, `gnoblin-compositor/src/ipc/tree_effects.rs`; the list is shared with the composer through `gnoblin_wayland::Config::shader_refusals`).
+- **Device loss.** A draw that returns `RenderError::Lost` marks the frame (`AnyRenderer::draw`, and the DRM scan-out draw), and the host strikes every source
+  the frame held, at once, before the recovery that follows a loss rebuilds the renderer. The renderer cannot say which program hung the device.
+- **The interface.** `OutputFrame::shader_timings()` is a handle on the frame (shared by its clones, a capture's redraw has its own), which a
+  renderer writes with `record(key, elapsed)` (a source drawn by several layers sums) and `record_refused(key, reason)`. The backend tells the host
+  the draw is over (`Host::drawn`, called after every draw by the headless, nested and DRM backends), and the composer feeds the report to
+  `shader::watchdog::Watchdog`. No renderer signature changed. `record_refused` is not a strike: it is how a driver's compile failure names itself
+  in `skipped` (`shader: <reason>`).
+- **Time.** The cool-off runs on the composer's own clock (`view_clock_ms`, advanced by the session), so a test moves it and nothing reads a wall clock.
+- **Tests.** The state machine on made-up costs (`watchdog.rs`), the composer with a fake renderer that reports costs, a lost device and a program it could
+  not build (`compose/tests.rs`, `shader_watchdog`), the write refusal (`tree_effects.rs`), and the frame helpers (`frame.rs`).
+- **Decisions the owner may overrule.** (a) Three frames _in a row_, not three in a window: a frame within budget ends the run, so a driver stall
+  that hits one frame in a hundred never strikes. (b) 10 s before a struck pass is tried again; the alternative is to stay off until the shell
+  writes the list again. (c) A device loss is one strike for every source in the frame, with no wait for three frames. (d) A pass that comes back
+  is drawn at the node's next repaint, not on a timer, so an idle output shows no shader until something repaints it.
 
 ## 38. D11, window motion as std policy, and the stale statements of sections 31 to 34 (lane TsStdObjects)
 
