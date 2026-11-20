@@ -12,19 +12,21 @@ Bingux and other Wayland clients provide panels, launchers, notifications, and
 other desktop controls. See README.md and docs/bring-your-own-shell.md.
 
 The standalone session has no built-in developer console or GNOME Shell/GJS
-runtime. Users configure the session with Lua. Developers inspect and control a
-running session with `gnoblinctl` and the documented runtime API.
+runtime. Users configure the session with the TOML configuration and script the
+shell in TypeScript, which the shell runtime runs against the scene tree.
+Developers inspect and control a running session with `gnoblinctl` and the
+documented runtime API.
 
 ## Design principles
 
 - Keep shell presentation in external Wayland clients.
-- Keep configuration and runtime control in the shared Lua API.
-- Keep terminal input in terminal clients; it is not compositor JavaScript.
+- Keep configuration and runtime control in the shared object model.
+- Keep terminal input in terminal clients; it is not compositor scripting.
 - Report operation errors and asynchronous completion through the runtime API.
 
 ## References and boundaries
 
-Use the [configuration reference](/config) for Lua settings and the
+Use the [configuration reference](/config) for settings and the
 [runtime API reference](/shell-api/) for compositor state and
 operations. Use [gnoblinctl](/cli/) for session diagnostics and direct
 control. The compositor API does not create widgets or provide a terminal UI.

@@ -1,6 +1,6 @@
 # Window frame: a surface with outlets
 
-This is the owner's request, not part of the zip specification (`design/archive/js-spec-native.md`). The specification has
+This is the owner's request, not part of the zip specification (`js-spec-native.md (removed)`). The specification has
 `Decorations` as a library listener that mounts a `Titlebar`, and it has no frame object. The owner asked for "an outlet
 sort of api" for the window frame. The frame adds to the specification and changes none of its names.
 

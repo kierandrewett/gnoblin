@@ -1,8 +1,7 @@
 //! Guardian: supervision, systemd and logind, environment, autostart, logs and recovery.
 //!
-//! This crate is the guardian of the process model in `design/rust-compositor.md`
-//! and the supervision policy of `design/lean-runtime.md`: one process lives for
-//! the login and owns the session, while the compositor, the shell, the
+//! This crate is the guardian of the process model in `design/rust-compositor.md`:
+//! one process lives for the login and owns the session, while the compositor, the shell, the
 //! services role, the front and the autostart applications are children it
 //! starts, watches and stops.
 //!
@@ -47,8 +46,7 @@
 //!
 //! # Failure modes first
 //!
-//! The plan's card, `design/startup-recovery.md`, `design/lean-runtime.md` and
-//! `src/session` give this list. Each entry names the test that covers it.
+//! The plan's card and `src/session` give this list. Each entry names the test that covers it.
 //!
 //! 1. A shell that crashes immediately is restarted forever and burns a core:
 //!    the budget stops it and the session is reported degraded —

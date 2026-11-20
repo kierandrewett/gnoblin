@@ -1,10 +1,10 @@
 # Tiling client hints
 
-> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+> **The `gnoblin-wm` crate is deleted** (lane W6, `cutover-survey.md (removed)` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
 
 What a tiling compositor tells a client about its tile, so that client-side
 decorations (CSD) adapt, and what Gnoblin sends today. Companion to the layout
-side in `layers.md` and the WM notes; this file covers the protocol side only.
+side in the WM notes; this file covers the protocol side only.
 
 Status: research done. Implementation of `tiled_*` states, `configure_bounds`
 and `suspended` is in progress in this lane. Transactions and clip-to-geometry
@@ -14,7 +14,7 @@ Citations are `path:line` in this repository, or a primary source named in
 [Sources](#sources). `[INFERENCE]` marks a claim not checked against code or a
 primary source.
 
-Related: [floating-wm-lessons.md](floating-wm-lessons.md) covers how COSMIC and Sanctum handle floating windows.
+Related: floating-wm-lessons.md covers how COSMIC and Sanctum handle floating windows.
 
 ## Short answer
 

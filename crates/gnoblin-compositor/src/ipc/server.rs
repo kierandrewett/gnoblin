@@ -1377,7 +1377,7 @@ impl Dispatcher {
                     .unwrap_or(false);
                 self.control.set_reduced_motion(reduced_motion);
                 // The output scale is re-derived from the accepted document, so a scale set in
-                // init.retired shell after the session started takes effect on this commit.
+                // the configuration after the session started takes effect on this commit.
                 self.control
                     .set_global_scale(crate::monitors::settings_of(&config).global_scale);
                 // The configuration observer a provider registered (std's) reads the sections it owns (window management,

@@ -1,6 +1,6 @@
 # XR extension: `gnoblin-xr`
 
-> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+> **The `gnoblin-wm` crate is deleted** (lane W6, `cutover-survey.md (removed)` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
 
 Status: proposal (D34), revised 2026-11-08 after Kieran's second review; D35 folded the extension into a program on the
 owner socket. This document replaces the plan in the Doop frames XR 1 to XR 4 (three levels, portals, parked
@@ -114,7 +114,7 @@ Why (a1) fails:
 Why (b) fails:
 
 - A window capture holds the client buffer only. Popups are excluded (`design/capture-api.md:17`).
-- Window frames are a layer the compositor draws around the window (`design/layers.md:204-206`). Effects (D24, D26),
+- Window frames are a layer the compositor draws around the window (`layers.md (removed):204-206`). Effects (D24, D26),
   the cursor and lock covers are compositor drawing too. The extension would have to copy Gnoblin's compositing.
 - Input has no standard path to a window that is not on an output. libei regions are output rectangles, and an
   absolute event outside every region is refused (`crates/gnoblin-input-eis/src/lib.rs:63-65`).
@@ -187,7 +187,7 @@ panel kind per output, by these rules, first match wins:
 - **Window panel:** one window's node subtree drawn flat and front-on: the window, its frame and its effect padding
   (`crates/gnoblin-render/src/scene.rs:175-176`), with shadows inside the padding. Opacity is baked in.
 - **Band panels:** the output's `background` and `bottom` bands as one panel below the windows, and `top` and
-  `overlay` as one panel above them (`design/layers.md:153-156`). Each is cropped to the bounds of its surfaces.
+  `overlay` as one panel above them (`layers.md (removed):153-156`). Each is cropped to the bounds of its surfaces.
 - **Popup panel:** each popup is its own panel in its parent's plane, placed after its parent. A menu opening
   does not resize the parent's buffer.
 - **Cursor panel:** a small panel at the pointer, in the plane of the surface under it, last in its space.
@@ -570,7 +570,7 @@ Code today:
   multi-monitor setup where a client cannot name an output.
 - **Code today:** the wm ends output-scope layer surfaces with their output (`crates/gnoblin-wm/src/wm.rs:1147-1149`).
   The legacy rule contract matches layer surfaces (`type = "layer"`, `layer` namespace pattern,
-  `design/archive/window-rules.md:24`, `:28`). The Rust reference lists `type = "window"` only
+  `window-rules.md (removed):24`, `:28`). The Rust reference lists `type = "window"` only
   (`docs/config/window_rule.md:21`). No rule has an `output` action.
 
 ### G13 (new): a layout declares `depth`
@@ -853,19 +853,19 @@ Testable on an Agent37 instance with Monado's simulated headset.
 
 ## Risks
 
-| Risk                                                               | Mitigation                                                                |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| On Monado, quads are sampled twice, as projection is               | The gains claimed are head-locking, display-time pose and cost.           |
-| Minified panels alias at a distance                                | Mip levels in the swapchain where the runtime supports them (unverified). |
-| Memory for many window panels                                      | Planar outputs are one panel; the budget rule caps the rest.              |
-| Order is wrong for a 3D layout seen from far off the viewer point  | The layout declares `depth`.                                              |
-| The pixels-before-set rule stalls a set behind a slow capture      | One capture pending per panel; measure in phase 2.                        |
-| D22 process tier and grants are not built                          | Phase 1 uses the connection's own role, handed over with the socket.      |
-| WiVRn layer count and quad support (unverified)                    | The budget rule adapts to `maxLayerCount`.                                |
-| Bevy cannot draw into an external Vulkan image (unverified)        | The engine contract is small; another glTF renderer can fill it.          |
-| Interaction profiles differ between runtimes                       | Bind `khr/simple_controller` first, then known profiles.                  |
-| Multi-seat work changes the seat model (`design/multi-seat.md`)    | The view pointer names its seat from the start.                           |
-| D33 moves z-order into layouts (`design/layout-owns-placement.md`) | Window panel order reads the stacking order, whoever sets it.             |
+| Risk                                                                  | Mitigation                                                                |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| On Monado, quads are sampled twice, as projection is                  | The gains claimed are head-locking, display-time pose and cost.           |
+| Minified panels alias at a distance                                   | Mip levels in the swapchain where the runtime supports them (unverified). |
+| Memory for many window panels                                         | Planar outputs are one panel; the budget rule caps the rest.              |
+| Order is wrong for a 3D layout seen from far off the viewer point     | The layout declares `depth`.                                              |
+| The pixels-before-set rule stalls a set behind a slow capture         | One capture pending per panel; measure in phase 2.                        |
+| D22 process tier and grants are not built                             | Phase 1 uses the connection's own role, handed over with the socket.      |
+| WiVRn layer count and quad support (unverified)                       | The budget rule adapts to `maxLayerCount`.                                |
+| Bevy cannot draw into an external Vulkan image (unverified)           | The engine contract is small; another glTF renderer can fill it.          |
+| Interaction profiles differ between runtimes                          | Bind `khr/simple_controller` first, then known profiles.                  |
+| Multi-seat work changes the seat model (`design/multi-seat.md`)       | The view pointer names its seat from the start.                           |
+| D33 moves z-order into layouts (`layout-owns-placement.md (removed)`) | Window panel order reads the stacking order, whoever sets it.             |
 
 ## Decisions for Kieran
 

@@ -18,8 +18,7 @@
 //! insets, which is the same seam a configuration's monitor insets would use.
 //!
 //! Nor is it a record in a registry. A layer registry once named every surface and nothing read the names back:
-//! stacking, hit testing, zones and keyboard never consulted it, so it was deleted
-//! (`design/cutover-survey.md` 16.1). What the session knows of a layer surface is
+//! stacking, hit testing, zones and keyboard never consulted it, so it was deleted. What the session knows of a layer surface is
 //! `SessionSnapshot::layers`: its namespace, layer, rectangle, zone and whether it is mapped. The protocol owns
 //! the rest.
 //!

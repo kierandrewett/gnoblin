@@ -296,4 +296,4 @@ evidence = "no crate links libsystemd or libelogind. libseat chooses a logind ba
 
 [[not-linked]]
 id = "glib, gtk, gobject introspection"
-evidence = "Cargo.lock has no glib-sys, gtk-sys or gobject-sys crate; they are a Mutter floor only (design/packaging-research.md: GLib 2.86)"
+evidence = "Cargo.lock has no glib-sys, gtk-sys or gobject-sys crate; they are a Mutter floor only (GLib 2.86)"

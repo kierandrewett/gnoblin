@@ -171,8 +171,7 @@ fn a_request_in_a_namespace_nobody_serves_is_refused() {
 }
 
 /// `layers.register` was the one verb of the `gnoblin.layers` object, which the session published so a built-in
-/// provider could register a layer above a window. The layer registry is deleted (design/cutover-survey.md 16.1,
-/// lane 8C), so a client that still makes the call is refused, not left waiting: no object of that type is
+/// provider could register a layer above a window. The layer registry is deleted, so a client that still makes the call is refused, not left waiting: no object of that type is
 /// published, no published object serves the member, and the identity the object had is unknown.
 #[test]
 fn layers_register_is_refused_by_every_object_and_the_layers_object_is_gone() {

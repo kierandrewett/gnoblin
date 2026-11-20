@@ -6,7 +6,7 @@ claimed input, and the hold that gives the shell time to claim before the window
 fake runtime only. No headset, no OpenXR runtime and no `gnoblin-xr` binary ran for it.
 
 Owner-spec section 13 asks for a native `.so` extension. J7 replaces that with the out-of-process program of D34 and
-D35, so this document says what each spec class becomes in that model. See `design/archive/js-runtime-log-console-xr.md` (J7, "P9 XR status"),
+D35, so this document says what each spec class becomes in that model. See `js-runtime-log-console-xr.md (removed)` (J7, "P9 XR status"),
 `design/xr-extension.md` and `docs/xr.md`.
 
 ## The model in four lines
@@ -51,7 +51,7 @@ D35, so this document says what each spec class becomes in that model. See `desi
 | `ViewRotateBinding`, `ViewScaleBinding` | JS over `controller`               | `rotate` (`Trigger+Thumbstick+Drag`, in the layout by default) turns the View about its own centre by the hand's turn; `scale` (`Grip+Thumbstick+Drag`, added by a script) adds the metres the hand moved along its aim to the View's scale, kept in 0.2 to 3. |
 | `ControllerDragBinding`                 | JS                                 | `xr.ControllerDragBinding` is `XRControllerDragBinding`: the base of the four above and of a script's own drag (spec 067, 069 to 071). The runtime pins the View under the ray for each drag; a cancel gives it back to the ring.                              |
 | `ThrowViewBinding`                      | Not built, by the spec             | Spec snippet 071 is a user class with an author-written `runThrowSimulation`; the library has no stepper.                                                                                                                                                      |
-| `VirtualOutput`                         | Class built, compositor missing    | A checked description. `gnoblin.outputs.add` throws `GnoblinError` `unsupported` ("virtual outputs are not supported by this backend"): the compositor cannot create an output on request (design/archive/js-spec-native.md 2.7).                              |
+| `VirtualOutput`                         | Class built, compositor missing    | A checked description. `gnoblin.outputs.add` throws `GnoblinError` `unsupported` ("virtual outputs are not supported by this backend"): the compositor cannot create an output on request (js-spec-native.md (removed) 2.7).                                   |
 
 ## Frames and units
 

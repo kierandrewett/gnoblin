@@ -1,6 +1,6 @@
 # Gnoblin compositor rewrite: Rust and Smithay
 
-> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+> **The `gnoblin-wm` crate is deleted** (lane W6, `cutover-survey.md (removed)` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
 
 **Status:** decided and partly built. The workspace, the object schema, the IPC
 envelope, the parity runner and the pure policy crates are on
@@ -10,7 +10,7 @@ Items marked [INFERENCE] were not verified against source or a running system.
 Every decision in "Decisions to confirm" records what was decided and when.
 
 The landed commits and their test counts are in
-[rust-compositor-progress.md](rust-compositor-progress.md). The questions that
+rust-compositor-progress.md. The questions that
 the build raised and the plan does not answer are collected in "Known gaps and
 plan ambiguities". Progress is also tracked on the Doop canvas
 <https://doop.drewett.dev/c/gQeAehTEmA>, rendered from
@@ -37,15 +37,15 @@ plan ambiguities". Progress is also tracked on the Doop canvas
 
 ## Why
 
-| Problem                                     | Evidence (2026-11-04)                                                                                                                                                                     |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mutter is a heavy target                    | `subprojects/mutter`: 573,570 lines of C and headers in 1,613 files. Gnoblin uses a small part of it.                                                                                     |
-| The patch series keeps growing              | `patches/`: 249 patch files, 29,612 lines. `99-typed-window-api` alone is 119 patches and 15,971 lines.                                                                                   |
-| Growth is recent and fast                   | Patch files added per month (`git log --diff-filter=A`): Jun 3, Jul 18, Aug 2, Sep 99, Oct 94. Renumbering inflates these counts.                                                         |
-| Gnoblin's own code is wrapped around Mutter | `src/` holds about 70,000 lines of C, C++ and Lua overlay code. Most of `src/control` uses `MetaDisplay`, `MetaWindow` and Clutter types directly.                                        |
-| Older distributions are blocked             | `design/debian12-ubuntu2204-private-runtime.md`: Mutter 51 needs GTK >= 4.14, `gcr-4`, `girepository-2.0`, `libei`, `libdisplay-info` and Glycin 2. Debian 12 and Ubuntu 22.04 lack them. |
-| Compat patches exist only for Mutter floors | `74-fedora43-compat` (PipeWire), `82-wayland-compat` (wayland-server 1.25), `99/0059` (libinput 1.30), portal `09-compatibility`, `libgxdp/0001` (GTK 4.20).                              |
-| No CI job boots a graphical session         | `.github/workflows/verify.yml` checks builds and installed files only. Session behaviour is verified locally in nested and QEMU runs.                                                     |
+| Problem                                     | Evidence (2026-11-04)                                                                                                                                                                        |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mutter is a heavy target                    | `subprojects/mutter`: 573,570 lines of C and headers in 1,613 files. Gnoblin uses a small part of it.                                                                                        |
+| The patch series keeps growing              | `patches/`: 249 patch files, 29,612 lines. `99-typed-window-api` alone is 119 patches and 15,971 lines.                                                                                      |
+| Growth is recent and fast                   | Patch files added per month (`git log --diff-filter=A`): Jun 3, Jul 18, Aug 2, Sep 99, Oct 94. Renumbering inflates these counts.                                                            |
+| Gnoblin's own code is wrapped around Mutter | `src/` holds about 70,000 lines of C, C++ and Lua overlay code. Most of `src/control` uses `MetaDisplay`, `MetaWindow` and Clutter types directly.                                           |
+| Older distributions are blocked             | `debian12-ubuntu2204-private-runtime.md (removed)`: Mutter 51 needs GTK >= 4.14, `gcr-4`, `girepository-2.0`, `libei`, `libdisplay-info` and Glycin 2. Debian 12 and Ubuntu 22.04 lack them. |
+| Compat patches exist only for Mutter floors | `74-fedora43-compat` (PipeWire), `82-wayland-compat` (wayland-server 1.25), `99/0059` (libinput 1.30), portal `09-compatibility`, `libgxdp/0001` (GTK 4.20).                                 |
+| No CI job boots a graphical session         | `.github/workflows/verify.yml` checks builds and installed files only. Session behaviour is verified locally in nested and QEMU runs.                                                        |
 
 A Smithay compositor does not need GTK, GLib, GObject introspection, Clutter or
 Cogl. Smithay 0.7.0 uses a pure Rust Wayland server unless `use_system_lib` is
@@ -97,7 +97,7 @@ back to these.
 3. **Everything a shell touches is an object.** Each object has an identity, a
    lifetime, typed properties, methods that return an `Operation`, and signals.
    Objects that end say so. This is the direction already set in the `lua-api/*`
-   branches (`design/archive/lua-api-goal.md` and `design/archive/shell-api-redesign.md` on
+   branches (`lua-api-goal.md (removed)` and `shell-api-redesign.md (removed)` on
    `docs/lua-api-overhaul-design`).
 4. **Contracts are data.** The schema, the contract inventory, the parity ledger
    and the distro matrix are files in the tree, checked by CI. If it is not
@@ -185,9 +185,9 @@ flowchart LR
 | `gnoblinctl`                 | Command line client                                                                                                                       | Short-lived.                                                                                                             |
 
 This keeps today's proven guardian and supervisor model
-(`design/lean-runtime.md`, `design/startup-recovery.md`) and moves the D-Bus
+(`lean-runtime.md (removed)`, `startup-recovery.md (removed)`) and moves the D-Bus
 agents out of the compositor process. `gnoblin-idle` folds into the services
-role. The roles stay in one executable, as `design/monolithic-compositor.md`
+role. The roles stay in one executable, as `monolithic-compositor.md (removed)`
 requires; `gnoblinctl` and the portal stay separate binaries.
 
 > **Superseded.** The compositor process now runs the shell host, so it may run scripts and native shell code ("runs no scripts"
@@ -232,7 +232,7 @@ Today there are two wires with overlapping meaning: the private runtime protocol
 snapshots to the Lua worker.
 
 Adding one native method touched about eight registries
-(`design/archive/shell-api-redesign.md`). `src/control/gnoblin-api-operations.h` now
+(`shell-api-redesign.md (removed)`). `src/control/gnoblin-api-operations.h` now
 drives gates, dispatch and packing from one table, but the Lua stubs, docs and
 tests are still separate.
 
@@ -275,7 +275,7 @@ knowing which members are secret.
 
 ### IPC extensions
 
-> **Removed (survey 16.3, lane 10A).** The extension tier, `config.extensions`, the grants frame and `require(namespace)` are gone. The IPC version stays 0.2.0, since 0.2.0 is unreleased. The accept frame is the whole preamble. This section and the Versioning bullets on the Grants frame describe the retired design; see `design/archive/node-api-refactor.md` D22 (retracted).
+> **Removed (survey 16.3, lane 10A).** The extension tier, `config.extensions`, the grants frame and `require(namespace)` are gone. The IPC version stays 0.2.0, since 0.2.0 is unreleased. The accept frame is the whole preamble. This section and the Versioning bullets on the Grants frame describe the retired design; see `design/node-api-refactor.md` D22 (retracted).
 
 Gnoblin has one generic extension mechanism. An extension is a namespace of
 members that a privileged connection provides on the IPC. Extensions are out of
@@ -449,7 +449,7 @@ The audit covered every crate, `data/`, `docs/`, `tests/` and `design/` at
 | A per-client cover state machine                                    | `gnoblin-lock/src/protection.rs` (544 lines), `protection_tests.rs` (472), `lib.rs:100-111`                                                                                                                                                               | Deleted                                                                |
 | A covered set of clients in the session lock, never fed by anything | `gnoblin-lock/src/lock.rs:415-446`, `event.rs:77-84`, `model.rs:78-82`, `ids.rs:14-24` (`SubjectAdded`, `SubjectRemoved`, `Subject::Client` as a covered subject)                                                                                         | Deleted (the lock covers the session, as it did)                       |
 | A scenario nobody can run                                           | `tests/parity/scenarios/nested-session-ipc.toml`, `tests/parity/README.md:30,153-158`, `tests/parity/divergences.toml:34`, `crates/gnoblin-parity/tests/scenarios.rs:42,199-204`                                                                          | Deleted                                                                |
-| Design and docs                                                     | this file (D4, D21, the protocol table, the Bingux contracts), `design/cutover-survey.md`, `design/lane-issues.md`, `design/constants/wayland.md:94-95`, `design/capture-protocols.md:17`, `CHANGELOG.md`                                                 | Rewritten                                                              |
+| Design and docs                                                     | this file (D4, D21, the protocol table, the Bingux contracts), `design/capture-protocols.md:17`, `CHANGELOG.md`                                                                                                                                           | Rewritten                                                              |
 | The nested backend and its settings                                 | `gnoblin-backend/src/nested/`, `gnoblin-compositor/src/backend.rs:150-152,213-228`, `backend_select.rs`, `compositor.nested-*`                                                                                                                            | Stays: it is a backend, not a host path                                |
 | Closing the last backend window ends the session                    | `src/server.rs:924`, `gnoblin-backend/src/lib.rs:744`                                                                                                                                                                                                     | Stays: the backend's event, as for a window-backed development session |
 | The host's decisions about a hosted session                         | Nothing else. `gnoblin-session`, `gnoblin-core-impl`, `gnoblin-compositor/src/ipc`, `data/js` and the C tree contain no nested branch                                                                                                                     | Clean                                                                  |
@@ -952,7 +952,7 @@ parity report shows it.
 
 A phase 0 item is marked done only when the code is on `origin/rust-compositor`
 with a test that would fail without it. The per-crate ledger is
-[rust-compositor-progress.md](rust-compositor-progress.md).
+rust-compositor-progress.md.
 
 ### Phase 0: groundwork
 
@@ -989,7 +989,7 @@ Landed:
   `gnoblin-wm`, `gnoblin-lock`, `gnoblin-authority`, `gnoblin-a11y`,
   `gnoblin-session`, `gnoblin-config`, `gnoblin-model` and `gnoblin-render`, and
   the capture-embargo list in `gnoblin-capture`: 36 entries from this plan,
-  `capture-api.md`, `layers.md` and `supersample.md`, each with its test, and a
+  `capture-api.md` and `supersample.md`, each with its test, and a
   list of what is not covered and why. The lock and the capture table are tested
   together through whole lock cycles (`gnoblin-capture/tests/lock_cycle.rs`).
   Writing it found two defects, both fixed with a test: a session that changed
@@ -1533,7 +1533,7 @@ Accessibility is its own lane, not a side effect of input and rendering.
 
 - **Not Gnoblin's job:** the on-screen keyboard and shell UI accessibility
   belong to the shell; app accessibility trees belong to the apps.
-- **Platform-wide gap:** no Gnoblin surface reaches assistive technology yet. `gnoblin-a11y` has no AT-SPI tree, so the window menu, window frames and portal dialogs are not readable through AT-SPI. This gap is accepted until that tree lands. The egui dialogs never enable AccessKit, so the claim at line 2558 does not hold yet. The options and plan are in [accessibility.md](accessibility.md).
+- **Platform-wide gap:** no Gnoblin surface reaches assistive technology yet. `gnoblin-a11y` has no AT-SPI tree, so the window menu, window frames and portal dialogs are not readable through AT-SPI. This gap is accepted until that tree lands. The egui dialogs never enable AccessKit, so the claim at line 2558 does not hold yet. The options and plan are in [a11y-status.md](a11y-status.md).
 - **Why the keyboard monitor stays in the compositor:** key grabs must decide
   before the focused client sees the key, so a process hop would add latency to
   every key press. It is the one D-Bus name the compositor serves itself.
@@ -1586,7 +1586,7 @@ by porting the workaround.
 | About a dozen `GNOBLIN_*` variables with no scheme; two names for the version file                       | `cli/gnoblinctl-cli.c`, `config/lua/gnoblin-lua-install.c`                                                        | One table of documented variables; internal and test knobs are flags or test injection    |
 | `"normal"` and `"unlock-screen"` aliases handled in three files                                          | `config/gnoblin-config-windows.c:294`, `config/lua/gnoblin-lua-input.c:29`, `input/gnoblin-touchpad-router.c:106` | Enums parse once at the schema boundary; aliases live in one table removed at a break     |
 | Lua operations return an integer `request_id` and a handle; completion goes out under two event names    | `config/lua/gnoblin-lua-operations.c:394`, `control/gnoblin-control-dispatch.c:129`                               | One operation handle and one completion event                                             |
-| Lua accepts `targetType` and `target_type`; `gnoblin.on`, `gnoblin.snapshot`, `launches["end"]` aliases  | `design/archive/lua-api.md` [INFERENCE: line numbers not re-checked]                                              | One generated name per member; no aliases in IPC 0.2.0                                    |
+| Lua accepts `targetType` and `target_type`; `gnoblin.on`, `gnoblin.snapshot`, `launches["end"]` aliases  | `lua-api.md (removed)` [INFERENCE: line numbers not re-checked]                                                   | One generated name per member; no aliases in IPC 0.2.0                                    |
 | The screenshot path waits for capture by sleeping in a loop                                              | `portal/backend/gnoblin-screenshot-capture.c:299`                                                                 | Completion is an event                                                                    |
 | The API minor is a header literal, read by a regex in the build script                                   | `control/gnoblin-native-control.h:16`, `scripts/build-identity.py` [INFERENCE: regex not re-checked]              | One version source (see "Versioning")                                                     |
 | Fixed 16 ms, 50 ms, 100 ms and 1 s timers in input policy, launches, rules, IBus retry, recovery markers | [INFERENCE]                                                                                                       | Frame clock for frame work, event sources elsewhere; a timer only where time is the input |
@@ -1596,7 +1596,7 @@ by porting the workaround.
 
 Two items need a closer look before they are planned: whether declarative
 command shortcuts and Mutter action groups still bind keys beside Lua input
-policy (`design/archive/lua-input-policy.md`), and whether idle should come from one
+policy (`lua-input-policy.md (removed)`), and whether idle should come from one
 source instead of both ScreenSaver and the Mutter idle monitor.
 
 ## Optional components and compatibility
@@ -1931,7 +1931,7 @@ Contracts that change, with a migration path in Bingux before cutover:
 | Xwayland fidelity for a floating desktop                                   | Dedicated scenarios with X11 clients that position themselves; D2                                                                                   |
 | Security regressions in lock, focus and capture                            | Pure state machines, failure-mode lists first, model tests, stricter review lane                                                                    |
 | Performance regressions                                                    | Phase 0 baseline; performance verdicts in the parity report; phase 5 gate                                                                           |
-| Accessibility, colour management and HDR                                   | Listed as known gaps in `design/gnome-parity.md` terms; not cutover blockers unless Kieran decides otherwise                                        |
+| Accessibility, colour management and HDR                                   | Listed as known gaps in `gnome-parity.md (removed)` terms; not cutover blockers unless Kieran decides otherwise                                     |
 | Parallel lanes drift                                                       | Owned crates, F lane review of shared types, single integration owner                                                                               |
 | Licence of ported overlay code that derives from Mutter (GPL-2.0-or-later) | Port behaviour from contracts and tests, not by translating Mutter-derived files; decide the workspace licence first (D8)                           |
 | wlcs is GPL-2.0                                                            | Keep it in a separate test binary that is not shipped                                                                                               |
@@ -1945,44 +1945,44 @@ own window geometry through messages, and placements are 3D. The renderer's
 Kieran has not yet confirmed the revision.
 Each section below records the choice, its consequences, and the options considered.
 
-| ID  | Question                     | Decision                                                                                                                                                                                                                                                                                                                                |
-| --- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | Where scripts run            | **Decided:** separate process                                                                                                                                                                                                                                                                                                           |
-| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                                                                                                                                                                                                                                                        |
-| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                                                                                                                                                                                                                                                   |
-| D4  | How bsm hosts sessions       | **Decided** (amended by D21): bsm becomes a Gnoblin; greeter control is an out-of-tree extension                                                                                                                                                                                                                                        |
-| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                                                                                                                                                                                                                                             |
-| D6  | Native plugins               | **Retracted:** shells are native `.so` modules or scripts on a C ABI, not WASM (`design/modular-framework.md` 2.1)                                                                                                                                                                                                                      |
-| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                                                                                                                                                                                                                                        |
-| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                                                                                                                                                                                                                                                    |
-| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                                                                                                                                                                                                                                                        |
-| D10 | Shell language               | **Superseded:** TypeScript on QuickJS (`design/js-runtime.md`, J1-J9); the Lua 5.5 decision is history                                                                                                                                                                                                                                  |
-| D11 | Distribution target set      | **Decided:** full list, classified                                                                                                                                                                                                                                                                                                      |
-| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                                                                                                                                                                                                                                                     |
-| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                                                                                                                                                                                                                                              |
-| D14 | Portal UI without a shell    | **Superseded in part by D19:** fail closed stays for security-sensitive consent only; no longer the rule for pickers                                                                                                                                                                                                                    |
-| D19 | Portal fallback UI           | **Decided 2026-11-05:** every portal interface served; egui fallback when no handler is set                                                                                                                                                                                                                                             |
-| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                                                                                                                                                                                                                                                          |
-| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                                                                                                                                                                                                                                                   |
-| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback; `floating` (the default) is native Rust with no Lua engine, and equals the shipped module                                                                                                                                  |
-| D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then                                                                                                                                                                                                                            |
-| D19 | Portal fallback UI           | **Decided 2026-11-05:** gnoblin is the preferred portal backend; egui fallback UI when no handler is configured; consent stays compositor-drawn                                                                                                                                                                                         |
-| D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-cursor` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                                                                                                                        |
-| D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                                                                                                                                                                                           |
-| D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised                                                                                                         |
-| D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; only a binary enables its sinks (`console`, `journal`, `pipeline`, `init`); the file sink writes `gnoblin.jsonl`                                                                                                                                             |
-| D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                                                                                                                          |
-| D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                                                                                                                                       |
-| D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                                                                                                                              |
-| D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source is the login password via a PAM module, with one unlock prompt when there is none (`design/keyring.md`)                                                                                                                                       |
-| D28 | Layer registry               | **Superseded 2026-11-12:** step 8 deleted the registry (lane 8C) and layer-shell stays protocol-owned (O14 b). It was proposed 2026-11-06 with full names `<provider>.<local>`, closed bands and `secure` defaults.                                                                                                                     |
-| D29 | Window menu                  | **Decided 2026-11-07:** the core has a `menu_requested` signal and a `request_menu` method on `window`; any extension shows the menu. No menu model in core (see D29).                                                                                                                                                                  |
-| D30 | Store                        | **Withdrawn 2026-11-07:** no generic store. `gnoblin-store`, `gnoblinctl store` and the store IPC are removed (see D30 below).                                                                                                                                                                                                          |
-| D31 | Multi-seat                   | **Proposed 2026-11-08, for Kieran to confirm:** full multi-seat (own keyboard, pointer, focus and cursor per seat) and per-device keybindings. See `multi-seat.md`.                                                                                                                                                                     |
-| D32 | Request intercept            | **Proposed 2026-11-08, for Kieran to confirm:** an audit record for privileged requests, then extension observe and veto hooks that can only make a request stricter. See `request-intercept.md`.                                                                                                                                       |
-| D33 | Layout owns placement        | **Proposed 2026-11-08, for Kieran to confirm:** one layout script decides placement, order and z-order for every window, including floating; no `Declined`; the wm keeps only layer bands, input policy and validation; `new_window_placement` is removed and becomes an option of the floating layout. See `layout-owns-placement.md`. |
-| D34 | XR extension                 | **Proposed 2026-11-08, for Kieran to confirm:** Gnoblin draws panels and states their poses; `gnoblin-xr` submits them as OpenXR layers and holds no positions. See `xr-extension.md`.                                                                                                                                                  |
-| D35 | Node API                     | **Proposed 2026-11-08, for Kieran to confirm:** one public scene tree of twelve node types replaces the window manager's placement, stacking and focus policy, the layout engine, layer bands, roles and grants; the shell is trusted Lua; D17, D22, D25 and D33 retracted and D34 folded in. See `node-api-refactor.md`.               |
+| ID  | Question                     | Decision                                                                                                                                                                                                                                                                                                                  |
+| --- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Where scripts run            | **Decided:** separate process                                                                                                                                                                                                                                                                                             |
+| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                                                                                                                                                                                                                                          |
+| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                                                                                                                                                                                                                                     |
+| D4  | How bsm hosts sessions       | **Decided** (amended by D21): bsm becomes a Gnoblin; greeter control is an out-of-tree extension                                                                                                                                                                                                                          |
+| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                                                                                                                                                                                                                               |
+| D6  | Native plugins               | **Retracted:** shells are native `.so` modules or scripts on a C ABI, not WASM (`design/modular-framework.md` 2.1)                                                                                                                                                                                                        |
+| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                                                                                                                                                                                                                          |
+| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                                                                                                                                                                                                                                      |
+| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                                                                                                                                                                                                                                          |
+| D10 | Shell language               | **Superseded:** TypeScript on QuickJS (`design/js-runtime.md`, J1-J9); the Lua 5.5 decision is history                                                                                                                                                                                                                    |
+| D11 | Distribution target set      | **Decided:** full list, classified                                                                                                                                                                                                                                                                                        |
+| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                                                                                                                                                                                                                                       |
+| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                                                                                                                                                                                                                                |
+| D14 | Portal UI without a shell    | **Superseded in part by D19:** fail closed stays for security-sensitive consent only; no longer the rule for pickers                                                                                                                                                                                                      |
+| D19 | Portal fallback UI           | **Decided 2026-11-05:** every portal interface served; egui fallback when no handler is set                                                                                                                                                                                                                               |
+| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                                                                                                                                                                                                                                            |
+| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                                                                                                                                                                                                                                     |
+| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback; `floating` (the default) is native Rust with no Lua engine, and equals the shipped module                                                                                                                    |
+| D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then                                                                                                                                                                                                              |
+| D19 | Portal fallback UI           | **Decided 2026-11-05:** gnoblin is the preferred portal backend; egui fallback UI when no handler is configured; consent stays compositor-drawn                                                                                                                                                                           |
+| D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-cursor` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                                                                                                          |
+| D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                                                                                                                                                                             |
+| D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised                                                                                           |
+| D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; only a binary enables its sinks (`console`, `journal`, `pipeline`, `init`); the file sink writes `gnoblin.jsonl`                                                                                                                               |
+| D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                                                                                                            |
+| D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                                                                                                                         |
+| D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                                                                                                                |
+| D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source is the login password via a PAM module, with one unlock prompt when there is none (`design/keyring.md`)                                                                                                                         |
+| D28 | Layer registry               | **Superseded 2026-11-12:** step 8 deleted the registry (lane 8C) and layer-shell stays protocol-owned (O14 b). It was proposed 2026-11-06 with full names `<provider>.<local>`, closed bands and `secure` defaults.                                                                                                       |
+| D29 | Window menu                  | **Decided 2026-11-07:** the core has a `menu_requested` signal and a `request_menu` method on `window`; any extension shows the menu. No menu model in core (see D29).                                                                                                                                                    |
+| D30 | Store                        | **Withdrawn 2026-11-07:** no generic store. `gnoblin-store`, `gnoblinctl store` and the store IPC are removed (see D30 below).                                                                                                                                                                                            |
+| D31 | Multi-seat                   | **Proposed 2026-11-08, for Kieran to confirm:** full multi-seat (own keyboard, pointer, focus and cursor per seat) and per-device keybindings. See `multi-seat.md`.                                                                                                                                                       |
+| D32 | Request intercept            | **Proposed 2026-11-08, for Kieran to confirm:** an audit record for privileged requests, then extension observe and veto hooks that can only make a request stricter.                                                                                                                                                     |
+| D33 | Layout owns placement        | **Proposed 2026-11-08, for Kieran to confirm:** one layout script decides placement, order and z-order for every window, including floating; no `Declined`; the wm keeps only layer bands, input policy and validation; `new_window_placement` is removed and becomes an option of the floating layout.                   |
+| D34 | XR extension                 | **Proposed 2026-11-08, for Kieran to confirm:** Gnoblin draws panels and states their poses; `gnoblin-xr` submits them as OpenXR layers and holds no positions. See `xr-extension.md`.                                                                                                                                    |
+| D35 | Node API                     | **Proposed 2026-11-08, for Kieran to confirm:** one public scene tree of twelve node types replaces the window manager's placement, stacking and focus policy, the layout engine, layer bands, roles and grants; the shell is trusted Lua; D17, D22, D25 and D33 retracted and D34 folded in. See `node-api-refactor.md`. |
 
 See `node-core.md` for the D35 step 3 protocol and schema contract.
 
@@ -2767,7 +2767,7 @@ Until D18's implementation lands, the renderer refuses any transform that is not
 - A second instance that finds the bus name taken exits quietly (`DO_NOT_QUEUE`) and does not degrade the session.
 - `portals.conf` routes only interfaces `gnoblin.portal` serves. The rest fall through to `gtk;kde`.
 - `Access.AccessDialog` is served through the `portal.ui` consent path.
-- Live evidence and the headless consent limit are in `design/e2e-portals.md`.
+- Live evidence and the headless consent limit are in `e2e-portals.md (removed)`.
 
 **Restated 2026-11-12 (owner, Kieran): the built-in UI is removable and replaceable.**
 
@@ -3056,7 +3056,7 @@ Failure modes:
 
 ### D22: general extension system
 
-> **Removed (survey 16.3, lane 10A).** Retracted by `design/archive/node-api-refactor.md` D22 and deleted from the tree: `crates/gnoblin-compositor/src/extensions.rs`, `src/ipc/extension.rs`, the grants frame, `config.extensions` and `require(namespace)`. What follows is history.
+> **Removed (survey 16.3, lane 10A).** Retracted by `design/node-api-refactor.md` D22 and deleted from the tree: `crates/gnoblin-compositor/src/extensions.rs`, `src/ipc/extension.rs`, the grants frame, `config.extensions` and `require(namespace)`. What follows is history.
 
 **Decided 2026-11-05: an extension is a package that host configuration loads. Its manifest declares the powers it contains and the capabilities it wants. Host configuration grants a subset of those capabilities. Each power runs in one isolation tier. The IPC namespace of D21 becomes one power among several.**
 
@@ -3455,9 +3455,9 @@ Consequences:
 
 ### D28: layer registry
 
-**Superseded 2026-11-12: step 8 of `design/archive/node-api-refactor.md` deleted the registry (lane 8C), and layer-shell surfaces stay protocol-owned (O14 b). This section is the record of the design that was removed.**
+**Superseded 2026-11-12: step 8 of `design/node-api-refactor.md` deleted the registry (lane 8C), and layer-shell surfaces stay protocol-owned (O14 b). This section is the record of the design that was removed.**
 
-**Proposed 2026-11-06: layers are runtime objects in one registry. Gnoblin and extensions register them, and the compositor attributes each to its provider. A closed band set orders them and nothing else.** The full design is in `design/layers.md`.
+**Proposed 2026-11-06: layers are runtime objects in one registry. Gnoblin and extensions register them, and the compositor attributes each to its provider. A closed band set orders them and nothing else.** The full design is in `layers.md (removed)`.
 
 Today the output frame has one `overlay` slot, shared by the portal dialog and the modal (`crates/gnoblin-render-frame/src/frame.rs:235-237`, `:358-360`). Portal placement centres on the output rectangle, not on the requesting window (`crates/gnoblin-compositor/src/ipc/portal.rs:370-377`). The portal request's `parent_window` is stored and never read (`crates/xdg-desktop-portal-gnoblin/src/backends.rs:85`). No Rust code draws the not-responding dialog or the window menu.
 
@@ -3465,21 +3465,21 @@ Options weighed: A, keep the single overlay slot and add a flag per feature (not
 
 Consequences:
 
-- A layer has a full `name`, `<provider>.<local>`, unique while live. A `provider` that the compositor sets (never the caller) gives the namespace. It also has a `scope` of `output` or `window`, a `band`, an `order`, and input, focus, capture, lock and effects policies. `design/layers.md` has the full table.
+- A layer has a full `name`, `<provider>.<local>`, unique while live. A `provider` that the compositor sets (never the caller) gives the namespace. It also has a `scope` of `output` or `window`, a `band`, an `order`, and input, focus, capture, lock and effects policies. `layers.md (removed)` has the full table.
 - Bands, bottom to top: `background`, `bottom`, `windows`, `top`, `overlay`, `system`, `lock`, `cursor`. Configuration and extensions cannot add one. Only the compositor registers in `system`, `lock` or `cursor`.
 - A window-scope layer sits directly above its target, and follows it through move, minimise, workspace switch and output move. It ends when the target closes.
 - Gnoblin registers `gnoblin.portals` and `gnoblin.alerts` (the not-responding layer; `unresponsive` stays the property and reason). `gnoblin.portals` declares `secure = true` when it registers. Built-in Wayland providers register `gnoblin.surface_toplevel`, `gnoblin.surface_layer_shell` (four bands) and `gnoblin.surface_x11` through the same registry. Extensions register under `ext.<id>.`, with powers granted in `extension.toml` (D22).
 - `OutputFrame` holds one ordered list of band content. The single `overlay` slot goes. This is a frame type change in `gnoblin-backend`.
 - `layers.list` keeps its wlr record shape. Registered layers appear in the same list, with `band`, `scope`, `target`, `provider` and `state` properties.
-- Invariants are enforced by the compositor: parent ownership, band ceiling, input grant, lock, count limits, and the `secure` owner check. Per-layer options (scope, order, input, dimming, content kind) sit within the grant. Detail: `design/layers.md`, "Invariants and options".
+- Invariants are enforced by the compositor: parent ownership, band ceiling, input grant, lock, count limits, and the `secure` owner check. Per-layer options (scope, order, input, dimming, content kind) sit within the grant. Detail: `layers.md (removed)`, "Invariants and options".
 - Names: a full name is `<provider>.<local>`. Built-ins use `gnoblin.`, extensions `ext.<id>.`, so two providers cannot collide. Within one provider a repeated local name is refused. Only the provider id `gnoblin` is reserved. `secure` defaults to off only where a layer declares no value. `gnoblin.portals` declares `secure = true`. The user overrides `secure` per layer name or window rule, in either direction, including built-ins. The lock surface is fixed secure.
-- Secure content is never drawn into any capture. Under `capture.secure-treatment` (default `mask`) a secure node becomes a neutral silhouette in a capture, or nothing under `omit`. The capture paths and their gaps are in `design/layers.md`, "Capture paths". The main gap: backend readback includes secure layers today (`gnoblin-backend/src/lib.rs:463`).
-- Tests (not run): band order; window-layer stacking and follow rules; one live `gnoblin.portals` per output; a repeated local name within one provider is refused; the same local name under two providers is fine; an extension with id `gnoblin` is refused; end on provider disconnect, target close and output removal; the lock; the capture filter under `mask` (a shaped window captures as its silhouette) and `omit` (underlay shows by design); a config override flips a layer both ways, including `gnoblin.portals`; a provider cannot change another provider's layer. Each names the rule it guards in `design/layers.md`.
+- Secure content is never drawn into any capture. Under `capture.secure-treatment` (default `mask`) a secure node becomes a neutral silhouette in a capture, or nothing under `omit`. The capture paths and their gaps are in `layers.md (removed)`, "Capture paths". The main gap: backend readback includes secure layers today (`gnoblin-backend/src/lib.rs:463`).
+- Tests (not run): band order; window-layer stacking and follow rules; one live `gnoblin.portals` per output; a repeated local name within one provider is refused; the same local name under two providers is fine; an extension with id `gnoblin` is refused; end on provider disconnect, target close and output removal; the lock; the capture filter under `mask` (a shaped window captures as its silhouette) and `omit` (underlay shows by design); a config override flips a layer both ways, including `gnoblin.portals`; a provider cannot change another provider's layer. Each names the rule it guards in `layers.md (removed)`.
 - Parity: new scope. Mutter's stacking is internal [INFERENCE], so the registry is a Gnoblin contract. Add one entry to `tests/parity/divergences.toml` under "new scope", reason "D28: layer registry".
 
 Decided 2026-11-06: a window-targeted `portals` dialog blocks its parent window only. With no usable parent, it is centred on the output and blocks that output. The toplevel kind is `surface_toplevel`. The secure-capture default is `mask`.
 
-Open items are listed in `design/layers.md`, "Needs Kieran". Decided items are in its "Decided" list. xdg-foreign (layers item 6, batch item 8) is not decided: the lean is now (b), our own handle table wrapping Smithay, with zero Smithay patches.
+Open items are listed in `layers.md (removed)`, "Needs Kieran". Decided items are in its "Decided" list. xdg-foreign (layers item 6, batch item 8) is not decided: the lean is now (b), our own handle table wrapping Smithay, with zero Smithay patches.
 
 ### D29: window menu
 
@@ -3516,11 +3516,11 @@ Open items are listed in `design/layers.md`, "Needs Kieran". Decided items are i
 
 **Implemented.** The compositor emits `menu_requested` from all three sources: `xdg_toplevel.show_window_menu` (serial-checked, stale serials dropped), the Alt+Space default binding (`keyboard`, focused window's top-left anchor), and `window.request_menu` (`extension`). The signal reaches IPC subscribers.
 
-**Not built.** No shell draws a menu. The `gnoblin.window_menu` extension was never built, and the extension tier it would ship in and the layer registry it needed are both gone, so a subscriber receives the signal and nothing appears. A stock shell menu is a new feature on the `Canvas` painter and is not part of step 8 (`design/cutover-survey.md` 16.1, "Step 8 remainder").
+**Not built.** No shell draws a menu. The `gnoblin.window_menu` extension was never built, and the extension tier it would ship in and the layer registry it needed are both gone, so a subscriber receives the signal and nothing appears. A stock shell menu is a new feature on the `Canvas` painter and is not part of step 8 (`cutover-survey.md (removed)` 16.1, "Step 8 remainder").
 
 Needs Kieran:
 
-1. Whether the menu layer declares `secure`, which keeps it out of captures (proposed: no; `design/layers.md`, Options).
+1. Whether the menu layer declares `secure`, which keeps it out of captures (proposed: no; `layers.md (removed)`, Options).
 
 ### D30: store (withdrawn)
 

@@ -1023,8 +1023,8 @@ const SIGTERM: i32 = 15;
 /// One line on the guardian's log.
 ///
 /// The line goes to the subscriber the binary installed, which writes it to standard error and
-/// to the log store. The message already starts with `[guardian]`, per the redaction rule in
-/// `design/startup-recovery.md`.
+/// to the log store. The message already starts with `[guardian]`, per the redaction rule: no
+/// environment value, configuration document or script source.
 fn log(level: Level, message: &str) {
     match level {
         Level::Debug => log::debug!("{message}"),

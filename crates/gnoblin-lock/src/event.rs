@@ -73,7 +73,7 @@ pub enum Event {
     RevealComplete,
     /// The lock protocol was disabled by a configuration reload.
     ProtocolDisabled,
-    /// The runtime process (the retired host) restarted.
+    /// The runtime process (the runtime host) restarted.
     RuntimeRestarted,
 }
 

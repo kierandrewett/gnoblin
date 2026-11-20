@@ -5,7 +5,7 @@
 //! speak `xdg-decoration`. It is answered by the same negotiation, not a second one. A client's request becomes
 //! what `zxdg_decoration_v1` records as the window's `decoration_wanted`, the compositor's decoration policy answers it,
 //! and the answer goes back out here as a `mode` event: server-side only while a shell that holds the tree has
-//! declared that it draws a frame, client-side otherwise (`design/archive/node-api-refactor.md`, Decision 2).
+//! declared that it draws a frame, client-side otherwise (`design/node-api-refactor.md`, Decision 2).
 //! The same switch that turns `xdg-decoration` off (`protocols.xdg-decoration`) is not this one: the protocol has
 //! its own, `protocols.kde-server-decoration`, and a session that turns it off advertises nothing.
 //!

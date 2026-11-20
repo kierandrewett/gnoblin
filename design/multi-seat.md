@@ -1,6 +1,6 @@
 # Multi-seat and device-scoped bindings
 
-> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+> **The `gnoblin-wm` crate is deleted** (lane W6, `cutover-survey.md (removed)` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
 
 Status: **proposal, 2026-11-08.** Not decided. Kieran confirms the open points in
 section 5 and the decision row D31 in `design/rust-compositor.md`.
@@ -121,7 +121,7 @@ either way, so phase 1 is not wasted if the seat work is later cut back.
 - `shortcuts` (line 2491) is a map of `Shortcut` records (record at line 1462, used at line 2498):
   `binding`, `command`, `trigger`, `enable`. No device field.
 - `keybindings` (line 2481) is a schema key; this review did not trace how the code reads it.
-- `design/archive/lua-input-policy.md` already says the compositor "matches event class and
+- `lua-input-policy.md (removed)` already says the compositor "matches event class and
   device selectors before sending any request" (lines 18-21), and keeps "physical input
   identity" for each queued event. So the Lua design expects device selectors. The
   code does not have them yet.
@@ -129,7 +129,7 @@ either way, so phase 1 is not wasted if the seat work is later cut back.
   a `seat` name: the requesting seat for `client`, the key event's seat for
   `keyboard`, and "the default seat" for `extension`. A seat concept is therefore
   already in a decided design, but nothing implements it.
-- `design/archive/lua-control.md` line 95 asks for "per-seat cursor image/visibility
+- `lua-control.md (removed)` line 95 asks for "per-seat cursor image/visibility
   operations". This is the only other seat reference in the design docs.
 
 ### 1.6 Lock
@@ -137,7 +137,7 @@ either way, so phase 1 is not wasted if the seat work is later cut back.
 - `crates/gnoblin-lock/src/lock.rs`: `Lock` (line 38) holds `subjects`, a set of
   `Subject` (line 41). `Lock::new` (line 61) starts with `Subject::Session` (line 65).
   `Subject` is `Session` or `Client` (`ids.rs` line 20). There is no seat type.
-- `design/session-locking.md` line 44 says a session lock covers the seat. ext-session-lock
+- `session-locking.md (removed)` line 44 says a session lock covers the seat. ext-session-lock
   is a per-session protocol, so one lock covers every seat that the session has.
 
 ### 1.7 Protocols and other subsystems
@@ -378,7 +378,7 @@ the agent machine, not in the lane (per the lane rules). Every lane updates
 - Files: `crates/gnoblin-input/src/binding.rs` (`Binding`, line 65, gains an optional
   device matcher); `crates/gnoblin-input/src/chord.rs` (matchers, around lines 396 and
   404); `crates/gnoblin-config/schema/config.toml` (`Shortcut`, line 1462); the matching
-  `crates/gnoblin-config/src/document.rs`; `design/archive/lua-input-policy.md` (device selector
+  `crates/gnoblin-config/src/document.rs`; `lua-input-policy.md (removed)` (device selector
   names, shared with Lua).
 - Acceptance: a shortcut with a device selector fires only from that device, and its
   press and release are consumed. A key from that device with no matching binding
@@ -519,8 +519,8 @@ down is released by the seat's last release even when the router gave that relea
 **Lane 5.2: docs and decision.**
 
 - Files: `design/input-status.md` (rows for multi-seat and device bindings);
-  `design/rust-compositor.md` (D31 accepted or changed); `design/archive/lua-input-policy.md`
-  (device and seat selectors); `design/archive/docs-parity/config.md` (new `seats` and
+  `design/rust-compositor.md` (D31 accepted or changed); `lua-input-policy.md (removed)`
+  (device and seat selectors); the config reference (new `seats` and
   `device` keys); changelog.
 - Acceptance: docs match the code; no row says "absent" for a feature that shipped.
 
@@ -538,7 +538,7 @@ one.
    one configured seat.
 3. **Default seat for new devices.** Hot-plugged devices with no rule: go to `seat0`
    (the author's suggestion), or stay unassigned until a rule claims them?
-   **Settled (O10, `design/cutover-survey.md` 16.6): `seat0`.** `State::device_added`
+   **Settled (O10, `cutover-survey.md (removed)` 16.6): `seat0`.** `State::device_added`
    attaches a device to the one input seat when its tag names no seat the session serves,
    and keeps the tag (`attached_seat`), so lane 2.2 can route `ID_SEAT=seat1` to a
    second seat. libinput is opened per logind seat, so only that seat's devices arrive.

@@ -11,7 +11,7 @@
 # It lives in `known-failing/`, not `scenarios/`, because it can never pass: `gnoblin-parity run tests/parity/scenarios` is a
 # gate that must exit 0, and this directory is run only by the runner's own tests.
 #
-# Lane 8C (design/cutover-survey.md 16.1) deleted the layer registry, so no target
+# Lane 8C deleted the layer registry, so no target
 # serves `layers.list` or the `gnoblin.surface_layer_shell:*` records any more. This
 # scenario is kept as a refused expectation: the recording is a fixed file, the
 # expectation can never pass, and the runner tests (`crates/gnoblin-parity/tests/

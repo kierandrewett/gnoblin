@@ -6,7 +6,7 @@
 //! The failure modes are the ones at the top of `protocols::zwlr_layer_shell_v1`.
 //!
 //! The tests after `a_disconnected_output_reserves_nothing` pin what deleting the layer registry
-//! (`design/cutover-survey.md` 16.1, lane 8C) must not change. The registry recorded every layer surface under a
+//! (lane 8C) must not change. The registry recorded every layer surface under a
 //! name and read none of it back, so a surface's layer, its zone, its keyboard and its popups are the protocol's
 //! alone. Each of these passes on the tree before the registry went and on the tree after it.
 

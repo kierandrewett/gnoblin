@@ -76,8 +76,7 @@
 //!   what in each;
 //! - `design/capture-api.md`: "Locked session refuses" (every target kind, the check before any pixel is read, a View
 //!   stream stopped and not resumed), "Secure treatment", and the consent and ownership rules for streams;
-//! - `design/layers.md`, "Capture paths" and "Invariants": secure content is never drawn into any capture, whoever asks, and
-//!   the lock surface is secure;
+//! - The lock surface is secure, and secure content is never drawn into any capture, whoever asks;
 //! - `design/supersample.md`, "Captures": a capture is the composed frame, `mode * supersample` on each axis, and secure
 //!   treatment is applied before any resampling.
 //!

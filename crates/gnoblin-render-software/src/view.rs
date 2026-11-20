@@ -36,10 +36,10 @@
 //! The compositor draws a View node with it when the active renderer is the software one (`Composer::draw_view` in
 //! `gnoblin-backend`), a View's capture and its PipeWire stream read the picture it makes, and the XR extension reads
 //! it through the capture protocol. It is software rasterisation only: no GPU and no DMA-BUF. A renderer that draws a
-//! View on the GPU (GLES, step 9C, `design/cutover-survey.md` section 16.2) draws the same subtree from a
+//! View on the GPU (GLES) draws the same subtree from a
 //! `ViewScene`, and this module is the reference it is compared against (`view_gpu_tests.rs` in `gnoblin-backend`).
 //! [`eye_pixel_matrix`] states the camera as one matrix both paths place a node with. `tests/view_cost.rs` is the CPU
-//! profile; the numbers for both paths are in the survey.
+//! profile; the numbers for both paths are in `view_gpu_tests.rs` in `gnoblin-backend`.
 
 use std::ops::Range;
 use std::sync::Arc;

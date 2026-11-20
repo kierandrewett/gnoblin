@@ -29,7 +29,7 @@ Status values:
 | Mouse keys (pointer)                                                | partial                  | `gnoblin-a11y/src/mouse_keys.rs`; test `mouse_keys_wait_for_the_initial_delay` (`gnoblin-a11y/src/lib.rs:66-67`)                                                                                                                                                                                                                                                                                                                                                             | Same as above: no live key path.                                                                                                                                                                                 |
 | Keyboard monitor (`org.freedesktop.a11y.KeyboardMonitor`)           | partial                  | Grab table and events in `gnoblin-a11y/src/monitor.rs`; D-Bus object `gnoblin-compat-dbus-a11y-keyboard-monitor/src/service.rs:267` (`start`)                                                                                                                                                                                                                                                                                                                                | `start` has no caller in this tree, so the service is not running.                                                                                                                                               |
 | Magnifier follow and layout                                         | partial                  | `gnoblin-a11y/src/a11y.rs` (`OutputsChanged`, `magnifier.set_layout`); tests such as `a_locked_magnifier_stays_on_its_output` (`gnoblin-a11y/src/lib.rs:78-79`)                                                                                                                                                                                                                                                                                                              | Policy only; the on-screen magnifier uses the compositor's own path above.                                                                                                                                       |
-| AT-SPI accessibility tree for Gnoblin's own surfaces (egui)         | absent                   | `design/accessibility.md:13` (dialog shell never enables AccessKit), `:15` (no AccessKit or AT-SPI crate), `:25` (egui AccessKit off by default)                                                                                                                                                                                                                                                                                                                             | Not built.                                                                                                                                                                                                       |
+| AT-SPI accessibility tree for Gnoblin's own surfaces (egui)         | absent                   | `DialogShell` never enables AccessKit (`crates/gnoblin-portal-ui/src/ui.rs`), no `Cargo.toml` names an AccessKit or AT-SPI crate, and egui leaves AccessKit off by default; see the proposal below                                                                                                                                                                                                                                                                           | Not built.                                                                                                                                                                                                       |
 | Screen reader reading client apps                                   | needs real AT            | No test runs a screen reader                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Needs a real AT session to check.                                                                                                                                                                                |
 
 ## Next steps
@@ -40,3 +40,30 @@ Status values:
 - Add a capture test with the magnifier on, and a test that the visual bell flash is drawn.
 - Fix the schema zoom maximum (32 in the schema against 16 in the compositor).
 - Add a real-AT check for the screen reader before any claim about it.
+
+## Proposal: AT-SPI for Gnoblin's own surfaces
+
+Status: proposed. Nothing here is implemented, and no dependency is approved.
+
+Gnoblin's portal dialogs and recovery overlay are drawn by egui on the CPU. The dialog shell owns a default `Context`, nothing calls
+`enable_accesskit`, and `run_frame` keeps only the shapes, so no assistive technology can read them. egui 0.37 can build an AccessKit
+tree when asked (`Context::enable_accesskit`, delivered as `PlatformOutput::accesskit_update`, with AT actions returning as
+`accesskit::ActionRequest` input). The `egui-winit` adapter is winit-only, so the wiring would be written by hand.
+
+Options:
+
+- **A. `accesskit_unix` in a bridge crate** (`gnoblin-atspi`, name proposed). The standard AccessKit output, which Orca already
+  reads; the compositor process is the AT-SPI application and a dialog is a node under its root. Cost: a second zbus major (5.x
+  beside the workspace's 6.x) and an async D-Bus runtime in the compositor process. Recommended for a first version.
+- **B. A minimal AT-SPI tree on zbus 6.** No second zbus, but it reimplements what `accesskit_atspi_common` does, and a bug breaks
+  Orca silently.
+- **C. Wait for GNOME's Newton.** No code and no dependency; the gap stays. `[INFERENCE]` Newton is not a stable protocol to target.
+
+Phases, each one commit with a private-bus test: (1) bridge crate and a one-button tree visible through `GetChildren` on
+`/org/a11y/atspi/accessible/root`; (2) enable the egui flag in `DialogShell` and forward the update; (3) map `DoAction` presses to
+egui input through a bounded queue; (4) send focus state and translate extents to output coordinates; (5) confirm the keyboard
+monitor's grabs still take keys before the dialog; (6) re-check Newton.
+
+Risks: two zbus majors (build time, size), no a11y bus available (the adapter must fail quietly), and frame-loop coupling between the
+bus thread and the one-thread frame loop. Open decisions for Kieran: approve the dependency set, choose A or C, who starts the AT-SPI bus
+launcher, always-on versus a Settings toggle, and whether the recovery overlay is in the first pass.

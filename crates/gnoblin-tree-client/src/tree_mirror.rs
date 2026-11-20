@@ -9,7 +9,7 @@
 //! transaction the compositor applies changes the mirror, through the change batch it
 //! publishes; a refused transaction therefore leaves the mirror exactly as it was.
 //!
-//! This module is pure Rust and knows nothing of the retired shell. The the retired shell `core` table is built
+//! This module is pure Rust and knows nothing of any script runtime. The `core` table of a shell runtime is built
 //! on it in `tree_core`.
 
 use std::collections::BTreeMap;
@@ -246,7 +246,7 @@ pub struct TreeEvent {
     pub fields: EventFields,
 }
 
-/// A claimed chord the compositor saw change state: `claim` is the id the retired side allocated.
+/// A claimed chord the compositor saw change state: `claim` is the id the script side allocated.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TreeChord {
     pub claim: i64,
@@ -254,7 +254,7 @@ pub struct TreeChord {
     pub state: String,
 }
 
-/// A claimed touchpad gesture the compositor saw advance: `claim` is the id the retired side allocated.
+/// A claimed touchpad gesture the compositor saw advance: `claim` is the id the script side allocated.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TreeGesture {
     pub claim: i64,

@@ -1,11 +1,11 @@
 # Node core: protocol and schema
 
-> **The `gnoblin-wm` crate is deleted** (lane W6, `design/cutover-survey.md` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
+> **The `gnoblin-wm` crate is deleted** (lane W6, `cutover-survey.md (removed)` sections 13 to 15). Every `gnoblin-wm` name and `crates/gnoblin-wm/...` path below describes the code as it was when this document was written. Window state is now the compositor's own record (`crates/gnoblin-wayland/src/fallback.rs`), and placement, focus, rules, workspaces and layouts are the stock Lua shell's (`data/lua/gnoblin/shell/`).
 
-Status: proposal for D35 step 3 (`node-api-refactor.md` 7.2). Nothing here is built. Code claims cite `file:line` at
+Status: implemented. The owner socket, the tree, transactions, change batches and the schema catalog this note proposed for D35 step 3 (`node-api-refactor.md` 7.2) are built in `gnoblin-proto`, `gnoblin-tree-client`, `gnoblin-render` and `crates/gnoblin-compositor/src/ipc/` (`tree.rs`, `tree_host.rs`, `schema.rs`); the sentences below are still written as the proposal. Where this note and the code differ, the code and its tests are right; the `F` and `O` numbers are cited from code comments. Code claims cite `file:line` at
 `origin/rust-compositor` (`d6a9d2032`). Anything not read is marked (unverified).
 
-Decision 1a (`node-api-refactor.md` 7.1): the shell's Lua runs in the runtime process. The compositor owns the tree.
+Decision 1a (`node-api-refactor.md` 7.1): the shell script runs in the runtime process. The compositor owns the tree.
 The shell keeps a mirror and sends transactions over the owner socket. A shell crash restarts the shell; windows stay
 put.
 
@@ -274,7 +274,7 @@ per-node content revision and the size), keeps the picture as a premultiplied sn
 in the scene's paint order, with the node's composed opacity, corner radius and effects. A `View` whose source holds
 canvases draws them too. `docs/shell-api/canvas.md` documents the ops a shell writes.
 
-**Owner decision O2 (`design/cutover-survey.md` 16.6), default selected, owner may revisit.** Canvas text and icons are
+**Owner decision O2 (`cutover-survey.md (removed)` 16.6), default selected, owner may revisit.** Canvas text and icons are
 painted by a small dedicated rasteriser, not the egui painter: `gnoblin-paint` uses `tiny-skia` (BSD-3-Clause, already in
 the graph through the cursor crate's SVG renderer) for every fill and `skrifa` (MIT or Apache-2.0, already in the graph
 through egui's text stack) for font files, advances and glyph outlines. System fonts are found by family in the standard
@@ -1075,7 +1075,7 @@ Each slice is for one agent. Slices 1 to 3 run in parallel; builds run on Agent3
 - **Stays green:** input tests and the parity input scenarios.
 - **Status:** the lock is a compositor-owned `lock` node (`class lock`, prop `state`: `not-locked`, `pending`, `locked`), created at startup and set from the session-lock state on every change. F21 is tested at the tree level (`tests/tree_live.rs` `a_shell_that_attaches_while_the_lock_is_engaged_reads_the_lock_state`); F21b and F22b are tested in `tests/session_lock.rs`. F22 at the composer level: `the_lock_node_returns_to_not_locked_when_the_session_unlocks_with_no_shell`. Not done: a shell that dies and is replaced with the lock still engaged is not tested end to end (the session harness has no shell that can die), and shell key events under the lock are not tested.
 
-**Resolved (item 3, real-VM lock test):** the `lock` node now emits `requested` and has a native `authenticate` method (`Lock:request` and the authenticate worker, steps 1 and 2). The stock `lock.lua` drives both: `Lock:on_requested` engages the lock and `Lock:unlock` awaits the `authenticate` answer; the Lua cases are in `tests/lua/ui_test.lua`. `a_session_lock_request_engages_the_stock_lock_screen` in `crates/gnoblin-compositor/tests/shell_vm.rs` proves a request reaches a real shell VM. Residual limits are in `design/session-locking.md`.
+**Resolved (item 3, real-VM lock test):** the `lock` node now emits `requested` and has a native `authenticate` method (`Lock:request` and the authenticate worker, steps 1 and 2). The stock `lock.lua` drives both: `Lock:on_requested` engages the lock and `Lock:unlock` awaits the `authenticate` answer; the Lua cases are in `tests/lua/ui_test.lua`. `a_session_lock_request_engages_the_stock_lock_screen` in `crates/gnoblin-compositor/tests/shell_vm.rs` proves a request reaches a real shell VM. Residual limits are in `session-locking.md (removed)`.
 
 ### Slice 9: replay harness and fake core
 

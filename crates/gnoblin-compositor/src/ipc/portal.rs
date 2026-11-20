@@ -759,8 +759,7 @@ pub(super) fn parent_owner_check(caller: &VerifiedCaller, owner: &WindowProcess)
 }
 
 /// Where a portal dialog opens. Every request opens on the output: no path places a dialog
-/// on its parent window, because no trusted app-to-process binding exists yet (design
-/// `layers.md`, Needs Kieran 16, decided as output scope).
+/// on its parent window, because no trusted app-to-process binding exists yet (decided as output scope).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum PortalScope {
     /// The dialog opens on the output. `reason` says what was found about the parent, or
@@ -772,8 +771,7 @@ pub(super) enum PortalScope {
 ///
 /// The result is always an output scope. The parent is resolved only so the log line can
 /// say what was found: a parent whose process matches the caller is reported as resolved
-/// but not established, because a pid match is not a trusted binding (design `layers.md`,
-/// Needs Kieran 16). It is a pure function over two lookups: `exported` maps a Wayland
+/// but not established, because a pid match is not a trusted binding. It is a pure function over two lookups: `exported` maps a Wayland
 /// handle to its window (`None` while the compositor has not answered, `Some(None)` for an
 /// unknown or revoked handle), and `process` maps a window to its client process. Nothing
 /// here refuses a request, so the app still gets its consent answer.

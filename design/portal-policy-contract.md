@@ -24,15 +24,15 @@ own portal backend.
 
 From the inventory of files that mention permissions:
 
-| Area            | Items                                                                                                                                                                                                                                                                    |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Lua API         | `gnoblin.permission_rule`, `gnoblin.configure.permissions`, `gnoblin.portals.grants`                                                                                                                                                                                     |
-| Compositor      | `org.gnoblin.Compositor.CheckPermission`, native policy (`src/control`, `src/config`, Mutter patch 0019)                                                                                                                                                                 |
-| Backend         | `gnoblin-portal-policy.c`, `gnoblin-portal-identity.c`, permission calls in screenshot, screencast, remote desktop, input capture and access                                                                                                                             |
-| Patches         | `xdg-desktop-portal-gnome/20-permissions`, `45-portal-grant-management`, `10-tooling/0002` (grants)                                                                                                                                                                      |
-| Control and CLI | permission and grant requests, `gnoblinctl` permission commands, the `gnoblin.permission.changed` event                                                                                                                                                                  |
-| Docs            | `docs/config/permission_rule.md`, `docs/config/configure/permissions.md`, `docs/guides/permissions.md`, `docs/shell-api/permissions-privacy.md`, `docs/bridge/permissions-and-privacy.md`, and the references in `docs/dbus`, `docs/events`, `design/archive/lua-api.md` |
-| Tests           | `tests/test-permissions-live.py`, `tests/fixtures/rustdesk-permissions.lua`, permission cases in the Lua and CLI tests and the QEMU scripts                                                                                                                              |
+| Area            | Items                                                                                                                                                                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lua API         | `gnoblin.permission_rule`, `gnoblin.configure.permissions`, `gnoblin.portals.grants`                                                                                                                                                                                |
+| Compositor      | `org.gnoblin.Compositor.CheckPermission`, native policy (`src/control`, `src/config`, Mutter patch 0019)                                                                                                                                                            |
+| Backend         | `gnoblin-portal-policy.c`, `gnoblin-portal-identity.c`, permission calls in screenshot, screencast, remote desktop, input capture and access                                                                                                                        |
+| Patches         | `xdg-desktop-portal-gnome/20-permissions`, `45-portal-grant-management`, `10-tooling/0002` (grants)                                                                                                                                                                 |
+| Control and CLI | permission and grant requests, `gnoblinctl` permission commands, the `gnoblin.permission.changed` event                                                                                                                                                             |
+| Docs            | `docs/config/permission_rule.md`, `docs/config/configure/permissions.md`, `docs/guides/permissions.md`, `docs/shell-api/permissions-privacy.md`, `docs/bridge/permissions-and-privacy.md`, and the references in `docs/dbus`, `docs/events`, `lua-api.md (removed)` |
+| Tests           | `tests/test-permissions-live.py`, `tests/fixtures/rustdesk-permissions.lua`, permission cases in the Lua and CLI tests and the QEMU scripts                                                                                                                         |
 
 This is a breaking change to a documented public API. It follows the repo's
 clean-cutover rule: no shims, no compatibility aliases. The API version and the
@@ -78,7 +78,7 @@ decision. Gnoblin offers no policy to share.
 2. The Gnoblin backend keeps only the dialogs it shows today. It consults no
    policy.
 3. Mutter patch 0019 and the monolithic patch need a patch audit during the
-   removal, as in `design/patch-audit-2026-10-20.md`.
+   removal, as in `patch-audit-2026-10-20.md (removed)`.
 4. The Bingux work lands on `feat/bingux-portal` in the Bingux repo and merges
    into `feat/bingux-os`. The Gnoblin removal lands on
    `feat/remove-portal-permissions` and merges into `main` after the Bingux

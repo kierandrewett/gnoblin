@@ -67,7 +67,7 @@ Why no prompt for the runtime: the runtime is the trusted process that evaluates
 ## Secure treatment
 
 - The `capture.screen` handler comment says the backend screenshot applies the configured secure treatment to secure layers. Unverified: the backend code that does this was not read in this design pass.
-- No per-window secure flag was found in the code. The layer design (`design/layers.md`) has a `secure` field, but it applies to layers, not to windows.
+- No per-window secure flag was found in the code. The layer design (`layers.md (removed)`) has a `secure` field, but it applies to layers, not to windows.
 - Window stills read the client buffer directly. The output masking path does not run for them. So a window still of secure content is not masked today.
 - Required rule: secure content never reaches a `capture.still` reply. Phase 1 must not ship window stills until the Needs Kieran question on secure windows is answered.
 
@@ -79,7 +79,7 @@ Why no prompt for the runtime: the runtime is the trusted process that evaluates
 
 ## Privacy indicator
 
-- The design names `org.gnoblin.Privacy` as the privacy surface (`design/e2e-privacy.md`). Its payload names no app (`design/e2e-privacy.md`, the note on indicator payloads).
+- The design names `org.gnoblin.Privacy` as the privacy surface (`e2e-privacy.md (removed)`). Its payload names no app (`e2e-privacy.md (removed)`, the note on indicator payloads).
 - Required rule: while a capture runs, the indicator shows active capture.
 - Unproven: a still is one instant, so the signal must come before the pixels are read. Unverified: whether `org.gnoblin.Privacy` reports still captures at all. Today its monitor covers PipeWire nodes.
 - Phase 1 cannot claim the indicator works until the active-still signal is shown in a test.
@@ -164,12 +164,12 @@ with no mode or scale, so the mapping is by analogy only. D is worse than A on e
 
 **E, the screen-cast path.** Real, and narrower than it sounds. What works today, by consumer:
 
-| Consumer of a View's pixels                              | State                                                                                                                                                                                                                                                                                                                                        |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The shell's `View:capture(path)`                         | Works; reads the capture picture, tested in `view_capture_e2e.rs`.                                                                                                                                                                                                                                                                           |
-| The XR extension, through `gnoblin_view_source_v1`       | Works, with damage and the shared-memory and GPU buffer paths; tested in `view_capture_e2e.rs` and in `xr-capture`. This is what A or B would keep.                                                                                                                                                                                          |
-| A PipeWire stream of a View (`cast.grant`, `cast.start`) | The compositor half works: `ipc/consent.rs:13-14,223-330`, tested with a fake portal in `crates/gnoblin-compositor/tests/cast.rs:165-250` (`no-view`, no consent, the lock) and with a private PipeWire daemon in `view_capture_e2e.rs`. The stream is memfd only; a DMA-BUF stream buffer is "not done" (`design/cutover-survey.md`, 16.7). |
-| A real portal frontend offering a View to an app         | Planned, not wired: the same survey calls the portal ScreenCast path "not wired to the portal (16.2)".                                                                                                                                                                                                                                       |
+| Consumer of a View's pixels                              | State                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The shell's `View:capture(path)`                         | Works; reads the capture picture, tested in `view_capture_e2e.rs`.                                                                                                                                                                                                                                                                              |
+| The XR extension, through `gnoblin_view_source_v1`       | Works, with damage and the shared-memory and GPU buffer paths; tested in `view_capture_e2e.rs` and in `xr-capture`. This is what A or B would keep.                                                                                                                                                                                             |
+| A PipeWire stream of a View (`cast.grant`, `cast.start`) | The compositor half works: `ipc/consent.rs:13-14,223-330`, tested with a fake portal in `crates/gnoblin-compositor/tests/cast.rs:165-250` (`no-view`, no consent, the lock) and with a private PipeWire daemon in `view_capture_e2e.rs`. The stream is memfd only; a DMA-BUF stream buffer is "not done" (`cutover-survey.md (removed)`, 16.7). |
+| A real portal frontend offering a View to an app         | Planned, not wired: the same survey calls the portal ScreenCast path "not wired to the portal (16.2)".                                                                                                                                                                                                                                          |
 
 The extension would need to link PipeWire, which `design/xr-extension.md:45` says it does not have and `:170` says is for audio.
 Its connection is already an owner connection (`gnoblin-xr/src/main.rs:77`; every same-user helper is the owner,
@@ -209,7 +209,7 @@ copy from the tree. The route: list real windows with `ext_foreign_toplevel_list
    `compose.rs:2103`), publish that picture beside the View pictures, and read it in `bounds`, `copy` and `copy_into`
    (`capture_shared.rs:545`, `:599`). The picture is the union of the node and its decoration children, unoccluded, with the
    secure mask the View path already applies. The cost is one subtree redraw per captured window and frame; the
-   View path costs 17 ms at 720p on the CPU, and a GLES readback otherwise (`design/cutover-survey.md`, 16.7).
+   View path costs 17 ms at 720p on the CPU, and a GLES readback otherwise (`cutover-survey.md (removed)`, 16.7).
 2. **Identifier to tree node: no mapping exists.** The list publishes `gnoblin-<WindowId, 16 hex digits>`
    (`ext_foreign_toplevel_list_v1.rs`). The tree's `window` class has `title`, `app_id`, `focused` and the state flags and nothing
    that names the window (`schema/tree/window.toml`), and a window node's id is a different number from the `WindowId`
@@ -261,7 +261,7 @@ serve a window source through private compositor APIs, not a Wayland protocol. W
   `cast.grant` and `cast.start` for a View (`ipc/consent.rs:13-14,223-330`; `gnoblin-compositor/tests/cast.rs:165-250` and the
   private-daemon stream tests in `view_capture_e2e.rs`). Not shown by any test: a real `xdg-desktop-portal` frontend
   forwarding the option from a real client [INFERENCE]; the survey lists the ScreenCast path as "not wired to the portal"
-  (`design/cutover-survey.md`, row 4). A generic client does not know the option either.
+  (`cutover-survey.md (removed)`, row 4). A generic client does not know the option either.
 
 Finding: a portal client such as WayVR gets every Gnoblin monitor today in every shell, which is the "just works" part, and gets a
 window or a View only by sending Gnoblin's private options. For windows to appear without client code, the portal would need to
@@ -296,7 +296,7 @@ What E-flat needs, by file:
 | `gnoblin-wayland/src/protocols/capture_shared.rs`                  | `Targets::bounds`, `copy` and `copy_into` for `Target::Window` read the window picture and its frame size, not `placement.size` and a crop (`:160-190`, `:545`, `:599`, `:725-731`). `capture_layout` reports the frame. `publish_view_pictures` publishes window pictures and notes damage for `Target::Window` (`:802`). A session of a window tells the composer to draw that window while it lives, and stops when it ends. |
 | `capture_dmabuf.rs`, `capture_views.rs`, `view_readbacks`          | The GPU readback cache is keyed by View node; key it by the node it reads, so a window's node is a key. The dmabuf copy of a window reads that texture.                                                                                                                                                                                                                                                                         |
 | `gnoblin-schema/schema/tree/window.toml`, `compose.rs` node create | Read-only `identifier`, written when the composer makes the window node, from the one function that now builds the list's identifier (move `identifier` out of `ext_foreign_toplevel_list_v1.rs`).                                                                                                                                                                                                                              |
-| Generated files                                                    | `cargo xtask gen-sdks` (22 files), the schema golden `crates/gnoblin-schema/tests/golden/catalog.txt`, `node_class_matches_schema` (`ipc/tree.rs`), `docs/shell-api` and `design/docs-parity/allow.toml`. The tree gains a property and no IPC version moves (`design/cutover-survey.md`, O5).                                                                                                                                  |
+| Generated files                                                    | `cargo xtask gen-sdks` (22 files), the schema golden `crates/gnoblin-schema/tests/golden/catalog.txt`, `node_class_matches_schema` (`ipc/tree.rs`), `docs/shell-api` and `design/docs-parity/allow.toml`. The tree gains a property and no IPC version moves (`cutover-survey.md (removed)`, O5).                                                                                                                               |
 | `access.rs`                                                        | Only if XR takes the list and the toplevel source manager: add both to `VIEW_INTERFACES` and `decide`. XR itself (bind the list, map identifier to node, drop the View for windows) is a separate change in `extensions/gnoblin-xr`.                                                                                                                                                                                            |
 
 How each requirement is met:
@@ -350,7 +350,7 @@ Risks, in order of size:
 1. **Effects.** Unless E-full is chosen, the headset shows square corners, no border, no shadow and no blur. That breaks "windows and
    their frames identical" for any shell that styles them, which every shell does.
 2. **Cost per window.** Each captured window is a subtree redraw per change. The View path costs 17 ms at 720p on the CPU
-   (`design/cutover-survey.md`, 16.7), so ten animating windows is not affordable on the CPU path; E-flat is only practical on the GLES
+   (`cutover-survey.md (removed)`, 16.7), so ten animating windows is not affordable on the CPU path; E-flat is only practical on the GLES
    path, which has an unproven DMA-BUF stream today (`gnoblin-lubw`).
 3. **Origin and transform.** Whether `render_view` draws the source node at its local origin or applies its own placement transform
    (rotation, scale, 3D tilt, fade opacity) is not settled by reading. A window rotated in a shell must come out upright in the capture, so the

@@ -1,8 +1,7 @@
 //! The recovery state: the only state that outlives one session.
 //!
-//! `design/startup-recovery.md` describes what the C guardian keeps on disk:
-//! which configuration document was last accepted, and enough evidence for the
-//! next login to decide whether to run the user's files at all. This crate keeps
+//! The guardian keeps on disk which configuration document was last accepted, and enough evidence
+//! for the next login to decide whether to run the user's files at all. This crate keeps
 //! that state as data and reports each change with
 //! [`crate::Effect::SetRecovery`]; the caller writes it under
 //! `$XDG_STATE_HOME/gnoblin/`.
