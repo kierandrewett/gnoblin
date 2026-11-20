@@ -33,10 +33,7 @@ fn locked() -> Lock {
     assert_eq!(
         lock.apply(Event::LockRequested { locker: LOCKER }),
         vec![
-            Effect::Cover {
-                generation: 1,
-                subjects: vec![SESSION],
-            },
+            Effect::Cover { generation: 1 },
             Effect::AwaitPresentation {
                 generation: 1,
                 outputs: vec![OUTPUT],
@@ -117,8 +114,6 @@ fn locker_crash_while_locking_keeps_the_cover() {
     assert_eq!(lock.state(), State::CoverFailed);
     assert_eq!(lock.locker(), None);
     assert_eq!(lock.capture(CaptureStream::Granted), Capture::Refused);
-    // The cover outlives the client: the desktop is never revealed by a crash.
-    assert!(lock.is_covered(SESSION));
 }
 
 #[test]
@@ -210,10 +205,7 @@ fn hotplug_while_locked_withholds_input_until_reproven() {
             outputs: vec![OUTPUT, SECOND],
         }),
         vec![
-            Effect::Cover {
-                generation: 2,
-                subjects: vec![SESSION],
-            },
+            Effect::Cover { generation: 2 },
             Effect::AwaitPresentation {
                 generation: 2,
                 outputs: vec![OUTPUT, SECOND],
@@ -259,10 +251,7 @@ fn removing_every_output_never_reaches_locked() {
     assert_eq!(
         lock.apply(Event::OutputsChanged { outputs: Vec::new() }),
         vec![
-            Effect::Cover {
-                generation: 2,
-                subjects: vec![SESSION],
-            },
+            Effect::Cover { generation: 2 },
             Effect::KeepCovered {
                 reason: CoverFailure::NoOutputs,
             },
@@ -487,10 +476,7 @@ fn takeover_requires_a_fresh_cover() {
     assert_eq!(
         lock.apply(Event::LockRequested { locker: OTHER }),
         vec![
-            Effect::Cover {
-                generation: 2,
-                subjects: vec![SESSION],
-            },
+            Effect::Cover { generation: 2 },
             Effect::AwaitPresentation {
                 generation: 2,
                 outputs: vec![OUTPUT],
@@ -547,45 +533,6 @@ fn locked_is_announced_once_across_hotplug() {
         })]
     );
     assert!(!effects.iter().any(|effect| matches!(effect, Effect::SendLocked { .. })));
-}
-
-#[test]
-fn a_new_subject_is_covered_before_it_is_shown() {
-    let mut lock = locked();
-    assert_eq!(
-        lock.apply(Event::SubjectAdded {
-            subject: Subject::Client(OTHER),
-        }),
-        vec![
-            Effect::Cover {
-                generation: 2,
-                subjects: vec![SESSION, Subject::Client(OTHER)],
-            },
-            Effect::AwaitPresentation {
-                generation: 2,
-                outputs: vec![OUTPUT],
-            },
-            Effect::Publish(Published {
-                state: State::Locking,
-                active_changed: false,
-            }),
-        ]
-    );
-    assert!(lock.is_covered(Subject::Client(OTHER)));
-    assert_eq!(
-        lock.gate_input(InputSource::Local, Subject::Client(OTHER)),
-        Delivery::Discard
-    );
-    assert_eq!(
-        lock.apply(Event::SubjectRemoved {
-            subject: Subject::Client(OTHER),
-        }),
-        vec![Effect::Cover {
-            generation: 2,
-            subjects: vec![SESSION],
-        }]
-    );
-    assert!(!lock.is_covered(Subject::Client(OTHER)));
 }
 
 #[test]

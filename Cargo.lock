@@ -2306,7 +2306,6 @@ dependencies = [
  "gnoblin-lock",
  "gnoblin-lock-auth",
  "gnoblin-log",
- "gnoblin-model",
  "gnoblin-output",
  "gnoblin-paint",
  "gnoblin-pipewire-export",

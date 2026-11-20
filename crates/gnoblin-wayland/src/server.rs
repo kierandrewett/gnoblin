@@ -65,7 +65,6 @@ use crate::observation::{
 use crate::protocols::capture_shared::{CastRefusal, CastStream};
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
-use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
 use crate::protocols::wl_compositor::WlCompositorClientState;
 use crate::state::State;
 
@@ -630,18 +629,6 @@ impl Server {
                             Command::Sync { reply } => {
                                 let _ = reply.send(());
                             }
-                            Command::ProtectSession { pid, reply } => {
-                                let _ = reply.send(state.protect_hosted_session(pid));
-                            }
-                            Command::ReleaseSession { pid, reply } => {
-                                let _ = reply.send(state.release_hosted_session(pid));
-                            }
-                            Command::GnoblinSessionHostV1HostedSession { pid, reply } => {
-                                let _ = reply.send(state.hosted_session(pid));
-                            }
-                            Command::HostRequests { reply } => {
-                                let _ = reply.send(state.host_requests());
-                            }
                             Command::BlurRegion { window, reply } => {
                                 let _ = reply.send(state.window_blur_region(window));
                             }
@@ -880,9 +867,6 @@ impl Server {
                 // A locker that dies sends no request, so the lock is told to look for
                 // a connection that is gone, once per turn.
                 state.poll_lock();
-                // A hosted session that dies sends no request either, and
-                // a session request nobody claims fails at its own deadline.
-                state.poll_hosted();
                 // The Xwayland session is ticked here: the loop's own timeout is the only
                 // clock its process needs, and a dead or hung instance is noticed within
                 // one turn.
@@ -921,8 +905,9 @@ impl Server {
                     }
                 }
                 // The two ways a backend ends a session are different endings. The person closing the last
-                // window of a hosted session is a logout; the device that drives the backend going away is a
-                // failure no output survives, and a loop that kept running would serve nothing for ever.
+                // window of a session that is a window of another compositor is a logout; the device that drives
+                // the backend going away is a failure no output survives, and a loop that kept running would
+                // serve nothing for ever.
                 if events.iter().any(|event| matches!(event, BackendEvent::SessionEnded)) {
                     control.logout.store(true, std::sync::atomic::Ordering::SeqCst);
                     stop.stop();
@@ -1166,8 +1151,8 @@ impl ControlHandle {
 
     /// Promises a role to a process the compositor is about to start.
     ///
-    /// A view extension and a hosted session are ordinary clients of the session
-    /// socket, and their registry answer is decided when the backend accepts them. The
+    /// A view extension is an ordinary client of the session
+    /// socket, and its registry answer is decided when the backend accepts it. The
     /// promise has to be recorded before the process connects, which is the order the
     /// composition root uses: promise, then spawn. A process that connects before the
     /// promise is recorded is served as an ordinary client.
@@ -1224,37 +1209,6 @@ impl ControlHandle {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::Sync { reply });
         answer.recv_timeout(FOCUS_TIMEOUT).is_ok()
-    }
-
-    /// Asks for a hosted session to be protected, as the manager's `Protect` does.
-    ///
-    /// [`None`] means the loop did not answer in time; `false` means no session runs
-    /// with that process identity.
-    #[must_use]
-    pub fn protect_session(&self, pid: u32) -> Option<bool> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::ProtectSession { pid, reply });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// Shows a hosted session again.
-    ///
-    /// [`None`] means the loop did not answer in time; `false` means the session was
-    /// not protected.
-    #[must_use]
-    pub fn release_session(&self, pid: u32) -> Option<bool> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::ReleaseSession { pid, reply });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// What the compositor knows about the hosted session a process runs.
-    #[must_use]
-    pub fn hosted_session(&self, pid: u32) -> Option<Option<GnoblinSessionHostV1HostedSession>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control
-            .push(Command::GnoblinSessionHostV1HostedSession { pid, reply });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
     /// The matrix and projected bounds a window's node is drawn with, or `None` when it is
@@ -1346,14 +1300,6 @@ impl ControlHandle {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::BlurRegion { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
-    /// Every hosted session request waiting for the manager.
-    #[must_use]
-    pub fn host_requests(&self) -> Vec<GnoblinSessionHostV1Request> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::HostRequests { reply });
-        answer.recv_timeout(FOCUS_TIMEOUT).unwrap_or_default()
     }
 
     /// Advances the session clock, in milliseconds.
@@ -1628,25 +1574,6 @@ enum Command {
     },
     /// A barrier: answered once every command queued before it has run; see `ControlHandle::sync`.
     Sync { reply: std::sync::mpsc::SyncSender<()> },
-    /// Protect a hosted session, and answer whether the process was found.
-    ProtectSession {
-        pid: u32,
-        reply: std::sync::mpsc::SyncSender<bool>,
-    },
-    /// Show a hosted session again.
-    ReleaseSession {
-        pid: u32,
-        reply: std::sync::mpsc::SyncSender<bool>,
-    },
-    /// What is known about a hosted session.
-    GnoblinSessionHostV1HostedSession {
-        pid: u32,
-        reply: std::sync::mpsc::SyncSender<Option<GnoblinSessionHostV1HostedSession>>,
-    },
-    /// Every session request waiting for the manager.
-    HostRequests {
-        reply: std::sync::mpsc::SyncSender<Vec<GnoblinSessionHostV1Request>>,
-    },
     /// The matrix and projected bounds a window's node is drawn with, read from the scene.
     DrawnNode {
         window: WindowId,

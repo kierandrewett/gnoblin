@@ -1,8 +1,6 @@
-//! Pure session lock and protection cover state machine.
+//! Pure session lock state machine.
 //!
-//! This crate is the policy of `ext-session-lock-v1` and of the protection
-//! covers that nested sessions need (design/rust-compositor.md, "Hosting
-//! sessions" and D4), with no compositor in it: no Smithay type, no actor, no
+//! This crate is the policy of `ext-session-lock-v1`, with no compositor in it: no Smithay type, no actor, no
 //! seat, no protocol object and no clock. `gnoblin-wayland` translates protocol
 //! requests and render results into [`Event`]s, `Lock::apply` returns
 //! [`Effect`]s in the order they must happen, and `gnoblin-compositor` performs
@@ -10,10 +8,9 @@
 //!
 //! # What it guarantees
 //!
-//! - The covered set is a set of [`Subject`]s, not "every surface": one
-//!   [`Subject::Session`] for a plain desktop, one [`Subject::Client`] per
-//!   hosted session under D4. A cover can hide one client while another stays
-//!   visible, and the rest of the machine never branches on which it is.
+//! - The cover hides the whole session, every client alike. The machine names
+//!   a [`Subject`] only to tell the locker, which may receive input, from
+//!   everything else.
 //! - Nothing is `Locked` until a frame newer than the current barrier has
 //!   reached **every** output. A frame carries the generation it was armed
 //!   with, so a frame queued before the cover was raised proves nothing.
@@ -77,11 +74,9 @@
 //!     `takeover_requires_a_fresh_cover`.
 //! 21. The owner is told it is locked twice, or after hotplug:
 //!     `locked_is_announced_once_across_hotplug`.
-//! 22. A newly covered subject (a nested session) is shown while covered:
-//!     `a_new_subject_is_covered_before_it_is_shown`.
-//! 23. A locker that never mapped a lock surface receives input:
+//! 22. A locker that never mapped a lock surface receives input:
 //!     `an_unmapped_lock_surface_receives_no_input`.
-//! 24. A locker crashes halfway through an authorised unlock:
+//! 23. A locker crashes halfway through an authorised unlock:
 //!     `a_crash_during_the_reveal_completes_it`.
 //!
 //! `src/model.rs` adds model-based tests over random event sequences for the two
@@ -97,9 +92,6 @@ mod ids;
 mod lock;
 #[cfg(test)]
 mod model;
-mod protection;
-#[cfg(test)]
-mod protection_tests;
 mod state;
 #[cfg(test)]
 mod tests;
@@ -108,5 +100,4 @@ pub use effect::{Effect, Published, RejectReason};
 pub use event::{CoverFailure, Event};
 pub use ids::Subject;
 pub use lock::Lock;
-pub use protection::{Protection, ProtectionEffect, ProtectionEvent, ProtectionFailure, ProtectionState};
 pub use state::{Capture, CaptureStream, Delivery, Embargo, InputSource, State};

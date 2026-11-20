@@ -2,7 +2,7 @@
 
 use gnoblin_types::{ClientId, OutputId};
 
-use crate::{CoverFailure, Embargo, State, Subject};
+use crate::{CoverFailure, Embargo, State};
 
 /// One imperative instruction, produced by [`crate::Lock::apply`].
 ///
@@ -11,13 +11,11 @@ use crate::{CoverFailure, Embargo, State, Subject};
 /// admit input.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Effect {
-    /// Raise (or keep) the opaque cover over exactly these subjects, with the
+    /// Raise (or keep) the opaque cover over the whole session, with the
     /// active locker's own surfaces above it.
     Cover {
         /// The barrier generation this cover belongs to.
         generation: u64,
-        /// Every subject that must be hidden, in identifier order.
-        subjects: Vec<Subject>,
     },
     /// Arm the presentation barrier: nothing is locked until a frame newer than
     /// this generation reaches every listed output.

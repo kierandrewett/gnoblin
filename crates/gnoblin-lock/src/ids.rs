@@ -1,4 +1,4 @@
-//! What a cover hides.
+//! Who an input or clipboard event is for.
 //!
 //! The identifiers the lock names are the shared primitives: a client is a
 //! [`gnoblin_types::ClientId`] and an output a [`gnoblin_types::OutputId`], the
@@ -8,18 +8,14 @@
 
 use gnoblin_types::ClientId;
 
-/// Something the lock can hide, feed input to, or embargo.
+/// Who an input or clipboard event is for, so the lock can tell its owner from everything else.
 ///
-/// The current C implementation covers "every surface": one implicit subject.
-/// Nested sessions (design/rust-compositor.md, D4) make the covered set a set of
-/// clients, so the machine names its subject instead of assuming the desktop is
-/// the only thing under the cover. Nothing in the state machine branches on
-/// which variant a subject is; only [`crate::Lock::covered`] readers do, and a
-/// plain session uses [`Subject::Session`] alone.
+/// The covered set is always the whole session: a lock hides every client the same way and the machine does not
+/// branch on which one.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Subject {
     /// The whole session: every ordinary client and every surface it draws.
     Session,
-    /// One client on its own, such as a nested session hosted under D4.
+    /// One client on its own: the locker is the only one that may receive input while the session is covered.
     Client(ClientId),
 }

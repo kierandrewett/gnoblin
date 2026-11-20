@@ -74,8 +74,8 @@ parity report, not when its crate compiles.
       scenarios. Needs INP and RND. Starts in phase 3. Blocks INT. Done when Orca reads and controls a session through its
       key bindings, each keyboard accessibility mode passes its input scenarios, and Orca can read the recovery overlay.
 - [ ] **Lane DOC: docs migration.** Owns `docs/`. Needs the OBJ generated reference. Starts in phase 3. Blocked by INT.
-- [ ] **Lane HST: session hosting.** Owns the nested backend acceptance, `gnoblin_session_host_v1` and the bsm manager
-      integration. Needs the BE nested backend, the SEC covers and ENG. Starts in phase 4. Blocks INT.
+- [ ] **Lane HST: session hosting.** Owns the nested backend acceptance and the bsm manager integration. A nested
+      session is an ordinary client and session, so there is no hosting protocol. Needs the BE nested backend and ENG. Starts in phase 4. Blocks INT.
 - [ ] **Lane PKG: packaging and distro matrix.** Owns `packaging/` and the release workflow. Needs the INT binary. Starts in
       phase 4. Each target passes the `package-targets.json` gates: package build, install, login and removal. The native
       dependency probe is in `tests/native-probe/`.

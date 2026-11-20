@@ -28,17 +28,16 @@ struct Observed {
     embargo: Embargo,
 }
 
-/// Session lock and protection cover state machine.
+/// Session lock state machine.
 ///
 /// Construct one with [`Lock::new`] and feed it every event in
-/// [`crate::Event`]. It holds the covered subject set, the output layout, the
+/// [`crate::Event`]. It holds the output layout, the
 /// presentation barrier and the active owner; it holds no actor, no stage, no
 /// seat and no protocol object, so it is testable without a compositor.
 #[derive(Clone, Debug)]
 pub struct Lock {
     state: State,
     owner: Option<Owner>,
-    subjects: BTreeSet<Subject>,
     outputs: BTreeSet<OutputId>,
     presented: BTreeSet<OutputId>,
     generation: u64,
@@ -51,7 +50,7 @@ impl Default for Lock {
 }
 
 impl Lock {
-    /// An unlocked session covering the whole desktop and nothing else.
+    /// An unlocked session.
     ///
     /// The compositor reports the output layout with
     /// [`Event::OutputsChanged`] before the first lock request; with no outputs
@@ -62,7 +61,6 @@ impl Lock {
         Self {
             state: State::Unlocked,
             owner: None,
-            subjects: BTreeSet::from([Subject::Session]),
             outputs: BTreeSet::new(),
             presented: BTreeSet::new(),
             generation: 0,
@@ -85,17 +83,6 @@ impl Lock {
     #[must_use]
     pub fn locker(&self) -> Option<ClientId> {
         self.owner.as_ref().map(|owner| owner.client)
-    }
-
-    /// Every subject that must be hidden, in identifier order.
-    pub fn covered(&self) -> impl Iterator<Item = Subject> + '_ {
-        self.subjects.iter().copied()
-    }
-
-    /// Whether `subject` is under the cover.
-    #[must_use]
-    pub fn is_covered(&self, subject: Subject) -> bool {
-        self.subjects.contains(&subject)
     }
 
     /// The current output layout, in identifier order.
@@ -226,8 +213,6 @@ impl Lock {
             Event::LockAbandoned { locker } => self.owner_lost(locker, CoverFailure::LockerAbandoned),
             Event::UnlockRequested { locker } => self.unlock_requested(locker),
             Event::RevealComplete => self.reveal_complete(),
-            Event::SubjectAdded { subject } => self.subject_added(subject),
-            Event::SubjectRemoved { subject } => self.subject_removed(subject),
             Event::ProtocolDisabled => self.protocol_disabled(),
             Event::RuntimeRestarted => Vec::new(),
         }
@@ -412,40 +397,6 @@ impl Lock {
         Vec::new()
     }
 
-    fn subject_added(&mut self, subject: Subject) -> Vec<Effect> {
-        if !self.subjects.insert(subject) {
-            return Vec::new();
-        }
-        if self.state == State::Unlocked {
-            return Vec::new();
-        }
-        if self.state == State::Unlocking {
-            // The reveal restores every subject, so the newcomer is covered for
-            // the rest of the teardown and no barrier is needed.
-            return vec![Effect::Cover {
-                generation: self.generation,
-                subjects: self.subject_list(),
-            }];
-        }
-        // A newly covered subject is only proven covered by a fresh frame, so
-        // the barrier restarts exactly as it does for an output change.
-        self.restart_barrier()
-    }
-
-    fn subject_removed(&mut self, subject: Subject) -> Vec<Effect> {
-        if !self.subjects.remove(&subject) {
-            return Vec::new();
-        }
-        if self.state == State::Unlocked {
-            return Vec::new();
-        }
-        // Removing a subject reveals nothing new, so no presentation is owed.
-        vec![Effect::Cover {
-            generation: self.generation,
-            subjects: self.subject_list(),
-        }]
-    }
-
     fn protocol_disabled(&mut self) -> Vec<Effect> {
         if self.state == State::Unlocked {
             return Vec::new();
@@ -465,7 +416,6 @@ impl Lock {
         self.presented.clear();
         let mut effects = vec![Effect::Cover {
             generation: self.generation,
-            subjects: self.subject_list(),
         }];
         if self.outputs.is_empty() {
             // No output can present, so no proof can arrive. An owned session
@@ -486,10 +436,6 @@ impl Lock {
             outputs: self.output_list(),
         });
         effects
-    }
-
-    fn subject_list(&self) -> Vec<Subject> {
-        self.subjects.iter().copied().collect()
     }
 
     fn output_list(&self) -> Vec<OutputId> {

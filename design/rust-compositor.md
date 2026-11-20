@@ -402,21 +402,20 @@ Decided in D4: bsm becomes a Gnoblin. One compositor binary serves both levels:
 - **Session:** each signed-in user's Gnoblin runs on the nested backend as a
   Wayland client of the host. That user's apps and Bingux are its clients.
 
-Gnoblin provides three general primitives for this:
+**The rule: a nested session is an ordinary Wayland client of its host and an
+ordinary session on its own.** It behaves the same at any depth, and the host has
+no nested-specific role, global, state or branch. Gnoblin adds one general
+primitive for hosting, the production nested backend:
 
-1. **A production nested backend.** Each output is a surface on the parent. Size
-   and scale come from the parent's configure and preferred-scale events. Input
-   comes from the parent's seat, including relative pointer, pointer
-   constraints, tablets and text input. Frames go to the parent as dmabufs. The
-   same backend replaces the winit development window.
-2. **`gnoblin_session_host_v1`.** A Wayland protocol on the brokered per-session
-   connection: ready, protect request and its acknowledgement by a rendered
-   frame, lock request, logout and power requests, output hints. It replaces the
-   `bsm-host` bridge, `org.gnoblin.Hosted1` and bsm's own `bsm_session_host_v1`.
-3. **Protection covers.** `gnoblin-lock` generalises from covering every surface
-   to covering any client. bsm's invariants (one input owner, protect before
-   reveal, opaque cover on failure, a greeter crash unlocks nothing) become
-   compositor-enforced rules, not manager policy.
+- Each output is an `xdg_toplevel` on the parent. Size and scale come from the
+  parent's configure and preferred-scale events. Input comes from the parent's
+  seat, including relative pointer, pointer constraints, tablets and text input.
+  Frames go to the parent as dmabufs. The same backend replaces the winit
+  development window, and a session running on it cannot tell it from any other
+  backend (`design/backend-parity.md`).
+
+There is no hosting protocol, no protection cover and no host-side session
+object. The next section lists what used to be one and what does the work now.
 
 This removes headless Mutter, the `bsm-host` bridge, virtual monitors, the
 ScreenCast, RemoteDesktop and DisplayConfig calls for hosting, `Hosted1`, and
@@ -427,6 +426,175 @@ Open points: cross-user render-node and dmabuf access between the host (the
 world-accessible on most distributions]; and whether a nested session hands its
 clients' buffers to the host as subsurfaces to skip a second composite, a later
 optimisation.
+
+### Nested sessions without special cases
+
+This section replaces `gnoblin_session_host_v1` (the host's channel to one
+hosted session), the protection covers that went with it and the
+`nested-session-ipc` parity scenario. All three are deleted.
+
+#### What treated a nested session specially
+
+The audit covered every crate, `data/`, `docs/`, `tests/` and `design/` at
+`c32194972`. Paths are under `crates/gnoblin-wayland/` unless they say otherwise.
+
+| What                                                                | Where                                                                                                                                                                                                                                                     | Verdict                                                                |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| The protocol, its XML and its generated wire                        | `protocols/gnoblin-session-host-v1.xml`; `src/protocols/gnoblin_session_host_v1.rs` (774 lines); `src/protocols/wire.rs:25-40`; `tests/owned/mod.rs:586-599`                                                                                              | Deleted                                                                |
+| A role and a global that only a hosted session had                  | `src/access.rs` `Global::SessionHost` (`:83-87,130,153,187`), `ClientRole::SessionHost` (`:216-219,260,286`), their tests (`:521,580,632-640,695,711`)                                                                                                    | Deleted                                                                |
+| A host-side table of hosted sessions                                | `src/state.rs:96,631-633,756,942` (`session_host`), the request broker use (`Cargo.toml:102`)                                                                                                                                                             | Deleted                                                                |
+| Hide and cover a client, keyed by connection                        | `src/protocols/gnoblin_session_host_v1.rs:543-737` (`protect_hosted_session`, `apply_protection`, `hide_hosted_windows`, `poll_hosted`); `src/frame.rs:744-790`; `src/protocols/ext_session_lock_v1.rs:540-573,781`; `src/state.rs:554-558,915,4074,4107` | Deleted                                                                |
+| Input and picking that skip a covered window                        | `src/state.rs:2084-2089` and `:3510` (`window_is_covered`)                                                                                                                                                                                                | Deleted. A hidden window is `window_shown`'s                           |
+| A control handle for the manager                                    | `src/server.rs:68,634-643,883-885,1229-1256,1351-1353,1631-1648`, `src/lib.rs:318-321`                                                                                                                                                                    | Deleted                                                                |
+| A per-client cover state machine                                    | `gnoblin-lock/src/protection.rs` (544 lines), `protection_tests.rs` (472), `lib.rs:100-111`                                                                                                                                                               | Deleted                                                                |
+| A covered set of clients in the session lock, never fed by anything | `gnoblin-lock/src/lock.rs:415-446`, `event.rs:77-84`, `model.rs:78-82`, `ids.rs:14-24` (`SubjectAdded`, `SubjectRemoved`, `Subject::Client` as a covered subject)                                                                                         | Deleted (the lock covers the session, as it did)                       |
+| A scenario nobody can run                                           | `tests/parity/scenarios/nested-session-ipc.toml`, `tests/parity/README.md:30,153-158`, `tests/parity/divergences.toml:34`, `crates/gnoblin-parity/tests/scenarios.rs:42,199-204`                                                                          | Deleted                                                                |
+| Design and docs                                                     | this file (D4, D21, the protocol table, the Bingux contracts), `design/cutover-survey.md`, `design/lane-issues.md`, `design/constants/wayland.md:94-95`, `design/capture-protocols.md:17`, `CHANGELOG.md`                                                 | Rewritten                                                              |
+| The nested backend and its settings                                 | `gnoblin-backend/src/nested/`, `gnoblin-compositor/src/backend.rs:150-152,213-228`, `backend_select.rs`, `compositor.nested-*`                                                                                                                            | Stays: it is a backend, not a host path                                |
+| Closing the last backend window ends the session                    | `src/server.rs:924`, `gnoblin-backend/src/lib.rs:744`                                                                                                                                                                                                     | Stays: the backend's event, as for a window-backed development session |
+| The host's decisions about a hosted session                         | Nothing else. `gnoblin-session`, `gnoblin-core-impl`, `gnoblin-compositor/src/ipc`, `data/js` and the C tree contain no nested branch                                                                                                                     | Clean                                                                  |
+
+The last four rows are why the host needs no change: backend choice is the
+session's own start-up decision (`auto` picks `nested` when a Wayland host is
+reachable), and a session that ends when its only window closes behaves like
+any other application.
+
+#### What does each job now
+
+| The old protocol                       | Now                                                                                                                           |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `protect` and `protected`, `unprotect` | The host treats the nested window as any window. See "Hiding and crashes".                                                    |
+| `lock`, `logout` and `power`           | Each session does these in its own process, as a non-nested session does. See "Lock, logout and power".                       |
+| `output_hint`, `output_hint_done`      | The window's `xdg_toplevel` configure and the host's `wl_output`. See "Size".                                                 |
+| `ready`                                | The window's first commit on the host, and `session.ready` on the session's own IPC. See "Readiness".                         |
+| `closed`                               | The host closes the window (`xdg_toplevel.close`), or kills the connection. The session sees the same events any client sees. |
+
+##### Hiding and crashes
+
+The host's nested window is a window like any other. Its policy is whatever the
+host's configuration applies to any window: the kiosk's Lua configuration places,
+hides, shows and marks it, and bsm's greeter extension (D21) tells that
+configuration which user's window to show. The flags are the ones every window has:
+
+- **Hidden or shown:** a window that is minimised or on no output is not composed
+  and takes no pointer pick (`window_shown`, `window_is_pickable`), and
+  minimising the focused window hands the keyboard on
+  (`window_minimise_hides_the_focused_window_and_hands_the_keyboard_on`). Nothing
+  nested-specific is needed.
+- **Captured:** the configuration marks the window `secure` (a window rule that
+  matches the nested session's `app_id`). Every capture of the host then masks it,
+  whether the reader asked for an output or for the window
+  (`design/security-secure-content-in-views.md`). It is the mark a password
+  dialog uses.
+- **Locked:** `ext-session-lock-v1` on the host covers every window on every
+  output, the nested window included, and holds the capture embargo until the
+  lock surface is presented. A locker that crashes keeps the cover. The lock's
+  barrier is the host's "a frame without the session reached every output"
+  check, so a manager that must not reveal a user before the previous one is
+  gone locks first, swaps the windows and unlocks.
+- **Crashed:** a session that dies drops its connection and the host destroys the
+  window with it. The host then shows what is under it (the greeter), and
+  nothing of the session remains to show.
+
+What this loses against the two-barrier handshake:
+
+1. **The session's own confirmation that it drew a cover.** The old second
+   barrier made the session paint over its own scene, so that a stale buffer of
+   it could not reach a host capture while the session was hidden. `secure`
+   gives the same result from the host's side for every capture of the window,
+   and it does not depend on the session being honest: the old barrier trusted
+   the session's `protected` answer, and the host's own barrier was the only
+   one that could not be forged. Nothing that mattered is lost.
+2. **A proof that a plain hide was presented.** Minimising a window is not a
+   barrier: the next frame shows it. A manager that needs the proof uses the
+   lock, whose `locked` event is that proof. A user switch then costs one lock
+   transition. It is not a nested path: any host with two users' windows on one
+   screen has the same need.
+3. **"Only the manager can reveal a session" as a compositor rule.** The old
+   protocol enforced it. It is now the host configuration's rule, because the
+   session's own clients cannot reach the host's IPC or its tree at all: the
+   session is an unprivileged client of the host and sees no privileged global.
+
+The three are real but small, and none of them is specific to a hosted session.
+If bsm's security scenarios show a gap, the fix is a general window or lock
+feature that every host benefits from, not a hosting protocol.
+
+##### Lock, logout and power
+
+A nested session owns no seat, and none of these needs a channel to the host,
+because each session already asks the right party in its own process:
+
+- **Logout** is `gnoblin.session.logout()` (`gnoblin-schema/schema/session.toml`).
+  The compositor stops its loop with the logout flag, the guardian ends the
+  session and the host sees its window go.
+- **Power** is `gnoblin.session.poweroff()`, `reboot()`, `suspend()` and
+  `hibernate()`, each a call to logind from the session's own process
+  (`gnoblin-services/src/power.rs`), authorised by polkit for that user's own
+  logind session. Whether a user whose session is not the active one may
+  reboot the machine is logind's and polkit's decision, as for every session. A
+  host that relayed the request would add a second policy for a decision the
+  system already owns.
+- **Lock** has the sources every session has (`docs/session-lock.md`):
+  `gnoblinctl session lock`, `org.freedesktop.ScreenSaver.Lock` and
+  `loginctl lock-session`. The session locks itself with its own
+  `ext-session-lock-v1` locker inside its own window. If the host wants the seat
+  covered as well, bsm reads that user's logind `LockedHint`, which is how a
+  login manager follows any session [INFERENCE: not checked against bsm's
+  manager], and locks the host.
+
+If bsm needs to observe a hosted session, it reads the session's window in the
+host's IPC (the `window` object's `pid`, `app_id` and `title`) and that pid's
+logind session. If it needs to act on it, it calls the window's own methods
+(`set_minimized`, `close`, `kill`) as any client of the IPC may, or asks the
+host configuration, as above.
+
+##### Size
+
+The host decides the size with `xdg_toplevel.configure` (and fullscreen, which
+the nested backend asks for when the host is a kiosk) and describes its outputs
+with `wl_output` and `wp_fractional_scale`. The session follows
+(`gnoblin-wayland/tests/nested.rs`: `a_host_resize_reconfigures_the_nested_output`,
+`a_host_fractional_scale_is_followed_exactly`). The old output hints were
+advisory, and a host was free to ignore them, so nothing is lost: the size is the
+host's decision, as it is for every client.
+
+##### Readiness
+
+Two things exist for every session, and neither names a host:
+
+- The window maps on the host when the session draws its first frame, and the
+  host's `window` object appears then, from the compositor's own map and not
+  from the client's claim. That is the contract bsm's readiness already uses
+  (see "Bingux and other shells").
+- `session.ready` on the session's own IPC (`session.toml`) is raised when the
+  session can accept requests, and the guardian marks the compositor `Ready`
+  when it reports (`gnoblin-session/src/guardian.rs:543`). A manager that starts
+  the session through a helper running as that user sees both.
+
+What is lost is the old `ready`, which said "the shell is up". The window maps
+when the compositor draws, which is before the shell's first frame. A host that
+does not want to show that frame keeps the window minimised until the guardian
+reports the session up. If that proves too coarse, the general answer is a
+standard "content is ready" signal for every window, not a hosting protocol;
+nothing needs one yet.
+
+#### Proof
+
+`gnoblin-wayland/tests/nested.rs` and its siblings run the real nested backend
+against this compositor as the host, with no hosting protocol on either side. A
+session in a session in a session needs nothing more: the inner host is an
+ordinary `Server` and the inner session an ordinary `Nested`. The depth-two test
+(`a_session_nested_two_deep_behaves_like_one`) holds it to that.
+
+#### Rules this leaves the code
+
+1. The host never names a session. Nothing in `gnoblin-wayland`,
+   `gnoblin-compositor`, `gnoblin-lock` or `gnoblin-session` contains `hosted`,
+   `session_host` or a branch on the nested backend, except the backend selection
+   in `gnoblin-compositor/src/backend_select.rs`, which is the session's own
+   choice of how to draw.
+2. A new feature for hosted sessions is a feature for every client of the host or
+   for every session, or it is not built.
 
 ### Main data paths
 
@@ -457,7 +625,7 @@ start and recover without any script.
 
 The privileged socket is `$XDG_RUNTIME_DIR/gnoblin-wayland-privileged.sock`, created with mode `0600`. That limits connections to this user's UID. It does not limit them to capture tools.
 
-Any process running as that user that finds the path gets every privileged global: screencopy, image copy capture, data-control, layer-shell, foreign-toplevel, output management and power, gamma control, and the gnoblin frame and session-host globals. Input-method, virtual-keyboard and background-effect are not privileged and are on the main socket.
+Any process running as that user that finds the path gets every privileged global: screencopy, image copy capture, data-control, layer-shell, foreign-toplevel, output management and power, and gamma control. Input-method, virtual-keyboard and background-effect are not privileged and are on the main socket.
 
 The session exports the socket name as `GNOBLIN_PRIVILEGED_DISPLAY` to every child it starts. The name is fixed, so the variable is a convenience, not a grant. Sandboxed clients never see the privileged globals through the protocol. Whether a sandbox can reach the path depends on the files it exposes:
 
@@ -489,7 +657,7 @@ gnoblin/
     gnoblin-config/           configuration document, validation, merge, salvage, last-good store, extension manifest parse and hash check (D22) (no Lua)
     gnoblin-config-codegen/   the config schema's generator, shared by gnoblin-config's build.rs and xtask
     gnoblin-wm/               deleted in lane W6: window state is `gnoblin-wayland/src/fallback.rs`, policy is the stock Lua shell
-    gnoblin-lock/             pure session lock and protection cover state machine
+    gnoblin-lock/             pure session lock state machine
     gnoblin-authority/        pure launch attribution, activation tokens and user consent for capture and remote input
     gnoblin-wayland/          Smithay protocol handlers, one module per protocol; dynamic globals from provider XML at run time (D22)
     gnoblin-render/           scene graph, effects, user shaders, animation and tween player, damage
@@ -702,7 +870,6 @@ Gnoblin writes these itself:
 | `zwlr_output_manager_v1`              | Deferred in `TODO.md` today; the new output crate makes transactional apply natural  |
 | `ext_background_effect_manager_v1`    | Upstream in Mutter 51; Gnoblin's blur depends on it                                  |
 | `gnoblin_window_frame_manager_v1`     | Gnoblin-owned; wire-compatible port                                                  |
-| `gnoblin_session_host_v1`             | Gnoblin-owned, new; lets a host Gnoblin run nested sessions (D4)                     |
 
 ## Parity and testing
 
@@ -840,9 +1007,9 @@ Open:
 - A real run of the `parity-reference` CI job on a GitHub runner, with the new
   `gnoblin` step (the same steps ran on Agent37 in a Fedora 45 root file system,
   with the workarounds listed in `tests/parity/README.md`).
-- `nested-session-ipc` has no target that can run it: the legacy C tree has no
-  `gnoblin_session_host_v1` and the candidate has no `sessions.list` operation or
-  nested-session probe yet (lane HST). It stays a skip with that reason.
+- `nested-session-ipc` is deleted: a nested session is an ordinary Wayland client and an
+  ordinary session ("Nested sessions without special cases"), so there is no hosting
+  operation for a probe to start and nothing a scenario of its own could compare.
 - The legacy product no longer builds from the `rust-compositor` branch (the
   starter lost `50-pointer.lua`, which the patched Mutter still installs), so the
   `mutter-gnoblin` reference is built from `main`.
@@ -955,8 +1122,8 @@ These run as parallel lanes and merge as each reaches its gate.
 - Xwayland (D2) with the XWayland settings Gnoblin exposes today.
 - Frame export: screencopy, image copy capture, PipeWire streams, thumbnails,
   portal ScreenCast and RemoteDesktop.
-- Session hosting (D4): production nested backend, `gnoblin_session_host_v1` and
-  protection covers. bsm's manager runs against a host Gnoblin, and bsm's
+- Session hosting (D4): production nested backend, run as an ordinary session inside an
+  ordinary host window at any depth. bsm's manager runs against a host Gnoblin, and bsm's
   security scenarios (`security-scenarios-results.md` in Bingux) pass on it.
 - Services role: polkit, GeoClue, keyring, PipeWire privacy, ScreenSaver,
   inhibit, logind, as providers in the slot model.
@@ -1044,25 +1211,25 @@ flowchart TB
     INT --> DOC["DOC: docs migration"]
 ```
 
-| Lane | Owns                                                                          | Needs first                                | Starts in |
-| ---- | ----------------------------------------------------------------------------- | ------------------------------------------ | --------- |
-| F    | workspace, `gnoblin-schema`, `gnoblin-proto`, CI, `xtask`                     | nothing                                    | 0         |
-| P    | `gnoblin-testkit`, `gnoblin-parity`, `tests/parity`                           | F workspace                                | 0         |
-| OBJ  | `gnoblin-model`, `gnoblin-client`, `gnoblinctl`                               | F schema and proto                         | 1         |
-| CFG  | `gnoblin-config`, `gnoblin-lua`                                               | F schema                                   | 1         |
-| SVC  | `gnoblin-session`, `gnoblin-services`, portal relay                           | OBJ client                                 | 1         |
-| WM   | `gnoblin-wm` (deleted in lane W6)                                             | F schema                                   | 1         |
-| SEC  | `gnoblin-lock`, `gnoblin-authority`                                           | failure-mode lists                         | 1         |
-| ENG  | `gnoblin-wayland`, `gnoblin-xwayland`                                         | F workspace                                | 2         |
-| BE   | `gnoblin-backend`, `gnoblin-output`                                           | F workspace                                | 2         |
-| RND  | `gnoblin-render`, `gnoblin-capture`, `gnoblin-diag`                           | F workspace                                | 2         |
-| INP  | `gnoblin-input`                                                               | F workspace                                | 2         |
-| INT  | `gnoblin-compositor`, `crates/gnoblin`                                        | skeleton pieces from WM, ENG, BE, RND, INP | 2         |
-| PKG  | `packaging/`, release workflow                                                | INT binary                                 | 4         |
-| DOC  | `docs/`                                                                       | OBJ generated reference                    | 3         |
-| HST  | nested backend acceptance, `gnoblin_session_host_v1`, bsm manager integration | BE nested backend, SEC covers, ENG         | 4         |
-| CMP  | `compat/` crates, one per path, and their support matrices                    | OBJ IPC, RND frame export                  | 3         |
-| A11Y | `gnoblin-a11y`, keyboard monitor, overlay accessibility, Orca scenarios       | INP, RND                                   | 3         |
+| Lane | Owns                                                                    | Needs first                                | Starts in |
+| ---- | ----------------------------------------------------------------------- | ------------------------------------------ | --------- |
+| F    | workspace, `gnoblin-schema`, `gnoblin-proto`, CI, `xtask`               | nothing                                    | 0         |
+| P    | `gnoblin-testkit`, `gnoblin-parity`, `tests/parity`                     | F workspace                                | 0         |
+| OBJ  | `gnoblin-model`, `gnoblin-client`, `gnoblinctl`                         | F schema and proto                         | 1         |
+| CFG  | `gnoblin-config`, `gnoblin-lua`                                         | F schema                                   | 1         |
+| SVC  | `gnoblin-session`, `gnoblin-services`, portal relay                     | OBJ client                                 | 1         |
+| WM   | `gnoblin-wm` (deleted in lane W6)                                       | F schema                                   | 1         |
+| SEC  | `gnoblin-lock`, `gnoblin-authority`                                     | failure-mode lists                         | 1         |
+| ENG  | `gnoblin-wayland`, `gnoblin-xwayland`                                   | F workspace                                | 2         |
+| BE   | `gnoblin-backend`, `gnoblin-output`                                     | F workspace                                | 2         |
+| RND  | `gnoblin-render`, `gnoblin-capture`, `gnoblin-diag`                     | F workspace                                | 2         |
+| INP  | `gnoblin-input`                                                         | F workspace                                | 2         |
+| INT  | `gnoblin-compositor`, `crates/gnoblin`                                  | skeleton pieces from WM, ENG, BE, RND, INP | 2         |
+| PKG  | `packaging/`, release workflow                                          | INT binary                                 | 4         |
+| DOC  | `docs/`                                                                 | OBJ generated reference                    | 3         |
+| HST  | nested backend acceptance, bsm manager integration                      | BE nested backend, ENG                     | 4         |
+| CMP  | `compat/` crates, one per path, and their support matrices              | OBJ IPC, RND frame export                  | 3         |
+| A11Y | `gnoblin-a11y`, keyboard monitor, overlay accessibility, Orca scenarios | INP, RND                                   | 3         |
 
 Rules for running lanes in parallel:
 
@@ -1130,8 +1297,7 @@ failure-mode list that must be complete before isolated tests or code.
 ### Session lock: `gnoblin-lock`
 
 - **Owns:** states unlocked, locking, locked, unlocking; cover rules; input,
-  capture, clipboard and drag embargo; locker crash handling; per-client
-  protection covers for nested sessions (D4).
+  capture, clipboard and drag embargo; locker crash handling.
 - **Replaces:** series 70 to 79, `src/protocols/session-lock`.
 - **Failure modes first:** start from every rule in
   `src/protocols/session-lock/README.md` and add output hotplug while locked,
@@ -1288,8 +1454,8 @@ failure-mode list that must be complete before isolated tests or code.
   `subprojects/xdg-desktop-portal-gnome` and its patches.
 - **Keeps:** `org.freedesktop.ScreenSaver`, `org.gnome.ScreenSaver` forwarding,
   `org.gnoblin.SessionIdle`, `org.freedesktop.impl.portal.desktop.gnoblin`,
-  agent names. A nested session asks its host for logout and power through
-  `gnoblin_session_host_v1` and never calls logind itself.
+  agent names. A nested session calls logind for logout and power in its own
+  process, exactly as a non-nested session does.
 
 ### `gnoblin-portal-core::model`: built-in portal UI models
 
@@ -1730,13 +1896,13 @@ Contracts the candidate keeps, from the shell surface inventory:
 - The `$XDG_RUNTIME_DIR/gnoblin` directory ownership check.
 - `layers.list` record shape and the rule that "mapped" reflects the
   compositor's map, not the client's claim. bsm readiness depends on it today;
-  under D4 it moves to `gnoblin_session_host_v1`.
+  under D4 it is the host's `window` object for the session's window.
 - Events `gnoblin.session.lock-requested` and `gnoblin.osd.requested`, and the
   rule that a lock request fails when no client subscribes.
 - `gnoblinctl` commands and their `--json` shapes that Bingux parses.
 - `gnoblin_window_frame_manager_v1`, which `bingux-frame` builds against.
-- The meaning of bsm's readiness and action signals, carried by
-  `gnoblin_session_host_v1` instead of `org.gnoblin.Hosted1`.
+- The meaning of bsm's readiness and action signals, carried by the host's
+  `window` object and the session's own `session.ready` instead of `org.gnoblin.Hosted1`.
 - `init.lua`, `GNOBLIN_CONFIG`, `gnoblin.load` with globs.
 
 Contracts that change, with a migration path in Bingux before cutover:
@@ -1881,7 +2047,7 @@ Consequences:
 **Amended 2026-11-05 by D21:** the host runs a Lua kiosk configuration and the greeter UI as an ordinary client. bsm's manager keeps PAM, logind and session launch. bsm's greeter control is an out-of-tree extension loaded by host configuration, not a Gnoblin feature.
 
 - **bsm becomes a Gnoblin (chosen):** one compositor to maintain; Gnoblin gains
-  a nested backend, a session-host protocol and protection covers.
+  a nested backend, and nothing else is specific to hosting.
 - **Keep bsm's compositor, nest Gnoblin in it:** smaller bsm change now; two
   compositors stay maintained in parallel.
 - **Headless Gnoblin with streams:** reproduces the Mutter design; needed only
@@ -2886,7 +3052,7 @@ Failure modes:
 | Provider asks for a namespace not in host config                   | Refused; no run-time registration.                                                                        |
 | Restricted socket calls a member not in its grants                 | Refused by capability.                                                                                    |
 | Provider or Lua asks for PAM, logind or auth secrets               | No such member; no secret reaches Lua or Gnoblin's IPC.                                                   |
-| Extension's bsm manager disconnects                                | Greeter cannot authenticate; no session starts; the protection cover stays.                               |
+| Extension's bsm manager disconnects                                | Greeter cannot authenticate; no session starts; nothing is revealed.                                      |
 | A frame carries a `secret` field                                   | Flagged `sensitive`; logs and the parity recorder drop the payload without the extension schema.          |
 | An extension payload fails its schema at call time                 | Call fails `invalid-payload`; the provider is not disconnected; no fallback to another path.              |
 | Stock crate built with a stock-tree check finds per-extension code | Build check fails: stock crates contain no per-extension generated code or enums (single ABI rule).       |
@@ -3032,7 +3198,6 @@ Path from XML to global:
 6. **Caps,** per client and per extension. Starting values [INFERENCE], set by the prototype: 256 live objects; 64 KiB per message; 4 fds per message; 10 000 requests per second. Over a cap the client gets `wl_display.error` with code `implementation`, naming the extension.
 7. **Fds.** Allowed only for arguments the XML declares as `fd`. The compositor passes them to the provider over the provider's Unix socket with `SCM_RIGHTS`. It never reads, maps or logs fd content, and it refuses any fd on a `sensitive` frame.
 8. **Provider death.** Every global is removed with `wl_registry.global_remove`. A live object gets the XML's destroy event if the XML declares one. Otherwise its client gets `wl_display.error` with code `implementation` and the message `extension <id> gone`, and is disconnected by default (open decision). Objects, fds and pending requests are freed on removal.
-9. **Built-in re-expression.** The window-frame and session-host protocols could later move from compiled bindings into built-in extension manifests. Their XML and wire stay the same, and `wayland-info` and wlcs results must not change. This needs steps 1 to 8 to pass first. `gnoblin_session_host_v1` stays stock (D21).
 
 #### Lifecycle
 
@@ -3110,7 +3275,7 @@ No new crate. Each piece goes to a crate that already owns the same concern.
 
 #### Parity and ledger
 
-New feature. Mutter has no equivalent, so there is no divergence ledger entry. Re-expressing the Gnoblin-owned protocols (step 9) is judged by the existing parity tests, not a new one. The extension system is one new-scope ledger entry, with size unscheduled. This document does not estimate it.
+New feature. Mutter has no equivalent, so there is no divergence ledger entry. The extension system is one new-scope ledger entry, with size unscheduled. This document does not estimate it.
 
 #### Open decisions for Kieran
 

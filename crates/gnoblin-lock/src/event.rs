@@ -2,8 +2,6 @@
 
 use gnoblin_types::{ClientId, OutputId};
 
-use crate::Subject;
-
 /// Everything that can change the lock's mind.
 ///
 /// The compositor translates protocol requests, render results, output
@@ -71,18 +69,8 @@ pub enum Event {
         /// The requesting connection.
         locker: ClientId,
     },
-    /// The cover is gone and every covered subject is on screen again.
+    /// The cover is gone and the session is on screen again.
     RevealComplete,
-    /// A subject appeared while the session is covered.
-    SubjectAdded {
-        /// The subject that must be hidden.
-        subject: Subject,
-    },
-    /// A subject no longer exists.
-    SubjectRemoved {
-        /// The subject that went away.
-        subject: Subject,
-    },
     /// The lock protocol was disabled by a configuration reload.
     ProtocolDisabled,
     /// The runtime process (the retired host) restarted.

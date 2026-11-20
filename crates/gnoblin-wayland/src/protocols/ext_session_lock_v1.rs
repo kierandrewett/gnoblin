@@ -299,8 +299,8 @@ impl State {
         let mut queue: VecDeque<LockEffect> = effects.into();
         while let Some(effect) = queue.pop_front() {
             match effect {
-                LockEffect::Cover { generation, subjects } => {
-                    log::debug!(area = "lock", generation, ?subjects, "the cover is up");
+                LockEffect::Cover { generation } => {
+                    log::debug!(area = "lock", generation, "the cover is up");
                     self.lock_tables.cover_generation = generation;
                     // Nothing a client captured survives the cover: a pointer lock and a
                     // shortcut inhibitor are both claims on the session's input, and the
@@ -537,11 +537,6 @@ impl State {
     /// frame is presented, so a frame that was queued before the cover was raised
     /// carries an older generation and proves nothing.
     pub(crate) fn cover_presented(&mut self, output: OutputId) {
-        // The protection covers hear the same frame and answer their own barrier.
-        // This runs first because the lock's own barrier is absent while the session
-        // is unlocked, and returning early there would hide every presented frame
-        // from a protection cover.
-        self.protection_presented(output);
         if self.lock.state() != LockState::Unlocked {
             // The frame that just reached this output is the cover for the current
             // generation, so this output is painted until the generation changes.
@@ -567,10 +562,6 @@ impl State {
     /// Tells the lock that the layout is exactly this set.
     pub(crate) fn report_outputs(&mut self) {
         let outputs = self.output_ids();
-        // The protection covers hear the same layout for the same reason: a frame on
-        // every output is what proves a cover, so a layout change is a different set
-        // of frames to wait for.
-        self.report_hosted_outputs();
         let effects = self.lock.apply(LockEvent::OutputsChanged { outputs });
         self.apply_lock(effects);
     }
@@ -778,8 +769,8 @@ impl State {
 
     /// The identity this session uses for a connection, allocated once.
     ///
-    /// The lock and the protection covers name a connection the same way, so a
-    /// consumer never has to know which of the two hid a client.
+    /// The lock names a connection by this identity, so a consumer never has to know
+    /// which connection a lock came from.
     pub(crate) fn client_identity(&mut self, client: &smithay::reexports::wayland_server::Client) -> Option<ClientId> {
         let key = client.id();
         if let Some(token) = self.lock_tables.clients.get(&key) {

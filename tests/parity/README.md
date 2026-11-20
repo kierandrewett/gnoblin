@@ -27,7 +27,6 @@ $ cargo run -p gnoblin-parity -- run tests/parity/scenarios
        focus.second-toplevel: focus_new_windows defaults to prevent in the candidate's schema; ...
   skip focus-toplevels (mutter51): no headless Mutter 51 is configured: set GNOBLIN_PARITY_MUTTER51 to a launcher ...
   pass input-eis (candidate), 4 observation(s) matched
-  skip nested-session-ipc (candidate): no target can run it: the legacy C tree has no gnoblin_session_host_v1 ...
   pass popup-lifecycle (candidate), 3 observation(s) matched
   pass popup-placement (candidate), 5 observation(s) matched
   pass toplevel-configure (command), 2 observation(s) matched
@@ -149,15 +148,6 @@ GNOBLIN_PARITY_MUTTER_GNOBLIN=<repo>/scripts/parity-mutter-gnoblin`, with the `m
 beside them to run both references in one pass. The session log of a run shows the real Mutter 51.0 starting, a
 `Devkit viewer exited; keeping the compositor session alive` line (the devkit's viewer has no display to open on; the
 session outlives it) and warnings about the system bus and colord, which the sandbox does not have.
-
-### Nested sessions have no reference
-
-`nested-session-ipc` needs `gnoblin_session_host_v1`, which the legacy tree does not have: nothing under `src/` names it, and
-`protocols/gnoblin-session-host-v1.xml` is read only by `crates/gnoblin-wayland`. It is new in the Rust compositor
-(design/rust-compositor.md, D4). The candidate serves the protocol, but its control socket has no `sessions.list`
-operation and no probe starts a nested session, so no target can run the scenario and it stays a skip with that reason, on
-the candidate. It is not run against the legacy target: that would compare the candidate with a compositor that cannot
-answer the question.
 
 ## Input
 

@@ -14,7 +14,7 @@ undecided.
 - Any process running as that user that finds the socket path gets every
   privileged global: screencopy, image copy capture, data-control (clipboard
   read and write), layer-shell, foreign-toplevel, output management and power,
-  gamma control, and the gnoblin frame and session-host globals. A same-user
+  gamma control. A same-user
   program can read the screen and the clipboard without being a capture tool.
 - The session exports the socket name as `GNOBLIN_PRIVILEGED_DISPLAY` to every
   child its guardian starts: the compositor, services, the runtime, the front

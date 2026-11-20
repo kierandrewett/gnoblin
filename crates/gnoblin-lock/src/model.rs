@@ -52,7 +52,7 @@ impl Rng {
 /// Every event a compositor can send, at the frequency an adversarial sequence
 /// would: repeats, stale generations and out-of-order requests are all common.
 fn generate(rng: &mut Rng) -> Event {
-    match rng.below(14) {
+    match rng.below(12) {
         0 => Event::LockRequested { locker: rng.client() },
         1 | 2 => Event::CoverPresented {
             generation: rng.below(4),
@@ -75,12 +75,6 @@ fn generate(rng: &mut Rng) -> Event {
         8 => Event::LockAbandoned { locker: rng.client() },
         9 => Event::UnlockRequested { locker: rng.client() },
         10 => Event::RevealComplete,
-        11 => Event::SubjectAdded {
-            subject: Subject::Client(rng.client()),
-        },
-        12 => Event::SubjectRemoved {
-            subject: Subject::Client(rng.client()),
-        },
         _ => {
             if rng.below(2) == 0 {
                 Event::ProtocolDisabled

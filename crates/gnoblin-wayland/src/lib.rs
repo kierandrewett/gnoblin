@@ -318,11 +318,6 @@ pub use xwayland::XwaylandSession;
 pub use access::{Access, AccessPolicy, ClientRole, Global, Registration};
 /// The observed blur rectangle that `ext-background-effect-v1` reports.
 pub use protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
-/// Session host protocol types: requests, output hints and hosted sessions.
-pub use protocols::gnoblin_session_host_v1::{
-    GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1OutputHint, GnoblinSessionHostV1Request,
-    GnoblinSessionHostV1RequestKind,
-};
 
 gnoblin_log::logger!(log = "wayland");
 

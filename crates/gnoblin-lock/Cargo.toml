@@ -1,6 +1,6 @@
 [package]
 name = "gnoblin-lock"
-description = "Pure session lock and protection cover state machine."
+description = "Pure session lock state machine."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

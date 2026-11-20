@@ -26,8 +26,6 @@ pub mod ext_session_lock_v1;
 pub mod extension;
 /// The window record both foreign toplevel lists are fed from.
 pub mod foreign_toplevel_shared;
-/// `gnoblin_session_host_v1`: the host compositor's channel to one hosted session.
-pub mod gnoblin_session_host_v1;
 /// `gnoblin_view_source_v1`: the owner-only capture source of a View node.
 pub mod gnoblin_view_source_v1;
 /// The session and frame objects of `ext_image_copy_capture_v1`, with the device stated as the wire carries it.

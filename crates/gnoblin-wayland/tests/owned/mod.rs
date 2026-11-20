@@ -1,7 +1,7 @@
 //! A session on a socket of its own, and a real client, for the Gnoblin-owned
 //! protocols.
 //!
-//! The test files that name this module (`session_host.rs`, `view_source.rs` and the others)
+//! The test files that name this module (`view_source.rs` and the others)
 //! share this harness rather than the `session` one, because these protocols need
 //! two things the general harness does not offer: a connection whose role the
 //! compositor promised *before* it connected, and a client with no globals bound
@@ -70,7 +70,7 @@ impl Handle {
     pub fn grant(&self, role: ClientRole) {
         let pid = std::process::id();
         self.control.grant_role(pid, role);
-        let _ = self.control.hosted_session(pid);
+        let _ = self.control.sync();
     }
 
     /// Connects a client that holds `role` and has bound nothing, then returns the process to
@@ -583,22 +583,6 @@ where
 /// Generated from the same XML the server is, at compile time, so a client here
 /// cannot speak a wire the server does not.
 pub mod protocols {
-    /// `gnoblin_session_host_v1`.
-    pub mod gnoblin_session_host_v1 {
-        use wayland_client;
-
-        pub mod __interfaces {
-            use super::wayland_client::backend as wayland_backend;
-
-            wayland_scanner::generate_interfaces!("../../protocols/gnoblin-session-host-v1.xml");
-        }
-
-        #[allow(unused_imports)]
-        use self::__interfaces::*;
-
-        wayland_scanner::generate_client_code!("../../protocols/gnoblin-session-host-v1.xml");
-    }
-
     /// `gnoblin_view_source_v1`.
     pub mod gnoblin_view_source_v1 {
         use wayland_client;

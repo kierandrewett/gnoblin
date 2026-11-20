@@ -26,9 +26,3 @@ scenario = "candidate-kill-unknown-window"
 reference = "mutter51"
 status = "no reference"
 note = "The refusal text is gnoblinctl's own; stock Mutter has no equivalent IPC. The reference for this scenario is `mutter-gnoblin`, which runs it; the candidate's different text is recorded in the scenario file."
-
-[[entries]]
-scenario = "nested-session-ipc"
-reference = "mutter-gnoblin"
-status = "skipped"
-note = "The legacy C tree has no `gnoblin_session_host_v1` (nothing under `src/` names it; the protocol is new in the Rust compositor), so the `mutter-gnoblin` target has nothing to answer. The scenario targets the candidate and waits for the lane that adds a `sessions.list` operation and a nested-session probe; no stand-in runs it."

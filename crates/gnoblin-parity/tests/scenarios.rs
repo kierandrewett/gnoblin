@@ -38,13 +38,12 @@ fn find<'report>(report: &'report Report, name: &str) -> &'report ScenarioReport
 #[test]
 fn the_checked_in_scenarios_report_their_verdicts() {
     let report = run();
-    // Without a Mutter launcher in the environment the `mutter51` and `mutter-gnoblin` reference rows are skipped, and so
-    // is the nested-session scenario that no target can run yet; the candidate rows pass or diverge on record. The
-    // directory is a gate: no failure.
-    assert_eq!(report.scenarios().len(), 20, "unexpected scenario count:\n{report}");
+    // Without a Mutter launcher in the environment the `mutter51` and `mutter-gnoblin` reference rows are skipped; the
+    // candidate rows pass or diverge on record. The directory is a gate: no failure.
+    assert_eq!(report.scenarios().len(), 19, "unexpected scenario count:\n{report}");
     assert_eq!(
         (report.passed(), report.divergent(), report.failed(), report.skipped()),
-        (5, 3, 0, 12),
+        (5, 3, 0, 11),
         "unexpected verdicts:\n{report}"
     );
     assert!(
@@ -190,22 +189,6 @@ fn the_recorded_scenarios_volatile_values_are_normalised_away() {
             !text.contains(volatile),
             "`{volatile}` cannot decide a verdict and must not be reported:\n{text}"
         );
-    }
-}
-
-#[test]
-fn the_nested_session_scenario_is_skipped_for_the_reason_that_no_target_can_run_it() {
-    let report = run();
-    let scenario = find(&report, "nested-session-ipc");
-    assert_eq!(scenario.target(), "candidate");
-    match scenario.verdict() {
-        Verdict::Skipped { reason } => {
-            assert!(
-                reason.contains("no gnoblin_session_host_v1"),
-                "the reason names the legacy tree's missing protocol: {reason}"
-            );
-        }
-        other => panic!("expected a skip, got:\n{report}\n{other:?}"),
     }
 }
 

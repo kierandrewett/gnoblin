@@ -93,7 +93,6 @@ use crate::protocols::ext_idle_notify_v1::ExtIdleNotifyV1Tables;
 use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
 use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::foreign_toplevel_shared::ForeignToplevels;
-use crate::protocols::gnoblin_session_host_v1::GnoblinSessionHostV1Tables;
 use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
 use crate::protocols::xdg_activation_v1::XdgActivationV1;
 use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
@@ -554,11 +553,6 @@ pub struct State {
     next_window: u32,
     /// The clients an embedder adopted through [`State::adopt_client`], by the tag it was handed.
     adopted: HashMap<u64, Client>,
-    /// The protection generation the frame being drawn was described under.
-    ///
-    /// Read when the scene is described and reported when the frame is presented, so
-    /// a frame described before a cover was raised cannot prove it.
-    pub(crate) protection_generation: Option<u64>,
     /// The last pointer position the backend reported, in global logical
     /// coordinates.
     pub(crate) pointer_position: SmithayPoint<f64, Logical>,
@@ -630,10 +624,6 @@ pub struct State {
     /// What each client holds and the bounds on it (`gpu_memory/ledger.rs`). Shared, so the request screen reads it
     /// through `&State` and an embedder reads it from outside the loop.
     pub(crate) gpu_ledger: Arc<crate::gpu_memory::Ledger>,
-
-    /// The hosted sessions, their protection covers and their requests, which is
-    /// `gnoblin_session_host_v1` (`protocols::gnoblin_session_host_v1`).
-    pub(crate) session_host: GnoblinSessionHostV1Tables,
 
     /// The snapshot tests read.
     observation: Arc<Mutex<SessionSnapshot>>,
@@ -757,7 +747,6 @@ impl State {
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.
         let capture = CaptureTables::new(&display_handle, &access);
-        let session_host = GnoblinSessionHostV1Tables::new(&display_handle, &access);
         remove_disabled_globals(
             &display_handle,
             protocols,
@@ -918,7 +907,6 @@ impl State {
             output_policy: crate::output_policy::OutputPolicy::default(),
             next_window: 1,
             adopted: HashMap::new(),
-            protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             pointer_origin: None,
             pointer_placed: false,
@@ -945,7 +933,6 @@ impl State {
             gpu_ledger: Arc::new(crate::gpu_memory::Ledger::new(
                 crate::gpu_memory::MemoryLimits::default(),
             )),
-            session_host,
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
             observer,
         };
@@ -1134,7 +1121,7 @@ impl State {
 
     /// Promises a role to a process, so its next connection is recorded with it.
     ///
-    /// The composition root records the promise and then starts the hosted session; the
+    /// The composition root records the promise and then starts the process; the
     /// accept path in [`State::insert_client`] picks it up.
     pub fn grant_role(&self, pid: u32, role: ClientRole) {
         self.access.promise(pid, role);
@@ -2090,12 +2077,6 @@ impl State {
     /// The surface of the window the window manager has focused.
     pub(crate) fn focused_window_surface(&self) -> Option<WlSurface> {
         let window = self.focus?;
-        if self.window_is_covered(window) {
-            // A hosted session under a protection cover keeps no input: its windows
-            // are not on screen, so focusing one would type into a screen nobody can
-            // see (design/rust-compositor.md, "Hosting sessions").
-            return None;
-        }
         self.windows.get(&window).and_then(|entry| entry.surface.wl_surface())
     }
 
@@ -3516,7 +3497,6 @@ impl State {
     pub(crate) fn window_is_pickable(&self, window: WindowId) -> bool {
         self.wm.window(window).is_some()
             && self.window_shown(window)
-            && !self.window_is_covered(window)
             && self
                 .windows
                 .get(&window)
@@ -4080,7 +4060,6 @@ impl Host for State {
         let view_captures = self.tree.take_view_captures();
         self.run_view_captures(view_captures);
         self.last_frame = None;
-        self.protection_generation = None;
     }
 
     fn frame(&mut self, output: OutputId, frame: &mut OutputFrame) -> bool {
@@ -4110,10 +4089,6 @@ impl Host for State {
         apply_visual_accessibility(settings, self.output_rect(output), self.pointer_position, frame);
         if changed {
             self.last_frame = Some((output, frame.damage().to_vec()));
-            // The frame was described after the hide, so it can prove a cover: the
-            // generation is read here rather than at present time, which is what makes
-            // a frame queued before the cover worthless.
-            self.protection_generation = Some(self.session_host.protection.generation());
         }
         // The frame draws its cursor above every layer, so a pointer shown while locked
         // would sit over the cover. A locked output shows no pointer.

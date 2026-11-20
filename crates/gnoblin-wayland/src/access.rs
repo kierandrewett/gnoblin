@@ -39,11 +39,7 @@
 //! 4. **A trusted mark outlives the connection it was given to.** The record is kept
 //!    alive by the connection's own client data ([`Registration`]), so it is dropped
 //!    with the connection: a recycled identity cannot inherit a role.
-//! 5. **A single-purpose role reaches past its one global.** A hosted session exists for
-//!    exactly one protocol, so [`decide`] admits it to that global and to nothing else:
-//!    `a_session_host_sees_only_the_session_host_protocol`. The integration test that
-//!    proves it over a real connection is `a_session_sees_only_the_session_host_protocol`.
-//! 6. **The view role reaches a core global.** Core globals (`wl_compositor`, `xdg_wm_base`,
+//! 5. **The view role reaches a core global.** Core globals (`wl_compositor`, `xdg_wm_base`,
 //!    `ext_session_lock_manager_v1`, `wl_seat`, …) carry no per-global filter, so
 //!    the `view` role is narrowed by interface name at the one place every global is
 //!    dispatched, `GlobalDispatch::can_view` on the state (`src/dispatch.rs`): a global whose
@@ -80,11 +76,6 @@ pub enum Global {
     /// `ext_image_copy_capture_manager_v1` and the two capture-source managers that name
     /// what it copies. They are one capability, so they are one global here.
     ImageCopyCapture,
-    /// `gnoblin_session_host_v1`: the host compositor's channel to one hosted session.
-    /// Only the connection the compositor brokered for that session sees it, so a
-    /// manager's own request to lock, log out or power off cannot be forged by an
-    /// application on the ordinary socket.
-    SessionHost,
     /// `zwp_input_method_manager_v2`: an input method reads every keystroke in the
     /// session and types into its focus.
     InputMethod,
@@ -127,7 +118,6 @@ impl Global {
             | Self::GammaControl
             | Self::OutputPower
             | Self::OutputManagement
-            | Self::SessionHost
             | Self::ViewSource => true,
             // The seat's privileged halves are how an input method and an on-screen
             // keyboard are implemented: the method is a process the session runs, and the
@@ -150,7 +140,6 @@ impl Global {
             Self::WlrDataControl => "zwlr_data_control_manager_v1",
             Self::Screencopy => "zwlr_screencopy_manager_v1",
             Self::ImageCopyCapture => "ext_image_copy_capture_manager_v1",
-            Self::SessionHost => "gnoblin_session_host_v1",
             Self::ViewSource => "gnoblin_view_source_manager_v1",
             Self::InputMethod => "zwp_input_method_manager_v2",
             Self::VirtualKeyboard => "zwp_virtual_keyboard_manager_v1",
@@ -184,7 +173,7 @@ impl Global {
             Self::GammaControl => gnoblin_config::Protocol::WlrGammaControl,
             Self::OutputPower => gnoblin_config::Protocol::WlrOutputPowerManagement,
             Self::OutputManagement => gnoblin_config::Protocol::WlrOutputManagement,
-            Self::SessionHost | Self::ViewSource => return true,
+            Self::ViewSource => return true,
             // The schema has no switch for the seat's privileged halves: an input method
             // and a virtual keyboard are always on offer to a connection that earned
             // them, which is the roster's decision and not the document's.
@@ -207,16 +196,12 @@ pub enum ClientRole {
     /// reach the controls an application must not have.
     Privileged,
     /// The extension process the guardian started to read Views for the owner. It is promised
-    /// by pid before spawn, like a hosted session. Its authority is capture only: it sees the
+    /// by pid before spawn. Its authority is capture only: it sees the
     /// interfaces in [`VIEW_INTERFACES`] and no other global, core or privileged
     /// (`design/xr-extension.md`, G7). [`decide`] answers for the privileged globals and
     /// [`ClientRole::sees_interface`] for every global by interface name, so a core global such
     /// as `wl_compositor`, `xdg_wm_base` or `ext_session_lock_manager_v1` is hidden from it too.
     View,
-    /// The connection the compositor brokered for one hosted session
-    /// (design/rust-compositor.md, D4). It sees `gnoblin_session_host_v1` and nothing
-    /// else privileged: the session never sees another privileged global.
-    SessionHost,
     /// Accepted for an application sandbox through `wp_security_context_v1`.
     Sandboxed,
 }
@@ -257,7 +242,6 @@ impl ClientRole {
             Self::Trusted => "trusted",
             Self::Privileged => "privileged",
             Self::View => "view",
-            Self::SessionHost => "session-host",
             Self::Sandboxed => "sandboxed",
         }
     }
@@ -266,8 +250,8 @@ impl ClientRole {
 /// The decision for one connection and one global.
 ///
 /// A pure function so the rule can be read and tested without a session: a sandbox
-/// earns nothing, the two general earned roles earn everything, the single-purpose
-/// roles earn only what they were started for, and an unprivileged
+/// earns nothing, the two general earned roles earn everything, the view role
+/// earns only what it was started for, and an unprivileged
 /// application earns exactly the globals [`Global::is_privileged`] does not claim.
 #[must_use]
 pub const fn decide(role: ClientRole, global: Global) -> bool {
@@ -277,13 +261,12 @@ pub const fn decide(role: ClientRole, global: Global) -> bool {
         // A trusted service reaches every privileged global except the view-source one,
         // which belongs to the owner's own connection.
         ClientRole::Trusted => !matches!(global, Global::ViewSource),
-        // Narrow on purpose: the process behind these roles is an extension or a session,
-        // never the session's own management, so one global is the whole of what it may
+        // Narrow on purpose: the process behind this role is an extension, never the
+        // session's own management, so the capture globals are the whole of what it may
         // reach.
         // `ImageCopyCapture` is one capability covering three managers; the view role takes
         // the copy manager only, because [`VIEW_INTERFACES`] hides the two source managers.
         ClientRole::View => matches!(global, Global::ViewSource | Global::ImageCopyCapture),
-        ClientRole::SessionHost => matches!(global, Global::SessionHost),
         ClientRole::Unprivileged => !global.is_privileged(),
     }
 }
@@ -330,9 +313,9 @@ pub struct Access {
     connections: Mutex<HashMap<ClientKey, Membership>>,
     /// Roles the compositor has promised to a process, before it connects.
     ///
-    /// A view extension and a hosted session are spawned as ordinary clients of the
-    /// session socket, and their registry answer is decided the moment the backend
-    /// accepts them, which is before the compositor could look at the connection.
+    /// A view extension is spawned as an ordinary client of the
+    /// session socket, and its registry answer is decided the moment the backend
+    /// accepts it, which is before the compositor could look at the connection.
     /// The compositor therefore records the role against the process it started and
     /// [`Access::record`] picks it up on accept.
     promised: Mutex<HashMap<u32, ClientRole>>,
@@ -377,8 +360,8 @@ impl Access {
         connections.insert(client.clone(), Membership { role, number });
     }
 
-    /// Promises a role to the process `pid`, which is how a spawned extension or
-    /// hosted session earns its one global.
+    /// Promises a role to the process `pid`, which is how a spawned extension
+    /// earns its one global.
     ///
     /// A promise is keyed by process, so it applies to that process's next
     /// connection. It never upgrades a sandbox: [`Access::record`] keeps a sandboxed
@@ -518,7 +501,6 @@ mod tests {
         Global::WlrDataControl,
         Global::Screencopy,
         Global::ImageCopyCapture,
-        Global::SessionHost,
         Global::ViewSource,
         Global::InputMethod,
         Global::VirtualKeyboard,
@@ -577,7 +559,6 @@ mod tests {
         assert!(!decide(ClientRole::Trusted, Global::ViewSource));
         assert!(!decide(ClientRole::Unprivileged, Global::ViewSource));
         assert!(!decide(ClientRole::Sandboxed, Global::ViewSource));
-        assert!(!decide(ClientRole::SessionHost, Global::ViewSource));
         assert!(Global::ViewSource.is_privileged());
         assert!(Global::ViewSource.is_advertised(&gnoblin_config::Protocols::default()));
     }
@@ -626,20 +607,6 @@ mod tests {
     #[test]
     fn the_default_role_is_the_one_that_grants_nothing() {
         assert_eq!(ClientRole::default(), ClientRole::Unprivileged);
-    }
-
-    #[test]
-    fn a_session_host_sees_only_the_session_host_protocol() {
-        for global in ALL {
-            let allowed = decide(ClientRole::SessionHost, *global);
-            assert_eq!(
-                allowed,
-                *global == Global::SessionHost,
-                "a hosted session must {} see {}",
-                if *global == Global::SessionHost { "" } else { "not" },
-                global.as_str()
-            );
-        }
     }
 
     #[test]
@@ -692,7 +659,6 @@ mod tests {
             "ext_output_image_capture_source_manager_v1",
             "ext_foreign_toplevel_image_capture_source_manager_v1",
             "zwlr_screencopy_manager_v1",
-            "gnoblin_session_host_v1",
             "a_global_nobody_has_named_yet",
         ] {
             assert!(
@@ -708,7 +674,6 @@ mod tests {
             ClientRole::Unprivileged,
             ClientRole::Trusted,
             ClientRole::Privileged,
-            ClientRole::SessionHost,
             ClientRole::Sandboxed,
         ] {
             for interface in ["wl_compositor", "xdg_wm_base", "ext_session_lock_manager_v1", "wl_seat"] {

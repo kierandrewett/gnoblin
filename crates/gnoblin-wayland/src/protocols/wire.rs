@@ -8,8 +8,7 @@
 //! file.
 //!
 //! Each protocol is generated once here and used by its module
-//! ([`crate::protocols::gnoblin_session_host_v1`] and
-//! [`crate::protocols::gnoblin_view_source_v1`]), so no protocol has a second,
+//! ([`crate::protocols::gnoblin_view_source_v1`]), so no protocol has a second,
 //! hand-written idea of its own wire.
 //!
 //! # Why the `unsafe_code` allowed here
@@ -21,24 +20,6 @@
 //! and allows it here only. No hand-written module may carry the same allow.
 
 #![allow(unsafe_code)]
-
-/// `gnoblin_session_host_v1`: the host compositor's channel to one session.
-pub(crate) mod session_host {
-    use smithay::reexports::wayland_server;
-    use wayland_server::backend as wayland_backend;
-
-    /// Interface descriptors generated from the session host XML.
-    pub(crate) mod __interfaces {
-        use super::wayland_backend;
-
-        wayland_scanner::generate_interfaces!("../../protocols/gnoblin-session-host-v1.xml");
-    }
-
-    #[allow(unused_imports)]
-    use self::__interfaces::*;
-
-    wayland_scanner::generate_server_code!("../../protocols/gnoblin-session-host-v1.xml");
-}
 
 /// `gnoblin_view_source_v1`: the owner-only source of View captures.
 pub(crate) mod view_source {
