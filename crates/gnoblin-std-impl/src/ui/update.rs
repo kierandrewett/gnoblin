@@ -55,10 +55,12 @@ impl Ui {
                 self.warn(&format!("onUiFrame threw: {fail}"));
             }
         }
+        crate::frame::turn(self);
         let roots = self.w.borrow().roots();
         for root in roots {
             self.update(root);
         }
+        crate::frame::after_update(self);
         self.plan_wake();
     }
 
@@ -131,6 +133,7 @@ impl Ui {
             Some(WidgetKind::Toast) => toast::refresh(self, cid)?,
             _ => {}
         }
+        crate::frame::refresh(self, cid)?;
         if let Some(done) = self.hook_call(cid, |ids| ids.refresh, &[]) {
             done?;
         }
@@ -178,6 +181,9 @@ impl Ui {
             Some(Err(message)) => self.warn(&format!("natural_width threw: {message}")),
             None => {}
         }
+        if let Some(width) = crate::frame::natural(self, cid, false) {
+            return width;
+        }
         match self.read(cid, |widget| (widget.kind, widget.i.size)) {
             Some((kind, _)) if kind.is_text() => self.metrics(cid).width,
             Some((WidgetKind::Icon, size)) => size,
@@ -196,6 +202,9 @@ impl Ui {
             Some(Err(message)) => self.warn(&format!("natural_height threw: {message}")),
             None => {}
         }
+        if let Some(height) = crate::frame::natural(self, cid, true) {
+            return height;
+        }
         match self.read(cid, |widget| (widget.kind, widget.i.size)) {
             Some((kind, _)) if kind.is_text() => self.metrics(cid).height,
             Some((WidgetKind::Icon, size)) => size,
@@ -213,6 +222,9 @@ impl Ui {
 
     /// The operations the library paints a canvas with by itself.
     pub(crate) fn paint_default(&self, cid: Cid) -> Result<Vec<PaintOp>, String> {
+        if let Some(ops) = crate::frame::paint(self, cid) {
+            return ops;
+        }
         let Some(kind) = self.read(cid, |widget| widget.kind) else {
             return Ok(Vec::new());
         };
@@ -379,6 +391,9 @@ impl Ui {
             if let Some(Some(delay)) = due {
                 wake = Some(wake.map_or(delay, |held| held.min(delay)));
             }
+        }
+        if let Some(delay) = crate::frame::wake_in(self) {
+            wake = Some(wake.map_or(delay, |held| held.min(delay)));
         }
         if let Some(old) = self.timer.borrow_mut().take() {
             // A timer that already fired is not an error.

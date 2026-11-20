@@ -337,6 +337,7 @@ pub struct Rig {
     skipped: Vec<&'static str>,
     /// Nodes the replay made to probe what the fixture's script held in its own objects: they are not compared.
     probes: Vec<u64>,
+    forgotten: Vec<(&'static str, Vec<&'static str>)>,
     _lock: MutexGuard<'static, ()>,
 }
 
@@ -490,6 +491,7 @@ impl Rig {
             shared_allowances: Vec::new(),
             skipped: Vec::new(),
             probes: Vec::new(),
+            forgotten: Vec::new(),
             _lock: lock,
         }
     }
@@ -691,6 +693,11 @@ impl Rig {
             );
             self.fold.shared.insert(key, allowance.native.clone());
         }
+        for (_, names) in self.forgotten.iter().filter(|(held, _)| *held == label) {
+            for name in names {
+                self.fold.nodes.remove(*name);
+            }
+        }
         let shared = self.fold.shared_keys();
         let actual = Value::Object(self.state(&shared).into_iter().collect());
         let wanted = Value::Object(self.fold.state().into_iter().collect());
@@ -858,6 +865,23 @@ impl Rig {
             out.insert(format!("{node}.{key}"), value.unwrap_or(Value::Null));
         }
         out
+    }
+
+    /// At step `step` the fixture still holds the shell's canvases `names`, which the compositor took with the window it destroyed: the
+    /// TypeScript oracle's record of writes has no way to say so, and the native run does not hold them.
+    pub fn forget(&mut self, step: &'static str, names: &[&'static str]) {
+        self.forgotten.push((step, names.to_vec()));
+    }
+
+    /// The replay stops after the fixture's step `label`: what the fixture holds of the steps that follow is not replayed, and the test
+    /// says why where it calls this.
+    pub fn stop_after(&mut self, label: &str) {
+        let at = self
+            .expected
+            .iter()
+            .position(|step| step["step"] == label)
+            .unwrap_or_else(|| panic!("`{}` has no step `{label}`", self.name));
+        self.expected.truncate(at + 1);
     }
 
     /// Compares the snapshots of every step with the fixture's, and that no step is missing.

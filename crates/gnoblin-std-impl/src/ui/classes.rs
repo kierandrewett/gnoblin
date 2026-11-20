@@ -11,43 +11,43 @@ use super::widget::{BarPart, Behaviour, CanvasHandle, Cid, ClockPart, Special, W
 use super::{clock, entry, paint, toast};
 use crate::object::with_lib;
 
-type Class<'a> = ClassBuilder<'a, CanvasHandle>;
+pub(crate) type Class<'a> = ClassBuilder<'a, CanvasHandle>;
 
 impl CanvasHandle {
-    fn read<R>(&self, read: impl FnOnce(&Widget) -> R) -> Res<R> {
+    pub(crate) fn read<R>(&self, read: impl FnOnce(&Widget) -> R) -> Res<R> {
         self.ui
             .read(self.cid, read)
             .ok_or_else(|| Fail::stale("the canvas is gone"))
     }
 
-    fn edit<R>(&self, change: impl FnOnce(&mut Widget) -> R) -> Res<R> {
+    pub(crate) fn edit<R>(&self, change: impl FnOnce(&mut Widget) -> R) -> Res<R> {
         self.ui.edit(self.cid, change)
     }
 
-    fn number(&self, read: impl FnOnce(&Widget) -> f64) -> Res<Val> {
+    pub(crate) fn number(&self, read: impl FnOnce(&Widget) -> f64) -> Res<Val> {
         self.read(|widget| Val::Double(read(widget)))
     }
 
-    fn text(&self, read: impl FnOnce(&Widget) -> &str) -> Res<Val> {
+    pub(crate) fn text(&self, read: impl FnOnce(&Widget) -> &str) -> Res<Val> {
         self.read(|widget| Val::Text(read(widget).to_owned()))
     }
 
-    fn flag(&self, read: impl FnOnce(&Widget) -> bool) -> Res<Val> {
+    pub(crate) fn flag(&self, read: impl FnOnce(&Widget) -> bool) -> Res<Val> {
         self.read(|widget| Val::Bool(read(widget)))
     }
 }
 
-fn enumeration(value: u32) -> Val {
+pub(crate) fn enumeration(value: u32) -> Val {
     Val::Enum { class: 0, value }
 }
 
 /// The canvas an object of the toolkit holds.
-fn canvas_of(cx: &Cx<'_>, obj: u64) -> Res<Cid> {
+pub(crate) fn canvas_of(cx: &Cx<'_>, obj: u64) -> Res<Cid> {
     cx.with_state(obj, |handle: &mut CanvasHandle| handle.cid)
 }
 
 /// The members every canvas has.
-fn canvas_members(class: Class<'_>) -> Class<'_> {
+pub(crate) fn canvas_members(class: Class<'_>) -> Class<'_> {
     class
         .get("node", |h, _| h.read(|w| Val::Uint(w.node)))
         .get("parent", |h, cx| {
@@ -206,19 +206,21 @@ fn canvas_members(class: Class<'_>) -> Class<'_> {
 }
 
 /// Puts the canvas of the object `child` last under this one: the toolkit's tree, the compositor's and the objects'.
-fn add_child(h: &CanvasHandle, cx: &mut Cx<'_>, child: u64) -> Res<()> {
+pub(crate) fn add_child(h: &CanvasHandle, cx: &mut Cx<'_>, child: u64) -> Res<()> {
     if child == cx.me() {
         return Err(Fail::type_error("a canvas cannot be its own ancestor"));
     }
     let kid = canvas_of(cx, child)?;
     h.ui.link(h.cid, kid)?;
     cx.set_parent(child, cx.me())?;
+    // An outlet of a window frame learns what was added to it.
+    crate::frame::added(&h.ui, h.cid, kid);
     h.ui.schedule();
     Ok(())
 }
 
 /// The members a box adds.
-fn box_members(class: Class<'_>) -> Class<'_> {
+pub(crate) fn box_members(class: Class<'_>) -> Class<'_> {
     class
         .get("direction", |h, _| h.read(|w| enumeration(w.b.direction)))
         .set("direction", |h, _, v| {
@@ -241,7 +243,7 @@ fn box_members(class: Class<'_>) -> Class<'_> {
 }
 
 /// The members a text adds.
-fn text_members(class: Class<'_>) -> Class<'_> {
+pub(crate) fn text_members(class: Class<'_>) -> Class<'_> {
     class
         .get("text", |h, _| h.text(|w| &w.t.text))
         .set("text", |h, _, v| {
@@ -561,23 +563,35 @@ fn build_for(ui: &Rc<super::widget::Ui>, cx: &mut Cx<'_>, obj: u64, cid: Cid, ki
 
 /// Registers one class of the toolkit: its constructor and the members of the classes it derives from.
 fn class<'a>(builder: &'a mut Builder, kind: WidgetKind) -> Class<'a> {
-    let made = builder.class::<CanvasHandle>(kind.class()).ctor(move |cx, _inits| {
+    class_with(builder, kind.class(), kind, move |ui, cx, _inits, cid| {
+        let obj = cx.me();
+        build_for(ui, cx, obj, cid, kind)
+    })
+}
+
+/// Registers a class named `name` whose canvases are of `kind`: its constructor makes the canvas, then lets `make` build what the class
+/// adds (and take the initial values it names), and the members of the classes it derives from are added. A class of the frame module
+/// derives from one of these and is registered through here.
+pub(crate) fn class_with<'a>(
+    builder: &'a mut Builder,
+    name: &str,
+    kind: WidgetKind,
+    make: impl Fn(&Rc<super::widget::Ui>, &mut Cx<'_>, &mut gnoblin_object::server::Inits, Cid) -> Res<()> + 'static,
+) -> Class<'a> {
+    let made = builder.class::<CanvasHandle>(name).ctor(move |cx, inits| {
         let ui = ui_of(cx)?;
         let obj = cx.me();
         let handle = ui.make_for(obj, kind)?;
-        build_for(&ui, cx, obj, handle.cid, kind)?;
+        make(&ui, cx, inits, handle.cid)?;
         Ok(handle)
     });
     let made = canvas_members(made);
     if kind.is_box() { box_members(made) } else { made }
 }
 
-pub(super) fn register(builder: &mut Builder) {
-    let _ = class(builder, WidgetKind::Canvas);
-    let _ = class(builder, WidgetKind::Box);
-    let _ = class(builder, WidgetKind::Grid);
-    let _ = text_members(class(builder, WidgetKind::Text));
-    let _ = class(builder, WidgetKind::Icon)
+/// The members an icon adds.
+pub(crate) fn icon_members(class: Class<'_>) -> Class<'_> {
+    class
         .get("icon", |h, _| h.text(|w| &w.i.icon))
         .set("icon", |h, _, v| {
             let icon = v.text()?.to_owned();
@@ -589,7 +603,15 @@ pub(super) fn register(builder: &mut Builder) {
         .set("color", |h, _, v| {
             let color = v.text()?.to_owned();
             h.edit(|w| w.i.color = color)
-        });
+        })
+}
+
+pub(super) fn register(builder: &mut Builder) {
+    let _ = class(builder, WidgetKind::Canvas);
+    let _ = class(builder, WidgetKind::Box);
+    let _ = class(builder, WidgetKind::Grid);
+    let _ = text_members(class(builder, WidgetKind::Text));
+    let _ = icon_members(class(builder, WidgetKind::Icon));
     let _ = entry_members(class(builder, WidgetKind::Entry));
     let _ = clock_members(text_members(class(builder, WidgetKind::Clock)));
     let _ = bar_members(class(builder, WidgetKind::Bar));

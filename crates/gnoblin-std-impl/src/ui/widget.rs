@@ -271,14 +271,16 @@ pub(crate) struct ToastPart {
     pub(crate) start: Option<f64>,
 }
 
-/// What only some canvases have.
+/// What only some canvases have. The frame's part is the largest and the rarest: a window has a handful of them.
 #[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Special {
     None,
     Entry(Box<EntryPart>),
     Clock(ClockPart),
     Bar(BarPart),
     Toast(ToastPart),
+    Frame(crate::frame::FramePart),
 }
 
 /// The members of the `widget` interface, by id: what a shell that implements it is asked.
@@ -456,6 +458,8 @@ pub(crate) struct Ui {
     pub(crate) request_hooks: RefCell<Vec<Hook>>,
     pub(crate) next_hook: Cell<u64>,
     pub(crate) ids: RefCell<Option<Ids>>,
+    /// The window frames, the decorations and what they keep (`crate::frame`).
+    pub(crate) frames: RefCell<crate::frame::FrameWorld>,
 }
 
 /// The ids of the classes and members of the object library that the toolkit calls by name, resolved once.

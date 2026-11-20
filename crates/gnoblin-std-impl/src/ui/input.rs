@@ -183,9 +183,11 @@ impl Ui {
             }) else {
                 break;
             };
-            let mut stopped = false;
+            // What a frame part does with the pointer by itself (a drag area drags, a button acts) comes first: a shell's hooks hear what
+            // the part left.
+            let mut stopped = crate::frame::pointer(self, cid, kind, x, y, raw.button);
             let record = self.pointer_record(kind, x, y, raw, target_obj);
-            if let Some(done) = self.hook_call(cid, |ids| ids.on_pointer, std::slice::from_ref(&record)) {
+            if !stopped && let Some(done) = self.hook_call(cid, |ids| ids.on_pointer, std::slice::from_ref(&record)) {
                 match done {
                     Ok(value) => stopped = value.bool().unwrap_or(false),
                     Err(message) => self.warn(&format!("{title}.on_pointer threw: {message}")),

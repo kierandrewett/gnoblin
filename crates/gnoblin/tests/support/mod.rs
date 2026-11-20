@@ -458,6 +458,8 @@ pub struct App {
     configure_log: BTreeMap<u32, Vec<(i32, i32, Vec<u32>)>>,
     /// The bounds of the last `configure_bounds` each toplevel received, by the toplevel's protocol id.
     bounds: BTreeMap<u32, (i32, i32)>,
+    /// The toplevels the compositor asked to close (`xdg_toplevel.close`), by protocol id, in order.
+    close_requests: Vec<u32>,
     /// The modes the compositor told each `zxdg_toplevel_decoration_v1`, in order, by the decoration object's id.
     decorations: BTreeMap<u32, Vec<zxdg_toplevel_decoration_v1::Mode>>,
     /// What the pointer has been told, once the client listens to it.
@@ -558,6 +560,22 @@ impl Mapper {
     /// Processes every event the session has sent, which answers its pings.
     pub fn roundtrip(&mut self) {
         self.queue.roundtrip(&mut self.app).expect("a round trip");
+    }
+
+    /// Closes every window the compositor asked to close (`xdg_toplevel.close`), as an application that has nothing to save does, and
+    /// returns how many it closed.
+    pub fn answer_close_requests(&mut self) -> usize {
+        self.roundtrip();
+        let mut closed = 0;
+        while let Some(at) = self
+            .windows
+            .iter()
+            .position(|(_, _, toplevel)| self.app.close_requests.contains(&toplevel.id().protocol_id()))
+        {
+            self.close_window(at);
+            closed += 1;
+        }
+        closed
     }
 
     /// Creates a toplevel and maps it with a buffer of 200 by 150.
@@ -888,6 +906,7 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
             xdg_toplevel::Event::ConfigureBounds { width, height } => {
                 app.bounds.insert(toplevel.id().protocol_id(), (width, height));
             }
+            xdg_toplevel::Event::Close => app.close_requests.push(toplevel.id().protocol_id()),
             _ => {}
         }
     }

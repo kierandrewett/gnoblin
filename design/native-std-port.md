@@ -1066,6 +1066,31 @@ with these differences from the first draft of this table:
 
 #### Window frame, menus and shell parts
 
+Landed by lane NpStdFrame: `libgnoblin-std` serves these classes (`crates/gnoblin-std-impl/src/frame/`), declared in
+`crates/gnoblin-std-abi/schema/frame.toml`. The surface differs from the first draft of the table:
+
+- A window is named by its node as text, as every client is.
+- A closure is given a `frame_client` record, not an object. It holds what the window was when the closure ran.
+- A rule's test and an outlet's `hide_when` take that record.
+- A part is made for its frame. Its constructor takes `frame`.
+    - `window_button` also takes `name`, `window_buttons` takes `buttons`, and `resize_handle` takes `side`.
+    - `frame_backdrop` and `frame_glow` take no frame.
+- `title_text` extends `text`, `window_button` extends `icon`, and `frame_border` and `frame_glow` extend `canvas`.
+- `frame_border.color` is a text. `color_of` is a closure of the window.
+- `decorations` is a service. Its options are properties, set before or after `start`.
+    - The hooks are `menu`, `lower`, `maximise`, `minimise`, `press` and `release`.
+    - `rule(app_id, title, test, fill)` adds a rule. Without `fill` the window stays bare.
+    - `frame` answers `false` to leave a window without a frame.
+- The fill, a rule's test and the hooks run from the toolkit's turn, never inside a call. `reframe` makes a frame again on the next turn.
+- The stock titlebar is `titlebar.install(frame, style?)`. A bar follows `decorations.style` until its own `style` is set.
+- Hook defaults: `lower` lowers the window, and `maximise` and `minimise` write the flag.
+    - `press` and `release` do nothing. `menu` does nothing until NpStdMenus answers it.
+    - The shell's window policy (the focus a press gives, what maximising fills) is what the shell passes as hooks.
+- `window_frame.room_changed` tells the room the frame reserves. The library learns it from the client's inset, written after the toolkit's frame.
+- An outlet takes a scene node through `add_node(node)`. `clear` destroys what was added.
+- A destroyed frame destroys its outlets and their contents. A reference to one is stale.
+- `window_drag.attach(canvas)` makes any canvas a drag area. The library's behaviour hears a press before the shell's `on_pointer`.
+
 | Module file | Class (kind)                                                                                                                                                             | Properties                                                                                                                | Methods                                                                                                                   | Signals                    |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
 | `frame`     | `window_frame` (handle, one per client)                                                                                                                                  | `client`, `kind` (enum), `inset` ro, `geometry` ro                                                                        | `fill(outlet, widget)`, `clear(outlet)`, `outlet(name)`                                                                   | `inset_changed`            |
@@ -1776,6 +1801,34 @@ O11 (a text constant inside the crate) was not needed: nothing was found that Py
 - **Acceptance:** `modular::native_frame`: from Python, `decorations.start()`, open a window with the test client, read the
   titlebar paint list, press close and see the window go after the fade. The paint bytes equal the fixtures. `window_frame`,
   `frame_gating_window_frame` and `modular::window_frame` pass.
+
+**Landed (lane NpStdFrame).**
+
+- `crates/gnoblin-std-impl/tests/frame.rs` plays the 19 `reference/frame_*.json` scenarios and a native `seat_actions` (20 tests) as a shell over the object protocol.
+- Each step holds the log, every canvas the shell made, the tree snapshots and the bytes of every paint list to the fixture.
+- Example 27 (`examples/27-native-frame`, with `-ts` and `-py`) and `modular::native_frame` run the decorations from three languages in a real session.
+    - A window that asks for server-side decorations gets the stock titlebar. The tree holds its paint list with the window's title.
+    - A window the shell closes with the close action fades, is asked to close, and is gone once the client answers.
+
+**Allowances of the replay** (each is in the test, with its reason):
+
+1. `frame_titlebar_clicks` is replayed through `middle_click_lowers`. The next step opens the window menu, which is NpStdMenus's.
+   `seat_actions` covers the three seat click actions and a bad action.
+2. `frame_bound_node` bound a canvas to the focus with the core's `properties.bind`. The replay follows the focus from the outlet's `on_refresh`.
+3. The windows' policy is the shell's. The replay's hooks give the focus on a press, fill the work area less the frame on maximise, and restore on unmaximise.
+4. After a window is destroyed the fixture still holds its frame's canvases. The rig's `forget` drops them at that step.
+5. In `frame_tiled_and_snapped` the step's log is skipped, because the script read the window before its snap reached the compositor. The state is compared.
+6. A `frame` closure that answers nothing keeps the frame.
+
+**Importers of the frame modules (for NpFlip):**
+
+- `gnoblin-std/index.ts` exports `frame/*` and `titlebar`.
+- `host/services.ts` uses `Decorations` and `attachFrameHost`.
+- `host/lifecycle.ts` and `host/state.ts` use `std.decorations` and `declareDecorations`.
+- `host/members.ts` (`Client.frameInset`), `host/rollback.ts` and `host/frame.ts` (`sendFrames`, `layout`, `clearInheritedFrames`).
+- `gnoblin-core/host/entry.ts`, `gnoblin-core/host/client.ts` and `gnoblin-core/input/host.ts`.
+- Tests: `crates/gnoblin-js/tests/oracle/frame.rs`, `window_frame.rs` and `wake_sources.rs`.
+- `bindings/resize.ts` is imported by `frame/parts/resize_handle.ts`.
 
 #### NpStdMenus (6 days)
 

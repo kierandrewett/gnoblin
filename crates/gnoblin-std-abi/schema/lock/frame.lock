@@ -1,0 +1,864 @@
+# The public surface of the `frame` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | frame_action | (client:object:frame_client) | 0.2.0
+callback | frame_colour | (client:object:frame_client) -> string | 0.2.0
+callback | frame_fill | (client:object:frame_client, frame:object:window_frame) -> bool | 0.2.0
+callback | frame_maximise | (client:object:frame_client, on:bool) | 0.2.0
+callback | frame_press | (client:object:frame_client, event:object:frame_press_event) | 0.2.0
+callback | frame_question | (client:object:frame_client) -> bool | 0.2.0
+callback | frame_refresh | () | 0.2.0
+
+enum | frame_corner | values top-left top-right bottom-left bottom-right | 0.2.0
+enum | frame_kind | values server layers | 0.2.0
+enum | frame_layer | values under over | 0.2.0
+enum | frame_side | values top right bottom left | 0.2.0
+enum | resize_side | values top-left top-right bottom-left bottom-right left right top bottom | 0.2.0
+enum | seat_gesture | values double_click middle_click right_click | 0.2.0
+enum | window_button_name | values minimise maximise close | 0.2.0
+
+member | app_icon.add | method (child:object:canvas) | 0.2.0
+member | app_icon.alive | property bool ro | 0.2.0
+member | app_icon.arrange_default | method () | 0.2.0
+member | app_icon.behaviour | property object:widget rw | 0.2.0
+member | app_icon.children | property list<object:canvas> rw | 0.2.0
+member | app_icon.clear_height | method () | 0.2.0
+member | app_icon.clear_width | method () | 0.2.0
+member | app_icon.color | property string rw | 0.2.0
+member | app_icon.contains | method (other:object:canvas) -> bool | 0.2.0
+member | app_icon.direction | property enum:direction rw | 0.2.0
+member | app_icon.failures | property uint ro | 0.2.0
+member | app_icon.fill | property string rw | 0.2.0
+member | app_icon.focus | method () | 0.2.0
+member | app_icon.focus_changed | signal (focused:bool) | 0.2.0
+member | app_icon.focused | property bool ro | 0.2.0
+member | app_icon.frame | property object:window_frame ro | 0.2.0
+member | app_icon.gap | property double rw | 0.2.0
+member | app_icon.gone | signal () | 0.2.0
+member | app_icon.grow | property double rw | 0.2.0
+member | app_icon.height | property double rw | 0.2.0
+member | app_icon.input | property bool rw | 0.2.0
+member | app_icon.invalidate | method () | 0.2.0
+member | app_icon.key | signal (event:object:ui_key_event) | 0.2.0
+member | app_icon.mount | method (parent:uint) | 0.2.0
+member | app_icon.mount_top | method () | 0.2.0
+member | app_icon.natural_height | property double ro | 0.2.0
+member | app_icon.natural_width | property double ro | 0.2.0
+member | app_icon.node | property uint ro | 0.2.0
+member | app_icon.on_key | property callback:key_handler rw | 0.2.0
+member | app_icon.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | app_icon.opacity | property double rw | 0.2.0
+member | app_icon.padding | property double rw | 0.2.0
+member | app_icon.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | app_icon.parent | property object:canvas ro | 0.2.0
+member | app_icon.placement | property enum:placement rw | 0.2.0
+member | app_icon.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | app_icon.radius | property double rw | 0.2.0
+member | app_icon.remove | method (child:object:canvas) | 0.2.0
+member | app_icon.secure | property bool rw | 0.2.0
+member | app_icon.size | property double rw | 0.2.0
+member | app_icon.tile_of | function (app_id:string) -> object:app_tile | 0.2.0
+member | app_icon.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | app_icon.visible | property bool rw | 0.2.0
+member | app_icon.width | property double rw | 0.2.0
+member | app_icon.x | property double rw | 0.2.0
+member | app_icon.y | property double rw | 0.2.0
+member | app_tile.colour | property string rw | 0.2.0
+member | app_tile.letter | property string rw | 0.2.0
+member | button_icons.close | property string rw | 0.2.0
+member | button_icons.maximise | property string rw | 0.2.0
+member | button_icons.minimise | property string rw | 0.2.0
+member | corner_outlet.add | method (child:object:canvas) | 0.2.0
+member | corner_outlet.add_node | method (node:uint) | 0.2.0
+member | corner_outlet.alive | property bool ro | 0.2.0
+member | corner_outlet.arrange_default | method () | 0.2.0
+member | corner_outlet.behaviour | property object:widget rw | 0.2.0
+member | corner_outlet.children | property list<object:canvas> rw | 0.2.0
+member | corner_outlet.clear | method () | 0.2.0
+member | corner_outlet.clear_height | method () | 0.2.0
+member | corner_outlet.clear_size | method () | 0.2.0
+member | corner_outlet.clear_width | method () | 0.2.0
+member | corner_outlet.contains | method (other:object:canvas) -> bool | 0.2.0
+member | corner_outlet.corner | property enum:frame_corner ro | 0.2.0
+member | corner_outlet.direction | property enum:direction rw | 0.2.0
+member | corner_outlet.enabled | property bool ro | 0.2.0
+member | corner_outlet.failures | property uint ro | 0.2.0
+member | corner_outlet.fill | property string rw | 0.2.0
+member | corner_outlet.focus | method () | 0.2.0
+member | corner_outlet.focus_changed | signal (focused:bool) | 0.2.0
+member | corner_outlet.focused | property bool ro | 0.2.0
+member | corner_outlet.gap | property double rw | 0.2.0
+member | corner_outlet.gone | signal () | 0.2.0
+member | corner_outlet.grow | property double rw | 0.2.0
+member | corner_outlet.height | property double rw | 0.2.0
+member | corner_outlet.hidden | property bool rw | 0.2.0
+member | corner_outlet.hide_when | property callback:frame_question rw | 0.2.0
+member | corner_outlet.input | property bool rw | 0.2.0
+member | corner_outlet.invalidate | method () | 0.2.0
+member | corner_outlet.key | signal (event:object:ui_key_event) | 0.2.0
+member | corner_outlet.mount | method (parent:uint) | 0.2.0
+member | corner_outlet.mount_top | method () | 0.2.0
+member | corner_outlet.name | property string ro | 0.2.0
+member | corner_outlet.natural_height | property double ro | 0.2.0
+member | corner_outlet.natural_width | property double ro | 0.2.0
+member | corner_outlet.node | property uint ro | 0.2.0
+member | corner_outlet.on_key | property callback:key_handler rw | 0.2.0
+member | corner_outlet.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | corner_outlet.on_refresh | property callback:frame_refresh rw | 0.2.0
+member | corner_outlet.opacity | property double rw | 0.2.0
+member | corner_outlet.owner | property object:window_frame ro | 0.2.0
+member | corner_outlet.padding | property double rw | 0.2.0
+member | corner_outlet.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | corner_outlet.parent | property object:canvas ro | 0.2.0
+member | corner_outlet.placement | property enum:placement rw | 0.2.0
+member | corner_outlet.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | corner_outlet.radius | property double rw | 0.2.0
+member | corner_outlet.remove | method (child:object:canvas) | 0.2.0
+member | corner_outlet.secure | property bool rw | 0.2.0
+member | corner_outlet.shown | property bool ro | 0.2.0
+member | corner_outlet.size | property double rw | 0.2.0
+member | corner_outlet.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | corner_outlet.visible | property bool rw | 0.2.0
+member | corner_outlet.width | property double rw | 0.2.0
+member | corner_outlet.x | property double rw | 0.2.0
+member | corner_outlet.y | property double rw | 0.2.0
+member | decorations.frame | property callback:frame_fill rw | 0.2.0
+member | decorations.frame_of | method (client:string) -> object:window_frame? | 0.2.0
+member | decorations.inset_of | method (client:string) -> object:frame_inset | 0.2.0
+member | decorations.lower | property callback:frame_action rw | 0.2.0
+member | decorations.maximise | property callback:frame_maximise rw | 0.2.0
+member | decorations.menu | property callback:frame_action rw | 0.2.0
+member | decorations.minimise | property callback:frame_action rw | 0.2.0
+member | decorations.now | property callback:time_source rw | 0.2.0
+member | decorations.press | property callback:frame_press rw | 0.2.0
+member | decorations.reframe | method (client:string) | 0.2.0
+member | decorations.release | property callback:frame_press rw | 0.2.0
+member | decorations.reserved_of | method (client:string) -> object:frame_inset | 0.2.0
+member | decorations.resize_handles | property double rw | 0.2.0
+member | decorations.rule | method (app_id?:string, title?:string, test?:callback:frame_question, fill?:callback:frame_fill) | 0.2.0
+member | decorations.start | method () | 0.2.0
+member | decorations.started | property bool ro | 0.2.0
+member | decorations.stop | method () | 0.2.0
+member | decorations.style | property object:titlebar_style rw | 0.2.0
+member | drag_area.add | method (child:object:canvas) | 0.2.0
+member | drag_area.alive | property bool ro | 0.2.0
+member | drag_area.arrange_default | method () | 0.2.0
+member | drag_area.behaviour | property object:widget rw | 0.2.0
+member | drag_area.children | property list<object:canvas> rw | 0.2.0
+member | drag_area.clear_height | method () | 0.2.0
+member | drag_area.clear_width | method () | 0.2.0
+member | drag_area.contains | method (other:object:canvas) -> bool | 0.2.0
+member | drag_area.direction | property enum:direction rw | 0.2.0
+member | drag_area.failures | property uint ro | 0.2.0
+member | drag_area.fill | property string rw | 0.2.0
+member | drag_area.focus | method () | 0.2.0
+member | drag_area.focus_changed | signal (focused:bool) | 0.2.0
+member | drag_area.focused | property bool ro | 0.2.0
+member | drag_area.frame | property object:window_frame ro | 0.2.0
+member | drag_area.gap | property double rw | 0.2.0
+member | drag_area.gone | signal () | 0.2.0
+member | drag_area.grow | property double rw | 0.2.0
+member | drag_area.height | property double rw | 0.2.0
+member | drag_area.input | property bool rw | 0.2.0
+member | drag_area.invalidate | method () | 0.2.0
+member | drag_area.key | signal (event:object:ui_key_event) | 0.2.0
+member | drag_area.mount | method (parent:uint) | 0.2.0
+member | drag_area.mount_top | method () | 0.2.0
+member | drag_area.natural_height | property double ro | 0.2.0
+member | drag_area.natural_width | property double ro | 0.2.0
+member | drag_area.node | property uint ro | 0.2.0
+member | drag_area.on_key | property callback:key_handler rw | 0.2.0
+member | drag_area.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | drag_area.opacity | property double rw | 0.2.0
+member | drag_area.padding | property double rw | 0.2.0
+member | drag_area.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | drag_area.parent | property object:canvas ro | 0.2.0
+member | drag_area.placement | property enum:placement rw | 0.2.0
+member | drag_area.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | drag_area.radius | property double rw | 0.2.0
+member | drag_area.remove | method (child:object:canvas) | 0.2.0
+member | drag_area.secure | property bool rw | 0.2.0
+member | drag_area.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | drag_area.visible | property bool rw | 0.2.0
+member | drag_area.width | property double rw | 0.2.0
+member | drag_area.x | property double rw | 0.2.0
+member | drag_area.y | property double rw | 0.2.0
+member | edge_outlet.add | method (child:object:canvas) | 0.2.0
+member | edge_outlet.add_node | method (node:uint) | 0.2.0
+member | edge_outlet.alive | property bool ro | 0.2.0
+member | edge_outlet.arrange_default | method () | 0.2.0
+member | edge_outlet.behaviour | property object:widget rw | 0.2.0
+member | edge_outlet.center | property object:outlet ro | 0.2.0
+member | edge_outlet.children | property list<object:canvas> rw | 0.2.0
+member | edge_outlet.clear | method () | 0.2.0
+member | edge_outlet.clear_height | method () | 0.2.0
+member | edge_outlet.clear_size | method () | 0.2.0
+member | edge_outlet.clear_width | method () | 0.2.0
+member | edge_outlet.contains | method (other:object:canvas) -> bool | 0.2.0
+member | edge_outlet.direction | property enum:direction rw | 0.2.0
+member | edge_outlet.enabled | property bool ro | 0.2.0
+member | edge_outlet.end | property object:outlet ro | 0.2.0
+member | edge_outlet.failures | property uint ro | 0.2.0
+member | edge_outlet.fill | property string rw | 0.2.0
+member | edge_outlet.focus | method () | 0.2.0
+member | edge_outlet.focus_changed | signal (focused:bool) | 0.2.0
+member | edge_outlet.focused | property bool ro | 0.2.0
+member | edge_outlet.gap | property double rw | 0.2.0
+member | edge_outlet.gone | signal () | 0.2.0
+member | edge_outlet.grow | property double rw | 0.2.0
+member | edge_outlet.height | property double rw | 0.2.0
+member | edge_outlet.hidden | property bool rw | 0.2.0
+member | edge_outlet.hide_when | property callback:frame_question rw | 0.2.0
+member | edge_outlet.input | property bool rw | 0.2.0
+member | edge_outlet.invalidate | method () | 0.2.0
+member | edge_outlet.key | signal (event:object:ui_key_event) | 0.2.0
+member | edge_outlet.mount | method (parent:uint) | 0.2.0
+member | edge_outlet.mount_top | method () | 0.2.0
+member | edge_outlet.name | property string ro | 0.2.0
+member | edge_outlet.natural_height | property double ro | 0.2.0
+member | edge_outlet.natural_width | property double ro | 0.2.0
+member | edge_outlet.node | property uint ro | 0.2.0
+member | edge_outlet.on_key | property callback:key_handler rw | 0.2.0
+member | edge_outlet.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | edge_outlet.on_refresh | property callback:frame_refresh rw | 0.2.0
+member | edge_outlet.opacity | property double rw | 0.2.0
+member | edge_outlet.owner | property object:window_frame ro | 0.2.0
+member | edge_outlet.padding | property double rw | 0.2.0
+member | edge_outlet.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | edge_outlet.parent | property object:canvas ro | 0.2.0
+member | edge_outlet.placement | property enum:placement rw | 0.2.0
+member | edge_outlet.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | edge_outlet.radius | property double rw | 0.2.0
+member | edge_outlet.remove | method (child:object:canvas) | 0.2.0
+member | edge_outlet.reserved | property double ro | 0.2.0
+member | edge_outlet.secure | property bool rw | 0.2.0
+member | edge_outlet.shown | property bool ro | 0.2.0
+member | edge_outlet.side | property enum:frame_side ro | 0.2.0
+member | edge_outlet.size | property double rw | 0.2.0
+member | edge_outlet.start | property object:outlet ro | 0.2.0
+member | edge_outlet.thickness | property double ro | 0.2.0
+member | edge_outlet.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | edge_outlet.visible | property bool rw | 0.2.0
+member | edge_outlet.width | property double rw | 0.2.0
+member | edge_outlet.x | property double rw | 0.2.0
+member | edge_outlet.y | property double rw | 0.2.0
+member | frame_backdrop.add | method (child:object:canvas) | 0.2.0
+member | frame_backdrop.alive | property bool ro | 0.2.0
+member | frame_backdrop.arrange_default | method () | 0.2.0
+member | frame_backdrop.behaviour | property object:widget rw | 0.2.0
+member | frame_backdrop.children | property list<object:canvas> rw | 0.2.0
+member | frame_backdrop.clear_height | method () | 0.2.0
+member | frame_backdrop.clear_width | method () | 0.2.0
+member | frame_backdrop.contains | method (other:object:canvas) -> bool | 0.2.0
+member | frame_backdrop.direction | property enum:direction rw | 0.2.0
+member | frame_backdrop.failures | property uint ro | 0.2.0
+member | frame_backdrop.fill | property string rw | 0.2.0
+member | frame_backdrop.focus | method () | 0.2.0
+member | frame_backdrop.focus_changed | signal (focused:bool) | 0.2.0
+member | frame_backdrop.focused | property bool ro | 0.2.0
+member | frame_backdrop.gap | property double rw | 0.2.0
+member | frame_backdrop.gone | signal () | 0.2.0
+member | frame_backdrop.grow | property double rw | 0.2.0
+member | frame_backdrop.height | property double rw | 0.2.0
+member | frame_backdrop.input | property bool rw | 0.2.0
+member | frame_backdrop.invalidate | method () | 0.2.0
+member | frame_backdrop.key | signal (event:object:ui_key_event) | 0.2.0
+member | frame_backdrop.mount | method (parent:uint) | 0.2.0
+member | frame_backdrop.mount_top | method () | 0.2.0
+member | frame_backdrop.natural_height | property double ro | 0.2.0
+member | frame_backdrop.natural_width | property double ro | 0.2.0
+member | frame_backdrop.node | property uint ro | 0.2.0
+member | frame_backdrop.on_key | property callback:key_handler rw | 0.2.0
+member | frame_backdrop.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | frame_backdrop.opacity | property double rw | 0.2.0
+member | frame_backdrop.padding | property double rw | 0.2.0
+member | frame_backdrop.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | frame_backdrop.parent | property object:canvas ro | 0.2.0
+member | frame_backdrop.placement | property enum:placement rw | 0.2.0
+member | frame_backdrop.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | frame_backdrop.radius | property double rw | 0.2.0
+member | frame_backdrop.remove | method (child:object:canvas) | 0.2.0
+member | frame_backdrop.secure | property bool rw | 0.2.0
+member | frame_backdrop.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | frame_backdrop.visible | property bool rw | 0.2.0
+member | frame_backdrop.width | property double rw | 0.2.0
+member | frame_backdrop.x | property double rw | 0.2.0
+member | frame_backdrop.y | property double rw | 0.2.0
+member | frame_border.add | method (child:object:canvas) | 0.2.0
+member | frame_border.alive | property bool ro | 0.2.0
+member | frame_border.arrange_default | method () | 0.2.0
+member | frame_border.behaviour | property object:widget rw | 0.2.0
+member | frame_border.children | property list<object:canvas> rw | 0.2.0
+member | frame_border.clear_height | method () | 0.2.0
+member | frame_border.clear_width | method () | 0.2.0
+member | frame_border.color | property string rw | 0.2.0
+member | frame_border.color_of | property callback:frame_colour rw | 0.2.0
+member | frame_border.contains | method (other:object:canvas) -> bool | 0.2.0
+member | frame_border.failures | property uint ro | 0.2.0
+member | frame_border.focus | method () | 0.2.0
+member | frame_border.focus_changed | signal (focused:bool) | 0.2.0
+member | frame_border.focused | property bool ro | 0.2.0
+member | frame_border.frame | property object:window_frame ro | 0.2.0
+member | frame_border.gone | signal () | 0.2.0
+member | frame_border.height | property double rw | 0.2.0
+member | frame_border.input | property bool rw | 0.2.0
+member | frame_border.invalidate | method () | 0.2.0
+member | frame_border.key | signal (event:object:ui_key_event) | 0.2.0
+member | frame_border.mount | method (parent:uint) | 0.2.0
+member | frame_border.mount_top | method () | 0.2.0
+member | frame_border.natural_height | property double ro | 0.2.0
+member | frame_border.natural_width | property double ro | 0.2.0
+member | frame_border.node | property uint ro | 0.2.0
+member | frame_border.on_key | property callback:key_handler rw | 0.2.0
+member | frame_border.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | frame_border.opacity | property double rw | 0.2.0
+member | frame_border.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | frame_border.parent | property object:canvas ro | 0.2.0
+member | frame_border.placement | property enum:placement rw | 0.2.0
+member | frame_border.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | frame_border.radius | property double rw | 0.2.0
+member | frame_border.remove | method (child:object:canvas) | 0.2.0
+member | frame_border.secure | property bool rw | 0.2.0
+member | frame_border.thickness | property double rw | 0.2.0
+member | frame_border.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | frame_border.visible | property bool rw | 0.2.0
+member | frame_border.width | property double rw | 0.2.0
+member | frame_border.x | property double rw | 0.2.0
+member | frame_border.y | property double rw | 0.2.0
+member | frame_client.alive | property bool rw | 0.2.0
+member | frame_client.app_id | property string rw | 0.2.0
+member | frame_client.decoration | property string rw | 0.2.0
+member | frame_client.focused | property bool rw | 0.2.0
+member | frame_client.fullscreen | property bool rw | 0.2.0
+member | frame_client.height | property double rw | 0.2.0
+member | frame_client.id | property string rw | 0.2.0
+member | frame_client.maximised | property bool rw | 0.2.0
+member | frame_client.minimised | property bool rw | 0.2.0
+member | frame_client.title | property string rw | 0.2.0
+member | frame_client.width | property double rw | 0.2.0
+member | frame_client.x | property double rw | 0.2.0
+member | frame_client.y | property double rw | 0.2.0
+member | frame_content.height | property double rw | 0.2.0
+member | frame_content.inset | property object:frame_inset rw | 0.2.0
+member | frame_content.width | property double rw | 0.2.0
+member | frame_content.x | property double rw | 0.2.0
+member | frame_content.y | property double rw | 0.2.0
+member | frame_glow.add | method (child:object:canvas) | 0.2.0
+member | frame_glow.alive | property bool ro | 0.2.0
+member | frame_glow.arrange_default | method () | 0.2.0
+member | frame_glow.behaviour | property object:widget rw | 0.2.0
+member | frame_glow.children | property list<object:canvas> rw | 0.2.0
+member | frame_glow.clear_height | method () | 0.2.0
+member | frame_glow.clear_width | method () | 0.2.0
+member | frame_glow.color | property string rw | 0.2.0
+member | frame_glow.contains | method (other:object:canvas) -> bool | 0.2.0
+member | frame_glow.failures | property uint ro | 0.2.0
+member | frame_glow.focus | method () | 0.2.0
+member | frame_glow.focus_changed | signal (focused:bool) | 0.2.0
+member | frame_glow.focused | property bool ro | 0.2.0
+member | frame_glow.gone | signal () | 0.2.0
+member | frame_glow.height | property double rw | 0.2.0
+member | frame_glow.input | property bool rw | 0.2.0
+member | frame_glow.invalidate | method () | 0.2.0
+member | frame_glow.key | signal (event:object:ui_key_event) | 0.2.0
+member | frame_glow.mount | method (parent:uint) | 0.2.0
+member | frame_glow.mount_top | method () | 0.2.0
+member | frame_glow.natural_height | property double ro | 0.2.0
+member | frame_glow.natural_width | property double ro | 0.2.0
+member | frame_glow.node | property uint ro | 0.2.0
+member | frame_glow.on_key | property callback:key_handler rw | 0.2.0
+member | frame_glow.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | frame_glow.opacity | property double rw | 0.2.0
+member | frame_glow.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | frame_glow.parent | property object:canvas ro | 0.2.0
+member | frame_glow.placement | property enum:placement rw | 0.2.0
+member | frame_glow.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | frame_glow.radius | property double rw | 0.2.0
+member | frame_glow.remove | method (child:object:canvas) | 0.2.0
+member | frame_glow.secure | property bool rw | 0.2.0
+member | frame_glow.steps | property uint rw | 0.2.0
+member | frame_glow.strength | property double rw | 0.2.0
+member | frame_glow.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | frame_glow.visible | property bool rw | 0.2.0
+member | frame_glow.width | property double rw | 0.2.0
+member | frame_glow.x | property double rw | 0.2.0
+member | frame_glow.y | property double rw | 0.2.0
+member | frame_press_event.button | property uint rw | 0.2.0
+member | frame_press_event.x | property double rw | 0.2.0
+member | frame_press_event.y | property double rw | 0.2.0
+member | layer_outlet.add | method (child:object:canvas) | 0.2.0
+member | layer_outlet.add_node | method (node:uint) | 0.2.0
+member | layer_outlet.alive | property bool ro | 0.2.0
+member | layer_outlet.arrange_default | method () | 0.2.0
+member | layer_outlet.behaviour | property object:widget rw | 0.2.0
+member | layer_outlet.bleed | property double rw | 0.2.0
+member | layer_outlet.children | property list<object:canvas> rw | 0.2.0
+member | layer_outlet.clear | method () | 0.2.0
+member | layer_outlet.clear_height | method () | 0.2.0
+member | layer_outlet.clear_width | method () | 0.2.0
+member | layer_outlet.contains | method (other:object:canvas) -> bool | 0.2.0
+member | layer_outlet.direction | property enum:direction rw | 0.2.0
+member | layer_outlet.enabled | property bool ro | 0.2.0
+member | layer_outlet.failures | property uint ro | 0.2.0
+member | layer_outlet.fill | property string rw | 0.2.0
+member | layer_outlet.focus | method () | 0.2.0
+member | layer_outlet.focus_changed | signal (focused:bool) | 0.2.0
+member | layer_outlet.focused | property bool ro | 0.2.0
+member | layer_outlet.gap | property double rw | 0.2.0
+member | layer_outlet.gone | signal () | 0.2.0
+member | layer_outlet.grow | property double rw | 0.2.0
+member | layer_outlet.height | property double rw | 0.2.0
+member | layer_outlet.hidden | property bool rw | 0.2.0
+member | layer_outlet.hide_when | property callback:frame_question rw | 0.2.0
+member | layer_outlet.input | property bool rw | 0.2.0
+member | layer_outlet.invalidate | method () | 0.2.0
+member | layer_outlet.key | signal (event:object:ui_key_event) | 0.2.0
+member | layer_outlet.kind | property enum:frame_layer ro | 0.2.0
+member | layer_outlet.mount | method (parent:uint) | 0.2.0
+member | layer_outlet.mount_top | method () | 0.2.0
+member | layer_outlet.name | property string ro | 0.2.0
+member | layer_outlet.natural_height | property double ro | 0.2.0
+member | layer_outlet.natural_width | property double ro | 0.2.0
+member | layer_outlet.node | property uint ro | 0.2.0
+member | layer_outlet.on_key | property callback:key_handler rw | 0.2.0
+member | layer_outlet.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | layer_outlet.on_refresh | property callback:frame_refresh rw | 0.2.0
+member | layer_outlet.opacity | property double rw | 0.2.0
+member | layer_outlet.owner | property object:window_frame ro | 0.2.0
+member | layer_outlet.padding | property double rw | 0.2.0
+member | layer_outlet.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | layer_outlet.parent | property object:canvas ro | 0.2.0
+member | layer_outlet.placement | property enum:placement rw | 0.2.0
+member | layer_outlet.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | layer_outlet.radius | property double rw | 0.2.0
+member | layer_outlet.remove | method (child:object:canvas) | 0.2.0
+member | layer_outlet.secure | property bool rw | 0.2.0
+member | layer_outlet.shown | property bool ro | 0.2.0
+member | layer_outlet.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | layer_outlet.visible | property bool rw | 0.2.0
+member | layer_outlet.width | property double rw | 0.2.0
+member | layer_outlet.x | property double rw | 0.2.0
+member | layer_outlet.y | property double rw | 0.2.0
+member | outlet.add | method (child:object:canvas) | 0.2.0
+member | outlet.add_node | method (node:uint) | 0.2.0
+member | outlet.alive | property bool ro | 0.2.0
+member | outlet.arrange_default | method () | 0.2.0
+member | outlet.behaviour | property object:widget rw | 0.2.0
+member | outlet.children | property list<object:canvas> rw | 0.2.0
+member | outlet.clear | method () | 0.2.0
+member | outlet.clear_height | method () | 0.2.0
+member | outlet.clear_width | method () | 0.2.0
+member | outlet.contains | method (other:object:canvas) -> bool | 0.2.0
+member | outlet.direction | property enum:direction rw | 0.2.0
+member | outlet.enabled | property bool ro | 0.2.0
+member | outlet.failures | property uint ro | 0.2.0
+member | outlet.fill | property string rw | 0.2.0
+member | outlet.focus | method () | 0.2.0
+member | outlet.focus_changed | signal (focused:bool) | 0.2.0
+member | outlet.focused | property bool ro | 0.2.0
+member | outlet.gap | property double rw | 0.2.0
+member | outlet.gone | signal () | 0.2.0
+member | outlet.grow | property double rw | 0.2.0
+member | outlet.height | property double rw | 0.2.0
+member | outlet.hidden | property bool rw | 0.2.0
+member | outlet.hide_when | property callback:frame_question rw | 0.2.0
+member | outlet.input | property bool rw | 0.2.0
+member | outlet.invalidate | method () | 0.2.0
+member | outlet.key | signal (event:object:ui_key_event) | 0.2.0
+member | outlet.mount | method (parent:uint) | 0.2.0
+member | outlet.mount_top | method () | 0.2.0
+member | outlet.name | property string ro | 0.2.0
+member | outlet.natural_height | property double ro | 0.2.0
+member | outlet.natural_width | property double ro | 0.2.0
+member | outlet.node | property uint ro | 0.2.0
+member | outlet.on_key | property callback:key_handler rw | 0.2.0
+member | outlet.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | outlet.on_refresh | property callback:frame_refresh rw | 0.2.0
+member | outlet.opacity | property double rw | 0.2.0
+member | outlet.owner | property object:window_frame ro | 0.2.0
+member | outlet.padding | property double rw | 0.2.0
+member | outlet.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | outlet.parent | property object:canvas ro | 0.2.0
+member | outlet.placement | property enum:placement rw | 0.2.0
+member | outlet.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | outlet.radius | property double rw | 0.2.0
+member | outlet.remove | method (child:object:canvas) | 0.2.0
+member | outlet.secure | property bool rw | 0.2.0
+member | outlet.shown | property bool ro | 0.2.0
+member | outlet.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | outlet.visible | property bool rw | 0.2.0
+member | outlet.width | property double rw | 0.2.0
+member | outlet.x | property double rw | 0.2.0
+member | outlet.y | property double rw | 0.2.0
+member | resize_handle.add | method (child:object:canvas) | 0.2.0
+member | resize_handle.alive | property bool ro | 0.2.0
+member | resize_handle.arrange_default | method () | 0.2.0
+member | resize_handle.behaviour | property object:widget rw | 0.2.0
+member | resize_handle.children | property list<object:canvas> rw | 0.2.0
+member | resize_handle.clear_height | method () | 0.2.0
+member | resize_handle.clear_width | method () | 0.2.0
+member | resize_handle.contains | method (other:object:canvas) -> bool | 0.2.0
+member | resize_handle.direction | property enum:direction rw | 0.2.0
+member | resize_handle.failures | property uint ro | 0.2.0
+member | resize_handle.fill | property string rw | 0.2.0
+member | resize_handle.fit_parent | property bool rw | 0.2.0
+member | resize_handle.focus | method () | 0.2.0
+member | resize_handle.focus_changed | signal (focused:bool) | 0.2.0
+member | resize_handle.focused | property bool ro | 0.2.0
+member | resize_handle.frame | property object:window_frame ro | 0.2.0
+member | resize_handle.gap | property double rw | 0.2.0
+member | resize_handle.gone | signal () | 0.2.0
+member | resize_handle.grow | property double rw | 0.2.0
+member | resize_handle.height | property double rw | 0.2.0
+member | resize_handle.input | property bool rw | 0.2.0
+member | resize_handle.invalidate | method () | 0.2.0
+member | resize_handle.key | signal (event:object:ui_key_event) | 0.2.0
+member | resize_handle.mount | method (parent:uint) | 0.2.0
+member | resize_handle.mount_top | method () | 0.2.0
+member | resize_handle.natural_height | property double ro | 0.2.0
+member | resize_handle.natural_width | property double ro | 0.2.0
+member | resize_handle.node | property uint ro | 0.2.0
+member | resize_handle.on_key | property callback:key_handler rw | 0.2.0
+member | resize_handle.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | resize_handle.opacity | property double rw | 0.2.0
+member | resize_handle.padding | property double rw | 0.2.0
+member | resize_handle.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | resize_handle.parent | property object:canvas ro | 0.2.0
+member | resize_handle.placement | property enum:placement rw | 0.2.0
+member | resize_handle.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | resize_handle.radius | property double rw | 0.2.0
+member | resize_handle.remove | method (child:object:canvas) | 0.2.0
+member | resize_handle.secure | property bool rw | 0.2.0
+member | resize_handle.side | property enum:resize_side ro | 0.2.0
+member | resize_handle.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | resize_handle.visible | property bool rw | 0.2.0
+member | resize_handle.width | property double rw | 0.2.0
+member | resize_handle.x | property double rw | 0.2.0
+member | resize_handle.y | property double rw | 0.2.0
+member | resize_handles.add | method (child:object:canvas) | 0.2.0
+member | resize_handles.alive | property bool ro | 0.2.0
+member | resize_handles.arrange_default | method () | 0.2.0
+member | resize_handles.behaviour | property object:widget rw | 0.2.0
+member | resize_handles.children | property list<object:canvas> rw | 0.2.0
+member | resize_handles.clear_height | method () | 0.2.0
+member | resize_handles.clear_width | method () | 0.2.0
+member | resize_handles.contains | method (other:object:canvas) -> bool | 0.2.0
+member | resize_handles.corner | property double rw | 0.2.0
+member | resize_handles.direction | property enum:direction rw | 0.2.0
+member | resize_handles.failures | property uint ro | 0.2.0
+member | resize_handles.fill | property string rw | 0.2.0
+member | resize_handles.focus | method () | 0.2.0
+member | resize_handles.focus_changed | signal (focused:bool) | 0.2.0
+member | resize_handles.focused | property bool ro | 0.2.0
+member | resize_handles.frame | property object:window_frame ro | 0.2.0
+member | resize_handles.gap | property double rw | 0.2.0
+member | resize_handles.gone | signal () | 0.2.0
+member | resize_handles.grow | property double rw | 0.2.0
+member | resize_handles.handles | property list<object:resize_handle> ro | 0.2.0
+member | resize_handles.height | property double rw | 0.2.0
+member | resize_handles.input | property bool rw | 0.2.0
+member | resize_handles.inside | property double rw | 0.2.0
+member | resize_handles.invalidate | method () | 0.2.0
+member | resize_handles.key | signal (event:object:ui_key_event) | 0.2.0
+member | resize_handles.mount | method (parent:uint) | 0.2.0
+member | resize_handles.mount_top | method () | 0.2.0
+member | resize_handles.natural_height | property double ro | 0.2.0
+member | resize_handles.natural_width | property double ro | 0.2.0
+member | resize_handles.node | property uint ro | 0.2.0
+member | resize_handles.on_key | property callback:key_handler rw | 0.2.0
+member | resize_handles.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | resize_handles.opacity | property double rw | 0.2.0
+member | resize_handles.padding | property double rw | 0.2.0
+member | resize_handles.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | resize_handles.parent | property object:canvas ro | 0.2.0
+member | resize_handles.placement | property enum:placement rw | 0.2.0
+member | resize_handles.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | resize_handles.radius | property double rw | 0.2.0
+member | resize_handles.remove | method (child:object:canvas) | 0.2.0
+member | resize_handles.secure | property bool rw | 0.2.0
+member | resize_handles.thickness | property double rw | 0.2.0
+member | resize_handles.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | resize_handles.visible | property bool rw | 0.2.0
+member | resize_handles.width | property double rw | 0.2.0
+member | resize_handles.x | property double rw | 0.2.0
+member | resize_handles.y | property double rw | 0.2.0
+member | title_text.add | method (child:object:canvas) | 0.2.0
+member | title_text.alive | property bool ro | 0.2.0
+member | title_text.arrange_default | method () | 0.2.0
+member | title_text.ascent | property double ro | 0.2.0
+member | title_text.behaviour | property object:widget rw | 0.2.0
+member | title_text.children | property list<object:canvas> rw | 0.2.0
+member | title_text.clear_height | method () | 0.2.0
+member | title_text.clear_width | method () | 0.2.0
+member | title_text.color | property string rw | 0.2.0
+member | title_text.contains | method (other:object:canvas) -> bool | 0.2.0
+member | title_text.direction | property enum:direction rw | 0.2.0
+member | title_text.ellipsize | property bool rw | 0.2.0
+member | title_text.failures | property uint ro | 0.2.0
+member | title_text.fill | property string rw | 0.2.0
+member | title_text.focus | method () | 0.2.0
+member | title_text.focus_changed | signal (focused:bool) | 0.2.0
+member | title_text.focused | property bool ro | 0.2.0
+member | title_text.font | property string rw | 0.2.0
+member | title_text.frame | property object:window_frame ro | 0.2.0
+member | title_text.gap | property double rw | 0.2.0
+member | title_text.gone | signal () | 0.2.0
+member | title_text.grow | property double rw | 0.2.0
+member | title_text.height | property double rw | 0.2.0
+member | title_text.input | property bool rw | 0.2.0
+member | title_text.invalidate | method () | 0.2.0
+member | title_text.key | signal (event:object:ui_key_event) | 0.2.0
+member | title_text.metrics | property object:text_metrics ro | 0.2.0
+member | title_text.mount | method (parent:uint) | 0.2.0
+member | title_text.mount_top | method () | 0.2.0
+member | title_text.natural_height | property double ro | 0.2.0
+member | title_text.natural_width | property double ro | 0.2.0
+member | title_text.node | property uint ro | 0.2.0
+member | title_text.on_key | property callback:key_handler rw | 0.2.0
+member | title_text.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | title_text.opacity | property double rw | 0.2.0
+member | title_text.padding | property double rw | 0.2.0
+member | title_text.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | title_text.parent | property object:canvas ro | 0.2.0
+member | title_text.placement | property enum:placement rw | 0.2.0
+member | title_text.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | title_text.radius | property double rw | 0.2.0
+member | title_text.remove | method (child:object:canvas) | 0.2.0
+member | title_text.secure | property bool rw | 0.2.0
+member | title_text.shown | method () -> string | 0.2.0
+member | title_text.size | property double rw | 0.2.0
+member | title_text.text | property string rw | 0.2.0
+member | title_text.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | title_text.visible | property bool rw | 0.2.0
+member | title_text.width | property double rw | 0.2.0
+member | title_text.x | property double rw | 0.2.0
+member | title_text.y | property double rw | 0.2.0
+member | titlebar.add | method (child:object:canvas) | 0.2.0
+member | titlebar.alive | property bool ro | 0.2.0
+member | titlebar.arrange_default | method () | 0.2.0
+member | titlebar.behaviour | property object:widget rw | 0.2.0
+member | titlebar.buttons | property list<object:window_button> ro | 0.2.0
+member | titlebar.children | property list<object:canvas> rw | 0.2.0
+member | titlebar.clear_height | method () | 0.2.0
+member | titlebar.clear_width | method () | 0.2.0
+member | titlebar.contains | method (other:object:canvas) -> bool | 0.2.0
+member | titlebar.direction | property enum:direction rw | 0.2.0
+member | titlebar.failures | property uint ro | 0.2.0
+member | titlebar.fill | property string rw | 0.2.0
+member | titlebar.focus | method () | 0.2.0
+member | titlebar.focus_changed | signal (focused:bool) | 0.2.0
+member | titlebar.focused | property bool ro | 0.2.0
+member | titlebar.frame | property object:window_frame ro | 0.2.0
+member | titlebar.gap | property double rw | 0.2.0
+member | titlebar.gone | signal () | 0.2.0
+member | titlebar.grow | property double rw | 0.2.0
+member | titlebar.height | property double rw | 0.2.0
+member | titlebar.input | property bool rw | 0.2.0
+member | titlebar.install | function (frame:object:window_frame, style?:object:titlebar_style) -> bool | 0.2.0
+member | titlebar.invalidate | method () | 0.2.0
+member | titlebar.key | signal (event:object:ui_key_event) | 0.2.0
+member | titlebar.mount | method (parent:uint) | 0.2.0
+member | titlebar.mount_top | method () | 0.2.0
+member | titlebar.natural_height | property double ro | 0.2.0
+member | titlebar.natural_width | property double ro | 0.2.0
+member | titlebar.node | property uint ro | 0.2.0
+member | titlebar.on_key | property callback:key_handler rw | 0.2.0
+member | titlebar.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | titlebar.opacity | property double rw | 0.2.0
+member | titlebar.padding | property double rw | 0.2.0
+member | titlebar.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | titlebar.parent | property object:canvas ro | 0.2.0
+member | titlebar.placement | property enum:placement rw | 0.2.0
+member | titlebar.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | titlebar.radius | property double rw | 0.2.0
+member | titlebar.remove | method (child:object:canvas) | 0.2.0
+member | titlebar.secure | property bool rw | 0.2.0
+member | titlebar.style | property object:titlebar_style rw | 0.2.0
+member | titlebar.title | property object:title_text ro | 0.2.0
+member | titlebar.title_area | property object:box ro | 0.2.0
+member | titlebar.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | titlebar.visible | property bool rw | 0.2.0
+member | titlebar.width | property double rw | 0.2.0
+member | titlebar.x | property double rw | 0.2.0
+member | titlebar.y | property double rw | 0.2.0
+member | titlebar_style.button_color | property string rw | 0.2.0
+member | titlebar_style.button_size | property double rw | 0.2.0
+member | titlebar_style.buttons | property list<enum:window_button_name> rw,optional | 0.2.0
+member | titlebar_style.focused_fill | property string rw | 0.2.0
+member | titlebar_style.gap | property double rw | 0.2.0
+member | titlebar_style.height | property double rw | 0.2.0
+member | titlebar_style.icons | property object:button_icons rw,optional | 0.2.0
+member | titlebar_style.padding | property double rw | 0.2.0
+member | titlebar_style.radius | property double rw | 0.2.0
+member | titlebar_style.title_color | property string rw | 0.2.0
+member | titlebar_style.title_font | property string rw | 0.2.0
+member | titlebar_style.title_size | property double rw | 0.2.0
+member | titlebar_style.unfocused_fill | property string rw | 0.2.0
+member | window_actions.close | method () | 0.2.0
+member | window_actions.closing | property bool ro | 0.2.0
+member | window_actions.frame | property object:window_frame ro | 0.2.0
+member | window_actions.gesture | method (property:enum:seat_gesture) | 0.2.0
+member | window_actions.lower | method () | 0.2.0
+member | window_actions.menu | method () | 0.2.0
+member | window_actions.minimise | method () | 0.2.0
+member | window_actions.now | property callback:time_source rw | 0.2.0
+member | window_actions.toggle_maximise | method () | 0.2.0
+member | window_button.add | method (child:object:canvas) | 0.2.0
+member | window_button.alive | property bool ro | 0.2.0
+member | window_button.arrange_default | method () | 0.2.0
+member | window_button.behaviour | property object:widget rw | 0.2.0
+member | window_button.children | property list<object:canvas> rw | 0.2.0
+member | window_button.clear_height | method () | 0.2.0
+member | window_button.clear_width | method () | 0.2.0
+member | window_button.color | property string rw | 0.2.0
+member | window_button.contains | method (other:object:canvas) -> bool | 0.2.0
+member | window_button.direction | property enum:direction rw | 0.2.0
+member | window_button.failures | property uint ro | 0.2.0
+member | window_button.fill | property string rw | 0.2.0
+member | window_button.focus | method () | 0.2.0
+member | window_button.focus_changed | signal (focused:bool) | 0.2.0
+member | window_button.focused | property bool ro | 0.2.0
+member | window_button.frame | property object:window_frame ro | 0.2.0
+member | window_button.gap | property double rw | 0.2.0
+member | window_button.gone | signal () | 0.2.0
+member | window_button.grow | property double rw | 0.2.0
+member | window_button.height | property double rw | 0.2.0
+member | window_button.icon | property string rw | 0.2.0
+member | window_button.input | property bool rw | 0.2.0
+member | window_button.invalidate | method () | 0.2.0
+member | window_button.key | signal (event:object:ui_key_event) | 0.2.0
+member | window_button.mount | method (parent:uint) | 0.2.0
+member | window_button.mount_top | method () | 0.2.0
+member | window_button.name | property enum:window_button_name ro | 0.2.0
+member | window_button.natural_height | property double ro | 0.2.0
+member | window_button.natural_width | property double ro | 0.2.0
+member | window_button.node | property uint ro | 0.2.0
+member | window_button.on_key | property callback:key_handler rw | 0.2.0
+member | window_button.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | window_button.opacity | property double rw | 0.2.0
+member | window_button.padding | property double rw | 0.2.0
+member | window_button.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | window_button.parent | property object:canvas ro | 0.2.0
+member | window_button.placement | property enum:placement rw | 0.2.0
+member | window_button.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | window_button.radius | property double rw | 0.2.0
+member | window_button.remove | method (child:object:canvas) | 0.2.0
+member | window_button.restore_icon | property string rw | 0.2.0
+member | window_button.secure | property bool rw | 0.2.0
+member | window_button.size | property double rw | 0.2.0
+member | window_button.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | window_button.visible | property bool rw | 0.2.0
+member | window_button.width | property double rw | 0.2.0
+member | window_button.x | property double rw | 0.2.0
+member | window_button.y | property double rw | 0.2.0
+member | window_buttons.add | method (child:object:canvas) | 0.2.0
+member | window_buttons.alive | property bool ro | 0.2.0
+member | window_buttons.arrange_default | method () | 0.2.0
+member | window_buttons.behaviour | property object:widget rw | 0.2.0
+member | window_buttons.button | method (name:enum:window_button_name) -> object:window_button? | 0.2.0
+member | window_buttons.button_color | property string rw | 0.2.0
+member | window_buttons.button_size | property double rw | 0.2.0
+member | window_buttons.buttons | property list<enum:window_button_name> ro | 0.2.0
+member | window_buttons.children | property list<object:canvas> rw | 0.2.0
+member | window_buttons.clear_height | method () | 0.2.0
+member | window_buttons.clear_width | method () | 0.2.0
+member | window_buttons.contains | method (other:object:canvas) -> bool | 0.2.0
+member | window_buttons.direction | property enum:direction rw | 0.2.0
+member | window_buttons.failures | property uint ro | 0.2.0
+member | window_buttons.fill | property string rw | 0.2.0
+member | window_buttons.focus | method () | 0.2.0
+member | window_buttons.focus_changed | signal (focused:bool) | 0.2.0
+member | window_buttons.focused | property bool ro | 0.2.0
+member | window_buttons.frame | property object:window_frame ro | 0.2.0
+member | window_buttons.gap | property double rw | 0.2.0
+member | window_buttons.gone | signal () | 0.2.0
+member | window_buttons.grow | property double rw | 0.2.0
+member | window_buttons.height | property double rw | 0.2.0
+member | window_buttons.icons | property object:button_icons rw | 0.2.0
+member | window_buttons.input | property bool rw | 0.2.0
+member | window_buttons.invalidate | method () | 0.2.0
+member | window_buttons.key | signal (event:object:ui_key_event) | 0.2.0
+member | window_buttons.mount | method (parent:uint) | 0.2.0
+member | window_buttons.mount_top | method () | 0.2.0
+member | window_buttons.natural_height | property double ro | 0.2.0
+member | window_buttons.natural_width | property double ro | 0.2.0
+member | window_buttons.node | property uint ro | 0.2.0
+member | window_buttons.on_key | property callback:key_handler rw | 0.2.0
+member | window_buttons.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | window_buttons.opacity | property double rw | 0.2.0
+member | window_buttons.padding | property double rw | 0.2.0
+member | window_buttons.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | window_buttons.parent | property object:canvas ro | 0.2.0
+member | window_buttons.placement | property enum:placement rw | 0.2.0
+member | window_buttons.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | window_buttons.radius | property double rw | 0.2.0
+member | window_buttons.remove | method (child:object:canvas) | 0.2.0
+member | window_buttons.restore_icon | property string rw | 0.2.0
+member | window_buttons.secure | property bool rw | 0.2.0
+member | window_buttons.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | window_buttons.visible | property bool rw | 0.2.0
+member | window_buttons.width | property double rw | 0.2.0
+member | window_buttons.x | property double rw | 0.2.0
+member | window_buttons.y | property double rw | 0.2.0
+member | window_drag.attach | method (canvas:object:canvas) | 0.2.0
+member | window_drag.frame | property object:window_frame ro | 0.2.0
+member | window_drag.motion | method (event:object:ui_pointer_event) | 0.2.0
+member | window_drag.press | method (event:object:ui_pointer_event) | 0.2.0
+member | window_drag.release | method (event:object:ui_pointer_event) | 0.2.0
+member | window_frame.actions | property object:window_actions ro | 0.2.0
+member | window_frame.alive | property bool ro | 0.2.0
+member | window_frame.bottom | property object:edge_outlet ro | 0.2.0
+member | window_frame.bottom_left | property object:corner_outlet ro | 0.2.0
+member | window_frame.bottom_right | property object:corner_outlet ro | 0.2.0
+member | window_frame.center | property object:outlet ro | 0.2.0
+member | window_frame.client | property string ro | 0.2.0
+member | window_frame.content | property object:frame_content ro | 0.2.0
+member | window_frame.end | property object:outlet ro | 0.2.0
+member | window_frame.inset | property object:frame_inset ro | 0.2.0
+member | window_frame.kind | property enum:frame_kind ro | 0.2.0
+member | window_frame.left | property object:edge_outlet ro | 0.2.0
+member | window_frame.overlay | property object:layer_outlet ro | 0.2.0
+member | window_frame.reserved | property object:frame_inset ro | 0.2.0
+member | window_frame.resize_handles | method (thickness?:double) -> object:resize_handles | 0.2.0
+member | window_frame.right | property object:edge_outlet ro | 0.2.0
+member | window_frame.room_changed | signal (inset:object:frame_inset) | 0.2.0
+member | window_frame.server | property bool ro | 0.2.0
+member | window_frame.start | property object:outlet ro | 0.2.0
+member | window_frame.top | property object:edge_outlet ro | 0.2.0
+member | window_frame.top_left | property object:corner_outlet ro | 0.2.0
+member | window_frame.top_right | property object:corner_outlet ro | 0.2.0
+member | window_frame.underlay | property object:layer_outlet ro | 0.2.0
+
+object | app_icon | base box retained ctor(frame) | 0.2.0
+object | app_tile | base none record | 0.2.0
+object | button_icons | base none record | 0.2.0
+object | corner_outlet | base outlet retained | 0.2.0
+object | decorations | base none service | 0.2.0
+object | drag_area | base box retained ctor(frame) | 0.2.0
+object | edge_outlet | base outlet retained | 0.2.0
+object | frame_backdrop | base box retained | 0.2.0
+object | frame_border | base canvas retained ctor(frame) | 0.2.0
+object | frame_client | base none record | 0.2.0
+object | frame_content | base none record | 0.2.0
+object | frame_glow | base canvas retained | 0.2.0
+object | frame_press_event | base none record | 0.2.0
+object | layer_outlet | base outlet retained | 0.2.0
+object | outlet | base box retained | 0.2.0
+object | resize_handle | base box retained ctor(frame, side) | 0.2.0
+object | resize_handles | base box retained ctor(frame) | 0.2.0
+object | title_text | base text retained ctor(frame) | 0.2.0
+object | titlebar | base drag_area retained ctor(frame) | 0.2.0
+object | titlebar_style | base none record | 0.2.0
+object | window_actions | base none retained | 0.2.0
+object | window_button | base icon retained ctor(frame, name) | 0.2.0
+object | window_buttons | base box retained ctor(frame, buttons) | 0.2.0
+object | window_drag | base none retained ctor(frame) | 0.2.0
+object | window_frame | base none retained | 0.2.0

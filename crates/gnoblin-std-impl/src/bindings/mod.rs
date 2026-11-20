@@ -22,7 +22,7 @@
 mod drags;
 mod gesture;
 mod step_api;
-mod steps;
+pub(crate) mod steps;
 
 pub(crate) use self::step_api::{drag_clamp, drag_resize, drag_step, drag_tile, drag_zone, gesture_way};
 

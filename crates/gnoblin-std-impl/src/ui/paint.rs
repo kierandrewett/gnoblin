@@ -398,6 +398,29 @@ pub(crate) fn line(x1: f64, y1: f64, x2: f64, y2: f64, width: f64, color: &str) 
     })
 }
 
+/// A rectangle op that is a ring: no fill, an outline of `stroke_width` in `stroke`.
+///
+/// # Errors
+///
+/// A number is not finite or the colour is not one.
+pub(crate) fn outline(
+    (x, y, width, height): (f64, f64, f64, f64),
+    radius: f64,
+    stroke: &str,
+    stroke_width: f64,
+) -> Result<PaintOp, String> {
+    Ok(PaintOp::Rect {
+        x: finite(x)?,
+        y: finite(y)?,
+        width: finite(width)?,
+        height: finite(height)?,
+        radius: finite(radius)?,
+        fill: Rgba8::TRANSPARENT,
+        stroke: colour(stroke)?,
+        stroke_width: finite(stroke_width)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

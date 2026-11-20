@@ -18,19 +18,19 @@
 //! shell's hook runs from the toolkit's turn.
 
 mod bar;
-mod classes;
+pub(crate) mod classes;
 mod clock;
 mod entry;
 mod input;
 pub(crate) use input::CanvasEvent;
 mod layout;
-mod paint;
+pub(crate) mod paint;
 mod session;
 mod text;
 mod toast;
-mod tree;
-mod update;
-mod widget;
+pub(crate) mod tree;
+pub(crate) mod update;
+pub(crate) mod widget;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

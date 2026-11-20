@@ -1,0 +1,1452 @@
+# The `frame` module of `gnoblin.std`: the window frame, its outlets and parts, the stock titlebar and the decorations that give every
+# window a frame.
+#
+# A frame is the surface round one window's content. The library makes one for each window while the decorations run (`decorations`), and
+# calls the shell's `frame` callback with the window and its frame to fill it: a shell reads the outlets it wants (`frame.top`, `frame.overlay`)
+# and adds canvases to them, or leaves the stock titlebar (`titlebar.fill`). The frame places its outlets from the window's size and its
+# inset, and tells the window's layout how much room it takes. The surface is described in `design/native-std-port.md`.
+#
+# A window is named by its node number as text (`window_frame.client`), as every client is in this namespace, and the closures of this module
+# are given a `frame_client`: what the window was when the closure was called.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# ---- enums ---------------------------------------------------------------------------------------------------------------------------
+
+# Who draws what a frame holds: `server` for a window the shell frames (it has edges and an inset), `layers` for a window that draws its own
+# frame or has none, which can still have an underlay and an overlay but no edge and no inset.
+[[enum]]
+name = "frame_kind"
+since = "0.2.0"
+values = ["server", "layers"]
+
+# The four edges of a frame.
+[[enum]]
+name = "frame_side"
+since = "0.2.0"
+values = ["top", "right", "bottom", "left"]
+
+# The four corners of a frame.
+[[enum]]
+name = "frame_corner"
+since = "0.2.0"
+values = ["top-left", "top-right", "bottom-left", "bottom-right"]
+
+# Which side of the window's content a layer sits: `under` it or `over` it.
+[[enum]]
+name = "frame_layer"
+since = "0.2.0"
+values = ["under", "over"]
+
+# The three window buttons.
+[[enum]]
+name = "window_button_name"
+since = "0.2.0"
+values = ["minimise", "maximise", "close"]
+
+# The side or corner of the window a resize handle holds: it moves with the pointer, the opposite one stays.
+[[enum]]
+name = "resize_side"
+since = "0.2.0"
+values = ["top-left", "top-right", "bottom-left", "bottom-right", "left", "right", "top", "bottom"]
+
+# The three clicks the seat gives an action to.
+[[enum]]
+name = "seat_gesture"
+since = "0.2.0"
+values = ["double_click", "middle_click", "right_click"]
+
+# ---- callbacks -----------------------------------------------------------------------------------------------------------------------
+
+# Fills a frame. It runs once for each window when its frame is made, and again when the window's `decoration` changes, with the window and
+# its frame: read the outlets you want and put canvases in them. It answers `false` to give this window no frame at all; any other answer,
+# or none, keeps it. A client-drawn frame (`frame.server` false) has only the underlay and the overlay.
+[[callback]]
+name = "frame_fill"
+since = "0.2.0"
+returns = "bool"
+
+[[callback.param]]
+name = "client"
+type = "object:frame_client"
+
+[[callback.param]]
+name = "frame"
+type = "object:window_frame"
+
+# A question about a window: whether a rule applies, or an outlet is hidden for it.
+[[callback]]
+name = "frame_question"
+since = "0.2.0"
+returns = "bool"
+
+[[callback.param]]
+name = "client"
+type = "object:frame_client"
+
+# A colour that depends on the window: a focus ring that follows the focus.
+[[callback]]
+name = "frame_colour"
+since = "0.2.0"
+returns = "string"
+
+[[callback.param]]
+name = "client"
+type = "object:frame_client"
+
+# Work an outlet runs once a frame before it is placed: read the window into the outlet's own fields here.
+[[callback]]
+name = "frame_refresh"
+since = "0.2.0"
+
+# A shell operation a click on a frame asks for: the window menu, or putting the window under the others, or minimising it.
+[[callback]]
+name = "frame_action"
+since = "0.2.0"
+
+[[callback.param]]
+name = "client"
+type = "object:frame_client"
+
+# Maximises the window (`on` true) or restores it, as the shell does it.
+[[callback]]
+name = "frame_maximise"
+since = "0.2.0"
+
+[[callback.param]]
+name = "client"
+type = "object:frame_client"
+
+[[callback.param]]
+name = "on"
+type = "bool"
+
+# A button went down on a frame, or came up.
+[[callback]]
+name = "frame_press"
+since = "0.2.0"
+
+[[callback.param]]
+name = "client"
+type = "object:frame_client"
+
+[[callback.param]]
+name = "event"
+type = "object:frame_press_event"
+
+# ---- records -------------------------------------------------------------------------------------------------------------------------
+
+# What a framed window was when a closure was called. A closure that outlives the call holds this and not the window.
+[[object]]
+name = "frame_client"
+since = "0.2.0"
+kind = "record"
+
+# The window's node number as text.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+
+# The window's title.
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+
+# The window's application id; empty when it has none.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+# Whether the window has keyboard focus.
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+
+# Whether the window fills the output.
+[[object.property]]
+name = "fullscreen"
+type = "bool"
+since = "0.2.0"
+
+# Whether the window is maximised.
+[[object.property]]
+name = "maximised"
+type = "bool"
+since = "0.2.0"
+
+# Whether the window is minimised.
+[[object.property]]
+name = "minimised"
+type = "bool"
+since = "0.2.0"
+
+# The content's x coordinate in logical pixels.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+# The content's y coordinate in logical pixels.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# The content's width in logical pixels.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+# The content's height in logical pixels.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# Who draws the window's frame as the compositor negotiated it: `server`, `client` or `none`.
+[[object.property]]
+name = "decoration"
+type = "string"
+since = "0.2.0"
+
+# False once the compositor has destroyed the window.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+
+# Where the pointer went down or came up on a frame, in the coordinates of the canvas that heard it.
+[[object]]
+name = "frame_press_event"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# The button, as the compositor numbers them (Linux `BTN_LEFT` is 272).
+[[object.property]]
+name = "button"
+type = "uint"
+since = "0.2.0"
+
+# Where the client's surface sits in the window's coordinates, and the room the frame leaves round it.
+[[object]]
+name = "frame_content"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# The room the frame leaves round the content.
+[[object.property]]
+name = "inset"
+type = "object:frame_inset"
+since = "0.2.0"
+
+# The icon of each window button, by name from the icon theme.
+[[object]]
+name = "button_icons"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "minimise"
+type = "string"
+since = "0.2.0"
+default = "window-minimize-symbolic"
+
+[[object.property]]
+name = "maximise"
+type = "string"
+since = "0.2.0"
+default = "window-maximize-symbolic"
+
+[[object.property]]
+name = "close"
+type = "string"
+since = "0.2.0"
+default = "window-close-symbolic"
+
+# The stock titlebar's appearance and layout. Lengths are logical pixels.
+[[object]]
+name = "titlebar_style"
+since = "0.2.0"
+kind = "record"
+
+# The bar's height.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+default = 28.0
+
+# The space between the bar's edge and what it holds.
+[[object.property]]
+name = "padding"
+type = "double"
+since = "0.2.0"
+default = 6.0
+
+# The space between the drag area and the buttons, and between the buttons.
+[[object.property]]
+name = "gap"
+type = "double"
+since = "0.2.0"
+default = 8.0
+
+# The bar's corner radius.
+[[object.property]]
+name = "radius"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The fill while the window has the focus.
+[[object.property]]
+name = "focused_fill"
+type = "string"
+since = "0.2.0"
+default = "#414559"
+
+# The fill while it does not.
+[[object.property]]
+name = "unfocused_fill"
+type = "string"
+since = "0.2.0"
+default = "#232634"
+
+# The title's size.
+[[object.property]]
+name = "title_size"
+type = "double"
+since = "0.2.0"
+default = 13.0
+
+# The title's colour.
+[[object.property]]
+name = "title_color"
+type = "string"
+since = "0.2.0"
+default = "#c6d0f5"
+
+# The title's font family.
+[[object.property]]
+name = "title_font"
+type = "string"
+since = "0.2.0"
+default = "sans"
+
+# The buttons, left to right; leave one out to have none of it.
+[[object.property]]
+name = "buttons"
+type = "list<enum:window_button_name>"
+since = "0.2.0"
+optional = true
+
+# A button icon's size.
+[[object.property]]
+name = "button_size"
+type = "double"
+since = "0.2.0"
+default = 16.0
+
+# A button icon's colour.
+[[object.property]]
+name = "button_color"
+type = "string"
+since = "0.2.0"
+default = "#cdd6f4"
+
+# The icon of each button.
+[[object.property]]
+name = "icons"
+type = "object:button_icons"
+since = "0.2.0"
+optional = true
+
+# ---- the frame -----------------------------------------------------------------------------------------------------------------------
+
+# The frame of one window, made by the decorations. Its outlets are `top`, `bottom`, `left` and `right` (edges that take room), `top_left`,
+# `top_right`, `bottom_left` and `bottom_right` (corners that take none), `underlay` and `overlay` (layers that take none), `start`, `center` and
+# `end` (the top edge's zones). An outlet is made when it is first read. Reading an outlet of a client-drawn frame (`kind` `layers`) fails, except
+# the layers: a second title bar over the client's own is a double title bar.
+[[object]]
+name = "window_frame"
+since = "0.2.0"
+kind = "handle"
+retained = true
+
+# The window this frame surrounds, by node number as text.
+[[object.property]]
+name = "client"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the window has shell-drawn edges and an inset (`server`) or draws its own frame (`layers`).
+[[object.property]]
+name = "kind"
+type = "enum:frame_kind"
+since = "0.2.0"
+readonly = true
+
+# Whether the frame is a server frame.
+[[object.property]]
+name = "server"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# True until the frame is destroyed, and until the window's node is gone.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The room reserved round the content now: all zero while the window is fullscreen or without a server frame.
+[[object.property]]
+name = "inset"
+type = "object:frame_inset"
+since = "0.2.0"
+readonly = true
+
+# The room the frame keeps for itself even while fullscreen hides it.
+[[object.property]]
+name = "reserved"
+type = "object:frame_inset"
+since = "0.2.0"
+readonly = true
+
+# The content outlet: not fillable, it says where the client's surface is and how much room the edges left it.
+[[object.property]]
+name = "content"
+type = "object:frame_content"
+since = "0.2.0"
+readonly = true
+
+# The top edge outlet.
+[[object.property]]
+name = "top"
+type = "object:edge_outlet"
+since = "0.2.0"
+readonly = true
+
+# The bottom edge outlet.
+[[object.property]]
+name = "bottom"
+type = "object:edge_outlet"
+since = "0.2.0"
+readonly = true
+
+# The left edge outlet.
+[[object.property]]
+name = "left"
+type = "object:edge_outlet"
+since = "0.2.0"
+readonly = true
+
+# The right edge outlet.
+[[object.property]]
+name = "right"
+type = "object:edge_outlet"
+since = "0.2.0"
+readonly = true
+
+# The top-left corner outlet.
+[[object.property]]
+name = "top_left"
+type = "object:corner_outlet"
+since = "0.2.0"
+readonly = true
+
+# The top-right corner outlet.
+[[object.property]]
+name = "top_right"
+type = "object:corner_outlet"
+since = "0.2.0"
+readonly = true
+
+# The bottom-left corner outlet.
+[[object.property]]
+name = "bottom_left"
+type = "object:corner_outlet"
+since = "0.2.0"
+readonly = true
+
+# The bottom-right corner outlet.
+[[object.property]]
+name = "bottom_right"
+type = "object:corner_outlet"
+since = "0.2.0"
+readonly = true
+
+# The first zone of the top edge: a titlebar's left.
+[[object.property]]
+name = "start"
+type = "object:outlet"
+since = "0.2.0"
+readonly = true
+
+# The middle zone of the top edge: a titlebar's title, which takes the room the other two leave.
+[[object.property]]
+name = "center"
+type = "object:outlet"
+since = "0.2.0"
+readonly = true
+
+# The last zone of the top edge: a titlebar's right.
+[[object.property]]
+name = "end"
+type = "object:outlet"
+since = "0.2.0"
+readonly = true
+
+# The layer behind the window's content: a backdrop, a glow. It takes no room and no pointer.
+[[object.property]]
+name = "underlay"
+type = "object:layer_outlet"
+since = "0.2.0"
+readonly = true
+
+# The layer in front of the window for a focus ring, a badge or resize handles. It takes no room and, by default, no pointer.
+[[object.property]]
+name = "overlay"
+type = "object:layer_outlet"
+since = "0.2.0"
+readonly = true
+
+# The window's shared actions, which every part of its frame uses.
+[[object.property]]
+name = "actions"
+type = "object:window_actions"
+since = "0.2.0"
+readonly = true
+
+# Puts the eight resize handles round the frame, with `thickness` pixels reaching outside it (6 when left out), and answers them. The stock
+# titlebar has none: resize with `Super+MouseRight+Drag` unless the frame has handles.
+[[object.method]]
+name = "resize_handles"
+since = "0.2.0"
+returns = "object:resize_handles"
+
+[[object.method.param]]
+name = "thickness"
+type = "double"
+optional = true
+
+# The room the frame reserves round the content changed. Told from the next turn.
+[[object.signal]]
+name = "room_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "inset"
+type = "object:frame_inset"
+
+# A named place in a window frame for canvases. It is a box, made when first read and placed from the window's size and the frame's inset.
+# `add` puts a canvas under it; `clear` destroys what was added. A box in an outlet is positioned as the outlet's box positions it: a row or a
+# column stretches it across and gives one with `grow` the room that is left.
+# 
+# An outlet is hidden, and takes no room, while the window is fullscreen, while `hidden` is true and while `hide_when` answers true for the
+# window. It follows the window once a frame: put anything that reads the window into the canvases you add (their `refresh`) or into `on_refresh`,
+# and it is up to date without the shell running again.
+[[object]]
+name = "outlet"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# The outlet's name in its frame: `top`, `top.start`, `overlay`.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The frame that made this outlet.
+[[object.property]]
+name = "owner"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# Hides the outlet and takes back its room while true.
+[[object.property]]
+name = "hidden"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# Hides the outlet and takes back its room while it answers true for the window: `c => c.maximised`.
+[[object.property]]
+name = "hide_when"
+type = "callback:frame_question"
+since = "0.2.0"
+
+# Runs once a frame before the outlet is placed.
+[[object.property]]
+name = "on_refresh"
+type = "callback:frame_refresh"
+since = "0.2.0"
+
+# Whether the outlet shows and takes its room now.
+[[object.property]]
+name = "shown"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the outlet would show and take its room if the window were not fullscreen.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Mounts a node of the compositor's tree that is not a canvas (a scene view) under the outlet. `clear` destroys it.
+[[object.method]]
+name = "add_node"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "node"
+type = "uint"
+
+# Destroys every canvas and node that was added and leaves the outlet empty.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# A strip along one side of a window frame. Its thickness is room the content gives up, so what is in it does not overlap the client. `size` is
+# how much room it takes; left unset the edge is as thick as the thickest canvas was when it was added (its height for `top` and `bottom`, its
+# width for `left` and `right`), so give a canvas that is measured later (a `text`) a size of its own or set `size`. The strip spans the whole
+# width of the frame for `top` and `bottom`, and the content's height for `left` and `right`.
+# 
+# `start`, `center` and `end` are the three zones of the edge, a titlebar's left buttons, its title and its right buttons: reading one makes all
+# three. Canvases added to the edge itself sit beside them.
+[[object]]
+name = "edge_outlet"
+since = "0.2.0"
+base = "outlet"
+retained = true
+
+# The side of the window frame this strip follows.
+[[object.property]]
+name = "side"
+type = "enum:frame_side"
+since = "0.2.0"
+readonly = true
+
+# The thickness in pixels; left unset the canvases added are measured.
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.2.0"
+
+# The room the edge takes while the window is not fullscreen: 0 when the edge is hidden.
+[[object.property]]
+name = "reserved"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The room the edge takes now: nothing while the window is fullscreen.
+[[object.property]]
+name = "thickness"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The first zone of the edge.
+[[object.property]]
+name = "start"
+type = "object:outlet"
+since = "0.2.0"
+readonly = true
+
+# The middle zone of the edge, which takes the room the other two leave.
+[[object.property]]
+name = "center"
+type = "object:outlet"
+since = "0.2.0"
+readonly = true
+
+# The last zone of the edge.
+[[object.property]]
+name = "end"
+type = "object:outlet"
+since = "0.2.0"
+readonly = true
+
+# Goes back to measuring the canvases added.
+[[object.method]]
+name = "clear_size"
+since = "0.2.0"
+
+# A square at a window frame's corner, over the edges that meet there. It takes no room and can hold a resize handle, a rounded cap or a badge.
+# Its `size` is the side of the square, whose outer corner is the frame's; left unset it is the thicker of the two edges that meet there.
+[[object]]
+name = "corner_outlet"
+since = "0.2.0"
+base = "outlet"
+retained = true
+
+# The corner this outlet occupies.
+[[object.property]]
+name = "corner"
+type = "enum:frame_corner"
+since = "0.2.0"
+readonly = true
+
+# The side of the square in pixels; left unset, the thicker of the two edges that meet at the corner.
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.2.0"
+
+# Goes back to the thicker of the two edges.
+[[object.method]]
+name = "clear_size"
+since = "0.2.0"
+
+# The `underlay` behind a window's content and the `overlay` in front of it. A layer covers the whole frame and `bleed` pixels more on every
+# side, takes no room and takes no pointer: a canvas added to it has its `input` set to `false`, and a shell that wants one to take the pointer (a
+# badge to click) sets it back to `true` after `add`. The origin of its coordinates is its own corner, `bleed` pixels outside the frame's corner.
+# The frame's shape does not grow to meet it: rounded corners, borders and shadows follow the frame itself.
+[[object]]
+name = "layer_outlet"
+since = "0.2.0"
+base = "outlet"
+retained = true
+
+# Whether the layer sits behind or in front of the window content.
+[[object.property]]
+name = "kind"
+type = "enum:frame_layer"
+since = "0.2.0"
+readonly = true
+
+# How many pixels past the frame the layer reaches on every side.
+[[object.property]]
+name = "bleed"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# ---- actions and drag ----------------------------------------------------------------------------------------------------------------
+
+# The window's shared actions: close, minimise, maximise and the seat's click actions. Custom canvases and the stock parts use the same ones.
+# 
+# `close` fades the window out first (180 ms) and then closes it; a window that is still there 1500 ms later is shown again, as a client that
+# asked the user something is. A window the client closes itself is gone from the compositor at once, so there is nothing to fade.
+[[object]]
+name = "window_actions"
+since = "0.2.0"
+kind = "handle"
+retained = true
+
+# The frame of the window these actions belong to.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# Whether the window is fading out to be closed, or has been asked to close and has not gone yet.
+[[object.property]]
+name = "closing"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The clock the double click and the fade are timed by, in milliseconds. Left out, the toolkit's.
+[[object.property]]
+name = "now"
+type = "callback:time_source"
+since = "0.2.0"
+
+# Starts the fade out of a window that is being closed. A second call while it fades does nothing.
+[[object.method]]
+name = "close"
+since = "0.2.0"
+
+# Maximises the window, or restores it, as the decorations' `maximise` hook does it, else by writing the flag.
+[[object.method]]
+name = "toggle_maximise"
+since = "0.2.0"
+
+# Minimises the window as the decorations' `minimise` hook does it, else by writing the flag.
+[[object.method]]
+name = "minimise"
+since = "0.2.0"
+
+# Runs the decorations' `menu` hook for the window: the window menu where the pointer is.
+[[object.method]]
+name = "menu"
+since = "0.2.0"
+
+# Puts the window under the others, as the decorations' `lower` hook does it, else natively.
+[[object.method]]
+name = "lower"
+since = "0.2.0"
+
+# Runs what the seat says a click does: `toggle-maximize`, `lower`, `menu`, `minimize`, `toggle-maximize-horizontally`,
+# `toggle-maximize-vertically` or `none`. Another action is an error.
+[[object.method]]
+name = "gesture"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "property"
+type = "enum:seat_gesture"
+
+# The window behaviour of a drag area. A left press takes the window (the decorations' `press` hook) and a drag moves the client by how far the
+# pointer is from where it pressed, in the canvas's own coordinates. A second left press within half a second runs the seat's `double_click`
+# action instead of starting a drag; a right or middle press runs its action. `attach` makes a canvas a drag area: its presses, motions and
+# releases are this behaviour's.
+[[object]]
+name = "window_drag"
+since = "0.2.0"
+kind = "handle"
+retained = true
+ctor = ["frame"]
+
+# The frame of the window this behaviour moves.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# Makes `canvas` a drag area.
+[[object.method]]
+name = "attach"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "canvas"
+type = "object:canvas"
+
+# Handles a pointer press and starts a drag or runs a seat action.
+[[object.method]]
+name = "press"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "event"
+type = "object:ui_pointer_event"
+
+# Moves the window while a left-button drag is active.
+[[object.method]]
+name = "motion"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "event"
+type = "object:ui_pointer_event"
+
+# Ends an active drag when the pointer button is released.
+[[object.method]]
+name = "release"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "event"
+type = "object:ui_pointer_event"
+
+# ---- the parts -----------------------------------------------------------------------------------------------------------------------
+
+# A box that is a handle for its window. A press on it, or on anything inside it that does not take the press itself (a title, an icon), drags the
+# window; see `window_drag` for the clicks. Put the title and the space between the buttons in one, or give a custom bar the behaviour by making
+# the bar a drag area.
+[[object]]
+name = "drag_area"
+since = "0.2.0"
+base = "box"
+retained = true
+ctor = ["frame"]
+
+# The frame of the window this part belongs to.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# The stock titlebar. Its width follows the window's, its fill follows the focus and its title the window's title, all read once a frame. A press on
+# a button does what the button says; a press elsewhere on the bar drags the window, and a second press in quick succession, a middle click and a
+# right click do what the seat's `double_click`, `middle_click` and `right_click` say. The close button fades the window out first.
+# It takes the room an outlet gives it. `install` is the whole of `titlebar_fill`: a frame filled by hand calls it to have the stock bar.
+[[object]]
+name = "titlebar"
+since = "0.2.0"
+base = "drag_area"
+retained = true
+ctor = ["frame"]
+
+# The bar's appearance and layout, applied once a frame. A bar the decorations made follows their `style` until this is set.
+[[object.property]]
+name = "style"
+type = "object:titlebar_style"
+since = "0.2.0"
+
+# The part of the bar that holds the title: the bar's room that no button takes.
+[[object.property]]
+name = "title_area"
+type = "object:box"
+since = "0.2.0"
+readonly = true
+
+# The title text shown by the bar.
+[[object.property]]
+name = "title"
+type = "object:title_text"
+since = "0.2.0"
+readonly = true
+
+# The buttons currently in the bar, left to right.
+[[object.property]]
+name = "buttons"
+type = "list<object:window_button>"
+since = "0.2.0"
+readonly = true
+
+# Adds a titlebar to the top outlet of a server frame and sets the outlet's height to the style's. Answers `false` for a client-drawn frame, which
+# has no server frame. `style` left out, the decorations' own.
+[[object.method]]
+name = "install"
+since = "0.2.0"
+function = true
+returns = "bool"
+
+[[object.method.param]]
+name = "frame"
+type = "object:window_frame"
+
+[[object.method.param]]
+name = "style"
+type = "object:titlebar_style"
+optional = true
+
+# The window's title as one line of text that follows the window. Put it in any outlet. It reads the title once a frame, takes the room a row leaves
+# (`grow` 1) and has the stock titlebar's size, colour and font unless set otherwise.
+[[object]]
+name = "title_text"
+since = "0.2.0"
+base = "text"
+retained = true
+ctor = ["frame"]
+
+# The frame of the window this part belongs to.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# One of the window's three buttons as an icon: minimise, maximise or close. A left press does what the button says through the window's actions:
+# close fades the window out and closes it, maximise toggles it as the shell does, minimise hides it. The press does not reach the canvas under the
+# button, so a button in a drag area is not a drag.
+[[object]]
+name = "window_button"
+since = "0.2.0"
+base = "icon"
+retained = true
+ctor = ["frame", "name"]
+
+# The frame of the window this part belongs to.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# Which window action this button invokes.
+[[object.property]]
+name = "name"
+type = "enum:window_button_name"
+since = "0.2.0"
+readonly = true
+
+# The icon the maximise button shows while the window is maximised. Left unset it keeps its one icon.
+[[object.property]]
+name = "restore_icon"
+type = "string"
+since = "0.2.0"
+
+# The window's buttons in a row, in the order the constructor names. It is as wide as its buttons and gap make it. Place it in any outlet, left or
+# right or both, and give it a `gap`.
+[[object]]
+name = "window_buttons"
+since = "0.2.0"
+base = "box"
+retained = true
+ctor = ["frame", "buttons"]
+
+# The frame of the window this part belongs to.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# The buttons, left to right.
+[[object.property]]
+name = "buttons"
+type = "list<enum:window_button_name>"
+since = "0.2.0"
+readonly = true
+
+# The icon of each button, by name; setting it changes the buttons that are there.
+[[object.property]]
+name = "icons"
+type = "object:button_icons"
+since = "0.2.0"
+
+# The size of each button's icon.
+[[object.property]]
+name = "button_size"
+type = "double"
+since = "0.2.0"
+
+# The colour of each button's icon.
+[[object.property]]
+name = "button_color"
+type = "string"
+since = "0.2.0"
+
+# The icon the maximise button shows while the window is maximised.
+[[object.property]]
+name = "restore_icon"
+type = "string"
+since = "0.2.0"
+
+# The button called `name`, or none when the row has none.
+[[object.method]]
+name = "button"
+since = "0.2.0"
+returns = "object:window_button"
+optional = true
+
+[[object.method.param]]
+name = "name"
+type = "enum:window_button_name"
+
+# A tile for a window's application. The painter has no icon theme, so the tile shows the application's first letter on a colour derived from its
+# id: the same application gets the same tile in every window and session.
+[[object]]
+name = "app_icon"
+since = "0.2.0"
+base = "box"
+retained = true
+ctor = ["frame"]
+
+# The frame of the window this part belongs to.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# The side of the tile in logical pixels.
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.2.0"
+default = 16.0
+
+# The lettering colour.
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+default = "#ffffff"
+
+# The letter and the colour of an application id: the last part of `org.gnome.Nautilus` is `Nautilus`, so `N`.
+[[object.method]]
+name = "tile_of"
+since = "0.2.0"
+function = true
+returns = "object:app_tile"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+
+# The letter and colour of an application's tile.
+[[object]]
+name = "app_tile"
+since = "0.2.0"
+kind = "record"
+
+# The tile's letter: the first of the last part of the application id, upper-cased, or `?`.
+[[object.property]]
+name = "letter"
+type = "string"
+since = "0.2.0"
+
+# The tile's colour as `#rrggbb`.
+[[object.property]]
+name = "colour"
+type = "string"
+since = "0.2.0"
+
+# A box as large as the frame, less the `bleed` of the layer it is in. In the underlay it shows through a client that draws translucent pixels,
+# and it is what a frame with no titlebar leaves to fill the gap. `fill` is `#1e1e2e` unless set.
+[[object]]
+name = "frame_backdrop"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# A ring along the frame edge, `thickness` pixels wide and inside it; in the overlay it is a focus ring. It fills its layer or outlet less the
+# layer's `bleed`. `color_of` is asked each frame, so a focus ring follows the window's colour.
+[[object]]
+name = "frame_border"
+since = "0.2.0"
+base = "canvas"
+retained = true
+ctor = ["frame"]
+
+# The frame of the window this part belongs to.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# The line's width in pixels.
+[[object.property]]
+name = "thickness"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# The ring's colour.
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+default = "#89b4fa"
+
+# A colour that depends on the window; it takes the place of `color` while set.
+[[object.property]]
+name = "color_of"
+type = "callback:frame_colour"
+since = "0.2.0"
+
+# The ring's corner radius in pixels.
+[[object.property]]
+name = "radius"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# A soft halo behind the window's frame. The paint list has no blur, so the halo is made of growing, fading rounded rectangles drawn into the
+# underlay's `bleed`: set `frame.underlay.bleed` to its reach. It fills the layer, so the rings grow from the frame's edge out to the layer's.
+[[object]]
+name = "frame_glow"
+since = "0.2.0"
+base = "canvas"
+retained = true
+
+# The halo's colour as `#rrggbb`.
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+default = "#89b4fa"
+
+# The strongest the halo is, next to the frame, from 0 to 1.
+[[object.property]]
+name = "strength"
+type = "double"
+since = "0.2.0"
+default = 0.5
+
+# The rounded corners of the frame the halo follows.
+[[object.property]]
+name = "radius"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The rings the halo is made of: more are smoother.
+[[object.property]]
+name = "steps"
+type = "uint"
+since = "0.2.0"
+default = 8
+
+# A canvas that resizes its window when it is dragged. Put it on any edge or corner, inside the frame or outside the window's geometry: the
+# compositor hits a canvas outside its parent's rectangle on its own. A left press and a drag moves the side or corner it holds by how far the
+# pointer moves in its own coordinates, in steps; the window keeps the size the client states as its least and most, or the stock least. A maximised
+# or fullscreen window is not resized: the handle is hidden then. The press is the window's too: it takes the focus. It paints nothing. Under a
+# parent that leaves its canvases where they are (a corner outlet, a layer) it is as large as the parent unless `fit_parent` is false; in a row or
+# column it takes the room `grow` gives it.
+[[object]]
+name = "resize_handle"
+since = "0.2.0"
+base = "box"
+retained = true
+ctor = ["frame", "side"]
+
+# The frame of the window this part belongs to.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# The edge or corner that stays under the pointer while resizing.
+[[object.property]]
+name = "side"
+type = "enum:resize_side"
+since = "0.2.0"
+readonly = true
+
+# Whether the handle is as large as its parent while the parent leaves its canvases where they are.
+[[object.property]]
+name = "fit_parent"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# The eight handles round a window's frame that resize it. A server-decorated window has no edge to take hold of unless a frame puts handles there.
+# The handles reach `thickness` pixels outside the frame, past the window's geometry, where the compositor still hits them. Put one in the
+# `overlay`, which is as large as the frame: `frame.resize_handles` does. The canvas lets the pointer through everywhere but on a handle.
+[[object]]
+name = "resize_handles"
+since = "0.2.0"
+base = "box"
+retained = true
+ctor = ["frame"]
+
+# The frame of the window this part belongs to.
+[[object.property]]
+name = "frame"
+type = "object:window_frame"
+since = "0.2.0"
+readonly = true
+
+# How far a handle reaches outside the frame.
+[[object.property]]
+name = "thickness"
+type = "double"
+since = "0.2.0"
+default = 6.0
+
+# How far a handle reaches inside the frame.
+[[object.property]]
+name = "inside"
+type = "double"
+since = "0.2.0"
+default = 2.0
+
+# The side of a corner handle, which is also how far an edge handle stops short of the corner.
+[[object.property]]
+name = "corner"
+type = "double"
+since = "0.2.0"
+default = 14.0
+
+# Each handle, in the order top-left, top-right, bottom-left, bottom-right, top, bottom, left, right.
+[[object.property]]
+name = "handles"
+type = "list<object:resize_handle>"
+since = "0.2.0"
+readonly = true
+
+# ---- the decorations -----------------------------------------------------------------------------------------------------------------
+
+# Gives every window a frame and fills it. A window the compositor told to be server-decorated gets a `server` frame with edges and an inset; any
+# other window gets a `layers` frame, which has the underlay and the overlay and no inset: a client that draws its own title bar (a GTK or Qt window,
+# foot) never gets a second bar over it. The compositor tells a client that asks for server-side that the server draws only while this shell has
+# declared decorations, which `start` does.
+# 
+# A rule is tried in the order it was added: the first that matches a window decides how it is filled, or that it has no frame. Without a rule, or
+# when none matches, the `frame` callback fills it; with none, the stock titlebar does. The layout driver leaves the room a frame reserves free
+# round each window it places.
+[[object]]
+name = "decorations"
+since = "0.2.0"
+kind = "service"
+
+# Whether `start` ran and `stop` did not.
+[[object.property]]
+name = "started"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Fills the frame of each window that no rule picked. Left out, the stock titlebar.
+[[object.property]]
+name = "frame"
+type = "callback:frame_fill"
+since = "0.2.0"
+
+# The look of the stock titlebar. Read live, so a change reaches the bars that are there.
+[[object.property]]
+name = "style"
+type = "object:titlebar_style"
+since = "0.2.0"
+
+# Puts resize handles this many pixels outside the frame of every server window made from now on. 0, none.
+[[object.property]]
+name = "resize_handles"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The clock the frames time double clicks and fades by, in milliseconds. Left out, the toolkit's.
+[[object.property]]
+name = "now"
+type = "callback:time_source"
+since = "0.2.0"
+
+# The seat's `menu` action: open the window menu where the pointer is. Left out it does nothing.
+[[object.property]]
+name = "menu"
+type = "callback:frame_action"
+since = "0.2.0"
+
+# The seat's `lower` action: put the window under the others. Left out the library lowers it.
+[[object.property]]
+name = "lower"
+type = "callback:frame_action"
+since = "0.2.0"
+
+# Maximises or restores the window as the shell does it, which leaves room for the frame. Left out the flag is written.
+[[object.property]]
+name = "maximise"
+type = "callback:frame_maximise"
+since = "0.2.0"
+
+# Minimises the window as the shell does it: the keyboard focus goes to another window. Left out the flag is written.
+[[object.property]]
+name = "minimise"
+type = "callback:frame_action"
+since = "0.2.0"
+
+# A button went down on the frame itself, not on one of its buttons: the window is pressed and takes the focus.
+[[object.property]]
+name = "press"
+type = "callback:frame_press"
+since = "0.2.0"
+
+# The button that went down on the frame came up.
+[[object.property]]
+name = "release"
+type = "callback:frame_press"
+since = "0.2.0"
+
+# Gives every window a frame, once, and declares to the compositor that this shell draws decorations. Calling it again changes nothing. It makes
+# a frame for every window that exists and for each one that comes.
+[[object.method]]
+name = "start"
+since = "0.2.0"
+
+# Takes every frame away and declares that this shell no longer draws decorations.
+[[object.method]]
+name = "stop"
+since = "0.2.0"
+
+# Adds a rule: a window whose application id equals `app_id` (when given), whose title equals `title` (when given) and for which `test` answers true
+# (when given) is filled by `fill`, or has no frame when `fill` is left out. Rules apply to frames made after the call; `reframe` makes one again.
+[[object.method]]
+name = "rule"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+optional = true
+
+[[object.method.param]]
+name = "title"
+type = "string"
+optional = true
+
+[[object.method.param]]
+name = "test"
+type = "callback:frame_question"
+optional = true
+
+[[object.method.param]]
+name = "fill"
+type = "callback:frame_fill"
+optional = true
+
+# The frame of the window `client`, if it has one.
+[[object.method]]
+name = "frame_of"
+since = "0.2.0"
+returns = "object:window_frame"
+optional = true
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# The room the frame of `client` takes round its content: nothing on any side with no frame, or while fullscreen.
+[[object.method]]
+name = "inset_of"
+since = "0.2.0"
+returns = "object:frame_inset"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# The room the frame of `client` keeps for itself even while fullscreen hides it.
+[[object.method]]
+name = "reserved_of"
+since = "0.2.0"
+returns = "object:frame_inset"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Takes the frame of `client` away and makes it again, calling the fill again. A rule that reads the title or a fill that reads another property of
+# the window is decided when the frame is made, so a shell that wants it decided again calls this.
+[[object.method]]
+name = "reframe"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "string"

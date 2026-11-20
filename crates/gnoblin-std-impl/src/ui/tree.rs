@@ -57,6 +57,7 @@ pub(crate) fn ui_for(ctx: GnoblinCtx) -> Res<Rc<Ui>> {
         request_hooks: RefCell::new(Vec::new()),
         next_hook: Cell::new(0),
         ids: RefCell::new(None),
+        frames: RefCell::new(crate::frame::FrameWorld::default()),
     });
     UIS.with(|uis| uis.borrow_mut().insert(ctx, Rc::clone(&ui)));
     if let Err(fail) = super::input::subscribe(&ui) {
@@ -141,12 +142,23 @@ impl Ui {
 
     /// Makes a canvas of `kind` in an object of its own, owned by the object the call is about.
     pub(crate) fn spawn(self: &Rc<Self>, cx: &mut Cx<'_>, kind: WidgetKind, owner: Obj) -> Res<(Obj, Cid)> {
+        self.spawn_named(cx, kind.class(), kind, owner)
+    }
+
+    /// Makes a canvas of `kind` in an object of the class `class`, which derives from the class of `kind` and is owned by `owner`.
+    pub(crate) fn spawn_named(
+        self: &Rc<Self>,
+        cx: &mut Cx<'_>,
+        class: &str,
+        kind: WidgetKind,
+        owner: Obj,
+    ) -> Res<(Obj, Cid)> {
         let cid = self.make(kind)?;
         let handle = CanvasHandle {
             ui: Rc::clone(self),
             cid,
         };
-        let obj = cx.spawn(kind.class(), handle)?;
+        let obj = cx.spawn(class, handle)?;
         self.tweak(cid, |widget| widget.obj = obj);
         cx.set_parent(obj, owner)?;
         self.schedule();

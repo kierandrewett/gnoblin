@@ -8,6 +8,10 @@ impl Ui {
     /// across the other axis), a grid in near-square cells. Children that are not boxes stay where they are, and a box whose direction
     /// is `none` leaves its children alone. Other canvases place nothing.
     pub(crate) fn arrange_default(&self, cid: Cid) {
+        // The eight handles round a frame are placed from the size of the canvas that holds them, not in a row.
+        if crate::frame::arrange(self, cid) {
+            return;
+        }
         let Some((kind, direction)) = self.read(cid, |widget| (widget.kind, widget.b.direction)) else {
             return;
         };

@@ -34,7 +34,7 @@ use crate::state::NodeId;
 const DRAG_STRIP: f64 = STD_DRAG_STRIP as f64;
 
 /// The smallest size a resize leaves a window that has no limit of its own.
-pub(super) const MIN_SIZE: (f64, f64) = (100.0, 80.0);
+pub(crate) const MIN_SIZE: (f64, f64) = (100.0, 80.0);
 
 /// How near an edge the pointer must be to name it, in pixels.
 pub(super) const SNAP_MARGIN: f64 = STD_SNAP_MARGIN as f64;

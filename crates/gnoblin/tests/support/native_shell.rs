@@ -143,6 +143,7 @@ pub struct StdShells {
     pub style: PathBuf,
     /// Example 26: a workspace with the library's layout, then one of the shell's own, then the library's again with its divider moved.
     pub objects: PathBuf,
+    pub frame: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -181,6 +182,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-style",
             "-p",
             "gnoblin-example-native-objects",
+            "-p",
+            "gnoblin-example-native-frame",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -202,6 +205,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         scene: debug.join("libnative_scene.so"),
         style: debug.join("libnative_style.so"),
         objects: debug.join("libnative_objects.so"),
+        frame: debug.join("libnative_frame.so"),
     })
 }
 
