@@ -1455,6 +1455,33 @@ gnoblin-config-migrate`, `just workspace-ci` and the `lua-runtime.yml` job on th
 - **Acceptance:** `modular::native_scene` places a `View` of a window and a `Camera3D` from Python and TypeScript and reads the
   node transforms from the tree. `scene_spec` and `xr` pass.
 
+**What exists.** `scene.toml` and `math.toml` declare `scene_node`, `view`, `camera3d`, `camera2d`, `scene`, `node_bindings`, `node_binding`, the
+`geometry` functions and the records they take (`vec3`, `quaternion`, `pose`, `ray`, `plane`, `ray_hit`, `transform_parts`). The writes of a node are the
+checked path the std table's scene functions use (shared code in `scene/mod.rs`), so a write is what the TypeScript scene wrote, including staging
+inside a transition. A `view` of a workspace keeps a mirror (`scene/mirror.rs`) that the std turn and the view's own writes bring up to date. A
+binding runs under a tracker on this library and on the core, from the turn after `bind`, once for each binding in the order made, then in passes of
+at most eight. `crates/gnoblin-std-impl/tests/scene.rs` replays the ten `scene_*` fixtures over the real core and library; example 24 and
+`modular::native_scene` run the classes from Rust, TypeScript and Python.
+
+**Allowances of the replay** (each is in the test, with its reason):
+
+1. A value no typed catalog carries (a text where a vector is declared, `null`, an object with a key that is not a field, `{ x, y }` without `z`) is
+   refused by the protocol in its own words; the replay asserts the refusal and records the fixture's text.
+2. A binding's first run is the next turn, not inside `bind` (a shell's closure never runs inside a call).
+3. The root object's `destroy` cannot refuse: ending it leaves the tree's root in place.
+4. `View.content` is `source` (a client's node) and `workspace` (a workspace id) until NpStdObjects serves the workspace class.
+5. The binding of a workspace's own `name` (`scene_bindings_collections`) is replayed on a probe node bound to the same function of `clients`.
+6. The stock focus policy's write to the seat on a new window is made by the replay (NpStdPolicy's native policy does it later).
+7. **Rollback, for NpStdStyle:** when a transition callback throws, the TypeScript engine wrote back its own copy of the window's state, which for
+   `scene_client_set` set `z`, `rotation` and `scale` to their defaults (the copy had not heard of earlier writes). The native engine keeps what the
+   earlier steps wrote; the shell-state rollback is NpStdStyle's `abort` callback. `Rig::allow_shared` names the three values.
+8. `Camera2D.position` writes `x` and `y` only; its refusal words follow the TypeScript flat camera.
+
+**Deletion audit.** Nothing under `scene/*`, `scene.ts`, `scene_mirror.ts`, `math/*` or `display/camera2d.ts` can go before NpFlip. Importers: `gnoblin-core/host/{client,contract,node_state}.ts`,
+`gnoblin-core/index.ts`, `gnoblin-std/{index,layout,workspace,display}.ts`, `display/{types,viewport}.ts`, `display_manager/manager.ts`, `extensions/xr/*`,
+`frame/{edge_outlet,layer_outlet,outlet}.ts`, `host/{lifecycle,members,xr_bridge}.ts`. The `gnoblin-js/src/xr.rs` stage-rollback natives serve the TypeScript XR
+and stay.
+
 #### NpStdStyle (6 days)
 
 - **Owns:** `gnoblin-std-impl/src/style/objects.rs`, `animation/staging.rs` (abort callback), catalog `style.toml`,
