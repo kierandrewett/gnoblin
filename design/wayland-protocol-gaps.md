@@ -36,13 +36,19 @@ list the owner asked about is not built, and this note says why and what each wo
 - Releasing the object, or the client going away, empties both properties. Two objects for one surface are served:
   the latest address wins, and releasing it leaves the other's in force.
 
-### ext-workspace
+### ext-workspace (partial)
+
+The protocol is served in part. It lists the declared workspaces, and it reports an active one only when a shell writes the
+seat property `active_workspace`. The stock shell does not write it, so with several workspaces none is reported active.
+Activate, assign and create requests are ignored, because no capabilities are advertised.
 
 - The compositor keeps no workspaces: the shell does. The list is the declared workspaces (`Seat.workspaces`, or one
   implicit workspace, `1`) and the id the shell writes to the new seat property `active_workspace`.
 - No capabilities are offered. `activate`, `deactivate`, `remove`, `assign` and `create_workspace` are ignored.
-- The stock shell does not write `active_workspace` yet. A session with several workspaces reports none active until
-  it does. A session with one always reports it active.
+- A session with one workspace always reports it active.
+- Making the stock shell write `active_workspace` is not small. A workspace's `active` is native state of the std engine
+  (per output, so several can be active), and the write needs a new host binding in `gnoblin-js` and the TypeScript host
+  types, a hook on each activation change, and a real-session test. It belongs with the native std port.
 
 ## Not built
 
