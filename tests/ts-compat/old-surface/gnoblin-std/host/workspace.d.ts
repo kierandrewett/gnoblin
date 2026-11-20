@@ -3,7 +3,7 @@ import { MutableCollection } from "gnoblin-core/host/collections";
 import type { Output } from "gnoblin-core/host/output";
 import { NativeObject } from "gnoblin-core/native_object";
 import type { PropertyBinding, PropertyBindings } from "gnoblin-core/properties";
-import { Workspace as NativeWorkspace } from "gnoblin-std/generated/classes";
+import { Workspace as NativeWorkspace } from "gnoblin-std/emitted/classes";
 import type { ShowOptions } from "gnoblin-std/host/show";
 import type { Gaps, Layout } from "gnoblin-std/layout";
 import type { Transition } from "gnoblin-std/transition/transition";

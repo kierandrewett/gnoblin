@@ -1,6 +1,6 @@
 import type { OutputTransform } from "gnoblin-core/output_config";
 import type { OutputAlign, OutputMatch, OutputProfileInit, OutputProfileMode, OutputProfilePosition, PlacementTarget } from "gnoblin-std/display/types";
-import { Profile as NativeProfile } from "gnoblin-std/generated/classes";
+import { Profile as NativeProfile } from "gnoblin-std/emitted/classes";
 declare const SIDES: readonly ["rightOf", "leftOf", "above", "below"];
 /**
  * The state of one profile as the script gave it, and the library's profile, which applies it. The library holds what is applied

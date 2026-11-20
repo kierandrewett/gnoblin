@@ -1,8 +1,8 @@
-import { Collection, Workspace } from "gnoblin-std/generated/classes";
-import type { Layout } from "gnoblin-std/generated/records";
-import type { LayoutContext, Placement, Rect } from "gnoblin-std/generated/records";
-import type { Init } from "gnoblin-std/generated/native";
-export * from "gnoblin-std/generated";
+import { Collection, Workspace } from "gnoblin-std/emitted/classes";
+import type { Layout } from "gnoblin-std/emitted/records";
+import type { LayoutContext, Placement, Rect } from "gnoblin-std/emitted/records";
+import type { Init } from "gnoblin-std/emitted/native";
+export * from "gnoblin-std/emitted";
 /** Every client of the compositor, in the order they appeared. */
 export declare function clients(): Collection;
 /** Every connected output. */

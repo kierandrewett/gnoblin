@@ -1,6 +1,6 @@
-import { Builtin } from "gnoblin-std/generated/classes";
-import type { Option, Placement as LibraryPlacement } from "gnoblin-std/generated/records";
-import type { Init } from "gnoblin-std/generated/native";
+import { Builtin } from "gnoblin-std/emitted/classes";
+import type { Option, Placement as LibraryPlacement } from "gnoblin-std/emitted/records";
+import type { Init } from "gnoblin-std/emitted/native";
 import type { Point } from "gnoblin-core/bindings/types";
 import type { LayoutSplit } from "gnoblin-std/bindings/tiling";
 import { Layout } from "gnoblin-std/layout";

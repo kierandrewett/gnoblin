@@ -1,6 +1,6 @@
-import { Transition as Native } from "gnoblin-std/generated/classes";
-import type { TransitionOptions as NativeOptions } from "gnoblin-std/generated/records";
-import type { Init } from "gnoblin-std/generated/native";
+import { Transition as Native } from "gnoblin-std/emitted/classes";
+import type { TransitionOptions as NativeOptions } from "gnoblin-std/emitted/records";
+import type { Init } from "gnoblin-std/emitted/native";
 import type { ErrorCode } from "gnoblin-core/errors";
 /** A value as it goes to the tree: a number, a flag, a text, a list of numbers or effect objects. */
 export type Value = unknown;

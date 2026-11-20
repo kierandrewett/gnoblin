@@ -1,5 +1,5 @@
-import type { Init } from "gnoblin-std/generated/native";
-import { EventKind, TermKind, LayoutKind, SelectKind, PropKind, EntryKind, ValueKind } from "gnoblin-std/generated/constants";
+import type { Init } from "gnoblin-std/emitted/native";
+import { EventKind, TermKind, LayoutKind, SelectKind, PropKind, EntryKind, ValueKind } from "gnoblin-std/emitted/constants";
 export interface Rect {
     x: number;
     y: number;

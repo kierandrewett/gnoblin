@@ -1,7 +1,7 @@
 import type { DisplayInit, DisplayModeName, DisplayOutputCollection, OutputView } from "gnoblin-std/display/types";
 import { OutputProfile } from "gnoblin-std/display/output_profile";
 import { Viewport } from "gnoblin-std/display/viewport";
-import { Display as NativeDisplay } from "gnoblin-std/generated/classes";
+import { Display as NativeDisplay } from "gnoblin-std/emitted/classes";
 /**
  * What a display keeps in the script's own terms: its name, how it was asked to present, the selectors as written, its viewport and
  * the library's display, which reconciles them with the connected outputs (`libgnoblin-std`, `displays.rs`).

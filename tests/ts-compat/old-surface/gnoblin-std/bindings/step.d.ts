@@ -1,6 +1,6 @@
 import type { BindingClient, DragEvent, Point, Rect } from "gnoblin-core/bindings/types";
-import type { BuiltinBinding } from "gnoblin-std/generated/layouts";
-import type { DragOutcome, DragTile, Split } from "gnoblin-std/generated/records";
+import type { BuiltinBinding } from "gnoblin-std/emitted/layouts";
+import type { DragOutcome, DragTile, Split } from "gnoblin-std/emitted/records";
 /** The number the library knows `client` by in a step: its node id, or one given on first use for an object that has none. */
 export declare function idOf(client: object): number;
 /**

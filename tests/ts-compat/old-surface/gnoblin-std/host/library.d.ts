@@ -1,7 +1,7 @@
 import type { ErrorCode } from "gnoblin-core/errors";
 import type { Client } from "gnoblin-core/host/client";
 import type { Output } from "gnoblin-core/host/output";
-import { Client as NativeClient, Output as NativeOutput } from "gnoblin-std/generated/classes";
+import { Client as NativeClient, Output as NativeOutput } from "gnoblin-std/emitted/classes";
 /** The library's failure codes (`gnoblin-core-abi`'s `E_*`) a call here tells apart. */
 export declare const FAILED: {
     readonly type: -10;

@@ -1,6 +1,6 @@
-import { Collection, Style as NativeStyle } from "gnoblin-std/generated/classes";
-import type { QueryTerm } from "gnoblin-std/generated/records";
-import type { Init } from "gnoblin-std/generated/native";
+import { Collection, Style as NativeStyle } from "gnoblin-std/emitted/classes";
+import type { QueryTerm } from "gnoblin-std/emitted/records";
+import type { Init } from "gnoblin-std/emitted/native";
 import type { ComputedStyle } from "gnoblin-std/style/computed";
 /** The library's number of each scalar and list property, by the script's name. */
 declare const PROPS: {

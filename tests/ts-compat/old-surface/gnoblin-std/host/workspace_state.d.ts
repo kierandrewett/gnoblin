@@ -1,7 +1,7 @@
 import type { Client } from "gnoblin-core/host/client";
 import type { CollectionState } from "gnoblin-core/host/collection_state";
 import type { MutableCollection } from "gnoblin-core/host/collections";
-import type { Collection as NativeCollection, Workspace as NativeWorkspace } from "gnoblin-std/generated/classes";
+import type { Collection as NativeCollection, Workspace as NativeWorkspace } from "gnoblin-std/emitted/classes";
 import type { LayoutBridge } from "gnoblin-std/host/layout_bridge";
 import type { Workspace } from "gnoblin-std/host/workspace";
 import type { Gaps, Layout } from "gnoblin-std/layout";

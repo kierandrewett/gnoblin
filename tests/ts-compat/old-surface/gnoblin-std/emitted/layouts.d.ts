@@ -1,6 +1,6 @@
-import { Registration, Workspace } from "gnoblin-std/generated/classes";
-import type { DragOutcome, DragStep } from "gnoblin-std/generated/records";
-import type { Init } from "gnoblin-std/generated/native";
+import { Registration, Workspace } from "gnoblin-std/emitted/classes";
+import type { DragOutcome, DragStep } from "gnoblin-std/emitted/records";
+import type { Init } from "gnoblin-std/emitted/native";
 type Shapes = Record<string, [number, string, boolean]>;
 /** A built-in layout: options before it is attached are kept here, after it they are the workspace's. */
 export declare class BuiltinLayout {

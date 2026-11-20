@@ -1,4 +1,4 @@
-import type { LayoutSpec } from "gnoblin-std/generated/records";
+import type { LayoutSpec } from "gnoblin-std/emitted/records";
 import type { Layout } from "gnoblin-std/layout";
 import type { Workspace } from "gnoblin-std/host/workspace";
 /** What a workspace holds of the table it gave the library for its layout. */

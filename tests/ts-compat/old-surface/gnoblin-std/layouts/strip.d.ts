@@ -1,5 +1,5 @@
 import type { Rect } from "gnoblin-core/types";
-import type { Placement as LibraryPlacement } from "gnoblin-std/generated/records";
+import type { Placement as LibraryPlacement } from "gnoblin-std/emitted/records";
 import type { LayoutContext, LayoutNode, Placement } from "gnoblin-std/layout";
 import { NativeLayout } from "gnoblin-std/layouts/native";
 import type { OptionSpecs } from "gnoblin-std/layouts/native";

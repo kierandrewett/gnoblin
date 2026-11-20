@@ -1,5 +1,5 @@
-import type { Init } from "gnoblin-std/generated/native";
-import { Rect, Split, ClientState, OutputInfo, Span, Areas, Event, QueryTerm, ProfileSpec, DisplaySpec, DisplayInfo, Placement, LayoutQuery, FloatingQuery, LayoutSpec, WorkspaceSpec, WorkspaceInfo, Show, OutputPolicy, WorkspacePolicy, Option, RingSlot, DragEvent, GestureEvent, BindingSpec, DragStep, DragOutcome, Stats, Prop, TransitionOptions, TransitionInfo, StyleEntry } from "gnoblin-std/generated/records";
+import type { Init } from "gnoblin-std/emitted/native";
+import { Rect, Split, ClientState, OutputInfo, Span, Areas, Event, QueryTerm, ProfileSpec, DisplaySpec, DisplayInfo, Placement, LayoutQuery, FloatingQuery, LayoutSpec, WorkspaceSpec, WorkspaceInfo, Show, OutputPolicy, WorkspacePolicy, Option, RingSlot, DragEvent, GestureEvent, BindingSpec, DragStep, DragOutcome, Stats, Prop, TransitionOptions, TransitionInfo, StyleEntry } from "gnoblin-std/emitted/records";
 export declare class Collection {
     readonly handle: number;
     constructor(handle: number);

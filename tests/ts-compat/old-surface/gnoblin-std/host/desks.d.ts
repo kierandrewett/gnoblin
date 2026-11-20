@@ -1,5 +1,5 @@
 import type { Output } from "gnoblin-core/host/output";
-import type { OutputInfo } from "gnoblin-std/generated/records";
+import type { OutputInfo } from "gnoblin-std/emitted/records";
 import type { Workspace } from "gnoblin-std/host/workspace";
 /** What the library knows of an output, or null while it has not heard of it: the engine hears of an output a turn before. */
 export declare function outputInfo(output: Output): OutputInfo | null;

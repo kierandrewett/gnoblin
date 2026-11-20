@@ -1,4 +1,4 @@
-import { EasingKind } from "gnoblin-std/generated/constants";
+import { EasingKind } from "gnoblin-std/emitted/constants";
 /**
  * How an animation moves from its start to its end. Each name uses the CSS timing function with the same name; for
  * example, `ease-out` is `cubic-bezier(0, 0, 0.58, 1)`.

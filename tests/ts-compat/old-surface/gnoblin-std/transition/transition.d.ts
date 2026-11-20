@@ -1,4 +1,4 @@
-import { Transition as Native } from "gnoblin-std/generated/classes";
+import { Transition as Native } from "gnoblin-std/emitted/classes";
 import type { TransitionHost, TransitionResult, TransitionSubscription } from "gnoblin-std/transition/types";
 /**
  * One call of `requestTransition`. `finished` settles once, with `{ cancelled }`; `onFinished` runs a plain callback
