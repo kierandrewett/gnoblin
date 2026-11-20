@@ -1571,7 +1571,8 @@ TypeScript style answered `undefined` for what it did not set: `is_set` says whi
 core's client `id` is that number as text); a selection is made on a style (`where`), not on a core collection, because the core's collection does
 not publish its query; a filter is a record of a `kind` (`blur`, `saturate`, `brightness`, `contrast`, `shader`) and an `amount`, so a blur's
 `radius` is its `amount`; the computed corner radius is a record of `all` or of the four corners. `transition.peek` answers a record with every
-field left out for a property the node has not: NpCoreOptional's optional result replaces that when it lands.
+field left out for a property the node has not (the optional result of NpCoreOptional is for object results, so only `animate`, which answers
+none while a transition is being staged, is marked `optional`).
 
 **Importers of the TypeScript modules** (nothing is deleted before NpFlip): `gnoblin-std/style/*` and `style.ts` are imported by
 `gnoblin-std/{index.ts,host/frame.ts,host/install.ts,host/members.ts,host/rollback.ts,host/state.ts,host/style_scopes.ts,host/styles.ts}`;

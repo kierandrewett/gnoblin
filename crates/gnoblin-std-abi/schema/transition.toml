@@ -318,6 +318,7 @@ name = "animate"
 since = "0.2.0"
 function = true
 returns = "object:transition"
+optional = true
 
 [[object.method.param]]
 name = "node"

@@ -16,7 +16,7 @@ enum | easing | values linear ease ease-in ease-out ease-in-out | 0.2.0
 enum | transition_state | values running finished cancelled | 0.2.0
 
 member | transition.abort | function () | 0.2.0
-member | transition.animate | function (node:uint, key:string, value:object:transition_value, options:object:transition_options) -> object:transition | 0.2.0
+member | transition.animate | function (node:uint, key:string, value:object:transition_value, options:object:transition_options) -> object:transition? | 0.2.0
 member | transition.begin | function (options:object:transition_options, rollback?:callback:rollback) | 0.2.0
 member | transition.cancel | method () | 0.2.0
 member | transition.commit | function () -> object:transition | 0.2.0
