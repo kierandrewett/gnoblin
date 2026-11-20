@@ -7,16 +7,23 @@
 //! premultiplied colour (`ONE`, `ONE_MINUS_SRC_ALPHA`, for colour and for alpha), which is
 //! what the software renderer's compositing and every GLES pass agree on.
 //!
+//! A shell's own shader pass is a third kind of pipeline, one per source (`ShaderPipelines`): the same vertex stage, state and
+//! layout, with a fragment module compiled from the validated WGSL when a frame first draws the source.
+//!
 //! # Bindings
 //!
-//! | Set | Binding | What                                   | Stage    |
-//! | --- | ------- | -------------------------------------- | -------- |
-//! | 0   | 0       | the pass's uniform block, dynamic offset | fragment |
-//! | 1   | 0       | the layer's texture                    | fragment |
-//! | 1   | 1       | its sampler                            | fragment |
+//! | Set | Binding | What                                              | Stage    |
+//! | --- | ------- | ------------------------------------------------- | -------- |
+//! | 0   | 0       | the pass's uniform block, dynamic offset          | fragment |
+//! | 0   | 1       | a shader pass's own block, dynamic offset         | fragment |
+//! | 1   | 0       | the layer's texture                               | fragment |
+//! | 1   | 1       | its sampler                                       | fragment |
+//! | 2   | 0       | the backdrop texture, a shader pass that reads it | fragment |
+//! | 2   | 1       | its sampler                                       | fragment |
 //!
-//! These are the `@group` and `@binding` numbers the WGSL preamble declares, which `naga`
-//! carries into the SPIR-V as descriptor sets, so the layout here is the preamble's.
+//! These are the `@group` and `@binding` numbers the WGSL preamble and the user block declare, which `naga` carries into
+//! the SPIR-V as descriptor sets, so the layout here is the WGSL's. Every pipeline has the one layout. A draw binds both
+//! offsets of set 0 (a shipped pass never reads the second block) and binds set 2 only when its pass reads the backdrop.
 //!
 //! # The vertex input
 //!
@@ -25,12 +32,17 @@
 //! vertex stage declares (see `plan.rs`).
 
 use std::rc::Rc;
+use std::time::Instant;
 
 use ash::vk;
 
 use super::context::{TARGET_FORMAT, VkContext};
 use super::error::VulkanError;
-use super::shader::{StageKind, compile};
+use super::shader::{StageKind, compile, compile_user};
+use crate::log;
+use gnoblin_render::ShaderPass;
+use gnoblin_render_frame::shader::ShaderCache;
+use gnoblin_render_frame::shader::uniforms::USER_BLOCK_BYTES;
 
 /// The WGSL of each module of the two pipelines.
 #[derive(Clone, Copy, Debug)]
@@ -99,10 +111,14 @@ pub(super) struct Pipelines {
     pub(super) uniform_layout: vk::DescriptorSetLayout,
     pub(super) texture_layout: vk::DescriptorSetLayout,
     pub(super) layout: vk::PipelineLayout,
+    /// The vertex stage every pipeline shares, kept for the pipelines made at run time.
+    vertex: vk::ShaderModule,
     pub(super) solid: vk::Pipeline,
     pub(super) surface: vk::Pipeline,
     pub(super) linear: vk::Sampler,
     pub(super) nearest: vk::Sampler,
+    /// The driver's cache of compiled pipelines, null when it could not be made.
+    cache: vk::PipelineCache,
 }
 
 impl Pipelines {
@@ -119,12 +135,15 @@ impl Pipelines {
             uniform_layout: vk::DescriptorSetLayout::null(),
             texture_layout: vk::DescriptorSetLayout::null(),
             layout: vk::PipelineLayout::null(),
+            vertex: vk::ShaderModule::null(),
             solid: vk::Pipeline::null(),
             surface: vk::Pipeline::null(),
             linear: vk::Sampler::null(),
             nearest: vk::Sampler::null(),
+            cache: vk::PipelineCache::null(),
         };
-        let modules = ShaderModules::new(context, &compiled.vertex, &compiled.solid, &compiled.surface)?;
+        made.vertex = module(context, "vertex", &compiled.vertex)?;
+        let modules = ShaderModules::new(context, &compiled.solid, &compiled.surface)?;
         made.create(&modules)?;
         Ok(made)
     }
@@ -170,12 +189,21 @@ impl Pipelines {
         // SAFETY: every structure above outlives the call, and the references name attachment 0.
         self.render_pass = unsafe { device.create_render_pass(&pass_info, None) }
             .map_err(|result| VulkanError::driver("vkCreateRenderPass", result))?;
+        // An in-memory cache for every pipeline, so a source the shader cache evicted and a frame draws again is not
+        // compiled by the driver from nothing. A driver that cannot make one costs the cache and not the renderer.
+        // SAFETY: a plain cache with no initial data.
+        self.cache = unsafe { device.create_pipeline_cache(&vk::PipelineCacheCreateInfo::default(), None) }
+            .unwrap_or_else(|_| vk::PipelineCache::null());
 
-        let uniform_bindings = [vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)];
+        // Group 0 holds two dynamic uniform blocks: the shared one every pass reads, and the one a shell's shader pass adds
+        // (`user_block.wgsl`). Every draw gives an offset for both, so a shipped pass points the second at a block it never reads.
+        let uniform_bindings = [0, 1].map(|binding| {
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(binding)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+        });
         let texture_bindings = [
             vk::DescriptorSetLayoutBinding::default()
                 .binding(0)
@@ -203,7 +231,8 @@ impl Pipelines {
                 )
                 .map_err(|result| VulkanError::driver("vkCreateDescriptorSetLayout", result))?;
         }
-        let set_layouts = [self.uniform_layout, self.texture_layout];
+        // Group 2, the backdrop, has the layout of group 1: a texture and its sampler.
+        let set_layouts = [self.uniform_layout, self.texture_layout, self.texture_layout];
         // SAFETY: both layouts were created just above.
         self.layout = unsafe {
             device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().set_layouts(&set_layouts), None)
@@ -213,19 +242,38 @@ impl Pipelines {
         self.linear = sampler(device, vk::Filter::LINEAR)?;
         self.nearest = sampler(device, vk::Filter::NEAREST)?;
 
+        let made = self.graphics(&[modules.solid, modules.surface])?;
+        self.solid = made[0];
+        self.surface = made[1];
+        Ok(())
+    }
+
+    /// One pipeline for each of `fragments`, over the shared vertex stage, the shared layout and this render pass.
+    ///
+    /// The pipelines differ only in their fragment module, which is why a shell's shader pass can be made with the same call
+    /// at run time.
+    ///
+    /// # Errors
+    ///
+    /// [`VulkanError::Driver`] when the driver refuses creation; nothing is leaked.
+    pub(super) fn graphics(&self, fragments: &[vk::ShaderModule]) -> Result<Vec<vk::Pipeline>, VulkanError> {
+        let device = &self.context.device;
         let entry = c"gnoblin_entry";
-        let stages = |fragment: vk::ShaderModule| {
-            [
-                vk::PipelineShaderStageCreateInfo::default()
-                    .stage(vk::ShaderStageFlags::VERTEX)
-                    .module(modules.vertex)
-                    .name(entry),
-                vk::PipelineShaderStageCreateInfo::default()
-                    .stage(vk::ShaderStageFlags::FRAGMENT)
-                    .module(fragment)
-                    .name(entry),
-            ]
-        };
+        let stage_sets: Vec<[vk::PipelineShaderStageCreateInfo; 2]> = fragments
+            .iter()
+            .map(|fragment| {
+                [
+                    vk::PipelineShaderStageCreateInfo::default()
+                        .stage(vk::ShaderStageFlags::VERTEX)
+                        .module(self.vertex)
+                        .name(entry),
+                    vk::PipelineShaderStageCreateInfo::default()
+                        .stage(vk::ShaderStageFlags::FRAGMENT)
+                        .module(*fragment)
+                        .name(entry),
+                ]
+            })
+            .collect();
         let float = std::mem::size_of::<f32>() as u32;
         let bindings = [
             vk::VertexInputBindingDescription::default()
@@ -282,13 +330,11 @@ impl Pipelines {
         let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-        let solid_stages = stages(modules.solid);
-        let surface_stages = stages(modules.surface);
-        // Both pipelines differ only in their fragment module.
-        macro_rules! pipeline {
-            ($stages:expr) => {
+        let infos: Vec<vk::GraphicsPipelineCreateInfo> = stage_sets
+            .iter()
+            .map(|stages| {
                 vk::GraphicsPipelineCreateInfo::default()
-                    .stages($stages)
+                    .stages(stages)
                     .vertex_input_state(&vertex_input)
                     .input_assembly_state(&assembly)
                     .viewport_state(&viewport)
@@ -299,17 +345,12 @@ impl Pipelines {
                     .layout(self.layout)
                     .render_pass(self.render_pass)
                     .subpass(0)
-            };
-        }
-        let infos = [pipeline!(&solid_stages), pipeline!(&surface_stages)];
+            })
+            .collect();
         // SAFETY: every state structure above outlives the call and matches the render pass.
-        let made = unsafe { device.create_graphics_pipelines(vk::PipelineCache::null(), &infos, None) };
+        let made = unsafe { device.create_graphics_pipelines(self.cache, &infos, None) };
         match made {
-            Ok(pipelines) => {
-                self.solid = pipelines[0];
-                self.surface = pipelines[1];
-                Ok(())
-            }
+            Ok(pipelines) => Ok(pipelines),
             Err((partial, result)) => {
                 // SAFETY: the pipelines the call did create are not in use.
                 for pipeline in partial.into_iter().filter(|pipeline| *pipeline != vk::Pipeline::null()) {
@@ -344,33 +385,32 @@ impl Drop for Pipelines {
         unsafe {
             device.destroy_pipeline(self.solid, None);
             device.destroy_pipeline(self.surface, None);
+            device.destroy_shader_module(self.vertex, None);
             device.destroy_pipeline_layout(self.layout, None);
             device.destroy_descriptor_set_layout(self.uniform_layout, None);
             device.destroy_descriptor_set_layout(self.texture_layout, None);
             device.destroy_sampler(self.linear, None);
             device.destroy_sampler(self.nearest, None);
             device.destroy_render_pass(self.render_pass, None);
+            device.destroy_pipeline_cache(self.cache, None);
         }
     }
 }
 
-/// The three shader modules, destroyed when the pipelines have been made from them.
+/// The two fragment modules of the shipped passes, destroyed when the pipelines have been made from them.
 struct ShaderModules {
     context: Rc<VkContext>,
-    vertex: vk::ShaderModule,
     solid: vk::ShaderModule,
     surface: vk::ShaderModule,
 }
 
 impl ShaderModules {
-    fn new(context: &Rc<VkContext>, vertex: &[u32], solid: &[u32], surface: &[u32]) -> Result<Self, VulkanError> {
+    fn new(context: &Rc<VkContext>, solid: &[u32], surface: &[u32]) -> Result<Self, VulkanError> {
         let mut made = Self {
             context: Rc::clone(context),
-            vertex: vk::ShaderModule::null(),
             solid: vk::ShaderModule::null(),
             surface: vk::ShaderModule::null(),
         };
-        made.vertex = module(context, "vertex", vertex)?;
         made.solid = module(context, "solid", solid)?;
         made.surface = module(context, "surface", surface)?;
         Ok(made)
@@ -382,7 +422,6 @@ impl Drop for ShaderModules {
         // SAFETY: pipelines keep what they need of a module, so it may be destroyed once they
         // are made; a null handle is a no-op.
         unsafe {
-            self.context.device.destroy_shader_module(self.vertex, None);
             self.context.device.destroy_shader_module(self.solid, None);
             self.context.device.destroy_shader_module(self.surface, None);
         }
@@ -450,10 +489,11 @@ impl DescriptorArena {
                     Err(result) => return Err(result),
                 }
             }
+            // The uniform set holds two dynamic blocks.
             let sizes = [
                 vk::DescriptorPoolSize::default()
                     .ty(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-                    .descriptor_count(POOL_SETS),
+                    .descriptor_count(POOL_SETS * 2),
                 vk::DescriptorPoolSize::default()
                     .ty(vk::DescriptorType::SAMPLED_IMAGE)
                     .descriptor_count(POOL_SETS),
@@ -480,5 +520,162 @@ impl Drop for DescriptorArena {
     }
 }
 
-/// The size of the uniform block the descriptor binds, in bytes.
+/// The size of the shared uniform block a descriptor binds, in bytes.
 pub(super) const BLOCK_RANGE: u64 = UNIFORM_BYTES as u64;
+
+/// The size of a shell's shader pass's own block a descriptor binds, in bytes: `GnoblinUser` in `user_block.wgsl`.
+pub(super) const USER_BLOCK_RANGE: u64 = USER_BLOCK_BYTES as u64;
+
+/// A shell's shader pass as a pipeline.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct UserPipeline {
+    /// The pipeline: the shared vertex stage and the shell's fragment stage.
+    pub pipeline: vk::Pipeline,
+    /// Whether the fragment stage reads the backdrop, so a draw binds group 2.
+    pub backdrop: bool,
+}
+
+/// The code of a source the validator or compiler refuses: what GLES reports for the same.
+pub(super) const COMPILE_FAILED: &str = "compile-failed";
+
+/// The code of a pipeline the driver refused to make.
+pub(super) const PIPELINE_FAILED: &str = "pipeline-failed";
+
+/// Why a source could not be made into a pipeline: a code for the node's `skipped` list, and the words for the log.
+struct PipelineRefusal {
+    code: &'static str,
+    reason: String,
+}
+
+/// The pipelines of the shell's shader passes: one per source, made when a frame first draws it.
+///
+/// The renderer builds the shipped pipelines when it starts, but a shell's source is only known when it writes it, so a
+/// pipeline is compiled and created at draw time and kept in the shared [`ShaderCache`] (64 entries, least recently used).
+/// A source that does not compile is kept too, as its reason, so a broken shader costs one compile and not one a frame.
+///
+/// # When a pipeline is destroyed
+///
+/// A frame is recorded into one command buffer and the renderer waits for its fence before `draw` returns, so a pipeline is
+/// in use only between recording and that wait. A pipeline the cache evicts while a frame is being recorded may already be
+/// in that frame's commands (the frame draws more than 64 sources), so eviction does not destroy it: it is retired, and
+/// [`ShaderPipelines::release_retired`] destroys it once the frame has finished. A lost device drains the lot
+/// ([`ShaderPipelines::drain`]) after waiting for the queue, and dropping the renderer waits first.
+pub(super) struct ShaderPipelines {
+    context: Rc<VkContext>,
+    cache: ShaderCache<Result<UserPipeline, &'static str>>,
+    retired: Vec<vk::Pipeline>,
+}
+
+impl ShaderPipelines {
+    pub(super) fn new(context: &Rc<VkContext>) -> Self {
+        Self {
+            context: Rc::clone(context),
+            cache: ShaderCache::new(),
+            retired: Vec::new(),
+        }
+    }
+
+    /// The pipeline for `pass`'s source, made when the cache has none, or the code of why it cannot be drawn.
+    ///
+    /// A refusal that is the source's own (the validator refuses it, or it does not compile) is kept in the cache, so a broken
+    /// source costs one compile and not one a frame. A refusal that is the driver's (it ran out of memory making the
+    /// pipeline) is not: the next frame tries again, so a shader that failed for want of memory comes back by itself. The
+    /// detail (the shell's line and column, the compiler's or the driver's words) goes to the log once; the code is what the
+    /// node's `skipped` list shows.
+    ///
+    /// # Errors
+    ///
+    /// [`COMPILE_FAILED`] or [`PIPELINE_FAILED`].
+    pub(super) fn resolve(&mut self, pipelines: &Pipelines, pass: &ShaderPass) -> Result<UserPipeline, &'static str> {
+        let key = pass.key();
+        if let Some(held) = self.cache.get(key) {
+            return *held;
+        }
+        let started = Instant::now();
+        let made = self.create(pipelines, pass.source());
+        match &made {
+            Ok(_) => log::debug!(
+                area = "render",
+                key = key.get(),
+                micros = started.elapsed().as_micros() as u64,
+                "a shader pipeline was made"
+            ),
+            Err(refusal) => log::warn!(
+                area = "render",
+                key = key.get(),
+                code = refusal.code,
+                reason = refusal.reason.as_str(),
+                "a shader pass was refused; its node is drawn without it"
+            ),
+        }
+        let outcome = made.map_err(|refusal| refusal.code);
+        if matches!(outcome, Ok(_) | Err(COMPILE_FAILED))
+            && let Some((_, Ok(evicted))) = self.cache.insert(key, outcome)
+        {
+            self.retired.push(evicted.pipeline);
+        }
+        outcome
+    }
+
+    fn create(&self, pipelines: &Pipelines, source: &str) -> Result<UserPipeline, PipelineRefusal> {
+        let compiled = compile_user(source).map_err(|reason| PipelineRefusal {
+            code: COMPILE_FAILED,
+            reason,
+        })?;
+        let driver = |reason: String| PipelineRefusal {
+            code: PIPELINE_FAILED,
+            reason,
+        };
+        #[cfg(test)]
+        if let Some(result) = self.context.faults.pipeline.take() {
+            return Err(driver(format!("vkCreateGraphicsPipelines failed with {result:?}")));
+        }
+        let fragment = module(&self.context, "shader", &compiled.words).map_err(|error| driver(error.to_string()))?;
+        let made = pipelines.graphics(&[fragment]);
+        // SAFETY: a pipeline keeps what it needs of a module, so the module is destroyed once the pipeline is made.
+        unsafe { self.context.device.destroy_shader_module(fragment, None) };
+        let pipeline = made.map_err(|error| driver(error.to_string()))?[0];
+        Ok(UserPipeline {
+            pipeline,
+            backdrop: compiled.backdrop,
+        })
+    }
+
+    /// How many sources the cache holds, refused ones included.
+    #[cfg(test)]
+    pub(super) fn len(&self) -> usize {
+        self.cache.len()
+    }
+
+    /// Whether the cache holds a source, without counting it as a use.
+    #[cfg(test)]
+    pub(super) fn contains(&self, key: gnoblin_render::ShaderKey) -> bool {
+        self.cache.contains(key)
+    }
+
+    /// Destroys the pipelines the cache evicted. The caller has waited for the frame that may have used them.
+    pub(super) fn release_retired(&mut self) {
+        for pipeline in self.retired.drain(..) {
+            // SAFETY: the frame that recorded a draw with it has finished.
+            unsafe { self.context.device.destroy_pipeline(pipeline, None) };
+        }
+    }
+
+    /// Destroys every pipeline, for a renderer that lost its device or is going away. Waits for the queue first.
+    pub(super) fn drain(&mut self) {
+        self.context.wait_idle();
+        self.release_retired();
+        for (_, held) in self.cache.drain() {
+            if let Ok(held) = held {
+                // SAFETY: the queue is idle, so no command buffer uses the pipeline.
+                unsafe { self.context.device.destroy_pipeline(held.pipeline, None) };
+            }
+        }
+    }
+}
+
+impl Drop for ShaderPipelines {
+    fn drop(&mut self) {
+        self.drain();
+    }
+}

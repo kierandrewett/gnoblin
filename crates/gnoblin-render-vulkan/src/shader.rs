@@ -7,6 +7,11 @@
 //! which takes milliseconds, and a source that does not compile is a named startup error
 //! ([`VulkanError::Shader`]) instead of a frame that fails at its first draw.
 //!
+//! A shell's own shader is the exception, because its source is not known until the shell writes
+//! it: [`compile_user`] validates it ([`user::validate`]) and compiles the module that returns when
+//! a frame first draws it, and a refusal is a reason (a `String`) for that source and never an
+//! error of the renderer.
+//!
 //! # The clip-space convention
 //!
 //! The shared vertex stage is written for Vulkan: pixel row 0 maps to clip y of -1, which is
@@ -20,7 +25,7 @@ use naga::front::wgsl::Frontend;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
 use super::error::VulkanError;
-use gnoblin_render_frame::shader::ENTRY;
+use gnoblin_render_frame::shader::{ENTRY, user};
 
 /// Which stage of a module to emit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +78,34 @@ pub(super) fn compile(pass: &'static str, source: &str, stage: StageKind) -> Res
     };
     write_vec(&module, &info, &options(), Some(&pipeline))
         .map_err(|error| refused(format!("the module could not be written as SPIR-V: {error}")))
+}
+
+/// A shell's shader pass compiled for Vulkan.
+pub(super) struct UserModule {
+    /// The SPIR-V of the fragment stage.
+    pub words: Vec<u32>,
+    /// Whether `effect` can read the backdrop, which decides whether the draw binds group 2.
+    pub backdrop: bool,
+}
+
+/// Checks a shell's WGSL with the validator every renderer shares, then compiles the module it returns to SPIR-V.
+///
+/// The validator runs again here although the compositor ran it when the shell wrote the effect: a pass that reached the
+/// frame some other way is refused, and never run unchecked.
+///
+/// # Errors
+///
+/// The reason, with the shell's own line and column when there is one.
+pub(super) fn compile_user(source: &str) -> Result<UserModule, String> {
+    let validated = user::validate(source).map_err(|error| error.to_string())?;
+    let words = compile("shader", validated.wgsl(), StageKind::Fragment).map_err(|error| match error {
+        VulkanError::Shader { message, .. } => message,
+        other => other.to_string(),
+    })?;
+    Ok(UserModule {
+        words,
+        backdrop: validated.backdrop(),
+    })
 }
 
 #[cfg(test)]

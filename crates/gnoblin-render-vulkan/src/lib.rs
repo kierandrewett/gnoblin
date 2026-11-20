@@ -4,8 +4,8 @@
 //! This is the third implementation of the frame description (see `gnoblin-render-frame`) and the one
 //! `design/vulkan-backend.md` chose `ash` and `naga` for. Slice 1 is the offscreen renderer:
 //! it draws what the software renderer draws, plus the rounded corners the shared shaders
-//! already clip, and it reads the result back. It does not present, import dmabufs or draw
-//! effects yet; the design note lists what is next and in what order.
+//! already clip, and it reads the result back. It does not present, import dmabufs or draw the
+//! shipped effects (blur, shadow, border) yet; the design note lists what is next and in what order.
 //!
 //! # What it draws
 //!
@@ -23,7 +23,29 @@
 //!
 //! Layers carrying a 3D model, the blur and shadow passes and a buffer's
 //! `set_buffer_transform` are not drawn, which is what the GLES renderer does for the last of
-//! them and what the design note schedules for the others.
+//! them and what the design note schedules for the others. The `shader` pass is drawn (below).
+//!
+//! # The shader pass
+//!
+//! A shell's own shader (`design/modular-framework.md`, section 37) is a pipeline of its own for
+//! each source, made when a frame first draws it from the WGSL
+//! [`user::validate`](gnoblin_render_frame::shader::user::validate) returns, and kept in the shared
+//! 64-entry [`ShaderCache`](gnoblin_render_frame::shader::ShaderCache). It replaces the layer's own
+//! pass: the layer's pixels (a solid's colour is a one-pixel texture) are `c`, the wrapper applies
+//! the layer's tint, opacity and corners after the last pass, and several passes run in list order
+//! through two scratch images the size of the layer.
+//!
+//! A pass that calls `backdrop(uv)` reads an image of the layer's rectangle that the renderer draws
+//! first: [`OutputFrame::backdrop_input`] is the layers below the layer with every secure one black,
+//! drawn with the same planner into an image of its own, never the target (which shows the secure
+//! layers). A layer below that reads its own backdrop has it built first, so backdrops nest; the first
+//! three layers of a frame get one and a fourth is drawn without the passes that read it, as the GLES
+//! renderer does. What lies outside the output is transparent in a backdrop.
+//!
+//! The cost of each source in a frame is told to [`OutputFrame::shader_timings`]: the GPU time of its
+//! draws when the queue writes timestamps, otherwise the wall time from submit to fence. A pipeline
+//! is made on the render thread at the first draw of a source, which costs milliseconds to tens of
+//! milliseconds (design section 37.4).
 //!
 //! # Choosing it and failing over
 //!
@@ -57,6 +79,18 @@
 //!    Smithay's guarded mapping. A destroyed buffer is still read, so a closing window fades out
 //!    with its last picture (`tests::a_destroyed_buffer_still_draws_its_last_picture`); a buffer
 //!    that cannot be read skips its layer.
+//! 9. **A shell's shader does not compile, or the driver refuses its pipeline.** The layer is
+//!    drawn without the pass and the source is reported on the frame's shader timings with a short
+//!    code (`compile-failed`, `pipeline-failed`, `backdrop-unavailable` or `image-failed`; the node's
+//!    `skipped` list names it and the log has the detail). A source the validator or compiler refuses is
+//!    remembered, a driver's refusal is tried again next frame:
+//!    `tests::shader::a_source_that_does_not_compile_leaves_its_layer_drawn_and_is_reported`,
+//!    `tests::shader::a_pipeline_the_driver_refuses_is_tried_again_next_frame`.
+//! 10. **A shader pipeline is destroyed while a frame still uses it.** The 64-entry cache evicts
+//!     into a retired list that is destroyed once the frame's fence has been waited, and a lost
+//!     device or a dropped renderer drains everything after waiting for the queue:
+//!     `tests::shader::the_pipelines_are_kept_by_source_and_the_least_recently_used_leave_after_64`,
+//!     `tests::shader::a_lost_device_drains_the_pipelines`.
 //!
 //! # Byte order
 //!
@@ -79,6 +113,7 @@ mod tests;
 gnoblin_log::logger!(log = "render");
 
 use std::rc::Rc;
+use std::time::Instant;
 
 use gnoblin_types::{Scale, Size};
 
@@ -87,7 +122,7 @@ pub use error::VulkanError;
 
 use context::VkContext;
 use frame::{FrameRecorder, RenderTarget, Saved};
-use pipeline::{Compiled, Pipelines, ShaderSources};
+use pipeline::{Compiled, Pipelines, ShaderPipelines, ShaderSources};
 
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::footprint::{COLOUR_BYTES_PER_PIXEL, Footprint, image_bytes};
@@ -98,6 +133,8 @@ use gnoblin_render_frame::image::Image;
 pub struct Vulkan {
     // The fields that hold device objects come before the context they were made on.
     recorder: FrameRecorder,
+    /// The pipelines of the shell's shader passes, made when a frame first draws a source.
+    shaders: ShaderPipelines,
     pipelines: Pipelines,
     target: RenderTarget,
     /// The pixels the cursor covers, saved for a capture that leaves it out.
@@ -107,6 +144,8 @@ pub struct Vulkan {
     lost: bool,
     /// Whether the 3D warning has been logged, so a steady session logs it once.
     warned_models: bool,
+    /// When the renderer was made: a shader pass's time `t` is the seconds since.
+    epoch: Instant,
     context: Rc<VkContext>,
 }
 
@@ -151,12 +190,14 @@ impl Vulkan {
             .map_err(|result| VulkanError::driver("clear the target", result))?;
         Ok(Self {
             recorder,
+            shaders: ShaderPipelines::new(&context),
             pipelines,
             target,
             cursor_under: Saved::default(),
             physical,
             lost: false,
             warned_models: false,
+            epoch: Instant::now(),
             context,
         })
     }
@@ -230,9 +271,13 @@ impl Vulkan {
         if frame.is_empty() {
             return Ok(());
         }
-        self.paint(frame, scale)
-            .map(|()| self.trim())
-            .map_err(|result| self.fail(result))
+        let painted = self.paint(frame, scale);
+        if painted.is_err() {
+            // A frame that failed may still be on the queue; nothing a pipeline evicted during it is destroyed until it is not.
+            self.context.wait_idle();
+        }
+        self.shaders.release_retired();
+        painted.map(|()| self.trim()).map_err(|result| self.fail(result))
     }
 
     /// Reads the target back as an [`Image`], without the cursor.

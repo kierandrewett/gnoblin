@@ -74,18 +74,18 @@ impl RendererKind {
     ///
     /// GLES draws a blur, a shadow, a border and a shader. The software renderer draws a shadow and a border as spans of pixels
     /// with hard edges (`gnoblin-render-software`'s `shape` module) and leaves a blur undrawn. The Vulkan renderer
-    /// does not draw effects yet: it rounds a layer's corners, the radius is not an effect, and it reports every
-    /// effect kind as skipped.
+    /// does not draw the shipped effects yet: it rounds a layer's corners, the radius is not an effect, and it reports
+    /// blur, shadow and border as skipped.
     ///
-    /// The GLES renderer draws the `shader` kind (a shell's own fragment shader, `compositor.user-shaders`). A renderer that
-    /// does not list it leaves a node's shader pass undrawn and names it in the node's `skipped` list as
-    /// `shader: unsupported-by-renderer`.
+    /// The `shader` kind (a shell's own pass, accepted by the tree while `compositor.user-shaders` is on) is drawn by
+    /// the GLES and Vulkan renderers. The software renderer has no compiler, so a node's shader pass is named in its
+    /// `skipped` list as `shader: unsupported-by-renderer`.
     #[must_use]
     pub const fn effect_kinds(self) -> &'static [&'static str] {
         match self {
             Self::Gles => &["blur", "shadow", "border", "shader"],
             Self::Software => &["shadow", "border"],
-            Self::Vulkan => &[],
+            Self::Vulkan => &["shader"],
         }
     }
 

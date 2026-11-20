@@ -157,6 +157,8 @@ pub(super) struct Faults {
     pub texture_allocation: Cell<Option<(u32, vk::Result)>>,
     /// Fail the next queue submission without submitting.
     pub submit: Cell<Option<vk::Result>>,
+    /// Fail the next creation of a shell's shader pipeline, after its source compiled.
+    pub pipeline: Cell<Option<vk::Result>>,
 }
 
 /// The loader, instance and logical device, with the memory properties and limits the
@@ -171,6 +173,8 @@ pub(super) struct VkContext {
     pub(super) family: u32,
     memory: vk::PhysicalDeviceMemoryProperties,
     pub(super) limits: vk::PhysicalDeviceLimits,
+    /// How many bits of a timestamp the queue writes: 0 when it writes none.
+    pub(super) timestamp_bits: u32,
     pub(super) info: DeviceInfo,
     /// What the validation layer reported, see [`Validation`].
     pub(super) messages: Arc<Mutex<Vec<String>>>,
@@ -420,6 +424,7 @@ fn create_instance(
 struct Candidate {
     device: vk::PhysicalDevice,
     family: u32,
+    timestamp_bits: u32,
     info: DeviceInfo,
 }
 
@@ -472,6 +477,7 @@ fn build(
         family: candidate.family,
         memory,
         limits: properties.limits,
+        timestamp_bits: candidate.timestamp_bits,
         info: candidate.info,
         messages,
         validating,
@@ -525,6 +531,11 @@ fn choose(instance: &Instance, choice: &DeviceChoice) -> Result<Candidate, Vulka
         accepted.push(Candidate {
             device,
             family: family as u32,
+            timestamp_bits: if properties.limits.timestamp_compute_and_graphics == vk::TRUE {
+                families[family].timestamp_valid_bits
+            } else {
+                0
+            },
             info: DeviceInfo {
                 name,
                 kind: GpuKind::from_vulkan(properties.device_type),

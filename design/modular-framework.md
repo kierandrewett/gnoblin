@@ -3281,9 +3281,9 @@ files, one test, the changelog and this document); `gnoblin-compositor` and `gno
 
 ## 37. The custom shader pass: analysis for the owner (D20, M7.9, O7)
 
-Status: **phase A is built**, and the GLES pass (37.10). The owner approved the pass with backdrop sampling, which reverses O7 (D20, M7.9).
+Status: **phase A is built**, and the GLES pass (37.10) and the Vulkan pass (37.11). The owner approved the pass with backdrop sampling, which reverses O7 (D20, M7.9).
 Built: the validator, the `shader` effect kind and its wire path, the setting and the capability, the frame data, the secure-surface input,
-the software renderer's skipped listing, the catalog, the C ABI and the SDKs (37.6), and the GLES pass. Not built here: the Vulkan pass, the
+the software renderer's skipped listing, the catalog, the C ABI and the SDKs (37.6), and the GLES and Vulkan passes. Not built here: the
 frame-cost watchdog, the std element and the real-session tests; 37.8 gives each lane its seam. 37.1 to 37.4 are the analysis the build
 followed, with the corrections noted in 37.3.
 
@@ -3382,6 +3382,9 @@ About 30 working days, six weeks of calendar time with review. The risks are the
 thread, GLES driver compile stalls, and the backdrop privacy rule, which is why phase 1 is node-only. Backdrop sampling is a
 further 8 to 10 days and needs the owner's separate approval.
 
+Measured for the Vulkan pass (37.11): making a pipeline costs 8 to 25 ms on lavapipe, on the render thread, at the first draw of a source;
+the risk is real and is kept, not removed.
+
 ### 37.5 What the owner decided
 
 Build it with backdrop sampling too (the third option). O7 is reversed and D20 is resolved: the pass exists behind `compositor.user-shaders`,
@@ -3465,6 +3468,64 @@ Status: **built and tested on llvmpipe** (`crates/gnoblin-render-gles/src/shader
 Not drawn: a shader on a layer placed in 3D (the composer already lists every effect of such a node as skipped), and a shader on a layer inside
 a View's subtree, which draws through an eye's viewport that the pictures between chained passes would lose. A layer nested more than 3
 backdrops deep draws without a shader that reads the backdrop. Nothing here changes the shipped passes' pixels (the goldens are unchanged).
+
+### 37.11 The Vulkan pass (lane ShaderVulkan)
+
+Status: built and tested on lavapipe with the validation layer on. The Vulkan renderer lists `shader` in `RendererKind::effect_kinds`
+(and only that kind: it draws no blur, shadow or border).
+
+| Part        | Where                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Layout      | `gnoblin-render-vulkan/src/pipeline.rs`: group 0 has two dynamic uniform bindings (the shared block and the shader's 48-byte block, each draw gives both offsets), groups 1 and 2 a texture and a sampler. All pipelines share the one layout, so a shipped pass draws as before and group 2 is bound only for a pass that reads the backdrop                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Pipelines   | `ShaderPipelines`: `compile_user` (`user::validate`, then `Validated::wgsl()` through `naga` to SPIR-V, entry `ENTRY`), one pipeline per `ShaderKey` made at draw time over the shared vertex module, render pass and state, in a `ShaderCache<Result<UserPipeline, String>>` (64, least recently used) and a driver `VkPipelineCache`                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Destruction | An evicted pipeline is retired and destroyed once the frame that may have recorded it has been waited for; a lost device drains the cache after waiting for the queue; dropping the renderer waits first. A frame that draws more than 64 sources therefore never destroys a pipeline under its own commands                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Frame       | `frame.rs`: resolve every pass's pipeline, make the images, plan, then render passes before the frame's own: for each layer from the bottom its backdrop, then the steps of its chain (`plan.rs`: `chain`, `plan_into`, `PlanTarget`, `DrawBatch`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Refusals    | A pass left out is reported with `frame.shader_timings().record_refused(key, code)`, which the composer turns into `shader: <code>` in `skipped`, and the layer is drawn without it. The codes: `compile-failed` (the validator or compiler refuses the source, as GLES), `pipeline-failed` (the driver refuses the pipeline), `backdrop-unavailable` (the pass reads the backdrop but the layer is past the third backdrop, its image could not be made, or the pass was not marked as reading it) and `image-failed` (the layer's scratch images could not be made). The detail (the shell's line and column, the compiler's or the driver's words) is logged once. Only a `compile-failed` source is kept in the cache; a driver's refusal is tried again next frame |
+| Timing      | Each draw of a shader pass is bracketed by two `BOTTOM_OF_PIPE` timestamps (a pool of 512, so 256 draws) and the sum for the key is `frame.shader_timings().record(key, elapsed)`. A queue without timestamps, or a frame with more draws than the pool, records the wall time from submit to fence for every source in the frame                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Tests       | `gnoblin-render-vulkan/src/tests/shader.rs` (22) and the shader cases of `plan.rs` (7)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+What a pass sees, so GLES and Vulkan agree:
+
+- `c` is the layer's own premultiplied colour. A solid layer has no texture, so it gets one pixel of its colour at 8 bits a channel (an error
+  of at most half a step against the float the solid pass uses).
+- Several passes apply in list order, each reading the one before. Passes before the last draw the whole layer rectangle into one of two
+  scratch images with the tint white, the opacity 1 and square corners; the last applies the layer's tint, opacity and corners, as the
+  wrapper says (37.9, item 5).
+- The backdrop is an image of the layer's physical rectangle (`OutputFrame::backdrop_input(i)` drawn with the same planner, shifted to the
+  rectangle's origin). What lies outside the output is transparent in it. A layer below that reads its own backdrop has it built first, so
+  backdrops nest; the first three layers of a frame that read one get it, and a fourth is drawn without the passes that read it (the GLES cap).
+- `t` is the seconds since the renderer was created.
+- A shader pass on a layer with a 3D model is not drawn, like every effect there.
+
+Cost, measured on the lane's Agent37 box (2 vCPU, lavapipe from Mesa 22.3.6 on llvmpipe LLVM 15, a debug `cargo test` build, 64x48
+output, validation layer on; a real GPU has not been measured):
+
+| Case                                               | First frame with a new source         | Steady frame | Plain frame (no shader) |
+| -------------------------------------------------- | ------------------------------------- | ------------ | ----------------------- |
+| `return vec4(c.g, c.r, c.b, c.a)` on a 16x16 layer | 15 ms                                 | 5 to 8 ms    | 2 to 3 ms               |
+| `return backdrop(uv)` on a 32x32 layer             | 21 ms                                 | 11 to 14 ms  | 2 to 3 ms               |
+| a 9-tap loop over `backdrop`                       | 27 ms (119 ms in a cold process)      | 11 to 15 ms  | 2 to 3 ms               |
+| 70 sources in one frame, every frame               | 930 to 1060 ms (13 to 15 ms a source) | the same     | not applicable          |
+
+So making a pipeline costs 8 to 25 ms on the render thread, more than a frame, and a source's first frame is late by that much. It is
+paid once per source while the cache holds it. The last row is the case the 64-entry bound makes bad: a frame that draws more than 64
+sources evicts each before it is drawn again, so every frame makes them all again (a sequential scan defeats least-recently-used
+eviction, and the driver's pipeline cache does not help lavapipe). The cost is bounded by the owner's cap and not removed.
+
+Not done, with the reason: making the pipeline on another thread, so that the first frame draws without the pass and a later one with
+it. The renderer has no way to ask the compositor for a frame when the pipeline is ready (`draw` returns only success or an error, and
+the frame's timings carry nothing the composer acts on), so the effect would stay missing until something else damaged the output. That
+is a decision for the owner and needs an interface change in `gnoblin-render-frame` and `gnoblin-backend`.
+
+Decisions the owner may overrule:
+
+1. A shell's source is compiled and its pipeline made on the render thread, the frame that first draws it (above).
+2. A driver's refusal of a pipeline is not remembered; the source is tried again next frame, so a failure for want of memory heals and an
+   unlucky shader costs one attempt a frame.
+3. Backdrops nest at most three deep, as GLES does; a deeper layer loses its backdrop passes and keeps its others.
+4. The scratch images, the backdrop images and the one-pixel textures live for one frame and are not in `Vulkan::footprint`.
+5. The timestamps are written at the bottom of the pipe on both sides of a draw, so the number is the draw's own completion time on a
+   queue that has finished the draws before it. A draw inside a backdrop's frame is its own source's cost, not the outer source's.
 
 ## 38. D11, window motion as std policy, and the stale statements of sections 31 to 34 (lane TsStdObjects)
 

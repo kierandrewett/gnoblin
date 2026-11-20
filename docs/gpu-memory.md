@@ -127,6 +127,10 @@ change whose target would pass the budget is refused the same way (`memory: ...`
   (`wl_shm.invalid_stride`, `zwp_linux_buffer_params_v1.invalid_dimensions`).
 - At most 8 screenshot requests wait for the loop; a request that gives up withdraws itself.
 - The Vulkan renderer gives back its staging and readback buffers after each frame down to what one steady frame needs.
+- The Vulkan renderer's images for a shell's shader pass (the backdrop of a layer that reads one, and the scratch images
+  of a layer with several passes) are made for one frame and destroyed when it has been drawn, so they add to the
+  frame's peak and not to what the renderer keeps. They are not in the footprint's numbers. Its pipelines for shader
+  sources are at most 64, least recently used first out.
 - The GLES renderer deletes the textures it imported for a frame when the frame is drawn.
 - The frame capture keeps is released when the output goes.
 - At most 256 windows are managed at once. A window past that is left unmanaged. That is the session's limit; the

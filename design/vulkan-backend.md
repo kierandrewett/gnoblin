@@ -232,7 +232,9 @@ In priority order:
 1. Dmabuf import of client buffers, and dmabuf scan-out buffers.
 2. KMS presentation, explicit sync and `VK_KHR_incremental_present`.
 3. The D18 depth pass: a layer with a `Model` is skipped with a warning.
-4. Blur, shadow and user-shader passes (slice 2 takes blur).
+4. Blur and shadow passes (slice 2 takes blur). The shell's own `shader` pass is drawn since the custom shader pass
+   (`design/modular-framework.md`, section 37): a pipeline per source made at run time, a backdrop image and scratch
+   images per frame.
 5. Buffer transforms other than `Normal`, which GLES does not draw either.
 6. A texture cache across frames. Slice 1 uploads each surface every frame.
 7. Making Vulkan the `auto` choice.

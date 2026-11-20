@@ -173,7 +173,7 @@ default = []
 # The effects in `effects` that are not drawn, one text each as `<kind>: <reasons>`, in list
 # order; empty when every effect is drawn. Two reasons exist. `unsupported-by-renderer`: the
 # active renderer draws no effect of that kind (GLES draws blur, shadow and border, the software renderer
-# shadow and border, and Vulkan none; `seat.effect_kinds` lists what is drawn). `unsupported-effect-on-3d`:
+# shadow and border, and Vulkan only the `shader` kind; `seat.effect_kinds` lists what is drawn). `unsupported-effect-on-3d`:
 # a blur, shadow or border on a node whose placement carries depth (a rotation about x or y, a
 # `z`, or a perspective `Camera` above it) is not drawn, because the renderer has no depth
 # pass for backdrop and shadow passes. An effect with both reasons names both on one text,

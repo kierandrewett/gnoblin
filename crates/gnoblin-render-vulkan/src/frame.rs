@@ -8,36 +8,57 @@
 //!
 //! # A frame, in order
 //!
-//! 1. **Textures.** Every surface layer's `wl_shm` pixels are copied once, into a staging
+//! 1. **Shader pipelines.** Every shader pass of the frame gets its pipeline (`ShaderPipelines`), made
+//!    now if its source has not been drawn before. A source that cannot be drawn is reported on the
+//!    frame's timings and its passes are left out.
+//! 2. **Textures.** Every surface layer's `wl_shm` pixels are copied once, into a staging
 //!    buffer, and from there into an image of their own. The overlay and the cursor are made
-//!    the same way. A buffer that cannot be read, or an image the device cannot allocate, is
-//!    logged and its layer skipped: the rest of the frame is drawn.
-//! 2. **Plan.** With the textures known, the frame becomes a list of draws (`plan.rs`).
-//! 3. **Pass A.** The damage is cleared to the background and the layers are drawn, each
+//!    the same way, and a solid layer with a shader pass has a one-pixel texture of its colour. A
+//!    buffer that cannot be read, or an image the device cannot allocate, is logged and its layer
+//!    skipped: the rest of the frame is drawn.
+//! 3. **Images of the shader layers.** A layer whose pass reads the backdrop gets an image of its
+//!    size to draw the backdrop into, and a layer with several passes gets two scratch images; a
+//!    layer whose images cannot be made is drawn without its passes.
+//! 4. **Plan.** With the textures known, the frame, each backdrop and each pass of a chain
+//!    become lists of draws (`plan.rs`), joined into one set of buffers.
+//! 5. **Shader jobs**, from the bottom layer up: a layer's backdrop is drawn (the layers below
+//!    it, secure ones black, over its rectangle) and then the passes of its chain, each into its
+//!    own render pass and then made readable. A layer reads the backdrops of those below it, so
+//!    the order is the layers'.
+//! 6. **Pass A.** The damage is cleared to the background and the layers are drawn, each
 //!    clipped to the damage rectangle it belongs to.
-//! 4. **Overlay.** The overlay is drawn over the layers. The cursor's pixels are copied into
+//! 7. **Overlay.** The overlay is drawn over the layers. The cursor's pixels are copied into
 //!    a host buffer first so a capture can leave the cursor out, then the cursor is drawn.
-//! 5. **Submit and wait.**
+//! 8. **Submit and wait**, and tell the frame's timings what each shader source cost.
 //!
 //! # Layouts
 //!
 //! The target lives in `COLOR_ATTACHMENT_OPTIMAL` between frames. A copy out of it moves it to
 //! `TRANSFER_SRC_OPTIMAL` and back with explicit barriers; the render pass has the matching
 //! subpass dependencies. A texture goes `UNDEFINED`, `TRANSFER_DST_OPTIMAL`,
-//! `SHADER_READ_ONLY_OPTIMAL` and is destroyed when the frame has finished.
+//! `SHADER_READ_ONLY_OPTIMAL` and is destroyed when the frame has finished. A backdrop or scratch
+//! image goes `UNDEFINED`, `COLOR_ATTACHMENT_OPTIMAL` (the render pass draws into it) and
+//! `SHADER_READ_ONLY_OPTIMAL` by a barrier after the pass; a scratch image a later pass of the same
+//! chain draws into again is moved back by a barrier that waits for the reads of the pass before.
 
+use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use ash::vk;
+use gnoblin_render::{Pass, ShaderKey};
 use gnoblin_types::{Color, Rect, Scale, Size};
 
 use super::Vulkan;
 use super::context::{SHM_FORMAT, TARGET_FORMAT, VkBuffer, VkContext, VkImage, colour_range};
 use super::error::classify;
-use super::pipeline::{BLOCK_RANGE, DescriptorArena};
-use super::plan::{FramePlan, PassKind, TextureSizes, TextureSlot, damage_of, overlay_of, plan};
+use super::pipeline::{BLOCK_RANGE, DescriptorArena, USER_BLOCK_RANGE, UserPipeline};
+use super::plan::{
+    ChainStep, DrawBatch, FramePlan, PassKind, PlanTarget, PlannedDraw, ShaderUse, Shaders, TextureSizes, TextureSlot,
+    UNIFORM_STRIDE, chain, damage_of, overlay_of, plan, plan_into, quad_of,
+};
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::frame::{Layer, OutputFrame, SurfaceSource};
+use gnoblin_render_frame::frame::{BackdropInput, Layer, OutputFrame, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
 
@@ -66,16 +87,33 @@ pub(super) struct RenderTarget {
 impl RenderTarget {
     /// A target of `size` pixels. Its pixels are undefined until [`FrameRecorder::clear`].
     pub(super) fn new(context: &Rc<VkContext>, pass: vk::RenderPass, size: Size) -> Result<Self, vk::Result> {
-        let image = VkImage::new(
+        Self::with_usage(
             context,
-            size.width,
-            size.height,
-            TARGET_FORMAT,
+            pass,
+            size,
             vk::ImageUsageFlags::COLOR_ATTACHMENT
                 | vk::ImageUsageFlags::TRANSFER_SRC
                 | vk::ImageUsageFlags::TRANSFER_DST,
-            false,
-        )?;
+        )
+    }
+
+    /// An image a frame draws into and then samples: a backdrop, or a scratch image of a shader chain.
+    fn scratch(context: &Rc<VkContext>, pass: vk::RenderPass, size: Size) -> Result<Self, vk::Result> {
+        Self::with_usage(
+            context,
+            pass,
+            size,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+        )
+    }
+
+    fn with_usage(
+        context: &Rc<VkContext>,
+        pass: vk::RenderPass,
+        size: Size,
+        usage: vk::ImageUsageFlags,
+    ) -> Result<Self, vk::Result> {
+        let image = VkImage::new(context, size.width, size.height, TARGET_FORMAT, usage, false)?;
         let views = [image.view()];
         let info = vk::FramebufferCreateInfo::default()
             .render_pass(pass)
@@ -127,9 +165,15 @@ pub(super) struct FrameRecorder {
     arena: DescriptorArena,
     quad: VkBuffer,
     uniforms: VkBuffer,
+    /// The shader passes' own blocks: the second uniform binding of group 0.
+    user_uniforms: VkBuffer,
     instances: VkBuffer,
     staging: VkBuffer,
     readback: VkBuffer,
+    /// The timestamp queries, when the queue writes them.
+    query: Option<TimestampQuery>,
+    /// How long the last submission took from submit to fence.
+    wall: Duration,
 }
 
 impl FrameRecorder {
@@ -181,9 +225,12 @@ impl FrameRecorder {
             arena: DescriptorArena::new(context),
             quad,
             uniforms: VkBuffer::new(context, 4096, vk::BufferUsageFlags::UNIFORM_BUFFER, false)?,
+            user_uniforms: VkBuffer::new(context, 4096, vk::BufferUsageFlags::UNIFORM_BUFFER, false)?,
             instances: VkBuffer::new(context, 4096, vk::BufferUsageFlags::VERTEX_BUFFER, false)?,
             staging: VkBuffer::new(context, 4096, vk::BufferUsageFlags::TRANSFER_SRC, false)?,
             readback: VkBuffer::new(context, 4096, vk::BufferUsageFlags::TRANSFER_DST, true)?,
+            query: make_query(context),
+            wall: Duration::ZERO,
         };
         guard.pool = vk::CommandPool::null();
         guard.fence = vk::Fence::null();
@@ -237,6 +284,9 @@ impl FrameRecorder {
                 self.cmd,
                 &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
+            if let Some(query) = &self.query {
+                device.cmd_reset_query_pool(self.cmd, query.pool, 0, STAMP_QUERIES);
+            }
         }
         self.arena.reset()
     }
@@ -255,12 +305,14 @@ impl FrameRecorder {
         }
         let buffers = [self.cmd];
         let submit = vk::SubmitInfo::default().command_buffers(&buffers);
+        let started = Instant::now();
         // SAFETY: the queue belongs to this device and is used from this thread only; the
         // fence was reset in `begin`.
         unsafe {
             device.queue_submit(self.context.queue, &[submit], self.fence)?;
             device.wait_for_fences(&[self.fence], true, FRAME_TIMEOUT)?;
         }
+        self.wall = started.elapsed();
         Ok(())
     }
 
@@ -311,11 +363,12 @@ impl FrameRecorder {
         Ok(())
     }
 
-    /// The host-visible bytes the recorder holds now: the quad, uniform, instance, staging and readback buffers.
+    /// The host-visible bytes the recorder holds now: the quad, uniform, shader-block, instance, staging and readback buffers.
     pub(super) fn bytes(&self) -> u64 {
         [
             &self.quad,
             &self.uniforms,
+            &self.user_uniforms,
             &self.instances,
             &self.staging,
             &self.readback,
@@ -369,6 +422,9 @@ impl Drop for FrameRecorder {
     fn drop(&mut self) {
         // SAFETY: the renderer is idle; destroying the pool frees its command buffer.
         unsafe {
+            if let Some(query) = &self.query {
+                self.context.device.destroy_query_pool(query.pool, None);
+            }
             self.context.device.destroy_fence(self.fence, None);
             self.context.device.destroy_command_pool(self.pool, None);
         }
@@ -389,6 +445,8 @@ enum PixelSource<'a> {
         shape: shm::ShmShape,
     },
     Bitmap(&'a Image),
+    /// One premultiplied pixel: a solid layer's colour, which its shader pass reads as the layer's own.
+    Pixel([u8; 4]),
 }
 
 impl PixelSource<'_> {
@@ -399,6 +457,7 @@ impl PixelSource<'_> {
                 let size = image.size();
                 (size.width, size.height)
             }
+            Self::Pixel(_) => (1, 1),
         }
     }
 
@@ -406,6 +465,136 @@ impl PixelSource<'_> {
         let (width, height) = self.size();
         width as usize * height as usize * 4
     }
+}
+
+/// How many layers of a frame may read a backdrop.
+///
+/// A backdrop is drawn from the layers below it, and one of those may read its own, so the backdrops nest. Three deep is what
+/// the GLES renderer allows; a layer past that is drawn without the passes that read one.
+const MAX_BACKDROP_LAYERS: usize = 3;
+
+/// The code of a pass left out because its backdrop is not there: the layer is past [`MAX_BACKDROP_LAYERS`], the backdrop's
+/// image could not be made, or the pass was not marked as reading the backdrop its source reads.
+const BACKDROP_UNAVAILABLE: &str = "backdrop-unavailable";
+
+/// The code of the passes left out because the layer's scratch images could not be made.
+const IMAGE_FAILED: &str = "image-failed";
+
+/// How many timestamps a frame can write: two for each draw of a shader pass.
+const STAMP_QUERIES: u32 = 512;
+
+/// The timestamp queries of the device: the pool, and what a tick of it is worth.
+struct TimestampQuery {
+    pool: vk::QueryPool,
+    /// The length of a tick in nanoseconds.
+    nanoseconds: f64,
+    /// The bits of a timestamp the queue writes.
+    mask: u64,
+}
+
+/// The pool of timestamp queries, when the queue writes any.
+fn make_query(context: &VkContext) -> Option<TimestampQuery> {
+    if context.timestamp_bits == 0 {
+        return None;
+    }
+    let info = vk::QueryPoolCreateInfo::default()
+        .query_type(vk::QueryType::TIMESTAMP)
+        .query_count(STAMP_QUERIES);
+    // SAFETY: `info` is a valid description; the pool is destroyed with the recorder.
+    let pool = unsafe { context.device.create_query_pool(&info, None) }.ok()?;
+    let bits = context.timestamp_bits;
+    Some(TimestampQuery {
+        pool,
+        nanoseconds: f64::from(context.limits.timestamp_period),
+        mask: if bits >= 64 { u64::MAX } else { (1_u64 << bits) - 1 },
+    })
+}
+
+/// The timestamps a frame has written around its shader draws.
+#[derive(Default)]
+struct Stamps {
+    /// The queries used so far.
+    used: u32,
+    /// The key each pair of queries belongs to, and the first query of the pair.
+    spans: Vec<(ShaderKey, u32)>,
+    /// Whether a draw did not fit the pool, so the numbers are partial.
+    overflowed: bool,
+}
+
+impl Stamps {
+    /// Records `draw`, between two timestamps when it is a shader pass's and the pool has room.
+    ///
+    /// Both are written when everything before them has finished, so the pair measures the draw alone, not what ran before it.
+    fn bracket(
+        &mut self,
+        device: &ash::Device,
+        cmd: vk::CommandBuffer,
+        query: Option<&TimestampQuery>,
+        key: Option<ShaderKey>,
+        draw: impl FnOnce(),
+    ) {
+        let (Some(query), Some(key)) = (query, key) else {
+            draw();
+            return;
+        };
+        if self.used + 2 > STAMP_QUERIES {
+            self.overflowed = true;
+            draw();
+            return;
+        }
+        let first = self.used;
+        // SAFETY: the pool holds `STAMP_QUERIES` queries, which `begin` reset, and both indices are below it.
+        unsafe { device.cmd_write_timestamp(cmd, vk::PipelineStageFlags::BOTTOM_OF_PIPE, query.pool, first) };
+        draw();
+        // SAFETY: as above.
+        unsafe { device.cmd_write_timestamp(cmd, vk::PipelineStageFlags::BOTTOM_OF_PIPE, query.pool, first + 1) };
+        self.spans.push((key, first));
+        self.used += 2;
+    }
+}
+
+/// The images a layer's shader passes read: its backdrop, and the two scratch images its passes alternate between.
+struct LayerImages {
+    /// What is behind the layer, drawn into an image of the layer's size, with the frame that describes it.
+    backdrop: Option<(RenderTarget, BackdropInput)>,
+    /// The images the passes before the last draw into, alternating.
+    chain: [Option<RenderTarget>; 2],
+}
+
+/// A render pass a frame records before its own.
+enum Job {
+    /// The layers below a layer, drawn over its rectangle into its backdrop image.
+    Backdrop {
+        index: usize,
+        plan: FramePlan,
+        background: Color,
+    },
+    /// One pass of a layer's chain, drawn into one of its scratch images.
+    Chain { index: usize, step: ChainStep },
+}
+
+/// What `paint` hands to `record`.
+struct FrameRecording<'a> {
+    frame: &'a OutputFrame,
+    planned: &'a FramePlan,
+    batch: DrawBatch,
+    uploads: &'a [Upload],
+    images: &'a BTreeMap<usize, LayerImages>,
+    jobs: Vec<Job>,
+    pipelines: &'a [(ShaderKey, vk::Pipeline)],
+}
+
+/// What a draw binds: the uniform set, the textures by slot and the shader pipelines by key.
+struct Bindings<'a> {
+    uniform: vk::DescriptorSet,
+    textures: &'a [(TextureSlot, vk::DescriptorSet)],
+    pipelines: &'a [(ShaderKey, vk::Pipeline)],
+}
+
+/// A clear of some rectangles of the target to a colour.
+struct Clear<'a> {
+    colour: [f32; 4],
+    rects: &'a [Rect],
 }
 
 impl Vulkan {
@@ -432,7 +621,8 @@ impl Vulkan {
         if damage_of(frame, scale, self.physical).is_empty() {
             return Ok(());
         }
-        let sources = sources(frame);
+        let (mut shaders, pipelines) = self.resolve_shaders(frame);
+        let sources = sources(frame, &shaders);
         let staging_bytes = sources
             .iter()
             .map(|(_, source)| source.bytes().next_multiple_of(STAGING_ALIGN))
@@ -455,7 +645,7 @@ impl Vulkan {
             let (width, height) = source.size();
             let (format, opaque) = match source {
                 PixelSource::Shm { shape, .. } => (SHM_FORMAT, shape.opaque),
-                PixelSource::Bitmap(_) => (TARGET_FORMAT, false),
+                PixelSource::Bitmap(_) | PixelSource::Pixel(_) => (TARGET_FORMAT, false),
             };
             let image = match VkImage::new(
                 &context,
@@ -486,6 +676,7 @@ impl Vulkan {
                 TextureSlot::Layer(index) => sizes.layers[index] = Some((width, height)),
                 TextureSlot::Overlay => sizes.overlay = Some((width, height)),
                 TextureSlot::Cursor => sizes.cursor = Some((width, height)),
+                TextureSlot::Chain(..) | TextureSlot::Backdrop(_) => continue,
             }
             uploads.push(Upload {
                 slot: *slot,
@@ -494,7 +685,10 @@ impl Vulkan {
             });
             offset += source.bytes().next_multiple_of(STAGING_ALIGN);
         }
-        let planned = plan(frame, scale, self.physical, &sizes);
+        let images = self.make_images(frame, scale, &mut shaders, &sizes);
+        let mut batch = DrawBatch::default();
+        let jobs = self.plan_jobs(frame, scale, &shaders, &sizes, &images, &mut batch);
+        let planned = plan(frame, scale, self.physical, &sizes, &shaders).append_to(&mut batch);
         if planned.skipped_models > 0 && !self.warned_models {
             self.warned_models = true;
             log::warn!(
@@ -502,21 +696,232 @@ impl Vulkan {
                 "unsupported-3d: the Vulkan renderer has no depth pass, so a layer with a model is not drawn"
             );
         }
-        self.record(frame, &planned, &uploads)
+        self.record(FrameRecording {
+            frame,
+            planned: &planned,
+            batch,
+            uploads: &uploads,
+            images: &images,
+            jobs,
+            pipelines: &pipelines,
+        })
+    }
+
+    /// Makes the pipeline of every shader pass the frame draws, and says which passes each layer has.
+    ///
+    /// A source that cannot be drawn (the validator refuses it, it does not compile, or the driver refuses the pipeline) is
+    /// reported on the frame's timings with a short code and left out: its node is drawn without the pass. A pass that was not
+    /// marked as reading the backdrop but whose source does is refused too, because the frame would not have built one.
+    fn resolve_shaders(&mut self, frame: &OutputFrame) -> (Shaders, Vec<(ShaderKey, vk::Pipeline)>) {
+        let mut shaders = Shaders {
+            layers: vec![Vec::new(); frame.layers().len()],
+            time: self.epoch.elapsed().as_secs_f32(),
+        };
+        let mut found: Vec<(ShaderKey, Result<UserPipeline, &'static str>)> = Vec::new();
+        for (index, layer) in frame.layers().iter().enumerate() {
+            let effects = match layer {
+                Layer::Surface(surface) if surface.model.is_none() => &surface.effects,
+                Layer::Solid(solid) if solid.model.is_none() => &solid.effects,
+                _ => continue,
+            };
+            for pass in effects.passes() {
+                let Pass::Shader(pass) = pass else { continue };
+                let key = pass.key();
+                let outcome = match found.iter().find(|(held, _)| *held == key) {
+                    Some((_, outcome)) => *outcome,
+                    None => {
+                        let outcome = self.shaders.resolve(&self.pipelines, pass);
+                        found.push((key, outcome));
+                        outcome
+                    }
+                };
+                let outcome = outcome.and_then(|made| {
+                    if made.backdrop && !pass.backdrop() {
+                        Err(BACKDROP_UNAVAILABLE)
+                    } else {
+                        Ok(made)
+                    }
+                });
+                match outcome {
+                    Ok(made) => shaders.layers[index].push(ShaderUse {
+                        key,
+                        params: pass.params_padded(),
+                        backdrop: made.backdrop,
+                    }),
+                    Err(code) => frame.shader_timings().record_refused(key, code),
+                }
+            }
+        }
+        let pipelines = found
+            .into_iter()
+            .filter_map(|(key, outcome)| outcome.ok().map(|made| (key, made.pipeline)))
+            .collect();
+        (shaders, pipelines)
+    }
+
+    /// Makes the images the layers with shader passes need: a backdrop for a layer whose pass reads one, and one or two scratch
+    /// images for a layer with several passes. A layer whose images cannot be made, or whose backdrop is past
+    /// [`MAX_BACKDROP_LAYERS`], loses the passes that need them and is drawn without.
+    fn make_images(
+        &self,
+        frame: &OutputFrame,
+        scale: Scale,
+        shaders: &mut Shaders,
+        sizes: &TextureSizes,
+    ) -> BTreeMap<usize, LayerImages> {
+        let mut made = BTreeMap::new();
+        let mut backdrops = 0;
+        for (index, layer) in frame.layers().iter().enumerate() {
+            if shaders.layers[index].is_empty() {
+                continue;
+            }
+            let dst = match layer {
+                Layer::Surface(surface) => surface.dst,
+                Layer::Solid(solid) => solid.dst,
+                Layer::Overlay(_) => continue,
+            };
+            let quad = quad_of(dst, scale);
+            if quad.is_empty() || sizes.layers.get(index).is_none_or(Option::is_none) {
+                shaders.layers[index].clear();
+                continue;
+            }
+            let mut input = None;
+            if shaders.layers[index].iter().any(|pass| pass.backdrop) {
+                if backdrops < MAX_BACKDROP_LAYERS {
+                    input = frame.backdrop_input(index);
+                }
+                if input.is_none() {
+                    for pass in shaders.layers[index].iter().filter(|pass| pass.backdrop) {
+                        frame.shader_timings().record_refused(pass.key, BACKDROP_UNAVAILABLE);
+                    }
+                    shaders.layers[index].retain(|pass| !pass.backdrop);
+                }
+            }
+            let passes = shaders.layers[index].len();
+            if passes == 0 {
+                continue;
+            }
+            match self.layer_images(Size::new(quad.width, quad.height), input, passes) {
+                Ok(images) => {
+                    backdrops += usize::from(images.backdrop.is_some());
+                    made.insert(index, images);
+                }
+                Err(result) => {
+                    log::warn!(
+                        area = "render",
+                        ?result,
+                        "the images of a shader pass could not be made; its layer is drawn without it"
+                    );
+                    for pass in &shaders.layers[index] {
+                        frame.shader_timings().record_refused(pass.key, IMAGE_FAILED);
+                    }
+                    shaders.layers[index].clear();
+                }
+            }
+        }
+        made
+    }
+
+    /// The backdrop image of a layer and the scratch images its passes alternate between.
+    fn layer_images(&self, size: Size, input: Option<BackdropInput>, passes: usize) -> Result<LayerImages, vk::Result> {
+        let render_pass = self.pipelines.render_pass;
+        let backdrop = match input {
+            Some(input) => Some((RenderTarget::scratch(&self.context, render_pass, size)?, input)),
+            None => None,
+        };
+        let mut chain = [None, None];
+        for image in chain.iter_mut().take(passes.saturating_sub(1)) {
+            *image = Some(RenderTarget::scratch(&self.context, render_pass, size)?);
+        }
+        Ok(LayerImages { backdrop, chain })
+    }
+
+    /// Plans what has to be drawn before the frame, layer by layer from the bottom: the backdrop of a layer (the layers below
+    /// it, secure ones black, over its rectangle) and then the steps of its chain. A layer's backdrop reads those of the layers
+    /// below it, which is why the order is the layers'.
+    fn plan_jobs(
+        &self,
+        frame: &OutputFrame,
+        scale: Scale,
+        shaders: &Shaders,
+        sizes: &TextureSizes,
+        images: &BTreeMap<usize, LayerImages>,
+        batch: &mut DrawBatch,
+    ) -> Vec<Job> {
+        let mut jobs = Vec::new();
+        for (index, layer_images) in images {
+            if let Some((_, input)) = &layer_images.backdrop {
+                let quad = quad_of(input.region, scale);
+                let target = PlanTarget {
+                    origin: (quad.x, quad.y),
+                    size: Size::new(quad.width, quad.height),
+                };
+                let plan = plan_into(&input.frame, scale, self.physical, target, sizes, shaders).append_to(batch);
+                jobs.push(Job::Backdrop {
+                    index: *index,
+                    plan,
+                    background: input.frame.background(),
+                });
+            }
+            for mut step in chain(&frame.layers()[*index], *index, scale, sizes, shaders) {
+                step.plan = step.plan.append_to(batch);
+                jobs.push(Job::Chain { index: *index, step });
+            }
+        }
+        jobs
+    }
+
+    /// A descriptor set that binds `view` with `sampler` as a texture and its sampler.
+    fn texture_set(&mut self, view: vk::ImageView, sampler: vk::Sampler) -> Result<vk::DescriptorSet, vk::Result> {
+        let set = self.recorder.arena.allocate(self.pipelines.texture_layout)?;
+        let image = [vk::DescriptorImageInfo::default()
+            .image_view(view)
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
+        let sampler = [vk::DescriptorImageInfo::default().sampler(sampler)];
+        let writes = [
+            vk::WriteDescriptorSet::default()
+                .dst_set(set)
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                .image_info(&image),
+            vk::WriteDescriptorSet::default()
+                .dst_set(set)
+                .dst_binding(1)
+                .descriptor_type(vk::DescriptorType::SAMPLER)
+                .image_info(&sampler),
+        ];
+        // SAFETY: the set, view and sampler are live and the layout matches the set's.
+        unsafe { self.context.device.update_descriptor_sets(&writes, &[]) };
+        Ok(set)
     }
 
     /// Records the frame and submits it.
-    fn record(&mut self, frame: &OutputFrame, planned: &FramePlan, uploads: &[Upload]) -> Result<(), vk::Result> {
+    fn record(&mut self, recording: FrameRecording<'_>) -> Result<(), vk::Result> {
+        let FrameRecording {
+            frame,
+            planned,
+            batch,
+            uploads,
+            images,
+            jobs,
+            pipelines,
+        } = recording;
         let context = Rc::clone(&self.context);
-        let uniform_bytes = planned.uniforms.len().max(super::plan::UNIFORM_STRIDE);
         FrameRecorder::ensure(
             &context,
             &mut self.recorder.uniforms,
-            uniform_bytes,
+            batch.uniforms.len().max(UNIFORM_STRIDE),
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             false,
         )?;
-        let instance_bytes: Vec<u8> = planned.instances.iter().flat_map(|value| value.to_ne_bytes()).collect();
+        FrameRecorder::ensure(
+            &context,
+            &mut self.recorder.user_uniforms,
+            batch.user.len().max(UNIFORM_STRIDE),
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            false,
+        )?;
+        let instance_bytes: Vec<u8> = batch.instances.iter().flat_map(|value| value.to_ne_bytes()).collect();
         FrameRecorder::ensure(
             &context,
             &mut self.recorder.instances,
@@ -524,7 +929,8 @@ impl Vulkan {
             vk::BufferUsageFlags::VERTEX_BUFFER,
             false,
         )?;
-        self.recorder.uniforms.write(0, &planned.uniforms);
+        self.recorder.uniforms.write(0, &batch.uniforms);
+        self.recorder.user_uniforms.write(0, &batch.user);
         self.recorder.instances.write(0, &instance_bytes);
         let saved = &mut self.cursor_under;
         saved.rect = planned.cursor_visible;
@@ -546,68 +952,204 @@ impl Vulkan {
             .buffer(self.recorder.uniforms.raw())
             .offset(0)
             .range(BLOCK_RANGE)];
-        let mut sets: Vec<(TextureSlot, vk::DescriptorSet)> = Vec::with_capacity(uploads.len());
+        let user_block = [vk::DescriptorBufferInfo::default()
+            .buffer(self.recorder.user_uniforms.raw())
+            .offset(0)
+            .range(USER_BLOCK_RANGE)];
+        let write_uniforms = [
+            vk::WriteDescriptorSet::default()
+                .dst_set(uniform_set)
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                .buffer_info(&block),
+            vk::WriteDescriptorSet::default()
+                .dst_set(uniform_set)
+                .dst_binding(1)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                .buffer_info(&user_block),
+        ];
+        // SAFETY: the set and buffers are live and the ranges lie inside the buffers.
+        unsafe { context.device.update_descriptor_sets(&write_uniforms, &[]) };
+        let mut sets: Vec<(TextureSlot, vk::DescriptorSet)> = Vec::with_capacity(uploads.len() + 2 * images.len());
         for upload in uploads {
-            let set = self.recorder.arena.allocate(self.pipelines.texture_layout)?;
-            let image = [vk::DescriptorImageInfo::default()
-                .image_view(upload.image.view())
-                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
-            let sampler = [vk::DescriptorImageInfo::default().sampler(if upload.slot.nearest() {
+            let sampler = if upload.slot.nearest() {
                 self.pipelines.nearest
             } else {
                 self.pipelines.linear
-            })];
-            let writes = [
-                vk::WriteDescriptorSet::default()
-                    .dst_set(set)
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                    .image_info(&image),
-                vk::WriteDescriptorSet::default()
-                    .dst_set(set)
-                    .dst_binding(1)
-                    .descriptor_type(vk::DescriptorType::SAMPLER)
-                    .image_info(&sampler),
-            ];
-            // SAFETY: the set, view and sampler are live and the layout matches the set's.
-            unsafe { context.device.update_descriptor_sets(&writes, &[]) };
+            };
+            let set = self.texture_set(upload.image.view(), sampler)?;
             sets.push((upload.slot, set));
         }
-        let write_uniform = [vk::WriteDescriptorSet::default()
-            .dst_set(uniform_set)
-            .dst_binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-            .buffer_info(&block)];
-        // SAFETY: the set and buffer are live and the range lies inside the buffer.
-        unsafe { context.device.update_descriptor_sets(&write_uniform, &[]) };
+        for (index, layer_images) in images {
+            if let Some((target, _)) = &layer_images.backdrop {
+                let set = self.texture_set(target.image.view(), self.pipelines.linear)?;
+                sets.push((TextureSlot::Backdrop(*index), set));
+            }
+            for (which, target) in layer_images.chain.iter().enumerate() {
+                if let Some(target) = target {
+                    let set = self.texture_set(target.image.view(), self.pipelines.nearest)?;
+                    sets.push((TextureSlot::Chain(*index, which), set));
+                }
+            }
+        }
 
         for upload in uploads {
             self.upload(upload);
         }
+        let bindings = Bindings {
+            uniform: uniform_set,
+            textures: &sets,
+            pipelines,
+        };
+        let mut stamps = Stamps::default();
+        let transparent = [0.0; 4];
+        for job in &jobs {
+            match job {
+                Job::Backdrop {
+                    index,
+                    plan,
+                    background,
+                } => {
+                    let Some((target, _)) = images.get(index).and_then(|images| images.backdrop.as_ref()) else {
+                        continue;
+                    };
+                    let size = Size::new(target.image.width(), target.image.height());
+                    // What lies outside the output stays transparent.
+                    let clears = [
+                        Clear {
+                            colour: transparent,
+                            rects: &[Rect::new(0, 0, size.width, size.height)],
+                        },
+                        Clear {
+                            colour: premultiplied(*background),
+                            rects: &plan.damage,
+                        },
+                    ];
+                    self.to_drawn(target.image.raw());
+                    self.pass((target.framebuffer, size), &clears, &plan.draws, &bindings, &mut stamps);
+                    self.to_sampled(target.image.raw());
+                }
+                Job::Chain { index, step } => {
+                    let Some(target) = images.get(index).and_then(|images| images.chain[step.into].as_ref()) else {
+                        continue;
+                    };
+                    let size = Size::new(target.image.width(), target.image.height());
+                    let clears = [Clear {
+                        colour: transparent,
+                        rects: &step.plan.damage,
+                    }];
+                    self.to_drawn(target.image.raw());
+                    self.pass(
+                        (target.framebuffer, size),
+                        &clears,
+                        &step.plan.draws,
+                        &bindings,
+                        &mut stamps,
+                    );
+                    self.to_sampled(target.image.raw());
+                }
+            }
+        }
         let background = premultiplied(frame.background());
+        let main = [Clear {
+            colour: background,
+            rects: &planned.damage,
+        }];
+        let target = (self.target.framebuffer, self.physical);
         self.pass(
-            planned,
+            target,
+            &main,
             &planned.draws[..planned.layers_end],
-            uniform_set,
-            &sets,
-            Some(background),
+            &bindings,
+            &mut stamps,
         );
         if planned.overlay_end > planned.layers_end {
             self.pass(
-                planned,
+                target,
+                &[],
                 &planned.draws[planned.layers_end..planned.overlay_end],
-                uniform_set,
-                &sets,
-                None,
+                &bindings,
+                &mut stamps,
             );
         }
         if !planned.cursor_under.is_empty() {
             self.save_under(&planned.cursor_under, self.cursor_under.rect);
         }
         if planned.draws.len() > planned.overlay_end {
-            self.pass(planned, &planned.draws[planned.overlay_end..], uniform_set, &sets, None);
+            self.pass(
+                target,
+                &[],
+                &planned.draws[planned.overlay_end..],
+                &bindings,
+                &mut stamps,
+            );
         }
-        self.recorder.submit()
+        self.recorder.submit()?;
+        let mut keys: Vec<ShaderKey> = Vec::new();
+        let drawn = jobs
+            .iter()
+            .flat_map(|job| match job {
+                Job::Backdrop { plan, .. } => plan.draws.iter(),
+                Job::Chain { step, .. } => step.plan.draws.iter(),
+            })
+            .chain(planned.draws.iter());
+        for draw in drawn {
+            if let PassKind::User(key) = draw.kind
+                && !keys.contains(&key)
+            {
+                keys.push(key);
+            }
+        }
+        self.report_timings(frame, &stamps, &keys);
+        Ok(())
+    }
+
+    /// Tells the frame's shader timings what each shader source cost this frame: the GPU time of its draws when the queue
+    /// writes timestamps and the frame's draws fit the query pool, otherwise the wall time from submit to fence, which is
+    /// the frame's and so counts every source in it for the whole frame.
+    fn report_timings(&self, frame: &OutputFrame, stamps: &Stamps, keys: &[ShaderKey]) {
+        if keys.is_empty() {
+            return;
+        }
+        let timings = frame.shader_timings();
+        let measured = self
+            .recorder
+            .query
+            .as_ref()
+            .filter(|_| !stamps.overflowed && stamps.used > 0)
+            .and_then(|query| {
+                let mut ticks = vec![0_u64; stamps.used as usize];
+                // SAFETY: the frame's fence was waited, so every timestamp of the pool was written.
+                unsafe {
+                    self.context
+                        .device
+                        .get_query_pool_results(query.pool, 0, &mut ticks, vk::QueryResultFlags::TYPE_64)
+                }
+                .ok()?;
+                let mut sums: Vec<(ShaderKey, Duration)> = Vec::new();
+                for (key, first) in &stamps.spans {
+                    let first = *first as usize;
+                    let elapsed = ticks[first + 1].wrapping_sub(ticks[first]) & query.mask;
+                    let elapsed = Duration::from_nanos((elapsed as f64 * query.nanoseconds) as u64);
+                    match sums.iter_mut().find(|(held, _)| held == key) {
+                        Some((_, total)) => *total = total.saturating_add(elapsed),
+                        None => sums.push((*key, elapsed)),
+                    }
+                }
+                Some(sums)
+            });
+        match measured {
+            Some(sums) => {
+                for (key, elapsed) in sums {
+                    timings.record(key, elapsed);
+                }
+            }
+            None => {
+                for key in keys {
+                    timings.record(*key, self.recorder.wall);
+                }
+            }
+        }
     }
 
     /// Copies a texture's pixels from the staging buffer into its image.
@@ -714,21 +1256,21 @@ impl Vulkan {
         );
     }
 
-    /// Records one render pass: an optional clear of the damage, then the draws.
+    /// Records one render pass into `target`: the clears, then the draws.
     fn pass(
         &self,
-        planned: &FramePlan,
-        draws: &[super::plan::PlannedDraw],
-        uniform_set: vk::DescriptorSet,
-        sets: &[(TextureSlot, vk::DescriptorSet)],
-        clear: Option<[f32; 4]>,
+        target: (vk::Framebuffer, Size),
+        clears: &[Clear<'_>],
+        draws: &[PlannedDraw],
+        bindings: &Bindings<'_>,
+        stamps: &mut Stamps,
     ) {
         let device = &self.context.device;
         let cmd = self.recorder.cmd;
-        let size = self.physical;
+        let (framebuffer, size) = target;
         let begin = vk::RenderPassBeginInfo::default()
             .render_pass(self.pipelines.render_pass)
-            .framebuffer(self.target.framebuffer)
+            .framebuffer(framebuffer)
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: vk::Extent2D {
@@ -745,7 +1287,7 @@ impl Vulkan {
             max_depth: 1.0,
         };
         // SAFETY: the pass, framebuffer and pipelines are live and compatible; every draw below
-        // stays inside the buffers bound here, whose sizes `record` ensured for the plan, and
+        // stays inside the buffers bound here, whose sizes `record` ensured for the plans, and
         // every scissor lies inside the target.
         unsafe {
             device.cmd_begin_render_pass(cmd, &begin, vk::SubpassContents::INLINE);
@@ -756,16 +1298,16 @@ impl Vulkan {
                 &[self.recorder.quad.raw(), self.recorder.instances.raw()],
                 &[0, 0],
             );
-            if let Some(colour) = clear {
+            for clear in clears.iter().filter(|clear| !clear.rects.is_empty()) {
                 let attachment = vk::ClearAttachment {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     color_attachment: 0,
                     clear_value: vk::ClearValue {
-                        color: vk::ClearColorValue { float32: colour },
+                        color: vk::ClearColorValue { float32: clear.colour },
                     },
                 };
-                let rects: Vec<vk::ClearRect> = planned
-                    .damage
+                let rects: Vec<vk::ClearRect> = clear
+                    .rects
                     .iter()
                     .map(|rect| vk::ClearRect {
                         rect: scissor(*rect),
@@ -781,6 +1323,10 @@ impl Vulkan {
                     let pipeline = match draw.kind {
                         PassKind::Solid => self.pipelines.solid,
                         PassKind::Surface => self.pipelines.surface,
+                        PassKind::User(key) => match bindings.pipelines.iter().find(|(held, _)| *held == key) {
+                            Some((_, pipeline)) => *pipeline,
+                            None => continue,
+                        },
                     };
                     device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
                     bound = Some(draw.kind);
@@ -791,25 +1337,62 @@ impl Vulkan {
                     vk::PipelineBindPoint::GRAPHICS,
                     self.pipelines.layout,
                     0,
-                    &[uniform_set],
-                    &[draw.uniform_offset],
+                    &[bindings.uniform],
+                    &[draw.uniform_offset, draw.user_offset],
                 );
-                if let Some(slot) = draw.slot
-                    && let Some((_, set)) = sets.iter().find(|(candidate, _)| *candidate == slot)
-                {
-                    device.cmd_bind_descriptor_sets(
-                        cmd,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        self.pipelines.layout,
-                        1,
-                        &[*set],
-                        &[],
-                    );
+                for (set, slot) in [(1, draw.slot), (2, draw.backdrop.map(TextureSlot::Backdrop))] {
+                    if let Some(slot) = slot
+                        && let Some((_, texture)) = bindings.textures.iter().find(|(candidate, _)| *candidate == slot)
+                    {
+                        device.cmd_bind_descriptor_sets(
+                            cmd,
+                            vk::PipelineBindPoint::GRAPHICS,
+                            self.pipelines.layout,
+                            set,
+                            &[*texture],
+                            &[],
+                        );
+                    }
                 }
-                device.cmd_draw(cmd, 4, 1, 0, draw.instance);
+                let key = match draw.kind {
+                    PassKind::User(key) => Some(key),
+                    PassKind::Solid | PassKind::Surface => None,
+                };
+                // The draw is covered by this block's contract: the buffers, sets and scissor are the ones bound above.
+                stamps.bracket(device, cmd, self.recorder.query.as_ref(), key, || {
+                    device.cmd_draw(cmd, 4, 1, 0, draw.instance);
+                });
             }
             device.cmd_end_render_pass(cmd);
         }
+    }
+
+    /// Moves an image a pass drew into to the layout a later pass samples it in.
+    fn to_sampled(&self, image: vk::Image) {
+        self.recorder.barrier(
+            image,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            (
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            ),
+            (vk::PipelineStageFlags::FRAGMENT_SHADER, vk::AccessFlags::SHADER_READ),
+        );
+    }
+
+    /// Moves an image to be drawn into, dropping what it held. The image may have been sampled by an earlier pass of this frame.
+    fn to_drawn(&self, image: vk::Image) {
+        self.recorder.barrier(
+            image,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            (vk::PipelineStageFlags::FRAGMENT_SHADER, vk::AccessFlags::SHADER_READ),
+            (
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            ),
+        );
     }
 
     /// Reads the target back, with the cursor's pixels put back when `!with_cursor`.
@@ -900,6 +1483,8 @@ impl Vulkan {
         let error = classify(result);
         if error == RenderError::Lost {
             self.lost = true;
+            // Nothing is drawn on this device again, so every shader pipeline goes now.
+            self.shaders.drain();
         }
         log::warn!(area = "render", ?result, ?error, "the Vulkan renderer failed a frame");
         error
@@ -907,11 +1492,21 @@ impl Vulkan {
 }
 
 /// The layers of a frame that have pixels to upload, with the slot each fills.
-fn sources(frame: &OutputFrame) -> Vec<(TextureSlot, PixelSource<'_>)> {
+///
+/// A solid layer that draws a shader pass has one pixel of its colour, which the pass reads as the layer's own.
+fn sources<'a>(frame: &'a OutputFrame, shaders: &Shaders) -> Vec<(TextureSlot, PixelSource<'a>)> {
     let mut found = Vec::new();
     for (index, layer) in frame.layers().iter().enumerate() {
-        let Layer::Surface(surface) = layer else {
-            continue;
+        let surface = match layer {
+            Layer::Surface(surface) => surface,
+            Layer::Solid(solid) => {
+                if solid.model.is_none() && !shaders.of(index).is_empty() {
+                    let pixel = premultiplied(solid.colour).map(|value| (value * 255.0).round() as u8);
+                    found.push((TextureSlot::Layer(index), PixelSource::Pixel(pixel)));
+                }
+                continue;
+            }
+            Layer::Overlay(_) => continue,
         };
         if surface.model.is_some() {
             continue;
@@ -968,6 +1563,10 @@ fn fill(source: &PixelSource<'_>, destination: &mut [u8]) -> bool {
                 };
                 out.copy_from_slice(pixels);
             }
+            true
+        }
+        PixelSource::Pixel(pixel) => {
+            destination.copy_from_slice(pixel);
             true
         }
     }
