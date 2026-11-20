@@ -15,6 +15,7 @@
 smithay = '{ workspace = true }'
 gnoblin-types = '{ workspace = true }'
 gnoblin-log = '{ path = "../../gnoblin-log" }'
+getrandom = '{ workspace = true }'
 wayland-protocols-misc = '{ version = "0.3.12", features = ["server"] }'
 
 [[crate]]
@@ -219,3 +220,10 @@ description = "The zwlr_output_power_manager_v1 Wayland protocol of gnoblin-wayl
 kind = "protocol"
 interfaces = [["zwlr_output_power_manager_v1", 1]]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+
+[[crate]]
+name = "xdg-foreign"
+description = "The zxdg_exporter_v2 and zxdg_importer_v2 Wayland protocols of gnoblin-wayland: a toplevel named by handle."
+kind = "protocol"
+interfaces = [["zxdg_exporter_v2", 1], ["zxdg_importer_v2", 1]]
+deps = ["smithay", "gnoblin-log", "getrandom"]

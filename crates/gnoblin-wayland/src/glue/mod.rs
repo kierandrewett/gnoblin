@@ -19,6 +19,7 @@ mod wp_presentation_time;
 mod wp_security_context_v1;
 mod wp_tearing_control_v1;
 mod xdg_dialog_v1;
+mod xdg_foreign;
 mod xdg_system_bell_v1;
 mod xdg_toplevel_icon_v1;
 mod xdg_toplevel_tag_v1;

@@ -37,8 +37,6 @@ pub mod wl_data_device_manager;
 pub mod wl_seat;
 /// `xdg_activation_v1`: one-shot activation tokens.
 pub mod xdg_activation_v1;
-/// `zxdg_exporter_v2` and `zxdg_importer_v2`: export a toplevel handle to another client.
-pub mod xdg_foreign;
 /// `xdg_shell`: toplevels, popups, configure and ack.
 pub mod xdg_shell;
 /// `zwlr_foreign_toplevel_manager_v1`: the window list a taskbar reads.

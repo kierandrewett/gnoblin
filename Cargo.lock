@@ -2378,6 +2378,7 @@ dependencies = [
  "gnoblin-wayland-wp-tearing-control-v1",
  "gnoblin-wayland-wp-viewporter",
  "gnoblin-wayland-xdg-dialog-v1",
+ "gnoblin-wayland-xdg-foreign",
  "gnoblin-wayland-xdg-system-bell-v1",
  "gnoblin-wayland-xdg-toplevel-icon-v1",
  "gnoblin-wayland-xdg-toplevel-tag-v1",
@@ -2498,6 +2499,16 @@ dependencies = [
 name = "gnoblin-wayland-xdg-dialog-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-xdg-foreign"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "getrandom",
+ "gnoblin-log",
  "gnoblin-wayland-api",
  "smithay",
 ]

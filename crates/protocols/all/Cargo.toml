@@ -42,3 +42,4 @@ gnoblin-wayland-ext-background-effect-v1 = { path = "../ext-background-effect-v1
 gnoblin-wayland-wp-security-context-v1 = { path = "../wp-security-context-v1" }
 gnoblin-wayland-zwlr-gamma-control-v1 = { path = "../zwlr-gamma-control-v1" }
 gnoblin-wayland-zwlr-output-power-management-v1 = { path = "../zwlr-output-power-management-v1" }
+gnoblin-wayland-xdg-foreign = { path = "../xdg-foreign" }

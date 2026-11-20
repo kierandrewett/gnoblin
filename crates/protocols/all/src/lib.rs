@@ -20,6 +20,7 @@ pub use gnoblin_wayland_wp_single_pixel_buffer_v1 as wp_single_pixel_buffer_v1;
 pub use gnoblin_wayland_wp_tearing_control_v1 as wp_tearing_control_v1;
 pub use gnoblin_wayland_wp_viewporter as wp_viewporter;
 pub use gnoblin_wayland_xdg_dialog_v1 as xdg_dialog_v1;
+pub use gnoblin_wayland_xdg_foreign as xdg_foreign;
 pub use gnoblin_wayland_xdg_system_bell_v1 as xdg_system_bell_v1;
 pub use gnoblin_wayland_xdg_toplevel_icon_v1 as xdg_toplevel_icon_v1;
 pub use gnoblin_wayland_xdg_toplevel_tag_v1 as xdg_toplevel_tag_v1;
@@ -66,4 +67,5 @@ pub const ALL: &[&ProtocolInfo] = &[
     &wp_security_context_v1::PROTOCOL,
     &zwlr_gamma_control_v1::PROTOCOL,
     &zwlr_output_power_management_v1::PROTOCOL,
+    &xdg_foreign::PROTOCOL,
 ];

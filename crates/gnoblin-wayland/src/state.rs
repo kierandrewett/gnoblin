@@ -383,12 +383,12 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) tearing_control_global: GlobalId,
     /// Kept alive so `zxdg_exporter_v2` and `zxdg_importer_v2` stay registered; the protocol,
-    /// including the handle table, is in [`crate::protocols::xdg_foreign`].
+    /// including the handle table, is in `gnoblin-wayland-xdg-foreign`.
     #[allow(dead_code)]
     pub(crate) xdg_foreign_globals: (GlobalId, GlobalId),
     /// The handle table for `zxdg_exporter_v2` and `zxdg_importer_v2`; the protocol is in
-    /// [`crate::protocols::xdg_foreign`].
-    pub(crate) xdg_foreign: crate::protocols::xdg_foreign::XdgForeign,
+    /// `gnoblin-wayland-xdg-foreign`.
+    pub(crate) xdg_foreign: gnoblin_wayland_protocols::xdg_foreign::XdgForeign,
     /// Kept alive so `xdg_wm_dialog_v1` stays registered; the handler is in
     /// `gnoblin-wayland-xdg-dialog-v1`.
     #[allow(dead_code)]
@@ -770,7 +770,7 @@ impl State {
             gnoblin_wayland_protocols::wp_single_pixel_buffer_v1::register::<Self>(&registrar);
         let tearing_control_global = gnoblin_wayland_protocols::wp_tearing_control_v1::register::<Self>(&registrar);
         let idle_notify_global = crate::protocols::ext_idle_notify_v1::global(&display_handle, &access);
-        let xdg_foreign_globals = crate::protocols::xdg_foreign::global(&display_handle);
+        let xdg_foreign_globals = gnoblin_wayland_protocols::xdg_foreign::register::<Self>(&registrar);
         let xdg_dialog_state = gnoblin_wayland_protocols::xdg_dialog_v1::register::<Self>(&registrar);
         let xdg_toplevel_icon_manager = gnoblin_wayland_protocols::xdg_toplevel_icon_v1::register::<Self>(&registrar);
         let xdg_toplevel_tag_manager = gnoblin_wayland_protocols::xdg_toplevel_tag_v1::register::<Self>(&registrar);
