@@ -289,12 +289,13 @@ fn shader_filters() {
     .step("refusals");
     s.finish();
 
-    for (label, seat) in [("absent", None), ("false", Some(false))] {
+    // The compositor accepts shaders unless the seat says `user_shaders = false`: with no property the shader is drawn, with `false` it is refused.
+    for (label, seat) in [("default_on", None), ("switched_off", Some(false))] {
         let mut world = world();
         if let Some(on) = seat {
             world = world.node(21, "user_shaders", V::Bool(on));
         }
-        let mut s = Scn::new(&format!("style_shader_refused_{label}"), Home::Reference, &world, &body);
+        let mut s = Scn::new(&format!("style_shader_{label}"), Home::Reference, &world, &body);
         s.boot();
         s.eval("gnoblin.clients.style.shadows = [{ y: 4 }]; gnoblin.clients.style.filter = [new ShaderFilter({ source: TINT })];").step("written");
         s.tree("window", At::Id(3));

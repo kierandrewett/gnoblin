@@ -1,5 +1,5 @@
 {
-  "scenario": "style_shader_refused_false",
+  "scenario": "style_shader_switched_off",
   "source": "globalThis.caught = (fn: () => void) => { try { fn(); return 'none'; } catch (e) { return (e as Error).message; } };\nglobalThis.TINT = 'fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }';\n",
   "steps": [
     {
@@ -54,7 +54,7 @@
         "<Super>Button3"
       ],
       "diagnostics": [
-        "not applied: style.filter: a ShaderFilter is not drawn because the compositor's custom shaders are off (set `compositor.user-shaders`); the window is drawn without it"
+        "not applied: style.filter: a ShaderFilter is not drawn because the compositor's custom shaders are switched off (`compositor.user-shaders` is false); the window is drawn without it"
       ],
       "log": [],
       "step": "written",
@@ -124,7 +124,7 @@
         {
           "label": "warnings",
           "value": [
-            "not applied: style.filter: a ShaderFilter is not drawn because the compositor's custom shaders are off (set `compositor.user-shaders`); the window is drawn without it"
+            "not applied: style.filter: a ShaderFilter is not drawn because the compositor's custom shaders are switched off (`compositor.user-shaders` is false); the window is drawn without it"
           ]
         }
       ],

@@ -1,5 +1,5 @@
 {
-  "scenario": "style_shader_refused_absent",
+  "scenario": "style_shader_default_on",
   "source": "globalThis.caught = (fn: () => void) => { try { fn(); return 'none'; } catch (e) { return (e as Error).message; } };\nglobalThis.TINT = 'fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }';\n",
   "steps": [
     {
@@ -53,9 +53,7 @@
         "<Super>Button1",
         "<Super>Button3"
       ],
-      "diagnostics": [
-        "not applied: style.filter: a ShaderFilter is not drawn because the compositor's custom shaders are off (set `compositor.user-shaders`); the window is drawn without it"
-      ],
+      "diagnostics": [],
       "log": [],
       "step": "written",
       "trees": [
@@ -70,6 +68,7 @@
                 "decoration": "server",
                 "effects": {
                   "effects": [
+                    "Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [] }",
                     "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 4.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
                   ]
                 },
@@ -91,6 +90,7 @@
             "op": "set",
             "value": {
               "effects": [
+                "Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [] }",
                 "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 4.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
               ]
             }
@@ -101,6 +101,7 @@
             "op": "set",
             "value": {
               "effects": [
+                "Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [] }",
                 "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 4.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
               ]
             }
@@ -123,9 +124,7 @@
       "log": [
         {
           "label": "warnings",
-          "value": [
-            "not applied: style.filter: a ShaderFilter is not drawn because the compositor's custom shaders are off (set `compositor.user-shaders`); the window is drawn without it"
-          ]
+          "value": []
         }
       ],
       "step": "warnings",
