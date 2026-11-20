@@ -590,6 +590,20 @@ impl @Ids@ {
         let mut text = String::new();
         let _ = writeln!(text, "/// The class `{}`.", object.name);
         if has_instance_members {
+            // A call that takes a base class takes what derives from it through these: the same object, held as the base.
+            let mut above = object.base.as_deref();
+            while let Some(base) = above.filter(|base| !base.contains('.')) {
+                let Some(base_object) = self.objects.get(base) else {
+                    break;
+                };
+                let _ = write!(
+                    methods,
+                    "    /// This object as a `{base}`, to pass where a `{base}` is taken.\n    ///\n    /// # Errors\n    ///\n    /// The object is gone.\n    pub fn as_{}(&self) -> go::Res<{}> {{\n        go::typed::FromVal::from_val(&self.objects, &self.object.val())\n    }}\n\n",
+                    snake(base),
+                    class_name(base_object)
+                );
+                above = base_object.base.as_deref();
+            }
             text.push_str(&fill(
                 r#"#[derive(Debug)]
 pub struct @Name@ {

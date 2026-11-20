@@ -473,6 +473,29 @@ mod tests {
     }
 
     #[test]
+    fn a_derived_class_can_be_held_as_its_base() {
+        let root = tempfile::tempdir().expect("a directory");
+        write(
+            root.path(),
+            "n.toml",
+            "namespace = \"lib.n\"\nversion = \"0.1.0\"\nlocal = true\n\n\
+             [[object]]\nname = \"node\"\nsince = \"0.1.0\"\nkind = \"handle\"\n\n\
+             [[object]]\nname = \"view\"\nsince = \"0.1.0\"\nkind = \"handle\"\nbase = \"node\"\n\n\
+             [[object]]\nname = \"sub_view\"\nsince = \"0.1.0\"\nkind = \"handle\"\nbase = \"view\"\n",
+        );
+        let catalog = Catalog::load_dirs(&[root.path()], &[]).expect("a catalog");
+        let ns = Namespace::parse("lib.n").expect("a namespace");
+        let typed = object_api::render(&catalog, &ns).expect("the typed API renders");
+        assert!(typed.contains("pub fn as_node(&self) -> go::Res<Node>"), "{typed}");
+        assert!(typed.contains("pub fn as_view(&self) -> go::Res<View>"), "{typed}");
+        assert_eq!(
+            typed.matches("pub fn as_node(").count(),
+            2,
+            "the view and the sub view: {typed}"
+        );
+    }
+
+    #[test]
     fn a_class_that_extends_another_namespaces_class_lists_the_base_members_first() {
         let (_root, catalog) = catalog("");
         let derived = Namespace::parse("lib.b").expect("a namespace");
