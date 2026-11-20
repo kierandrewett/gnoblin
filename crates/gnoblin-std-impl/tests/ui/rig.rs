@@ -340,40 +340,94 @@ pub struct Rig {
     _lock: MutexGuard<'static, ()>,
 }
 
+/// The world a rig's compositor starts with.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    /// A desktop and windows of 800 by 600, as the oracle's scene scenarios have them.
+    Sized,
+    /// A desktop and windows as the fake compositor makes them (400 by 300), as the oracle's style scenarios have them.
+    Plain,
+    /// The session of `tests/common/policy.rs`: a screen, a seat, a lock and windows of 300 by 200 at (10 n, 20 n).
+    Policy,
+}
+
 impl Rig {
     /// A generation of the core with the std library and a desktop of `width` by `height` and no window.
     pub fn new(name: &'static str, width: f64, height: f64) -> Rig {
-        Rig::open(name, width, height, false, 0)
+        Rig::open(name, width, height, false, 0, Shape::Sized)
     }
 
     /// As [`Rig::new`] with `count` server-decorated windows of 800 by 600 (ids 3 on, titled `win1`, app id `foot`), as the oracle's
     /// scene scenarios have them.
     pub fn with_windows(name: &'static str, width: f64, height: f64, count: u64) -> Rig {
-        Rig::open(name, width, height, false, count)
+        Rig::open(name, width, height, false, count, Shape::Sized)
+    }
+
+    /// As [`Rig::with_windows`], the windows as the fake compositor makes them (400 by 300), as the oracle's style scenarios have them.
+    pub fn with_plain_windows(name: &'static str, width: f64, height: f64, count: u64) -> Rig {
+        Rig::open(name, width, height, false, count, Shape::Plain)
+    }
+
+    /// The oracle's policy session with `count` windows (ids 3 on): the world of the transition scenarios.
+    pub fn with_policy_windows(name: &'static str, count: u64) -> Rig {
+        Rig::open(name, 1000.0, 800.0, false, count, Shape::Policy)
     }
 
     /// A generation with no fixture behind it: a test of what the toolkit does on its own terms.
     pub fn scratch(width: f64, height: f64) -> Rig {
-        Rig::open("scratch", width, height, true, 0)
+        Rig::open("scratch", width, height, true, 0, Shape::Sized)
     }
 
     /// As [`Rig::scratch`] with `count` windows, as [`Rig::with_windows`] makes them.
     pub fn scratch_with_windows(width: f64, height: f64, count: u64) -> Rig {
-        Rig::open("scratch", width, height, true, count)
+        Rig::open("scratch", width, height, true, count, Shape::Sized)
     }
 
-    fn open(name: &'static str, width: f64, height: f64, scratch: bool, windows: u64) -> Rig {
+    fn open(name: &'static str, width: f64, height: f64, scratch: bool, windows: u64, shape: Shape) -> Rig {
         let lock = process_lock();
         // SAFETY: the tests of this file run one at a time under `process_lock`, and nothing else reads the environment meanwhile.
         unsafe { std::env::set_var("TZ", "UTC") };
         host::reset_session();
         let comp = FakeCompositor::new();
-        comp.add_desktop(width, height);
-        for n in 0..windows {
-            comp.add_window_decorated(3 + n, &format!("win{}", n + 1), "foot", "server");
-            if let Some(node) = comp.borrow_mut().nodes.get_mut(&(3 + n)) {
-                node.props.insert("width".to_owned(), MirrorValue::Double(800.0));
-                node.props.insert("height".to_owned(), MirrorValue::Double(600.0));
+        if shape == Shape::Policy {
+            comp.add_screen(20, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
+            comp.add_node(
+                21,
+                gnoblin_testkit::compositor::ROOT,
+                "seat",
+                vec![
+                    ("name", gnoblin_testkit::compositor::text("seat0")),
+                    ("pointer_x", MirrorValue::Double(0.0)),
+                    ("pointer_y", MirrorValue::Double(0.0)),
+                ],
+            );
+            comp.add_node(23, gnoblin_testkit::compositor::ROOT, "lock", Vec::new());
+            for i in 1..=windows {
+                comp.add_node(
+                    2 + i,
+                    gnoblin_testkit::compositor::ROOT,
+                    "window",
+                    vec![
+                        ("title", gnoblin_testkit::compositor::text(&format!("win{i}"))),
+                        ("app_id", gnoblin_testkit::compositor::text("foot")),
+                        ("decoration", gnoblin_testkit::compositor::text("server")),
+                        ("x", MirrorValue::Double(10.0 * i as f64)),
+                        ("y", MirrorValue::Double(20.0 * i as f64)),
+                        ("width", MirrorValue::Double(300.0)),
+                        ("height", MirrorValue::Double(200.0)),
+                    ],
+                );
+            }
+        } else {
+            comp.add_desktop(width, height);
+            for n in 0..windows {
+                comp.add_window_decorated(3 + n, &format!("win{}", n + 1), "foot", "server");
+                if shape == Shape::Sized
+                    && let Some(node) = comp.borrow_mut().nodes.get_mut(&(3 + n))
+                {
+                    node.props.insert("width".to_owned(), MirrorValue::Double(800.0));
+                    node.props.insert("height".to_owned(), MirrorValue::Double(600.0));
+                }
             }
         }
         comp.borrow_mut().refuse_every = 0;
