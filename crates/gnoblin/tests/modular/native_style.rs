@@ -23,7 +23,12 @@ fn assert_the_style_is_set_and_the_transition_rolled_back(session: &mut Gnoblin)
         line.contains("style: transition aborted")
     });
     let text = aborted.text.to_lowercase();
-    assert!(text.contains("rollback ran 1"), "{}", aborted.text);
+    assert!(
+        text.contains("rollback ran 1"),
+        "{}\n{}",
+        aborted.text,
+        session.log_text()
+    );
     assert!(text.contains("opacity is set false"), "{}", aborted.text);
     assert!(text.contains("x is 0"), "{}", aborted.text);
 

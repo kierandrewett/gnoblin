@@ -1541,7 +1541,9 @@ rollback)` (begin, `work`, commit, aborting when `work` fails), `animate` and `s
   shell's `rollback`. When the callback fails, the commit is refused (a layout that throws) or the shell aborts, the library puts back the
   styles (a style made since is emptied), then calls the `rollback` (once, synchronously, before the failing call answers), and drops what was
   staged. What the TypeScript engine snapshotted for the workspaces (their layouts, gaps, names) is the shell's to put back until NpStdObjects
-  serves the workspace class; the replay's `rollback` does it for the layout it assigned.
+  serves the workspace class; the replay's `rollback` does it for the layout it assigned. A script's closure runs inside the call that needs
+  it (the `rollback`, the `work` of `request`): the JavaScript runtime wraps the calls a script makes into the object protocol as it wraps the
+  table's (`within_call`, `crates/gnoblin-runtime-js/src/std_native.rs`), so the closure finds the script; Python and Rust need nothing.
 
 `crates/gnoblin-std-impl/tests/style.rs` replays the 20 style and transition fixtures (`tests/scene.rs` replays the rollback of
 `scene_client_set` through `begin`, `abort` and a counting `rollback`); example 25 and `modular::native_style` run the classes from Rust,

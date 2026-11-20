@@ -145,6 +145,17 @@ pub(crate) fn with_enter<R>(enter: &dyn Enter, body: impl FnOnce() -> R) -> R {
     body()
 }
 
+/// Runs `work`, a call the script makes into a library, so that a callback the library runs before the call returns (a transition's
+/// `rollback`, the work of `request`) finds the script: the way in is the call's own context, which is already inside the script. A
+/// dispatch's own way in, when there is one, stays.
+pub(crate) fn within_call<'js, R>(ctx: &Ctx<'js>, work: impl FnOnce() -> R) -> R {
+    if ENTER.with(Cell::get).is_some() {
+        work()
+    } else {
+        with_enter(&CallEnter(ctx), work)
+    }
+}
+
 /// Runs `f` with the way into the running generation: the turn's own (`with_enter`) when the dispatch that calls back is the
 /// runtime's, and the shell instance's when it is the host's (the host drains the core's queue after the runtime's turn).
 pub(crate) fn entered<R>(f: impl FnOnce(&dyn Enter) -> Result<R, String>) -> Result<R, String> {

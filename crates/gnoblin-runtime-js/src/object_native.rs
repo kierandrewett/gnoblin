@@ -27,7 +27,7 @@ use gnoblin_object::client::Api;
 use gnoblin_object::{Callable, ClassId, Closure, Fail, MemberId, Obj, Res, Timing, Val};
 
 use crate::core_native::{ScriptCallback, keep};
-use crate::std_native::{context, entered, library, mark_used, token_of};
+use crate::std_native::{context, entered, library, mark_used, token_of, within_call};
 use crate::table::{CoreTable, remembered};
 
 /// The namespaces the core serves; every other is the std library's.
@@ -618,8 +618,7 @@ fn install<'js>(ctx: &Ctx<'js>, ids: &ScriptIds) -> rquickjs::Result<()> {
                 let slot = state.slot(slot).map_err(|fail| throw(&ctx, &fail))?;
                 let args = args_of(&ctx, &state, &script, slot.namespace, &args)?;
                 let api = state.api(slot.namespace).map_err(|fail| throw(&ctx, &fail))?;
-                let value = api
-                    .call(slot.obj, member as MemberId, &args)
+                let value = within_call(&ctx, || api.call(slot.obj, member as MemberId, &args))
                     .map_err(|fail| throw(&ctx, &fail))?;
                 from_val(&ctx, &state, &script, slot.namespace, &value)
             },
@@ -640,8 +639,7 @@ fn install<'js>(ctx: &Ctx<'js>, ids: &ScriptIds) -> rquickjs::Result<()> {
                 let namespace = namespace as usize;
                 let args = args_of(&ctx, &state, &script, namespace, &args)?;
                 let api = state.api(namespace).map_err(|fail| throw(&ctx, &fail))?;
-                let value = api
-                    .call_static(class as ClassId, member as MemberId, &args)
+                let value = within_call(&ctx, || api.call_static(class as ClassId, member as MemberId, &args))
                     .map_err(|fail| throw(&ctx, &fail))?;
                 from_val(&ctx, &state, &script, namespace, &value)
             },
