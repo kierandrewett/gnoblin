@@ -43,14 +43,10 @@ pub mod xdg_foreign;
 pub mod xdg_shell;
 /// `zwlr_foreign_toplevel_manager_v1`: the window list a taskbar reads.
 pub mod zwlr_foreign_toplevel_management_v1;
-/// `zwlr_gamma_control_manager_v1`: per-output gamma ramps.
-pub mod zwlr_gamma_control_v1;
 /// `zwlr_layer_shell_v1`: layer surfaces for bars and docks.
 pub mod zwlr_layer_shell_v1;
 /// `zwlr_output_manager_v1`: the outputs and layout a configuration tool sees.
 pub mod zwlr_output_management_v1;
-/// `zwlr_output_power_manager_v1`: per-output power, on or off.
-pub mod zwlr_output_power_management_v1;
 /// `zwlr_screencopy_manager_v1`: one-shot screencopy of an output or region.
 pub mod zwlr_screencopy_v1;
 /// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.

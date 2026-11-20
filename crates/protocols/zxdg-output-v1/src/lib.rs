@@ -43,7 +43,7 @@ pub const MANAGER_VERSION: u32 = 3;
 
 /// What this protocol advertises.
 pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
-    name: "xdg-output",
+    name: "zxdg-output-v1",
     interfaces: &[ServedInterface::new("zxdg_output_manager_v1", MANAGER_VERSION)],
     privilege: Privilege::Core,
 };

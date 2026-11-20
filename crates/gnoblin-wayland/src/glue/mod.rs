@@ -23,6 +23,8 @@ mod xdg_system_bell_v1;
 mod xdg_toplevel_icon_v1;
 mod xdg_toplevel_tag_v1;
 mod zwlr_data_control_v1;
+mod zwlr_gamma_control_v1;
+mod zwlr_output_power_management_v1;
 mod zwp_idle_inhibit_v1;
 mod zwp_input_method_v2;
 mod zwp_keyboard_shortcuts_inhibit_v1;

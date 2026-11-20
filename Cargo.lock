@@ -2367,7 +2367,6 @@ dependencies = [
  "gnoblin-wayland-ext-data-control-v1",
  "gnoblin-wayland-wl-output",
  "gnoblin-wayland-wl-shm",
- "gnoblin-wayland-wlr-data-control-v1",
  "gnoblin-wayland-wp-alpha-modifier-v1",
  "gnoblin-wayland-wp-content-type-v1",
  "gnoblin-wayland-wp-cursor-shape-v1",
@@ -2379,10 +2378,12 @@ dependencies = [
  "gnoblin-wayland-wp-tearing-control-v1",
  "gnoblin-wayland-wp-viewporter",
  "gnoblin-wayland-xdg-dialog-v1",
- "gnoblin-wayland-xdg-output",
  "gnoblin-wayland-xdg-system-bell-v1",
  "gnoblin-wayland-xdg-toplevel-icon-v1",
  "gnoblin-wayland-xdg-toplevel-tag-v1",
+ "gnoblin-wayland-zwlr-data-control-v1",
+ "gnoblin-wayland-zwlr-gamma-control-v1",
+ "gnoblin-wayland-zwlr-output-power-management-v1",
  "gnoblin-wayland-zwp-idle-inhibit-v1",
  "gnoblin-wayland-zwp-input-method-v2",
  "gnoblin-wayland-zwp-keyboard-shortcuts-inhibit-v1",
@@ -2390,6 +2391,7 @@ dependencies = [
  "gnoblin-wayland-zwp-pointer-gestures-v1",
  "gnoblin-wayland-zwp-primary-selection-v1",
  "gnoblin-wayland-zwp-relative-pointer-v1",
+ "gnoblin-wayland-zxdg-output-v1",
 ]
 
 [[package]]
@@ -2403,14 +2405,6 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-wayland-wl-shm"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-wayland-api",
- "smithay",
-]
-
-[[package]]
-name = "gnoblin-wayland-wlr-data-control-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-wayland-api",
@@ -2509,15 +2503,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-wayland-xdg-output"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-types",
- "gnoblin-wayland-api",
- "smithay",
-]
-
-[[package]]
 name = "gnoblin-wayland-xdg-system-bell-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -2540,6 +2525,34 @@ name = "gnoblin-wayland-xdg-toplevel-tag-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-log",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwlr-data-control-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwlr-gamma-control-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwlr-output-power-management-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-types",
  "gnoblin-wayland-api",
  "smithay",
 ]
@@ -2599,6 +2612,15 @@ dependencies = [
 name = "gnoblin-wayland-zwp-relative-pointer-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zxdg-output-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
  "gnoblin-wayland-api",
  "smithay",
 ]

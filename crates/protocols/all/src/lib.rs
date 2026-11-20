@@ -9,7 +9,6 @@ pub use gnoblin_wayland_ext_background_effect_v1 as ext_background_effect_v1;
 pub use gnoblin_wayland_ext_data_control_v1 as ext_data_control_v1;
 pub use gnoblin_wayland_wl_output as wl_output;
 pub use gnoblin_wayland_wl_shm as wl_shm;
-pub use gnoblin_wayland_wlr_data_control_v1 as wlr_data_control_v1;
 pub use gnoblin_wayland_wp_alpha_modifier_v1 as wp_alpha_modifier_v1;
 pub use gnoblin_wayland_wp_content_type_v1 as wp_content_type_v1;
 pub use gnoblin_wayland_wp_cursor_shape_v1 as wp_cursor_shape_v1;
@@ -21,10 +20,12 @@ pub use gnoblin_wayland_wp_single_pixel_buffer_v1 as wp_single_pixel_buffer_v1;
 pub use gnoblin_wayland_wp_tearing_control_v1 as wp_tearing_control_v1;
 pub use gnoblin_wayland_wp_viewporter as wp_viewporter;
 pub use gnoblin_wayland_xdg_dialog_v1 as xdg_dialog_v1;
-pub use gnoblin_wayland_xdg_output as xdg_output;
 pub use gnoblin_wayland_xdg_system_bell_v1 as xdg_system_bell_v1;
 pub use gnoblin_wayland_xdg_toplevel_icon_v1 as xdg_toplevel_icon_v1;
 pub use gnoblin_wayland_xdg_toplevel_tag_v1 as xdg_toplevel_tag_v1;
+pub use gnoblin_wayland_zwlr_data_control_v1 as zwlr_data_control_v1;
+pub use gnoblin_wayland_zwlr_gamma_control_v1 as zwlr_gamma_control_v1;
+pub use gnoblin_wayland_zwlr_output_power_management_v1 as zwlr_output_power_management_v1;
 pub use gnoblin_wayland_zwp_idle_inhibit_v1 as zwp_idle_inhibit_v1;
 pub use gnoblin_wayland_zwp_input_method_v2 as zwp_input_method_v2;
 pub use gnoblin_wayland_zwp_keyboard_shortcuts_inhibit_v1 as zwp_keyboard_shortcuts_inhibit_v1;
@@ -32,6 +33,7 @@ pub use gnoblin_wayland_zwp_pointer_constraints_v1 as zwp_pointer_constraints_v1
 pub use gnoblin_wayland_zwp_pointer_gestures_v1 as zwp_pointer_gestures_v1;
 pub use gnoblin_wayland_zwp_primary_selection_v1 as zwp_primary_selection_v1;
 pub use gnoblin_wayland_zwp_relative_pointer_v1 as zwp_relative_pointer_v1;
+pub use gnoblin_wayland_zxdg_output_v1 as zxdg_output_v1;
 
 /// What every protocol crate advertises, in the order the table lists them. The advertised-globals test compares it with a live registry.
 pub const ALL: &[&ProtocolInfo] = &[
@@ -55,11 +57,13 @@ pub const ALL: &[&ProtocolInfo] = &[
     &zwp_keyboard_shortcuts_inhibit_v1::PROTOCOL,
     &wp_viewporter::PROTOCOL,
     &wp_cursor_shape_v1::PROTOCOL,
-    &xdg_output::PROTOCOL,
+    &zxdg_output_v1::PROTOCOL,
     &zwp_pointer_constraints_v1::PROTOCOL,
     &ext_data_control_v1::PROTOCOL,
-    &wlr_data_control_v1::PROTOCOL,
+    &zwlr_data_control_v1::PROTOCOL,
     &zwp_input_method_v2::PROTOCOL,
     &ext_background_effect_v1::PROTOCOL,
     &wp_security_context_v1::PROTOCOL,
+    &zwlr_gamma_control_v1::PROTOCOL,
+    &zwlr_output_power_management_v1::PROTOCOL,
 ];

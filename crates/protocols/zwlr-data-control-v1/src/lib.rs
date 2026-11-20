@@ -29,7 +29,7 @@ use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
 
 /// What this protocol advertises.
 pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
-    name: "wlr-data-control-v1",
+    name: "zwlr-data-control-v1",
     interfaces: &[ServedInterface::new("zwlr_data_control_manager_v1", 2)],
     privilege: Privilege::Roster(Global::WlrDataControl),
 };

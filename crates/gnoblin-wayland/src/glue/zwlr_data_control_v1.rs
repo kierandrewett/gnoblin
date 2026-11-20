@@ -1,4 +1,4 @@
-//! `gnoblin-wayland-wlr-data-control-v1`: the state owns Smithay's data-control state.
+//! `gnoblin-wayland-zwlr-data-control-v1`: the state owns Smithay's data-control state.
 
 use smithay::wayland::selection::wlr_data_control::{
     DataControlHandler as WlrDataControlHandler, DataControlState as WlrDataControlState,

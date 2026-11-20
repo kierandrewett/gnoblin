@@ -103,11 +103,11 @@ use gnoblin_wayland_api::access::{Access, AccessPolicy, ClientRole, Global};
 use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
 use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
 use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
-use gnoblin_wayland_protocols::xdg_output::XdgOutputExt as _;
 use gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::ShortcutInhibitExt as _;
 use gnoblin_wayland_protocols::zwp_pointer_constraints_v1::{
     PointerConstraintsExt as _, ZwpPointerConstraintsV1Tables,
 };
+use gnoblin_wayland_protocols::zxdg_output_v1::XdgOutputExt as _;
 
 use crate::log;
 
@@ -284,11 +284,11 @@ pub struct State {
     /// How the shell paces each window's frame callbacks, and what the pacing remembers between frames.
     pub(crate) frame_pacer: CallbackPacer,
     /// Kept alive so the `wl_output` machinery stays registered. The `zxdg_output_manager_v1` global is not
-    /// Smithay's: see `gnoblin-wayland-xdg-output`.
+    /// Smithay's: see `gnoblin-wayland-zxdg-output-v1`.
     #[allow(dead_code)]
     pub(crate) output_manager_state: OutputManagerState,
     /// The `zxdg_output_v1` objects clients hold.
-    pub(crate) xdg_outputs: gnoblin_wayland_protocols::xdg_output::XdgOutputs,
+    pub(crate) xdg_outputs: gnoblin_wayland_protocols::zxdg_output_v1::XdgOutputs,
     /// The surfaces that have a `wp_fractional_scale_v1` object, so an output's new scale can be sent to them.
     pub(crate) fractional_surfaces: Vec<WlSurface>,
     /// Kept alive so the `zxdg_decoration_manager_v1` global stays registered; the
@@ -676,7 +676,7 @@ impl State {
         let xdg_shell_state = XdgShellState::new::<Self>(&display_handle);
         let shm_state = gnoblin_wayland_protocols::wl_shm::register::<Self>(&registrar);
         let output_manager_state = OutputManagerState::new();
-        gnoblin_wayland_protocols::xdg_output::register::<Self>(&registrar);
+        gnoblin_wayland_protocols::zxdg_output_v1::register::<Self>(&registrar);
         gnoblin_wayland_protocols::wp_viewporter::register::<Self>(&registrar);
         // `protocols.xdg-decoration = false` keeps the global out of the registry, so a client sees a compositor that has
         // no `xdg-decoration` and draws its own frame.
@@ -713,7 +713,7 @@ impl State {
         let ext_data_control_state =
             gnoblin_wayland_protocols::ext_data_control_v1::register::<Self>(&registrar, &primary_selection_state);
         let wlr_data_control_state =
-            gnoblin_wayland_protocols::wlr_data_control_v1::register::<Self>(&registrar, &primary_selection_state);
+            gnoblin_wayland_protocols::zwlr_data_control_v1::register::<Self>(&registrar, &primary_selection_state);
         let security_context_state = gnoblin_wayland_protocols::wp_security_context_v1::register::<Self>(&registrar);
 
         let foreign_toplevel_global =
@@ -724,10 +724,10 @@ impl State {
         // them is checked at start-up, before any client connects.
         let gamma_global = Global::GammaControl
             .is_advertised(protocols)
-            .then(|| crate::protocols::zwlr_gamma_control_v1::global(&display_handle, &access));
+            .then(|| gnoblin_wayland_protocols::zwlr_gamma_control_v1::register::<Self>(&registrar));
         let power_global = Global::OutputPower
             .is_advertised(protocols)
-            .then(|| crate::protocols::zwlr_output_power_management_v1::global(&display_handle, &access));
+            .then(|| gnoblin_wayland_protocols::zwlr_output_power_management_v1::register::<Self>(&registrar));
         if Global::OutputManagement.is_advertised(protocols) {
             crate::protocols::zwlr_output_management_v1::global(&display_handle, &access);
         }
@@ -805,7 +805,7 @@ impl State {
             callbacks_due: false,
             frame_pacer: CallbackPacer::default(),
             output_manager_state,
-            xdg_outputs: gnoblin_wayland_protocols::xdg_output::XdgOutputs::default(),
+            xdg_outputs: gnoblin_wayland_protocols::zxdg_output_v1::XdgOutputs::default(),
             fractional_surfaces: Vec::new(),
             decoration_state,
             decorations_seen: false,

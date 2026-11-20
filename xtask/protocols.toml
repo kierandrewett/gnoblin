@@ -158,7 +158,7 @@ interfaces = [["wp_cursor_shape_manager_v1", 2]]
 deps = ["smithay"]
 
 [[crate]]
-name = "xdg-output"
+name = "zxdg-output-v1"
 description = "The zxdg_output_manager_v1 Wayland protocol of gnoblin-wayland: the logical size and place of each output."
 kind = "protocol"
 interfaces = [["zxdg_output_manager_v1", 3]]
@@ -179,7 +179,7 @@ interfaces = [["ext_data_control_manager_v1", 1]]
 deps = ["smithay"]
 
 [[crate]]
-name = "wlr-data-control-v1"
+name = "zwlr-data-control-v1"
 description = "The zwlr_data_control_manager_v1 Wayland protocol of gnoblin-wayland: clipboard access for privileged clients (wlroots)."
 kind = "protocol"
 interfaces = [["zwlr_data_control_manager_v1", 2]]
@@ -205,3 +205,17 @@ description = "The wp_security_context_manager_v1 Wayland protocol of gnoblin-wa
 kind = "protocol"
 interfaces = [["wp_security_context_manager_v1", 1]]
 deps = ["smithay", "gnoblin-log"]
+
+[[crate]]
+name = "zwlr-gamma-control-v1"
+description = "The zwlr_gamma_control_manager_v1 Wayland protocol of gnoblin-wayland: per-output gamma ramps."
+kind = "protocol"
+interfaces = [["zwlr_gamma_control_manager_v1", 1]]
+deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+
+[[crate]]
+name = "zwlr-output-power-management-v1"
+description = "The zwlr_output_power_manager_v1 Wayland protocol of gnoblin-wayland: per-output power, on or off."
+kind = "protocol"
+interfaces = [["zwlr_output_power_manager_v1", 1]]
+deps = ["smithay", "gnoblin-types", "gnoblin-log"]

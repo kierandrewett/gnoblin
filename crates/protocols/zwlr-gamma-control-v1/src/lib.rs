@@ -48,59 +48,96 @@ use std::sync::Arc;
 
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
-use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
+use smithay::reexports::wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use wayland_protocols_wlr::gamma_control::v1::server::{
+
+use gnoblin_wayland_api::access::{Access, Global};
+use gnoblin_wayland_api::host::OutputHost;
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
+use smithay::reexports::wayland_protocols_wlr::gamma_control::v1::server::{
     zwlr_gamma_control_manager_v1::{self as manager, ZwlrGammaControlManagerV1},
     zwlr_gamma_control_v1::{self as control, ZwlrGammaControlV1},
 };
 
 use gnoblin_types::OutputId;
 
-use crate::State;
-use gnoblin_wayland_api::access::{Access, Global};
-
-use crate::log;
+gnoblin_log::logger!(log = "wayland");
 
 /// The version of `zwlr_gamma_control_manager_v1` this session serves.
 pub const MANAGER_VERSION: u32 = 1;
+
+/// What this protocol advertises.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "zwlr-gamma-control-v1",
+    interfaces: &[ServedInterface::new("zwlr_gamma_control_manager_v1", MANAGER_VERSION)],
+    privilege: Privilege::Roster(Global::GammaControl),
+};
+
+/// What the protocol needs of the compositor: who holds each output's gamma ramps.
+pub trait Host: OutputHost {
+    /// The size of an output's gamma table, or `None` when the output has no gamma control.
+    fn gamma_size(&self, output: OutputId) -> Option<u32>;
+
+    /// Whether no client holds `output`'s gamma.
+    fn gamma_free(&self, output: OutputId) -> bool;
+
+    /// Whether `object` is the client that holds `output`'s gamma.
+    fn gamma_holder_is(&self, output: OutputId, object: &ZwlrGammaControlV1) -> bool;
+
+    /// Records `object` as the holder of `output`'s gamma.
+    fn hold_gamma(&mut self, output: OutputId, object: ZwlrGammaControlV1);
+
+    /// Queues three ramps for `output`, applied by the next frame.
+    fn queue_gamma(&mut self, output: OutputId, tables: [Vec<u16>; 3]);
+
+    /// Releases the output `object` held.
+    fn release_gamma(&mut self, object: &ZwlrGammaControlV1);
+}
 
 /// Creates the `zwlr_gamma_control_manager_v1` global.
 ///
 /// The access roster is captured in the global's data, so the answer to "may this
 /// connection bind it" is the same answer the other privileged globals give.
-pub(crate) fn global(display_handle: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
-    display_handle.create_global::<State, ZwlrGammaControlManagerV1, ZwlrGammaControlV1ManagerGlobalData>(
-        MANAGER_VERSION,
-        ZwlrGammaControlV1ManagerGlobalData {
-            access: Arc::clone(access),
-        },
-    )
+pub fn register<D>(registrar: &Registrar<'_>) -> GlobalId
+where
+    D: GlobalDispatch<ZwlrGammaControlManagerV1, ZwlrGammaControlV1ManagerGlobalData> + 'static,
+{
+    registrar
+        .display()
+        .create_global::<D, ZwlrGammaControlManagerV1, ZwlrGammaControlV1ManagerGlobalData>(
+            MANAGER_VERSION,
+            ZwlrGammaControlV1ManagerGlobalData {
+                access: Arc::clone(registrar.access()),
+            },
+        )
 }
 
 /// The global data of the manager: who may bind it.
-pub(crate) struct ZwlrGammaControlV1ManagerGlobalData {
+pub struct ZwlrGammaControlV1ManagerGlobalData {
     /// The roster that answers which connection may.
     access: Arc<Access>,
 }
 
 /// The user data of a bound manager object.
-pub(crate) struct ZwlrGammaControlV1ManagerUserData;
+pub struct ZwlrGammaControlV1ManagerUserData;
 
 /// The user data of one gamma control object.
-pub(crate) struct ZwlrGammaControlV1ControlUserData {
+pub struct ZwlrGammaControlV1ControlUserData {
     /// The output the object holds, or [`None`] when the object was answered `failed`.
     output: Option<OutputId>,
 }
 
-impl GlobalDispatch2<ZwlrGammaControlManagerV1, State> for ZwlrGammaControlV1ManagerGlobalData {
+impl<D> GlobalDispatch2<ZwlrGammaControlManagerV1, D> for ZwlrGammaControlV1ManagerGlobalData
+where
+    D: Dispatch<ZwlrGammaControlManagerV1, ZwlrGammaControlV1ManagerUserData> + 'static,
+{
     fn bind(
         &self,
-        _state: &mut State,
+        _state: &mut D,
         _dh: &DisplayHandle,
         client: &Client,
         resource: New<ZwlrGammaControlManagerV1>,
-        data_init: &mut DataInit<'_, State>,
+        data_init: &mut DataInit<'_, D>,
     ) {
         data_init.init(resource, ZwlrGammaControlV1ManagerUserData);
         log::debug!(area = "gamma", client = ?client.id(), "a client bound the gamma control manager");
@@ -111,25 +148,27 @@ impl GlobalDispatch2<ZwlrGammaControlManagerV1, State> for ZwlrGammaControlV1Man
     }
 }
 
-impl Dispatch2<ZwlrGammaControlManagerV1, State> for ZwlrGammaControlV1ManagerUserData {
+impl<D> Dispatch2<ZwlrGammaControlManagerV1, D> for ZwlrGammaControlV1ManagerUserData
+where
+    D: Host + Dispatch<ZwlrGammaControlV1, ZwlrGammaControlV1ControlUserData> + 'static,
+{
     fn request(
         &self,
-        state: &mut State,
+        state: &mut D,
         _client: &Client,
         _manager: &ZwlrGammaControlManagerV1,
         request: manager::Request,
         _dh: &DisplayHandle,
-        data_init: &mut DataInit<'_, State>,
+        data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             manager::Request::GetGammaControl { id, output } => {
                 let output = SmithayOutput::from_resource(&output).and_then(|output| state.output_id_of(&output));
-                let size =
-                    output.and_then(|output| state.output_controls.gamma_size(output).map(|size| (output, size)));
+                let size = output.and_then(|output| state.gamma_size(output).map(|size| (output, size)));
                 match size {
-                    Some((output, size)) if state.output_controls.gamma_free(output) => {
+                    Some((output, size)) if state.gamma_free(output) => {
                         let object = data_init.init(id, ZwlrGammaControlV1ControlUserData { output: Some(output) });
-                        state.output_controls.hold_gamma(output, object.clone());
+                        state.hold_gamma(output, object.clone());
                         object.gamma_size(size);
                         log::debug!(area = "gamma", output = %output, size, "a client took gamma control");
                     }
@@ -149,30 +188,30 @@ impl Dispatch2<ZwlrGammaControlManagerV1, State> for ZwlrGammaControlV1ManagerUs
     }
 }
 
-impl Dispatch2<ZwlrGammaControlV1, State> for ZwlrGammaControlV1ControlUserData {
+impl<D: Host> Dispatch2<ZwlrGammaControlV1, D> for ZwlrGammaControlV1ControlUserData {
     fn request(
         &self,
-        state: &mut State,
+        state: &mut D,
         _client: &Client,
         object: &ZwlrGammaControlV1,
         request: control::Request,
         _dh: &DisplayHandle,
-        _data_init: &mut DataInit<'_, State>,
+        _data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             control::Request::SetGamma { fd } => {
                 let Some(output) = self.output else {
                     return;
                 };
-                if !state.output_controls.gamma_holder_is(output, object) {
+                if !state.gamma_holder_is(output, object) {
                     return;
                 }
-                let Some(size) = state.output_controls.gamma_size(output) else {
+                let Some(size) = state.gamma_size(output) else {
                     object.failed();
                     return;
                 };
                 match read_ramp(File::from(fd), size) {
-                    Ok(tables) => state.output_controls.queue_gamma(output, tables),
+                    Ok(tables) => state.queue_gamma(output, tables),
                     Err(ZwlrGammaControlV1RampError::Read(error)) => {
                         log::warn!(area = "gamma", %error, "the ramp descriptor could not be read");
                         object.failed();
@@ -194,8 +233,8 @@ impl Dispatch2<ZwlrGammaControlV1, State> for ZwlrGammaControlV1ControlUserData 
         }
     }
 
-    fn destroyed(&self, state: &mut State, _client: ClientKey, object: &ZwlrGammaControlV1) {
-        state.output_controls.release_gamma(object);
+    fn destroyed(&self, state: &mut D, _client: ClientKey, object: &ZwlrGammaControlV1) {
+        state.release_gamma(object);
     }
 }
 

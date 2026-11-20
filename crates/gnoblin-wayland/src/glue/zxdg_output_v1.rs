@@ -1,6 +1,6 @@
-//! `gnoblin-wayland-xdg-output`: the objects clients hold live on the state, so a layout change reaches them.
+//! `gnoblin-wayland-zxdg-output-v1`: the objects clients hold live on the state, so a layout change reaches them.
 
-use gnoblin_wayland_protocols::xdg_output::{Host, XdgOutputs};
+use gnoblin_wayland_protocols::zxdg_output_v1::{Host, XdgOutputs};
 
 use crate::State;
 
