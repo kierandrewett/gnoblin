@@ -345,10 +345,10 @@ impl<'a> Py<'a> {
         })
     }
 
-    /// The type a property or a result is read as: an object or a record may be absent.
-    fn ty_read(&self, ty: &Type) -> Result<String, String> {
+    /// The type a property or a result is read as: an object or a record is absent only where the catalog marks it `optional`.
+    fn ty_read(&self, ty: &Type, optional: bool) -> Result<String, String> {
         let text = self.ty(ty, false)?;
-        Ok(if matches!(ty, Type::ObjectRef(_)) {
+        Ok(if optional && matches!(ty, Type::ObjectRef(_)) {
             format!("{text} | None")
         } else {
             text
@@ -674,7 +674,10 @@ impl<'a> Py<'a> {
                     name: format!("{}_changed", member_name(&property.name, &property.extras.export.py)),
                     at: Self::at(&lookups, 'p', &property.name),
                     decoders: vec![self.decoder(&property.ty, true)?],
-                    params: vec![(member_name(&property.name, &None), self.ty_read(&property.ty)?)],
+                    params: vec![(
+                        member_name(&property.name, &None),
+                        self.ty_read(&property.ty, property.optional)?,
+                    )],
                 }),
                 _ => {}
             }
@@ -709,14 +712,19 @@ impl<'a> Py<'a> {
         };
 
         // A class with nothing but functions is a namespace for them: it is not an object, so it has no `on` and no `destroy`.
-        c.line(format!(
-            "class {name}{}:",
-            if self.stub || !has_instance_members {
-                ""
-            } else {
-                "(_B.Object)"
+        // At run time a class carries the members of its base (the ids number them that way), so it is flat; a stub names the base, so a type
+        // checker takes a `Camera3d` where a `SceneNode` is wanted, as the library does.
+        let bases = if self.stub {
+            match object.base.as_deref().filter(|base| !base.contains('.')) {
+                Some(base) => format!("({})", class_name(self.view.class(base)?)),
+                None => String::new(),
             }
-        ));
+        } else if has_instance_members {
+            "(_B.Object)".to_owned()
+        } else {
+            String::new()
+        };
+        c.line(format!("class {name}{bases}:"));
         c.indent();
         c.line(format!(
             "\"\"\"The class `{}` of `{}`.\"\"\"",
@@ -906,7 +914,7 @@ impl<'a> Py<'a> {
             }
             return Ok(());
         }
-        let read = self.ty_read(&property.ty)?;
+        let read = self.ty_read(&property.ty, property.optional)?;
         c.line("@builtins.property");
         self.def(
             c,
@@ -955,7 +963,7 @@ impl<'a> Py<'a> {
         let (params, args) = self.params(&method.params)?;
         let at = Self::at(lookups, 'm', &method.name);
         let returns = match &method.returns {
-            Some(ty) if method.optional => self.ty_read(ty)?,
+            Some(ty) if method.optional => self.ty_read(ty, true)?,
             Some(ty) => self.ty(ty, false)?,
             None => "None".to_owned(),
         };

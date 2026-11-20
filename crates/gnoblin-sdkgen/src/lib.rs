@@ -421,4 +421,62 @@ mod tests {
         let changed = vec![("a/b.txt".to_owned(), "two\n".to_owned())];
         assert_eq!(write_files(scratch.path(), &changed).expect("changed"), ["a/b.txt"]);
     }
+    /// The text of one generated file.
+    fn generated(target: &str, path: &str) -> String {
+        let spec = SdkSpec::load(&root()).expect("the specification loads");
+        let rendered = render(&spec, Some(target)).expect("the target renders");
+        files_of(&rendered)
+            .into_iter()
+            .find(|(file, _)| file == path)
+            .unwrap_or_else(|| panic!("{path} is not rendered"))
+            .1
+    }
+
+    #[test]
+    fn a_python_stub_reads_an_object_as_absent_only_where_the_catalog_says_optional() {
+        let model = generated("object-types", "python/gnoblin/objects/model.pyi");
+        // `launches` is declared with no `optional`: a type checker must not make a script test it for `None`.
+        let launches = model
+            .lines()
+            .find(|line| line.contains("def launches(self) ->"))
+            .expect("the property is declared");
+        assert!(!launches.contains("None"), "{launches}");
+        // A member the catalog marks optional still answers `| None`.
+        assert!(
+            model
+                .lines()
+                .any(|line| line.contains("def ") && line.contains("-> ") && line.ends_with("| None: ...")),
+            "an optional answer is `| None`"
+        );
+    }
+
+    #[test]
+    fn a_python_stub_names_the_base_of_a_derived_class() {
+        let std = generated("object-types", "python/gnoblin/objects/std.pyi");
+        assert!(std.contains("class Camera3d(SceneNode):"), "a camera is a scene node");
+        assert!(std.contains("class View(SceneNode):"), "a view is a scene node");
+    }
+
+    #[test]
+    fn a_builtin_binding_stub_has_start() {
+        let std = generated("python", "python/gnoblin/std.pyi");
+        let binding = &std[std.find("class SwapBinding").expect("the binding is declared")..];
+        let binding = &binding[..binding.find("\n\n\nclass ").unwrap_or(binding.len())];
+        assert!(binding.contains("def start(self) -> Registration:"), "{binding}");
+    }
+
+    #[test]
+    fn a_std_call_that_answers_a_handle_is_not_optional_unless_it_is_a_lookup() {
+        let std = generated("python", "python/gnoblin/std.pyi");
+        let scope = std
+            .lines()
+            .find(|line| line.contains("def scope("))
+            .expect("Style.scope is declared");
+        assert!(scope.ends_with("-> Style:"), "{scope}");
+        let clients = std
+            .lines()
+            .find(|line| line.contains("def clients(self) ->"))
+            .expect("Workspace.clients");
+        assert!(!clients.contains("Optional"), "{clients}");
+    }
 }

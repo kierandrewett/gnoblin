@@ -229,6 +229,16 @@ Point the checker at `<prefix>/share/gnoblin/types/python`, or add it to `extraP
 `crates/gnoblin-runtime-python/stubs/`, and a test (`tests/shells.rs`, `the_stubs_of_the_package_agree_with_what_the_runtime_reflects`)
 holds them to what the runtime reflects of every public name.
 
+`pyright` finds no error in any shell of `examples/` or in the golden shell (`tests/golden/shell.py`) against the installed stubs. The
+test (`every_python_example_type_checks_clean_against_the_installed_stubs`) runs when `pyright` is on the path or `GNOBLIN_PYRIGHT`
+names it, and fails on any error. A `GNOBLIN_PYRIGHT` that names nothing is an error too.
+
+A stub differs from the classes at run time in two ways, on purpose:
+
+- A property or a result reads as `None` only where the catalog marks it `optional`.
+- A class of `gnoblin.objects` that derives from another (`Camera3d` from `SceneNode`) names it as its base, so a checker accepts it
+  where the base is wanted. At run time the classes are flat, and a call takes any handle.
+
 ## The desktop library: `gnoblin.std`
 
 `gnoblin.std` is the object model above the core: collections of clients, outputs and workspaces, layouts, pointer bindings,

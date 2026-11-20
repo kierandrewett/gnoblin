@@ -208,6 +208,14 @@ pub fn python(stub: bool) -> String {
             code.line(format!("super().__init__({{{}}})", pairs.join(", ")));
         }
         code.dedent();
+        if stub {
+            // The base class is written in Rust (`gnoblin._std_base`), so the stub says what it adds.
+            code.line("def start(self) -> Registration:");
+            code.indent();
+            code.line("\"\"\"Claims the binding's trigger. `remove()` on the result ends it.\"\"\"");
+            code.line("...");
+            code.dedent();
+        }
         code.dedent();
         code.blank();
         code.blank();

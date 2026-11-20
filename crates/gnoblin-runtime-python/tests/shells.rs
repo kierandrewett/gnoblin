@@ -1107,10 +1107,17 @@ fn the_golden_shell_runs_over_the_embedded_package_and_every_registration_works(
     assert_eq!(run.window(&section, 50).1, 40.0, "{}", run.dump());
 }
 
-/// A type checker, when this machine has one: `$GNOBLIN_PYRIGHT`, or `pyright` on the path.
+/// A type checker, when this machine has one: `$GNOBLIN_PYRIGHT`, or `pyright` on the path. A `$GNOBLIN_PYRIGHT` that names nothing is an
+/// error, not a skip: whoever sets it wants the check to run.
 fn pyright() -> Option<PathBuf> {
     if let Some(explicit) = std::env::var_os("GNOBLIN_PYRIGHT").filter(|value| !value.is_empty()) {
-        return Some(PathBuf::from(explicit));
+        let explicit = PathBuf::from(explicit);
+        assert!(
+            explicit.is_file(),
+            "GNOBLIN_PYRIGHT names {}, which is not a file",
+            explicit.display()
+        );
+        return Some(explicit);
     }
     let paths = std::env::var_os("PATH")?;
     std::env::split_paths(&paths)
@@ -1161,32 +1168,85 @@ fn installed_stubs(into: &Path) {
     }
 }
 
+/// Type-checks each shell directory `(name, directory)` with the installed stubs, each in its own environment so a module beside the
+/// shell resolves as it does at run time. Every error fails the test, with what pyright said.
+fn type_check(project: &Path, pyright: &Path, shells: &[(String, PathBuf)]) {
+    let stubs = project.join("types/python");
+    installed_stubs(&stubs);
+    let mut environments = Vec::new();
+    for (name, from) in shells {
+        let to = project.join("shells").join(name);
+        fs::create_dir_all(&to).unwrap();
+        for entry in fs::read_dir(from).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_file() {
+                fs::copy(&path, to.join(path.file_name().unwrap())).unwrap();
+            }
+        }
+        environments.push(format!(
+            r#"{{ "root": {:?}, "extraPaths": [{:?}] }}"#,
+            format!("shells/{name}"),
+            stubs.display().to_string()
+        ));
+    }
+    fs::write(
+        project.join("pyrightconfig.json"),
+        format!(
+            r#"{{ "include": ["shells"], "executionEnvironments": [{}], "pythonVersion": "3.11", "typeCheckingMode": "standard", "reportMissingModuleSource": "none" }}"#,
+            environments.join(", ")
+        ),
+    )
+    .unwrap();
+    let output = std::process::Command::new(pyright)
+        .arg("-p")
+        .arg(project)
+        .output()
+        .expect("pyright runs");
+    assert!(
+        output.status.success(),
+        "pyright found problems against the installed stubs:\n{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // A run that checked nothing is not a pass.
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("0 errors"),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
 #[test]
 fn the_golden_shell_type_checks_clean_against_the_installed_stubs() {
     let Some(pyright) = pyright() else {
         eprintln!("no pyright (GNOBLIN_PYRIGHT, or pyright on the path): the check is skipped");
         return;
     };
-    let dir = project("golden-pyright");
-    let stubs = dir.join("types/python");
-    installed_stubs(&stubs);
-    fs::copy(golden_shell(), dir.join("shell.py")).unwrap();
-    fs::write(
-        dir.join("pyrightconfig.json"),
-        r#"{ "include": ["shell.py"], "extraPaths": ["types/python"], "pythonVersion": "3.11", "typeCheckingMode": "standard" }"#,
-    )
-    .unwrap();
-    let output = std::process::Command::new(pyright)
-        .arg("-p")
-        .arg(&dir)
-        .output()
-        .expect("pyright runs");
-    assert!(
-        output.status.success(),
-        "pyright found problems with the golden shell:\n{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let golden = golden_shell().parent().unwrap().to_owned();
+    type_check(&project("golden-pyright"), &pyright, &[("golden".to_owned(), golden)]);
+}
+
+/// The directories of `examples/` that hold a Python shell: every Python example, whatever its number.
+fn python_examples() -> Vec<(String, PathBuf)> {
+    let mut found: Vec<(String, PathBuf)> = fs::read_dir(repo_root().join("examples"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|dir| dir.join("shell.py").is_file())
+        .map(|dir| (dir.file_name().unwrap().to_string_lossy().into_owned(), dir))
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn every_python_example_type_checks_clean_against_the_installed_stubs() {
+    let examples = python_examples();
+    assert!(examples.len() >= 9, "the Python examples are found: {examples:?}");
+    let Some(pyright) = pyright() else {
+        eprintln!("no pyright (GNOBLIN_PYRIGHT, or pyright on the path): the check is skipped");
+        return;
+    };
+    type_check(&project("examples-pyright"), &pyright, &examples);
 }
 
 // ---- example 3: a Python shell on gnoblin.std -------------------------------------------------------------------------------

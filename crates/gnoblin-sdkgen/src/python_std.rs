@@ -667,10 +667,10 @@ impl<'a> Renderer<'a> {
         let one = |arg: &Arg| -> String {
             match arg {
                 Arg::Out { ty, .. } => match ty {
-                    Scalar::Handle(handle) => match self.class_of_handle(classes, handle) {
-                        Some(class) => format!("Optional[{class}]"),
-                        None => "Optional[int]".to_owned(),
-                    },
+                    // A handle the call answers is there: a call that finds nothing is the flag's `None` below, or an error.
+                    Scalar::Handle(handle) => self
+                        .class_of_handle(classes, handle)
+                        .unwrap_or_else(|| "int".to_owned()),
                     Scalar::Prim(prim) => prim_annotation(*prim).to_owned(),
                 },
                 Arg::OutRecord { record, .. } => match self.lib.record(record).and_then(|def| def.list_of.as_ref()) {

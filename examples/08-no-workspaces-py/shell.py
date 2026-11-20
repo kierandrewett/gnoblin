@@ -36,7 +36,7 @@ master = None
 
 def retile():
     windows = list(gnoblin.windows)
-    if master in windows:
+    if master is not None and master in windows:
         windows.remove(master)
         windows.insert(0, master)
     for window, (x, y, width, height) in zip(windows, tiles(work_area(), len(windows))):
