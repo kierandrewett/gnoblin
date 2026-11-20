@@ -23,6 +23,15 @@ pub mod api {
     include!(concat!(env!("OUT_DIR"), "/rust-objects/probe_api.rs"));
 }
 
+/// The classes of the `probe` namespace as the JavaScript runtime carries them, rendered from the same catalog.
+pub const OBJECTS_JS: &str = include_str!(concat!(env!("OUT_DIR"), "/script-objects/probe.js"));
+
+/// The declarations of [`OBJECTS_JS`].
+pub const OBJECTS_DTS: &str = include_str!(concat!(env!("OUT_DIR"), "/script-objects/probe.d.ts"));
+
+/// The classes of the `probe` namespace as the Python runtime carries them.
+pub const OBJECTS_PY: &str = include_str!(concat!(env!("OUT_DIR"), "/script-objects/probe.py"));
+
 use catalog::{CATALOG, CATALOG_HASH};
 
 /// The generation the tests run in.
@@ -53,9 +62,19 @@ pub fn objects() -> api::Objects {
     api::Objects::new(Api::new(&API, CTX, last_error))
 }
 
+/// The library's table, which a script runtime serves the namespace from.
+pub fn table() -> &'static GnoblinObjectApi {
+    &API
+}
+
 /// Tells the listeners what the library queued: what the host's turn does.
 pub fn turn() {
-    LIB.with(|lib| lib.flush(CTX));
+    turn_for(CTX);
+}
+
+/// [`turn`] for the generation `ctx`, for a host whose generation is not [`CTX`].
+pub fn turn_for(ctx: abi::GnoblinCtx) {
+    LIB.with(|lib| lib.flush(ctx));
 }
 
 /// What the catalog and the implementation disagree about.

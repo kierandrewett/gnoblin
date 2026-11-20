@@ -177,6 +177,18 @@ impl CoreTable {
         Ok(bytes)
     }
 
+    /// The object protocol's table of `namespace` (`gnoblin.model`) for the generation `ctx`: the classes the core serves.
+    pub(crate) fn object_api(self, ctx: GnoblinCtx, namespace: &str) -> Result<&'static abi::GnoblinObjectApi, String> {
+        let mut table: *const abi::GnoblinObjectApi = core::ptr::null();
+        // SAFETY: `namespace` is borrowed for the call and `table` is a live local the call writes.
+        let code = unsafe { (self.api.object_api)(ctx, GnoblinStr::borrowed(namespace), &raw mut table) };
+        if code != abi::E_OK {
+            return Err(failure("object_api", code));
+        }
+        // SAFETY: on success the core wrote a pointer to its static table, which is never unmapped.
+        unsafe { table.as_ref() }.ok_or_else(|| "the core gave no object table".to_owned())
+    }
+
     /// The catalog's id of the class `name` (`gnoblin.session`), or `None` when the core has no such class.
     pub(crate) fn class_id(self, ctx: GnoblinCtx, name: &str) -> Option<u32> {
         // SAFETY: `name` is a live string for the call.

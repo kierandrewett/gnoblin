@@ -260,6 +260,48 @@ installed (looked for libgnoblin-std.so.1 in ...)`, which is the check a core-on
 - The only hand-written parts are `_std_base.py` (the native, handles, argument conversion) and `_std_sugar.py` (`len(collection)`,
   `client.window`, `Placement.tile`, `Workspace.create`, `Workspace.use`).
 
+## The object classes: `gnoblin.objects.std`
+
+The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object
+protocol, and `gnoblin.objects.std` has a class for each of its types. They are **generated** from the catalog the library serves
+(`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)) and embedded in the runtime library, so a class added
+to the catalog is a class here with no change to the runtime. `gnoblin.objects.model` is the same for the core's `gnoblin.model`.
+
+```python
+from gnoblin import gnoblin
+from gnoblin.objects.std import EntryModel, FocusEvent, FocusEventKind, FocusMode, FocusPolicy, FocusSettings
+
+entry = EntryModel("héllo")                    # a handle: the library holds the object, the script holds a reference
+entry.insert(", world")                        # a method changes it at once
+entry.select_all()
+print(entry.text, entry.selection)             # a property is read; a record comes back as a dataclass: TextRange(start=0, end=12)
+
+@entry.on("changed")                           # a signal, told from the library's next turn and never inside the call that caused it
+def heard():
+    gnoblin.log("the entry changed")
+
+entry.on("text_changed", lambda text: gnoblin.log(text))   # `<property>_changed` is an event of each property; `on` returns a listener
+
+action = FocusPolicy.focus_decision(           # a function of a service: records and an enum go in, a record comes out
+    FocusSettings(mode=FocusMode.SLOPPY), FocusEvent(kind=FocusEventKind.ENTER, held=False))
+```
+
+- A **record** is a `dataclass` (a field with a default starts at it, an optional one at `None`), an **enum** an `IntEnum` (a method also
+  takes its name, `"follow-mouse"`), and a list a `list`.
+- `on(event, handler)` returns a `Listener` with `stop()`; without a handler it is a decorator. It lasts until stopped or the
+  generation ends, not until the object is collected.
+- An **interface** (`gnoblin.objects.std.<Name>` of kind `interface`) is a base class: a subclass defines the methods it wants to answer
+  and passes an instance to the library; a method it does not define runs natively.
+- `.destroy()` ends the object and its children whoever else holds them. A reference the script drops is released on the shell thread, so a
+  thread of the script may drop one.
+- A failure is the exception of `gnoblin` for its kind (`StaleError` for an object that has ended), a value of the wrong type is a
+  `TypeError` that names it, and an exception a callback raises is logged with its traceback.
+- `gnoblin/objects/*.pyi` are the stubs. A `tests/shells.rs` check holds them to what the runtime reflects. Importing the module opens
+  `libgnoblin-std.so.1` and raises `ImportError` without it, as `gnoblin.std` does.
+
+`examples/20-native-object-py/shell.py` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the
+Rust and TypeScript shells of the same example.
+
 ## Examples
 
 Three small shells in `examples/` show the pieces, and a test in `crates/gnoblin-runtime-python/tests/shells.rs` runs each one

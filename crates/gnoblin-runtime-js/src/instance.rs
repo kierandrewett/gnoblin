@@ -92,6 +92,8 @@ fn role_config(table: CoreTable, script: &Path, commits: &JsCommitLog) -> JsRole
     config.shell.js.natives.push(crate::std_native::native());
     // And `__gnoblinCore`, the core's verbs and signals of the compositor's `gnoblin` namespace (`verbs` of `gnoblin-core`).
     config.shell.js.natives.push(crate::core_native::native());
+    // And `__gnoblinObjects`, the object protocol of both libraries, which the generated `objects` modules are written over.
+    config.shell.js.natives.push(crate::object_native::native());
     config
 }
 

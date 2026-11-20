@@ -39,6 +39,8 @@ A std shell (examples 2, 6, 9, 19 and 20) links `libgnoblin-std.so.1`. In a sour
 | 19  | [`19-shader-tint-ts`](19-shader-tint-ts/shell.ts)           | TypeScript         | Core, std | `gnoblin ./examples/19-shader-tint-ts/shell.ts`                                                                     |
 | 19  | [`19-shader-tint-py`](19-shader-tint-py/shell.py)           | Python             | Core, std | `gnoblin ./examples/19-shader-tint-py/shell.py`                                                                     |
 | 20  | [`20-native-object`](20-native-object/src/lib.rs)           | Rust               | Core, std | `gnoblin ./target/debug/libnative_object.so`, then `<Super>e` types into the entry the shell made                   |
+| 20  | [`20-native-object-ts`](20-native-object-ts/shell.ts)       | TypeScript         | Core, std | `gnoblin ./examples/20-native-object-ts/shell.ts`, then `Super+e` types into the entry the shell made               |
+| 20  | [`20-native-object-py`](20-native-object-py/shell.py)       | Python             | Core, std | `gnoblin ./examples/20-native-object-py/shell.py`, then `<Super>e` types into the entry the shell made              |
 | 21  | [`21-native-model`](21-native-model/src/lib.rs)             | Rust               | Core      | `gnoblin ./target/debug/libnative_model.so`, then open, retitle and close windows and read the log                  |
 | 22  | [`22-native-ui`](22-native-ui/src/lib.rs)                   | Rust               | Core, std | `gnoblin ./target/debug/libnative_ui.so`, then type into the entry the shell put over the windows and press Return  |
 

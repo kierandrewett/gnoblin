@@ -1,7 +1,7 @@
 //! Hides every export of the library but its entry symbol, with a linker version script (`exports.map`), and embeds the generated
 //! half of the `gnoblin` package.
 //!
-//! PyO3 exports `PyInit__gnoblin_core` and `PyInit__gnoblin_std`, the initialisers of the built-in modules the runtime registers with the interpreter's
+//! PyO3 exports `PyInit__gnoblin_core`, `PyInit__gnoblin_std` and `PyInit__gnoblin_objects`, the initialisers of the built-in modules the runtime registers with the interpreter's
 //! inittab. The interpreter reaches it by address, so the name need not be exported, and a runtime that exports a second
 //! name could answer a `dlsym` it was never asked for. rustc passes its own version script that lists the symbols as global; the one
 //! here names them as local, which wins. `cargo xtask dist-check` and `cargo xtask stage` refuse a runtime that
@@ -26,7 +26,7 @@ fn main() {
 /// Renders the Python target into `OUT_DIR/python/` and writes `OUT_DIR/python_embedded.rs`: `(dotted module name, is a package,
 /// source)` for every generated `.py` file, the source included from where it was written.
 fn embed_generated() {
-    let paths = gnoblin_sdkgen::emit_for_build(&["python"]);
+    let paths = gnoblin_sdkgen::emit_for_build(&["python", "object-py"]);
     let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
     let mut table = String::from(
         "/// The generated modules of the `gnoblin` package: name, whether it is a package, and its source.\n",

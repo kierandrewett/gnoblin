@@ -29,7 +29,7 @@ use gnoblin_schema::{
     Type,
 };
 
-use super::objects::{Member, flatten, foreign_base, stem_of};
+use super::objects::{Member, check_foreign, slots_of, stem_of};
 use super::text::{pascal, rust_ident, snake};
 use super::{Comment, File, SdkSpec, Target};
 
@@ -71,12 +71,6 @@ struct Renderer<'a> {
     objects: BTreeMap<&'a str, &'a ObjectType>,
     enums: BTreeMap<&'a str, &'a EnumDecl>,
     callbacks: BTreeMap<&'a str, &'a CallbackDecl>,
-}
-
-/// A member to render, and whether another library's class owns it.
-struct ClassMember<'a> {
-    member: Member<'a>,
-    foreign: bool,
 }
 
 fn class_name(object: &ObjectType) -> String {
@@ -436,58 +430,12 @@ impl go::typed::FromVal<Objects> for @Name@ {
         Ok(text)
     }
 
-    /// The members of a class as ids number them, with whether another library owns each.
-    fn slots(&self, object: &'a ObjectType) -> Vec<ClassMember<'a>> {
-        let mut slots: Vec<ClassMember<'a>> = foreign_base(self.catalog, object)
-            .map(|(_, members)| members)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|member| ClassMember { member, foreign: true })
-            .collect();
-        slots.extend(
-            flatten(&self.objects, object)
-                .into_iter()
-                .map(|member| ClassMember { member, foreign: false }),
-        );
-        slots
-    }
-
-    /// Refuses a member of a base class of another namespace whose types name that namespace's classes.
-    fn check_foreign(&self, class: &str, slot: &ClassMember<'_>) -> Result<(), String> {
-        if !slot.foreign {
-            return Ok(());
-        }
-        let types: Vec<&Type> = match &slot.member {
-            Member::Property(property) => vec![&property.ty],
-            Member::Method(method) => method
-                .params
-                .iter()
-                .map(|field| &field.ty)
-                .chain(method.returns.as_ref())
-                .collect(),
-            Member::Signal(signal) => signal.fields.iter().map(|field| &field.ty).collect(),
-        };
-        for ty in types {
-            if !(ty.referenced_objects().is_empty()
-                && ty.referenced_enums().is_empty()
-                && ty.referenced_callbacks().is_empty())
-            {
-                return Err(format!(
-                    "`{class}` extends a class of another namespace, and its member `{}` has the type `{ty}` of that namespace; a typed \
-                     reference across two libraries is not rendered",
-                    slot.member.name()
-                ));
-            }
-        }
-        Ok(())
-    }
-
     fn handle_source(&self, object: &'a ObjectType) -> Result<(String, String), String> {
         let name = class_name(object);
         let ids_name = format!("{name}Ids");
-        let slots = self.slots(object);
+        let slots = slots_of(self.catalog, &self.objects, object);
         for slot in &slots {
-            self.check_foreign(&object.name, slot)?;
+            check_foreign(&object.name, slot)?;
         }
         let has_instance_members = object.kind == ObjectKind::Handle
             || slots.iter().any(|slot| match &slot.member {

@@ -1000,3 +1000,239 @@ fn the_built_in_layouts_from_python_give_the_rectangles_of_the_native_shell() {
     assert!(!script.stderr.contains("Traceback"), "{}", script.dump());
     assert_eq!(num(&script.stdout, "core_stats", "panics"), 0, "{}", script.dump());
 }
+
+/// Starts the shell `script` in the prefix that has the std library beside the core, and ends it when it has evaluated: the scenario of a
+/// reload with no step, which needs nothing of the compositor.
+fn start_in_std_prefix(script: &Path) -> Run {
+    let stage = stage();
+    let env = environment_in(&stage.with_std_runtimes, &[]);
+    let extra: Vec<(&str, &Path)> = env.iter().map(|(key, value)| (*key, value.as_path())).collect();
+    let name = PathBuf::from("reload");
+    finish(scenario_with_env(&stage.with_std, &[name.as_path(), script], &extra))
+}
+
+// ---- the generated object classes ------------------------------------------------------------------------------------------
+
+/// A shell that logs, for every class of `gnoblin.objects.std`, the public names the interpreter reflects on it: a record's fields, an enum's
+/// members, and otherwise the attributes a script can reach (a property, a method, a function). Run in the Python runtime, so the classes
+/// are the ones the runtime carries, written from the catalog the std library serves.
+const REFLECT_SHELL: &str = r#"
+import dataclasses
+import enum
+import inspect
+
+from gnoblin import gnoblin
+from gnoblin.objects import model, std
+from gnoblin.objects._base import Implementor
+
+for module in (model, std):
+    # `model` is the core's namespace, `std` the library's: each is written from its own catalog.
+    prefix = module.__name__.rsplit(".", 1)[1]
+    for name, value in sorted(vars(module).items()):
+        if not inspect.isclass(value) or value.__module__ != module.__name__:
+            continue
+        if issubclass(value, enum.Enum):
+            names = list(value.__members__)
+        elif issubclass(value, Implementor):
+            # An interface is a base the script subclasses: it has no body for the methods the stub declares.
+            names = ["<interface>"]
+        elif dataclasses.is_dataclass(value):
+            names = [field.name for field in dataclasses.fields(value)]
+        else:
+            names = [member for member in dir(value) if not member.startswith("_")]
+        gnoblin.log("reflect " + prefix + "." + name + " " + " ".join(sorted(names)))
+gnoblin.log("reflect done")
+"#;
+
+/// What the stub declares of each class, as `reflect NAME names` lines: the same three shapes the shell above reflects.
+const STUB_NAMES: &str = r#"
+import ast
+import sys
+
+tree = ast.parse(open(sys.argv[1], encoding="utf-8").read())
+
+
+def decorated_as(node, name):
+    return any(
+        (isinstance(d, ast.Attribute) and d.attr == name) or (isinstance(d, ast.Name) and d.id == name)
+        or (isinstance(d, ast.Call) and ((isinstance(d.func, ast.Attribute) and d.func.attr == name) or (isinstance(d.func, ast.Name) and d.func.id == name)))
+        for d in node.decorator_list
+    )
+
+
+for node in tree.body:
+    if not isinstance(node, ast.ClassDef):
+        continue
+    if any(isinstance(base, ast.Attribute) and base.attr in ("IntEnum", "Enum") for base in node.bases):
+        names = [t.id for n in node.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)]
+    elif (ast.get_docstring(node) or "").startswith("The interface"):
+        names = ["<interface>"]
+    elif decorated_as(node, "dataclass"):
+        names = [n.target.id for n in node.body if isinstance(n, ast.AnnAssign)]
+    else:
+        names = {n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and not n.name.startswith("_")}
+        names |= {n.target.id for n in node.body if isinstance(n, ast.AnnAssign) and not n.target.id.startswith("_")}
+    print("reflect " + sys.argv[2] + "." + node.name + " " + " ".join(sorted(names)))
+"#;
+
+#[test]
+fn the_stub_of_the_generated_classes_agrees_with_what_the_runtime_reflects() {
+    // The stub, from the generator.
+    let spec = gnoblin_sdkgen::SdkSpec::load(&repo_root()).expect("the catalog and the ABIs load");
+    let rendered = gnoblin_sdkgen::render(&spec, Some("object-types")).expect("the declarations render");
+    let files = gnoblin_sdkgen::files_of(&rendered);
+    let dir = project("object-stub");
+    let names = dir.join("stub_names.py");
+    fs::write(&names, STUB_NAMES).unwrap();
+    let mut declared: Vec<String> = Vec::new();
+    for module in ["model", "std"] {
+        let stub_text = files
+            .iter()
+            .find(|(path, _)| *path == format!("python/gnoblin/objects/{module}.pyi"))
+            .map(|(_, text)| text.clone())
+            .expect("the stub is rendered");
+        let stub = dir.join(format!("{module}.pyi"));
+        fs::write(&stub, stub_text).unwrap();
+        let output = std::process::Command::new("python3")
+            .arg(&names)
+            .arg(&stub)
+            .arg(module)
+            .output()
+            .expect("python3 runs");
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        declared.extend(String::from_utf8_lossy(&output.stdout).lines().map(str::to_owned));
+    }
+
+    // The runtime's reflection of the classes it carries.
+    let shell = dir.join("shell.py");
+    fs::write(&shell, REFLECT_SHELL).unwrap();
+    let run = start_in_std_prefix(&shell);
+    assert_eq!(run.code, 0, "{}", run.dump());
+    assert!(!run.stderr.contains("Traceback"), "{}", run.dump());
+    let mut reflected: Vec<String> = run
+        .stderr
+        .lines()
+        .filter_map(|line| {
+            line.find("reflect ").map(|at| {
+                line[at..]
+                    .split("  generation=")
+                    .next()
+                    .unwrap_or_default()
+                    .trim_end()
+                    .to_owned()
+            })
+        })
+        .filter(|line| line != "reflect done")
+        .collect();
+    reflected.sort();
+    declared.sort();
+    assert!(run.stderr.contains("reflect done"), "{}", run.dump());
+    assert!(
+        declared.iter().any(|line| line.starts_with("reflect model.")),
+        "the core's module has classes: {declared:?}"
+    );
+    assert!(
+        declared.iter().any(|line| line.starts_with("reflect std.EntryModel ")),
+        "the stub has the classes: {declared:?}"
+    );
+    assert_eq!(reflected, declared, "the stub and the runtime disagree\n{}", run.dump());
+}
+
+/// What a call from a Python script costs, in nanoseconds, for the calls `design/native-std-port.md` 4.2 times from Rust. A measurement
+/// and not a check, so it is ignored: run it with the fixtures built in release (`cargo test -p gnoblin-runtime-python --release --test
+/// shells what_a_call_from_python_costs -- --ignored --nocapture`).
+#[test]
+#[ignore = "a measurement: run it in a release build with --ignored --nocapture"]
+fn what_a_call_from_python_costs() {
+    let dir = project("object-cost");
+    let shell = dir.join("shell.py");
+    fs::write(
+        &shell,
+        r#"
+import time
+
+from gnoblin import gnoblin
+from gnoblin.objects.std import EntryModel, FocusEvent, FocusEventKind, FocusMode, FocusPolicy, FocusSettings
+
+ROUNDS = 200000
+entry = EntryModel("hello, world, and more text")
+settings = FocusSettings(mode=FocusMode.SLOPPY)
+event = FocusEvent(kind=FocusEventKind.ENTER, held=False)
+plain = FocusSettings()
+
+
+def cost(label, body):
+    start = time.perf_counter_ns()
+    body()
+    gnoblin.log(f"cost {label}: {(time.perf_counter_ns() - start) / ROUNDS}")
+
+
+def empty():
+    for _ in range(ROUNDS):
+        pass
+
+
+def get_number():
+    for _ in range(ROUNDS):
+        entry.length
+
+
+def get_text():
+    for _ in range(ROUNDS):
+        entry.text
+
+
+def get_record():
+    for _ in range(ROUNDS):
+        entry.selection
+
+
+def set_text():
+    for _ in range(ROUNDS):
+        entry.text = "hello, world, and more text"
+
+
+def method():
+    for _ in range(ROUNDS):
+        entry.home()
+
+
+def two_changes():
+    for _ in range(ROUNDS):
+        entry.insert("a")
+        entry.backspace()
+
+
+def static_boolean():
+    for _ in range(ROUNDS):
+        FocusPolicy.opens_focused(plain, True)
+
+
+def static_record():
+    for _ in range(ROUNDS):
+        FocusPolicy.focus_decision(settings, event)
+
+
+for label, body in [
+    ("the script's own loop", empty),
+    ("get of a number", get_number),
+    ("get of text", get_text),
+    ("get of a record (absent)", get_record),
+    ("set of text", set_text),
+    ("a method with no arguments that changes nothing", method),
+    ("two calls that each change the entry (insert and backspace)", two_changes),
+    ("a static function with a record and a boolean", static_boolean),
+    ("a static function with two records, answering a record", static_record),
+]:
+    cost(label, body)
+gnoblin.log("cost done")
+"#,
+    )
+    .unwrap();
+    let run = start_in_std_prefix(&shell);
+    assert_eq!(run.code, 0, "{}", run.dump());
+    for line in run.stderr.lines().filter(|line| line.contains("cost ")) {
+        println!("{}", &line[line.find("cost ").unwrap_or(0)..]);
+    }
+    assert!(run.stderr.contains("cost done"), "{}", run.dump());
+}

@@ -302,6 +302,42 @@ output, and an output with a request in flight is not asked again until the comp
 `examples/03-typescript-std/` has the shells the tests run. The hand-written part of the binding is `gnoblin-std/native`
 itself (`clients()`, `tile`, `createWorkspace`).
 
+## The object classes: `gnoblin-std/generated/objects`
+
+The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object
+protocol, and `gnoblin-std/generated/objects` has a class for each of its types. They are **generated** from the catalog the library serves
+(`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)) and embedded in the runtime library, and so are
+their declarations, which `gnoblinctl types init` and `gnoblinctl check --types` give the editor. A class added to the catalog is a class
+here with no change to the runtime. `gnoblin-core/generated/objects` is the same for the core's `gnoblin.model`.
+
+```ts
+import { EntryModel, FocusPolicy } from "gnoblin-std/generated/objects";
+
+const entry = new EntryModel("héllo"); // a handle: the library holds the object, the script holds a reference
+entry.insert(", world"); // a method changes it at once
+entry.selectAll();
+console.log(entry.text, entry.selection); // a property is read; a record comes back as an object: { start: 0, end: 12 }
+
+entry.on("changed", () => console.log("the entry changed")); // a signal, told from the library's next turn, never inside the call
+entry.on("textChanged", (text) => console.log(text)); // `<property>Changed` is an event of each property
+
+const action = FocusPolicy.focusDecision({ mode: "sloppy" }, { kind: "enter", held: false }); // records in, a record out
+```
+
+- A **record** is a plain object (a field with a default may be left out, an optional one is `undefined`), an **enum** its name
+  (`"follow-mouse"`), a list an array and a callback a function.
+- `on(event, handler)` returns a `Listener` with `stop()`. It lasts until stopped or the generation ends, not until the object is
+  collected; the library's object itself lives until `destroy()` or the generation's end, and the script's reference is dropped when the
+  object is collected.
+- An **interface** is an abstract class a shell extends: the methods it defines are the ones the library calls, and the rest run natively.
+- A failure is an `Error` with the library's text and its ABI code in `code`, a value of the wrong type is a `TypeError` that names it, and
+  an exception a listener throws is logged with its stack and does not stop the listeners after it.
+- Importing the module opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed (looked in: ...)` without it, as
+  `gnoblin-std` does.
+
+`examples/20-native-object-ts/shell.ts` is this, run by `crates/gnoblin/tests/modular/native_object.rs` in a real session beside the Rust
+and Python shells of the same example, and checked with `gnoblinctl check --types`.
+
 ## With no `shell.ts`
 
 A session with no `shell.ts` is not a bare shell. It runs the starter, the same file `gnoblinctl config init`

@@ -1405,6 +1405,24 @@ gnoblin-config-migrate`, `just workspace-ci` and the `lua-runtime.yml` job on th
   `release` to the shell thread); the generated `.d.ts` and `.pyi`; the golden scripts for the slice.
 - **Acceptance:** `modular::native_object` from TypeScript and Python through the embedded modules (not the preview path). The
   generated `.d.ts` type-checks the golden script. `.pyi` agrees with the runtime's reflection of `gnoblin.std`.
+- **Result:** the three targets are `object-js`, `object-py` and `object-types` (the last writes the `.d.ts` and the `.pyi`), beside
+  `objects` and `object-api`. Each class, property, method, signal and conversion is rendered; there is no per-class code in either
+  runtime, which have one generic door each to `gnoblin_object::client::Api` (`__gnoblinObjects`, `_gnoblin_objects`). Until NpFlip
+  replaces the hand-written modules, the generated classes live beside them: `gnoblin-std/generated/objects` and
+  `gnoblin-core/generated/objects` (JavaScript, with `object_base` they share) and `gnoblin.objects.std` and `gnoblin.objects.model`
+  (Python); NpFlip renames them to `gnoblin-std`, `gnoblin-core`, `gnoblin.std` and `gnoblin`. The JavaScript stock table now holds
+  generated `.js` modules (the engine runs them, an editor never sees them) and `.d.ts` files (an editor reads them, the engine never
+  runs them). The golden scripts of the slice are examples `20-native-object-ts` and `20-native-object-py`: they log the lines the Rust
+  example logs, `modular::native_object` runs all three in a real session and asserts those lines (the trace), and
+  `gnoblinctl check --types` type-checks the TypeScript one against the generated declarations and refuses a copy that uses a name, a
+  value or a write the catalog does not allow. The `.pyi` is held to what the runtime reflects of every class of `gnoblin.objects.std`
+  (`crates/gnoblin-runtime-python/tests/shells.rs`). `gnoblin-js/tests/object_probe.rs` runs the JavaScript classes against the `probe`
+  library, which has one class of every kind (an enum, records with and without defaults, a list, a closure property, an interface the
+  script extends, a static function, a signal and a property listener), and `object_classes.rs` runs them over the real std library.
+  The Python classes of the same catalog run against a stand-in for the runtime's native module (`gnoblin-sdkgen/tests/python`), which
+  keeps what a class writes and hands it back the way the library does: it checks the values that cross for an enum, a record, a list, a
+  closure, an interface and a listener, and found that a script's interface object could not be read back. A Python run against the
+  `probe` library itself needs a host the Python runtime does not have, so the real-library runs of Python are the std catalog's kinds.
 
 #### NpStdUi (14 days)
 

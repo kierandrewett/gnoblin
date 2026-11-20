@@ -107,6 +107,64 @@ pub(super) fn flatten<'a>(by_name: &BTreeMap<&str, &'a ObjectType>, object: &'a 
     list
 }
 
+/// A member of a class as its id numbers it, and whether another library's class owns it.
+pub(super) struct ClassMember<'a> {
+    pub(super) member: Member<'a>,
+    pub(super) foreign: bool,
+}
+
+/// The members of `object` as ids number them, with whether another library owns each: the members of a base class of another
+/// namespace first (the derived catalog lists them with the ids they have there), then its own, base class first.
+pub(super) fn slots_of<'a>(
+    catalog: &'a Catalog,
+    by_name: &BTreeMap<&str, &'a ObjectType>,
+    object: &'a ObjectType,
+) -> Vec<ClassMember<'a>> {
+    let mut slots: Vec<ClassMember<'a>> = foreign_base(catalog, object)
+        .map(|(_, members)| members)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|member| ClassMember { member, foreign: true })
+        .collect();
+    slots.extend(
+        flatten(by_name, object)
+            .into_iter()
+            .map(|member| ClassMember { member, foreign: false }),
+    );
+    slots
+}
+
+/// Refuses a member of a base class of another namespace whose types name that namespace's classes: a typed reference across two
+/// libraries needs both libraries' handles, which no catalog needs yet.
+pub(super) fn check_foreign(class: &str, slot: &ClassMember<'_>) -> Result<(), String> {
+    if !slot.foreign {
+        return Ok(());
+    }
+    let types: Vec<&Type> = match &slot.member {
+        Member::Property(property) => vec![&property.ty],
+        Member::Method(method) => method
+            .params
+            .iter()
+            .map(|field| &field.ty)
+            .chain(method.returns.as_ref())
+            .collect(),
+        Member::Signal(signal) => signal.fields.iter().map(|field| &field.ty).collect(),
+    };
+    for ty in types {
+        if !(ty.referenced_objects().is_empty()
+            && ty.referenced_enums().is_empty()
+            && ty.referenced_callbacks().is_empty())
+        {
+            return Err(format!(
+                "`{class}` extends a class of another namespace, and its member `{}` has the type `{ty}` of that namespace; a typed \
+                 reference across two libraries is not rendered",
+                slot.member.name()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// The `TypeDef` statics of a catalog, one per distinct type.
 struct Types<'a> {
     catalog: &'a Catalog,

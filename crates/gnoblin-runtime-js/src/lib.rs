@@ -20,6 +20,7 @@ mod core_native;
 pub mod embed;
 mod instance;
 mod link;
+mod object_native;
 mod std_native;
 mod table;
 

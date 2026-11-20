@@ -28,9 +28,9 @@ use crate::table::{CoreTable, remembered};
 
 /// A script function in the table of references of the generation that made it. Dropping it lets the reference go at the next safe
 /// moment.
-struct ScriptCallback {
-    id: u64,
-    token: u64,
+pub(crate) struct ScriptCallback {
+    pub(crate) id: u64,
+    pub(crate) token: u64,
 }
 
 impl Drop for ScriptCallback {
@@ -330,7 +330,7 @@ fn core_table<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<(CoreTable, GnoblinCtx)> 
 }
 
 /// Keeps the script function `value` in the generation's table of references.
-fn keep<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> rquickjs::Result<ScriptCallback> {
+pub(crate) fn keep<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> rquickjs::Result<ScriptCallback> {
     let support: Object<'js> = ctx.globals().get("__gnoblinStdSupport")?;
     release(&support)?;
     let id: f64 = support.get::<_, Function<'js>>("keep")?.call((value,))?;

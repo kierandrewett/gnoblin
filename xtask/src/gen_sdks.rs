@@ -17,8 +17,7 @@ use std::process::{Command, ExitCode};
 
 use gnoblin_sdkgen::{SdkSpec, check_surface_lock, files_of, format_all, render, render_surface_locks, write_files};
 
-const USAGE: &str =
-    "usage: cargo xtask gen-sdks [--out DIR] [--check] [--update] [--target rust|std-dyn|python|typescript]";
+const USAGE: &str = "usage: cargo xtask gen-sdks [--out DIR] [--check] [--update] [--target rust|std-dyn|python|typescript|object-js|object-py|object-types]";
 
 /// Where the readable copy goes by default, under the ignored `target/`.
 const DEFAULT_OUT: &str = "target/sdk";
@@ -131,6 +130,7 @@ fn check(root: &Path, target: Option<&str>) -> Result<ExitCode, String> {
     }
 
     ok &= python_compiles(root, &files)?;
+    ok &= javascript_parses(root, &files)?;
 
     if target.is_none() {
         let report = check_surface_lock(&spec, root)?;
@@ -194,6 +194,48 @@ fn python_compiles(root: &Path, files: &[(String, String)]) -> Result<bool, Stri
     };
     let _ = fs::remove_dir_all(&scratch);
     Ok(result)
+}
+
+/// Parses the generated JavaScript as modules with Node's own parser, when there is one: a syntax error in a generated module would
+/// otherwise be found when the first shell imports it.
+fn javascript_parses(root: &Path, files: &[(String, String)]) -> Result<bool, String> {
+    let scripts: Vec<&(String, String)> = files.iter().filter(|(path, _)| path.ends_with(".js")).collect();
+    if scripts.is_empty() {
+        return Ok(true);
+    }
+    let scratch = root.join("target/gen-sdks-check-js");
+    if scratch.exists() {
+        fs::remove_dir_all(&scratch).map_err(|error| format!("cannot clear {}: {error}", scratch.display()))?;
+    }
+    // Node reads a module by the extension `.mjs`; the generated files are modules whatever they are called.
+    let renamed: Vec<(String, String)> = scripts
+        .iter()
+        .map(|(path, text)| (format!("{}mjs", path.trim_end_matches("js")), text.clone()))
+        .collect();
+    write_files(&scratch, &renamed)?;
+    let mut ok = true;
+    for (path, _) in &renamed {
+        match Command::new("node").arg("--check").arg(scratch.join(path)).output() {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => {
+                ok = false;
+                eprintln!(
+                    "[gen-sdks] the generated JavaScript {path} does not parse:\n{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            Err(error) => {
+                println!("[gen-sdks] node is not available ({error}); the generated JavaScript is not parsed");
+                let _ = fs::remove_dir_all(&scratch);
+                return Ok(true);
+            }
+        }
+    }
+    if ok {
+        println!("[gen-sdks] {} generated JavaScript modules parse", renamed.len());
+    }
+    let _ = fs::remove_dir_all(&scratch);
+    Ok(ok)
 }
 
 #[cfg(test)]

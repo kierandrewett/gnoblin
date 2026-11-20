@@ -819,22 +819,26 @@ fn plan(repo: &Path, built: &Path, libdir: &str) -> Result<Vec<Planned>, DistErr
                 }
             }
             InstallItem::Sdk { to, set } => {
-                let (target, prefix) = match set {
-                    SdkSet::TypeScript => ("typescript", "js/"),
-                    SdkSet::Python => ("python", "python/"),
+                // `object-types` is the declarations of the object classes: `.d.ts` under `js/` and `.pyi` under `python/`. The classes
+                // themselves (`object-js`, `object-py`) are embedded in the runtimes and installed nowhere.
+                let (targets, prefix): (&[&str], &str) = match set {
+                    SdkSet::TypeScript => (&["typescript", "object-types"], "js/"),
+                    SdkSet::Python => (&["python", "object-types"], "python/"),
                 };
                 let spec = gnoblin_sdkgen::SdkSpec::load(repo).map_err(DistError::Generate)?;
-                let rendered = gnoblin_sdkgen::render(&spec, Some(target)).map_err(DistError::Generate)?;
-                for (path, text) in gnoblin_sdkgen::files_of(&rendered) {
-                    let Some(relative) = path.strip_prefix(prefix) else {
-                        continue;
-                    };
-                    planned.push(Planned {
-                        to: format!("{}/{relative}", expand_libdir(to, libdir)),
-                        content: PlannedContent::Bytes(text.into_bytes()),
-                        mode: FileMode::Data,
-                        template: false,
-                    });
+                for target in targets {
+                    let rendered = gnoblin_sdkgen::render(&spec, Some(target)).map_err(DistError::Generate)?;
+                    for (path, text) in gnoblin_sdkgen::files_of(&rendered) {
+                        let Some(relative) = path.strip_prefix(prefix) else {
+                            continue;
+                        };
+                        planned.push(Planned {
+                            to: format!("{}/{relative}", expand_libdir(to, libdir)),
+                            content: PlannedContent::Bytes(text.into_bytes()),
+                            mode: FileMode::Data,
+                            template: false,
+                        });
+                    }
                 }
             }
             InstallItem::Dir { to, requires_built } => {
@@ -1459,6 +1463,8 @@ mod tests {
             "share/gnoblin/python/gnoblin/_generated/classes.pyi",
             "share/gnoblin/python/gnoblin/std.py",
             "share/gnoblin/python/gnoblin/std.pyi",
+            "share/gnoblin/python/gnoblin/objects/std.pyi",
+            "share/gnoblin/python/gnoblin/objects/__init__.pyi",
         ] {
             let entry = with
                 .iter()

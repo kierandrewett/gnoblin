@@ -18,10 +18,11 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Renders the TypeScript target into `OUT_DIR/js/` and writes `OUT_DIR/stock_embedded.rs`: `(path under the library root,
-/// source)` for every generated module, the source included from where it was written.
+/// Renders the TypeScript target and the object classes (`object-js`: the JavaScript the engine runs; `object-types`: the declarations
+/// an editor reads) into `OUT_DIR/js/` and writes `OUT_DIR/stock_embedded.rs`: `(path under the library root, source)` for every
+/// generated module, the source included from where it was written.
 fn embed_generated() {
-    let paths = gnoblin_sdkgen::emit_for_build(&["typescript"]);
+    let paths = gnoblin_sdkgen::emit_for_build(&["typescript", "object-js", "object-types"]);
     let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
     let mut table = String::from("/// The generated modules of the stock library, by path under the library root.\n");
     table.push_str("pub(crate) static GENERATED: &[(&str, &str)] = &[\n");

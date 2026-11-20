@@ -147,7 +147,10 @@ pub enum StockError {
 
 /// The import name a script imports `file` (a path under the library root, with `/` separators) by.
 fn import_name(file: &str) -> String {
-    let stem = file.strip_suffix(".ts").unwrap_or(file);
+    let stem = file
+        .strip_suffix(".ts")
+        .or_else(|| file.strip_suffix(".js"))
+        .unwrap_or(file);
     stem.strip_suffix("/index").unwrap_or(stem).to_owned()
 }
 
@@ -195,6 +198,18 @@ struct Listed {
     name: String,
     /// The text of an embedded module; `None` for a file to read.
     embedded: Option<&'static str>,
+}
+
+impl Listed {
+    /// Whether the module is declarations only (`objects.d.ts`): an editor reads it, the engine never runs it.
+    fn is_declarations(&self) -> bool {
+        self.file.ends_with(".d.ts")
+    }
+
+    /// Whether the module is JavaScript the generator wrote (`objects.js`): the engine runs it, and an editor reads its declarations.
+    fn is_javascript(&self) -> bool {
+        self.file.ends_with(".js")
+    }
 }
 
 impl Listed {
@@ -259,7 +274,7 @@ fn listing(dirs: &[PathBuf]) -> Result<Vec<Listed>, StockError> {
 /// A file of a package that is there cannot be read.
 pub fn stock_sources_in(dirs: &[PathBuf]) -> Result<HashMap<String, JsTypeScriptModule>, StockError> {
     let mut modules = HashMap::new();
-    for listed in listing(dirs)? {
+    for listed in listing(dirs)?.into_iter().filter(|listed| !listed.is_declarations()) {
         let source = listed.read()?;
         modules.insert(
             listed.name,
@@ -283,7 +298,7 @@ pub fn stock_sources_in(dirs: &[PathBuf]) -> Result<HashMap<String, JsTypeScript
 /// A file of a package that is there cannot be read.
 pub fn editor_library_in(dirs: &[PathBuf]) -> Result<Vec<(String, String)>, StockError> {
     let mut library = Vec::new();
-    for listed in listing(dirs)? {
+    for listed in listing(dirs)?.into_iter().filter(|listed| !listed.is_javascript()) {
         let mut text = listed.read()?;
         if PACKAGES.contains(&listed.name.as_str()) {
             text.push_str(&host_export(&listed.name));
@@ -466,7 +481,22 @@ mod tests {
         let dirs = source_tree();
         let sources = stock_sources_in(&dirs).expect("the library reads");
         let library = editor_library_in(&dirs).expect("the library reads");
-        assert_eq!(library.len(), sources.len());
+        // The generated classes of the object protocol are JavaScript for the engine and declarations for the editor: each side has its
+        // own and neither has the other's.
+        let (declarations, library): (Vec<_>, Vec<_>) =
+            library.into_iter().partition(|(file, _)| file.ends_with(".d.ts"));
+        let scripts = sources
+            .values()
+            .filter(|module| module.path.extension().is_some_and(|extension| extension == "js"))
+            .count();
+        assert!(
+            scripts > 0 && declarations.len() == scripts,
+            "{scripts} scripts, {} declarations",
+            declarations.len()
+        );
+        assert!(library.iter().all(|(file, _)| !file.ends_with(".js")));
+        assert!(sources.keys().all(|name| !name.ends_with(".d")));
+        assert_eq!(library.len(), sources.len() - scripts);
         for (file, text) in &library {
             let source = &sources[&import_name(file)].source;
             if PACKAGES.contains(&import_name(file).as_str()) {
@@ -602,6 +632,11 @@ mod tests {
             "gnoblin-core/generated/verbs.ts",
             "gnoblin-std/generated/classes.ts",
             "gnoblin-std/generated/native.ts",
+            "gnoblin-core/generated/object_base.js",
+            "gnoblin-core/generated/object_base.d.ts",
+            "gnoblin-core/generated/objects.js",
+            "gnoblin-std/generated/objects.js",
+            "gnoblin-std/generated/objects.d.ts",
         ] {
             assert!(files.contains(expected), "{expected} is not embedded: {files:?}");
         }

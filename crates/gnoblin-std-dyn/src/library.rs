@@ -10,7 +10,9 @@ use std::collections::HashSet;
 use std::ffi::{CStr, CString};
 use std::path::PathBuf;
 
-use gnoblin_core_abi::GnoblinCtx;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use gnoblin_core_abi::{GnoblinCtx, GnoblinObjectApi, GnoblinStr};
 use gnoblin_std_abi::{ABI_MAJOR, ABI_MINOR, GnoblinStdApi, SONAME};
 
 use crate::{Dyn, StdError, generated};
@@ -95,6 +97,23 @@ fn text_of(last_error: LastErrorFn) -> Option<String> {
     Some(String::from_utf8_lossy(&buf).into_owned())
 }
 
+/// The last-error function of the library most recently opened in this process, as an address (zero before one is). The object protocol's
+/// client takes a plain function to read the text of a failure, and the library is one per process, so the address is kept here.
+static LAST_ERROR: AtomicUsize = AtomicUsize::new(0);
+
+/// The text the installed library left for the last failure on this thread, or the empty string when no library is open.
+///
+/// This is the function to hand `gnoblin_object::client::Api::new` for the table [`StdLib::object_api`] returns.
+pub fn last_error_text() -> String {
+    let address = LAST_ERROR.load(Ordering::Acquire);
+    if address == 0 {
+        return String::new();
+    }
+    // SAFETY: the address was stored from a `LastErrorFn` of a library that is never unmapped (`-z nodelete`).
+    let last_error = unsafe { core::mem::transmute::<usize, LastErrorFn>(address) };
+    text_of(last_error).unwrap_or_default()
+}
+
 /// The installed std library: its table, and the generations it has attached to.
 pub struct StdLib {
     api: &'static GnoblinStdApi,
@@ -154,11 +173,14 @@ impl StdLib {
         // SAFETY: on success the library wrote a pointer to its static table, which is never unmapped (`-z nodelete`).
         let api = unsafe { table.as_ref() };
         match api {
-            Some(api) if code >= 0 => Ok(StdLib {
-                api,
-                last_error,
-                attached: RefCell::new(HashSet::new()),
-            }),
+            Some(api) if code >= 0 => {
+                LAST_ERROR.store(last_error as usize, Ordering::Release);
+                Ok(StdLib {
+                    api,
+                    last_error,
+                    attached: RefCell::new(HashSet::new()),
+                })
+            }
             _ => Err(format!(
                 "cannot use {SONAME}: {}",
                 text_of(last_error).unwrap_or_else(|| format!("get_api failed with code {code}"))
@@ -219,6 +241,34 @@ impl StdLib {
         self.check("open", code)?;
         self.attached.borrow_mut().insert(ctx);
         Ok(())
+    }
+
+    /// The object protocol's table of `namespace` (`gnoblin.std`) for the generation `ctx`, which the library attaches to first. The table is
+    /// static; wrap it with `gnoblin_object::client::Api::new(table, ctx, last_error_text)`.
+    ///
+    /// # Errors
+    ///
+    /// The library is older than the object protocol, does not serve the namespace, or refuses the generation.
+    pub fn object_api(&self, ctx: GnoblinCtx, namespace: &str) -> Result<&'static GnoblinObjectApi, StdError> {
+        let end = core::mem::offset_of!(GnoblinStdApi, object_api) + size_of::<usize>();
+        if !self.has(end) {
+            return Err(StdError::new(
+                gnoblin_core_abi::E_UNSUPPORTED,
+                format!("the installed {SONAME} is older than the object protocol: its table has no `object_api`"),
+            ));
+        }
+        self.attach(ctx)?;
+        let mut table: *const GnoblinObjectApi = core::ptr::null();
+        // SAFETY: `namespace` is borrowed for the call and `table` is a live local the library writes.
+        let code = unsafe { (self.api.object_api)(ctx, GnoblinStr::borrowed(namespace), &raw mut table) };
+        self.check("object_api", code)?;
+        // SAFETY: on success the library wrote a pointer to its static table, which is never unmapped.
+        unsafe { table.as_ref() }.ok_or_else(|| {
+            StdError::new(
+                gnoblin_core_abi::E_ERR,
+                format!("{SONAME} gave no object table for `{namespace}`"),
+            )
+        })
     }
 
     /// Calls the table function `function` for the generation `ctx` with `args`, the way its SDK doc says: the arguments after

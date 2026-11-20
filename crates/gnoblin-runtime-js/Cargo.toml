@@ -20,6 +20,8 @@ crate-type = ["cdylib", "rlib"]
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
 # The engine and the shell over it: QuickJS, the TypeScript stripper, the loader, the generation, the role and the bytecode cache.
 gnoblin-js = { path = "../gnoblin-js" }
+# The object protocol's client: the table of classes both libraries serve, called with the script's values.
+gnoblin-object = { path = "../gnoblin-object" }
 # The call layer over `libgnoblin-std`: the runtime opens the library on the first `import "gnoblin-std/native"` and calls its table by name.
 gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
 # The shell side of the tree protocol: the link trait the engine drives and the byte form the core relays it in.

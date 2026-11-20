@@ -29,7 +29,7 @@ thread_local! {
 const NODE_ID_ATTRIBUTE: &str = "_gnoblin_node_id";
 
 /// The library, opened now if it was not.
-fn library() -> PyResult<Rc<StdLib>> {
+pub(crate) fn library() -> PyResult<Rc<StdLib>> {
     if let Some(library) = LIBRARY.with(|slot| slot.borrow().clone()) {
         return Ok(library);
     }

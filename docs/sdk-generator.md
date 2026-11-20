@@ -20,7 +20,7 @@ cargo xtask gen-sdks --update           # record an additive change of the catal
 | `build.rs` of `gnoblin-std-dyn`        | every build | `OUT_DIR/rust-std-dyn/generated.rs`, which the crate's `lib.rs` includes                                   |
 | `build.rs` of `gnoblin-js`             | every build | `OUT_DIR/js/**`, and `stock_embedded.rs`, the table the crate's `stock.rs` serves the modules from         |
 | `build.rs` of `gnoblin-runtime-python` | every build | `OUT_DIR/python/**`, and `python_embedded.rs`, the table the crate's `embedded.rs` serves the modules from |
-| `cargo xtask dist install`             | install     | the same TypeScript and Python files under `share/gnoblin/js` and `share/gnoblin/python`, for editors      |
+| `cargo xtask dist install`             | install     | the TypeScript and Python files, and the declarations and stubs of the object classes, for editors        |
 | `cargo xtask gen-sdks [--out DIR]`     | by hand     | a copy of everything, with the Rust passed through the pinned `rustfmt`                                    |
 
 A `build.rs` runs again when the schema directory, an ABI crate or the generator changes (`cargo:rerun-if-changed` and the
@@ -41,7 +41,7 @@ Generated Rust is not formatted in a build: the compiler does not care, and `gen
   std package serves no std module, generated or not, so example 17 keeps its error.
 - **Python.** `gnoblin-runtime-python` embeds `gnoblin._generated.*` and `gnoblin.std` and puts a finder first on `sys.meta_path` of
   its own interpreter. The hand-written package on disk finds them through it, so an older file of the same name in a prefix is never
-  imported.
+  imported. The object classes (`gnoblin.objects.std`, `gnoblin.objects.model`) come the same way.
 
 ## The sources
 
@@ -82,6 +82,9 @@ its object table reports.
 | ------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `objects`    | `rust-objects/{model,std}_catalog.rs`: the static `CATALOG` of each namespace and its `CATALOG_HASH` | `build.rs` of `gnoblin-core-impl`, `-std-impl` |
 | `object-api` | `rust-objects/{model,std}_api.rs`: the typed Rust API of each namespace, over the protocol's client  | `build.rs` of `gnoblin-core`, `gnoblin-std`    |
+| `object-js`  | `js/<package>/generated/objects.js` for each namespace, and `js/gnoblin-core/generated/object_base.js` | `build.rs` of `gnoblin-js`                     |
+| `object-py`  | `python/gnoblin/objects/{model,std}.py`, with `__init__.py` and `_base.py`                           | `build.rs` of `gnoblin-runtime-python`         |
+| `object-types` | `js/<package>/generated/objects.d.ts` and `object_base.d.ts`; `python/gnoblin/objects/*.pyi`       | `build.rs` of `gnoblin-js` (the editor library), `cargo xtask dist` |
 
 The typed Rust API (`gnoblin_core::objects`, `gnoblin_std::objects`; a shell gets the handle from `g.objects()` and `std.objects()`) is one
 Rust type for each catalog type:
@@ -102,6 +105,40 @@ The ids of a class are looked up by name the first time a call needs them, so a 
 library and fails only on a name the library lacks. A member whose type names a class of another namespace is refused at build time with a
 message that says so: a typed reference across two libraries needs both libraries' `Objects`, which no catalog needs yet.
 
+### The classes in JavaScript, TypeScript and Python
+
+`object-js`, `object-py` and `object-types` write the same surface for the script languages, from the same catalog, over the object
+protocol that `gnoblin-runtime-js` (`__gnoblinObjects`) and `gnoblin-runtime-python` (the built-in module `_gnoblin_objects`) expose. A
+class, a property, a method, a signal and the conversion of every value are rendered; nothing is written by hand per class, and a class
+added to a catalog is a class in all three languages with no change to a runtime. The names follow the language: `camelCase` members
+and `PascalCase` classes in TypeScript, `snake_case` members in Python, and an `export = { js, py }` attribute where the mechanical
+conversion is not wanted (a Python keyword gets a trailing underscore: `raise_`).
+
+| Catalog type | TypeScript (`gnoblin-std/generated/objects`)                     | Python (`gnoblin.objects.std`)                          |
+| ------------ | ---------------------------------------------------------------- | ------------------------------------------------------- |
+| enum         | a string-literal union (`"click" \| "sloppy"`)                   | an `IntEnum`; a name is accepted where one is read      |
+| record       | an interface, and an `Init` one when a field has a default       | a `dataclass`                                           |
+| handle       | a class: accessors, methods, `on(event, handler)`, `destroy()`   | a class: properties, methods, `on(event[, handler])`    |
+| service      | a class of static functions (and `get()` when it has members)    | the same                                                |
+| interface    | an abstract class a shell extends, optional methods optional     | a base class a shell subclasses                         |
+| callback     | a function                                                       | a callable                                              |
+
+An object is held by a reference that ends when the script's last reference goes (a `FinalizationRegistry` in JavaScript, the dealloc of
+the handle in Python, queued to the shell thread): the library's object lives on until `destroy()`, its parent's end or the generation's.
+An event is a signal, or `<property>Changed` (`<property>_changed` in Python) for each property, and a listener lasts until it is stopped
+or the generation ends, not until it is collected. An interface is implemented by giving the library an instance of the script's class:
+the methods it defines are the ones the library calls, and the rest run natively. A class that extends another namespace's class is
+rendered flat, as in Rust, with the members of its base; a member whose type names a class of the other namespace is refused with the
+same message the Rust target gives.
+
+The JavaScript is embedded in `libgnoblin-runtime-js.so` (`gnoblin-std/generated/objects`, `gnoblin-core/generated/objects`, and
+`gnoblin-core/generated/object_base` which both import) and the Python in `libgnoblin-runtime-python.so` (`gnoblin.objects.std`,
+`gnoblin.objects.model`). The declarations are what an editor and `gnoblinctl check --types` read: `gnoblin-js` embeds them with the
+library sources (`editor_library_in`, which leaves the JavaScript out), `cargo xtask dist install` writes them to `share/gnoblin/js` and
+`share/gnoblin/python`. Importing `gnoblin-std/generated/objects` opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed
+(looked in: ...)` without it, as `gnoblin-std` does; `gnoblin.objects.std` raises `ImportError` the same way. The catalog carries no
+documentation strings yet, so a member's doc comment says what it is and not what it does.
+
 A crate that serves a catalog of its own, as a test fixture, renders the same two files with `gnoblin_sdkgen::emit_catalog_for_build`
 (`crates/gnoblin-object/fixtures/probe` covers one class of every kind, so the generated tables and the generated typed API are compiled
 and run by its tests).
@@ -121,8 +158,9 @@ No file is committed, so there is no committed file to be stale. What `cargo xta
 
 1. **Every target renders, deterministically.** The generator renders twice and compares the bytes. It reads no clock, environment
    variable or locale, and orders everything by name.
-2. **The Python compiles.** The rendered modules go through `python3 -m py_compile` (skipped, and said so, where there is no `python3`).
-   Cargo checks the Rust; `scripts/js-typecheck.sh` checks the TypeScript against the hand-written library.
+2. **The Python compiles and the JavaScript parses.** The rendered Python modules go through `python3 -m py_compile` and the JavaScript
+   ones through `node --check` (each skipped, and said so, where the tool is missing). Cargo checks the Rust; `scripts/js-typecheck.sh`
+   checks the TypeScript, and the declarations of the object classes, against the hand-written library.
 3. **The public surface is the one on record.** `crates/gnoblin-schema/schema/lock/<namespace>.lock` lists every object and member
    of each namespace with the version that added it, one line each:
 
@@ -139,7 +177,10 @@ No file is committed, so there is no committed file to be stale. What `cargo xta
    golden shells of example 12.
 
 The unit tests of the crate (`cargo test -p gnoblin-sdkgen`) cover the same ground from inside: two renders are equal, every file
-carries the banner and the hash, no two targets write one path, and a surface lock round-trips.
+carries the banner and the hash, no two targets write one path, and a surface lock round-trips. They also render the `probe` catalog (one
+class of every kind) and the two libraries' own as the script targets do, check that the Python parses and the JavaScript parses as a
+module, and, when a `tsc` is found (`GNOBLIN_TSC`), that the declarations type-check a script that uses an enum, a record with defaults,
+a closure property, a signal and an interface, and refuse one that gets them wrong.
 
 ## Adding a language
 

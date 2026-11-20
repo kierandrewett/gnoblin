@@ -429,8 +429,10 @@ pub fn check_layout(root: &Path, libdir: &str) -> Vec<String> {
         "share/gnoblin/js/gnoblin-core/generated/abi.ts",
         "share/gnoblin/js/gnoblin-core/generated/schema.ts",
         "share/gnoblin/js/gnoblin-std/generated/classes.ts",
+        "share/gnoblin/js/gnoblin-std/generated/objects.d.ts",
         "share/gnoblin/python/gnoblin/_generated/classes.pyi",
         "share/gnoblin/python/gnoblin/std.pyi",
+        "share/gnoblin/python/gnoblin/objects/std.pyi",
     ] {
         if !root.join(file).is_file() {
             problems.push(format!(

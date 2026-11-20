@@ -19,6 +19,8 @@ crate-type = ["cdylib"]
 # SDK's link stub. It holds no compositor logic of its own.
 gnoblin-core = { path = "../gnoblin-core" }
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+# The object protocol's client: the table of classes both libraries serve, called with the script's values.
+gnoblin-object = { path = "../gnoblin-object" }
 # The call layer over `libgnoblin-std`: the runtime opens the library on the first `import gnoblin.std` and calls its table by name.
 gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
 # CPython. Linked against the system libpython (`NEEDED libpython3.N.so.1.0`), so a compositor that never runs a Python shell

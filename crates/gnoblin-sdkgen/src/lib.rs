@@ -28,6 +28,9 @@ pub mod abi_c;
 mod layouts;
 mod model;
 mod object_api;
+mod object_js;
+mod object_py;
+mod object_script;
 mod objects;
 mod python;
 mod python_std;
@@ -86,6 +89,9 @@ pub fn targets() -> Vec<Box<dyn Target>> {
         Box::new(typescript::TypeScriptTarget),
         Box::new(objects::ObjectsTarget),
         Box::new(object_api::ObjectApiTarget),
+        Box::new(object_script::ObjectJsTarget),
+        Box::new(object_script::ObjectPyTarget),
+        Box::new(object_script::ObjectTypesTarget),
     ]
 }
 
@@ -274,7 +280,7 @@ pub fn emit_for_build(wanted: &[&str]) -> Vec<String> {
 
 /// What the `build.rs` of a crate that serves a catalog of its own calls (a test fixture, not a library of the desktop): renders the
 /// static catalog (`rust-objects/<stem>_catalog.rs`) and the typed API (`rust-objects/<stem>_api.rs`) of the namespace in the schema
-/// files under `dirs`, relative to the crate, into `OUT_DIR`. The namespace is the one `dirs` declare.
+/// files under `dirs`, relative to the crate, into `OUT_DIR`, and its classes for the script languages (`script-objects/<stem>.{js,d.ts,py,pyi}`). The namespace is the one `dirs` declare.
 pub fn emit_catalog_for_build(dirs: &[&str], stem: &str) {
     if let Err(error) = emit_catalog(dirs, stem) {
         eprintln!("[sdkgen] {error}");
@@ -309,6 +315,15 @@ fn emit_catalog(dirs: &[&str], stem: &str) -> Result<(), String> {
             object_api::render(&catalog, namespace)?,
         ),
     ];
+    // The classes of the same catalog for the script languages, so the fixture's tests can run a script against the library it serves.
+    let view = object_script::View::new(&catalog, namespace);
+    let mut files = files;
+    files.extend([
+        (format!("script-objects/{stem}.js"), object_js::render_js(&view)?),
+        (format!("script-objects/{stem}.d.ts"), object_js::render_dts(&view)?),
+        (format!("script-objects/{stem}.py"), object_py::render(&view, false)?),
+        (format!("script-objects/{stem}.pyi"), object_py::render(&view, true)?),
+    ]);
     write_files(Path::new(&out), &files)?;
     Ok(())
 }

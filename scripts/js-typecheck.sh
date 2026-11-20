@@ -8,7 +8,8 @@ trap 'rm -rf "$temporary_config" "$generated"' EXIT
 
 # The generated modules of both packages (`gnoblin-core/generated`, `gnoblin-std/generated`) are committed nowhere: the generator renders
 # them, as a build does, and the paths below find them beside the hand-written library.
-(cd "$repo_root" && cargo xtask gen-sdks --out "$generated" --target typescript >/dev/null)
+(cd "$repo_root" && cargo xtask gen-sdks --out "$generated" --target typescript >/dev/null &&
+    cargo xtask gen-sdks --out "$generated" --target object-types >/dev/null)
 
 cat >"$temporary_config" <<EOF
 {

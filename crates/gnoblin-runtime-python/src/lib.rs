@@ -36,6 +36,7 @@ mod input;
 mod interp;
 mod load;
 mod module;
+mod object_native;
 mod process;
 mod std_native;
 mod table;

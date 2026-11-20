@@ -57,6 +57,28 @@ impl Embedded {
         std_native::native()
     }
 
+    /// `__gnoblinObjects`, the object protocol of the libraries, for the config of each generation the shell evaluates.
+    pub fn object_native(&self) -> JsNative {
+        crate::object_native::native()
+    }
+
+    /// Serves the namespace `namespace` of a library this process holds (a test's own catalog) to the scripts, ahead of the core and the
+    /// std library: `__gnoblinObjects.open(namespace)` finds `table`.
+    pub fn serve_namespace(
+        &self,
+        namespace: &str,
+        table: &'static gnoblin_core_abi::GnoblinObjectApi,
+        last_error: fn() -> String,
+    ) {
+        crate::object_native::serve(namespace, table, last_error);
+    }
+
+    /// Runs `body` with `shell` as the way a callback of a library enters the running generation: what the host does around the turn of
+    /// a library it holds itself.
+    pub fn enter<R>(&self, shell: &JsShell, body: impl FnOnce() -> R) -> R {
+        std_native::with_enter(&ShellEnter(shell), body)
+    }
+
     /// Runs what the core queued for the generation: what the library announces and what a layout is asked, with the library's
     /// callbacks entering `shell` as they do in the runtime's turn. Returns the number of callbacks run.
     pub fn dispatch(&self, shell: &JsShell) -> i32 {

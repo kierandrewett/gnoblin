@@ -83,5 +83,7 @@ gnoblin-testkit = { path = "../gnoblin-testkit" }
 gnoblin-core-impl = { path = "../gnoblin-core-impl" }
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
 gnoblin-std-impl = { path = "../gnoblin-std-impl" }
+# The library that serves the `probe` catalog, one class of every kind, which `tests/object_probe.rs` runs the generated classes against.
+gnoblin-fixture-object-probe = { path = "../gnoblin-object/fixtures/probe" }
 gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
 gnoblin-runtime-js = { path = "../gnoblin-runtime-js" }

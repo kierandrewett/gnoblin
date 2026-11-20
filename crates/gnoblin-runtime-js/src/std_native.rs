@@ -106,7 +106,9 @@ pub(crate) fn mark_used() {
 /// Lets go of a reference of the table of references (`__gnoblinStdSupport`) at the next safe moment: `generation` is the
 /// token of the context that holds it.
 pub(crate) fn release_later(generation: u64, id: u64) {
-    RELEASED.with(|list| list.borrow_mut().push((generation, id)));
+    // A library that outlives the thread's locals (a host that holds one, ending the thread) drops its closures after this list is gone;
+    // there is nothing left to release the reference into then.
+    let _ = RELEASED.try_with(|list| list.borrow_mut().push((generation, id)));
 }
 
 /// How to run script in the running generation, as seen by a callback.
@@ -154,7 +156,7 @@ pub(crate) fn entered<R>(f: impl FnOnce(&dyn Enter) -> Result<R, String>) -> Res
         .unwrap_or_else(|| Err("a std callback ran while no JavaScript shell was running on this thread".to_owned()))
 }
 
-fn library() -> Result<Rc<StdLib>, String> {
+pub(crate) fn library() -> Result<Rc<StdLib>, String> {
     if let Some(library) = LIBRARY.with(|slot| slot.borrow().clone()) {
         return Ok(library);
     }
@@ -217,7 +219,7 @@ impl Callable for JsCallable {
 
 impl Drop for JsCallable {
     fn drop(&mut self) {
-        RELEASED.with(|list| list.borrow_mut().push((self.token, self.id)));
+        release_later(self.token, self.id);
     }
 }
 
