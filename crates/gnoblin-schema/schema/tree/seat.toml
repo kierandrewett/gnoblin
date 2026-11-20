@@ -193,6 +193,18 @@ type = "bool"
 since = "0.2.0"
 default = false
 
+# The id of the workspace the shell shows now, one of the ids `workspaces` lists (the part before the colon of an
+# `id:name` item). The shell writes it when it switches workspace. The compositor serves it to a client of
+# `ext-workspace-v1` as that workspace's `active` state: a client sees the workspace named here active and no other. An
+# empty value says the shell has not named one: the compositor then reports a session with exactly one workspace as
+# active in it, and a session with several as having none active, because it does not know which. It is read only
+# while a shell holds the tree, so a shell that goes away leaves nothing stale behind.
+[[object.property]]
+name = "active_workspace"
+type = "string"
+since = "0.2.0"
+default = ""
+
 # Whether the compositor plays its own animations on window nodes: the fade in when a window maps, the fade out when it is
 # closed, unmapped or hidden, and the tween of a window's placement towards the node's value. It is true by default, and
 # the shell writes it. A shell that holds the tree writes false once, at startup, to place windows at once and play only

@@ -95,6 +95,11 @@ pub enum Global {
     /// so reads that View's pixels. Only the owner's privileged connection sees it: a
     /// trusted service does not get another View's pixels.
     ViewSource,
+    /// `zwlr_virtual_pointer_manager_v1`: a client that moves, clicks and scrolls the session's pointer,
+    /// which acts on every other client's windows and on the shell's own nodes.
+    VirtualPointer,
+    /// `ext_workspace_manager_v1`: a client reads the session's workspaces.
+    Workspace,
 }
 
 impl Global {
@@ -118,7 +123,9 @@ impl Global {
             | Self::GammaControl
             | Self::OutputPower
             | Self::OutputManagement
-            | Self::ViewSource => true,
+            | Self::ViewSource
+            | Self::VirtualPointer
+            | Self::Workspace => true,
             // The seat's privileged halves are how an input method and an on-screen
             // keyboard are implemented: the method is a process the session runs, and the
             // virtual keyboard is what an on-screen keyboard or an accessibility tool
@@ -147,6 +154,8 @@ impl Global {
             Self::GammaControl => "zwlr_gamma_control_manager_v1",
             Self::OutputPower => "zwlr_output_power_manager_v1",
             Self::OutputManagement => "zwlr_output_manager_v1",
+            Self::VirtualPointer => "zwlr_virtual_pointer_manager_v1",
+            Self::Workspace => "ext_workspace_manager_v1",
         }
     }
 
@@ -178,6 +187,9 @@ impl Global {
             // and a virtual keyboard are always on offer to a connection that earned
             // them, which is the roster's decision and not the document's.
             Self::InputMethod | Self::VirtualKeyboard => return true,
+            // These two have an audience of their own and no configuration name: the roster is the whole
+            // answer, as it is for the seat's two halves.
+            Self::VirtualPointer | Self::Workspace => return true,
         };
         protocols.toggles.get(&protocol).copied().unwrap_or(true)
     }
@@ -508,6 +520,8 @@ mod tests {
         Global::GammaControl,
         Global::OutputPower,
         Global::OutputManagement,
+        Global::VirtualPointer,
+        Global::Workspace,
     ];
 
     #[test]

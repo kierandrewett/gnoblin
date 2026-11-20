@@ -9,8 +9,11 @@ pub use gnoblin_wayland_ext_background_effect_v1 as ext_background_effect_v1;
 pub use gnoblin_wayland_ext_data_control_v1 as ext_data_control_v1;
 pub use gnoblin_wayland_ext_foreign_toplevel_list_v1 as ext_foreign_toplevel_list_v1;
 pub use gnoblin_wayland_ext_idle_notify_v1 as ext_idle_notify_v1;
+pub use gnoblin_wayland_ext_workspace_v1 as ext_workspace_v1;
 pub use gnoblin_wayland_foreign_toplevel_shared as foreign_toplevel_shared;
 pub use gnoblin_wayland_wl_compositor as wl_compositor;
+pub use gnoblin_wayland_org_kde_kwin_appmenu as org_kde_kwin_appmenu;
+pub use gnoblin_wayland_org_kde_kwin_server_decoration as org_kde_kwin_server_decoration;
 pub use gnoblin_wayland_wl_output as wl_output;
 pub use gnoblin_wayland_wl_seat as wl_seat;
 pub use gnoblin_wayland_wl_shm as wl_shm;
@@ -37,6 +40,7 @@ pub use gnoblin_wayland_zwlr_gamma_control_v1 as zwlr_gamma_control_v1;
 pub use gnoblin_wayland_zwlr_layer_shell_v1 as zwlr_layer_shell_v1;
 pub use gnoblin_wayland_zwlr_output_management_v1 as zwlr_output_management_v1;
 pub use gnoblin_wayland_zwlr_output_power_management_v1 as zwlr_output_power_management_v1;
+pub use gnoblin_wayland_zwlr_virtual_pointer_v1 as zwlr_virtual_pointer_v1;
 pub use gnoblin_wayland_zwp_idle_inhibit_v1 as zwp_idle_inhibit_v1;
 pub use gnoblin_wayland_zwp_input_method_v2 as zwp_input_method_v2;
 pub use gnoblin_wayland_zwp_keyboard_shortcuts_inhibit_v1 as zwp_keyboard_shortcuts_inhibit_v1;
@@ -93,4 +97,8 @@ pub const ALL: &[&ProtocolInfo] = &[
     &zxdg_decoration_v1::PROTOCOL,
     &zwlr_output_management_v1::PROTOCOL,
     &zwp_virtual_keyboard_v1::PROTOCOL,
+    &zwlr_virtual_pointer_v1::PROTOCOL,
+    &org_kde_kwin_server_decoration::PROTOCOL,
+    &org_kde_kwin_appmenu::PROTOCOL,
+    &ext_workspace_v1::PROTOCOL,
 ];

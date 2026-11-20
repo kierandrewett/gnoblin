@@ -130,6 +130,8 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging", "uns
 # `zwlr_foreign_toplevel_manager_v1`'s client half, from the same wlroots XML the
 # server in `protocols::zwlr_foreign_toplevel_management_v1` is generated from.
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+# The client half of KDE's server-decoration and appmenu protocols, from the XML the protocol crates serve.
+wayland-protocols-plasma = { version = "0.3.12", features = ["client"] }
 # A temporary directory and a shared-memory file for the test's socket and buffers,
 # so a test run touches no shared path.
 tempfile = "3.23.0"

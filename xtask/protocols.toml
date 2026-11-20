@@ -20,6 +20,7 @@ gnoblin-input = '{ path = "../../gnoblin-input" }'
 gnoblin-authority = '{ path = "../../gnoblin-authority" }'
 gnoblin-render-frame = '{ path = "../../gnoblin-render-frame" }'
 wayland-protocols-misc = '{ version = "0.3.12", features = ["server"] }'
+wayland-protocols-plasma = '{ version = "0.3.12", features = ["server"] }'
 
 [[crate]]
 name = "wp-alpha-modifier-v1"
@@ -326,3 +327,32 @@ description = "The zwp_virtual_keyboard_manager_v1 Wayland protocol of gnoblin-w
 kind = "protocol"
 interfaces = [["zwp_virtual_keyboard_manager_v1", 1]]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+
+[[crate]]
+name = "zwlr-virtual-pointer-v1"
+description = "The zwlr_virtual_pointer_manager_v1 Wayland protocol of gnoblin-wayland: a pointer a client moves, clicks and scrolls."
+kind = "protocol"
+interfaces = [["zwlr_virtual_pointer_manager_v1", 2]]
+deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+
+[[crate]]
+name = "org-kde-kwin-server-decoration"
+description = "The org_kde_kwin_server_decoration_manager Wayland protocol of gnoblin-wayland: KDE's older decoration negotiation."
+kind = "protocol"
+interfaces = [["org_kde_kwin_server_decoration_manager", 1]]
+needs = ["types"]
+deps = ["smithay", "gnoblin-log", "wayland-protocols-plasma"]
+
+[[crate]]
+name = "org-kde-kwin-appmenu"
+description = "The org_kde_kwin_appmenu_manager Wayland protocol of gnoblin-wayland: the DBus address of a window's application menu."
+kind = "protocol"
+interfaces = [["org_kde_kwin_appmenu_manager", 2]]
+deps = ["smithay", "gnoblin-log", "wayland-protocols-plasma"]
+
+[[crate]]
+name = "ext-workspace-v1"
+description = "The ext_workspace_manager_v1 Wayland protocol of gnoblin-wayland: the read-only workspace list a panel shows."
+kind = "protocol"
+interfaces = [["ext_workspace_manager_v1", 1]]
+deps = ["smithay", "gnoblin-log"]

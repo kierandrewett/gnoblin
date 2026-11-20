@@ -56,3 +56,7 @@ gnoblin-wayland-xdg-activation-v1 = { path = "../xdg-activation-v1" }
 gnoblin-wayland-zxdg-decoration-v1 = { path = "../zxdg-decoration-v1" }
 gnoblin-wayland-zwlr-output-management-v1 = { path = "../zwlr-output-management-v1" }
 gnoblin-wayland-zwp-virtual-keyboard-v1 = { path = "../zwp-virtual-keyboard-v1" }
+gnoblin-wayland-zwlr-virtual-pointer-v1 = { path = "../zwlr-virtual-pointer-v1" }
+gnoblin-wayland-org-kde-kwin-server-decoration = { path = "../org-kde-kwin-server-decoration" }
+gnoblin-wayland-org-kde-kwin-appmenu = { path = "../org-kde-kwin-appmenu" }
+gnoblin-wayland-ext-workspace-v1 = { path = "../ext-workspace-v1" }

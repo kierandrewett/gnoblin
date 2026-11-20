@@ -345,6 +345,16 @@ impl Session {
         Self::launch(Box::new(Headless::new()), config)
     }
 
+    /// Creates a shelled session whose configuration declares `workspaces`, one `id:name` item each.
+    pub fn start_declaring(workspaces: &[&str], tree: TreeHooks) -> Self {
+        let config = Config {
+            tree,
+            workspace_names: workspaces.iter().map(|item| (*item).to_owned()).collect(),
+            ..crate::stock::config()
+        };
+        Self::launch(Box::new(Headless::new()), config)
+    }
+
     /// Creates a session on a given headless backend (the software renderer or the GLES one), with a shell's tree
     /// attached: the pixel tests run the same body on every renderer the machine offers.
     pub fn start_on(backend: Headless, tree: TreeHooks) -> Self {
@@ -401,6 +411,51 @@ impl Session {
     }
 }
 
+/// One workspace as a client of `ext_workspace_v1` was told it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WorkspaceSeen {
+    pub id: String,
+    pub name: String,
+    /// The `state` bits (1 active, 2 urgent, 4 hidden).
+    pub state: u32,
+    /// The `capabilities` bits, once sent.
+    pub capabilities: Option<u32>,
+    /// Whether the compositor said the workspace is gone.
+    pub removed: bool,
+    /// The handle object, so a test can send it requests.
+    pub object: Option<wayland_client::backend::ObjectId>,
+}
+
+/// What a client of `ext_workspace_v1` has been told (`tests/ext_workspace.rs`).
+#[derive(Default)]
+pub struct WorkspaceView {
+    /// How many `done` events arrived.
+    pub dones: u32,
+    /// Whether the manager said it is finished.
+    pub finished: bool,
+    /// The group's `capabilities`, once sent.
+    pub group_capabilities: Option<u32>,
+    /// The group object, so a test can send it requests.
+    pub group: Option<wayland_client::backend::ObjectId>,
+    /// How many `output_enter` and how many `output_leave` the group sent.
+    pub outputs_entered: u32,
+    pub outputs_left: u32,
+    /// The workspaces, by protocol id, in the order they were created.
+    pub workspaces: Vec<(u32, WorkspaceSeen)>,
+    /// The protocol ids of the workspaces the group entered and has not left.
+    pub in_group: Vec<u32>,
+}
+
+impl WorkspaceView {
+    /// The workspaces still present, as `(id, name, state)`.
+    pub fn present(&self) -> Vec<(String, String, u32)> {
+        self.workspaces
+            .iter()
+            .filter(|(_, seen)| !seen.removed)
+            .map(|(_, seen)| (seen.id.clone(), seen.name.clone(), seen.state))
+            .collect()
+    }
+}
 /// One configure a toplevel received: its size and states, and the serial the client acknowledged it with.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Configure {
@@ -458,6 +513,15 @@ pub struct App {
     /// Where the pointer last said it is, in the coordinates of the surface it is over: the point of an `enter` or a
     /// `motion`.
     pub pointer_at: Option<(f64, f64)>,
+    /// Every `wl_pointer` axis event that arrived, one line each (`axis`, `source`, `stop`, `value120` and the
+    /// `frame` that closes a group), in order (`tests/virtual_pointer.rs`).
+    pub pointer_axes: Vec<String>,
+    /// The `mode` events KDE server decoration objects heard, in order (`tests/kde_server_decoration.rs`).
+    pub kde_modes: Vec<u32>,
+    /// The last `default_mode` a KDE server decoration manager announced.
+    pub kde_default_mode: Option<u32>,
+    /// What the client's `ext_workspace_v1` objects were told (`tests/ext_workspace.rs`).
+    pub workspace_view: WorkspaceView,
     /// How many `wl_surface.enter` events arrived: a surface is on an output.
     pub surface_enters: u32,
     /// How many `wl_surface.leave` events arrived.
@@ -1005,6 +1069,16 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 state.pointer_leaves += 1;
                 state.pointer_surface = None;
             }
+            wl_pointer::Event::Axis { axis, value, .. } => state.pointer_axes.push(format!("axis {axis:?} {value:.2}")),
+            wl_pointer::Event::AxisSource { axis_source } => state.pointer_axes.push(format!("source {axis_source:?}")),
+            wl_pointer::Event::AxisStop { axis, .. } => state.pointer_axes.push(format!("stop {axis:?}")),
+            wl_pointer::Event::AxisValue120 { axis, value120 } => {
+                state.pointer_axes.push(format!("value120 {axis:?} {value120}"));
+            }
+            wl_pointer::Event::AxisDiscrete { axis, discrete } => {
+                state.pointer_axes.push(format!("discrete {axis:?} {discrete}"));
+            }
+            wl_pointer::Event::Frame => state.pointer_axes.push("frame".to_owned()),
             _ => {}
         }
     }

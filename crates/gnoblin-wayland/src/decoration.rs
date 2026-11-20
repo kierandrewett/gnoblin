@@ -52,6 +52,18 @@ impl State {
             },
         };
         self.composer.set_window_decoration(window, wanted, decoration);
+        // A client that speaks KDE's older protocol hears the same answer.
+        let surface = self.windows.get(&window).and_then(|entry| match &entry.surface {
+            Managed::Wayland(toplevel) => Some(toplevel.wl_surface().clone()),
+            Managed::X11(_) => None,
+        });
+        if let Some(surface) = surface {
+            gnoblin_wayland_protocols::org_kde_kwin_server_decoration::announce(
+                self,
+                &surface,
+                decoration == WindowDecoration::Server,
+            );
+        }
     }
 
     /// Keeps the windows' answers in line with whether the shell draws decorations. The shell's declaration is
@@ -67,6 +79,7 @@ impl State {
             return;
         }
         self.decorations_seen = available;
+        gnoblin_wayland_protocols::org_kde_kwin_server_decoration::default_changed(self, available);
         let windows: Vec<WindowId> = self.windows.keys().copied().collect();
         for window in windows {
             self.apply_decoration(window);
