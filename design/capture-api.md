@@ -269,6 +269,101 @@ offer them in its own picker (a Gnoblin dialog that lists windows, so the user n
 and the window stream would need the subtree behaviour above. That is a larger change than the toplevel-source route, and it
 keeps the per-stream user prompt, which a headset desktop with many windows would not want.
 
+## Option E, estimated against the code (findings, nothing implemented)
+
+E is: a toplevel capture source draws the window node's subtree on its own, and the window node carries a read-only
+`identifier`. Read against `capture_shared.rs`, the composer's View path (`compose/views.rs`) and the schema, at `7dbc44820`.
+
+**The finding that sets the estimate: the View render draws no effects.** The View layers are built with `corner_radius: 0.0`
+and `Effects::new()` (`compose/views.rs:146-148`), and `render_view` in `gnoblin-render-software` has no corner, border, shadow or
+blur code. A View shows a window's surface, its popups and subsurfaces, and its canvases, as flat planes. The output frame also draws
+the window's rounded shape, border ring, shadow and blur (`window_shape` and `push_ring`, `compose.rs:3236-3275`). So reusing the
+View render gives a window picture without its rounded corners, border, shadow or blur, and that is not "the frame identical to the
+monitor". The estimate has two sizes.
+
+- **E-flat: reuse the View render.** The window, its decoration canvases and its popups, unoccluded, with the secure mask.
+- **E-full: also the effects.** Either teach every View renderer (software `render_view`, the GLES subtree path, and Vulkan if it
+  draws Views) corner radius, border ring and shadow, or add an offscreen render of one window through the output frame path.
+  The second needs a new backend call: nothing renders an `OutputFrame` to an image off screen today (`Backend` has `read_view` for
+  View scenes only, `gnoblin-backend/src/lib.rs:905`).
+
+What E-flat needs, by file:
+
+| Area                                                               | Change                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gnoblin-backend/src/render/compose/views.rs`                      | Split `draw_view` (it reads `scene.source(view)` and `view_rig(view)`) into a draw of "this subtree, this rig, this size", so a window needs no `view` node (a node would show in the tree and in `views()`). Add `window_pictures`, the set of windows to draw, `render_window_pictures`, and the accessors `window_pictures()` and `window_scenes()`.                                                                         |
+| `compose.rs` (`window_shape`, `content_bounds`)                    | The frame rectangle in the window's own space: the content united with the framed decoration canvases, which is what `window_shape` computes for the output. A default View rig looks at `(0,0)` to `(w,h)` of the plane, so a titlebar above the content (negative `y`) needs an offset rig. New `ViewRig` constructor.                                                                                                        |
+| `gnoblin-wayland/src/protocols/capture_shared.rs`                  | `Targets::bounds`, `copy` and `copy_into` for `Target::Window` read the window picture and its frame size, not `placement.size` and a crop (`:160-190`, `:545`, `:599`, `:725-731`). `capture_layout` reports the frame. `publish_view_pictures` publishes window pictures and notes damage for `Target::Window` (`:802`). A session of a window tells the composer to draw that window while it lives, and stops when it ends. |
+| `capture_dmabuf.rs`, `capture_views.rs`, `view_readbacks`          | The GPU readback cache is keyed by View node; key it by the node it reads, so a window's node is a key. The dmabuf copy of a window reads that texture.                                                                                                                                                                                                                                                                         |
+| `gnoblin-schema/schema/tree/window.toml`, `compose.rs` node create | Read-only `identifier`, written when the composer makes the window node, from the one function that now builds the list's identifier (move `identifier` out of `ext_foreign_toplevel_list_v1.rs`).                                                                                                                                                                                                                              |
+| Generated files                                                    | `cargo xtask gen-sdks` (22 files), the schema golden `crates/gnoblin-schema/tests/golden/catalog.txt`, `node_class_matches_schema` (`ipc/tree.rs`), `docs/shell-api` and `design/docs-parity/allow.toml`. The tree gains a property and no IPC version moves (`design/cutover-survey.md`, O5).                                                                                                                                  |
+| `access.rs`                                                        | Only if XR takes the list and the toplevel source manager: add both to `VIEW_INTERFACES` and `decide`. XR itself (bind the list, map identifier to node, drop the View for windows) is a separate change in `extensions/gnoblin-xr`.                                                                                                                                                                                            |
+
+How each requirement is met:
+
+- **Occlusion.** By construction. The draw takes the window node's subtree only (`self.subtree(source)`, as `draw_view` does), so a covering
+  window, a panel or the wallpaper is never in it. It also means a minimised, off-screen or fully covered window still has a
+  picture, which the crop cannot give; today such a window has no target and a start is refused (`capture_targets` skips a window with no
+  output, `capture_shared.rs:932-935`), and that rule should stay.
+- **Frame bounds outside the window rectangle.** The rig and the picture size come from the frame rectangle, the same union
+  `window_shape` takes, so a titlebar above or an edge beside the content is inside. A decoration that is not a framed canvas child is not in it,
+  as it is not in `window_shape`'s frame today.
+- **Secure content.** Per subtree, by the View path's own rule: `secure_nodes` over the source subtree plus the whole-scene secure
+  scope, so a window marked secure, a secure ancestor or a secure child is replaced by the mask (`Mask`) or left out (`Omit`), and a change in
+  what is secure is drawn again at once (`views.rs` docs on `render_views`; `design/security-secure-content-in-views.md`). Window
+  sessions today keep running under the treatment (`capture_shared.rs:436`), where View sessions stop; E-flat keeps the window behaviour.
+- **Lock embargo.** Unchanged, because it keys on the target kind in the table and window and View targets follow one rule
+  (`gnoblin-capture/src/lib.rs:113`, items 6 to 9: a granted window or View stream is refused under the lock, and a picture made before the lock
+  is never delivered after it). The new cache is a second place a picture could outlive the lock, so it needs the test the View cache has
+  (`the_lock_cuts_every_reader_of_a_view_and_none_is_served_a_picture_from_before_it`).
+- **Damage.** The View path reports the whole picture whenever the picture changes, by identity of its `Arc`
+  (`publish_view_pictures`, `capture_shared.rs:792-808`). Window sessions do the same, which is coarser than the crop's
+  damage of the output and fine for XR. Sub-rectangle damage from the scene's dirty rectangles is optional and adds a day.
+- **Privacy indicator.** Unchanged: it counts open sessions.
+
+Tests needed. Composer: frame includes a titlebar child and popup, excludes a covering window, mask and omit for a secure window and a
+secure ancestor, resize changes the size, damage changes only on a redraw, a window with no session is not drawn (about 8). Capture, on
+both renderers where it applies: shared-memory and GPU-buffer copy of a window, the lock cut and a pre-lock picture, secure mask, privacy
+count, close ends the session, PipeWire window stream, a cast's `position` and `size` properties (about 10). The existing window tests that
+assert the crop (`tests/capture.rs`, `gnoblin-pipewire-export/src/tests.rs`, `gnoblin-compositor/tests/cast.rs`, `portal_e2e.rs`) are migrated
+to the new meaning and not weakened. Schema: golden, `node_class_matches_schema`, generated SDK freshness.
+
+Estimate, one engineer who knows the capture and composer code, in working days:
+
+| Piece                                                              | E-flat       |
+| ------------------------------------------------------------------ | ------------ |
+| `identifier` property, schema, regenerated files, docs             | 1.0          |
+| Composer: subtree draw, frame rig, watch set, dirty rule, CPU path | 2.0          |
+| GPU path: window scene, readback key, dmabuf copy                  | 1.5          |
+| `capture_shared` wiring, layout, damage, lifecycle, role widening  | 1.5          |
+| Tests, including migrating the crop tests                          | 2.0          |
+| Docs, CHANGELOG, design                                            | 0.5          |
+| **Compositor total**                                               | **8.5**      |
+| XR extension: bind list and manager, map by identifier, tests      | 2.0          |
+| **With XR, plus 30% for what the first spike finds**               | **about 14** |
+
+E-full adds 4 to 8 days for the effects, which is where the risk is: three renderers or a new offscreen path, and golden images on
+GLES.
+
+Risks, in order of size:
+
+1. **Effects.** Unless E-full is chosen, the headset shows square corners, no border, no shadow and no blur. That breaks "windows and
+   their frames identical" for any shell that styles them, which every shell does.
+2. **Cost per window.** Each captured window is a subtree redraw per change. The View path costs 17 ms at 720p on the CPU
+   (`design/cutover-survey.md`, 16.7), so ten animating windows is not affordable on the CPU path; E-flat is only practical on the GLES
+   path, which has an unproven DMA-BUF stream today (`gnoblin-lubw`).
+3. **Origin and transform.** Whether `render_view` draws the source node at its local origin or applies its own placement transform
+   (rotation, scale, 3D tilt, fade opacity) is not settled by reading. A window rotated in a shell must come out upright in the capture, so the
+   first step is a spike that draws one window node with the offset rig and checks it. [INFERENCE: not run.]
+4. **Behaviour change for existing consumers.** The portal's window stream and a toplevel source now mean "the frame, unoccluded" and not
+   "the rectangle of the output"; sizes follow the frame, and `position` and `size` stream properties change meaning.
+5. **The list's no-reuse rule** is met by window ids (counted up from one) and not at all checked for node ids, so the identifier stays the
+   window id's string and is merely copied onto the node.
+
+Findings: E-flat is about eight and a half days on the compositor side, and about fourteen with XR and the spike's findings, and it
+gives windows without effects. E-full is about twelve to sixteen more. It is the right route only if the shell's rounded corners, borders
+and shadow are not required in the headset, or if the owner accepts the longer route. Nothing was implemented.
+
 ## Needs Kieran
 
 1. Secure windows: is a per-window secure flag wanted? Should window stills of secure content be refused, or masked?
