@@ -95,8 +95,6 @@ use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::foreign_toplevel_shared::ForeignToplevels;
 use crate::protocols::gnoblin_session_host_v1::GnoblinSessionHostV1Tables;
 use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
-use crate::protocols::wp_presentation_time::WpPresentationTimeTables;
-use crate::protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
 use crate::protocols::xdg_activation_v1::XdgActivationV1;
 use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
 use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
@@ -104,6 +102,11 @@ use crate::protocols::zwp_pointer_constraints_v1::ZwpPointerConstraintsV1Tables;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
 use crate::window_request::{Decider, WindowRequest, X11Flags};
+use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
+use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
+use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
+use gnoblin_wayland_protocols::xdg_output::XdgOutputExt as _;
+use gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::ShortcutInhibitExt as _;
 
 use crate::log;
 
@@ -280,11 +283,11 @@ pub struct State {
     /// How the shell paces each window's frame callbacks, and what the pacing remembers between frames.
     pub(crate) frame_pacer: CallbackPacer,
     /// Kept alive so the `wl_output` machinery stays registered. The `zxdg_output_manager_v1` global is not
-    /// Smithay's: see [`crate::protocols::zxdg_output_v1`].
+    /// Smithay's: see `gnoblin-wayland-xdg-output`.
     #[allow(dead_code)]
     pub(crate) output_manager_state: OutputManagerState,
     /// The `zxdg_output_v1` objects clients hold.
-    pub(crate) xdg_outputs: crate::protocols::zxdg_output_v1::XdgOutputs,
+    pub(crate) xdg_outputs: gnoblin_wayland_protocols::xdg_output::XdgOutputs,
     /// The surfaces that have a `wp_fractional_scale_v1` object, so an output's new scale can be sent to them.
     pub(crate) fractional_surfaces: Vec<WlSurface>,
     /// Kept alive so the `zxdg_decoration_manager_v1` global stays registered; the
@@ -352,8 +355,8 @@ pub struct State {
     pub(crate) tablets: crate::protocols::zwp_tablet_v2::TabletTables,
     /// The `wp_fractional_scale_manager_v1` global, kept so a session can stop offering it ([`State::withdraw_fractional_scale`]).
     fractional_scale_global: GlobalId,
-    /// Kept alive so `zwp_idle_inhibit_manager_v1` stays registered; the handler in
-    /// [`crate::protocols::zwp_idle_inhibit_v1`] records the inhibitors.
+    /// Kept alive so `zwp_idle_inhibit_manager_v1` stays registered; the handler in `src/glue/idle_inhibit.rs`
+    /// records the inhibitors through `gnoblin-wayland-zwp-idle-inhibit-v1`.
     #[allow(dead_code)]
     pub(crate) idle_inhibit_state: IdleInhibitManagerState,
     /// Kept alive so `zwp_keyboard_shortcuts_inhibit_manager_v1` stays registered, and
@@ -375,7 +378,7 @@ pub struct State {
     /// protocol handler (a dmabuf's fences). Set by [`crate::Server`] right after the state exists.
     pub(crate) loop_handle: Option<smithay::reexports::calloop::LoopHandle<'static, State>>,
     /// Kept alive so `wp_tearing_control_manager_v1` stays registered; the handler in
-    /// [`crate::protocols::wp_tearing_control_v1`] records the hints.
+    /// `gnoblin-wayland-wp-tearing-control-v1` records the hints.
     #[allow(dead_code)]
     pub(crate) tearing_control_global: GlobalId,
     /// Kept alive so `zxdg_exporter_v2` and `zxdg_importer_v2` stay registered; the protocol,
@@ -386,23 +389,23 @@ pub struct State {
     /// [`crate::protocols::xdg_foreign`].
     pub(crate) xdg_foreign: crate::protocols::xdg_foreign::XdgForeign,
     /// Kept alive so `xdg_wm_dialog_v1` stays registered; the handler is in
-    /// [`crate::protocols::xdg_dialog_v1`].
+    /// `gnoblin-wayland-xdg-dialog-v1`.
     #[allow(dead_code)]
     pub(crate) xdg_dialog_state: XdgDialogState,
     /// Kept alive so `xdg_toplevel_icon_manager_v1` stays registered; the handler is in
-    /// [`crate::protocols::xdg_toplevel_icon_v1`].
+    /// `gnoblin-wayland-xdg-toplevel-icon-v1`.
     #[allow(dead_code)]
     pub(crate) xdg_toplevel_icon_manager: XdgToplevelIconManager,
     /// Kept alive so `xdg_toplevel_tag_manager_v1` stays registered; the handler is in
-    /// [`crate::protocols::xdg_toplevel_tag_v1`].
+    /// `gnoblin-wayland-xdg-toplevel-tag-v1`.
     #[allow(dead_code)]
     pub(crate) xdg_toplevel_tag_manager: XdgToplevelTagManager,
-    /// Kept alive so `xdg_system_bell_v1` stays registered; the handler is in
-    /// [`crate::protocols::xdg_system_bell_v1`].
+    /// Kept alive so `xdg_system_bell_v1` stays registered; the handler is in `src/glue/system_bell.rs`,
+    /// which forwards to `gnoblin-wayland-xdg-system-bell-v1`.
     #[allow(dead_code)]
     pub(crate) xdg_system_bell_state: XdgSystemBellState,
     /// Kept alive so `wp_fifo_manager_v1` stays registered; its barriers are released by
-    /// [`crate::protocols::wp_fifo_v1`] on each frame tick.
+    /// `gnoblin-wayland-wp-fifo-v1` on each frame tick.
     #[allow(dead_code)]
     pub(crate) fifo_manager_state: smithay::wayland::fifo::FifoManagerState,
     /// Kept alive so `wp_alpha_modifier_v1` stays registered; the factor each surface commits
@@ -670,14 +673,15 @@ impl State {
         wm: Box<dyn WindowManager>,
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
+        let registrar = gnoblin_wayland_api::Registrar::new(&display_handle);
         let output_manager = ZwlrOutputManagementV1State::new(display_handle.clone());
 
         let compositor_state = CompositorState::new::<Self>(&display_handle);
         let xdg_shell_state = XdgShellState::new::<Self>(&display_handle);
-        let shm_state = ShmState::new::<Self>(&display_handle, Vec::new());
+        let shm_state = gnoblin_wayland_protocols::wl_shm::register::<Self>(&registrar);
         let output_manager_state = OutputManagerState::new();
-        crate::protocols::zxdg_output_v1::global(&display_handle);
-        crate::protocols::wp_viewporter::create_global(&display_handle);
+        gnoblin_wayland_protocols::xdg_output::register::<Self>(&registrar);
+        gnoblin_wayland_protocols::wp_viewporter::register::<Self>(&registrar);
         // `protocols.xdg-decoration = false` keeps the global out of the registry, so a client sees a compositor that has
         // no `xdg-decoration` and draws its own frame.
         let decoration_offered = protocols.toggles.get(&Protocol::XdgDecoration).copied().unwrap_or(true);
@@ -714,7 +718,7 @@ impl State {
         });
         let activation_state = XdgActivationState::new::<Self>(&display_handle);
         let data_device_state = DataDeviceState::new::<Self>(&display_handle);
-        let primary_selection_state = PrimarySelectionState::new::<Self>(&display_handle);
+        let primary_selection_state = gnoblin_wayland_protocols::zwp_primary_selection_v1::register::<Self>(&registrar);
         let ext_data_control_state =
             ExtDataControlState::new::<Self, _>(&display_handle, Some(&primary_selection_state), {
                 let access = Arc::clone(&access);
@@ -773,26 +777,28 @@ impl State {
         // The seat's protocols. Each global is created here and answered by its own
         // module; the argument this list carries is the access policy for the globals
         // that can act on the whole session.
-        let fractional_scale_global = crate::protocols::wp_fractional_scale_v1::create_global(&display_handle);
-        let cursor_shape_state = crate::protocols::wp_cursor_shape_v1::global(&display_handle);
-        let relative_pointer_state = crate::protocols::zwp_relative_pointer_v1::global(&display_handle);
+        let fractional_scale_global = gnoblin_wayland_protocols::wp_fractional_scale_v1::register::<Self>(&registrar);
+        let cursor_shape_state = gnoblin_wayland_protocols::wp_cursor_shape_v1::register::<Self>(&registrar);
+        let relative_pointer_state = gnoblin_wayland_protocols::zwp_relative_pointer_v1::register::<Self>(&registrar);
         let pointer_constraints_state = crate::protocols::zwp_pointer_constraints_v1::global(&display_handle);
-        let pointer_gestures_state = crate::protocols::zwp_pointer_gestures_v1::global(&display_handle);
+        let pointer_gestures_state = gnoblin_wayland_protocols::zwp_pointer_gestures_v1::register::<Self>(&registrar);
         let tablets = crate::protocols::zwp_tablet_v2::global(&display_handle);
-        let idle_inhibit_state = crate::protocols::zwp_idle_inhibit_v1::global(&display_handle);
-        let shortcuts_inhibit_state = crate::protocols::zwp_keyboard_shortcuts_inhibit_v1::global(&display_handle);
-        let presentation_state = crate::protocols::wp_presentation_time::global(&display_handle);
-        let content_type_state = crate::protocols::wp_content_type_v1::global(&display_handle);
-        let single_pixel_buffer_state = crate::protocols::wp_single_pixel_buffer_v1::global(&display_handle);
-        let tearing_control_global = crate::protocols::wp_tearing_control_v1::global(&display_handle);
+        let idle_inhibit_state = gnoblin_wayland_protocols::zwp_idle_inhibit_v1::register::<Self>(&registrar);
+        let shortcuts_inhibit_state =
+            gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::register::<Self>(&registrar);
+        let presentation_state = gnoblin_wayland_protocols::wp_presentation_time::register::<Self>(&registrar);
+        let content_type_state = gnoblin_wayland_protocols::wp_content_type_v1::register::<Self>(&registrar);
+        let single_pixel_buffer_state =
+            gnoblin_wayland_protocols::wp_single_pixel_buffer_v1::register::<Self>(&registrar);
+        let tearing_control_global = gnoblin_wayland_protocols::wp_tearing_control_v1::register::<Self>(&registrar);
         let idle_notify_global = crate::protocols::ext_idle_notify_v1::global(&display_handle, &access);
         let xdg_foreign_globals = crate::protocols::xdg_foreign::global(&display_handle);
-        let xdg_dialog_state = crate::protocols::xdg_dialog_v1::global(&display_handle);
-        let xdg_toplevel_icon_manager = crate::protocols::xdg_toplevel_icon_v1::global(&display_handle);
-        let xdg_toplevel_tag_manager = crate::protocols::xdg_toplevel_tag_v1::global(&display_handle);
-        let xdg_system_bell_state = crate::protocols::xdg_system_bell_v1::global(&display_handle);
-        let fifo_manager_state = crate::protocols::wp_fifo_v1::global(&display_handle);
-        let alpha_modifier_state = crate::protocols::wp_alpha_modifier_v1::global(&display_handle);
+        let xdg_dialog_state = gnoblin_wayland_protocols::xdg_dialog_v1::register::<Self>(&registrar);
+        let xdg_toplevel_icon_manager = gnoblin_wayland_protocols::xdg_toplevel_icon_v1::register::<Self>(&registrar);
+        let xdg_toplevel_tag_manager = gnoblin_wayland_protocols::xdg_toplevel_tag_v1::register::<Self>(&registrar);
+        let xdg_system_bell_state = gnoblin_wayland_protocols::xdg_system_bell_v1::register::<Self>(&registrar);
+        let fifo_manager_state = gnoblin_wayland_protocols::wp_fifo_v1::register::<Self>(&registrar);
+        let alpha_modifier_state = gnoblin_wayland_protocols::wp_alpha_modifier_v1::register::<Self>(&registrar);
         let text_input_state = crate::protocols::zwp_text_input_v3::text_input_global(&display_handle);
         let input_method_state = crate::protocols::zwp_input_method_v2::input_method_global(&display_handle, &access);
         let virtual_keyboard_global =
@@ -821,7 +827,7 @@ impl State {
             callbacks_due: false,
             frame_pacer: CallbackPacer::default(),
             output_manager_state,
-            xdg_outputs: crate::protocols::zxdg_output_v1::XdgOutputs::default(),
+            xdg_outputs: gnoblin_wayland_protocols::xdg_output::XdgOutputs::default(),
             fractional_surfaces: Vec::new(),
             decoration_state,
             decorations_seen: false,
@@ -896,7 +902,7 @@ impl State {
             held_text_inputs: HashMap::new(),
             cursor_image: CursorImageStatus::default_named(),
             cursor_shape_changed: false,
-            cursor_chain: crate::protocols::wp_cursor_shape_v1::cursor_chain(&cursor),
+            cursor_chain: crate::cursor::cursor_chain(&cursor),
             cursor_size: cursor.size,
             tearing: Vec::new(),
             clock: Tick::ZERO,
@@ -1530,7 +1536,10 @@ impl State {
             Some(Self::smithay_scale(output.effective_scale())),
             Some(SmithayPoint::from((rect.x, rect.y))),
         );
-        let global = smithay_output.create_global::<Self>(&self.display_handle);
+        let global = gnoblin_wayland_protocols::wl_output::create_global::<Self>(
+            &gnoblin_wayland_api::Registrar::new(&self.display_handle),
+            &smithay_output,
+        );
 
         self.composer.set_output_scale(output.id, output.effective_scale());
         self.composer.set_output(output.id, rect);
@@ -2363,7 +2372,7 @@ impl State {
     /// attributes when it applies a commit, so the renderer's copy is the only one that
     /// still knows what the client drew.
     pub(crate) fn sync_content(&mut self, window: WindowId, surface: &WlSurface) {
-        let factor = crate::protocols::wp_alpha_modifier_v1::committed_factor(surface);
+        let factor = gnoblin_wayland_protocols::wp_alpha_modifier_v1::committed_factor(surface);
         self.composer.set_window_surface_alpha(window, factor);
         match committed_content(surface) {
             Some((buffer, content)) => {

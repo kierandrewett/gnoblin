@@ -66,6 +66,9 @@ members = [
     "crates/gnoblin-portal-filechooser",
     "crates/gnoblin-portal-ui",
     "crates/gnoblin-provider-wire",
+    # One crate per Wayland protocol, the api seam and the aggregate (design/protocol-crates.md); the list is
+    # `xtask/protocols.toml`, so a new protocol does not touch this manifest.
+    "crates/protocols/*",
     "crates/gnoblin-input",
     "crates/gnoblin-input-eis",
     "crates/gnoblin-js-types",

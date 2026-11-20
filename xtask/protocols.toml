@@ -1,0 +1,164 @@
+# The table of the Wayland protocol crates (design/protocol-crates.md): one row per crate under
+# crates/protocols/. `cargo xtask protocol-crates` writes each crate's Cargo.toml and the aggregate
+# crate (crates/protocols/all) from it, and `--check` fails when the tree and the table differ.
+#
+# A crate's name is `gnoblin-wayland-<name>` and its directory is `crates/protocols/<name>`. The name is
+# the protocol's own, with underscores turned into hyphens and its version suffix kept. A crate
+# that holds code two protocols share has `kind = "shared"` and a name that ends in `-shared`; a
+# protocol crate lists the shared crates it uses in `needs`. `gnoblin-wayland-api` is a dependency of
+# every crate and is not listed.
+#
+# `[dependencies]` is the one list of the manifest lines a row may name. A row names a line by its
+# key in `deps` or `dev-deps`; the value here is the text on the right of the `=`.
+
+[dependencies]
+smithay = '{ workspace = true }'
+gnoblin-types = '{ workspace = true }'
+gnoblin-log = '{ path = "../../gnoblin-log" }'
+
+[[crate]]
+name = "wp-alpha-modifier-v1"
+description = "The wp_alpha_modifier_v1 Wayland protocol of gnoblin-wayland: a per-surface opacity factor."
+kind = "protocol"
+interfaces = [["wp_alpha_modifier_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "wp-single-pixel-buffer-v1"
+description = "The wp_single_pixel_buffer_manager_v1 Wayland protocol of gnoblin-wayland: buffers that carry one colour."
+kind = "protocol"
+interfaces = [["wp_single_pixel_buffer_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "zwp-pointer-gestures-v1"
+description = "The zwp_pointer_gestures_v1 Wayland protocol of gnoblin-wayland: swipe, pinch and hold gesture objects."
+kind = "protocol"
+interfaces = [["zwp_pointer_gestures_v1", 3]]
+deps = ["smithay"]
+
+[[crate]]
+name = "zwp-relative-pointer-v1"
+description = "The zwp_relative_pointer_manager_v1 Wayland protocol of gnoblin-wayland: the vector motion a pointer reports."
+kind = "protocol"
+interfaces = [["zwp_relative_pointer_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "xdg-system-bell-v1"
+description = "The xdg_system_bell_v1 Wayland protocol of gnoblin-wayland: a client rings the system bell."
+kind = "protocol"
+interfaces = [["xdg_system_bell_v1", 1]]
+deps = ["smithay", "gnoblin-types"]
+
+[[crate]]
+name = "zwp-idle-inhibit-v1"
+description = "The zwp_idle_inhibit_manager_v1 Wayland protocol of gnoblin-wayland: a surface that keeps the session awake."
+kind = "protocol"
+interfaces = [["zwp_idle_inhibit_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "xdg-toplevel-icon-v1"
+description = "The xdg_toplevel_icon_manager_v1 Wayland protocol of gnoblin-wayland: a toplevel's icon."
+kind = "protocol"
+interfaces = [["xdg_toplevel_icon_manager_v1", 1]]
+deps = ["smithay", "gnoblin-log"]
+
+[[crate]]
+name = "xdg-toplevel-tag-v1"
+description = "The xdg_toplevel_tag_manager_v1 Wayland protocol of gnoblin-wayland: a toplevel's tag and description."
+kind = "protocol"
+interfaces = [["xdg_toplevel_tag_manager_v1", 1]]
+deps = ["smithay", "gnoblin-log"]
+
+[[crate]]
+name = "xdg-dialog-v1"
+description = "The xdg_wm_dialog_v1 Wayland protocol of gnoblin-wayland: a toplevel marks itself as a dialog, modal or not."
+kind = "protocol"
+interfaces = [["xdg_wm_dialog_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "wl-output"
+description = "The wl_output Wayland global of gnoblin-wayland: the output globals the layout created."
+kind = "protocol"
+interfaces = [["wl_output", 4]]
+deps = ["smithay", "gnoblin-log"]
+
+[[crate]]
+name = "wl-shm"
+description = "The wl_shm Wayland global of gnoblin-wayland: shared-memory buffer pools."
+kind = "protocol"
+interfaces = [["wl_shm", 2]]
+deps = ["smithay"]
+
+[[crate]]
+name = "zwp-primary-selection-v1"
+description = "The zwp_primary_selection_device_manager_v1 Wayland protocol of gnoblin-wayland: the primary selection."
+kind = "protocol"
+interfaces = [["zwp_primary_selection_device_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "wp-content-type-v1"
+description = "The wp_content_type_manager_v1 Wayland protocol of gnoblin-wayland: whether a surface shows video or a game."
+kind = "protocol"
+interfaces = [["wp_content_type_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "wp-fifo-v1"
+description = "The wp_fifo_manager_v1 Wayland protocol of gnoblin-wayland: a client's commits are shown in order."
+kind = "protocol"
+interfaces = [["wp_fifo_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "wp-fractional-scale-v1"
+description = "The wp_fractional_scale_manager_v1 Wayland protocol of gnoblin-wayland: the scale a surface is drawn at."
+kind = "protocol"
+interfaces = [["wp_fractional_scale_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "wp-tearing-control-v1"
+description = "The wp_tearing_control_manager_v1 Wayland protocol of gnoblin-wayland: the presentation hint a surface asks for."
+kind = "protocol"
+interfaces = [["wp_tearing_control_manager_v1", 1]]
+deps = ["smithay", "gnoblin-log"]
+
+[[crate]]
+name = "wp-presentation-time"
+description = "The wp_presentation Wayland protocol of gnoblin-wayland: feedback with the frame's present time."
+kind = "protocol"
+interfaces = [["wp_presentation", 2]]
+deps = ["smithay", "gnoblin-log"]
+
+[[crate]]
+name = "zwp-keyboard-shortcuts-inhibit-v1"
+description = "The zwp_keyboard_shortcuts_inhibit_manager_v1 Wayland protocol of gnoblin-wayland: grants, refuses and revokes shortcut inhibitors."
+kind = "protocol"
+interfaces = [["zwp_keyboard_shortcuts_inhibit_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "wp-viewporter"
+description = "The wp_viewporter Wayland protocol of gnoblin-wayland: a surface's crop and scale."
+kind = "protocol"
+interfaces = [["wp_viewporter", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "wp-cursor-shape-v1"
+description = "The wp_cursor_shape_manager_v1 Wayland protocol of gnoblin-wayland: a client names a cursor shape."
+kind = "protocol"
+interfaces = [["wp_cursor_shape_manager_v1", 2]]
+deps = ["smithay"]
+
+[[crate]]
+name = "xdg-output"
+description = "The zxdg_output_manager_v1 Wayland protocol of gnoblin-wayland: the logical size and place of each output."
+kind = "protocol"
+interfaces = [["zxdg_output_manager_v1", 3]]
+deps = ["smithay", "gnoblin-types"]

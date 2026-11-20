@@ -44,6 +44,7 @@ use smithay::reexports::calloop::ping::Ping;
 use gnoblin_backend::{Backend, Host};
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::{OutputId, Rect};
+use gnoblin_wayland_protocols::wp_fifo_v1::FifoExt as _;
 
 use crate::state::State;
 

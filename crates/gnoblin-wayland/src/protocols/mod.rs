@@ -1,67 +1,10 @@
-//! Smithay protocol handlers, one module per protocol.
+//! The protocol modules that have not yet moved into crates of their own.
 //!
-//! Each module answers exactly one protocol's requests and translates them into
-//! window-manager events; none of them decides placement, focus or stacking. The
-//! split is what lets a protocol be added without touching another, and it is the
-//! layout `design/rust-compositor.md` ("Project structure") asks for.
-//!
-//! | Module | Interfaces | What it does here |
-//! |---|---|---|
-//! | [`xdg_activation_v1`] | `xdg_activation_v1` | mints and redeems one-shot activation tokens |
-//! | [`gnoblin_session_host_v1`] | `gnoblin_session_host_v1` | the host's channel to one hosted session: readiness, protection, logout and power requests |
-//! | [`ext_image_copy_capture_v1`] | `ext_image_copy_capture_v1` | frames of an output, a window or a View, streamed under the lock embargo and the access roster, into shared memory or into a GPU buffer |
-//! | [`ext_image_capture_source_v1`] | `ext_image_capture_source_v1` | names what an image-copy session captures: an output or a toplevel |
-//! | [`zwlr_screencopy_v1`] | `zwlr_screencopy_manager_v1` | one-shot screencopy of an output or a region, under the same embargo and roster |
-//! | [`capture_shared`] | none of its own | the pixel path, lock embargo and session table the three capture protocols share; its `capture_dmabuf` part queues the copies into a client's GPU buffer and answers them from the loop |
-//! | [`image_copy_session`] | `ext_image_copy_capture_manager_v1`, `ext_image_copy_capture_session_v1`, `ext_image_copy_capture_frame_v1` | the protocol's own objects, and the check that a client's shared-memory or GPU buffer meets the constraints a session announced |
-//! | [`wl_compositor`] | `wl_compositor`, `wl_subcompositor` | surfaces, subsurfaces and buffer commits |
-//! | [`wl_shm`] | `wl_shm`, `wl_shm_pool` | shared-memory buffer pools |
-//! | [`ext_background_effect_v1`] | `ext_background_effect_manager_v1`, `ext_background_effect_surface_v1` | a client's blur behind its own surface, gated through the access roster |
-//! | [`wp_content_type_v1`] | `wp_content_type_v1` | records whether a surface shows video or a game |
-//! | [`wp_cursor_shape_v1`] | `wp_cursor_shape_manager_v1` | records the cursor a client names |
-//! | [`zxdg_decoration_v1`] | `zxdg_decoration_manager_v1`, `zxdg_toplevel_decoration_v1` | answers the client's preference: server-side only while a shell that holds the tree declares decorations, client-side otherwise; raises `orphaned` for a toplevel destroyed before its decoration |
-//! | [`extension`] | none of its own | the seam a compat adapter's redirect registers through, and the operations it may ask the compositor for |
-//! | [`zwlr_foreign_toplevel_management_v1`] | `zwlr_foreign_toplevel_manager_v1` | the window list a taskbar reads, and the requests it may make on each window |
-//! | [`zwlr_gamma_control_v1`] | `zwlr_gamma_control_manager_v1` | per-output gamma ramps; a second client asking for an output another holds is refused |
-//! | [`zwlr_output_management_v1`] | `zwlr_output_manager_v1` | the outputs a configuration tool reads, and the layout it may test or apply through the host |
-//! | [`zwlr_output_power_management_v1`] | `zwlr_output_power_manager_v1` | per-output power, on or off; reports each change to its holder |
-//! | [`ext_foreign_toplevel_list_v1`] | `ext_foreign_toplevel_list_v1` | the read-only, standardised form of the same list, keyed by a stable identifier |
-//! | [`foreign_toplevel_shared`] | none of its own | the window record both toplevel lists are fed from, and what changed since it was last sent |
-//! | [`wp_fractional_scale_v1`] | `wp_fractional_scale_manager_v1`, `wp_fractional_scale_v1` | tells a surface the scale its output draws it at; the manager is the compositor's own, so `fractional_scale_exists` is raised on it |
-//! | [`zwp_idle_inhibit_v1`] | `zwp_idle_inhibit_manager_v1` | records the surfaces that keep the session awake |
-//! | [`ext_idle_notify_v1`] | `ext_idle_notifier_v1` | answers `idled`/`resumed` from the session's tick counter |
-//! | [`zwlr_layer_shell_v1`] | `zwlr_layer_shell_v1` | bars and docks: anchors, sizes, exclusive zones and keyboard interactivity |
-//! | [`wl_output`] | `wl_output` | the output globals the layout created |
-//! | [`zwp_pointer_constraints_v1`] | `zwp_pointer_constraints_v1`, `zwp_locked_pointer_v1`, `zwp_confined_pointer_v1` | activates, confines and releases a client's lock or confinement, for a mouse as for an absolute pointer; a constraint starts when its window has the pointer and the keyboard |
-//! | [`zwp_pointer_gestures_v1`] | `zwp_pointer_gestures_v1` | creates the gesture objects |
-//! | [`wp_presentation_time`] | `wp_presentation` | answers feedback with the frame's present time |
-//! | [`zwp_relative_pointer_v1`] | `zwp_relative_pointer_manager_v1`, `zwp_relative_pointer_v1` | the vector motion a pointer reports, locked or not |
-//! | [`zxdg_output_v1`] | `zxdg_output_manager_v1` | the logical size and place of each output, from the layout, so a supersampled output keeps its logical size |
-//! | [`wl_seat`] | `wl_seat` | keyboard and pointer focus over surfaces |
-//! | [`wp_security_context_v1`] | `wp_security_context_v1` | application sandboxes, marked before their first request |
-//! | [`wl_data_device_manager`] | `wl_data_device_manager` | the clipboard and what follows focus |
-//! | [`zwp_primary_selection_v1`] | `zwp_primary_selection_device_manager_v1` | the primary selection |
-//! | [`ext_data_control_v1`] | `ext_data_control_manager_v1` | clipboard access for privileged clients |
-//! | [`zwlr_data_control_v1`] | `zwlr_data_control_manager_v1` | clipboard access for privileged clients (wlroots) |
-//! | [`ext_session_lock_v1`] | `ext_session_lock_v1` | the lock request, its cover, its surfaces and the input gate |
-//! | [`zwp_keyboard_shortcuts_inhibit_v1`] | `zwp_keyboard_shortcuts_inhibit_manager_v1` | grants, refuses and revokes shortcut inhibitors |
-//! | [`wp_single_pixel_buffer_v1`] | `wp_single_pixel_buffer_manager_v1` | creates the global; the buffer carries its own colour |
-//! | [`zwp_linux_dmabuf_v1`] | `zwp_linux_dmabuf_v1` | GPU buffers from clients, served only when the backend's renderer can import them; each buffer is imported before the client may use it |
-//! | [`wp_tearing_control_v1`] | `wp_tearing_control_v1` | records the presentation hint a surface asks for |
-//! | [`zwp_tablet_v2`] | `zwp_tablet_manager_v2`, `zwp_tablet_seat_v2`, `zwp_tablet_v2`, `zwp_tablet_tool_v2`, `zwp_tablet_pad_v2`, `zwp_tablet_pad_group_v2`, `zwp_tablet_pad_ring_v2`, `zwp_tablet_pad_strip_v2` | drawing tablets: a tool's events go to the client under it (Smithay's objects), a pad's go to the client with the keyboard (this crate's objects) |
-//! | [`zwp_text_input_v3`] | `zwp_text_input_manager_v3`, `zwp_text_input_v3` | the text-input conversation: `enter` and `leave` follow the keyboard focus once each, a field enabled before the input method binds is held and replayed to it |
-//! | [`zwp_input_method_v2`] | `zwp_input_method_manager_v2`, `zwp_input_method_v2` | the privileged input-method half of a text conversation |
-//! | [`zwp_virtual_keyboard_v1`] | `zwp_virtual_keyboard_manager_v1` | the privileged virtual-keyboard half |
-//! | [`wp_viewporter`] | `wp_viewporter` | a surface's crop and scale, with the three errors Smithay's own handler does not raise (`viewport_exists` on the right object, `bad_size`, `out_of_buffer` on a commit with no new buffer) |
-//! | [`gnoblin_view_source_v1`] | `gnoblin_view_source_manager_v1` | the owner-only capture source of a View node; refused for a node that is not a View |
-//! | [`xdg_shell`] | `xdg_shell` | toplevels, popups (drawn above their window, `surface_tree.rs`), configure and ack |
-//! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | the factor a surface commits multiplies its opacity and that of everything hanging from it when the composer draws it: a window's own, or a subsurface's or a popup's |
-//! | [`wp_fifo_v1`] | `wp_fifo_manager_v1` | a client's commits are shown in order; barriers are released on each frame tick |
-//! | [`xdg_dialog_v1`] | `xdg_wm_dialog_v1` | a modal child takes focus from its parent and the parent's focus is redirected to it until unset; the window manager floats the dialog above its parent |
-//! | [`xdg_foreign`] | `zxdg_exporter_v2`, `zxdg_importer_v2` | names a toplevel by handle; the parent reaches the window manager as a role change, which floats the child and stacks it above the parent |
-//! | [`xdg_toplevel_icon_v1`] | `xdg_toplevel_icon_manager_v1` | the icon's name and buffer count are stored per window and exposed in the session snapshot; not drawn |
-//! | [`xdg_toplevel_tag_v1`] | `xdg_toplevel_tag_manager_v1` | the tag is stored per window and exposed in the session snapshot; placement does not read it |
-//! | [`xdg_system_bell_v1`] | `xdg_system_bell_v1` | a ring counts toward the bell and flashes the window's screen when the visual bell is on; the flash is suppressed while locked |
+//! Every Wayland protocol this crate serves becomes a crate under `crates/protocols/`, named
+//! `gnoblin-wayland-<protocol>` (`design/protocol-crates.md`). A module answers one protocol's requests
+//! and translates them into window-manager events; none of them decides placement, focus or stacking.
+//! What is left here is moved one family per commit, and this module is deleted with the last of them.
+//! The crates and what they advertise are the rows of `xtask/protocols.toml`.
 
 /// Pixel path shared by the three capture protocols: frames, sources and sessions.
 pub mod capture_shared;
@@ -96,46 +39,16 @@ mod wire;
 pub mod wl_compositor;
 /// `wl_data_device_manager`: the clipboard and drag-and-drop device manager.
 pub mod wl_data_device_manager;
-/// `wl_output`: the output globals the layout created.
-pub mod wl_output;
 /// `wl_seat`: keyboard and pointer focus over surfaces.
 pub mod wl_seat;
-/// `wl_shm`: shared-memory buffer pools.
-pub mod wl_shm;
-/// `wp_alpha_modifier_v1`: a per-surface opacity factor.
-pub mod wp_alpha_modifier_v1;
-/// `wp_content_type_v1`: whether a surface shows video or a game.
-pub mod wp_content_type_v1;
-/// `wp_cursor_shape_v1`: the cursor shape a client names.
-pub mod wp_cursor_shape_v1;
-/// `wp_fifo_v1`: in-order commit barriers released on each frame tick.
-pub mod wp_fifo_v1;
-/// `wp_fractional_scale_v1`: the fractional scale a surface draws at.
-pub mod wp_fractional_scale_v1;
-/// `wp_presentation`: presentation feedback with the frame's present time.
-pub mod wp_presentation_time;
 /// `wp_security_context_v1`: sandbox security contexts for applications.
 pub mod wp_security_context_v1;
-/// `wp_single_pixel_buffer_v1`: buffers that carry a single colour.
-pub mod wp_single_pixel_buffer_v1;
-/// `wp_tearing_control_v1`: the presentation hint a surface asks for.
-pub mod wp_tearing_control_v1;
-/// `wp_viewporter`: source crop and destination size per surface.
-pub mod wp_viewporter;
 /// `xdg_activation_v1`: one-shot activation tokens.
 pub mod xdg_activation_v1;
-/// `xdg_wm_dialog_v1`: modal dialog relationships between toplevels.
-pub mod xdg_dialog_v1;
 /// `zxdg_exporter_v2` and `zxdg_importer_v2`: export a toplevel handle to another client.
 pub mod xdg_foreign;
 /// `xdg_shell`: toplevels, popups, configure and ack.
 pub mod xdg_shell;
-/// `xdg_system_bell_v1`: the system bell a client rings, optionally naming its surface.
-pub mod xdg_system_bell_v1;
-/// `xdg_toplevel_icon_v1`: toplevel icon names and buffers, stored but not drawn.
-pub mod xdg_toplevel_icon_v1;
-/// `xdg_toplevel_tag_v1`: toplevel tags, stored per window.
-pub mod xdg_toplevel_tag_v1;
 /// `zwlr_data_control_v1`: clipboard access for privileged clients (wlroots).
 pub mod zwlr_data_control_v1;
 /// `zwlr_foreign_toplevel_manager_v1`: the window list a taskbar reads.
@@ -150,22 +63,12 @@ pub mod zwlr_output_management_v1;
 pub mod zwlr_output_power_management_v1;
 /// `zwlr_screencopy_manager_v1`: one-shot screencopy of an output or region.
 pub mod zwlr_screencopy_v1;
-/// `zwp_idle_inhibit_manager_v1`: surfaces that keep the session awake.
-pub mod zwp_idle_inhibit_v1;
 /// `zwp_input_method_manager_v2`: the privileged input-method half of a text conversation.
 pub mod zwp_input_method_v2;
-/// `zwp_keyboard_shortcuts_inhibit_manager_v1`: grants, refuses and revokes shortcut inhibitors.
-pub mod zwp_keyboard_shortcuts_inhibit_v1;
 /// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.
 pub mod zwp_linux_dmabuf_v1;
 /// `zwp_pointer_constraints_v1`: locked and confined pointers.
 pub mod zwp_pointer_constraints_v1;
-/// `zwp_pointer_gestures_v1`: gesture objects for pointer input.
-pub mod zwp_pointer_gestures_v1;
-/// `zwp_primary_selection_device_manager_v1`: the primary selection.
-pub mod zwp_primary_selection_v1;
-/// `zwp_relative_pointer_manager_v1`: the vector motion a locked pointer reports.
-pub mod zwp_relative_pointer_v1;
 /// `zwp_tablet_manager_v2`: drawing tablets, their tools and pads.
 pub mod zwp_tablet_v2;
 /// `zwp_text_input_manager_v3`: the text-input conversation.
@@ -174,5 +77,3 @@ pub mod zwp_text_input_v3;
 pub mod zwp_virtual_keyboard_v1;
 /// `zxdg_decoration_manager_v1`: the client's server-side decoration preference.
 pub mod zxdg_decoration_v1;
-/// `zxdg_output_manager_v1`: the logical size and place of an output, from the layout rather than the mode.
-pub mod zxdg_output_v1;

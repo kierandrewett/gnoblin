@@ -207,10 +207,12 @@
 
 mod access;
 mod clock;
+mod cursor;
 mod devices;
 mod dispatch;
 mod frame;
 mod frame_policy;
+mod glue;
 mod gpu_memory;
 mod interactive;
 mod keyboard;
@@ -225,6 +227,7 @@ mod output_control;
 mod output_policy;
 mod pointer_chord;
 mod popup;
+mod presentation;
 mod process;
 mod protocols;
 mod request_guard;

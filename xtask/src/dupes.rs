@@ -295,7 +295,8 @@ fn report(root: &Path, deny: bool) -> Result<bool, String> {
     Ok(unallowed == 0)
 }
 
-/// The workspace members, as crate roots to scan.
+/// The workspace members, as crate roots to scan. A member that ends in `/*` stands for every directory
+/// below it, as Cargo reads it (`crates/protocols/*`).
 fn workspace_crates(root: &Path) -> Result<Vec<CrateRoot>, String> {
     let manifest = read_toml(&root.join("Cargo.toml"))?;
     let members = manifest
@@ -303,11 +304,29 @@ fn workspace_crates(root: &Path) -> Result<Vec<CrateRoot>, String> {
         .and_then(|workspace| workspace.get("members"))
         .and_then(toml::Value::as_array)
         .ok_or_else(|| "the workspace manifest declares no members".to_owned())?;
-    let mut crates = Vec::new();
+    let mut relatives = Vec::new();
     for member in members {
         let relative = member
             .as_str()
             .ok_or_else(|| "a workspace member is not a string".to_owned())?;
+        match relative.strip_suffix("/*") {
+            Some(parent) => {
+                let entries =
+                    fs::read_dir(root.join(parent)).map_err(|error| format!("workspace member {relative}: {error}"))?;
+                for entry in entries {
+                    let path = entry.map_err(|error| error.to_string())?.path();
+                    if path.is_dir()
+                        && let Some(name) = path.file_name().and_then(|name| name.to_str())
+                    {
+                        relatives.push(format!("{parent}/{name}"));
+                    }
+                }
+            }
+            None => relatives.push(relative.to_owned()),
+        }
+    }
+    let mut crates = Vec::new();
+    for relative in &relatives {
         let directory = root.join(relative);
         let package = read_toml(&directory.join("Cargo.toml"))
             .map_err(|error| format!("workspace member {relative}: {error}"))?;

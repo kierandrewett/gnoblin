@@ -1,0 +1,17 @@
+[package]
+name = "gnoblin-wayland-api"
+description = "The seam between gnoblin-wayland and its Wayland protocol crates: the traits a protocol crate asks the compositor for, and the table each one fills in."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The traits name `WlSurface` and `DisplayHandle`, so the crate shares the workspace's one Smithay.
+smithay.workspace = true
+# A window is named by the identity the window manager already uses.
+gnoblin-types.workspace = true

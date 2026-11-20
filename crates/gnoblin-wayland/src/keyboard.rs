@@ -71,6 +71,7 @@ use gnoblin_input::{
 use gnoblin_lock::State as LockState;
 use gnoblin_render::transaction::TreeCall;
 use gnoblin_types::{DeviceId, KeyCode, KeyState, Keysym, Modifiers, NodeId, WindowId};
+use gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::ShortcutInhibitExt as _;
 
 use crate::State;
 use crate::devices::{DeviceKeys, LOCKS};

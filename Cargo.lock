@@ -2316,6 +2316,8 @@ dependencies = [
  "gnoblin-std-wm",
  "gnoblin-testkit",
  "gnoblin-types",
+ "gnoblin-wayland-api",
+ "gnoblin-wayland-protocols",
  "gnoblin-wm-api",
  "png",
  "rustix 1.1.6",
@@ -2328,6 +2330,217 @@ dependencies = [
  "wayland-protocols-wlr",
  "wayland-scanner",
  "x11rb",
+]
+
+[[package]]
+name = "gnoblin-wayland-api"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-protocols"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "gnoblin-wayland-wl-output",
+ "gnoblin-wayland-wl-shm",
+ "gnoblin-wayland-wp-alpha-modifier-v1",
+ "gnoblin-wayland-wp-content-type-v1",
+ "gnoblin-wayland-wp-cursor-shape-v1",
+ "gnoblin-wayland-wp-fifo-v1",
+ "gnoblin-wayland-wp-fractional-scale-v1",
+ "gnoblin-wayland-wp-presentation-time",
+ "gnoblin-wayland-wp-single-pixel-buffer-v1",
+ "gnoblin-wayland-wp-tearing-control-v1",
+ "gnoblin-wayland-wp-viewporter",
+ "gnoblin-wayland-xdg-dialog-v1",
+ "gnoblin-wayland-xdg-output",
+ "gnoblin-wayland-xdg-system-bell-v1",
+ "gnoblin-wayland-xdg-toplevel-icon-v1",
+ "gnoblin-wayland-xdg-toplevel-tag-v1",
+ "gnoblin-wayland-zwp-idle-inhibit-v1",
+ "gnoblin-wayland-zwp-keyboard-shortcuts-inhibit-v1",
+ "gnoblin-wayland-zwp-pointer-gestures-v1",
+ "gnoblin-wayland-zwp-primary-selection-v1",
+ "gnoblin-wayland-zwp-relative-pointer-v1",
+]
+
+[[package]]
+name = "gnoblin-wayland-wl-output"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wl-shm"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-alpha-modifier-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-content-type-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-cursor-shape-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-fifo-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-fractional-scale-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-presentation-time"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-single-pixel-buffer-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-tearing-control-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wp-viewporter"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-xdg-dialog-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-xdg-output"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-xdg-system-bell-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-xdg-toplevel-icon-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-xdg-toplevel-tag-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwp-idle-inhibit-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwp-keyboard-shortcuts-inhibit-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwp-pointer-gestures-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwp-primary-selection-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwp-relative-pointer-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
 ]
 
 [[package]]

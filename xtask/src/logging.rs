@@ -142,15 +142,18 @@ fn check_sources(root: &Path) -> Result<Vec<String>, String> {
     Ok(violations)
 }
 
-/// Every `.rs` file under `crates/*/src`, skipping the exempt test-only files.
+/// Every `.rs` file under `crates/*/src` and `crates/protocols/*/src`, skipping the exempt test-only files.
 fn library_sources(root: &Path) -> Result<Vec<PathBuf>, String> {
     let crates = root.join("crates");
     let mut files = Vec::new();
-    let entries = fs::read_dir(&crates).map_err(|error| format!("could not read {}: {error}", crates.display()))?;
-    for entry in entries {
-        let src = entry.map_err(|error| error.to_string())?.path().join("src");
-        if src.is_dir() {
-            collect_rust_files(&src, &mut files)?;
+    for directory in [crates.clone(), crates.join("protocols")] {
+        let entries =
+            fs::read_dir(&directory).map_err(|error| format!("could not read {}: {error}", directory.display()))?;
+        for entry in entries {
+            let src = entry.map_err(|error| error.to_string())?.path().join("src");
+            if src.is_dir() {
+                collect_rust_files(&src, &mut files)?;
+            }
         }
     }
     files.retain(|file| !is_exempt_file(file));

@@ -116,7 +116,7 @@ impl CompositorHandler for State {
         // A buffer whose pool the client shrank is the client's error; so is a viewport source that reaches
         // past the buffer the commit left attached.
         verify_buffer(surface);
-        crate::protocols::wp_viewporter::validate_commit(surface);
+        gnoblin_wayland_protocols::wp_viewporter::validate_commit(surface);
         self.popups.commit(surface);
         self.popup_committed(surface);
         // The window the surface belongs to draws its surface tree again, and this surface's pixels with it.

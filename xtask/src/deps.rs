@@ -418,6 +418,14 @@ const RULES: &[Rule] = &[
         id: "std-below-core",
         check: std_below_core,
     },
+    Rule {
+        id: "protocol-layering",
+        check: protocol_layering,
+    },
+    Rule {
+        id: "protocol-root",
+        check: protocol_root,
+    },
 ];
 
 /// One broken edge.
@@ -1176,6 +1184,105 @@ fn dev_crates(package: &Package, dep: &Dep) -> Option<String> {
         package.name,
         dep.kind.as_str()
     ))
+}
+
+/// The prefix of every crate of the Wayland protocol tier (design/protocol-crates.md).
+const WAYLAND_PREFIX: &str = "gnoblin-wayland-";
+
+/// The seam the protocol crates are written against: the traits `gnoblin-wayland` implements on its state, and the table each
+/// protocol fills in. It sits at the bottom of the tier and depends on no crate of it.
+const WAYLAND_API: &str = "gnoblin-wayland-api";
+
+/// The one crate that re-exports every protocol crate and holds the table of what they advertise. Only the compositor engine
+/// depends on it.
+const WAYLAND_AGGREGATE: &str = "gnoblin-wayland-protocols";
+
+/// The real-client session harness the protocol crates' tests share. A development dependency of the crates it tests, and the
+/// only crate of the tier that may name the engine.
+const WAYLAND_TESTKIT: &str = "gnoblin-wayland-testkit";
+
+/// The compositor engine that serves the protocols. It names the tier; the tier never names it.
+const WAYLAND_ENGINE: &str = "gnoblin-wayland";
+
+/// A crate that serves one Wayland protocol, or holds code that two of them share.
+fn is_protocol_crate(name: &str) -> bool {
+    name.starts_with(WAYLAND_PREFIX) && !matches!(name, WAYLAND_API | WAYLAND_AGGREGATE | WAYLAND_TESTKIT)
+}
+
+/// A protocol crate that holds shared code. `cargo xtask protocol-crates` requires the suffix of every row of that kind, so the
+/// name is what the rule reads.
+fn is_shared_protocol_crate(name: &str) -> bool {
+    is_protocol_crate(name) && name.ends_with("-shared")
+}
+
+/// Whether a crate belongs to the protocol tier.
+fn is_wayland_tier(name: &str) -> bool {
+    name.starts_with(WAYLAND_PREFIX)
+}
+
+/// A protocol crate is written against the api crate and nothing of the compositor, so it builds and tests without it.
+///
+/// It may name the api crate, the shared crates, the foundation crates, the three engine hubs and external crates. It may not
+/// name the compositor engine, the composition root, another engine crate, or another protocol crate that is not a shared
+/// one. The api crate names no crate of the tier. A development edge is not this rule's business: a protocol crate's real-client
+/// tests run a `gnoblin-wayland` session, and a development dependency is not compiled for a dependent.
+fn protocol_layering(package: &Package, dep: &Dep) -> Option<String> {
+    if dep.kind == DepKind::Dev {
+        return None;
+    }
+    if package.name == WAYLAND_API {
+        if is_wayland_tier(&dep.name) || dep.name == WAYLAND_ENGINE || is_engine(&dep.name) {
+            return Some(format!(
+                "the api crate is the bottom of the protocol tier and names no crate above it; `{}` is one",
+                dep.name
+            ));
+        }
+        return None;
+    }
+    if !is_protocol_crate(&package.name) {
+        return None;
+    }
+    if dep.name == WAYLAND_API || is_shared_protocol_crate(&dep.name) {
+        return None;
+    }
+    if is_wayland_tier(&dep.name) {
+        return Some(format!(
+            "a protocol crate depends on the api crate and on shared crates only; `{}` is another crate of the tier",
+            dep.name
+        ));
+    }
+    if dep.name == WAYLAND_ENGINE || dep.name == COMPOSITION_ROOT {
+        return Some(format!(
+            "a protocol crate never names the compositor, which names it; `{}` is the compositor",
+            dep.name
+        ));
+    }
+    if is_engine(&dep.name) && dep.name != HUB_SCENE && dep.name != HUB_INPUT && dep.name != HUB_FRAME {
+        return Some(format!(
+            "a protocol crate names an engine crate only through the three hubs; `{}` is an engine crate",
+            dep.name
+        ));
+    }
+    None
+}
+
+/// Only the compositor engine depends on the protocol tier, through the aggregate. The aggregate depends on every protocol crate,
+/// and a protocol crate depends on a shared crate; nothing else names a crate of the tier except the api crate, which the
+/// compositor's own tests and tools may name.
+fn protocol_root(package: &Package, dep: &Dep) -> Option<String> {
+    if dep.kind == DepKind::Dev || package.name == WAYLAND_TESTKIT {
+        return None;
+    }
+    if dep.name == WAYLAND_AGGREGATE && package.name != WAYLAND_ENGINE {
+        return Some("only the compositor engine depends on the aggregate of the protocol crates".to_owned());
+    }
+    if is_protocol_crate(&dep.name) && package.name != WAYLAND_AGGREGATE && !is_protocol_crate(&package.name) {
+        return Some(format!(
+            "only the aggregate crate depends on the protocol crate `{}`; `{}` reaches it through `{WAYLAND_AGGREGATE}`",
+            dep.name, package.name
+        ));
+    }
+    None
 }
 
 fn is_sdk(name: &str) -> bool {
@@ -2452,6 +2559,88 @@ mod tests {
             1,
             "{macros:?}"
         );
+    }
+
+    #[test]
+    fn a_protocol_crate_names_the_api_crate_and_the_shared_crates_and_no_compositor() {
+        assert_eq!(
+            violations(&[
+                (
+                    "gnoblin-wayland-ext-image-copy-capture-v1",
+                    &[
+                        "gnoblin-wayland-api",
+                        "gnoblin-wayland-capture-shared",
+                        "gnoblin-types",
+                        "smithay"
+                    ]
+                ),
+                (
+                    "gnoblin-wayland-capture-shared",
+                    &["gnoblin-wayland-api", "gnoblin-render-frame"]
+                ),
+            ]),
+            Vec::<String>::new()
+        );
+        for forbidden in [
+            "gnoblin-wayland",
+            "gnoblin-compositor",
+            "gnoblin-backend",
+            "gnoblin-wayland-wl-seat",
+        ] {
+            let found = violations(&[("gnoblin-wayland-wp-viewporter", &[forbidden])]);
+            assert!(
+                found.iter().any(|found| found.contains("[protocol-layering]")),
+                "{forbidden}: {found:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_api_crate_is_the_bottom_of_the_protocol_tier() {
+        let found = violations(&[("gnoblin-wayland-api", &["gnoblin-wayland-wp-viewporter"])]);
+        assert!(
+            found.iter().any(|found| found.contains("[protocol-layering]")),
+            "{found:?}"
+        );
+        let found = violations(&[("gnoblin-wayland-api", &["gnoblin-wayland"])]);
+        assert!(
+            found.iter().any(|found| found.contains("[protocol-layering]")),
+            "{found:?}"
+        );
+        assert_eq!(
+            violations(&[("gnoblin-wayland-api", &["smithay", "gnoblin-types"])]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_protocol_crate_may_run_a_compositor_session_in_its_tests() {
+        let graph = from_json(
+            r#"{ "packages": [{ "name": "gnoblin-wayland-wp-viewporter",
+                 "dependencies": [{ "name": "gnoblin-wayland", "kind": "dev" }] },
+               { "name": "gnoblin-wayland", "dependencies": [] }] }"#,
+        )
+        .expect("metadata parses");
+        let reported: Vec<String> = check(&graph).iter().map(DepViolation::to_string).collect();
+        assert!(reported.is_empty(), "{reported:?}");
+    }
+
+    #[test]
+    fn only_the_compositor_engine_depends_on_the_aggregate_and_only_the_aggregate_on_a_protocol_crate() {
+        assert_eq!(
+            violations(&[
+                ("gnoblin-wayland", &["gnoblin-wayland-protocols", "gnoblin-wayland-api"]),
+                (
+                    "gnoblin-wayland-protocols",
+                    &["gnoblin-wayland-api", "gnoblin-wayland-wp-viewporter"]
+                ),
+            ]),
+            Vec::<String>::new()
+        );
+        let found = violations(&[("gnoblin-compositor", &["gnoblin-wayland-protocols"])]);
+        assert!(found.iter().any(|found| found.contains("[protocol-root]")), "{found:?}");
+        let found = violations(&[("gnoblin-wayland", &["gnoblin-wayland-wp-viewporter"])]);
+        assert!(found.iter().any(|found| found.contains("[protocol-root]")), "{found:?}");
     }
 
     #[test]

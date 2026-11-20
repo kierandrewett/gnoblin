@@ -1,0 +1,161 @@
+//! The pointer the session draws: the client's named shape or the shell's choice, from the cursor theme.
+//!
+//! `wp_cursor_shape_v1` and `wl_pointer.set_cursor` both end in [`SeatHandler::cursor_image`], so the
+//! renderer has one value to read. The protocol is `gnoblin-wayland-wp-cursor-shape-v1`; what is here is
+//! what the compositor does with the answer: it records it, builds the overlay that draws the theme's image
+//! at the pointer, and tells the composer where the cursor stands so its old and new places are damaged.
+
+use crate::State;
+use crate::server::CursorSettings;
+use crate::shell_cursor::CursorChoice;
+
+use crate::log;
+
+/// The cursor chain a session draws from: the theme, searched through the providers in order,
+/// with a cache of the images read so far.
+pub(crate) fn cursor_chain(cursor: &CursorSettings) -> gnoblin_cursor::CursorChain {
+    gnoblin_cursor::CursorChain::new(
+        std::sync::Arc::new(gnoblin_cursor::FsFiles::from_environment()),
+        &cursor.theme,
+        cursor
+            .providers
+            .iter()
+            .copied()
+            .map(gnoblin_cursor::ProviderKind::provider)
+            .collect(),
+        CURSOR_CACHE_BYTES,
+    )
+}
+
+impl State {
+    /// Records the cursor a client asked for.
+    pub(crate) fn set_cursor_image(&mut self, image: smithay::input::pointer::CursorImageStatus) {
+        log::debug!(area = "cursor", shape = ?match &image {
+                smithay::input::pointer::CursorImageStatus::Named(icon) => Some(*icon),
+                _ => None,
+            },
+            "a client set the pointer image"
+        );
+        self.cursor_image = image;
+        // Called from inside smithay's seat callback, where the pointer is locked, so the
+        // composer is updated at the next frame instead.
+        self.cursor_shape_changed = true;
+    }
+
+    /// Applies the cursor theme, size and providers a committed configuration names. The next
+    /// frame draws the pointer from the new theme; the shape a client asked for is kept.
+    pub(crate) fn apply_cursor_settings(&mut self, cursor: &CursorSettings) {
+        log::debug!(area = "cursor", theme = %cursor.theme, size = cursor.size, "applied the committed cursor settings");
+        self.cursor_chain = cursor_chain(cursor);
+        self.cursor_size = cursor.size;
+        self.cursor_shape_changed = true;
+    }
+
+    /// Tells the composer where the cursor is drawn now, in global layout coordinates, so
+    /// the places it was and is get damaged. `redraw` is set when the shape changed, so the
+    /// cursor repaints where it stands.
+    pub(crate) fn update_cursor(&mut self, redraw: bool) {
+        let cursor = self.outputs.iter().find_map(|entry| {
+            let overlay = self.pointer_cursor(entry.backend)?;
+            let origin = self.output_rect(entry.backend)?;
+            let dst = overlay.dst();
+            Some(gnoblin_types::Rect {
+                x: origin.x + dst.x,
+                y: origin.y + dst.y,
+                width: dst.width,
+                height: dst.height,
+            })
+        });
+        self.composer.set_cursor(cursor, redraw);
+    }
+}
+
+/// The byte budget of the cursor chain's image cache.
+pub(crate) const CURSOR_CACHE_BYTES: usize = 8 * 1024 * 1024;
+
+impl State {
+    /// The cursor to draw on `output` this frame: the shell's choice while one stands (see `shell_cursor`), else the
+    /// client's. A named shape is drawn when the pointer is on that output; a client's own surface cursor is not drawn
+    /// here.
+    pub(crate) fn pointer_cursor(
+        &self,
+        output: gnoblin_types::OutputId,
+    ) -> Option<gnoblin_render_frame::frame::Overlay> {
+        let choice = match self.cursor_choice() {
+            CursorChoice::Hidden => return None,
+            CursorChoice::Client => match &self.cursor_image {
+                smithay::input::pointer::CursorImageStatus::Named(icon) => CursorChoice::Named(icon.name()),
+                _ => return None,
+            },
+            choice => choice,
+        };
+        // The pointer's own place, not the seat's last delivered one: a pointer a shell's grab or drag holds does not
+        // move the seat's.
+        let pointer = self.pointer_position;
+        let rect = self.output_rect(output)?;
+        let scale = self.output_scale(output)?;
+        let inside = pointer.x >= f64::from(rect.x)
+            && pointer.y >= f64::from(rect.y)
+            && pointer.x < f64::from(rect.x) + f64::from(rect.width)
+            && pointer.y < f64::from(rect.y) + f64::from(rect.height);
+        if !inside {
+            return None;
+        }
+        let at = (pointer.x - f64::from(rect.x), pointer.y - f64::from(rect.y));
+        match choice {
+            CursorChoice::Image(images) => cursor_overlay(images, at, scale),
+            CursorChoice::Named(name) => {
+                let output_scale = gnoblin_types::Scale::new((scale * 1000.0).round() as u32, 1000);
+                let images = self.cursor_chain.lookup(name, self.cursor_size, output_scale);
+                cursor_overlay(&images, at, scale)
+            }
+            CursorChoice::Hidden | CursorChoice::Client => None,
+        }
+    }
+}
+
+/// Builds the overlay that draws the first frame of `images` with its hotspot at `at`,
+/// a point in the output's logical space. The frame is straight-alpha `0xAARRGGBB`, which
+/// [`gnoblin_render_frame::image::Image`] takes as RGBA bytes; the overlay premultiplies it.
+/// Animated cursors show their first frame only for now.
+pub(crate) fn cursor_overlay(
+    images: &gnoblin_cursor::CursorImages,
+    at: (f64, f64),
+    scale: f64,
+) -> Option<gnoblin_render_frame::frame::Overlay> {
+    let frame = images.frames().first()?;
+    let (width, height) = (frame.width(), frame.height());
+    let mut data = Vec::with_capacity(frame.pixels().len() * 4);
+    for &pixel in frame.pixels() {
+        data.extend_from_slice(&[
+            (pixel >> 16) as u8,
+            (pixel >> 8) as u8,
+            pixel as u8,
+            (pixel >> 24) as u8,
+        ]);
+    }
+    let image =
+        gnoblin_render_frame::image::Image::new(gnoblin_types::Size { width, height }, width as usize * 4, data)?;
+    let (hotspot_x, hotspot_y) = images.hotspot();
+    let dst = gnoblin_types::Rect {
+        x: (at.0 - f64::from(hotspot_x) / scale).round() as i32,
+        y: (at.1 - f64::from(hotspot_y) / scale).round() as i32,
+        width: (f64::from(width) / scale).round() as u32,
+        height: (f64::from(height) / scale).round() as u32,
+    };
+    gnoblin_render_frame::frame::Overlay::new(dst, &image)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cursor_overlay;
+    use gnoblin_cursor::{CursorFrame, CursorImages};
+
+    #[test]
+    fn cursor_overlay_draws_the_first_frame_at_its_hotspot() {
+        let frame = CursorFrame::new(2, 2, vec![0xff00_ff00; 4], 0).expect("frame");
+        let images = CursorImages::new((1, 1), vec![frame]).expect("images");
+        assert!(cursor_overlay(&images, (10.0, 10.0), 1.0).is_some());
+        assert!(cursor_overlay(&images, (10.0, 10.0), 2.0).is_some());
+    }
+}

@@ -21,6 +21,7 @@ mod native_libs;
 mod native_probe;
 mod oracle;
 mod profiles;
+mod protocol_crates;
 mod sdk;
 mod stage;
 #[cfg(test)]
@@ -65,7 +66,9 @@ subcommands:
                      ABI crates, or with --check fail when a generated file is stale; see xtask/src/sdk/mod.rs
   oracle record | check [--repeat N] | list
                      write, or prove stable, the golden fixtures recorded from the TypeScript std for the native std port;
-                     see xtask/src/oracle.rs";
+                     see xtask/src/oracle.rs
+  protocol-crates [--check]  write the manifests of the Wayland protocol crates (crates/protocols) and their aggregate from
+                     xtask/protocols.toml, or with --check fail when a generated file is stale or the table and the tree differ";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -79,6 +82,7 @@ fn main() -> ExitCode {
         ("gen-proto", []) => gen_proto::run(),
         ("layout", []) => layout::run(),
         ("gen-sdks", _) => sdk::run(&rest),
+        ("protocol-crates", _) => protocol_crates::run(&rest),
         ("logging", []) => logging::run(),
         ("native-libs", []) => native_libs::run(),
         ("stage", _) => stage::run(&rest),
