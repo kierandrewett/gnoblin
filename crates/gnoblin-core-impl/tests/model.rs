@@ -527,7 +527,7 @@ fn client_lifecycle() {
 
 #[test]
 fn a_listener_of_created_is_told_of_the_windows_there() {
-    let mut rig = Rig::new("model_created_replays", &[]);
+    let rig = Rig::new("model_created_replays", &[]);
     let (gnoblin, api) = (rig.gnoblin, rig.api);
     let log = Rc::clone(&rig.log);
     let created = rig.signal_of(gnoblin, "client_created");
@@ -549,7 +549,7 @@ fn a_listener_of_created_is_told_of_the_windows_there() {
 
 #[test]
 fn ready_is_told_for_the_windows_there_at_the_start() {
-    let mut rig = Rig::new("model_ready_at_boot", &[]);
+    let rig = Rig::new("model_ready_at_boot", &[]);
     let (three, clients, gnoblin) = (rig.client(3), rig.clients(), rig.gnoblin);
     let api = rig.api;
     for (obj, signal, place) in [
@@ -778,7 +778,7 @@ fn listeners_and_subscriptions_are_one_list() {
 
 #[test]
 fn a_listener_that_is_removed_hears_nothing_and_one_added_twice_is_added_once() {
-    let mut rig = Rig::new("model_listener_removal", &[]);
+    let rig = Rig::new("model_listener_removal", &[]);
     let three = rig.client(3);
     let api = rig.api;
     let make = |rig: &Rig, who: &'static str| -> Obj {
@@ -819,7 +819,7 @@ fn a_listener_that_is_removed_hears_nothing_and_one_added_twice_is_added_once() 
 
 #[test]
 fn a_listener_that_fails_stops_no_other() {
-    let mut rig = Rig::new("model_listener_errors", &[]);
+    let rig = Rig::new("model_listener_errors", &[]);
     let three = rig.client(3);
     let api = rig.api;
     let members = vec![rig.member("client_listener", abi::MEMBER_METHOD, "on_title_changed")];
@@ -855,7 +855,7 @@ fn a_listener_that_fails_stops_no_other() {
 
 #[test]
 fn collections_follow_their_members() {
-    let mut rig = Rig::new("model_collections", &[]);
+    let rig = Rig::new("model_collections", &[]);
     rig.boot();
     let clients = rig.clients();
     let api = rig.api;
@@ -1052,7 +1052,7 @@ fn collections_follow_their_members() {
 
 #[test]
 fn focus_history() {
-    let mut rig = Rig::new("model_focus_history", &[(5, "three", "app.three")]);
+    let rig = Rig::new("model_focus_history", &[(5, "three", "app.three")]);
     rig.boot();
     let focus = rig.object(rig.gnoblin, "focus");
     let history = |rig: &Rig, limit: Option<i64>| -> Res<Vec<String>> {
@@ -1103,7 +1103,7 @@ fn focus_history() {
 
 #[test]
 fn focus_history_follows_the_seat() {
-    let mut rig = Rig::new("model_focus_history", &[(5, "three", "app.three")]);
+    let rig = Rig::new("model_focus_history", &[(5, "three", "app.three")]);
     rig.boot();
     let focus = rig.object(rig.gnoblin, "focus");
     let order = |rig: &Rig| rig.ids(&rig.call(focus, "history", &[]).expect("a history"));
@@ -1164,7 +1164,7 @@ fn focus_history_follows_the_seat() {
 
 #[test]
 fn timers_run_once_in_their_time() {
-    let mut rig = Rig::new("model_timers", &[]);
+    let rig = Rig::new("model_timers", &[]);
     rig.boot();
     let (api, gnoblin) = (rig.api, rig.gnoblin);
     let t0 = rig.call(gnoblin, "now", &[]).unwrap().double().unwrap();
@@ -1200,7 +1200,7 @@ fn timers_run_once_in_their_time() {
 
 #[test]
 fn an_object_that_is_gone_keeps_its_last_values_and_refuses_a_write() {
-    let mut rig = Rig::new("model_dead_objects", &[]);
+    let rig = Rig::new("model_dead_objects", &[]);
     rig.boot();
     let (c, o) = (rig.client(3), rig.output(0));
     let flags = |rig: &Rig| {
@@ -1251,7 +1251,7 @@ fn an_object_that_is_gone_keeps_its_last_values_and_refuses_a_write() {
 
 #[test]
 fn a_property_bound_to_a_function_follows_what_it_reads() {
-    let mut rig = Rig::new("model_dead_objects", &[]);
+    let rig = Rig::new("model_dead_objects", &[]);
     rig.boot();
     let c = rig.client(3);
     let bindings = rig.object(c, "properties");
@@ -1329,7 +1329,7 @@ fn a_selection_is_refused_a_priority_that_is_not_a_number() {
 
 #[test]
 fn a_list_of_a_shell_tells_its_listeners_what_joins_and_leaves() {
-    let mut rig = Rig::new("model_dead_objects", &[]);
+    let rig = Rig::new("model_dead_objects", &[]);
     rig.boot();
     let list = rig.api.create(rig.class("client_collection"), &[]).expect("a list");
     assert!(rig.prop(list, "mutable").bool().unwrap());

@@ -9,12 +9,14 @@ use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Fail, Obj, Res, Val};
 
 use super::values::fields_of;
-use super::world::{ClientState, CollState, Kind, OutputState, Query, Scalar, Want, items_in, matches};
+use super::world::{
+    ClientState, CollKind, CollState, ModelQuery, OutputNode, QueryScalar, QueryWant, items_in, matches,
+};
 use super::{handout, listener, with_world};
 
 /// Reads a query record: each field that is given is a term, and a field named `any_x` holds when `x` is one of its values.
-pub(super) fn query_of(cx: &Cx<'_>, class: &str, value: &Val) -> Res<Query> {
-    let mut query = Query::default();
+pub(super) fn query_of(cx: &Cx<'_>, class: &str, value: &Val) -> Res<ModelQuery> {
+    let mut query = ModelQuery::default();
     if matches!(value, Val::None) {
         return Ok(query);
     }
@@ -26,24 +28,24 @@ pub(super) fn query_of(cx: &Cx<'_>, class: &str, value: &Val) -> Res<Query> {
             let wanted = field
                 .list()?
                 .iter()
-                .filter_map(Scalar::from_val)
-                .collect::<Vec<Scalar>>();
-            query.terms.push((key.to_owned(), Want::Any(wanted)));
-        } else if let Some(wanted) = Scalar::from_val(field) {
-            query.terms.push((name.to_owned(), Want::One(wanted)));
+                .filter_map(QueryScalar::from_val)
+                .collect::<Vec<QueryScalar>>();
+            query.terms.push((key.to_owned(), QueryWant::Any(wanted)));
+        } else if let Some(wanted) = QueryScalar::from_val(field) {
+            query.terms.push((name.to_owned(), QueryWant::One(wanted)));
         }
     }
     Ok(query)
 }
 
 /// The id of a member of a collection of `kind`.
-fn id_of(cx: &Cx<'_>, kind: Kind, member: Obj) -> Option<String> {
+fn id_of(cx: &Cx<'_>, kind: CollKind, member: Obj) -> Option<String> {
     match kind {
-        Kind::Client => cx
+        CollKind::Client => cx
             .with_state::<ClientState, _>(member, |state| state.node.to_string())
             .ok(),
-        Kind::Output => cx
-            .with_state::<OutputState, _>(member, |state| state.node.to_string())
+        CollKind::Output => cx
+            .with_state::<OutputNode, _>(member, |state| state.node.to_string())
             .ok(),
     }
 }
@@ -68,16 +70,16 @@ fn settle_views(cx: &Cx<'_>, me: Obj, member: Obj) {
     });
 }
 
-fn register_collection(builder: &mut Builder, class: &'static str, kind: Kind) {
+fn register_collection(builder: &mut Builder, class: &'static str, kind: CollKind) {
     let mut collection = builder
         .class::<CollState>(class)
         .ctor(move |cx, _| match kind {
-            Kind::Client => {
+            CollKind::Client => {
                 let me = cx.me();
                 with_world(cx, |world| world.lists.push(me))?;
-                Ok(CollState::list(Kind::Client))
+                Ok(CollState::list(CollKind::Client))
             }
-            Kind::Output => Err(Fail::refused(
+            CollKind::Output => Err(Fail::refused(
                 "the outputs belong to the compositor: `gnoblin.outputs` is the collection",
             )),
         })
@@ -127,7 +129,7 @@ fn register_collection(builder: &mut Builder, class: &'static str, kind: Kind) {
                 .map(Val::List)
         })
         .method("where", move |state, cx, args| {
-            let query_class = if kind == Kind::Client {
+            let query_class = if kind == CollKind::Client {
                 "client_query"
             } else {
                 "output_query"
@@ -184,7 +186,7 @@ fn register_collection(builder: &mut Builder, class: &'static str, kind: Kind) {
                 .map(|member| vec![cx.object_value(member), cx.object_value(me)])
                 .collect()
         });
-    if kind == Kind::Client {
+    if kind == CollKind::Client {
         collection = collection
             .get("focused", |state, cx| {
                 let items = items_in(cx, &state.spec());
@@ -245,6 +247,6 @@ fn register_collection(builder: &mut Builder, class: &'static str, kind: Kind) {
 }
 
 pub(super) fn register(builder: &mut Builder) {
-    register_collection(builder, "client_collection", Kind::Client);
-    register_collection(builder, "output_collection", Kind::Output);
+    register_collection(builder, "client_collection", CollKind::Client);
+    register_collection(builder, "output_collection", CollKind::Output);
 }

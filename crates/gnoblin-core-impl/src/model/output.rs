@@ -9,11 +9,11 @@ use gnoblin_object::{Fail, Res, Val};
 
 use super::operation::OperationState;
 use super::values::{fields_of, record, rect, size};
-use super::world::OutputState;
+use super::world::OutputNode;
 use super::{handout, listener, properties, with_world};
 use crate::session;
 
-type Class<'a> = ClassBuilder<'a, OutputState>;
+type Class<'a> = ClassBuilder<'a, OutputNode>;
 
 /// The scale range the compositor accepts for an output.
 const MIN_SCALE: f64 = 0.5;
@@ -110,7 +110,7 @@ fn is_mode(text: &str) -> bool {
 }
 
 /// Sends a request to the output's engine and returns the operation its answer settles.
-fn send(cx: &Cx<'_>, state: &OutputState, text: String, notice: Option<String>, target: &str) -> Res<Val> {
+fn send(cx: &Cx<'_>, state: &OutputNode, text: String, notice: Option<String>, target: &str) -> Res<Val> {
     if !state.alive {
         return Err(Fail::new(abi::E_NO_SUCH_NODE, format!("{target}: the output is gone")));
     }
@@ -160,7 +160,7 @@ fn mode_size(mode: &str) -> (f64, f64) {
 
 pub(super) fn register(builder: &mut Builder) {
     let mut class = builder
-        .class::<OutputState>("output")
+        .class::<OutputNode>("output")
         .ctor(|_, _| Err(Fail::refused("an output is made by the compositor, not by a shell")))
         .get("id", |state, _| Ok(Val::Text(state.node.to_string())))
         .get("alive", |state, _| Ok(Val::Bool(state.alive)));
@@ -235,7 +235,7 @@ pub(super) fn register(builder: &mut Builder) {
             let outputs = with_world(cx, |world| world.outputs.values().copied().collect::<Vec<_>>())?;
             for output in outputs {
                 let connector = cx
-                    .with_state::<OutputState, _>(output, |other| other.read("connector").string())
+                    .with_state::<OutputNode, _>(output, |other| other.read("connector").string())
                     .unwrap_or_default();
                 if connector == source {
                     return handout(cx, output);
@@ -257,7 +257,7 @@ pub(super) fn register(builder: &mut Builder) {
                 None | Some(Val::None) => String::new(),
                 Some(source) => {
                     let source = source.object()?;
-                    cx.with_state::<OutputState, _>(source, |other| other.read("connector").string())
+                    cx.with_state::<OutputNode, _>(source, |other| other.read("connector").string())
                         .map_err(|_| Fail::type_error(format!("{target}: the source is not another output")))?
                 }
             };

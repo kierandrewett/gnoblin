@@ -10,12 +10,12 @@ use gnoblin_object::{Fail, Obj, Res, Val};
 
 use super::collection::query_of;
 use super::values::fields_of;
-use super::world::{Kind, items, matches};
+use super::world::{CollKind, items, matches};
 use super::{handout, operation, with_world};
 use crate::session;
 
 /// The service.
-pub(super) struct Service;
+pub(super) struct RootService;
 
 /// The history's state: nothing, the order is the model's.
 pub(super) struct History;
@@ -100,14 +100,14 @@ fn history(cx: &Cx<'_>, filter: Option<&Val>) -> Res<Val> {
 }
 
 /// The members of the root of `kind` that match `query`, in order.
-fn find(cx: &Cx<'_>, kind: Kind, query: Option<&Val>) -> Res<Val> {
+fn find(cx: &Cx<'_>, kind: CollKind, query: Option<&Val>) -> Res<Val> {
     let (class, root) = match kind {
-        Kind::Client => ("client_query", root(cx, true)?),
-        Kind::Output => ("output_query", root(cx, false)?),
+        CollKind::Client => ("client_query", root(cx, true)?),
+        CollKind::Output => ("output_query", root(cx, false)?),
     };
     let query = match query {
         Some(value) => query_of(cx, class, value)?,
-        None => super::world::Query::default(),
+        None => super::world::ModelQuery::default(),
     };
     items(cx, root)
         .into_iter()
@@ -119,10 +119,10 @@ fn find(cx: &Cx<'_>, kind: Kind, query: Option<&Val>) -> Res<Val> {
 
 pub(super) fn register(builder: &mut Builder) {
     let mut class = builder
-        .class::<Service>("gnoblin")
+        .class::<RootService>("gnoblin")
         .ctor(|cx, _| {
             with_world(cx, |_| ())?;
-            Ok(Service)
+            Ok(RootService)
         })
         .get("clients", |_, cx| {
             let root = root(cx, true)?;
@@ -143,8 +143,8 @@ pub(super) fn register(builder: &mut Builder) {
                 obj: history.1,
             })
         })
-        .method("find_clients", |_, cx, args| find(cx, Kind::Client, args.first()))
-        .method("find_outputs", |_, cx, args| find(cx, Kind::Output, args.first()))
+        .method("find_clients", |_, cx, args| find(cx, CollKind::Client, args.first()))
+        .method("find_outputs", |_, cx, args| find(cx, CollKind::Output, args.first()))
         .method("timer", |_, cx, args| {
             operation::start(cx, args[0].double()?, Rc::clone(args[1].closure()?))
         })

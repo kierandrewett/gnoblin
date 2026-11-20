@@ -11,16 +11,18 @@
 //! a window's own listeners are told before the collections that hold it. Build it with `cargo build -p gnoblin-example-native-model`
 //! and run it with `gnoblin ./target/debug/libnative_model.so`.
 
+use gnoblin_core as gnoblin;
+use gnoblin_core::Gnoblin;
 use gnoblin_core::objects::{ClientQuery, ModelRoot};
-use gnoblin_core::prelude::*;
 
 #[gnoblin::main]
-fn main(g: &Gnoblin) -> gnoblin_core::Result<()> {
+fn main(g: &Gnoblin) -> gnoblin::Result<()> {
     let objects = g.objects()?;
     let model = ModelRoot::get(&objects)?;
-    let clients = model
-        .clients()?
-        .ok_or_else(|| gnoblin_core::CoreError::new(gnoblin_core::ErrorKind::Abi, "the core has no clients"))?;
+    let Some(clients) = model.clients()? else {
+        g.log("model: the core has no clients");
+        return Ok(());
+    };
     g.log(&format!("model: {} windows at the start", clients.length()?));
 
     // A selection follows its members: a window joins it when its application id matches, and leaves when it stops matching.

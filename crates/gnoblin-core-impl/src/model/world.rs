@@ -77,20 +77,20 @@ pub(super) const OUTPUT_KEYS: &[&str] = &[
 
 /// What `where` compares: a number, text or a flag.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) enum Scalar {
+pub(super) enum QueryScalar {
     Text(String),
     Num(f64),
     Flag(bool),
 }
 
-impl Scalar {
-    pub(super) fn from_val(value: &Val) -> Option<Scalar> {
+impl QueryScalar {
+    pub(super) fn from_val(value: &Val) -> Option<QueryScalar> {
         match value {
-            Val::Text(text) => Some(Scalar::Text(text.clone())),
-            Val::Bool(flag) => Some(Scalar::Flag(*flag)),
-            Val::Double(number) => Some(Scalar::Num(*number)),
-            Val::Int(number) => Some(Scalar::Num(*number as f64)),
-            Val::Uint(number) => Some(Scalar::Num(*number as f64)),
+            Val::Text(text) => Some(QueryScalar::Text(text.clone())),
+            Val::Bool(flag) => Some(QueryScalar::Flag(*flag)),
+            Val::Double(number) => Some(QueryScalar::Num(*number)),
+            Val::Int(number) => Some(QueryScalar::Num(*number as f64)),
+            Val::Uint(number) => Some(QueryScalar::Num(*number as f64)),
             _ => None,
         }
     }
@@ -98,29 +98,29 @@ impl Scalar {
 
 /// What a field of a query wants.
 #[derive(Clone, Debug)]
-pub(super) enum Want {
-    One(Scalar),
-    Any(Vec<Scalar>),
+pub(super) enum QueryWant {
+    One(QueryScalar),
+    Any(Vec<QueryScalar>),
 }
 
 /// A selection's query: every term must hold.
 #[derive(Clone, Debug, Default)]
-pub(super) struct Query {
-    pub(super) terms: Vec<(String, Want)>,
+pub(super) struct ModelQuery {
+    pub(super) terms: Vec<(String, QueryWant)>,
 }
 
 /// What a collection holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Kind {
+pub(super) enum CollKind {
     Client,
     Output,
 }
 
-impl Kind {
+impl CollKind {
     pub(super) fn word(self) -> &'static str {
         match self {
-            Kind::Client => "Client",
-            Kind::Output => "Output",
+            CollKind::Client => "Client",
+            CollKind::Output => "Output",
         }
     }
 }
@@ -196,12 +196,12 @@ impl ClientState {
     }
 
     /// The value `where` compares for `key`.
-    pub(super) fn scalar(&self, key: &str) -> Option<Scalar> {
+    pub(super) fn scalar(&self, key: &str) -> Option<QueryScalar> {
         Some(match key {
-            "id" => Scalar::Text(self.node.to_string()),
-            "app_id" | "title" => Scalar::Text(self.read(key).string()),
-            "focused" | "fullscreen" => Scalar::Flag(self.read(key).flag()),
-            "x" | "y" | "width" | "height" => Scalar::Num(self.read(key).number()),
+            "id" => QueryScalar::Text(self.node.to_string()),
+            "app_id" | "title" => QueryScalar::Text(self.read(key).string()),
+            "focused" | "fullscreen" => QueryScalar::Flag(self.read(key).flag()),
+            "x" | "y" | "width" | "height" => QueryScalar::Num(self.read(key).number()),
             _ => return None,
         })
     }
@@ -222,7 +222,7 @@ fn client_seen(node: u64, class: u32) -> ClientSeen {
 }
 
 /// An output.
-pub(super) struct OutputState {
+pub(super) struct OutputNode {
     pub(super) node: u64,
     pub(super) class: u32,
     pub(super) alive: bool,
@@ -233,14 +233,14 @@ pub(super) struct OutputState {
     pub(super) bindings: Cell<Option<Obj>>,
 }
 
-impl OutputState {
-    fn new(node: u64) -> OutputState {
+impl OutputNode {
+    fn new(node: u64) -> OutputNode {
         let class = tree_class("screen");
         let last = OUTPUT_KEYS
             .iter()
             .map(|key| ((*key).to_owned(), live(node, class, key)))
             .collect();
-        OutputState {
+        OutputNode {
             node,
             class,
             alive: true,
@@ -259,13 +259,13 @@ impl OutputState {
         }
     }
 
-    pub(super) fn scalar(&self, key: &str) -> Option<Scalar> {
+    pub(super) fn scalar(&self, key: &str) -> Option<QueryScalar> {
         Some(match key {
-            "id" => Scalar::Text(self.node.to_string()),
-            "name" | "make" | "model" | "mode" => Scalar::Text(self.read(key).string()),
-            "scale" => Scalar::Num(self.read("output_scale").number()),
-            "primary" | "enabled" => Scalar::Flag(self.read(key).flag()),
-            "x" | "y" | "width" | "height" => Scalar::Num(self.read(key).number()),
+            "id" => QueryScalar::Text(self.node.to_string()),
+            "name" | "make" | "model" | "mode" => QueryScalar::Text(self.read(key).string()),
+            "scale" => QueryScalar::Num(self.read("output_scale").number()),
+            "primary" | "enabled" => QueryScalar::Flag(self.read(key).flag()),
+            "x" | "y" | "width" | "height" => QueryScalar::Num(self.read(key).number()),
             _ => return None,
         })
     }
@@ -285,10 +285,10 @@ fn output_seen(node: u64, class: u32) -> OutputSeen {
 
 /// A collection: a root the compositor fills, a list a shell keeps, or a selection of another collection.
 pub(super) struct CollState {
-    pub(super) kind: Kind,
+    pub(super) kind: CollKind,
     /// The collection a selection narrows.
     pub(super) parent: Option<Obj>,
-    pub(super) query: Option<Query>,
+    pub(super) query: Option<ModelQuery>,
     /// The members of a root or a list, in order.
     pub(super) list: Vec<Obj>,
     /// The members a selection last told its listeners of.
@@ -299,21 +299,21 @@ pub(super) struct CollState {
 }
 
 impl CollState {
-    pub(super) fn root(kind: Kind) -> CollState {
+    pub(super) fn root(kind: CollKind) -> CollState {
         CollState::bare(kind, None, None, false)
     }
 
-    pub(super) fn list(kind: Kind) -> CollState {
+    pub(super) fn list(kind: CollKind) -> CollState {
         CollState::bare(kind, None, None, true)
     }
 
-    pub(super) fn view(kind: Kind, parent: Obj, query: Query, priority: f64) -> CollState {
+    pub(super) fn view(kind: CollKind, parent: Obj, query: ModelQuery, priority: f64) -> CollState {
         let mut state = CollState::bare(kind, Some(parent), Some(query), false);
         state.priority = priority;
         state
     }
 
-    fn bare(kind: Kind, parent: Option<Obj>, query: Option<Query>, mutable: bool) -> CollState {
+    fn bare(kind: CollKind, parent: Option<Obj>, query: Option<ModelQuery>, mutable: bool) -> CollState {
         CollState {
             kind,
             parent,
@@ -327,8 +327,8 @@ impl CollState {
     }
 
     /// What a computation of the members needs, taken so the collection's own state is free while it runs.
-    pub(super) fn spec(&self) -> Spec {
-        Spec {
+    pub(super) fn spec(&self) -> CollSpec {
+        CollSpec {
             kind: self.kind,
             parent: self.parent,
             query: self.query.clone(),
@@ -338,23 +338,23 @@ impl CollState {
 }
 
 /// The part of a collection that decides its members.
-pub(super) struct Spec {
-    pub(super) kind: Kind,
+pub(super) struct CollSpec {
+    pub(super) kind: CollKind,
     pub(super) parent: Option<Obj>,
-    pub(super) query: Option<Query>,
+    pub(super) query: Option<ModelQuery>,
     pub(super) list: Vec<Obj>,
 }
 
 /// Whether `member` satisfies `query`.
-pub(super) fn matches(cx: &Cx<'_>, kind: Kind, query: &Query, member: Obj) -> bool {
-    let scalar = |key: &str| -> Option<Scalar> {
+pub(super) fn matches(cx: &Cx<'_>, kind: CollKind, query: &ModelQuery, member: Obj) -> bool {
+    let scalar = |key: &str| -> Option<QueryScalar> {
         match kind {
-            Kind::Client => cx
+            CollKind::Client => cx
                 .with_state::<ClientState, _>(member, |state| state.scalar(key))
                 .ok()
                 .flatten(),
-            Kind::Output => cx
-                .with_state::<OutputState, _>(member, |state| state.scalar(key))
+            CollKind::Output => cx
+                .with_state::<OutputNode, _>(member, |state| state.scalar(key))
                 .ok()
                 .flatten(),
         }
@@ -362,14 +362,14 @@ pub(super) fn matches(cx: &Cx<'_>, kind: Kind, query: &Query, member: Obj) -> bo
     query.terms.iter().all(|(key, want)| {
         let have = scalar(key);
         match want {
-            Want::One(wanted) => have.as_ref() == Some(wanted),
-            Want::Any(wanted) => have.as_ref().is_some_and(|have| wanted.contains(have)),
+            QueryWant::One(wanted) => have.as_ref() == Some(wanted),
+            QueryWant::Any(wanted) => have.as_ref().is_some_and(|have| wanted.contains(have)),
         }
     })
 }
 
 /// The members of a collection now, in order.
-pub(super) fn items_in(cx: &Cx<'_>, spec: &Spec) -> Vec<Obj> {
+pub(super) fn items_in(cx: &Cx<'_>, spec: &CollSpec) -> Vec<Obj> {
     match spec.parent {
         None => spec.list.clone(),
         Some(parent) => {
@@ -444,9 +444,9 @@ pub(super) struct World {
 
 impl World {
     pub(super) fn new(cx: &Cx<'_>) -> Res<World> {
-        let client_root = cx.spawn("client_collection", CollState::root(Kind::Client))?;
+        let client_root = cx.spawn("client_collection", CollState::root(CollKind::Client))?;
         cx.hold(client_root)?;
-        let output_root = cx.spawn("output_collection", CollState::root(Kind::Output))?;
+        let output_root = cx.spawn("output_collection", CollState::root(CollKind::Output))?;
         cx.hold(output_root)?;
         Ok(World {
             client_root,
@@ -579,7 +579,7 @@ impl World {
         if self.outputs.contains_key(&node) {
             return Ok(());
         }
-        let obj = cx.spawn("output", OutputState::new(node))?;
+        let obj = cx.spawn("output", OutputNode::new(node))?;
         cx.hold(obj)?;
         self.outputs.insert(node, obj);
         let root = self.output_root;
@@ -634,7 +634,7 @@ impl World {
         };
         let root = self.output_root;
         let held = self.holders(cx, root, obj);
-        let _ = cx.with_state::<OutputState, _>(obj, |state| {
+        let _ = cx.with_state::<OutputNode, _>(obj, |state| {
             state.frozen = Some(state.last.clone());
             state.alive = false;
         });
@@ -699,7 +699,7 @@ impl World {
 
     fn output_changed(&self, cx: &Cx<'_>, obj: Obj) {
         let held = self.holders(cx, self.output_root, obj);
-        let Ok(told) = cx.with_state::<OutputState, _>(obj, |state| -> Vec<(&'static str, Vec<Val>)> {
+        let Ok(told) = cx.with_state::<OutputNode, _>(obj, |state| -> Vec<(&'static str, Vec<Val>)> {
             let now = output_seen(state.node, state.class);
             let seen = &mut state.seen;
             let me = cx.object_value(obj);
@@ -741,7 +741,7 @@ impl World {
             super::operation::settle(cx, operation, outcome);
             cx.later_on(operation, move |cx| cx.unhold(operation));
             let alive = cx
-                .with_state::<OutputState, _>(output, |state| state.alive)
+                .with_state::<OutputNode, _>(output, |state| state.alive)
                 .unwrap_or(false);
             if alive {
                 let held = self.holders(cx, self.output_root, output);
@@ -799,7 +799,7 @@ pub(super) fn emit_member(cx: &Cx<'_>, member: Obj, held: &[Obj], signal: &str, 
 
 /// One batch of what the compositor sent: the order inside a list is the order it arrived in.
 #[derive(Default)]
-pub(super) struct Batch {
+pub(super) struct PumpBatch {
     created: Vec<u64>,
     touched: Vec<u64>,
     destroyed: Vec<(u64, String)>,
@@ -808,9 +808,9 @@ pub(super) struct Batch {
     pointer: Vec<(u64, String, f64, f64, u64)>,
 }
 
-impl Batch {
-    pub(super) fn of(events: &[ShellEvent]) -> Batch {
-        let mut batch = Batch::default();
+impl PumpBatch {
+    pub(super) fn of(events: &[ShellEvent]) -> PumpBatch {
+        let mut batch = PumpBatch::default();
         let tree = crate::catalog::class_id("tree");
         let pointer = tree.and_then(|class| crate::catalog::signal_id(class, "event"));
         for event in events {
@@ -878,7 +878,7 @@ fn pointer_signal(kind: &str) -> Option<&'static str> {
 impl World {
     /// Reads one batch: departures, then arrivals, then changes, and last the pointer's edges. The destroyed list is deepest first,
     /// and departures go before arrivals, so a collection never holds a dead member while it is told of a new one.
-    pub(super) fn plan(&mut self, cx: &Cx<'_>, batch: Batch) -> Res<()> {
+    pub(super) fn plan(&mut self, cx: &Cx<'_>, batch: PumpBatch) -> Res<()> {
         self.boot(cx)?;
         self.prune(cx);
         if !self.booted {
@@ -889,7 +889,7 @@ impl World {
             if let Some(obj) = self.clients.get(node) {
                 let _ = cx.with_state::<ClientState, _>(*obj, |state| state.last.insert(key.clone(), value.clone()));
             } else if let Some(obj) = self.outputs.get(node) {
-                let _ = cx.with_state::<OutputState, _>(*obj, |state| state.last.insert(key.clone(), value.clone()));
+                let _ = cx.with_state::<OutputNode, _>(*obj, |state| state.last.insert(key.clone(), value.clone()));
             }
         }
         self.settle_applications(cx, &batch.answers);
@@ -947,7 +947,7 @@ impl World {
     }
 
     /// The turn: what the compositor sent and the shell's own turn, in the order the TypeScript library took them.
-    pub(super) fn turn(&mut self, cx: &Cx<'_>, batch: Batch) -> Res<()> {
+    pub(super) fn turn(&mut self, cx: &Cx<'_>, batch: PumpBatch) -> Res<()> {
         if !batch.is_empty() || !self.booted {
             self.plan(cx, batch)?;
         }

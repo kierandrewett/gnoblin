@@ -13,7 +13,7 @@ use crate::registry;
 
 /// Where an operation stands.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Status {
+enum OpStatus {
     Pending,
     Succeeded,
     Failed,
@@ -21,7 +21,7 @@ enum Status {
 
 /// A request the compositor answers later.
 pub(super) struct OperationState {
-    status: Status,
+    status: OpStatus,
     error: String,
     code: String,
     on_done: Vec<Rc<dyn Callable>>,
@@ -33,7 +33,7 @@ pub(super) struct OperationState {
 impl OperationState {
     pub(super) fn for_output(output: Obj) -> OperationState {
         OperationState {
-            status: Status::Pending,
+            status: OpStatus::Pending,
             error: String::new(),
             code: String::new(),
             on_done: Vec::new(),
@@ -69,16 +69,16 @@ fn failure_code(refusal: &str) -> &'static str {
 /// Settles an operation once: it succeeded, or failed with the compositor's words. Its listeners are told from the next turn.
 pub(super) fn settle(cx: &Cx<'_>, op: Obj, outcome: Result<(), &str>) {
     let told = cx.with_state::<OperationState, _>(op, |state| {
-        if state.status != Status::Pending {
+        if state.status != OpStatus::Pending {
             return None;
         }
         let (run, drop) = match outcome {
             Ok(()) => {
-                state.status = Status::Succeeded;
+                state.status = OpStatus::Succeeded;
                 (std::mem::take(&mut state.on_done), std::mem::take(&mut state.on_failed))
             }
             Err(error) => {
-                state.status = Status::Failed;
+                state.status = OpStatus::Failed;
                 state.error = error.to_owned();
                 state.code = failure_code(error).to_owned();
                 (std::mem::take(&mut state.on_failed), std::mem::take(&mut state.on_done))
@@ -123,9 +123,9 @@ fn base<'a>(class: ClassBuilder<'a, OperationState>) -> ClassBuilder<'a, Operati
         .ctor(|_, _| Err(Fail::refused("an operation is made by the library, from a request")))
         .get("status", |state, cx| {
             let name = match state.status {
-                Status::Pending => "pending",
-                Status::Succeeded => "succeeded",
-                Status::Failed => "failed",
+                OpStatus::Pending => "pending",
+                OpStatus::Succeeded => "succeeded",
+                OpStatus::Failed => "failed",
             };
             cx.enum_val("operation_status", name)
         })
@@ -134,18 +134,18 @@ fn base<'a>(class: ClassBuilder<'a, OperationState>) -> ClassBuilder<'a, Operati
         .method("then", |state, cx, args| {
             let run = Rc::clone(args[0].closure()?);
             match state.status {
-                Status::Pending => state.on_done.push(run),
-                Status::Succeeded => queue_calls(cx, cx.me(), vec![run], true, String::new(), String::new()),
-                Status::Failed => {}
+                OpStatus::Pending => state.on_done.push(run),
+                OpStatus::Succeeded => queue_calls(cx, cx.me(), vec![run], true, String::new(), String::new()),
+                OpStatus::Failed => {}
             }
             Ok(Val::None)
         })
         .method("catch", |state, cx, args| {
             let run = Rc::clone(args[0].closure()?);
             match state.status {
-                Status::Pending => state.on_failed.push(run),
-                Status::Failed => queue_calls(cx, cx.me(), vec![run], false, state.error.clone(), state.code.clone()),
-                Status::Succeeded => {}
+                OpStatus::Pending => state.on_failed.push(run),
+                OpStatus::Failed => queue_calls(cx, cx.me(), vec![run], false, state.error.clone(), state.code.clone()),
+                OpStatus::Succeeded => {}
             }
             Ok(Val::None)
         })
@@ -159,7 +159,7 @@ pub(super) struct TimerState {
 }
 
 /// What the registration of a timer carries: the generation, the timer's object and the shell's function.
-struct Fire {
+struct TimerFire {
     ctx: abi::GnoblinCtx,
     timer: Obj,
     run: Rc<dyn Callable>,
@@ -168,7 +168,7 @@ struct Fire {
 
 unsafe extern "C" fn fire(user: *mut c_void) -> i32 {
     // SAFETY: `user` is the box `start` made; the registration calls this once and then drops it.
-    let fire = unsafe { &*(user as *const Fire) };
+    let fire = unsafe { &*(user as *const TimerFire) };
     if !fire.pending.replace(false) {
         return abi::E_OK;
     }
@@ -186,7 +186,7 @@ unsafe extern "C" fn fire(user: *mut c_void) -> i32 {
 
 unsafe extern "C" fn forget(user: *mut c_void) {
     // SAFETY: `user` is the box `start` made, given up by the registration exactly once.
-    drop(unsafe { Box::from_raw(user as *mut Fire) });
+    drop(unsafe { Box::from_raw(user as *mut TimerFire) });
 }
 
 /// The most a timer may wait: a day, in milliseconds.
@@ -208,7 +208,7 @@ pub(super) fn start(cx: &Cx<'_>, ms: f64, run: Rc<dyn Callable>) -> Res<Val> {
         },
     )?;
     cx.hold(timer)?;
-    let user = Box::into_raw(Box::new(Fire {
+    let user = Box::into_raw(Box::new(TimerFire {
         ctx: cx.ctx(),
         timer,
         run,

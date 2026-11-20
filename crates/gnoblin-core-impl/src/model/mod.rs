@@ -33,7 +33,7 @@ mod properties;
 mod values;
 mod world;
 
-use world::{Batch, World};
+use world::{PumpBatch, World};
 
 thread_local! {
     /// The model of each generation that uses it: one per generation, on the shell thread.
@@ -93,7 +93,7 @@ pub(crate) fn pumped(ctx: GnoblinCtx, events: &[ShellEvent]) {
     let Some(root) = WORLDS.with(|worlds| worlds.borrow().get(&ctx).map(|world| world.client_root)) else {
         return;
     };
-    let batch = Batch::of(events);
+    let batch = PumpBatch::of(events);
     let ran = crate::object::run_in(ctx, root, |cx| {
         let Some(mut world) = WORLDS.with(|worlds| worlds.borrow_mut().remove(&ctx)) else {
             return;

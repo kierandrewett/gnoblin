@@ -18,18 +18,18 @@ const MAX_PASSES: usize = 8;
 
 /// What a binding writes.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Shape {
+enum BindShape {
     Double,
     Bool,
     Text,
     List,
 }
 
-struct Binding {
+struct PropBinding {
     id: u64,
     owner: Obj,
     property: String,
-    shape: Shape,
+    shape: BindShape,
     compute: Rc<dyn Callable>,
     /// What the last run read, and what it saw.
     reads: Vec<(Obj, ClassId, MemberId, Val)>,
@@ -39,13 +39,13 @@ struct Binding {
 }
 
 #[derive(Default)]
-struct Engine {
-    bindings: Vec<Binding>,
+struct BindingEngine {
+    bindings: Vec<PropBinding>,
     next: u64,
 }
 
 thread_local! {
-    static ENGINES: RefCell<HashMap<GnoblinCtx, Engine>> = RefCell::new(HashMap::new());
+    static ENGINES: RefCell<HashMap<GnoblinCtx, BindingEngine>> = RefCell::new(HashMap::new());
     /// The reads of the binding that is running.
     static READS: RefCell<Vec<(Obj, ClassId, MemberId)>> = const { RefCell::new(Vec::new()) };
 }
@@ -125,10 +125,10 @@ fn run(cx: &Cx<'_>, id: u64) {
     let site = format!("the binding of `{property}`");
     let written = computed.and_then(|value| {
         let value = match (shape, value) {
-            (Shape::Double, value @ Val::Double(_))
-            | (Shape::Bool, value @ Val::Bool(_))
-            | (Shape::Text, value @ Val::Text(_)) => value,
-            (Shape::List, value @ Val::List(_)) => value,
+            (BindShape::Double, value @ Val::Double(_))
+            | (BindShape::Bool, value @ Val::Bool(_))
+            | (BindShape::Text, value @ Val::Text(_)) => value,
+            (BindShape::List, value @ Val::List(_)) => value,
             (_, other) => return Err(Fail::type_error(format!("{site} gave {}", other.kind_name()))),
         };
         crate::object::with_lib(|lib| {
@@ -238,7 +238,7 @@ pub(super) fn bindings_of(cx: &Cx<'_>, owner: Obj, cache: &std::cell::Cell<Optio
     cx.handout(bindings)
 }
 
-fn bind(shape: Shape) -> impl Fn(&mut BindingsState, &mut Cx<'_>, &[Val]) -> Res<Val> + 'static {
+fn bind(shape: BindShape) -> impl Fn(&mut BindingsState, &mut Cx<'_>, &[Val]) -> Res<Val> + 'static {
     move |state, cx, args| {
         let property = args[0].text()?.to_owned();
         let compute = Rc::clone(args[1].closure()?);
@@ -264,7 +264,7 @@ fn bind(shape: Shape) -> impl Fn(&mut BindingsState, &mut Cx<'_>, &[Val]) -> Res
                 .for_each(|binding| binding.disposed = true);
             engine.next += 1;
             let id = engine.next;
-            engine.bindings.push(Binding {
+            engine.bindings.push(PropBinding {
                 id,
                 owner,
                 property: property.clone(),
@@ -287,10 +287,10 @@ pub(super) fn register(builder: &mut Builder) {
     let _ = builder
         .class::<BindingsState>("property_bindings")
         .ctor(|_, _| Err(Fail::refused("the bindings of an object are its `properties`")))
-        .method("bind_double", bind(Shape::Double))
-        .method("bind_bool", bind(Shape::Bool))
-        .method("bind_string", bind(Shape::Text))
-        .method("bind_list", bind(Shape::List))
+        .method("bind_double", bind(BindShape::Double))
+        .method("bind_bool", bind(BindShape::Bool))
+        .method("bind_string", bind(BindShape::Text))
+        .method("bind_list", bind(BindShape::List))
         .method("unbind", |state, cx, args| {
             let property = args[0].text()?;
             let owner = state.owner;
