@@ -1282,6 +1282,9 @@ shell where the feature has a Rust SDK. It also asserts that the files the lane 
   library. It changes no production code.
 - **Acceptance:** each fixture is stable across three runs on two boxes. `compat.ts` type-checks against the old declarations
   with the new file absent.
+- **Result:** `design/native-std-port-tests.md` has the coverage table, the command (`cargo xtask oracle record|check`) and what is not
+  covered: the `.d.ts` emit with `tests/ts-compat` and the golden scripts are not recorded by this change, and core services, window
+  policy, displays, XR and claim handover on reload are covered by their existing tests only.
 
 #### NpGenOut (7 days)
 

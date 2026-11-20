@@ -19,6 +19,7 @@ use std::time::Duration;
 use gnoblin_js::JsShellConfig;
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_testkit::compositor::{FakeCompositor, ROOT, text};
+use gnoblin_testkit::oracle::{self, json};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 
 #[path = "../../gnoblin-core-impl/tests/support/mod.rs"]
@@ -485,9 +486,19 @@ fn lines_of<'a>(run: &'a Run, name: &str) -> &'a [String] {
 
 #[test]
 fn transitions_styles_and_the_scene_write_what_the_typescript_std_writes() {
+    let reference = normalise(reference());
+    reference::fixtures().json(
+        "anim_style_transitions",
+        &json!({
+            "steps": reference.steps.iter().map(|(name, writes)| json!({ "step": name, "writes": writes })).collect::<Vec<_>>(),
+            "log": reference.log,
+        }),
+    );
+    if oracle::recording() {
+        return;
+    }
     let (native, transcript) = native();
-    let reference = reference();
-    let (native, reference) = (normalise(native), normalise(reference));
+    let native = normalise(native);
     for (label, run) in [("native", &native), ("typescript", &reference)] {
         for (name, lines) in &run.steps {
             println!("{label} {name}: {} writes", lines.len());

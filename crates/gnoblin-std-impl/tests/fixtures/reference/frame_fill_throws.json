@@ -1,0 +1,181 @@
+{
+  "scenario": "frame_fill_throws",
+  "source": "startDecorations({ frame(client, frame) { frame.top.size = 30; frame.top.add(new Box({ height: 30 })); throw new Error('no'); } });",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "key": "decorations_available",
+            "node": 21,
+            "op": "set",
+            "value": true
+          },
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "open",
+          "app_id": "foot",
+          "id": 3,
+          "title": "term"
+        },
+        {
+          "action": "eval",
+          "js": "rec('inset', gnoblin.clients.at(0).frameInset);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "Decorations.onAdded threw: <root>/shell.ts:9:114: no"
+      ],
+      "log": [
+        {
+          "label": "inset",
+          "value": {
+            "bottom": 0,
+            "left": 0,
+            "right": 0,
+            "top": 0
+          }
+        }
+      ],
+      "step": "opened",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 3,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "decoration": "server",
+                "height": 300.0,
+                "title": "term",
+                "width": 400.0,
+                "x": 0.0,
+                "y": 0.0
+              }
+            }
+          ],
+          "root": 3,
+          "tree": "window"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 3
+            }
+          },
+          {
+            "class": "canvas",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n1",
+            "op": "insert",
+            "parent": 3
+          },
+          {
+            "class": "canvas",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "node": "n1",
+            "op": "destroy"
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "width",
+            "node": 3,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 3,
+            "op": "set",
+            "value": 300.0
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

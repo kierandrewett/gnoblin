@@ -1,0 +1,698 @@
+{
+  "scenario": "scene_nodes",
+  "source": "globalThis.fail = (f: () => void) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.room = new Node({ id: 'xr-room', position: { x: 1, y: 2, z: 3 }, rotation: { x: 0.1, y: 0.2, z: 0.3 }, scale: 2 });\nroom.metresPerUnit = 0.5;\nrec('room', { id: room.id, rotation_y: room.rotation.y, rotation_1: room.rotation[1], scale: [...room.scale], mpu: room.metresPerUnit,\ndefault_mpu: new Node({ id: 'plain' }).metresPerUnit, distance: room.position.distanceTo(new Node({ id: 'other', position: [1, 2, 7] }).position) });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "room",
+          "value": {
+            "default_mpu": 1,
+            "distance": 4,
+            "id": "xr-room",
+            "mpu": 0.5,
+            "rotation_1": 0.2,
+            "rotation_y": 0.2,
+            "scale": [
+              2,
+              2,
+              2
+            ]
+          }
+        }
+      ],
+      "step": "made",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "node",
+              "node": "n1",
+              "parent": 0,
+              "props": {
+                "name": "xr-room",
+                "rotation": [
+                  0.1,
+                  0.2,
+                  0.3
+                ],
+                "scale": [
+                  2.0,
+                  2.0,
+                  2.0
+                ],
+                "x": 1.0,
+                "y": 2.0,
+                "z": 3.0
+              }
+            }
+          ],
+          "root": "n1",
+          "tree": "room"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "node",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n1",
+            "op": "set",
+            "value": "xr-room"
+          },
+          {
+            "key": "x",
+            "node": "n1",
+            "op": "set",
+            "value": 1.0
+          },
+          {
+            "key": "y",
+            "node": "n1",
+            "op": "set",
+            "value": 2.0
+          },
+          {
+            "key": "z",
+            "node": "n1",
+            "op": "set",
+            "value": 3.0
+          },
+          {
+            "key": "rotation",
+            "node": "n1",
+            "op": "set",
+            "value": [
+              0.1,
+              0.2,
+              0.3
+            ]
+          },
+          {
+            "key": "scale",
+            "node": "n1",
+            "op": "set",
+            "value": [
+              2.0,
+              2.0,
+              2.0
+            ]
+          },
+          {
+            "class": "node",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n2",
+            "op": "set",
+            "value": "plain"
+          },
+          {
+            "class": "node",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n3",
+            "op": "set",
+            "value": "other"
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 1.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 2.0
+          },
+          {
+            "key": "z",
+            "node": "n3",
+            "op": "set",
+            "value": 7.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.q = new Node({ id: 'q' }); q.rotation = { x: 0, y: Math.sin(0.25), z: 0, w: Math.cos(0.25) };\nrec('quaternion', [...q.rotation]);\nrec('bad', [fail(() => { q.rotation = { x: 0, y: NaN, z: 0 }; }), fail(() => { q.scale = 'big'; })]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "quaternion",
+          "value": [
+            0,
+            0.5,
+            0
+          ]
+        },
+        {
+          "label": "bad",
+          "value": [
+            "Node#N.rotation: must be three angles, { x, y, z } or a quaternion { x, y, z, w }",
+            "Node#N.scale: must be a number, three numbers or { x, y, z }"
+          ]
+        }
+      ],
+      "step": "rotation_forms",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "node",
+              "node": "n4",
+              "parent": 0,
+              "props": {
+                "name": "q",
+                "rotation": [
+                  0.0,
+                  0.5,
+                  0.0
+                ]
+              }
+            }
+          ],
+          "root": "n4",
+          "tree": "q"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "node",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n4",
+            "op": "set",
+            "value": "q"
+          },
+          {
+            "key": "rotation",
+            "node": "n4",
+            "op": "set",
+            "value": [
+              0.0,
+              0.5,
+              0.0
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.n = new Node({ id: 'p', position: [1, 1, 1], rotation: [0, 0.5, 0] });\nn.transform = { position: { x: 5, y: 6, z: 7 } };"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "transform_position_only",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "node",
+              "node": "n5",
+              "parent": 0,
+              "props": {
+                "name": "p",
+                "rotation": [
+                  0.0,
+                  0.5,
+                  0.0
+                ],
+                "x": 5.0,
+                "y": 6.0,
+                "z": 7.0
+              }
+            }
+          ],
+          "root": "n5",
+          "tree": "p"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "node",
+            "node": "n5",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n5",
+            "op": "set",
+            "value": "p"
+          },
+          {
+            "key": "rotation",
+            "node": "n5",
+            "op": "set",
+            "value": [
+              0.0,
+              0.5,
+              0.0
+            ]
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 5.0
+          },
+          {
+            "key": "y",
+            "node": "n5",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "z",
+            "node": "n5",
+            "op": "set",
+            "value": 7.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('bad', [fail(() => { n.transform = { position: { x: 9, y: 9, z: 9 }, rotation: { x: 'no', y: 0, z: 0 } }; }),\nfail(() => { n.transform = { position: [0, 0, 0], pose: 1 }; })]);\nrec('read_back', { position: n.transform.position.toArray(), rotation: n.transform.rotation.toArray() });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bad",
+          "value": [
+            "Node#N.transform.rotation: must be three angles, { x, y, z } or a quaternion { x, y, z, w }",
+            "Node#N.transform.pose: a transform has position, rotation and scale only"
+          ]
+        },
+        {
+          "label": "read_back",
+          "value": {
+            "position": [
+              5,
+              6,
+              7
+            ],
+            "rotation": [
+              0,
+              0.5,
+              0
+            ]
+          }
+        }
+      ],
+      "step": "transform_refused",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "node",
+              "node": "n5",
+              "parent": 0,
+              "props": {
+                "name": "p",
+                "rotation": [
+                  0.0,
+                  0.5,
+                  0.0
+                ],
+                "x": 5.0,
+                "y": 6.0,
+                "z": 7.0
+              }
+            }
+          ],
+          "root": "n5",
+          "tree": "p"
+        }
+      ],
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.parent = new Node({ id: 'parent', position: [10, 0, 0], rotation: [0, Math.PI / 2, 0], scale: 2 });\nglobalThis.child = new Node({ id: 'child', position: [0, 0, 1] }); parent.add(child);\nconst world = child.worldTransform;\nrec('world', { position: world.position.toArray().map((x) => Math.round(x * 1e10) / 1e10), scale: world.scale });\nrec('tree', { parent: child.parent === parent, children: parent.children.length, find: parent.find('child') === child });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "world",
+          "value": {
+            "position": [
+              12,
+              0,
+              0
+            ],
+            "scale": 2
+          }
+        },
+        {
+          "label": "tree",
+          "value": {
+            "children": 1,
+            "find": true,
+            "parent": true
+          }
+        }
+      ],
+      "step": "parent_and_child",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "node",
+              "node": "n6",
+              "parent": 0,
+              "props": {
+                "name": "parent",
+                "rotation": [
+                  0.0,
+                  1.5707963267948966,
+                  0.0
+                ],
+                "scale": [
+                  2.0,
+                  2.0,
+                  2.0
+                ],
+                "x": 10.0
+              }
+            },
+            {
+              "class": "node",
+              "node": "n7",
+              "parent": "n6",
+              "props": {
+                "name": "child",
+                "z": 1.0
+              }
+            }
+          ],
+          "root": "n6",
+          "tree": "parent"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "node",
+            "node": "n6",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n6",
+            "op": "set",
+            "value": "parent"
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 10.0
+          },
+          {
+            "key": "rotation",
+            "node": "n6",
+            "op": "set",
+            "value": [
+              0.0,
+              1.5707963267948966,
+              0.0
+            ]
+          },
+          {
+            "key": "scale",
+            "node": "n6",
+            "op": "set",
+            "value": [
+              2.0,
+              2.0,
+              2.0
+            ]
+          },
+          {
+            "class": "node",
+            "node": "n7",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n7",
+            "op": "set",
+            "value": "child"
+          },
+          {
+            "key": "z",
+            "node": "n7",
+            "op": "set",
+            "value": 1.0
+          },
+          {
+            "index": -1,
+            "node": "n7",
+            "op": "insert",
+            "parent": "n6"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "child.visible = false; child.opacity = 0.25; child.name = 'renamed'; child.input = 'none'; parent.input = 'capture';"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "flags",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "node",
+              "node": "n6",
+              "parent": 0,
+              "props": {
+                "input_mode": "capture",
+                "name": "parent",
+                "rotation": [
+                  0.0,
+                  1.5707963267948966,
+                  0.0
+                ],
+                "scale": [
+                  2.0,
+                  2.0,
+                  2.0
+                ],
+                "x": 10.0
+              }
+            },
+            {
+              "class": "node",
+              "node": "n7",
+              "parent": "n6",
+              "props": {
+                "input": false,
+                "name": "renamed",
+                "opacity": 0.25,
+                "visible": false,
+                "z": 1.0
+              }
+            }
+          ],
+          "root": "n6",
+          "tree": "parent"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "visible",
+            "node": "n7",
+            "op": "set",
+            "value": false
+          },
+          {
+            "key": "opacity",
+            "node": "n7",
+            "op": "set",
+            "value": 0.25
+          },
+          {
+            "key": "name",
+            "node": "n7",
+            "op": "set",
+            "value": "renamed"
+          },
+          {
+            "key": "input",
+            "node": "n7",
+            "op": "set",
+            "value": false
+          },
+          {
+            "key": "input_mode",
+            "node": "n6",
+            "op": "set",
+            "value": "capture"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "parent.destroy(); rec('alive', [parent.alive, child.alive]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "alive",
+          "value": [
+            false,
+            false
+          ]
+        }
+      ],
+      "step": "destroyed",
+      "writes": [
+        [
+          {
+            "node": "n6",
+            "op": "destroy"
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win1"
+      }
+    ]
+  }
+}

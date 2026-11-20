@@ -19,6 +19,7 @@ mod logging;
 mod metadata;
 mod native_libs;
 mod native_probe;
+mod oracle;
 mod profiles;
 mod sdk;
 mod stage;
@@ -61,7 +62,10 @@ subcommands:
   abi-header [--std] [--out FILE]  write the C header generated from the ABI crate (include/gnoblin/core.h, or std.h
                      with --std)
   gen-sdks [--check] [--target NAME]  write every language SDK (Rust, Python, TypeScript) from the schema catalog and the two
-                     ABI crates, or with --check fail when a generated file is stale; see xtask/src/sdk/mod.rs";
+                     ABI crates, or with --check fail when a generated file is stale; see xtask/src/sdk/mod.rs
+  oracle record | check [--repeat N] | list
+                     write, or prove stable, the golden fixtures recorded from the TypeScript std for the native std port;
+                     see xtask/src/oracle.rs";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -90,6 +94,7 @@ fn main() -> ExitCode {
         ("dist-check", _) => dist_check::run(&rest),
         ("abi-check", _) => abi_check::run_check(&rest),
         ("abi-header", _) => abi_check::run_header(&rest),
+        ("oracle", _) => oracle::run(&rest),
         (
             "deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "layout" | "docs-parity" | "native-libs",
             _,

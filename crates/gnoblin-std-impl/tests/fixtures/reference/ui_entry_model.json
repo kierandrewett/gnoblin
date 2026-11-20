@@ -1,0 +1,407 @@
+{
+  "scenario": "ui_entry_model",
+  "source": "const m = new EntryModel();\nconst at = () => [m.text, m.caret, m.anchor, m.selectedText, m.length];\nObject.assign(globalThis, { m, at });",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.insert('h\\u00e9llo'); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "héllo",
+            5,
+            5,
+            "",
+            5
+          ]
+        }
+      ],
+      "step": "edit_1",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.backspace(); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "héll",
+            4,
+            4,
+            "",
+            4
+          ]
+        }
+      ],
+      "step": "edit_2",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.left(); m.left(); m.insert('X\\n'); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "héXll",
+            3,
+            3,
+            "",
+            5
+          ]
+        }
+      ],
+      "step": "edit_3",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.home(true); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "héXll",
+            0,
+            3,
+            "héX",
+            5
+          ]
+        }
+      ],
+      "step": "edit_4",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.insert('Z'); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "Zll",
+            1,
+            1,
+            "",
+            3
+          ]
+        }
+      ],
+      "step": "edit_5",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.selectAll(); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "Zll",
+            3,
+            0,
+            "Zll",
+            3
+          ]
+        }
+      ],
+      "step": "edit_6",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.delete(); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "",
+            0,
+            0,
+            "",
+            0
+          ]
+        }
+      ],
+      "step": "edit_7",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.insert('ab'); m.left(); m.delete(); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "a",
+            1,
+            1,
+            "",
+            1
+          ]
+        }
+      ],
+      "step": "edit_8",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.end(); m.right(); m.left(true); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "a",
+            0,
+            1,
+            "a",
+            1
+          ]
+        }
+      ],
+      "step": "edit_9",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.text = 'new'; rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "new",
+            3,
+            3,
+            "",
+            3
+          ]
+        }
+      ],
+      "step": "edit_10",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.home(); m.right(true); m.right(true); m.backspace(); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "w",
+            0,
+            0,
+            "",
+            1
+          ]
+        }
+      ],
+      "step": "edit_11",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.insert('\\ud83d\\ude00x'); m.left(); m.left(); m.delete(); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "xw",
+            0,
+            0,
+            "",
+            2
+          ]
+        }
+      ],
+      "step": "edit_12",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "m.end(true); m.insert(''); rec('state', at());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "state",
+          "value": [
+            "xw",
+            2,
+            0,
+            "xw",
+            2
+          ]
+        }
+      ],
+      "step": "edit_13",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

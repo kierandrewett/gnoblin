@@ -1,0 +1,2935 @@
+{
+  "scenario": "frame_titlebar",
+  "source": "startDecorations();\nglobalThis.bounds = () => gnoblin.clients.map((c) => [c.x, c.y, c.width, c.height, c.opacity, c.maximised, c.minimised]);",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "key": "decorations_available",
+            "node": 21,
+            "op": "set",
+            "value": true
+          },
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "open",
+          "app_id": "foot",
+          "id": 3,
+          "title": "terminal"
+        },
+        {
+          "action": "answer_measures"
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              400,
+              300,
+              1,
+              false,
+              false
+            ]
+          ]
+        }
+      ],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n7",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                -28.0,
+                400.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                400.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                6.0,
+                6.0,
+                316.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n4",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ],
+              "rect": [
+                330.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n5",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ],
+              "rect": [
+                354.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 49,
+              "node": "n6",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ],
+              "rect": [
+                378.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 44,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"terminal\" }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                316.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "frame_titlebar.unfocused.bin",
+          "paint": "unfocused"
+        }
+      ],
+      "step": "opened",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 3,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "decoration": "server",
+                "height": 300.0,
+                "title": "terminal",
+                "width": 400.0,
+                "x": 0.0,
+                "y": 28.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n7",
+              "parent": 3,
+              "props": {
+                "content": {
+                  "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000000000000000000000000000",
+                  "paint": [
+                    "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+                  ]
+                },
+                "height": 28.0,
+                "width": 400.0,
+                "y": -28.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n1",
+              "parent": "n7",
+              "props": {
+                "content": {
+                  "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000ff3426230000000000000000",
+                  "paint": [
+                    "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+                  ]
+                },
+                "height": 28.0,
+                "width": 400.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n3",
+              "parent": "n1",
+              "props": {
+                "content": {
+                  "bytes": "474e504c010100000001000000000000000000009e430000804100000000000000000000000000000000",
+                  "paint": [
+                    "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+                  ]
+                },
+                "height": 16.0,
+                "width": 316.0,
+                "x": 6.0,
+                "y": 6.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n4",
+              "parent": "n1",
+              "props": {
+                "content": {
+                  "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d696e696d697a652d73796d626f6c6963",
+                  "paint": [
+                    "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+                  ]
+                },
+                "height": 16.0,
+                "width": 16.0,
+                "x": 330.0,
+                "y": 6.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n5",
+              "parent": "n1",
+              "props": {
+                "content": {
+                  "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d6178696d697a652d73796d626f6c6963",
+                  "paint": [
+                    "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+                  ]
+                },
+                "height": 16.0,
+                "width": 16.0,
+                "x": 354.0,
+                "y": 6.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n6",
+              "parent": "n1",
+              "props": {
+                "content": {
+                  "bytes": "474e504c010100000004000000000000000000008041fff4d6cd150077696e646f772d636c6f73652d73796d626f6c6963",
+                  "paint": [
+                    "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+                  ]
+                },
+                "height": 16.0,
+                "width": 16.0,
+                "x": 378.0,
+                "y": 6.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n2",
+              "parent": "n3",
+              "props": {
+                "content": {
+                  "bytes": "474e504c010100000003000000000000000000005041fff5d0c6040073616e73080000007465726d696e616c",
+                  "paint": [
+                    "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"terminal\" }"
+                  ]
+                },
+                "height": 16.0,
+                "width": 316.0
+              }
+            }
+          ],
+          "root": 3,
+          "tree": "frame"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 3
+            }
+          },
+          {
+            "class": "canvas",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n3"
+          },
+          {
+            "index": -1,
+            "node": "n3",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n4",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n5",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n5",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n6",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n6",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n7",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n7",
+            "op": "insert",
+            "parent": 3
+          },
+          {
+            "index": -1,
+            "node": "n1",
+            "op": "insert",
+            "parent": "n7"
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e7303000000e280a6",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"…\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000000000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 0.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "y",
+            "node": "n4",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n4",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n4",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d696e696d697a652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 38.0
+          },
+          {
+            "key": "y",
+            "node": "n5",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d6178696d697a652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 62.0
+          },
+          {
+            "key": "y",
+            "node": "n6",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n6",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n6",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n6",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd150077696e646f772d636c6f73652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n1",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000000000e04100000000ff3426230000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 0.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "y",
+            "node": "n7",
+            "op": "set",
+            "value": -28.0
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": "n7",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e73080000007465726d696e616c",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"terminal\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000009e430000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 330.0
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 354.0
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 378.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000ff3426230000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": 3,
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "width",
+            "node": 3,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 3,
+            "op": "set",
+            "value": 300.0
+          }
+        ],
+        [
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041fff5d0c6040073616e73080000007465726d696e616c",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"terminal\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "focused",
+          "value": true
+        },
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n7",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                -28.0,
+                400.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                400.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                6.0,
+                6.0,
+                316.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n4",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ],
+              "rect": [
+                330.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n5",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ],
+              "rect": [
+                354.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 49,
+              "node": "n6",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ],
+              "rect": [
+                378.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 44,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"terminal\" }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                316.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "frame_titlebar.focused.bin",
+          "paint": "focused"
+        }
+      ],
+      "step": "focused",
+      "writes": [
+        [
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000ff5945410000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "title",
+          "value": "A very long window title that cannot fit in the room the drag area has left over for it"
+        },
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n7",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                -28.0,
+                400.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                400.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                6.0,
+                6.0,
+                316.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n4",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ],
+              "rect": [
+                330.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n5",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ],
+              "rect": [
+                354.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 49,
+              "node": "n6",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ],
+              "rect": [
+                378.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 78,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"A very long window title that cannot fi…\" }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                316.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "frame_titlebar.long_title.bin",
+          "paint": "long_title"
+        }
+      ],
+      "step": "long_title",
+      "writes": [
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e7332000000412076657279206c6f6e672077696e646f77207469746c6520746861742063616e6e6f742066697420696e20746865e280a6",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"A very long window title that cannot fit in the…\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041fff5d0c6040073616e732a000000412076657279206c6f6e672077696e646f77207469746c6520746861742063616e6e6f74206669e280a6",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"A very long window title that cannot fi…\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "width",
+          "value": 200.0
+        },
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n7",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 200.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                -28.0,
+                200.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 200.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                200.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 116.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                6.0,
+                6.0,
+                116.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n4",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ],
+              "rect": [
+                130.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n5",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ],
+              "rect": [
+                154.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 49,
+              "node": "n6",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ],
+              "rect": [
+                178.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"A very long w…\" }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                116.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "frame_titlebar.narrow.bin",
+          "paint": "narrow"
+        }
+      ],
+      "step": "narrow",
+      "writes": [
+        [
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 116.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041fff5d0c6040073616e7310000000412076657279206c6f6e672077e280a6",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"A very long w…\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 116.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000e8420000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 116.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 130.0
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 154.0
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 178.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 200.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000048430000e04100000000ff5945410000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 200.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 200.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000048430000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 200.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "width",
+          "value": 400.0
+        },
+        {
+          "action": "set",
+          "id": 3,
+          "key": "title",
+          "value": "terminal"
+        },
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "restored",
+      "writes": [
+        [
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041fff5d0c6040073616e732a000000412076657279206c6f6e672077696e646f77207469746c6520746861742063616e6e6f74206669e280a6",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"A very long window title that cannot fi…\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000009e430000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 330.0
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 354.0
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 378.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000ff5945410000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e73080000007465726d696e616c",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"terminal\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041fff5d0c6040073616e73080000007465726d696e616c",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"terminal\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "request",
+          "name": "maximize",
+          "node": 3,
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "action": "answer_measures"
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              1000,
+              772,
+              1,
+              true,
+              false
+            ]
+          ]
+        }
+      ],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n7",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                -28.0,
+                1000.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 916.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                6.0,
+                6.0,
+                916.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n4",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ],
+              "rect": [
+                930.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n5",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ],
+              "rect": [
+                954.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 49,
+              "node": "n6",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ],
+              "rect": [
+                978.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 44,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"terminal\" }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                916.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "frame_titlebar.maximised.bin",
+          "paint": "maximised"
+        }
+      ],
+      "step": "maximised",
+      "writes": [
+        [
+          {
+            "key": "maximised",
+            "node": 3,
+            "op": "set",
+            "value": true
+          },
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": 3,
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "width",
+            "node": 3,
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": 3,
+            "op": "set",
+            "value": 772.0
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 916.0
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 916.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000065440000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 916.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 930.0
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 954.0
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 978.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000e04100000000ff5945410000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "request",
+          "name": "unmaximize",
+          "node": 3,
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              400,
+              300,
+              1,
+              false,
+              false
+            ]
+          ]
+        }
+      ],
+      "step": "unmaximised",
+      "writes": [
+        [
+          {
+            "key": "maximised",
+            "node": 3,
+            "op": "set",
+            "value": false
+          },
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": 3,
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "width",
+            "node": 3,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 3,
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000009e430000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 330.0
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 354.0
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 378.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000ff5945410000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "fullscreen",
+          "value": true
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n7",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 0.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                -0.0,
+                400.0,
+                0.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                400.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                6.0,
+                6.0,
+                316.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n4",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ],
+              "rect": [
+                330.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 52,
+              "node": "n5",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ],
+              "rect": [
+                354.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 49,
+              "node": "n6",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ],
+              "rect": [
+                378.0,
+                6.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 44,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"terminal\" }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                316.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "frame_titlebar.fullscreen.bin",
+          "paint": "fullscreen"
+        }
+      ],
+      "step": "fullscreen",
+      "writes": [
+        [
+          {
+            "key": "visible",
+            "node": "n1",
+            "op": "set",
+            "value": false
+          },
+          {
+            "key": "y",
+            "node": "n7",
+            "op": "set",
+            "value": -0.0
+          },
+          {
+            "key": "height",
+            "node": "n7",
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "visible",
+            "node": "n7",
+            "op": "set",
+            "value": false
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000000000000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 0.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "fullscreen",
+          "value": false
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "windowed",
+      "writes": [
+        [
+          {
+            "key": "visible",
+            "node": "n1",
+            "op": "set",
+            "value": true
+          },
+          {
+            "key": "y",
+            "node": "n7",
+            "op": "set",
+            "value": -28.0
+          },
+          {
+            "key": "height",
+            "node": "n7",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "visible",
+            "node": "n7",
+            "op": "set",
+            "value": true
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "children": [
+              0,
+              0,
+              2
+            ],
+            "under": 3
+          },
+          "x": 4.0,
+          "y": 4.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              1000,
+              772,
+              1,
+              true,
+              false
+            ]
+          ]
+        }
+      ],
+      "step": "maximise_pressed",
+      "writes": [
+        [
+          {
+            "key": "maximised",
+            "node": 3,
+            "op": "set",
+            "value": true
+          },
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": 3,
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "width",
+            "node": 3,
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": 3,
+            "op": "set",
+            "value": 772.0
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 916.0
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 916.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000065440000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 916.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 930.0
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 954.0
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 978.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000e04100000000ff5945410000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 273,
+          "kind": "press",
+          "node": {
+            "children": [
+              0,
+              0,
+              2
+            ],
+            "under": 3
+          },
+          "x": 4.0,
+          "y": 4.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "maximise_right_pressed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "children": [
+              0,
+              0,
+              2
+            ],
+            "under": 3
+          },
+          "x": 4.0,
+          "y": 4.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              400,
+              300,
+              1,
+              false,
+              false
+            ]
+          ]
+        }
+      ],
+      "step": "maximise_pressed_again",
+      "writes": [
+        [
+          {
+            "key": "maximised",
+            "node": 3,
+            "op": "set",
+            "value": false
+          },
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": 3,
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "width",
+            "node": 3,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 3,
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000009e430000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 330.0
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 354.0
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 378.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000ff5945410000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 65, g: 69, b: 89, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "children": [
+              0,
+              0,
+              1
+            ],
+            "under": 3
+          },
+          "x": 4.0,
+          "y": 4.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              400,
+              300,
+              1,
+              false,
+              true
+            ]
+          ]
+        }
+      ],
+      "step": "minimise_pressed",
+      "writes": [
+        [
+          {
+            "key": "minimised",
+            "node": 3,
+            "op": "set",
+            "value": true
+          },
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 0
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "minimised",
+          "value": false
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "unminimised",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "children": [
+              0,
+              0,
+              3
+            ],
+            "under": 3
+          },
+          "x": 4.0,
+          "y": 4.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              400,
+              300,
+              0,
+              false,
+              false
+            ]
+          ]
+        }
+      ],
+      "step": "close_pressed",
+      "writes": [
+        [
+          {
+            "class": "tween",
+            "node": "n8",
+            "op": "new"
+          },
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.0017828486320935165,
+              0.006902245776235088,
+              0.015055305077117023,
+              0.025984598529634313,
+              0.03946928158818923,
+              0.05531834633606051,
+              0.07336541273694555,
+              0.09346465099396767,
+              0.11548754755380296,
+              0.13932030685325061,
+              0.16486184882385638,
+              0.1920219485867128,
+              0.22072000974180897,
+              0.2508838473236696,
+              0.28244876931104645,
+              0.3153568125058931,
+              0.3495561235822334,
+              0.3850004678934487,
+              0.4216488551355991,
+              0.45946527701860895,
+              0.49841855783822664,
+              0.5384824823798053,
+              0.5796355688497188,
+              0.6218618691739011,
+              0.6651513955107838,
+              0.7095013150063338,
+              0.7549179006663318,
+              0.801419984040074,
+              0.849045514633882,
+              0.8978665547832565,
+              0.9480292723556005,
+              1.0
+            ],
+            "seconds": 0.18,
+            "tween": "n8",
+            "value": 0.0
+          },
+          {
+            "key": "scale",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.0017828486320935165,
+              0.006902245776235088,
+              0.015055305077117023,
+              0.025984598529634313,
+              0.03946928158818923,
+              0.05531834633606051,
+              0.07336541273694555,
+              0.09346465099396767,
+              0.11548754755380296,
+              0.13932030685325061,
+              0.16486184882385638,
+              0.1920219485867128,
+              0.22072000974180897,
+              0.2508838473236696,
+              0.28244876931104645,
+              0.3153568125058931,
+              0.3495561235822334,
+              0.3850004678934487,
+              0.4216488551355991,
+              0.45946527701860895,
+              0.49841855783822664,
+              0.5384824823798053,
+              0.5796355688497188,
+              0.6218618691739011,
+              0.6651513955107838,
+              0.7095013150063338,
+              0.7549179006663318,
+              0.801419984040074,
+              0.849045514633882,
+              0.8978665547832565,
+              0.9480292723556005,
+              1.0
+            ],
+            "seconds": 0.18,
+            "tween": "n8",
+            "value": [
+              0.92,
+              0.92,
+              1.0
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "advance",
+          "ms": 100
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              400,
+              300,
+              0,
+              false,
+              false
+            ]
+          ]
+        }
+      ],
+      "step": "fading",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "advance",
+          "ms": 100
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              400,
+              300,
+              0,
+              false,
+              false
+            ]
+          ]
+        }
+      ],
+      "step": "fade_ended",
+      "writes": [
+        [
+          {
+            "args": "",
+            "method": "close",
+            "node": 3,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "advance",
+          "ms": 1500
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', bounds());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            [
+              0,
+              28,
+              400,
+              300,
+              1,
+              false,
+              false
+            ]
+          ]
+        }
+      ],
+      "step": "restored_after_staying",
+      "writes": [
+        [
+          {
+            "class": "tween",
+            "node": "n9",
+            "op": "new"
+          },
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.12,
+            "tween": "n9",
+            "value": 1.0
+          },
+          {
+            "node": "n8",
+            "op": "destroy"
+          },
+          {
+            "key": "scale",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.12,
+            "tween": "n9",
+            "value": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "children": [
+              0,
+              0,
+              3
+            ],
+            "under": 3
+          },
+          "x": 4.0,
+          "y": 4.0
+        },
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "children": [
+              0,
+              0,
+              3
+            ],
+            "under": 3
+          },
+          "x": 4.0,
+          "y": 4.0
+        },
+        {
+          "action": "advance",
+          "ms": 200
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "close_twice",
+      "writes": [
+        [
+          {
+            "class": "tween",
+            "node": "n10",
+            "op": "new"
+          },
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.0017828486320935165,
+              0.006902245776235088,
+              0.015055305077117023,
+              0.025984598529634313,
+              0.03946928158818923,
+              0.05531834633606051,
+              0.07336541273694555,
+              0.09346465099396767,
+              0.11548754755380296,
+              0.13932030685325061,
+              0.16486184882385638,
+              0.1920219485867128,
+              0.22072000974180897,
+              0.2508838473236696,
+              0.28244876931104645,
+              0.3153568125058931,
+              0.3495561235822334,
+              0.3850004678934487,
+              0.4216488551355991,
+              0.45946527701860895,
+              0.49841855783822664,
+              0.5384824823798053,
+              0.5796355688497188,
+              0.6218618691739011,
+              0.6651513955107838,
+              0.7095013150063338,
+              0.7549179006663318,
+              0.801419984040074,
+              0.849045514633882,
+              0.8978665547832565,
+              0.9480292723556005,
+              1.0
+            ],
+            "seconds": 0.18,
+            "tween": "n10",
+            "value": 0.0
+          },
+          {
+            "node": "n9",
+            "op": "destroy"
+          },
+          {
+            "key": "scale",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.0017828486320935165,
+              0.006902245776235088,
+              0.015055305077117023,
+              0.025984598529634313,
+              0.03946928158818923,
+              0.05531834633606051,
+              0.07336541273694555,
+              0.09346465099396767,
+              0.11548754755380296,
+              0.13932030685325061,
+              0.16486184882385638,
+              0.1920219485867128,
+              0.22072000974180897,
+              0.2508838473236696,
+              0.28244876931104645,
+              0.3153568125058931,
+              0.3495561235822334,
+              0.3850004678934487,
+              0.4216488551355991,
+              0.45946527701860895,
+              0.49841855783822664,
+              0.5384824823798053,
+              0.5796355688497188,
+              0.6218618691739011,
+              0.6651513955107838,
+              0.7095013150063338,
+              0.7549179006663318,
+              0.801419984040074,
+              0.849045514633882,
+              0.8978665547832565,
+              0.9480292723556005,
+              1.0
+            ],
+            "seconds": 0.18,
+            "tween": "n10",
+            "value": [
+              0.92,
+              0.92,
+              1.0
+            ]
+          }
+        ],
+        [
+          {
+            "args": "",
+            "method": "close",
+            "node": 3,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 3
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "closed",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

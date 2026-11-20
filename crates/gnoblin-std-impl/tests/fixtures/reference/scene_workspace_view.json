@@ -1,0 +1,1026 @@
+{
+  "scenario": "scene_workspace_view",
+  "source": "const desktop = new Workspace({ id: 'desktop', layout: new FloatingLayout() });\ngnoblin.workspaces.add(desktop);\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.overview = new Node({ id: 'overview' });\nglobalThis.big = overview.add(new View({ id: 'big', content: gnoblin.workspaces.get('desktop'), size: { width: 700, height: 400 } }));\nglobalThis.small = overview.add(new View({ id: 'small', content: gnoblin.workspaces.get('desktop'), size: { width: 350, height: 200 } }));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "two_views_of_one_workspace",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": "n1",
+              "props": {
+                "height": 400.0,
+                "name": "big",
+                "width": 700.0
+              }
+            },
+            {
+              "class": "node",
+              "node": "n3",
+              "parent": "n2",
+              "props": {
+                "scale": [
+                  0.7,
+                  0.5,
+                  1.0
+                ]
+              }
+            },
+            {
+              "class": "view",
+              "node": "n4",
+              "parent": "n3",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 3
+                },
+                "width": 800.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n5",
+              "parent": "n3",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 4
+                },
+                "width": 800.0
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "big"
+        },
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n6",
+              "parent": "n1",
+              "props": {
+                "height": 200.0,
+                "name": "small",
+                "width": 350.0
+              }
+            },
+            {
+              "class": "node",
+              "node": "n7",
+              "parent": "n6",
+              "props": {
+                "scale": [
+                  0.35,
+                  0.25,
+                  1.0
+                ]
+              }
+            },
+            {
+              "class": "view",
+              "node": "n8",
+              "parent": "n7",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 3
+                },
+                "width": 800.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n9",
+              "parent": "n7",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 4
+                },
+                "width": 800.0
+              }
+            }
+          ],
+          "root": "n6",
+          "tree": "small"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "node",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n1",
+            "op": "set",
+            "value": "overview"
+          },
+          {
+            "class": "view",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n2",
+            "op": "set",
+            "value": "big"
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 700.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "class": "node",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "index": 0,
+            "node": "n3",
+            "op": "insert",
+            "parent": "n2"
+          },
+          {
+            "key": "scale",
+            "node": "n3",
+            "op": "set",
+            "value": [
+              0.7,
+              0.5,
+              1.0
+            ]
+          },
+          {
+            "class": "view",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n4",
+            "op": "insert",
+            "parent": "n3"
+          },
+          {
+            "key": "source",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "node": 3
+            }
+          },
+          {
+            "key": "width",
+            "node": "n4",
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "height",
+            "node": "n4",
+            "op": "set",
+            "value": 600.0
+          },
+          {
+            "class": "view",
+            "node": "n5",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n5",
+            "op": "insert",
+            "parent": "n3"
+          },
+          {
+            "key": "source",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "node": 4
+            }
+          },
+          {
+            "key": "width",
+            "node": "n5",
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 600.0
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "view",
+            "node": "n6",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n6",
+            "op": "set",
+            "value": "small"
+          },
+          {
+            "key": "width",
+            "node": "n6",
+            "op": "set",
+            "value": 350.0
+          },
+          {
+            "key": "height",
+            "node": "n6",
+            "op": "set",
+            "value": 200.0
+          },
+          {
+            "class": "node",
+            "node": "n7",
+            "op": "new"
+          },
+          {
+            "index": 0,
+            "node": "n7",
+            "op": "insert",
+            "parent": "n6"
+          },
+          {
+            "key": "scale",
+            "node": "n7",
+            "op": "set",
+            "value": [
+              0.35,
+              0.25,
+              1.0
+            ]
+          },
+          {
+            "class": "view",
+            "node": "n8",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n8",
+            "op": "insert",
+            "parent": "n7"
+          },
+          {
+            "key": "source",
+            "node": "n8",
+            "op": "set",
+            "value": {
+              "node": 3
+            }
+          },
+          {
+            "key": "width",
+            "node": "n8",
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "height",
+            "node": "n8",
+            "op": "set",
+            "value": 600.0
+          },
+          {
+            "class": "view",
+            "node": "n9",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n9",
+            "op": "insert",
+            "parent": "n7"
+          },
+          {
+            "key": "source",
+            "node": "n9",
+            "op": "set",
+            "value": {
+              "node": 4
+            }
+          },
+          {
+            "key": "width",
+            "node": "n9",
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "height",
+            "node": "n9",
+            "op": "set",
+            "value": 600.0
+          },
+          {
+            "index": -1,
+            "node": "n6",
+            "op": "insert",
+            "parent": "n1"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('big', { same: big.content === gnoblin.workspaces.get('desktop'), orphaned: big.orphaned, children: big.children.length });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "big",
+          "value": {
+            "children": 0,
+            "orphaned": false,
+            "same": true
+          }
+        }
+      ],
+      "step": "read_back",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "big.contentFit = 'contain';"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "contain",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": "n1",
+              "props": {
+                "height": 400.0,
+                "name": "big",
+                "width": 700.0
+              }
+            },
+            {
+              "class": "node",
+              "node": "n3",
+              "parent": "n2",
+              "props": {
+                "scale": [
+                  0.5,
+                  0.5,
+                  1.0
+                ],
+                "x": 100.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n4",
+              "parent": "n3",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 3
+                },
+                "width": 800.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n5",
+              "parent": "n3",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 4
+                },
+                "width": 800.0
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "big"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 100.0
+          },
+          {
+            "key": "scale",
+            "node": "n3",
+            "op": "set",
+            "value": [
+              0.5,
+              0.5,
+              1.0
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "big.contentFit = 'cover';"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "cover",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": "n1",
+              "props": {
+                "height": 400.0,
+                "name": "big",
+                "width": 700.0
+              }
+            },
+            {
+              "class": "node",
+              "node": "n3",
+              "parent": "n2",
+              "props": {
+                "scale": [
+                  0.7,
+                  0.7,
+                  1.0
+                ],
+                "x": 0.0,
+                "y": -80.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n4",
+              "parent": "n3",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 3
+                },
+                "width": 800.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n5",
+              "parent": "n3",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 4
+                },
+                "width": 800.0
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "big"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": -80.0
+          },
+          {
+            "key": "scale",
+            "node": "n3",
+            "op": "set",
+            "value": [
+              0.7,
+              0.7,
+              1.0
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "open",
+          "app_id": "late",
+          "id": 900,
+          "title": "late"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "window_joins",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": "n1",
+              "props": {
+                "height": 400.0,
+                "name": "big",
+                "width": 700.0
+              }
+            },
+            {
+              "class": "node",
+              "node": "n3",
+              "parent": "n2",
+              "props": {
+                "scale": [
+                  0.7,
+                  0.7,
+                  1.0
+                ],
+                "x": 0.0,
+                "y": -80.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n4",
+              "parent": "n3",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 3
+                },
+                "width": 800.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n5",
+              "parent": "n3",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 4
+                },
+                "width": 800.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n10",
+              "parent": "n3",
+              "props": {
+                "height": 300.0,
+                "source": {
+                  "node": 900
+                },
+                "width": 400.0,
+                "x": 600.0,
+                "y": 500.0
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "big"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 900
+            }
+          }
+        ],
+        [
+          {
+            "class": "view",
+            "node": "n10",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n10",
+            "op": "insert",
+            "parent": "n3"
+          },
+          {
+            "key": "source",
+            "node": "n10",
+            "op": "set",
+            "value": {
+              "node": 900
+            }
+          },
+          {
+            "key": "width",
+            "node": "n10",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": "n10",
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "class": "view",
+            "node": "n11",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n11",
+            "op": "insert",
+            "parent": "n7"
+          },
+          {
+            "key": "source",
+            "node": "n11",
+            "op": "set",
+            "value": {
+              "node": 900
+            }
+          },
+          {
+            "key": "width",
+            "node": "n11",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": "n11",
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "x",
+            "node": 900,
+            "op": "set",
+            "value": 600.0
+          },
+          {
+            "key": "y",
+            "node": 900,
+            "op": "set",
+            "value": 500.0
+          },
+          {
+            "key": "width",
+            "node": 900,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 900,
+            "op": "set",
+            "value": 300.0
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": "n10",
+            "op": "set",
+            "value": 600.0
+          },
+          {
+            "key": "y",
+            "node": "n10",
+            "op": "set",
+            "value": 500.0
+          },
+          {
+            "key": "x",
+            "node": "n11",
+            "op": "set",
+            "value": 600.0
+          },
+          {
+            "key": "y",
+            "node": "n11",
+            "op": "set",
+            "value": 500.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 3
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "window_leaves",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": "n1",
+              "props": {
+                "height": 400.0,
+                "name": "big",
+                "width": 700.0
+              }
+            },
+            {
+              "class": "node",
+              "node": "n3",
+              "parent": "n2",
+              "props": {
+                "scale": [
+                  0.7,
+                  0.7,
+                  1.0
+                ],
+                "x": 0.0,
+                "y": -80.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n5",
+              "parent": "n3",
+              "props": {
+                "height": 600.0,
+                "source": {
+                  "node": 4
+                },
+                "width": 800.0
+              }
+            },
+            {
+              "class": "view",
+              "node": "n10",
+              "parent": "n3",
+              "props": {
+                "height": 300.0,
+                "source": {
+                  "node": 900
+                },
+                "width": 400.0,
+                "x": 600.0,
+                "y": 500.0
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "big"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "node": "n4",
+            "op": "destroy"
+          },
+          {
+            "node": "n8",
+            "op": "destroy"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "big.destroy();"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "view_destroyed",
+      "writes": [
+        [
+          {
+            "node": "n3",
+            "op": "destroy"
+          },
+          {
+            "node": "n2",
+            "op": "destroy"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "small.content = gnoblin.clients.at(0);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "view_given_a_client",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n6",
+              "parent": "n1",
+              "props": {
+                "height": 200.0,
+                "name": "small",
+                "source": {
+                  "node": 4
+                },
+                "width": 350.0
+              }
+            }
+          ],
+          "root": "n6",
+          "tree": "small"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "node": "n7",
+            "op": "destroy"
+          },
+          {
+            "key": "source",
+            "node": "n6",
+            "op": "set",
+            "value": {
+              "node": 4
+            }
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win2"
+      }
+    ]
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "scenario": "style_refusals",
+  "source": "globalThis.caught = (fn: () => void) => { try { fn(); return 'none'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const client = gnoblin.clients.get('3');\nclient.style.borders = [{ width: 1 }, { width: 2 }]; client.style.shadows = [{ blur: 5 }]; client.style.opacity = 0.5;\nconst log = [];\nlog.push(caught(() => { client.style.borders = [{}, {}, { width: -1 }]; }));\nlog.push(caught(() => { client.style.opacity = NaN; }));\nlog.push(caught(() => { client.style.opacity = 2; }));\nlog.push(caught(() => { client.style.shadows[0].blur = -1; }));\nlog.push(caught(() => { client.style.shadows = [{ blur: 1 }, { color: 'red' }]; }));\nlog.push(caught(() => { client.style.shadows = new Array(9).fill({ blur: 1 }); }));\nlog.push(caught(() => { client.style.shadows = [{ sparkle: 1 }]; }));\nlog.push(caught(() => { client.style.backdropFilter = [{ blur: 1, saturate: 2 }]; }));\nlog.push(caught(() => { client.style.cornerRadius = { topLeft: 1 }; }));\nlog.push(caught(() => { gnoblin.clients.style.shadows = [{ spread: 1000 }]; }));\nlog.push(client.style.borders.map((b) => b.width), client.style.opacity, client.style.shadows[0].blur);\nrec('log', log);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "log",
+          "value": [
+            "Client#N.style.borders[2].width: must be finite and >= 0",
+            "Client#N.style.opacity: must be finite and between 0 and 1",
+            "Client#N.style.opacity: must be finite and between 0 and 1",
+            "Client#N.style.shadows[0].blur: must be finite and between 0 and 100",
+            "Client#N.style.shadows[1].color: must be a #Nrgb, #Nrgba, #Nrrggbb or #Nrrggbbaa colour",
+            "Client#N.style.shadows: holds at most 8 entries, got 9",
+            "Client#N.style.shadows[0]: no field \"sparkle\" (known: x, y, blur, spread, color, inset)",
+            "Client#N.style.backdropFilter[0]: must be a filter: { blur: 18 }, { saturate: 1.2 }, { brightness: 1.1 }, { contrast: 1.1 }, { shader: { source, params } } or a BlurFilter, SaturateFilter, BrightnessFilter, ContrastFilter or ShaderFilter",
+            "Client#N.style.cornerRadius.topRight: must be finite and >= 0",
+            "gnoblin.clients.style.shadows[0].spread: must be finite and between -100 and 100",
+            [
+              1,
+              2
+            ],
+            0.5,
+            5
+          ]
+        }
+      ],
+      "step": "refusals_name_the_path_and_change_nothing",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 5.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 0.5
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.goneStyle = gnoblin.clients.get('4').style;"
+        },
+        {
+          "action": "destroy",
+          "id": 4
+        },
+        {
+          "action": "eval",
+          "js": "rec('gone', caught(() => { goneStyle.opacity = 0.5; }));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "gone",
+          "value": "Client#N.style: the client is gone"
+        }
+      ],
+      "step": "style_of_a_destroyed_client",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "win2"
+      }
+    ]
+  }
+}

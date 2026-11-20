@@ -1,0 +1,140 @@
+{
+  "script": "focus 40\nchord Super+space\nplace 40 300 200 400 300\ndrag Super+Button1 400,250 450,280 end\nstep moved 40\ndrag Super+Button1 450,280 5000,-5000 end\nstep held_in 40\ndrag Super+Button3 900,100 800,50 end\nstep resized_top_right 40\ndrag Super+Button3 900,100 -4000,4000 end\nstep resized_min 40\ndrag Super+Button1 900,100 800,300 cancel\nstep cancelled 40\n",
+  "steps": [
+    {
+      "step": "moved",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            350.0,
+            230.0,
+            400.0,
+            300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "held_in",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            600.0,
+            0.0,
+            400.0,
+            300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "resized_top_right",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            600.0,
+            -50.0,
+            300.0,
+            350.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "resized_min",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            600.0,
+            -50.0,
+            300.0,
+            350.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "cancelled",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            600.0,
+            -50.0,
+            300.0,
+            350.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    }
+  ]
+}

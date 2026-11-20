@@ -1,0 +1,191 @@
+{
+  "script": "focus 40\nchord Super+space\ncreate 41 B\nplace 40 0 0 200 200\nplace 41 400 400 200 200\nstep placed 40 41\nseat pointer_x 450\nseat pointer_y 450\ngesture swipe 4 begin 0 0 1 0\ngesture swipe 4 update 100 0 1 0\nstep running 40 41\ndestroy 41\nstep closed 40 41\ngesture swipe 4 update 200 0 1 0\ngesture swipe 4 end 200 0 1 0\nstep after 40 41\n",
+  "steps": [
+    {
+      "step": "placed",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            0.0,
+            0.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            400.0,
+            400.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "running",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            10250.0,
+            0.0,
+            201.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            400.0,
+            400.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "closed",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            10250.0,
+            3000.0,
+            201.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": null,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "after",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            10250.0,
+            3000.0,
+            201.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": null,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    }
+  ]
+}

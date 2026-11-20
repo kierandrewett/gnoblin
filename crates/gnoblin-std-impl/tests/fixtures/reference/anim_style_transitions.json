@@ -1,0 +1,187 @@
+{
+  "log": [
+    "basic finished cancelled=false",
+    "staged finished cancelled=true",
+    "staged finished cancelled=true",
+    "instant finished cancelled=false",
+    "computed 41 opacity=0.9 borders=1 origin=where({\"app_id\":\"nautilus\"})",
+    "bad opacity: gnoblin.clients.style.opacity: must be finite and between 0 and 1",
+    "bad border: Client#N.style.borders[0].width: must be finite and >= 0",
+    "camera size=1000",
+    "bad zoom: Camera2D#N.zoom: must be above 0",
+    "flat zoom=4 fov=40"
+  ],
+  "steps": [
+    {
+      "step": "basic",
+      "writes": [
+        "new id=#1 class=tween",
+        "set node=40 key=opacity value=Double(0.5) seconds=Some(0.2) delay=None tween=Some(#1) samples=0.000000,0.001871,0.007587,0.017291,0.031114,0.049162,0.071509,0.098185,0.129162,0.164342,0.203543,0.246481,0.292771,0.341913,0.393305,0.446255,0.500000,0.553745,0.606695,0.658087,0.707229,0.753519,0.796457,0.835658,0.870838,0.901815,0.928491,0.950838,0.968886,0.982709,0.992413,0.998129,1.000000 play=0.000000,0.031114,0.500000,1.000000,1.000000",
+        "set node=40 key=x value=Double(300.0) seconds=Some(0.2) delay=None tween=Some(#1) samples=0.000000,0.001871,0.007587,0.017291,0.031114,0.049162,0.071509,0.098185,0.129162,0.164342,0.203543,0.246481,0.292771,0.341913,0.393305,0.446255,0.500000,0.553745,0.606695,0.658087,0.707229,0.753519,0.796457,0.835658,0.870838,0.901815,0.928491,0.950838,0.968886,0.982709,0.992413,0.998129,1.000000 play=0.000000,0.031114,0.500000,1.000000,1.000000",
+        "set node=41 key=opacity value=Double(0.25) seconds=Some(0.2) delay=None tween=Some(#1) samples=0.000000,0.001871,0.007587,0.017291,0.031114,0.049162,0.071509,0.098185,0.129162,0.164342,0.203543,0.246481,0.292771,0.341913,0.393305,0.446255,0.500000,0.553745,0.606695,0.658087,0.707229,0.753519,0.796457,0.835658,0.870838,0.901815,0.928491,0.950838,0.968886,0.982709,0.992413,0.998129,1.000000 play=0.000000,0.031114,0.500000,1.000000,1.000000",
+        "destroy node=#1"
+      ]
+    },
+    {
+      "step": "staged",
+      "writes": [
+        "new id=#2 class=tween",
+        "set node=#2 key=paused value=Bool(true) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=x value=Double(100.0) seconds=Some(0.1) delay=Some(0.05) tween=Some(#2) samples=0.000000,0.031250,0.062500,0.093750,0.125000,0.156250,0.187500,0.218750,0.250000,0.281250,0.312500,0.343750,0.375000,0.406250,0.437500,0.468750,0.500000,0.531250,0.562500,0.593750,0.625000,0.656250,0.687500,0.718750,0.750000,0.781250,0.812500,0.843750,0.875000,0.906250,0.937500,0.968750,1.000000 play=0.000000,0.000000,0.500000,1.000000,1.000000",
+        "set node=41 key=rotation value=List([0.0, 0.5, 0.0]) seconds=Some(0.1) delay=Some(0.05) tween=Some(#2) samples=0.000000,0.031250,0.062500,0.093750,0.125000,0.156250,0.187500,0.218750,0.250000,0.281250,0.312500,0.343750,0.375000,0.406250,0.437500,0.468750,0.500000,0.531250,0.562500,0.593750,0.625000,0.656250,0.687500,0.718750,0.750000,0.781250,0.812500,0.843750,0.875000,0.906250,0.937500,0.968750,1.000000 play=0.000000,0.000000,0.500000,1.000000,1.000000"
+      ]
+    },
+    {
+      "step": "seek",
+      "writes": [
+        "set node=#2 key=progress value=Double(0.5) seconds=None delay=None tween=None samples= play="
+      ]
+    },
+    {
+      "step": "play",
+      "writes": [
+        "set node=#2 key=reverse value=Bool(false) seconds=None delay=None tween=None samples= play=",
+        "set node=#2 key=paused value=Bool(false) seconds=None delay=None tween=None samples= play="
+      ]
+    },
+    {
+      "step": "pause",
+      "writes": [
+        "set node=#2 key=paused value=Bool(true) seconds=None delay=None tween=None samples= play="
+      ]
+    },
+    {
+      "step": "reverse",
+      "writes": [
+        "set node=#2 key=reverse value=Bool(true) seconds=None delay=None tween=None samples= play=",
+        "set node=#2 key=paused value=Bool(false) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=rotation value=List([0.0, 0.0, 0.0]) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=x value=Double(400.0) seconds=None delay=None tween=None samples= play=",
+        "destroy node=#2"
+      ]
+    },
+    {
+      "step": "staged_again",
+      "writes": [
+        "new id=#3 class=tween",
+        "set node=#3 key=paused value=Bool(true) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=x value=Double(100.0) seconds=Some(0.1) delay=Some(0.05) tween=Some(#3) samples=0.000000,0.031250,0.062500,0.093750,0.125000,0.156250,0.187500,0.218750,0.250000,0.281250,0.312500,0.343750,0.375000,0.406250,0.437500,0.468750,0.500000,0.531250,0.562500,0.593750,0.625000,0.656250,0.687500,0.718750,0.750000,0.781250,0.812500,0.843750,0.875000,0.906250,0.937500,0.968750,1.000000 play=0.000000,0.000000,0.500000,1.000000,1.000000",
+        "set node=41 key=rotation value=List([0.0, 0.5, 0.0]) seconds=Some(0.1) delay=Some(0.05) tween=Some(#3) samples=0.000000,0.031250,0.062500,0.093750,0.125000,0.156250,0.187500,0.218750,0.250000,0.281250,0.312500,0.343750,0.375000,0.406250,0.437500,0.468750,0.500000,0.531250,0.562500,0.593750,0.625000,0.656250,0.687500,0.718750,0.750000,0.781250,0.812500,0.843750,0.875000,0.906250,0.937500,0.968750,1.000000 play=0.000000,0.000000,0.500000,1.000000,1.000000"
+      ]
+    },
+    {
+      "step": "cancel",
+      "writes": [
+        "set node=41 key=rotation value=List([0.0, 0.5, 0.0]) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=x value=Double(100.0) seconds=None delay=None tween=None samples= play=",
+        "destroy node=#3"
+      ]
+    },
+    {
+      "step": "instant",
+      "writes": [
+        "set node=42 key=opacity value=Double(0.75) seconds=None delay=None tween=None samples= play=",
+        "set node=42 key=x value=Double(20.0) seconds=None delay=None tween=None samples= play="
+      ]
+    },
+    {
+      "step": "layout",
+      "writes": [
+        "new id=#4 class=tween",
+        "set node=40 key=x value=Double(0.0) seconds=Some(0.3) delay=None tween=Some(#4) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.134681,0.488227,0.843652,1.000000",
+        "set node=40 key=width value=Double(600.0) seconds=Some(0.3) delay=None tween=Some(#4) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.134681,0.488227,0.843652,1.000000",
+        "set node=40 key=height value=Double(800.0) seconds=Some(0.3) delay=None tween=Some(#4) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.134681,0.488227,0.843652,1.000000",
+        "set node=40 key=tiled value=Bool(true) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=x value=Double(600.0) seconds=Some(0.3) delay=None tween=Some(#4) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.134681,0.488227,0.843652,1.000000",
+        "set node=41 key=height value=Double(400.0) seconds=Some(0.3) delay=None tween=Some(#4) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.134681,0.488227,0.843652,1.000000",
+        "set node=41 key=tiled value=Bool(true) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=rotation value=List([0.0, 0.0, 0.0]) seconds=Some(0.3) delay=None tween=Some(#4) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.134681,0.488227,0.843652,1.000000",
+        "set node=42 key=x value=Double(600.0) seconds=Some(0.3) delay=None tween=Some(#4) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.134681,0.488227,0.843652,1.000000",
+        "set node=42 key=y value=Double(400.0) seconds=Some(0.3) delay=None tween=Some(#4) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.134681,0.488227,0.843652,1.000000",
+        "set node=42 key=height value=Double(400.0) seconds=Some(0.3) delay=None tween=Some(#4) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.134681,0.488227,0.843652,1.000000",
+        "set node=42 key=tiled value=Bool(true) seconds=None delay=None tween=None samples= play=",
+        "destroy node=#4"
+      ]
+    },
+    {
+      "step": "style_global",
+      "writes": [
+        "set node=40 key=effects value=Effects([Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.1, contrast: 1.0, saturation: 1.2, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#00000044\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 8.0, blur_radius: 24.0, spread: 0.0, colour: \"#00000066\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ff8800ff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 3.0, inset: false, frame: false, source: \"\", params: [] }]) seconds=None delay=None tween=None samples= play=",
+        "set node=40 key=opacity value=Double(0.9) seconds=None delay=None tween=None samples= play=",
+        "set node=40 key=corner_radius value=Double(12.0) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=effects value=Effects([Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.1, contrast: 1.0, saturation: 1.2, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#00000044\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 8.0, blur_radius: 24.0, spread: 0.0, colour: \"#00000066\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ff8800ff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 3.0, inset: false, frame: false, source: \"\", params: [] }]) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=opacity value=Double(0.9) seconds=None delay=None tween=None samples= play=",
+        "set node=41 key=corner_radius value=Double(12.0) seconds=None delay=None tween=None samples= play=",
+        "set node=42 key=effects value=Effects([Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.1, contrast: 1.0, saturation: 1.2, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#00000044\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 8.0, blur_radius: 24.0, spread: 0.0, colour: \"#00000066\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ff8800ff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 3.0, inset: false, frame: false, source: \"\", params: [] }]) seconds=None delay=None tween=None samples= play=",
+        "set node=42 key=opacity value=Double(0.9) seconds=None delay=None tween=None samples= play=",
+        "set node=42 key=corner_radius value=Double(12.0) seconds=None delay=None tween=None samples= play="
+      ]
+    },
+    {
+      "step": "style_selection",
+      "writes": [
+        "set node=41 key=effects value=Effects([Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.1, contrast: 1.0, saturation: 1.2, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#00000044\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 8.0, blur_radius: 24.0, spread: 0.0, colour: \"#00000066\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00ff00ff\", width: 3.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }]) seconds=None delay=None tween=None samples= play="
+      ]
+    },
+    {
+      "step": "style_client",
+      "writes": [
+        "set node=40 key=effects value=Effects([Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.1, contrast: 1.0, saturation: 1.2, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ff8800ff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 3.0, inset: false, frame: false, source: \"\", params: [] }]) seconds=None delay=None tween=None samples= play=",
+        "set node=40 key=opacity value=Double(0.5) seconds=None delay=None tween=None samples= play="
+      ]
+    },
+    {
+      "step": "style_unset",
+      "writes": [
+        "set node=40 key=opacity value=Double(0.9) seconds=None delay=None tween=None samples= play="
+      ]
+    },
+    {
+      "step": "style_bad",
+      "writes": []
+    },
+    {
+      "step": "scene",
+      "writes": [
+        "new id=#5 class=camera",
+        "set node=#5 key=x value=Double(1.0) seconds=None delay=None tween=None samples= play=",
+        "set node=#5 key=y value=Double(2.0) seconds=None delay=None tween=None samples= play=",
+        "set node=#5 key=z value=Double(3.0) seconds=None delay=None tween=None samples= play=",
+        "set node=#5 key=projection value=Text(\"perspective\") seconds=None delay=None tween=None samples= play=",
+        "set node=#5 key=near value=Double(0.2) seconds=None delay=None tween=None samples= play=",
+        "set node=#5 key=fov value=Double(70.0) seconds=None delay=None tween=None samples= play=",
+        "insert node=#5 parent=1 index=-1",
+        "new id=#6 class=view",
+        "set node=#6 key=camera value=Node(#5) seconds=None delay=None tween=None samples= play=",
+        "set node=#6 key=width value=Double(400.0) seconds=None delay=None tween=None samples= play=",
+        "set node=#6 key=height value=Double(300.0) seconds=None delay=None tween=None samples= play=",
+        "set node=#6 key=source value=Node(40) seconds=None delay=None tween=None samples= play=",
+        "insert node=#6 parent=1 index=-1",
+        "new id=#7 class=node",
+        "set node=#7 key=x value=Double(10.0) seconds=None delay=None tween=None samples= play=",
+        "set node=#7 key=y value=Double(20.0) seconds=None delay=None tween=None samples= play=",
+        "set node=#7 key=scale value=List([2.0, 2.0, 1.0]) seconds=None delay=None tween=None samples= play=",
+        "set node=#7 key=rotation value=List([0.0, 0.0, 0.5]) seconds=None delay=None tween=None samples= play=",
+        "insert node=#7 parent=1 index=-1"
+      ]
+    },
+    {
+      "step": "scene_transition",
+      "writes": [
+        "new id=#8 class=tween",
+        "set node=#7 key=scale value=List([4.0, 4.0, 1.0]) seconds=Some(0.1) delay=None tween=Some(#8) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.378138,1.000000,1.000000,1.000000",
+        "set node=#7 key=x value=Double(30.0) seconds=None delay=None tween=None samples= play=",
+        "set node=#7 key=y value=Double(40.0) seconds=None delay=None tween=None samples= play=",
+        "set node=#7 key=rotation value=List([0.0, 0.0, 1.0]) seconds=Some(0.1) delay=None tween=Some(#8) samples=0.000000,0.051971,0.102133,0.150954,0.198580,0.245082,0.290499,0.334849,0.378138,0.420364,0.461518,0.501581,0.540535,0.578351,0.615000,0.650444,0.684643,0.717551,0.749116,0.779280,0.807978,0.835138,0.860680,0.884512,0.906535,0.926635,0.944682,0.960531,0.974015,0.984945,0.993098,0.998217,1.000000 play=0.000000,0.378138,1.000000,1.000000,1.000000",
+        "set node=#5 key=fov value=Double(40.0) seconds=None delay=None tween=None samples= play=",
+        "destroy node=#8"
+      ]
+    },
+    {
+      "step": "style_shader",
+      "writes": [
+        "set node=42 key=effects value=Effects([Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.1, contrast: 1.0, saturation: 1.2, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [0.5, 2.0] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#00000044\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 8.0, blur_radius: 24.0, spread: 0.0, colour: \"#00000066\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ff8800ff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }, Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 3.0, inset: false, frame: false, source: \"\", params: [] }]) seconds=None delay=None tween=None samples= play="
+      ]
+    }
+  ]
+}

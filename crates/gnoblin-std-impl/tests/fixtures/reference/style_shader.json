@@ -1,0 +1,210 @@
+{
+  "scenario": "style_shader",
+  "source": "globalThis.caught = (fn: () => void) => { try { fn(); return 'none'; } catch (e) { return (e as Error).message; } };\nglobalThis.TINT = 'fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }';\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const f = new ShaderFilter({ source: TINT, params: [0.5, 2] });\ngnoblin.clients.style.filter = [f];\ngnoblin.clients.get('4').style.backdropFilter = [{ blur: 12 }, { shader: { source: TINT } }];\nrec('filter', [f instanceof StyleElement, f.params, gnoblin.clients.style.filter[0] === f, JSON.stringify(f)]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "filter",
+          "value": [
+            true,
+            [
+              0.5,
+              2
+            ],
+            true,
+            "{\"kind\":\"shader\",\"source\":\"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\",\"params\":[0.5,2]}"
+          ]
+        }
+      ],
+      "step": "accepted",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 3,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "decoration": "server",
+                "effects": {
+                  "effects": [
+                    "Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [0.5, 2.0] }"
+                  ]
+                },
+                "height": 300.0,
+                "title": "win1",
+                "width": 400.0
+              }
+            }
+          ],
+          "root": 3,
+          "tree": "content_filter"
+        },
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 4,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "decoration": "server",
+                "effects": {
+                  "effects": [
+                    "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                    "Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [] }",
+                    "Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [0.5, 2.0] }"
+                  ]
+                },
+                "height": 300.0,
+                "title": "win2",
+                "width": 400.0
+              }
+            }
+          ],
+          "root": 4,
+          "tree": "backdrop_and_content"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [0.5, 2.0] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [] }",
+                "Properties { kind: \"shader\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", params: [0.5, 2.0] }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const f = new ShaderFilter({ source: TINT });\nrec('refused', [caught(() => { f.source = '  '; }), caught(() => { f.source = 'x'.repeat(16385); }), caught(() => { f.params = new Array(9).fill(0); }),\ncaught(() => { f.params = [NaN]; }), caught(() => { gnoblin.clients.style.filter = [{ shader: 'fn effect() {}' }]; }),\ncaught(() => { new ShaderFilter({ sparkle: 1 }); }), f.source === TINT]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "refused",
+          "value": [
+            "ShaderFilter.source: must be WGSL of 1 to 16384 bytes",
+            "ShaderFilter.source: must be WGSL of 1 to 16384 bytes",
+            "ShaderFilter.params: must be an array of at most 8 numbers",
+            "ShaderFilter.params[0]: must be a finite number",
+            "gnoblin.clients.style.filter[0].shader: must be an object of { source, params }",
+            "ShaderFilter: no field \"sparkle\" (known: source, params)",
+            true
+          ]
+        }
+      ],
+      "step": "refusals",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [
+      {
+        "id": 21,
+        "key": "user_shaders",
+        "value": true
+      }
+    ],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "win2"
+      }
+    ]
+  }
+}

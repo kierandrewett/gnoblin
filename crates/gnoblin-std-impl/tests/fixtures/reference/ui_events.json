@@ -1,0 +1,784 @@
+{
+  "scenario": "ui_events",
+  "source": "const outer = new Box({ x: 10, y: 20, width: 200, height: 100 });\nconst mid = new Box({ x: 5, y: 5, width: 100, height: 60 });\nconst leaf = new Box({ x: 7, y: 3, width: 20, height: 20 });\nouter.add(mid); mid.add(leaf);\nglobalThis.stopAt = '';\nfor (const [name, c] of [['outer', outer], ['mid', mid], ['leaf', leaf]] as [string, any][]) {\nfor (const h of ['onPress', 'onRelease', 'onMotion', 'onScroll', 'onEnter', 'onLeave']) {\nc[h] = (e: any) => { rec(name + '.' + h, { x: e.x, y: e.y, button: e.button, kind: e.kind, target: e.target === leaf }); if (name === 'mid' && (globalThis as any).stopAt === h) e.stop(); };\n}\n}\nObject.assign(globalThis, { outer, mid, leaf });",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "index": -1,
+            "node": "n3",
+            "op": "insert",
+            "parent": "n2"
+          },
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 7.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 3.0
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000a0410000a04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 20.0, height: 20.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n2",
+            "op": "set",
+            "value": 5.0
+          },
+          {
+            "key": "y",
+            "node": "n2",
+            "op": "set",
+            "value": 5.0
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 100.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 60.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8420000704200000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 100.0, height: 60.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n1",
+            "op": "set",
+            "value": 10.0
+          },
+          {
+            "key": "y",
+            "node": "n1",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 200.0
+          },
+          {
+            "key": "height",
+            "node": "n1",
+            "op": "set",
+            "value": 100.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000048430000c84200000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 200.0, height: 100.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 4.0,
+          "y": 5.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "leaf.onPress",
+          "value": {
+            "button": 272,
+            "kind": "press",
+            "target": true,
+            "x": 4,
+            "y": 5
+          }
+        },
+        {
+          "label": "mid.onPress",
+          "value": {
+            "button": 272,
+            "kind": "press",
+            "target": true,
+            "x": 11,
+            "y": 8
+          }
+        },
+        {
+          "label": "outer.onPress",
+          "value": {
+            "button": 272,
+            "kind": "press",
+            "target": true,
+            "x": 16,
+            "y": 13
+          }
+        }
+      ],
+      "step": "leaf_press_272",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "release",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 4.0,
+          "y": 5.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "leaf.onRelease",
+          "value": {
+            "button": 272,
+            "kind": "release",
+            "target": true,
+            "x": 4,
+            "y": 5
+          }
+        },
+        {
+          "label": "mid.onRelease",
+          "value": {
+            "button": 272,
+            "kind": "release",
+            "target": true,
+            "x": 11,
+            "y": 8
+          }
+        },
+        {
+          "label": "outer.onRelease",
+          "value": {
+            "button": 272,
+            "kind": "release",
+            "target": true,
+            "x": 16,
+            "y": 13
+          }
+        }
+      ],
+      "step": "leaf_release_272",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "motion",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 4.0,
+          "y": 5.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "leaf.onMotion",
+          "value": {
+            "button": 0,
+            "kind": "motion",
+            "target": true,
+            "x": 4,
+            "y": 5
+          }
+        },
+        {
+          "label": "mid.onMotion",
+          "value": {
+            "button": 0,
+            "kind": "motion",
+            "target": true,
+            "x": 11,
+            "y": 8
+          }
+        },
+        {
+          "label": "outer.onMotion",
+          "value": {
+            "button": 0,
+            "kind": "motion",
+            "target": true,
+            "x": 16,
+            "y": 13
+          }
+        }
+      ],
+      "step": "leaf_motion_0",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "scroll",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 4.0,
+          "y": 5.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "leaf.onScroll",
+          "value": {
+            "button": 0,
+            "kind": "scroll",
+            "target": true,
+            "x": 4,
+            "y": 5
+          }
+        },
+        {
+          "label": "mid.onScroll",
+          "value": {
+            "button": 0,
+            "kind": "scroll",
+            "target": true,
+            "x": 11,
+            "y": 8
+          }
+        },
+        {
+          "label": "outer.onScroll",
+          "value": {
+            "button": 0,
+            "kind": "scroll",
+            "target": true,
+            "x": 16,
+            "y": 13
+          }
+        }
+      ],
+      "step": "leaf_scroll_0",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "enter",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 4.0,
+          "y": 5.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "leaf.onEnter",
+          "value": {
+            "button": 0,
+            "kind": "enter",
+            "target": true,
+            "x": 4,
+            "y": 5
+          }
+        },
+        {
+          "label": "mid.onEnter",
+          "value": {
+            "button": 0,
+            "kind": "enter",
+            "target": true,
+            "x": 11,
+            "y": 8
+          }
+        },
+        {
+          "label": "outer.onEnter",
+          "value": {
+            "button": 0,
+            "kind": "enter",
+            "target": true,
+            "x": 16,
+            "y": 13
+          }
+        }
+      ],
+      "step": "leaf_enter_0",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "leave",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 4.0,
+          "y": 5.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "leaf.onLeave",
+          "value": {
+            "button": 0,
+            "kind": "leave",
+            "target": true,
+            "x": 4,
+            "y": 5
+          }
+        },
+        {
+          "label": "mid.onLeave",
+          "value": {
+            "button": 0,
+            "kind": "leave",
+            "target": true,
+            "x": 11,
+            "y": 8
+          }
+        },
+        {
+          "label": "outer.onLeave",
+          "value": {
+            "button": 0,
+            "kind": "leave",
+            "target": true,
+            "x": 16,
+            "y": 13
+          }
+        }
+      ],
+      "step": "leaf_leave_0",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 273,
+          "kind": "press",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 4.0,
+          "y": 5.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "leaf.onPress",
+          "value": {
+            "button": 273,
+            "kind": "press",
+            "target": true,
+            "x": 4,
+            "y": 5
+          }
+        },
+        {
+          "label": "mid.onPress",
+          "value": {
+            "button": 273,
+            "kind": "press",
+            "target": true,
+            "x": 11,
+            "y": 8
+          }
+        },
+        {
+          "label": "outer.onPress",
+          "value": {
+            "button": 273,
+            "kind": "press",
+            "target": true,
+            "x": 16,
+            "y": 13
+          }
+        }
+      ],
+      "step": "leaf_press_273",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 274,
+          "kind": "press",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 4.0,
+          "y": 5.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "leaf.onPress",
+          "value": {
+            "button": 274,
+            "kind": "press",
+            "target": true,
+            "x": 4,
+            "y": 5
+          }
+        },
+        {
+          "label": "mid.onPress",
+          "value": {
+            "button": 274,
+            "kind": "press",
+            "target": true,
+            "x": 11,
+            "y": 8
+          }
+        },
+        {
+          "label": "outer.onPress",
+          "value": {
+            "button": 274,
+            "kind": "press",
+            "target": true,
+            "x": 16,
+            "y": 13
+          }
+        }
+      ],
+      "step": "leaf_press_274",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.stopAt = 'onPress';"
+        },
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 4.0,
+          "y": 5.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "leaf.onPress",
+          "value": {
+            "button": 272,
+            "kind": "press",
+            "target": true,
+            "x": 4,
+            "y": 5
+          }
+        },
+        {
+          "label": "mid.onPress",
+          "value": {
+            "button": 272,
+            "kind": "press",
+            "target": true,
+            "x": 11,
+            "y": 8
+          }
+        }
+      ],
+      "step": "stopped_at_mid",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.stopAt = ''; leaf.onRelease = () => { throw new Error('a handler that throws'); };"
+        },
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "release",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 1.0,
+          "y": 1.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "Box.onRelease threw: eval_script:2:60: a handler that throws"
+      ],
+      "log": [
+        {
+          "label": "mid.onRelease",
+          "value": {
+            "button": 272,
+            "kind": "release",
+            "target": true,
+            "x": 8,
+            "y": 4
+          }
+        },
+        {
+          "label": "outer.onRelease",
+          "value": {
+            "button": 272,
+            "kind": "release",
+            "target": true,
+            "x": 13,
+            "y": 9
+          }
+        }
+      ],
+      "step": "handler_throws",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "js": "mid.node"
+          },
+          "x": 50.0,
+          "y": 30.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "mid.onPress",
+          "value": {
+            "button": 272,
+            "kind": "press",
+            "target": false,
+            "x": 50,
+            "y": 30
+          }
+        },
+        {
+          "label": "outer.onPress",
+          "value": {
+            "button": 272,
+            "kind": "press",
+            "target": false,
+            "x": 55,
+            "y": 35
+          }
+        }
+      ],
+      "step": "mid_press",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "mid.destroy();"
+        },
+        {
+          "action": "pointer",
+          "button": 272,
+          "kind": "press",
+          "node": {
+            "js": "leaf.node"
+          },
+          "x": 1.0,
+          "y": 1.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "after_destroy",
+      "writes": [
+        [
+          {
+            "node": "n2",
+            "op": "destroy"
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

@@ -1,0 +1,399 @@
+{
+  "scenario": "input_grammar",
+  "source": "export {};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const cases = ['Super+Return', 'super+return', 'Super+Shift+1', 'Shift+Super+1', 'Ctrl+Alt+Delete', 'control+alt+delete', 'Primary+q', 'Super+Q',\n'Super+pagedown', 'Super+Page_Down', 'Super+plus', 'XF86AudioMute', 'Super', 'Logo+Return', 'Mod1+Tab', 'Super+MouseLeft+Drag',\n'super+mouseleft+drag', 'Super+MouseLeft', 'Super+MouseLeft+Click', 'MouseMiddle', 'Super+Wheel', 'Super+wheelup', 'Swipe3Left', 'swipe4',\n'pinch2in', 'Pinch5Out', 'Swipe2Up'];\nrec('canonical', cases.map((c) => [c, parseTrigger(c).text, parseTrigger(c).modifiers.join()]));\nrec('claims', ['Super+1', 'Super+Shift+1', 'Ctrl+Alt+Delete', 'Super+MouseLeft+Drag', 'Super+MouseLeft', 'Super', 'Swipe3Left', 'Super+Wheel'].map((t) => [t, JSON.stringify(claimOf(parseTrigger(t)))]));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "canonical",
+          "value": [
+            [
+              "Super+Return",
+              "Super+Return",
+              "Super"
+            ],
+            [
+              "super+return",
+              "Super+Return",
+              "Super"
+            ],
+            [
+              "Super+Shift+1",
+              "Shift+Super+1",
+              "Shift,Super"
+            ],
+            [
+              "Shift+Super+1",
+              "Shift+Super+1",
+              "Shift,Super"
+            ],
+            [
+              "Ctrl+Alt+Delete",
+              "Ctrl+Alt+Delete",
+              "Ctrl,Alt"
+            ],
+            [
+              "control+alt+delete",
+              "Ctrl+Alt+Delete",
+              "Ctrl,Alt"
+            ],
+            [
+              "Primary+q",
+              "Ctrl+q",
+              "Ctrl"
+            ],
+            [
+              "Super+Q",
+              "Super+q",
+              "Super"
+            ],
+            [
+              "Super+pagedown",
+              "Super+Page_Down",
+              "Super"
+            ],
+            [
+              "Super+Page_Down",
+              "Super+Page_Down",
+              "Super"
+            ],
+            [
+              "Super+plus",
+              "Super+plus",
+              "Super"
+            ],
+            [
+              "XF86AudioMute",
+              "XF86AudioMute",
+              ""
+            ],
+            [
+              "Super",
+              "Super",
+              ""
+            ],
+            [
+              "Logo+Return",
+              "Super+Return",
+              "Super"
+            ],
+            [
+              "Mod1+Tab",
+              "Alt+Tab",
+              "Alt"
+            ],
+            [
+              "Super+MouseLeft+Drag",
+              "Super+MouseLeft+Drag",
+              "Super"
+            ],
+            [
+              "super+mouseleft+drag",
+              "Super+MouseLeft+Drag",
+              "Super"
+            ],
+            [
+              "Super+MouseLeft",
+              "Super+MouseLeft",
+              "Super"
+            ],
+            [
+              "Super+MouseLeft+Click",
+              "Super+MouseLeft",
+              "Super"
+            ],
+            [
+              "MouseMiddle",
+              "MouseMiddle",
+              ""
+            ],
+            [
+              "Super+Wheel",
+              "Super+Wheel",
+              "Super"
+            ],
+            [
+              "Super+wheelup",
+              "Super+WheelUp",
+              "Super"
+            ],
+            [
+              "Swipe3Left",
+              "Swipe3Left",
+              ""
+            ],
+            [
+              "swipe4",
+              "Swipe4",
+              ""
+            ],
+            [
+              "pinch2in",
+              "Pinch2In",
+              ""
+            ],
+            [
+              "Pinch5Out",
+              "Pinch5Out",
+              ""
+            ],
+            [
+              "Swipe2Up",
+              "Swipe2Up",
+              ""
+            ]
+          ]
+        },
+        {
+          "label": "claims",
+          "value": [
+            [
+              "Super+1",
+              "{\"kind\":\"chord\",\"text\":\"<Super>1\",\"grab\":false}"
+            ],
+            [
+              "Super+Shift+1",
+              "{\"kind\":\"chord\",\"text\":\"<Shift><Super>1\",\"grab\":false}"
+            ],
+            [
+              "Ctrl+Alt+Delete",
+              "{\"kind\":\"chord\",\"text\":\"<Control><Alt>Delete\",\"grab\":false}"
+            ],
+            [
+              "Super+MouseLeft+Drag",
+              "{\"kind\":\"chord\",\"text\":\"<Super>Button1\",\"grab\":true}"
+            ],
+            [
+              "Super+MouseLeft",
+              "{\"kind\":\"chord\",\"text\":\"<Super>Button1\",\"grab\":true}"
+            ],
+            [
+              "Super",
+              "{\"kind\":\"chord\",\"text\":\"Super\",\"grab\":false}"
+            ],
+            [
+              "Swipe3Left",
+              "{\"kind\":\"gesture\",\"gesture\":\"swipe\",\"fingers\":3}"
+            ],
+            [
+              "Super+Wheel",
+              "null"
+            ]
+          ]
+        }
+      ],
+      "step": "accepted",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const bad = ['', 'Super+', 'Super++1', '+Super', 'Super+Shift', 'Shift', 'Super+Super+1', 'Super+a+b', 'a+Super', 'Super+!', 'Super+Mod4+1', 'Super+Drag',\n'MouseLeft+MouseRight', 'Super+MouseLeft+a', 'Swipe1Left', 'Swipe6', 'Swipe3In', 'Pinch3Left', 'Super+Swipe3', 'Super + 1', 'Super+Ctrl-1',\n'Super+MouseLeft+Drag+Drag', 'Super+Wheel+Wheel', 'Super+Return+Drag'];\nrec('refused', bad.map((c) => { try { parseTrigger(c, 'trigger'); return [c, 'accepted']; } catch (e) { return [c, e.name + ': ' + e.message + ' [' + e.token + ']']; } }));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "refused",
+          "value": [
+            [
+              "",
+              "TypeError: trigger must be a trigger such as \"Super+Return\", got  [undefined]"
+            ],
+            [
+              "Super+",
+              "TypeError: trigger: an empty part after \"Super\"; write a literal plus as \"plus\" (token \"\" in \"Super+\") []"
+            ],
+            [
+              "Super++1",
+              "TypeError: trigger: an empty part after \"Super\"; write a literal plus as \"plus\" (token \"\" in \"Super++1\") []"
+            ],
+            [
+              "+Super",
+              "TypeError: trigger: an empty part after the start; write a literal plus as \"plus\" (token \"\" in \"+Super\") []"
+            ],
+            [
+              "Super+Shift",
+              "TypeError: trigger: ends with a modifier and has no key (token \"Shift\" in \"Super+Shift\") [Shift]"
+            ],
+            [
+              "Shift",
+              "TypeError: trigger: a lone modifier is only a trigger for Super (a tap) (token \"Shift\" in \"Shift\") [Shift]"
+            ],
+            [
+              "Super+Super+1",
+              "TypeError: trigger: repeats the modifier Super (token \"Super\" in \"Super+Super+1\") [Super]"
+            ],
+            [
+              "Super+a+b",
+              "TypeError: trigger: is a second key after \"a\"; a trigger has one key (token \"b\" in \"Super+a+b\") [b]"
+            ],
+            [
+              "a+Super",
+              "TypeError: trigger: is a modifier after the key; modifiers come first (token \"Super\" in \"a+Super\") [Super]"
+            ],
+            [
+              "Super+!",
+              "TypeError: trigger: is a character, not a key name; write the keysym name (exclam, minus, plus) or Shift with the key (token \"!\" in \"Super+!\") [!]"
+            ],
+            [
+              "Super+Mod4+1",
+              "TypeError: trigger: names a keymap-dependent mask; write Super, Alt, Meta or Hyper (token \"Mod4\" in \"Super+Mod4+1\") [Mod4]"
+            ],
+            [
+              "Super+Drag",
+              "TypeError: trigger: needs a mouse button before it, such as Super+MouseLeft+Drag (token \"Drag\" in \"Super+Drag\") [Drag]"
+            ],
+            [
+              "MouseLeft+MouseRight",
+              "TypeError: trigger: is a second input; a trigger has one key, button or wheel (token \"MouseRight\" in \"MouseLeft+MouseRight\") [MouseRight]"
+            ],
+            [
+              "Super+MouseLeft+a",
+              "TypeError: trigger: is a key after a mouse button or wheel; a trigger has one input (token \"a\" in \"Super+MouseLeft+a\") [a]"
+            ],
+            [
+              "Swipe1Left",
+              "TypeError: trigger: a gesture has 2 to 5 fingers, not 1 (token \"Swipe1Left\" in \"Swipe1Left\") [Swipe1Left]"
+            ],
+            [
+              "Swipe6",
+              "TypeError: trigger: a gesture has 2 to 5 fingers, not 6 (token \"Swipe6\" in \"Swipe6\") [Swipe6]"
+            ],
+            [
+              "Swipe3In",
+              "TypeError: trigger: a swipe goes left, right, up, down, not in (token \"Swipe3In\" in \"Swipe3In\") [Swipe3In]"
+            ],
+            [
+              "Pinch3Left",
+              "TypeError: trigger: a pinch goes in, out, not left (token \"Pinch3Left\" in \"Pinch3Left\") [Pinch3Left]"
+            ],
+            [
+              "Super+Swipe3",
+              "TypeError: trigger: a gesture takes no modifiers or other parts (token \"Swipe3\" in \"Super+Swipe3\") [Swipe3]"
+            ],
+            [
+              "Super + 1",
+              "TypeError: trigger: has whitespace; join the parts with plus alone (token \"Super \" in \"Super + 1\") [Super ]"
+            ],
+            [
+              "Super+Ctrl-1",
+              "TypeError: trigger: is not a key name; a key name is letters, digits and underscores (token \"Ctrl-1\" in \"Super+Ctrl-1\") [Ctrl-1]"
+            ],
+            [
+              "Super+MouseLeft+Drag+Drag",
+              "TypeError: trigger: is a second action (token \"Drag\" in \"Super+MouseLeft+Drag+Drag\") [Drag]"
+            ],
+            [
+              "Super+Wheel+Wheel",
+              "TypeError: trigger: is a second input; a trigger has one key, button or wheel (token \"Wheel\" in \"Super+Wheel+Wheel\") [Wheel]"
+            ],
+            [
+              "Super+Return+Drag",
+              "TypeError: trigger: needs a mouse button before it, such as Super+MouseLeft+Drag (token \"Drag\" in \"Super+Return+Drag\") [Drag]"
+            ]
+          ]
+        }
+      ],
+      "step": "refused",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const list = (layout) => [...layout.bindings].map((b) => b.id + '=' + b.trigger).join(',');\nconst defaults = new FloatingLayout();\nconst out = [list(new FloatingLayout()), list(new FloatingLayout({ triggers: { resize: null } })), list(new FloatingLayout({ triggers: { move: undefined } })),\nlist(new FloatingLayout({ triggers: { move: 'Alt+MouseLeft+Drag', resize: null } }))];\ndefaults.bindings.get('move').trigger = 'Alt+MouseLeft+Drag';\nout.push(list(defaults), defaults.bindings.remove('resize'), String(defaults.bindings.get('resize')));\ndefaults.bindings.clear(); out.push(defaults.bindings.size);\nout.push(fail(() => new FloatingLayout({ triggers: { move: 'Super+MouseLeft+Drag', resize: 'Super+MouseLeft+Drag' } })));\nrec('floating', out);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "floating",
+          "value": [
+            "move=Super+MouseLeft+Drag,resize=Super+MouseRight+Drag",
+            "move=Super+MouseLeft+Drag",
+            "move=Super+MouseLeft+Drag,resize=Super+MouseRight+Drag",
+            "move=Alt+MouseLeft+Drag",
+            "move=Alt+MouseLeft+Drag,resize=Super+MouseRight+Drag",
+            true,
+            "undefined",
+            0,
+            "BindingConflictError: binding \"resize\" conflicts with \"move\": both match Super+MouseLeft+Drag at priority 0; give one a different priority or trigger"
+          ]
+        }
+      ],
+      "step": "floating_bindings",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

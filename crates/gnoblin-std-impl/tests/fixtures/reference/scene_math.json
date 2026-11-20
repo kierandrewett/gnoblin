@@ -1,0 +1,1665 @@
+{
+  "scenario": "scene_math",
+  "source": "import { Vector3, Ray, Plane } from 'gnoblin-core/math/vector';\nimport { Transform3D } from 'gnoblin-core/math/transform';\nimport { vectorFrom, rotationFrom, scaleFrom, transformFrom, eulerOfQuaternion } from 'gnoblin-core/math/spatial';\nconst r = (n: number) => Math.round(n * 1e10) / 1e10;\nconst v = (x: Vector3) => x.toArray().map(r);\nconst t = (p: Transform3D) => ({ position: v(p.position), rotation: v(p.rotation), scale: r(p.scale) });\nconst attempt = (f: () => unknown) => { try { return f(); } catch (e) { return 'throws: ' + (e as Error).message; } };\nconst rounded = (x: unknown): unknown => Array.isArray(x) ? x.map(rounded) : typeof x === 'number' ? r(x) : x;\nconst G = globalThis as any;\nG.vectorTable = () => {\nconst a = new Vector3(1, 2, 3); const b = new Vector3(-4, 5, 0.5); const z = new Vector3();\nreturn {\nadd: v(a.add(b)), subtract: v(a.subtract(b)), scale: v(a.scale(2.5)), dot: r(a.dot(b)), cross: v(a.cross(b)),\nlength: r(a.length()), normalize: v(a.normalize()), zero: attempt(() => v(z.normalize())), distance: r(a.distanceTo(b)),\nfrom: v(Vector3.from([7, 8, 9])), zeroes: v(Vector3.zero()), clone: v(a.clone()), array: a.toArray(),\nbad_from: attempt(() => v(Vector3.from([1, 2]))), bad_new: attempt(() => v(new Vector3(NaN, 0, 0))),\nparallel: v(new Vector3(0, 0, 2).cross(new Vector3(0, 0, 5))),\n};\n};\nG.rayTable = () => {\nconst plane = new Plane(new Vector3(0, 0, -2), new Vector3(0, 0, 1));\nconst hit = (o: number[], d: number[]) => {\nconst p = plane.intersect(new Ray(new Vector3(o[0], o[1], o[2]), new Vector3(d[0], d[1], d[2])));\nreturn p === null ? null : v(p);\n};\nconst tilted = new Plane(new Vector3(1, 1, 1), new Vector3(1, 1, 1)).intersect(new Ray(new Vector3(0, 0, 0), new Vector3(1, 1, 1)));\nreturn {\nat: v(new Ray(new Vector3(1, 1, 1), new Vector3(0, 0, -1)).at(3)),\nstraight: hit([0, 0, 0], [0, 0, -1]), slanted: hit([1, 2, 0], [0.5, -0.5, -1]), parallel: hit([0, 0, 0], [1, 0, 0]),\nbehind: hit([0, 0, -5], [0, 0, -1]), away: hit([0, 0, 0], [0, 0, 1]), on_plane: hit([3, 4, -2], [1, 0, 0]),\nunnormalised: hit([0, 0, 0], [0, 0, -4]), tilted: tilted === null ? null : v(tilted),\n};\n};\nG.poseTable = () => {\nconst rotations = [[0, 0, 0], [0.1, 0.2, 0.3], [Math.PI / 2, 0, 0], [0, Math.PI / 2, 0], [0, -Math.PI / 2, 0.3], [3, 2, 1], [0, 0, Math.PI], [-0.7, 1.2, -2.5]];\nconst out: unknown[] = [];\nfor (const rotation of rotations) {\nfor (const scale of [1, 2, 0.5]) {\nconst p = new Transform3D(new Vector3(1, -2, 3), rotation, scale);\nconst plane = p.plane();\nout.push({\nrotation: rotation.map(r), scale, euler: v(p.rotation), x: v(p.transformDirection(new Vector3(1, 0, 0))),\ny: v(p.transformDirection(new Vector3(0, 1, 0))), z: v(p.transformDirection(new Vector3(0, 0, 1))),\npoint: v(p.transformPoint(new Vector3(0.5, 0.25, -1))), plane: [v(plane.point), v(plane.normal)],\n});\n}\n}\nreturn out;\n};\nG.composeTable = () => {\nconst p = new Transform3D(new Vector3(1, 2, 3), [0.3, -0.4, 0.5], 2);\nconst q = new Transform3D(new Vector3(-1, 0.5, 2), [1, 0.2, -0.6], 0.5);\nconst probe = new Vector3(0.3, -0.2, 0.9);\nconst moved = p.clone(); moved.rotation = [0.1, 0.2, 0.3]; moved.position = new Vector3(9, 9, 9); moved.scale = 3;\nreturn {\nproduct: t(p.multiply(q)), reverse: t(q.multiply(p)), inverse: t(p.inverse()), round_trip: t(p.multiply(p.inverse())),\ninverse_point: v(p.inverse().transformPoint(p.transformPoint(probe))), identity: t(Transform3D.identity()),\ntranslation: t(Transform3D.translation(4, 5, 6)), clone: t(p.clone()), mutated_clone: t(moved), original: t(p),\n};\n};\nG.parseTable = () => {\nconst triples = [[1, 2, 3], { x: 1, y: 2, z: 3 }, [1, 2], [1, 2, 3, 4], [1, 'a', 3], [1, NaN, 3], [1, Infinity, 3], null, undefined, 'xyz', { x: 1, y: 2 }];\nconst rotations = [[0.1, 0.2, 0.3], { x: 0.1, y: 0.2, z: 0.3 }, { x: 0, y: Math.sin(0.25), z: 0, w: Math.cos(0.25) }, { x: 0, y: 0, z: 0, w: 1 },\n{ x: 1, y: 0, z: 0, w: 0 }, { x: 0.5, y: 0.5, z: 0.5, w: 0.5 }, { x: 0, y: 0, z: 0, w: 0 }, { x: 0, y: NaN, z: 0 }, 'turn', [1, 2]];\nconst scales = [2, [1, 2, 3], { x: 1, y: 2, z: 3 }, 0, -1, 'big', [1, 2], NaN];\nconst quaternions = [[0, 0, 0, 1], [Math.sin(Math.PI / 4), 0, 0, Math.cos(Math.PI / 4)], [0, Math.sin(Math.PI / 4), 0, Math.cos(Math.PI / 4)],\n[0, 0, Math.sin(Math.PI / 4), Math.cos(Math.PI / 4)], [0.1826, 0.3651, 0.5477, 0.7303], [0, 0.7071, 0, 0.7071], [0, 1, 0, 0]];\nreturn {\nvectors: triples.map((value) => attempt(() => rounded(vectorFrom('target', value)))),\nrotations: rotations.map((value) => attempt(() => rounded(rotationFrom('target', value)))),\nscales: scales.map((value) => attempt(() => rounded(scaleFrom('target', value)))),\nquaternions: quaternions.map(([x, y, z, w]) => rounded(eulerOfQuaternion({ x, y, z, w }))),\n};\n};\nG.transformTable = () => {\nconst inits = [{ position: { x: 5, y: 6, z: 7 } }, { rotation: [0, 0.5, 0] }, { scale: 2 }, { position: [1, 2, 3], rotation: { x: 0, y: 0, z: 0, w: 1 }, scale: [1, 2, 3] },\n{}, { pose: 1 }, { position: [0, 0, 0], pose: 1 }, { position: { x: 9, y: 9, z: 9 }, rotation: { x: 'no', y: 0, z: 0 } }, 5, null];\nreturn inits.map((init) => attempt(() => rounded(transformFrom('target', init))));\n};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('vector', vectorTable());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "vector",
+          "value": {
+            "add": [
+              -3,
+              7,
+              3.5
+            ],
+            "array": [
+              1,
+              2,
+              3
+            ],
+            "bad_from": [
+              1,
+              2,
+              0
+            ],
+            "bad_new": [
+              null,
+              0,
+              0
+            ],
+            "clone": [
+              1,
+              2,
+              3
+            ],
+            "cross": [
+              -14,
+              -12.5,
+              13
+            ],
+            "distance": 6.3442887702,
+            "dot": 7.5,
+            "from": [
+              7,
+              8,
+              9
+            ],
+            "length": 3.7416573868,
+            "normalize": [
+              0.2672612419,
+              0.5345224838,
+              0.8017837257
+            ],
+            "parallel": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              2.5,
+              5,
+              7.5
+            ],
+            "subtract": [
+              5,
+              -3,
+              2.5
+            ],
+            "zero": [
+              0,
+              0,
+              0
+            ],
+            "zeroes": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "step": "vectors",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('rays', rayTable());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "rays",
+          "value": {
+            "at": [
+              1,
+              1,
+              -2
+            ],
+            "away": null,
+            "behind": null,
+            "on_plane": null,
+            "parallel": null,
+            "slanted": [
+              2,
+              1,
+              -2
+            ],
+            "straight": [
+              0,
+              0,
+              -2
+            ],
+            "tilted": [
+              1,
+              1,
+              1
+            ],
+            "unnormalised": [
+              0,
+              0,
+              -2
+            ]
+          }
+        }
+      ],
+      "step": "rays_and_planes",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('poses', poseTable());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "poses",
+          "value": [
+            {
+              "euler": [
+                0,
+                0,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ]
+              ],
+              "point": [
+                1.5,
+                -1.75,
+                2
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": 1,
+              "x": [
+                1,
+                0,
+                0
+              ],
+              "y": [
+                0,
+                1,
+                0
+              ],
+              "z": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "euler": [
+                0,
+                0,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ]
+              ],
+              "point": [
+                2,
+                -1.5,
+                1
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": 2,
+              "x": [
+                1,
+                0,
+                0
+              ],
+              "y": [
+                0,
+                1,
+                0
+              ],
+              "z": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "euler": [
+                0,
+                0,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ]
+              ],
+              "point": [
+                1.25,
+                -1.875,
+                2.5
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": 0.5,
+              "x": [
+                1,
+                0,
+                0
+              ],
+              "y": [
+                0,
+                1,
+                0
+              ],
+              "z": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "euler": [
+                0.1,
+                0.2,
+                0.3
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0.2183506631,
+                  -0.0369570135,
+                  0.9751703272
+                ]
+              ],
+              "point": [
+                1.1810220568,
+                -1.5791219762,
+                1.9499558562
+              ],
+              "rotation": [
+                0.1,
+                0.2,
+                0.3
+              ],
+              "scale": 1,
+              "x": [
+                0.9362933636,
+                0.2896294776,
+                -0.1986693308
+              ],
+              "y": [
+                -0.2750958473,
+                0.9564250858,
+                0.097843395
+              ],
+              "z": [
+                0.2183506631,
+                -0.0369570135,
+                0.9751703272
+              ]
+            },
+            {
+              "euler": [
+                0.1,
+                0.2,
+                0.3
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0.2183506631,
+                  -0.0369570135,
+                  0.9751703272
+                ]
+              ],
+              "point": [
+                1.3620441136,
+                -1.1582439524,
+                0.8999117123
+              ],
+              "rotation": [
+                0.1,
+                0.2,
+                0.3
+              ],
+              "scale": 2,
+              "x": [
+                0.9362933636,
+                0.2896294776,
+                -0.1986693308
+              ],
+              "y": [
+                -0.2750958473,
+                0.9564250858,
+                0.097843395
+              ],
+              "z": [
+                0.2183506631,
+                -0.0369570135,
+                0.9751703272
+              ]
+            },
+            {
+              "euler": [
+                0.1,
+                0.2,
+                0.3
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0.2183506631,
+                  -0.0369570135,
+                  0.9751703272
+                ]
+              ],
+              "point": [
+                1.0905110284,
+                -1.7895609881,
+                2.4749779281
+              ],
+              "rotation": [
+                0.1,
+                0.2,
+                0.3
+              ],
+              "scale": 0.5,
+              "x": [
+                0.9362933636,
+                0.2896294776,
+                -0.1986693308
+              ],
+              "y": [
+                -0.2750958473,
+                0.9564250858,
+                0.097843395
+              ],
+              "z": [
+                0.2183506631,
+                -0.0369570135,
+                0.9751703272
+              ]
+            },
+            {
+              "euler": [
+                1.5707963268,
+                0,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0,
+                  -1,
+                  0
+                ]
+              ],
+              "point": [
+                1.5,
+                -1,
+                3.25
+              ],
+              "rotation": [
+                1.5707963268,
+                0,
+                0
+              ],
+              "scale": 1,
+              "x": [
+                1,
+                0,
+                0
+              ],
+              "y": [
+                0,
+                0,
+                1
+              ],
+              "z": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "euler": [
+                1.5707963268,
+                0,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0,
+                  -1,
+                  0
+                ]
+              ],
+              "point": [
+                2,
+                0,
+                3.5
+              ],
+              "rotation": [
+                1.5707963268,
+                0,
+                0
+              ],
+              "scale": 2,
+              "x": [
+                1,
+                0,
+                0
+              ],
+              "y": [
+                0,
+                0,
+                1
+              ],
+              "z": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "euler": [
+                1.5707963268,
+                0,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0,
+                  -1,
+                  0
+                ]
+              ],
+              "point": [
+                1.25,
+                -1.5,
+                3.125
+              ],
+              "rotation": [
+                1.5707963268,
+                0,
+                0
+              ],
+              "scale": 0.5,
+              "x": [
+                1,
+                0,
+                0
+              ],
+              "y": [
+                0,
+                0,
+                1
+              ],
+              "z": [
+                0,
+                -1,
+                0
+              ]
+            },
+            {
+              "euler": [
+                0,
+                1.5707963268,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  1,
+                  0,
+                  0
+                ]
+              ],
+              "point": [
+                0,
+                -1.75,
+                2.5
+              ],
+              "rotation": [
+                0,
+                1.5707963268,
+                0
+              ],
+              "scale": 1,
+              "x": [
+                0,
+                0,
+                -1
+              ],
+              "y": [
+                0,
+                1,
+                0
+              ],
+              "z": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "euler": [
+                0,
+                1.5707963268,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  1,
+                  0,
+                  0
+                ]
+              ],
+              "point": [
+                -1,
+                -1.5,
+                2
+              ],
+              "rotation": [
+                0,
+                1.5707963268,
+                0
+              ],
+              "scale": 2,
+              "x": [
+                0,
+                0,
+                -1
+              ],
+              "y": [
+                0,
+                1,
+                0
+              ],
+              "z": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "euler": [
+                0,
+                1.5707963268,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  1,
+                  0,
+                  0
+                ]
+              ],
+              "point": [
+                0.5,
+                -1.875,
+                2.75
+              ],
+              "rotation": [
+                0,
+                1.5707963268,
+                0
+              ],
+              "scale": 0.5,
+              "x": [
+                0,
+                0,
+                -1
+              ],
+              "y": [
+                0,
+                1,
+                0
+              ],
+              "z": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "euler": [
+                0.3,
+                -1.5707963268,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  -0.9553364891,
+                  -0.2955202067,
+                  0
+                ]
+              ],
+              "point": [
+                1.8814564375,
+                -1.4656456711,
+                3.5
+              ],
+              "rotation": [
+                0,
+                -1.5707963268,
+                0.3
+              ],
+              "scale": 1,
+              "x": [
+                0,
+                0,
+                1
+              ],
+              "y": [
+                -0.2955202067,
+                0.9553364891,
+                0
+              ],
+              "z": [
+                -0.9553364891,
+                -0.2955202067,
+                0
+              ]
+            },
+            {
+              "euler": [
+                0.3,
+                -1.5707963268,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  -0.9553364891,
+                  -0.2955202067,
+                  0
+                ]
+              ],
+              "point": [
+                2.7629128749,
+                -0.9312913421,
+                4
+              ],
+              "rotation": [
+                0,
+                -1.5707963268,
+                0.3
+              ],
+              "scale": 2,
+              "x": [
+                0,
+                0,
+                1
+              ],
+              "y": [
+                -0.2955202067,
+                0.9553364891,
+                0
+              ],
+              "z": [
+                -0.9553364891,
+                -0.2955202067,
+                0
+              ]
+            },
+            {
+              "euler": [
+                0.3,
+                -1.5707963268,
+                0
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  -0.9553364891,
+                  -0.2955202067,
+                  0
+                ]
+              ],
+              "point": [
+                1.4407282187,
+                -1.7328228355,
+                3.25
+              ],
+              "rotation": [
+                0,
+                -1.5707963268,
+                0.3
+              ],
+              "scale": 0.5,
+              "x": [
+                0,
+                0,
+                1
+              ],
+              "y": [
+                -0.2955202067,
+                0.9553364891,
+                0
+              ],
+              "z": [
+                -0.9553364891,
+                -0.2955202067,
+                0
+              ]
+            },
+            {
+              "euler": [
+                -0.1415926536,
+                1.1415926536,
+                -2.1415926536
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  -0.3676304629,
+                  -0.8337376518,
+                  0.4119822457
+                ]
+              ],
+              "point": [
+                1.4808033116,
+                -1.4480794977,
+                2.1186873797
+              ],
+              "rotation": [
+                3,
+                2,
+                1
+              ],
+              "scale": 1,
+              "x": [
+                -0.2248450954,
+                -0.3501754884,
+                -0.9092974268
+              ],
+              "y": [
+                0.9023815855,
+                -0.4269176213,
+                -0.0587266449
+              ],
+              "z": [
+                -0.3676304629,
+                -0.8337376518,
+                0.4119822457
+              ]
+            },
+            {
+              "euler": [
+                -0.1415926536,
+                1.1415926536,
+                -2.1415926536
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  -0.3676304629,
+                  -0.8337376518,
+                  0.4119822457
+                ]
+              ],
+              "point": [
+                1.9616066232,
+                -0.8961589955,
+                1.2373747594
+              ],
+              "rotation": [
+                3,
+                2,
+                1
+              ],
+              "scale": 2,
+              "x": [
+                -0.2248450954,
+                -0.3501754884,
+                -0.9092974268
+              ],
+              "y": [
+                0.9023815855,
+                -0.4269176213,
+                -0.0587266449
+              ],
+              "z": [
+                -0.3676304629,
+                -0.8337376518,
+                0.4119822457
+              ]
+            },
+            {
+              "euler": [
+                -0.1415926536,
+                1.1415926536,
+                -2.1415926536
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  -0.3676304629,
+                  -0.8337376518,
+                  0.4119822457
+                ]
+              ],
+              "point": [
+                1.2404016558,
+                -1.7240397489,
+                2.5593436898
+              ],
+              "rotation": [
+                3,
+                2,
+                1
+              ],
+              "scale": 0.5,
+              "x": [
+                -0.2248450954,
+                -0.3501754884,
+                -0.9092974268
+              ],
+              "y": [
+                0.9023815855,
+                -0.4269176213,
+                -0.0587266449
+              ],
+              "z": [
+                -0.3676304629,
+                -0.8337376518,
+                0.4119822457
+              ]
+            },
+            {
+              "euler": [
+                0,
+                0,
+                3.1415926536
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ]
+              ],
+              "point": [
+                0.5,
+                -2.25,
+                2
+              ],
+              "rotation": [
+                0,
+                0,
+                3.1415926536
+              ],
+              "scale": 1,
+              "x": [
+                -1,
+                0,
+                0
+              ],
+              "y": [
+                0,
+                -1,
+                0
+              ],
+              "z": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "euler": [
+                0,
+                0,
+                3.1415926536
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ]
+              ],
+              "point": [
+                0,
+                -2.5,
+                1
+              ],
+              "rotation": [
+                0,
+                0,
+                3.1415926536
+              ],
+              "scale": 2,
+              "x": [
+                -1,
+                0,
+                0
+              ],
+              "y": [
+                0,
+                -1,
+                0
+              ],
+              "z": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "euler": [
+                0,
+                0,
+                3.1415926536
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ]
+              ],
+              "point": [
+                0.75,
+                -2.125,
+                2.5
+              ],
+              "rotation": [
+                0,
+                0,
+                3.1415926536
+              ],
+              "scale": 0.5,
+              "x": [
+                -1,
+                0,
+                0
+              ],
+              "y": [
+                0,
+                -1,
+                0
+              ],
+              "z": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "euler": [
+                -0.7,
+                1.2,
+                -2.5
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  -0.185559151,
+                  -0.9427394234,
+                  0.2771464975
+                ]
+              ],
+              "point": [
+                1.275101916,
+                -1.2290421318,
+                2.1984746409
+              ],
+              "rotation": [
+                -0.7,
+                1.2,
+                -2.5
+              ],
+              "scale": 1,
+              "x": [
+                -0.2903006015,
+                -0.2168610223,
+                -0.932039086
+              ],
+              "y": [
+                0.9387722632,
+                -0.2534041764,
+                -0.2334372745
+              ],
+              "z": [
+                -0.185559151,
+                -0.9427394234,
+                0.2771464975
+              ]
+            },
+            {
+              "euler": [
+                -0.7,
+                1.2,
+                -2.5
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  -0.185559151,
+                  -0.9427394234,
+                  0.2771464975
+                ]
+              ],
+              "point": [
+                1.550203832,
+                -0.4580842637,
+                1.3969492817
+              ],
+              "rotation": [
+                -0.7,
+                1.2,
+                -2.5
+              ],
+              "scale": 2,
+              "x": [
+                -0.2903006015,
+                -0.2168610223,
+                -0.932039086
+              ],
+              "y": [
+                0.9387722632,
+                -0.2534041764,
+                -0.2334372745
+              ],
+              "z": [
+                -0.185559151,
+                -0.9427394234,
+                0.2771464975
+              ]
+            },
+            {
+              "euler": [
+                -0.7,
+                1.2,
+                -2.5
+              ],
+              "plane": [
+                [
+                  1,
+                  -2,
+                  3
+                ],
+                [
+                  -0.185559151,
+                  -0.9427394234,
+                  0.2771464975
+                ]
+              ],
+              "point": [
+                1.137550958,
+                -1.6145210659,
+                2.5992373204
+              ],
+              "rotation": [
+                -0.7,
+                1.2,
+                -2.5
+              ],
+              "scale": 0.5,
+              "x": [
+                -0.2903006015,
+                -0.2168610223,
+                -0.932039086
+              ],
+              "y": [
+                0.9387722632,
+                -0.2534041764,
+                -0.2334372745
+              ],
+              "z": [
+                -0.185559151,
+                -0.9427394234,
+                0.2771464975
+              ]
+            }
+          ]
+        }
+      ],
+      "step": "poses",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('compose', composeTable());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "compose",
+          "value": {
+            "clone": {
+              "position": [
+                1,
+                2,
+                3
+              ],
+              "rotation": [
+                0.3,
+                -0.4,
+                0.5
+              ],
+              "scale": 2
+            },
+            "identity": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": 1
+            },
+            "inverse": {
+              "position": [
+                -1.42986121,
+                -0.9119991914,
+                -0.7897812324
+              ],
+              "rotation": [
+                -0.461591086,
+                0.1858716121,
+                -0.6050498802
+              ],
+              "scale": 0.5
+            },
+            "inverse_point": [
+              0.3,
+              -0.2,
+              0.9
+            ],
+            "mutated_clone": {
+              "position": [
+                9,
+                9,
+                9
+              ],
+              "rotation": [
+                0.1,
+                0.2,
+                0.3
+              ],
+              "scale": 3
+            },
+            "original": {
+              "position": [
+                1,
+                2,
+                3
+              ],
+              "rotation": [
+                0.3,
+                -0.4,
+                0.5
+              ],
+              "scale": 2
+            },
+            "product": {
+              "position": [
+                -1.9148327244,
+                0.1492458295,
+                6.0130481558
+              ],
+              "rotation": [
+                1.460678817,
+                0.0104473781,
+                0.0107252556
+              ],
+              "scale": 1
+            },
+            "reverse": {
+              "position": [
+                -0.7323116396,
+                -0.5578149949,
+                3.5196612709
+              ],
+              "rotation": [
+                1.4148325523,
+                -0.4222280374,
+                -0.6978314794
+              ],
+              "scale": 1
+            },
+            "round_trip": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": 1
+            },
+            "translation": {
+              "position": [
+                4,
+                5,
+                6
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": 1
+            }
+          }
+        }
+      ],
+      "step": "composition",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('parsing', parseTable());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "parsing",
+          "value": {
+            "quaternions": [
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                1.5707963268,
+                0,
+                0
+              ],
+              [
+                0,
+                1.5707963268,
+                0
+              ],
+              [
+                0,
+                0,
+                1.5707963268
+              ],
+              [
+                0.7853707804,
+                0.339759447,
+                1.4288171142
+              ],
+              [
+                3.1415926536,
+                1.5707963268,
+                3.1415926536
+              ],
+              [
+                3.1415926536,
+                0,
+                3.1415926536
+              ]
+            ],
+            "rotations": [
+              [
+                0.1,
+                0.2,
+                0.3
+              ],
+              [
+                0.1,
+                0.2,
+                0.3
+              ],
+              [
+                0,
+                0.5,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                3.1415926536,
+                0,
+                0
+              ],
+              [
+                1.5707963268,
+                0,
+                1.5707963268
+              ],
+              "throws: target: a quaternion of length 0 is not a rotation",
+              "throws: target: must be three angles, { x, y, z } or a quaternion { x, y, z, w }",
+              "throws: target: must be three angles, { x, y, z } or a quaternion { x, y, z, w }",
+              "throws: target: must be three angles, { x, y, z } or a quaternion { x, y, z, w }"
+            ],
+            "scales": [
+              [
+                2,
+                2,
+                2
+              ],
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                -1,
+                -1,
+                -1
+              ],
+              "throws: target: must be a number, three numbers or { x, y, z }",
+              "throws: target: must be a number, three numbers or { x, y, z }",
+              "throws: target: a uniform scale must be a finite number"
+            ],
+            "vectors": [
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                1,
+                2,
+                3
+              ],
+              "throws: target: must be three numbers or { x, y, z }",
+              "throws: target: must be three numbers or { x, y, z }",
+              "throws: target: every component must be a finite number",
+              "throws: target: every component must be a finite number",
+              "throws: target: every component must be a finite number",
+              "throws: target: must be three numbers or { x, y, z }",
+              "throws: target: must be three numbers or { x, y, z }",
+              "throws: target: must be three numbers or { x, y, z }",
+              "throws: target: must be three numbers or { x, y, z }"
+            ]
+          }
+        }
+      ],
+      "step": "parsing",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('transforms_from', transformTable());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "transforms_from",
+          "value": [
+            {
+              "position": [
+                5,
+                6,
+                7
+              ],
+              "rotation": null,
+              "scale": null
+            },
+            {
+              "position": null,
+              "rotation": [
+                0,
+                0.5,
+                0
+              ],
+              "scale": null
+            },
+            {
+              "position": null,
+              "rotation": null,
+              "scale": [
+                2,
+                2,
+                2
+              ]
+            },
+            {
+              "position": [
+                1,
+                2,
+                3
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                2,
+                3
+              ]
+            },
+            {
+              "position": null,
+              "rotation": null,
+              "scale": null
+            },
+            "throws: target.pose: a transform has position, rotation and scale only",
+            "throws: target.pose: a transform has position, rotation and scale only",
+            "throws: target.rotation: must be three angles, { x, y, z } or a quaternion { x, y, z, w }",
+            "throws: target: must be an object with position, rotation and scale",
+            "throws: target: must be an object with position, rotation and scale"
+          ]
+        }
+      ],
+      "step": "transforms",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

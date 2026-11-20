@@ -1,0 +1,187 @@
+{
+  "scenario": "scene_bindings_owners",
+  "source": "globalThis.fail = (f: () => void) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.runs = 0; globalThis.n = new Node({ id: 'n' });\nglobalThis.first = n.bind('x', () => { runs++; return gnoblin.clients.at(0).x; });\nglobalThis.second = n.properties.bind('x', () => 7);\nrec('replaced', [first.alive, second.alive, n.x]);\nglobalThis.c2 = gnoblin.clients.at(1); globalThis.bound = c2.bind('opacity', () => 0.4);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "replaced",
+          "value": [
+            false,
+            true,
+            7
+          ]
+        }
+      ],
+      "step": "second_binding_replaces_the_first",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 4,
+            "op": "set",
+            "value": 0.4
+          }
+        ],
+        [
+          {
+            "class": "node",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n1",
+            "op": "set",
+            "value": "n"
+          },
+          {
+            "key": "x",
+            "node": "n1",
+            "op": "set",
+            "value": 7.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 4
+        },
+        {
+          "action": "eval",
+          "js": "rec('alive', bound.alive);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "alive",
+          "value": false
+        }
+      ],
+      "step": "owner_destroyed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "n.destroy(); rec('alive', second.alive); rec('refused', fail(() => { n.bind('x', () => 1); }));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "alive",
+          "value": false
+        },
+        {
+          "label": "refused",
+          "value": "Node#N.properties.bind(x): the object was destroyed"
+        }
+      ],
+      "step": "node_destroyed",
+      "writes": [
+        [
+          {
+            "node": "n1",
+            "op": "destroy"
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win2"
+      }
+    ]
+  }
+}

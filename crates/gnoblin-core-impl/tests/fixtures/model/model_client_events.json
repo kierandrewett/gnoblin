@@ -1,0 +1,860 @@
+{
+  "scenario": "model_client_events",
+  "source": "globalThis.arm = (object: string, collection: string, facade: string, method: string) => {\nconst G = globalThis as any;\nG.offs = [\nG.eval(object)[method]((o: any) => G.log.push('object:' + method + ':' + o.id)),\nG.eval(collection)[method]((o: any) => G.log.push('collection:' + method + ':' + o.id)),\nG.gnoblin[facade]((o: any) => G.log.push('facade:' + method + ':' + o.id)),\n];\n};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientTitleChanged', 'onTitleChanged');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onTitleChanged_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "title",
+          "value": "t1"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onTitleChanged:3",
+        "collection:onTitleChanged:3",
+        "facade:onTitleChanged:3"
+      ],
+      "step": "onTitleChanged_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onTitleChanged_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "title",
+          "value": "t2"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onTitleChanged_heard_by_none",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientAppIdChanged', 'onAppIdChanged');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onAppIdChanged_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "app_id",
+          "value": "a1"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onAppIdChanged:3",
+        "collection:onAppIdChanged:3",
+        "facade:onAppIdChanged:3"
+      ],
+      "step": "onAppIdChanged_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onAppIdChanged_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "app_id",
+          "value": "a2"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onAppIdChanged_heard_by_none",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientDecorationChanged', 'onDecorationChanged');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onDecorationChanged_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "decoration",
+          "value": "client"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onDecorationChanged:3",
+        "collection:onDecorationChanged:3",
+        "facade:onDecorationChanged:3"
+      ],
+      "step": "onDecorationChanged_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onDecorationChanged_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "decoration",
+          "value": "server"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onDecorationChanged_heard_by_none",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientFocusChanged', 'onFocusChanged');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onFocusChanged_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "focused",
+          "value": true
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onFocusChanged:3",
+        "collection:onFocusChanged:3",
+        "facade:onFocusChanged:3"
+      ],
+      "step": "onFocusChanged_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onFocusChanged_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "focused",
+          "value": false
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onFocusChanged_heard_by_none",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientGeometryChanged', 'onGeometryChanged');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onGeometryChanged_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "width",
+          "value": 301.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onGeometryChanged:3",
+        "collection:onGeometryChanged:3",
+        "facade:onGeometryChanged:3"
+      ],
+      "step": "onGeometryChanged_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onGeometryChanged_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "width",
+          "value": 302.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onGeometryChanged_heard_by_none",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientPointerEnter', 'onPointerEnter');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerEnter_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "enter",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onPointerEnter:3",
+        "collection:onPointerEnter:3",
+        "facade:onPointerEnter:3"
+      ],
+      "step": "onPointerEnter_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerEnter_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "enter",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerEnter_heard_by_none",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientPointerMotion', 'onPointerMotion');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerMotion_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "motion",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onPointerMotion:3",
+        "collection:onPointerMotion:3",
+        "facade:onPointerMotion:3"
+      ],
+      "step": "onPointerMotion_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerMotion_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "motion",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerMotion_heard_by_none",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientPointerLeave', 'onPointerLeave');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerLeave_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "leave",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onPointerLeave:3",
+        "collection:onPointerLeave:3",
+        "facade:onPointerLeave:3"
+      ],
+      "step": "onPointerLeave_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerLeave_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "leave",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerLeave_heard_by_none",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientPointerPress', 'onPointerPress');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerPress_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "press",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onPointerPress:3",
+        "collection:onPointerPress:3",
+        "facade:onPointerPress:3"
+      ],
+      "step": "onPointerPress_heard",
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 3
+            }
+          },
+          {
+            "index": -1,
+            "node": 3,
+            "op": "insert",
+            "parent": 1
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerPress_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "press",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerPress_heard_by_none",
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 3
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm(\"gnoblin.clients.get('3')\", 'gnoblin.clients', 'onClientPointerRelease', 'onPointerRelease');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerRelease_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "release",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onPointerRelease:3",
+        "collection:onPointerRelease:3",
+        "facade:onPointerRelease:3"
+      ],
+      "step": "onPointerRelease_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerRelease_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer",
+          "button": 0,
+          "kind": "release",
+          "node": 3,
+          "x": 1.0,
+          "y": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onPointerRelease_heard_by_none",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [
+      {
+        "id": 20,
+        "key": "name",
+        "value": "output-0"
+      },
+      {
+        "id": 20,
+        "key": "connector",
+        "value": "DP-1"
+      },
+      {
+        "id": 20,
+        "key": "x",
+        "value": 0.0
+      },
+      {
+        "id": 20,
+        "key": "y",
+        "value": 0.0
+      }
+    ],
+    "policy": null,
+    "screen": [
+      1000.0,
+      600.0
+    ],
+    "windows": [
+      {
+        "app_id": "app.one",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "one"
+      },
+      {
+        "app_id": "app.two",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "two"
+      }
+    ]
+  }
+}

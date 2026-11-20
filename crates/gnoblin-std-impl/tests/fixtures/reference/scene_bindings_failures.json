@@ -1,0 +1,227 @@
+{
+  "scenario": "scene_bindings_failures",
+  "source": "globalThis.fail = (f: () => void) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.c = gnoblin.clients.at(0); globalThis.background = new Node({ id: 'background' }); globalThis.camera2D = { zoom: 2 };\nbackground.properties.bind('vignette', () => Math.min(1, camera2D.zoom / 3));\nc.properties.bind('opacity', () => { if (c.x > 100) throw new Error('too far'); return 0.5 + c.x / 1000; });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "Node#N.vignette threw: /home/node/work/crates/gnoblin-js/../../data/js/gnoblin-core/properties.ts:251:36: vignette is not a writable property"
+      ],
+      "log": [],
+      "step": "bound",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 0.5
+          }
+        ],
+        [
+          {
+            "class": "node",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n1",
+            "op": "set",
+            "value": "background"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "x",
+          "value": 300.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "Client#N.opacity threw: eval_script:4:63: too far"
+      ],
+      "log": [],
+      "step": "throws",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "x",
+          "value": 400.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "throws_again",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "x",
+          "value": 10.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "recovers",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 0.51
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.a = new Node({ id: 'a' }); globalThis.b = new Node({ id: 'b' }); a.bind('x', () => b.x + 1); b.bind('x', () => a.x + 1);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "Node#N.x threw: /home/node/work/crates/gnoblin-js/../../data/js/gnoblin-core/properties.ts:287:25: still changing after 8 passes in one frame (it reads #N.x); a binding that writes what another reads, which writes what it reads, never settles"
+      ],
+      "log": [],
+      "step": "feed_each_other",
+      "writes": [
+        [
+          {
+            "class": "node",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n2",
+            "op": "set",
+            "value": "a"
+          },
+          {
+            "class": "node",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n3",
+            "op": "set",
+            "value": "b"
+          },
+          {
+            "key": "x",
+            "node": "n2",
+            "op": "set",
+            "value": 9.0
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 10.0
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win1"
+      }
+    ]
+  }
+}

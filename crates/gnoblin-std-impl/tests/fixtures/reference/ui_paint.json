@@ -1,0 +1,661 @@
+{
+  "scenario": "ui_paint",
+  "source": "class Chart extends Canvas {\ndraw() {\nreturn [\n{ op: 'rect', x: 1, y: 2, width: 30, height: 20, radius: 4, fill: '#ff000080', stroke: '#00ff00', strokeWidth: 2 },\n{ op: 'rect', x: 0, y: 0, width: 5, height: 5 },\n{ op: 'line', x1: 0, y1: 0, x2: 30, y2: 20, width: 2, color: '#0000ff' },\n{ op: 'line', x1: 1, y1: 1, x2: 2, y2: 2 },\n{ op: 'text', text: 'hi \\u2713', x: 3, y: 4, size: 12, color: '#abc', font: 'mono' },\n{ op: 'text', text: 'plain' },\n{ op: 'icon', name: 'folder', x: 5, y: 6, size: 24, color: '#fff8' },\n{ op: 'icon', name: 'user-home' },\n{ op: 'pushClip', x: 0, y: 0, width: 10, height: 10, radius: 3 },\n{ op: 'pushOpacity', alpha: 0.5 },\n{ op: 'rect', x: 0, y: 0, width: 5, height: 5, fill: '#123' },\n{ op: 'popOpacity' },\n{ op: 'popClip' },\n];\n}\n}\nclass Bad extends Canvas { draw() { return [{ op: 'rect', x: 0, y: 0, width: 4, height: 4, fill: 'red' }] as any; } }\nclass Nan extends Canvas { draw() { return [{ op: 'rect', x: NaN, y: 0, width: 4, height: 4 }] as any; } }\nconst holder = new Box({ width: 300, height: 200 });\nholder.add(new Chart({ width: 60, height: 40 }));\nconst swatch = (x: number, fill: string) => holder.add(new Box({ x, y: 50, width: 8, height: 8, fill }));\nswatch(0, '#f00'); swatch(10, '#f008'); swatch(20, '#ff8800'); swatch(30, '#ff880044');\nholder.add(new Box({ x: 40, y: 50, width: 20, height: 10, radius: 5, fill: '#112233' }));\nholder.add(new Bad({ width: 5, height: 5 }));\nholder.add(new Nan({ width: 5, height: 5 }));\nglobalThis.holder = holder;",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "Bad.draw threw: /home/node/work/crates/gnoblin-js/../../data/js/gnoblin-std/ui/paint.ts:225:102: draw op 1: a colour is #Nrgb, #Nrgba, #Nrrggbb or #Nrrggbbaa, not red",
+        "Nan.draw threw: /home/node/work/crates/gnoblin-js/../../data/js/gnoblin-std/ui/paint.ts:225:102: draw op 1: expected a finite number, not NaN"
+      ],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 300.0, height: 200.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                300.0,
+                200.0
+              ]
+            },
+            {
+              "bytes": 304,
+              "node": "n2",
+              "paint": [
+                "Rect { x: 1.0, y: 2.0, width: 30.0, height: 20.0, radius: 4.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 128 }, stroke: Rgba8 { r: 0, g: 255, b: 0, a: 255 }, stroke_width: 2.0 }",
+                "Rect { x: 0.0, y: 0.0, width: 5.0, height: 5.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "TextLine { x1: 0.0, y1: 0.0, x2: 30.0, y2: 20.0, width: 2.0, colour: Rgba8 { r: 0, g: 0, b: 255, a: 255 } }",
+                "TextLine { x1: 1.0, y1: 1.0, x2: 2.0, y2: 2.0, width: 1.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 } }",
+                "Text { x: 3.0, y: 4.0, size: 12.0, colour: Rgba8 { r: 170, g: 187, b: 204, a: 255 }, font: \"mono\", text: \"hi ✓\" }",
+                "Text { x: 0.0, y: 0.0, size: 14.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, font: \"sans\", text: \"plain\" }",
+                "Icon { x: 5.0, y: 6.0, size: 24.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 136 }, name: \"folder\" }",
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, name: \"user-home\" }",
+                "PushClip { x: 0.0, y: 0.0, width: 10.0, height: 10.0, radius: 3.0 }",
+                "PushOpacity(0.5)",
+                "Rect { x: 0.0, y: 0.0, width: 5.0, height: 5.0, radius: 0.0, fill: Rgba8 { r: 17, g: 34, b: 51, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "PopOpacity",
+                "PopClip"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                60.0,
+                40.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                50.0,
+                8.0,
+                8.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 136 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                10.0,
+                50.0,
+                8.0,
+                8.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n5",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 136, b: 0, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                20.0,
+                50.0,
+                8.0,
+                8.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n6",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 136, b: 0, a: 68 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                30.0,
+                50.0,
+                8.0,
+                8.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n7",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 20.0, height: 10.0, radius: 5.0, fill: Rgba8 { r: 17, g: 34, b: 51, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                40.0,
+                50.0,
+                20.0,
+                10.0
+              ]
+            }
+          ],
+          "file": "ui_paint.ops.bin",
+          "paint": "ops"
+        }
+      ],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n3",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n4",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n5",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n5",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n6",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n6",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n7",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n7",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n8",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n8",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n9",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n9",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 60.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 40.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010d000000010000803f000000400000f0410000a04100008040800000ffff00ff00000000400100000000000000000000a0400000a040000000000000000000000000000000000200000000000000000000f0410000a04100000040ffff0000020000803f0000803f00000040000000400000803fffffffff03000040400000804000004041ffccbbaa04006d6f6e6f06000000686920e29c9303000000000000000000006041ffffffff040073616e7305000000706c61696e040000a0400000c0400000c04188ffffff0600666f6c64657204000000000000000000008041ffffffff0900757365722d686f6d65050000000000000000000020410000204100004040070000003f0100000000000000000000a0400000a04000000000ff33221100000000000000000806",
+              "paint": [
+                "Rect { x: 1.0, y: 2.0, width: 30.0, height: 20.0, radius: 4.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 128 }, stroke: Rgba8 { r: 0, g: 255, b: 0, a: 255 }, stroke_width: 2.0 }",
+                "Rect { x: 0.0, y: 0.0, width: 5.0, height: 5.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "TextLine { x1: 0.0, y1: 0.0, x2: 30.0, y2: 20.0, width: 2.0, colour: Rgba8 { r: 0, g: 0, b: 255, a: 255 } }",
+                "TextLine { x1: 1.0, y1: 1.0, x2: 2.0, y2: 2.0, width: 1.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 } }",
+                "Text { x: 3.0, y: 4.0, size: 12.0, colour: Rgba8 { r: 170, g: 187, b: 204, a: 255 }, font: \"mono\", text: \"hi ✓\" }",
+                "Text { x: 0.0, y: 0.0, size: 14.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, font: \"sans\", text: \"plain\" }",
+                "Icon { x: 5.0, y: 6.0, size: 24.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 136 }, name: \"folder\" }",
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, name: \"user-home\" }",
+                "PushClip { x: 0.0, y: 0.0, width: 10.0, height: 10.0, radius: 3.0 }",
+                "PushOpacity(0.5)",
+                "Rect { x: 0.0, y: 0.0, width: 5.0, height: 5.0, radius: 0.0, fill: Rgba8 { r: 17, g: 34, b: 51, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "PopOpacity",
+                "PopClip"
+              ]
+            }
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000004100000000ff0000ff0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 10.0
+          },
+          {
+            "key": "y",
+            "node": "n4",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "width",
+            "node": "n4",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n4",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000004100000000880000ff0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 136 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "y",
+            "node": "n5",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "width",
+            "node": "n5",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000004100000000ff0088ff0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 136, b: 0, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "y",
+            "node": "n6",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "width",
+            "node": "n6",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n6",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "content",
+            "node": "n6",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000004100000000440088ff0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 136, b: 0, a: 68 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n7",
+            "op": "set",
+            "value": 40.0
+          },
+          {
+            "key": "y",
+            "node": "n7",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "height",
+            "node": "n7",
+            "op": "set",
+            "value": 10.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000a041000020410000a040ff3322110000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 20.0, height: 10.0, radius: 5.0, fill: Rgba8 { r: 17, g: 34, b: 51, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n8",
+            "op": "set",
+            "value": 5.0
+          },
+          {
+            "key": "height",
+            "node": "n8",
+            "op": "set",
+            "value": 5.0
+          },
+          {
+            "key": "width",
+            "node": "n9",
+            "op": "set",
+            "value": 5.0
+          },
+          {
+            "key": "height",
+            "node": "n9",
+            "op": "set",
+            "value": 5.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "height",
+            "node": "n1",
+            "op": "set",
+            "value": 200.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000096430000484300000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 300.0, height: 200.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "holder.children[0].width = 80; holder.children[5].fill = '#00ff0080';"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 300.0, height: 200.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                300.0,
+                200.0
+              ]
+            },
+            {
+              "bytes": 304,
+              "node": "n2",
+              "paint": [
+                "Rect { x: 1.0, y: 2.0, width: 30.0, height: 20.0, radius: 4.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 128 }, stroke: Rgba8 { r: 0, g: 255, b: 0, a: 255 }, stroke_width: 2.0 }",
+                "Rect { x: 0.0, y: 0.0, width: 5.0, height: 5.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "TextLine { x1: 0.0, y1: 0.0, x2: 30.0, y2: 20.0, width: 2.0, colour: Rgba8 { r: 0, g: 0, b: 255, a: 255 } }",
+                "TextLine { x1: 1.0, y1: 1.0, x2: 2.0, y2: 2.0, width: 1.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 } }",
+                "Text { x: 3.0, y: 4.0, size: 12.0, colour: Rgba8 { r: 170, g: 187, b: 204, a: 255 }, font: \"mono\", text: \"hi ✓\" }",
+                "Text { x: 0.0, y: 0.0, size: 14.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, font: \"sans\", text: \"plain\" }",
+                "Icon { x: 5.0, y: 6.0, size: 24.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 136 }, name: \"folder\" }",
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, name: \"user-home\" }",
+                "PushClip { x: 0.0, y: 0.0, width: 10.0, height: 10.0, radius: 3.0 }",
+                "PushOpacity(0.5)",
+                "Rect { x: 0.0, y: 0.0, width: 5.0, height: 5.0, radius: 0.0, fill: Rgba8 { r: 17, g: 34, b: 51, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "PopOpacity",
+                "PopClip"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                80.0,
+                40.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                50.0,
+                8.0,
+                8.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 136 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                10.0,
+                50.0,
+                8.0,
+                8.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n5",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 136, b: 0, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                20.0,
+                50.0,
+                8.0,
+                8.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n6",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 8.0, radius: 0.0, fill: Rgba8 { r: 255, g: 136, b: 0, a: 68 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                30.0,
+                50.0,
+                8.0,
+                8.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n7",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 20.0, height: 10.0, radius: 5.0, fill: Rgba8 { r: 0, g: 255, b: 0, a: 128 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                40.0,
+                50.0,
+                20.0,
+                10.0
+              ]
+            }
+          ],
+          "file": "ui_paint.resized.bin",
+          "paint": "resized"
+        }
+      ],
+      "step": "resized",
+      "writes": [
+        [
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 80.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000a041000020410000a0408000ff000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 20.0, height: 10.0, radius: 5.0, fill: Rgba8 { r: 0, g: 255, b: 0, a: 128 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

@@ -1,0 +1,416 @@
+{
+  "scenario": "transition_held",
+  "source": "class Fill extends Layout {\ncompute(c: any) { return c.children.map((n: any) => ({ node: n, tiled: true, bounds: { ...c.area } })); }\n}\nfor (const id of ['1', '2', '3']) gnoblin.workspaces.add(new Workspace({ id, layout: new Layout() }));\nglobalThis.fail = (f: () => void) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).name + ': ' + (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.a = gnoblin.clients.get('3'); g.b = gnoblin.clients.get('4'); g.ws = gnoblin.workspaces.get('1'); g.computes = 0; g.calls = 0;\ng.Half = class extends Layout { compute(c) { g.computes += 1; const h = c.area.height / 2;\nreturn c.children.map((n, i) => ({ node: n, tiled: true, bounds: { x: c.area.x, y: c.area.y + i * h, width: c.area.width, height: h } })); } };\n"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "ready",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.x0 = g.a.x; g.log = [];\ng.t = gnoblin.requestTransition(() => { g.a.x = g.x0 + 50; }, { duration: 800, easing: 'ease-in-out', autoplay: false });\ng.t.finished.then((r) => g.log.push('done:' + r.cancelled)); rec('paused', g.t.paused);"
+        }
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "paused",
+          "value": true
+        }
+      ],
+      "step": "held",
+      "writes": [
+        [
+          {
+            "class": "tween",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "key": "paused",
+            "node": "n1",
+            "op": "set",
+            "value": true
+          },
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.001871305865500724,
+              0.0075867623250157525,
+              0.01729114640636832,
+              0.03111403690961987,
+              0.0491619841288111,
+              0.07150889407043681,
+              0.0981846093763523,
+              0.1291619005687877,
+              0.16434242599888665,
+              0.2035426751425274,
+              0.24648143436551634,
+              0.2927708009177443,
+              0.3419130444631909,
+              0.39330546175608894,
+              0.44625461747283013,
+              0.5,
+              0.5537453825271699,
+              0.6066945382439113,
+              0.6580869555368092,
+              0.7072291990822557,
+              0.7535185656344838,
+              0.7964573248574727,
+              0.8356575740011134,
+              0.8708380994312122,
+              0.9018153906236476,
+              0.9284911059295632,
+              0.9508380158711889,
+              0.9688859630903801,
+              0.9827088535936317,
+              0.9924132376749842,
+              0.9981286941344993,
+              1.0
+            ],
+            "seconds": 0.8,
+            "tween": "n1",
+            "value": 60.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.t.progress = 0.4;"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "progress_0.4",
+      "writes": [
+        [
+          {
+            "key": "progress",
+            "node": "n1",
+            "op": "set",
+            "value": 0.4
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.t.progress = 0.1;"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "progress_0.1",
+      "writes": [
+        [
+          {
+            "key": "progress",
+            "node": "n1",
+            "op": "set",
+            "value": 0.1
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.t.progress = 1.0;"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "progress_1.0",
+      "writes": [
+        [
+          {
+            "key": "progress",
+            "node": "n1",
+            "op": "set",
+            "value": 1.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('refused', fail(() => { g.t.progress = 1.5; }));"
+        }
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "refused",
+          "value": "RangeError: Transition.progress: expects a number from 0 to 1, not 1.5"
+        }
+      ],
+      "step": "progress_out_of_range",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.t.reverse();"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "reverse",
+      "writes": [
+        [
+          {
+            "key": "reverse",
+            "node": "n1",
+            "op": "set",
+            "value": true
+          },
+          {
+            "key": "paused",
+            "node": "n1",
+            "op": "set",
+            "value": false
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "end_track",
+          "completed": false,
+          "key": "x",
+          "node": 3
+        },
+        {
+          "action": "eval",
+          "js": "rec('log', g.log); rec('x', [g.a.x, g.x0]);"
+        }
+      ],
+      "diagnostics": [],
+      "log": [
+        "done:true",
+        {
+          "label": "log",
+          "value": []
+        },
+        {
+          "label": "x",
+          "value": [
+            10,
+            10
+          ]
+        }
+      ],
+      "step": "ran_back",
+      "writes": [
+        [
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "value": 10.0
+          },
+          {
+            "node": "n1",
+            "op": "destroy"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.h = gnoblin.requestTransition(() => { g.a.opacity = 0.5; }, { duration: 100, delay: 50, easing: 'linear', autoplay: false }); g.h.onFinished((r) => g.log.push('staged finished cancelled=' + r.cancelled));"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "held_again",
+      "writes": [
+        [
+          {
+            "class": "tween",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "key": "paused",
+            "node": "n2",
+            "op": "set",
+            "value": true
+          },
+          {
+            "delay": 0.05,
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.03125,
+              0.0625,
+              0.09375,
+              0.125,
+              0.15625,
+              0.1875,
+              0.21875,
+              0.25,
+              0.28125,
+              0.3125,
+              0.34375,
+              0.375,
+              0.40625,
+              0.4375,
+              0.46875,
+              0.5,
+              0.53125,
+              0.5625,
+              0.59375,
+              0.625,
+              0.65625,
+              0.6875,
+              0.71875,
+              0.75,
+              0.78125,
+              0.8125,
+              0.84375,
+              0.875,
+              0.90625,
+              0.9375,
+              0.96875,
+              1.0
+            ],
+            "seconds": 0.1,
+            "tween": "n2",
+            "value": 0.5
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.h.play();"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "play",
+      "writes": [
+        [
+          {
+            "key": "reverse",
+            "node": "n2",
+            "op": "set",
+            "value": false
+          },
+          {
+            "key": "paused",
+            "node": "n2",
+            "op": "set",
+            "value": false
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.h.pause();"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "pause",
+      "writes": [
+        [
+          {
+            "key": "paused",
+            "node": "n2",
+            "op": "set",
+            "value": true
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.h.cancel();"
+        },
+        {
+          "action": "eval",
+          "js": "rec('log', g.log);"
+        }
+      ],
+      "diagnostics": [],
+      "log": [
+        "staged finished cancelled=true",
+        {
+          "label": "log",
+          "value": []
+        }
+      ],
+      "step": "cancel",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 0.5
+          },
+          {
+            "node": "n2",
+            "op": "destroy"
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": {
+      "second_screen": false,
+      "windows": 2
+    },
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

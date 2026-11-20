@@ -419,6 +419,7 @@ use std::time::Duration;
 use gnoblin_js::JsShellConfig;
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_testkit::compositor::{FakeCompositor, ROOT, text};
+use gnoblin_testkit::oracle::{self, Value, json};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 /// The world of the launcher's scenarios (`driver_examples::world`): a 1000 by 800 screen, a seat and the window 40, with both spellings
@@ -485,9 +486,18 @@ fn rect_of(comp: &FakeCompositor, id: u64) -> Option<[f64; 4]> {
     })
 }
 
+/// What a step shows, as a fixture holds it.
+fn rects_json(rects: &[(u64, Option<[f64; 4]>)]) -> Value {
+    Value::Array(
+        rects
+            .iter()
+            .map(|(id, rect)| json!({ "id": id, "rect": rect }))
+            .collect(),
+    )
+}
+
 #[test]
 fn floating_placement_matches_the_typescript_std() {
-    let stage = stage();
     let comp = reference_world();
     let seen = std::cell::RefCell::new(Vec::new());
     reference_run(&comp, "import \"gnoblin-std\";\nexport {};\n", |comp, shell| {
@@ -499,7 +509,15 @@ fn floating_placement_matches_the_typescript_std() {
         *seen.borrow_mut() = [40, 41, 42].map(|id| (id, rect_of(comp, id))).to_vec();
     });
     let reference = seen.into_inner();
+    reference::fixtures().json(
+        "examples_floating_placement",
+        &json!({ "steps": [{ "step": "three", "windows": rects_json(&reference) }] }),
+    );
+    if oracle::recording() {
+        return;
+    }
 
+    let stage = stage();
     let (stdout, stderr, code) = scenario_of(stage, &stage.with_std, "example02", &stage.std_shell);
     assert_eq!(code, 0, "{stdout}\n{stderr}");
     let native = step(&stdout, "three");
@@ -626,8 +644,18 @@ fn reference_layouts() -> Vec<(String, Rects)> {
 
 #[test]
 fn the_native_tiling_layouts_match_the_typescript_std() {
-    let stage = stage();
     let reference = reference_layouts();
+    reference::fixtures().json(
+        "examples_tiling_layouts",
+        &json!({ "steps": reference.iter().map(|(name, rects)| json!({
+            "step": name,
+            "windows": rects_json(rects),
+        })).collect::<Vec<_>>() }),
+    );
+    if oracle::recording() {
+        return;
+    }
+    let stage = stage();
     let (stdout, stderr, code) = scenario_of(stage, &stage.with_std, "std_layouts", &stage.layouts);
     assert_eq!(code, 0, "{stdout}\n{stderr}");
     assert!(stderr.contains("layouts shell is running"), "{stderr}");

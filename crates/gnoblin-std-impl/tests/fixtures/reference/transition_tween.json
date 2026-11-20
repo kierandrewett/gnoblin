@@ -1,0 +1,221 @@
+{
+  "scenario": "transition_tween",
+  "source": "class Fill extends Layout {\ncompute(c: any) { return c.children.map((n: any) => ({ node: n, tiled: true, bounds: { ...c.area } })); }\n}\nfor (const id of ['1', '2', '3']) gnoblin.workspaces.add(new Workspace({ id, layout: new Layout() }));\nglobalThis.fail = (f: () => void) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).name + ': ' + (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.a = gnoblin.clients.get('3'); g.b = gnoblin.clients.get('4'); g.ws = gnoblin.workspaces.get('1'); g.computes = 0; g.calls = 0;\ng.Half = class extends Layout { compute(c) { g.computes += 1; const h = c.area.height / 2;\nreturn c.children.map((n, i) => ({ node: n, tiled: true, bounds: { x: c.area.x, y: c.area.y + i * h, width: c.area.width, height: h } })); } };\n"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "ready",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.log = []; g.t = gnoblin.requestTransition(() => { g.a.opacity = 0.5; g.a.x = 70; }, { duration: 200, delay: 100 });\ng.t.finished.then((r) => g.log.push('done:' + r.cancelled));"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "tracks_join_a_tween_node",
+      "writes": [
+        [
+          {
+            "class": "tween",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "delay": 0.1,
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.2,
+            "tween": "n1",
+            "value": 0.5
+          },
+          {
+            "delay": 0.1,
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.2,
+            "tween": "n1",
+            "value": 70.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "advance",
+          "ms": 5000
+        },
+        {
+          "action": "eval",
+          "js": "rec('log', g.log);"
+        }
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "log",
+          "value": []
+        }
+      ],
+      "step": "the_shells_clock_does_not_end_it",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "end_track",
+          "completed": true,
+          "key": "opacity",
+          "node": 3
+        },
+        {
+          "action": "eval",
+          "js": "rec('log', g.log);"
+        }
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "log",
+          "value": []
+        }
+      ],
+      "step": "one_track_ended",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "end_track",
+          "completed": true,
+          "key": "x",
+          "node": 3
+        },
+        {
+          "action": "eval",
+          "js": "rec('log', g.log);"
+        }
+      ],
+      "diagnostics": [],
+      "log": [
+        "done:false",
+        {
+          "label": "log",
+          "value": []
+        }
+      ],
+      "step": "both_tracks_ended",
+      "writes": [
+        [
+          {
+            "node": "n1",
+            "op": "destroy"
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": {
+      "second_screen": false,
+      "windows": 2
+    },
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "scenario": "style_classes",
+  "source": "globalThis.caught = (fn: () => void) => { try { fn(); return 'none'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const s = gnoblin.clients.style;\ns.backdropFilter = [{ blur: 18 }, { saturate: 1.25 }, { brightness: 1.1 }, { contrast: 1.2 }];\ns.shadows = [{ blur: 4 }, new Shadow({ y: 2 })];\ns.borders = [{ width: 2, color: '#7c3aed', offset: 3 }];\nconst log = [\ns.backdropFilter.map((f) => f.constructor.name), s.shadows.every((x) => x instanceof Shadow), s.borders[0] instanceof Border,\ns.backdropFilter[0].radius, s.backdropFilter[1].amount, s.shadows[0].color, s.shadows[0].spread, s.shadows[0].inset,\ns.borders[0].offset, s.borders[0].inset,\n];\ngnoblin.clients.style = new ClientStyle({ cornerRadius: 3, shadows: [{ blur: 7 }], background: null });\nlog.push(gnoblin.clients.style === s, s.cornerRadius, s.shadows[0].blur, s.background, s.borders.length, s.filter.length);\ngnoblin.clients.style = { opacity: 0.8 };\nlog.push(s.opacity, s.cornerRadius, JSON.stringify(s));\nlog.push(new BlurFilter().radius, new BrightnessFilter({ amount: 1.5 }).amount, new SaturateFilter().amount);\nlog.push(new Style({ opacity: 0.5 }).opacity, caught(() => new Style({ borders: [] })));\nrec('log', log);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "log",
+          "value": [
+            [
+              "BlurFilter",
+              "SaturateFilter",
+              "BrightnessFilter",
+              "ContrastFilter"
+            ],
+            true,
+            true,
+            18,
+            1.25,
+            "#N",
+            0,
+            false,
+            3,
+            false,
+            true,
+            3,
+            7,
+            null,
+            0,
+            0,
+            0.8,
+            null,
+            "{\"opacity\":0.8}",
+            12,
+            1.5,
+            1,
+            0.5,
+            "Style: no field \"borders\" (known: opacity, filter, backdropFilter)"
+          ]
+        }
+      ],
+      "step": "classes_and_literals",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 0.8
+          },
+          {
+            "key": "opacity",
+            "node": 4,
+            "op": "set",
+            "value": 0.8
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "win2"
+      }
+    ]
+  }
+}

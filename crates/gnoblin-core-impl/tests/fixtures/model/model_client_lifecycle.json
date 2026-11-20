@@ -1,0 +1,284 @@
+{
+  "scenario": "model_client_lifecycle",
+  "source": "export {};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.offs = [\ngnoblin.clients.get('3').onClosed((c) => log.push('object:onClosed:' + c.id)),\ngnoblin.clients.onClosed((c) => log.push('collection:onClosed:' + c.id)),\ngnoblin.onClientClosed((c) => log.push('facade:onClientClosed:' + c.id)),\ngnoblin.clients.onRemoved((c, from) => log.push('collection:onRemoved:' + c.id + ':' + (from === gnoblin.clients))),\n];"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "subscribed_to_closing",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 3
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onClosed:3",
+        "collection:onClosed:3",
+        "facade:onClientClosed:3",
+        "collection:onRemoved:3:true"
+      ],
+      "step": "window_closed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => off());"
+        },
+        {
+          "action": "destroy",
+          "id": 4
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "unsubscribed_window_closed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.offs = [\ngnoblin.clients.onAdded((c, to) => log.push('collection:onAdded:' + c.id + ':' + (to === gnoblin.clients))),\ngnoblin.onClientCreated((c) => log.push('facade:onClientCreated:' + c.id)),\ngnoblin.clients.onReady((c) => log.push('collection:onReady:' + c.id)),\ngnoblin.onClientReady((c) => log.push('facade:onClientReady:' + c.id)),\n];"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "subscribed_to_arrivals",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "open",
+          "app_id": "app.new",
+          "id": 100,
+          "title": "new"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "collection:onAdded:100:true",
+        "facade:onClientCreated:100",
+        "collection:onReady:100",
+        "facade:onClientReady:100"
+      ],
+      "step": "window_arrived",
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 100
+            }
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": 100,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": 100,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "width",
+            "node": 100,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 100,
+            "op": "set",
+            "value": 300.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => off());"
+        },
+        {
+          "action": "open",
+          "app_id": "app.newer",
+          "id": 101,
+          "title": "newer"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "unsubscribed_window_arrived",
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 101
+            }
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": 101,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "y",
+            "node": 101,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "width",
+            "node": 101,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 101,
+            "op": "set",
+            "value": 300.0
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [
+      {
+        "id": 20,
+        "key": "name",
+        "value": "output-0"
+      },
+      {
+        "id": 20,
+        "key": "connector",
+        "value": "DP-1"
+      },
+      {
+        "id": 20,
+        "key": "x",
+        "value": 0.0
+      },
+      {
+        "id": 20,
+        "key": "y",
+        "value": 0.0
+      }
+    ],
+    "policy": null,
+    "screen": [
+      1000.0,
+      600.0
+    ],
+    "windows": [
+      {
+        "app_id": "app.one",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "one"
+      },
+      {
+        "app_id": "app.two",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "two"
+      }
+    ]
+  }
+}

@@ -1,0 +1,191 @@
+{
+  "script": "focus 40\nchord Super+7\ncreate 41 B\nfocus 41\ncreate 42 C\nfocus 42\nfocus 40\ncreate 43 D\nstep after_first 40 41 42 43\nfocus 43\nstep focused_new 40 41 42 43\n",
+  "steps": [
+    {
+      "step": "after_first",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            0.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            1000.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            1500.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            500.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "focused_new",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            0.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            1000.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            1500.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            500.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    }
+  ]
+}

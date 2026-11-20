@@ -1,0 +1,154 @@
+{
+  "scenario": "style_effect_limit",
+  "source": "globalThis.caught = (fn: () => void) => { try { fn(); return 'none'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.shadows = [{ blur: 1 }];"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "one_shadow",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 1.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 1.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.shadows = new Array(8).fill({ blur: 2 }); gnoblin.clients.style.borders = new Array(8).fill({ width: 1 });\ngnoblin.clients.style.backdropFilter = [{ blur: 12 }];"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "not applied: style.Client#N.style: a window carries at most 16 effects, the style makes 17",
+        "not applied: style.Client#N.style: a window carries at most 16 effects, the style makes 17"
+      ],
+      "log": [],
+      "step": "seventeen_effects",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 3,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "decoration": "server",
+                "effects": {
+                  "effects": [
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 1.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                  ]
+                },
+                "height": 300.0,
+                "title": "win1",
+                "width": 400.0
+              }
+            }
+          ],
+          "root": 3,
+          "tree": "window"
+        }
+      ],
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "win2"
+      }
+    ]
+  }
+}

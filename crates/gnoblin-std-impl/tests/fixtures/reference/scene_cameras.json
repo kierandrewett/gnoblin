@@ -1,0 +1,816 @@
+{
+  "scenario": "scene_cameras",
+  "source": "globalThis.fail = (f: () => void) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).message; } };\nglobalThis.camera3d = (c: any) => ({ projection: c.projection, metres: c.metres, near: c.near, far: c.far, fov: c.fov, ipd: c.ipd, size: c.size, budget: c.layerBudget });\nglobalThis.isId = (c: any) => c.position.x === 0 && c.position.y === 0 && c.zoom === 1 && c.rotation === 0;\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.cam = new Camera3D({ id: 'cam', projection: 'perspective', fov: 70, near: 0.2, position: { x: 1, y: 2, z: 3 } });\ngnoblin.scene.root.add(cam); rec('camera', camera3d(cam));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "camera",
+          "value": {
+            "budget": 0,
+            "far": 1000,
+            "fov": 70,
+            "ipd": 0.063,
+            "metres": 0.001,
+            "near": 0.2,
+            "projection": "perspective",
+            "size": 1000
+          }
+        }
+      ],
+      "step": "perspective",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "camera",
+              "node": "n1",
+              "parent": 1,
+              "props": {
+                "fov": 70.0,
+                "name": "cam",
+                "near": 0.2,
+                "projection": "perspective",
+                "x": 1.0,
+                "y": 2.0,
+                "z": 3.0
+              }
+            }
+          ],
+          "root": "n1",
+          "tree": "cam"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "camera",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n1",
+            "op": "set",
+            "value": "cam"
+          },
+          {
+            "key": "x",
+            "node": "n1",
+            "op": "set",
+            "value": 1.0
+          },
+          {
+            "key": "y",
+            "node": "n1",
+            "op": "set",
+            "value": 2.0
+          },
+          {
+            "key": "z",
+            "node": "n1",
+            "op": "set",
+            "value": 3.0
+          },
+          {
+            "key": "projection",
+            "node": "n1",
+            "op": "set",
+            "value": "perspective"
+          },
+          {
+            "key": "near",
+            "node": "n1",
+            "op": "set",
+            "value": 0.2
+          },
+          {
+            "key": "fov",
+            "node": "n1",
+            "op": "set",
+            "value": 70.0
+          },
+          {
+            "index": -1,
+            "node": "n1",
+            "op": "insert",
+            "parent": 1
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "cam.projection = 'orthographic'; cam.size = 400; cam.far = 5000; cam.metres = 0.01; cam.ipd = 0.063; rec('camera', camera3d(cam));\nrec('bad', [fail(() => { cam.projection = 'fisheye'; }), fail(() => { cam.size = 0; }), fail(() => { cam.fov = NaN; }), fail(() => { cam.near = -1; })]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "camera",
+          "value": {
+            "budget": 0,
+            "far": 5000,
+            "fov": 70,
+            "ipd": 0.063,
+            "metres": 0.01,
+            "near": 0.2,
+            "projection": "orthographic",
+            "size": 400
+          }
+        },
+        {
+          "label": "bad",
+          "value": [
+            "Camera3D#N.projection: must be \"orthographic\", \"perspective\" or \"stereo\"",
+            "Camera3D#N.size: must be above 0",
+            "Camera3D#N.fov: must be a finite number",
+            "accepted"
+          ]
+        }
+      ],
+      "step": "orthographic",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "camera",
+              "node": "n1",
+              "parent": 1,
+              "props": {
+                "far": 5000.0,
+                "fov": 70.0,
+                "metres": 0.01,
+                "name": "cam",
+                "near": -1.0,
+                "projection": "orthographic",
+                "x": 1.0,
+                "y": 2.0,
+                "z": 3.0
+              }
+            }
+          ],
+          "root": "n1",
+          "tree": "cam"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "projection",
+            "node": "n1",
+            "op": "set",
+            "value": "orthographic"
+          },
+          {
+            "key": "far",
+            "node": "n1",
+            "op": "set",
+            "value": 5000.0
+          },
+          {
+            "key": "metres",
+            "node": "n1",
+            "op": "set",
+            "value": 0.01
+          },
+          {
+            "key": "near",
+            "node": "n1",
+            "op": "set",
+            "value": -1.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "cam.projection = 'stereo'; rec('camera', camera3d(cam));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "camera",
+          "value": {
+            "budget": 0,
+            "far": 5000,
+            "fov": 70,
+            "ipd": 0.063,
+            "metres": 0.01,
+            "near": -1,
+            "projection": "stereo",
+            "size": 400
+          }
+        }
+      ],
+      "step": "stereo",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "camera",
+              "node": "n1",
+              "parent": 1,
+              "props": {
+                "far": 5000.0,
+                "fov": 70.0,
+                "metres": 0.01,
+                "name": "cam",
+                "near": -1.0,
+                "projection": "stereo",
+                "x": 1.0,
+                "y": 2.0,
+                "z": 3.0
+              }
+            }
+          ],
+          "root": "n1",
+          "tree": "cam"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "projection",
+            "node": "n1",
+            "op": "set",
+            "value": "stereo"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.view = new View({ id: 'seen', content: gnoblin.clients.at(0), camera: cam, size: { width: 400, height: 300 } });\ngnoblin.scene.root.add(view); rec('view', { camera: view.camera === cam, size: [view.size.width, view.size.height] });\nview.camera = null; rec('camera', view.camera);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "view",
+          "value": {
+            "camera": true,
+            "size": [
+              400,
+              300
+            ]
+          }
+        },
+        {
+          "label": "camera",
+          "value": null
+        }
+      ],
+      "step": "view_with_a_camera",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": 1,
+              "props": {
+                "camera": {
+                  "node": 0
+                },
+                "height": 300.0,
+                "name": "seen",
+                "source": {
+                  "node": 3
+                },
+                "width": 400.0
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "seen"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "view",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n2",
+            "op": "set",
+            "value": "seen"
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "source",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "node": 3
+            }
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "key": "camera",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "node": 0
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.flat = new Camera2D({ id: 'flat', position: { x: 10, y: 20 }, zoom: 2, rotation: 0.5 });\ngnoblin.scene.root.add(flat);\nrec('flat', { position: flat.position, zoom: flat.zoom, rotation: flat.rotation, identity: isId(flat) });\nrec('bad', [fail(() => { flat.zoom = 0; }), fail(() => { flat.zoom = -2; }), fail(() => { flat.position = null; }), fail(() => { flat.position = { x: NaN, y: 0 }; })]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "flat",
+          "value": {
+            "identity": false,
+            "position": {
+              "x": 10,
+              "y": 20
+            },
+            "rotation": 0.5,
+            "zoom": 2
+          }
+        },
+        {
+          "label": "bad",
+          "value": [
+            "Camera2D#N.zoom: must be above 0",
+            "Camera2D#N.zoom: must be above 0",
+            "Camera2D#N.position: must be { x, y }",
+            "Camera2D#N.position.x: must be a finite number"
+          ]
+        }
+      ],
+      "step": "flat_camera",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "node",
+              "node": "n3",
+              "parent": 1,
+              "props": {
+                "name": "flat",
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.5
+                ],
+                "scale": [
+                  2.0,
+                  2.0,
+                  1.0
+                ],
+                "x": 10.0,
+                "y": 20.0
+              }
+            }
+          ],
+          "root": "n3",
+          "tree": "flat"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "node",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n3",
+            "op": "set",
+            "value": "flat"
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 10.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "scale",
+            "node": "n3",
+            "op": "set",
+            "value": [
+              2.0,
+              2.0,
+              1.0
+            ]
+          },
+          {
+            "key": "rotation",
+            "node": "n3",
+            "op": "set",
+            "value": [
+              0.0,
+              0.0,
+              0.5
+            ]
+          },
+          {
+            "index": -1,
+            "node": "n3",
+            "op": "insert",
+            "parent": 1
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.requestTransition(() => { flat.zoom = 4; flat.position = { x: 30, y: 40 }; flat.rotation = 1; cam.fov = 40; }, { duration: 100 });\nrec('flat', { zoom: flat.zoom, fov: cam.fov });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "flat",
+          "value": {
+            "fov": 40,
+            "zoom": 4
+          }
+        }
+      ],
+      "step": "camera_transition",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "node",
+              "node": "n3",
+              "parent": 1,
+              "props": {
+                "name": "flat",
+                "rotation": [
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "scale": [
+                  4.0,
+                  4.0,
+                  1.0
+                ],
+                "x": 30.0,
+                "y": 40.0
+              }
+            }
+          ],
+          "root": "n3",
+          "tree": "flat"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "tween",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "key": "scale",
+            "node": "n3",
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.1,
+            "tween": "n4",
+            "value": [
+              4.0,
+              4.0,
+              1.0
+            ]
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 40.0
+          },
+          {
+            "key": "rotation",
+            "node": "n3",
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.1,
+            "tween": "n4",
+            "value": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          {
+            "key": "fov",
+            "node": "n1",
+            "op": "set",
+            "value": 40.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "flat.zoom = 1; flat.position = { x: 0, y: 0 }; flat.rotation = 0; rec('identity', isId(flat));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "identity",
+          "value": true
+        }
+      ],
+      "step": "back_to_identity",
+      "writes": [
+        [
+          {
+            "key": "scale",
+            "node": "n3",
+            "op": "set",
+            "value": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "rotation",
+            "node": "n3",
+            "op": "set",
+            "value": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          {
+            "node": "n4",
+            "op": "destroy"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "cam.destroy(); flat.destroy(); rec('alive', [cam.alive, flat.alive]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "alive",
+          "value": [
+            false,
+            false
+          ]
+        }
+      ],
+      "step": "destroyed",
+      "writes": [
+        [
+          {
+            "node": "n1",
+            "op": "destroy"
+          },
+          {
+            "node": "n3",
+            "op": "destroy"
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win1"
+      }
+    ]
+  }
+}

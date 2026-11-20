@@ -1,0 +1,189 @@
+{
+  "scenario": "model_output_hotplug",
+  "source": "export {};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.offs = [\ngnoblin.outputs.onConnected((o) => log.push('collection:onConnected:' + o.name)),\ngnoblin.onOutputConnected((o) => log.push('facade:onOutputConnected:' + o.name)),\ngnoblin.outputs.onAdded((o, to) => log.push('collection:onAdded:' + o.name + ':' + (to === gnoblin.outputs))),\ngnoblin.onOutputAdded((o) => log.push('facade:onOutputAdded:' + o.name)),\ngnoblin.outputs.onRemoved((o) => log.push('collection:onRemoved:' + o.name)),\ngnoblin.onOutputRemoved((o) => log.push('facade:onOutputRemoved:' + o.name)),\ngnoblin.outputs.onDisconnected((o) => log.push('collection:onDisconnected:' + o.name + ':' + o.connected)),\ngnoblin.onOutputDisconnected((o) => log.push('facade:onOutputDisconnected:' + o.name)),\n];"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "collection:onAdded:output-0:true",
+        "facade:onOutputAdded:output-0"
+      ],
+      "step": "subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "plug",
+          "id": 30,
+          "name": "output-1",
+          "primary": false,
+          "rect": [
+            1000.0,
+            0.0,
+            600.0,
+            400.0
+          ]
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "collection:onAdded:output-1:true",
+        "facade:onOutputAdded:output-1",
+        "collection:onConnected:output-1",
+        "facade:onOutputConnected:output-1"
+      ],
+      "step": "plugged_in",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 30
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "collection:onDisconnected:output-1:false",
+        "facade:onOutputDisconnected:output-1",
+        "collection:onRemoved:output-1",
+        "facade:onOutputRemoved:output-1"
+      ],
+      "step": "unplugged",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => off());"
+        },
+        {
+          "action": "plug",
+          "id": 31,
+          "name": "output-2",
+          "primary": false,
+          "rect": [
+            1000.0,
+            0.0,
+            600.0,
+            400.0
+          ]
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "unsubscribed_plugged_in",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [
+      {
+        "id": 20,
+        "key": "name",
+        "value": "output-0"
+      },
+      {
+        "id": 20,
+        "key": "connector",
+        "value": "DP-1"
+      },
+      {
+        "id": 20,
+        "key": "x",
+        "value": 0.0
+      },
+      {
+        "id": 20,
+        "key": "y",
+        "value": 0.0
+      }
+    ],
+    "policy": null,
+    "screen": [
+      1000.0,
+      600.0
+    ],
+    "windows": [
+      {
+        "app_id": "app.one",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "one"
+      },
+      {
+        "app_id": "app.two",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "two"
+      }
+    ]
+  }
+}

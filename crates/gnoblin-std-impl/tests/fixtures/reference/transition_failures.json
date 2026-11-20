@@ -1,0 +1,238 @@
+{
+  "scenario": "transition_failures",
+  "source": "class Fill extends Layout {\ncompute(c: any) { return c.children.map((n: any) => ({ node: n, tiled: true, bounds: { ...c.area } })); }\n}\nfor (const id of ['1', '2', '3']) gnoblin.workspaces.add(new Workspace({ id, layout: new DwindleLayout() }));\nglobalThis.fail = (f: () => void) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).name + ': ' + (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "width",
+            "node": 3,
+            "op": "set",
+            "value": 500.0
+          },
+          {
+            "key": "height",
+            "node": 3,
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "tiled",
+            "node": 3,
+            "op": "set",
+            "value": true
+          },
+          {
+            "key": "x",
+            "node": 4,
+            "op": "set",
+            "value": 500.0
+          },
+          {
+            "key": "y",
+            "node": 4,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "width",
+            "node": 4,
+            "op": "set",
+            "value": 500.0
+          },
+          {
+            "key": "height",
+            "node": 4,
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "tiled",
+            "node": 4,
+            "op": "set",
+            "value": true
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.a = gnoblin.clients.get('3'); g.b = gnoblin.clients.get('4'); g.ws = gnoblin.workspaces.get('1'); g.computes = 0; g.calls = 0;\ng.Half = class extends Layout { compute(c) { g.computes += 1; const h = c.area.height / 2;\nreturn c.children.map((n, i) => ({ node: n, tiled: true, bounds: { x: c.area.x, y: c.area.y + i * h, width: c.area.width, height: h } })); } };\n"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "ready",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('before', [g.ws.layout.constructor.name, g.b.opacity, gnoblin.clients.style.opacity]);\nrec('failed', fail(() => gnoblin.requestTransition(() => { g.b.opacity = 0.1; g.ws.layout = new g.Half(); gnoblin.clients.style.opacity = 0.2; g.a.opacity = 'dim'; }, { duration: 100 })));\nrec('after', [g.ws.layout.constructor.name, g.b.opacity, gnoblin.clients.style.opacity, g.computes]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "before",
+          "value": [
+            "DwindleLayout",
+            1,
+            null
+          ]
+        },
+        {
+          "label": "failed",
+          "value": "TypeError: Client#N.opacity: must be a finite number"
+        },
+        {
+          "label": "after",
+          "value": [
+            "DwindleLayout",
+            1,
+            null,
+            0
+          ]
+        }
+      ],
+      "step": "failing_callback_leaves_the_previous_state",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('failed', fail(() => gnoblin.requestTransition(() => { g.ws.layout = new (class extends Layout { compute() { throw new Error('boom'); } })(); }, { duration: 100 })));\nrec('layout', g.ws.layout.constructor.name);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "failed",
+          "value": "Error: boom"
+        },
+        {
+          "label": "layout",
+          "value": "DwindleLayout"
+        }
+      ],
+      "step": "failing_layout",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 4
+        },
+        {
+          "action": "eval",
+          "js": "rec('failed', fail(() => gnoblin.requestTransition(() => { g.a.opacity = 0.5; g.b.opacity = 0.5; }, { duration: 100 }))); rec('opacity', g.a.opacity);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "failed",
+          "value": "GnoblinError: Client#N.opacity: the client is gone"
+        },
+        {
+          "label": "opacity",
+          "value": 1
+        }
+      ],
+      "step": "stale_target",
+      "writes": [
+        [
+          {
+            "key": "width",
+            "node": 3,
+            "op": "set",
+            "value": 1000.0
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": {
+      "second_screen": false,
+      "windows": 2
+    },
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

@@ -1,0 +1,765 @@
+{
+  "scenario": "input_drags",
+  "source": "gnoblin.workspaces.add(new Workspace({ id: 'main', layout: 'monocle' }));\nglobalThis.input = gnoblin.input.primary;\nclass Probe extends PointerDragBinding {\nlabel: string;\nconstructor(label: string, trigger: string) { super({ id: label, trigger }); this.label = label; }\nonStart(e: any) { rec('start', [this.label, e.client?.id, e.position.x, e.position.y]); return { n: 0 }; }\nonUpdate(e: any, s: any) { s.n++; rec('update', [this.label, e.position.x, e.position.y]); }\nonEnd(e: any, s: any) { rec('end', [this.label, s.n]); }\nonCancel(e: any, s: any) { rec('cancel', [this.label, s.n]); }\n}\n(globalThis as any).Probe = Probe;\nglobalThis.layout = new FloatingLayout();\ngnoblin.workspaces.get('main').layout = globalThis.layout;\nclass G extends GestureBinding {\nlabel: string;\nconstructor(trigger: string, label: string) { super({ id: trigger, trigger }); this.label = label; }\nonStart(e: any) { rec('g.start', [this.label, e.progress]); return {}; }\nonUpdate(e: any) { rec('g.update', [this.label, e.progress]); }\nonEnd(e: any) { rec('g.end', [this.label, e.progress]); }\nonCancel() { rec('g.cancel', [this.label]); }\n}\ninput.bind('Swipe3Left', new G('Swipe3Left', 'left'));\ninput.bind('Swipe3Right', new G('Swipe3Right', 'right'));\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim_gesture",
+          "second": 3,
+          "text": "swipe"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 3,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000300000000000000",
+            "method": "claim_gesture",
+            "node": 5,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          },
+          {
+            "args": "03000000000000000100000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('bounds', 0);"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": 0
+        }
+      ],
+      "step": "claimed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 50.0,
+          "y": 60.0
+        },
+        {
+          "action": "chord",
+          "claim": "<Super>Button1",
+          "state": "press"
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', (() => { const c = gnoblin.clients.get('3'); return [c.x, c.y, c.width, c.height]; })());"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            10,
+            20,
+            300,
+            200
+          ]
+        }
+      ],
+      "step": "press_moves_nothing",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 52.0,
+          "y": 61.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', (() => { const c = gnoblin.clients.get('3'); return [c.x, c.y, c.width, c.height]; })());"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            10,
+            20,
+            300,
+            200
+          ]
+        }
+      ],
+      "step": "within_the_threshold",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 80.0,
+          "y": 100.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', (() => { const c = gnoblin.clients.get('3'); return [c.x, c.y, c.width, c.height]; })());"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            40,
+            60,
+            300,
+            200
+          ]
+        }
+      ],
+      "step": "moved_by_the_delta",
+      "writes": [
+        [
+          {
+            "key": "x",
+            "node": 3,
+            "op": "set",
+            "value": 40.0
+          },
+          {
+            "key": "y",
+            "node": 3,
+            "op": "set",
+            "value": 60.0
+          },
+          {
+            "key": "width",
+            "node": 3,
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "height",
+            "node": 3,
+            "op": "set",
+            "value": 200.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Super>Button1",
+          "state": "release"
+        },
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 400.0,
+          "y": 400.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', (() => { const c = gnoblin.clients.get('3'); return [c.x, c.y, c.width, c.height]; })());"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            40,
+            60,
+            300,
+            200
+          ]
+        }
+      ],
+      "step": "a_released_drag_follows_nothing",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 20.0,
+          "y": 30.0
+        },
+        {
+          "action": "chord",
+          "claim": "<Super>Button3",
+          "state": "press"
+        },
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 60.0,
+          "y": 70.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', (() => { const c = gnoblin.clients.get('3'); return [c.x, c.y, c.width, c.height]; })());"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            40,
+            60,
+            300,
+            200
+          ]
+        }
+      ],
+      "step": "resize_top_left",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 350.0,
+          "y": 230.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', (() => { const c = gnoblin.clients.get('3'); return [c.x, c.y, c.width, c.height]; })());"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            40,
+            60,
+            300,
+            200
+          ]
+        }
+      ],
+      "step": "resize_held_at_the_minimum",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Super>Button3",
+          "state": "release"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "resize_released",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 600.0,
+          "y": 600.0
+        },
+        {
+          "action": "chord",
+          "claim": "<Super>Button1",
+          "state": "press"
+        },
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 650.0,
+          "y": 650.0
+        },
+        {
+          "action": "chord",
+          "claim": "<Super>Button1",
+          "state": "release"
+        },
+        {
+          "action": "eval",
+          "js": "rec('bounds', (() => { const c = gnoblin.clients.get('3'); return [c.x, c.y, c.width, c.height]; })());"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "bounds",
+          "value": [
+            40,
+            60,
+            300,
+            200
+          ]
+        }
+      ],
+      "step": "a_drag_over_no_client_is_declined",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "input.bind('Super+MouseMiddle+Drag', new Probe('p', 'Super+MouseMiddle+Drag'));"
+        }
+      ],
+      "claim_calls": [
+        {
+          "id": 4,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button2"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3",
+        "<Super>Button2"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "probe_bound",
+      "writes": [
+        [
+          {
+            "args": "04000000000000000100000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 50.0,
+          "y": 60.0
+        },
+        {
+          "action": "chord",
+          "claim": "<Super>Button2",
+          "state": "press"
+        },
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 70.0,
+          "y": 80.0
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3",
+        "<Super>Button2"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "start",
+          "value": [
+            "p",
+            "3",
+            50,
+            60
+          ]
+        },
+        {
+          "label": "update",
+          "value": [
+            "p",
+            70,
+            80
+          ]
+        }
+      ],
+      "step": "probe_started",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 3
+        },
+        {
+          "action": "pointer_at",
+          "seat": 5,
+          "x": 90.0,
+          "y": 100.0
+        },
+        {
+          "action": "chord",
+          "claim": "<Super>Button2",
+          "state": "release"
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3",
+        "<Super>Button2"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "cancel",
+          "value": [
+            "p",
+            1
+          ]
+        }
+      ],
+      "step": "window_dies_mid_drag",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "gesture",
+          "dx": 0.0,
+          "dy": 0.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "begin",
+          "rotation": 0.0,
+          "scale": 1.0
+        },
+        {
+          "action": "gesture",
+          "dx": -4.0,
+          "dy": 1.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "update",
+          "rotation": 0.0,
+          "scale": 1.0
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3",
+        "<Super>Button2"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "undecided",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "gesture",
+          "dx": -20.0,
+          "dy": 2.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "update",
+          "rotation": 0.0,
+          "scale": 1.0
+        },
+        {
+          "action": "gesture",
+          "dx": -100.0,
+          "dy": 5.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "update",
+          "rotation": 0.0,
+          "scale": 1.0
+        },
+        {
+          "action": "gesture",
+          "dx": -120.0,
+          "dy": 5.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "end",
+          "rotation": 0.0,
+          "scale": 1.0
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3",
+        "<Super>Button2"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "g.start",
+          "value": [
+            "left",
+            0.05
+          ]
+        },
+        {
+          "label": "g.update",
+          "value": [
+            "left",
+            0.05
+          ]
+        },
+        {
+          "label": "g.update",
+          "value": [
+            "left",
+            0.25
+          ]
+        },
+        {
+          "label": "g.end",
+          "value": [
+            "left",
+            0.3
+          ]
+        }
+      ],
+      "step": "left_swipe",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "gesture",
+          "dx": 0.0,
+          "dy": 0.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "begin",
+          "rotation": 0.0,
+          "scale": 1.0
+        },
+        {
+          "action": "gesture",
+          "dx": 30.0,
+          "dy": 0.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "update",
+          "rotation": 0.0,
+          "scale": 1.0
+        },
+        {
+          "action": "gesture",
+          "dx": 40.0,
+          "dy": 0.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "end",
+          "rotation": 0.0,
+          "scale": 1.0
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3",
+        "<Super>Button2"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "g.start",
+          "value": [
+            "right",
+            0.075
+          ]
+        },
+        {
+          "label": "g.update",
+          "value": [
+            "right",
+            0.075
+          ]
+        },
+        {
+          "label": "g.end",
+          "value": [
+            "right",
+            0.1
+          ]
+        }
+      ],
+      "step": "right_swipe",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "gesture",
+          "dx": 0.0,
+          "dy": 0.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "begin",
+          "rotation": 0.0,
+          "scale": 1.0
+        },
+        {
+          "action": "gesture",
+          "dx": -50.0,
+          "dy": 0.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "update",
+          "rotation": 0.0,
+          "scale": 1.0
+        },
+        {
+          "action": "gesture",
+          "dx": -50.0,
+          "dy": 0.0,
+          "fingers": 3,
+          "kind": "swipe",
+          "phase": "cancel",
+          "rotation": 0.0,
+          "scale": 1.0
+        }
+      ],
+      "claims_held": [
+        "swipe",
+        "<Super>Button1",
+        "<Super>Button3",
+        "<Super>Button2"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "g.start",
+          "value": [
+            "left",
+            0.125
+          ]
+        },
+        {
+          "label": "g.update",
+          "value": [
+            "left",
+            0.125
+          ]
+        },
+        {
+          "label": "g.cancel",
+          "value": [
+            "left"
+          ]
+        }
+      ],
+      "step": "cancelled_swipe",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": {
+      "second_seat": false
+    },
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

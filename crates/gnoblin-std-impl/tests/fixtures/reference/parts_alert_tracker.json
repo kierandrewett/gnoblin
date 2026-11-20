@@ -1,0 +1,108 @@
+{
+  "scenario": "parts_alert_tracker",
+  "source": "export {};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const w = { alive: true, unresponsive: false, title: 't', kill() {} }; const t = new AlertTracker(); const out = [];\nconst look = (locked = false) => { const c = t.check([w], locked); out.push(`${c.open.length}${c.close.length}`); };\nlook(); w.unresponsive = true; look(); look();\nout.push(String(t.answered(w, 'wait'))); look(); w.unresponsive = false; look(); w.unresponsive = true; look();\nout.push(String(t.answered(w, 'force'))); look(true); w.unresponsive = false; look(); w.unresponsive = true; look(true); look();\nrec('tracker', out);\nrec('clean', [cleanText('a\\nb', 80), cleanText('x'.repeat(70), 60).length, cleanText('\\ud800', 10), cleanText('tab\\there', 80), cleanText('caf\\u00e9 \\u2713', 80)]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "tracker",
+          "value": [
+            "00",
+            "10",
+            "00",
+            "false",
+            "00",
+            "00",
+            "10",
+            "true",
+            "00",
+            "00",
+            "00",
+            "10"
+          ]
+        },
+        {
+          "label": "clean",
+          "value": [
+            "a b",
+            61,
+            "(unreadable)",
+            "tab here",
+            "café ✓"
+          ]
+        }
+      ],
+      "step": "tracker_and_text",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      }
+    ]
+  }
+}

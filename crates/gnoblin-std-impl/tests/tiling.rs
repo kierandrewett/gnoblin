@@ -22,6 +22,7 @@ use reference::Reference;
 use gnoblin_js::JsShellConfig;
 use gnoblin_shell_host::supervisor::ManualClock;
 use gnoblin_testkit::compositor::{FakeCompositor, ROOT, text};
+use gnoblin_testkit::oracle::{self, Value, json};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 // ---- the native side ---------------------------------------------------------------------------------------------------------
@@ -432,10 +433,41 @@ fn reference(script: &str) -> Steps {
     steps
 }
 
-/// Plays `script` over both and asserts every step reads the same; returns the native steps for further checks.
-fn same(script: &str) -> Steps {
-    let native = native(script);
+/// What a step shows, as a fixture holds it.
+fn steps_json(steps: &Steps) -> Value {
+    Value::Array(
+        steps
+            .iter()
+            .map(|(name, observed)| {
+                json!({
+                    "step": name,
+                    "windows": observed.iter().map(|obs| json!({
+                        "id": obs.id,
+                        "rect": obs.rect,
+                        "tiled": obs.tiled,
+                        "visible": obs.visible,
+                        "z": obs.z,
+                        "rotation": obs.rotation,
+                        "scale": obs.scale,
+                    })).collect::<Vec<_>>(),
+                })
+            })
+            .collect(),
+    )
+}
+
+/// Plays `script` to the TypeScript std, holds what it did to the fixture `tiling_<name>` and, unless the run only records, plays it over
+/// the native std too and asserts every step reads the same; returns the steps for further checks.
+fn same(name: &str, script: &str) -> Steps {
     let reference = reference(script);
+    reference::fixtures().json(
+        &format!("tiling_{name}"),
+        &json!({ "script": script, "steps": steps_json(&reference) }),
+    );
+    if oracle::recording() {
+        return reference;
+    }
+    let native = native(script);
     assert_eq!(native.len(), reference.len(), "the two runs print as many steps");
     for ((name, got), (_, want)) in native.iter().zip(&reference) {
         assert_eq!(got, want, "step {name}: the native std differs from the TypeScript std");
@@ -463,7 +495,7 @@ fn arrivals(layout: &str) -> String {
 
 #[test]
 fn the_dwindle_places_arrivals_as_the_typescript_dwindle_does() {
-    let steps = same(&arrivals("Super+2"));
+    let steps = same("dwindle_arrivals", &arrivals("Super+2"));
     // Sanity: the first window fills the area (less the outer gap), and the second takes the right half of 1000 by 800.
     assert_eq!(rect(&steps, "one", 40), Some([12.0, 12.0, 976.0, 776.0]));
     assert_eq!(rect(&steps, "two", 40).map(|r| r[2]), Some(485.0));
@@ -489,7 +521,7 @@ fn the_dwindles_actions_change_the_tree_as_the_typescript_dwindle_does() {
     }
     script.push_str("focus 41\nchord Super+F1\nchord Super+F10\nstep other_window 40 41 42 43\n");
     script.push_str("destroy 42\nstep closed 40 41 42 43\ndestroy 40\nstep closed_root 40 41 42 43\n");
-    same(&script);
+    same("dwindle_actions", &script);
 }
 
 #[test]
@@ -503,7 +535,7 @@ fn the_dwindle_preselects_the_side_of_the_next_window_as_the_typescript_dwindle_
     }
     // A permanent choice (the vertical dwindle) stays for every window.
     script.push_str("chord Super+minus\nchord Super+F6\ncreate 45 X\nfocus 45\ncreate 46 Y\nfocus 46\nstep permanent 40 41 42 43 44 45 46\n");
-    same(&script);
+    same("dwindle_preselect", &script);
 }
 
 #[test]
@@ -511,7 +543,10 @@ fn the_dwindles_pointer_options_choose_where_a_window_opens_as_the_typescript_dw
     // `Super+5`: smart split, the pointer is in the top right of the first cell. `Super+6`: the window under the pointer is split,
     // the new window goes first, and the layout's ratio is turned over for it.
     for chord in ["Super+5", "Super+6"] {
-        same(&arrivals(chord));
+        same(
+            &format!("dwindle_pointer_{}", chord.to_lowercase().replace('+', "_")),
+            &arrivals(chord),
+        );
     }
 }
 
@@ -526,7 +561,7 @@ fn the_dwindles_drag_moves_the_nearest_divider_and_a_cancel_puts_it_back_as_in_t
     // Both dividers of the tile at once, without smart resizing.
     script.push_str("chord Super+4\nstep both_start 40 41 42 43\n");
     script.push_str("drag Super+Button3 600,700 650,660 end\nstep both 40 41 42 43\n");
-    same(&script);
+    same("dwindle_drag", &script);
 }
 
 // ---- the strip ---------------------------------------------------------------------------------------------------------------
@@ -544,7 +579,7 @@ fn the_strip_scrolls_and_hands_the_keyboard_on_as_the_typescript_strip_does() {
     }
     script.push_str("focus 42\nstep refocused 40 41 42 43\ndestroy 42\nstep closed 40 41 42 43\n");
     script.push_str("chord Super+8\nstep narrow 40 41 43\n");
-    let steps = same(&script);
+    let steps = same("strip_scroll", &script);
     assert!(rect(&steps, "four", 43).is_some());
 }
 
@@ -552,7 +587,7 @@ fn the_strip_scrolls_and_hands_the_keyboard_on_as_the_typescript_strip_does() {
 fn the_strip_opens_a_window_after_the_focused_column_as_the_typescript_strip_does() {
     let mut script = String::from("focus 40\nchord Super+7\ncreate 41 B\nfocus 41\ncreate 42 C\nfocus 42\nfocus 40\n");
     script.push_str("create 43 D\nstep after_first 40 41 42 43\nfocus 43\nstep focused_new 40 41 42 43\n");
-    same(&script);
+    same("strip_opens_after_focused", &script);
 }
 
 // ---- the arc and the carousel ------------------------------------------------------------------------------------------------
@@ -561,7 +596,7 @@ fn the_strip_opens_a_window_after_the_focused_column_as_the_typescript_strip_doe
 fn the_arc_places_windows_round_the_viewer_as_the_typescript_arc_does() {
     let mut script = arrivals("Super+9");
     script.push_str("focus 41\nstep arc_focused 40 41 42 43\ndestroy 41\nstep arc_closed 40 41 42 43\n");
-    let steps = same(&script);
+    let steps = same("arc", &script);
     let (_, observed) = &steps[3];
     assert!(observed.iter().any(|obs| obs.z != 0.0), "the arc gives depth");
 }
@@ -571,7 +606,7 @@ fn the_carousel_places_cards_on_a_ring_as_the_typescript_carousel_does() {
     let mut script = arrivals("Super+0");
     script.push_str("focus 41\nstep ring_focused 40 41 42 43\nchord Super+Down\nstep rotated 40 41 42 43\n");
     script.push_str("destroy 40\nstep ring_closed 40 41 42 43\n");
-    same(&script);
+    same("carousel", &script);
 }
 
 // ---- the master and stack's divider ------------------------------------------------------------------------------------------
@@ -590,7 +625,7 @@ fn the_split_resize_drag_moves_the_master_and_stack_divider_as_in_typescript() {
     script.push_str(
         "chord Super+g\nstep grid 40 41 42 43\ndrag Super+Button1 700,200 600,200 end\nstep grid_swap 40 41 42 43\n",
     );
-    same(&script);
+    same("split_resize_drag", &script);
 }
 
 // ---- the swap ----------------------------------------------------------------------------------------------------------------
@@ -601,7 +636,7 @@ fn a_tile_dropped_on_another_swaps_places_in_the_dwindle_as_in_typescript() {
     script.push_str("drag Super+Button1 700,700 400,400 100,100 end\nstep swapped 40 41 42 43\n");
     script.push_str("drag Super+Button1 700,100 9000,9000 end\nstep nowhere 40 41 42 43\n");
     script.push_str("chord Super+F1\nstep after_swap_toggle 40 41 42 43\n");
-    same(&script);
+    same("tile_swap", &script);
 }
 
 // ---- floating: move, resize and snap -----------------------------------------------------------------------------------------
@@ -617,7 +652,7 @@ fn a_window_dragged_to_a_screen_edge_snaps_as_in_typescript_and_unsnaps_when_tak
     script.push_str("drag Super+Button1 700,250 500,300 500,2 end\nstep top 40\n");
     // Taking a snapped window forgets its snap: it stays where the drag leaves it.
     script.push_str("drag Super+Button1 500,300 600,400 650,500 end\nstep taken 40\n");
-    same(&script);
+    same("snap", &script);
 }
 
 #[test]
@@ -628,7 +663,7 @@ fn a_window_moved_or_resized_by_the_pointer_matches_typescript() {
     script.push_str("drag Super+Button3 900,100 800,50 end\nstep resized_top_right 40\n");
     script.push_str("drag Super+Button3 900,100 -4000,4000 end\nstep resized_min 40\n");
     script.push_str("drag Super+Button1 900,100 800,300 cancel\nstep cancelled 40\n");
-    same(&script);
+    same("pointer_move_resize", &script);
 }
 
 // ---- bindings of the shell's own: priorities, decline, gestures, a window that closes ------------------------------------------
@@ -651,7 +686,7 @@ fn two_bindings_on_one_chord_are_asked_by_priority_and_a_decline_leaves_the_drag
     script.push_str("drag Super+Button2 100,100 102,101 end\nstep too_short 40 41\n");
     // A drag that is cancelled is cancelled on the binding that took it, which does nothing of its own.
     script.push_str("drag Super+Button2 100,100 160,120 cancel\nstep cancelled 40 41\n");
-    let steps = same(&script);
+    let steps = same("binding_priority", &script);
     assert_eq!(
         rect(&steps, "a_takes", 40).map(|r| (r[0], r[2])),
         Some((150.0, 201.0)),
@@ -676,7 +711,7 @@ fn a_directed_gesture_starts_when_its_direction_is_known_and_only_the_matching_b
     script.push_str("gesture swipe 3 begin 0 0 1 0\ngesture swipe 3 update 30 0 1 0\ngesture swipe 3 end 40 0 1 0\nstep right_end 40 41\n");
     // A gesture the compositor cancels ends on the binding that took it.
     script.push_str("gesture swipe 3 begin 0 0 1 0\ngesture swipe 3 update -50 0 1 0\ngesture swipe 3 cancel -50 0 1 0\nstep cancelled 40 41\n");
-    let steps = same(&script);
+    let steps = same("directed_gesture", &script);
     let (x, y) = rect(&steps, "left_end", 40).map(|r| (r[0], r[1])).expect("window 40");
     assert_eq!(
         (x, y),
@@ -693,7 +728,7 @@ fn a_gesture_is_cancelled_when_the_window_under_it_closes_as_in_typescript() {
     script.push_str("destroy 41\nstep closed 40 41\n");
     // What the fingers do after that reaches nobody.
     script.push_str("gesture swipe 4 update 200 0 1 0\ngesture swipe 4 end 200 0 1 0\nstep after 40 41\n");
-    let steps = same(&script);
+    let steps = same("gesture_cancel_on_close", &script);
     let y = rect(&steps, "after", 40).map(|r| r[1]).expect("window 40");
     assert_eq!(y, 3000.0, "the cancel arrived once, and the end never did");
 }
@@ -709,7 +744,7 @@ fn a_resize_stops_at_the_limits_the_client_has_as_in_typescript() {
     // The top left corner stops at a limit too, and leaves the opposite corner where it was.
     script.push_str("drag Super+Button3 305,205 0,0 end\nstep top_left_capped 40\n");
     script.push_str("drag Super+Button3 100,100 600,500 end\nstep top_left_floored 40\n");
-    let steps = same(&script);
+    let steps = same("resize_limits", &script);
     assert_eq!(rect(&steps, "capped", 40).map(|r| (r[2], r[3])), Some((500.0, 400.0)));
     assert_eq!(rect(&steps, "floored", 40).map(|r| (r[2], r[3])), Some((150.0, 120.0)));
 }

@@ -1,0 +1,92 @@
+{
+  "scenario": "transition_misuse",
+  "source": "class Fill extends Layout {\ncompute(c: any) { return c.children.map((n: any) => ({ node: n, tiled: true, bounds: { ...c.area } })); }\n}\nfor (const id of ['1', '2', '3']) gnoblin.workspaces.add(new Workspace({ id, layout: new Layout() }));\nglobalThis.fail = (f: () => void) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).name + ': ' + (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.a = gnoblin.clients.get('3'); g.b = gnoblin.clients.get('4'); g.ws = gnoblin.workspaces.get('1'); g.computes = 0; g.calls = 0;\ng.Half = class extends Layout { compute(c) { g.computes += 1; const h = c.area.height / 2;\nreturn c.children.map((n, i) => ({ node: n, tiled: true, bounds: { x: c.area.x, y: c.area.y + i * h, width: c.area.width, height: h } })); } };\n"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "ready",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('misuse', [\nfail(() => gnoblin.requestTransition(() => { g.a.opacity = 0.5; gnoblin.requestTransition(() => {}, { duration: 1 }); }, { duration: 100 })),\nfail(() => gnoblin.requestTransition(async () => { g.a.opacity = 0.5; }, { duration: 100 })),\nfail(() => gnoblin.requestTransition('nope')),\nfail(() => gnoblin.requestTransition(() => { g.a.raise(); }, { duration: 1 })),\nfail(() => gnoblin.requestTransition(() => { gnoblin.spawn(['true']); }, { duration: 1 })),\n]); rec('opacity', g.a.opacity);"
+        }
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "misuse",
+          "value": [
+            "GnoblinError: gnoblin.requestTransition: was called inside a requestTransition callback; stage every change in the outer callback instead",
+            "TypeError: gnoblin.requestTransition: the callback returned a Promise; it runs once and synchronously, so it cannot be async or await",
+            "TypeError: gnoblin.requestTransition: the first argument must be a function that stages the changes",
+            "GnoblinError: Client#N.raise(): is not valid inside a requestTransition callback: it has a side effect, and a callback only stages property writes",
+            "GnoblinError: gnoblin.spawn(): is not valid inside a requestTransition callback: it has a side effect, and a callback only stages property writes"
+          ]
+        },
+        {
+          "label": "opacity",
+          "value": 1
+        }
+      ],
+      "step": "refused",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "g.a.opacity = 0.7; g.a.raise();"
+        }
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "plain_again",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 0.7
+          },
+          {
+            "index": -1,
+            "node": 3,
+            "op": "insert",
+            "parent": 1
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": {
+      "second_screen": false,
+      "windows": 2
+    },
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

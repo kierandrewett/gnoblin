@@ -1,0 +1,450 @@
+{
+  "scenario": "model_collections",
+  "source": "export {};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.foot = gnoblin.clients.where({ appId: 'app.one' });\nglobalThis.either = gnoblin.clients.where({ appId: ['app.one', 'app.two'] });\nglobalThis.titled = gnoblin.clients.where({ title: 'two', focused: false });\nconst ids = (c) => c.map((x) => x.id);\nrec('lengths', [gnoblin.clients.length, foot.length, either.length, titled.length]);\nrec('members', [ids(gnoblin.clients), ids(foot), ids(either), ids(titled)]);\nrec('lookup', [gnoblin.clients.get('3').title, gnoblin.clients.get('99') === undefined, gnoblin.clients.at(-1).id, gnoblin.clients.at(5) === undefined]);\nrec('snapshots', [gnoblin.clients.filter((c) => c.width > 0).length, [...gnoblin.clients].map((c) => c.id), gnoblin.clients.find((c) => c.title === 'two').id]);\nrec('refused', [caught(() => gnoblin.clients.where({ sparkle: 1 })), caught(() => gnoblin.clients.where([])), caught(() => gnoblin.clients.where({ title: {} })),\ncaught(() => gnoblin.clients.where({ title: 'x' }, { priority: NaN })), caught(() => gnoblin.clients.add)]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "lengths",
+          "value": [
+            2,
+            1,
+            2,
+            1
+          ]
+        },
+        {
+          "label": "members",
+          "value": [
+            [
+              "3",
+              "4"
+            ],
+            [
+              "3"
+            ],
+            [
+              "3",
+              "4"
+            ],
+            [
+              "4"
+            ]
+          ]
+        },
+        {
+          "label": "lookup",
+          "value": [
+            "one",
+            true,
+            "4",
+            true
+          ]
+        },
+        {
+          "label": "snapshots",
+          "value": [
+            2,
+            [
+              "3",
+              "4"
+            ],
+            "4"
+          ]
+        },
+        {
+          "label": "refused",
+          "value": [
+            "where: no property `sparkle` to select on (known: id, appId, title, focused, fullscreen, x, y, width, height)",
+            "where: the query must be an object of property values",
+            "where: `title` must be a string, number or boolean, or an array of them",
+            "where: priority must be a finite number",
+            "none"
+          ]
+        }
+      ],
+      "step": "selections",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "app_id",
+          "value": "app.two"
+        },
+        {
+          "action": "eval",
+          "js": "rec('members', [foot.length, either.length, gnoblin.clients.get('3').appId]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "members",
+          "value": [
+            0,
+            2,
+            "app.two"
+          ]
+        }
+      ],
+      "step": "a_property_leaves_a_selection",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 4,
+          "key": "title",
+          "value": "renamed"
+        },
+        {
+          "action": "eval",
+          "js": "rec('titled', titled.length);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "titled",
+          "value": 0
+        }
+      ],
+      "step": "a_property_leaves_another",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "open",
+          "app_id": "app.one",
+          "id": 5,
+          "title": "two"
+        },
+        {
+          "action": "eval",
+          "js": "rec('members', [foot.map((c) => c.id), titled.map((c) => c.id)]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "members",
+          "value": [
+            [
+              "5"
+            ],
+            [
+              "5"
+            ]
+          ]
+        }
+      ],
+      "step": "a_window_joins_selections",
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 5
+            }
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": 5,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "y",
+            "node": 5,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "width",
+            "node": 5,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 5,
+            "op": "set",
+            "value": 300.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.heard = [];\nfoot.addListener({ onAdded: (c, to) => log.push('replay:' + c.id + ':' + (to === foot)), onRemoved: (c) => log.push('removed:' + c.id) });\nfoot.addListener({ onTitleChanged: (c) => log.push('title:' + c.id) });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "replay:5:true"
+      ],
+      "step": "a_collection_listener_is_told_of_the_members",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 5,
+          "key": "title",
+          "value": "moved"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "title:5"
+      ],
+      "step": "title_of_a_member",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 5,
+          "key": "app_id",
+          "value": "elsewhere"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "removed:5"
+      ],
+      "step": "a_member_leaves",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 5,
+          "key": "title",
+          "value": "not heard"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "no_longer_heard",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 5
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "closed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('find', [gnoblin.find('Window').map((c) => c.id), gnoblin.find('Window', { appId: 'app.two' }).map((c) => c.id), gnoblin.find('Window', (c) => c.width === 400).map((c) => c.id), gnoblin.find('Output').length]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "find",
+          "value": [
+            [
+              "3",
+              "4"
+            ],
+            [
+              "3",
+              "4"
+            ],
+            [
+              "3",
+              "4"
+            ],
+            1
+          ]
+        }
+      ],
+      "step": "find",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('find_refused', [caught(() => gnoblin.find('Spaceship')), caught(() => gnoblin.find('Window', { sparkle: 1 })), caught(() => gnoblin.find('Window', { title: {} })),\ncaught(() => gnoblin.find('Window', [])), gnoblin.find('Window', { app_id: 'app.two' }).length]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "find_refused",
+          "value": [
+            "gnoblin.find: no kind named \"Spaceship\"; the kinds are Window, Workspace, Output",
+            "gnoblin.find: Window has no scalar field \"sparkle\"; the fields are id, appId, title, alive, focused, fullscreen, secure, unresponsive, floating, maximised, minimised, tiled, visible, x, y, width, height, opacity, z",
+            "gnoblin.find: the value of title must be a string, a number or a boolean",
+            "gnoblin.find: the filter is a table of field values or a predicate function",
+            2
+          ]
+        }
+      ],
+      "step": "find_refusals",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [
+      {
+        "id": 20,
+        "key": "name",
+        "value": "output-0"
+      },
+      {
+        "id": 20,
+        "key": "connector",
+        "value": "DP-1"
+      },
+      {
+        "id": 20,
+        "key": "x",
+        "value": 0.0
+      },
+      {
+        "id": 20,
+        "key": "y",
+        "value": 0.0
+      }
+    ],
+    "policy": null,
+    "screen": [
+      1000.0,
+      600.0
+    ],
+    "windows": [
+      {
+        "app_id": "app.one",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "one"
+      },
+      {
+        "app_id": "app.two",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "two"
+      }
+    ]
+  }
+}

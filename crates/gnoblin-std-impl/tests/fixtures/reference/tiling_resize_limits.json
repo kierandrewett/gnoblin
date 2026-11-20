@@ -1,0 +1,140 @@
+{
+  "script": "focus 40\nchord Super+space\nplace 40 300 200 400 300\nchord Super+m\nstep limited 40\ndrag Super+Button3 690,490 900,700 end\nstep capped 40\ndrag Super+Button3 790,590 100,100 end\nstep floored 40\ndrag Super+Button3 305,205 0,0 end\nstep top_left_capped 40\ndrag Super+Button3 100,100 600,500 end\nstep top_left_floored 40\n",
+  "steps": [
+    {
+      "step": "limited",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            300.0,
+            200.0,
+            400.0,
+            300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "capped",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            300.0,
+            200.0,
+            500.0,
+            400.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "floored",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            300.0,
+            200.0,
+            150.0,
+            120.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "top_left_capped",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            -5.0,
+            -5.0,
+            455.0,
+            325.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "top_left_floored",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            300.0,
+            200.0,
+            150.0,
+            120.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    }
+  ]
+}

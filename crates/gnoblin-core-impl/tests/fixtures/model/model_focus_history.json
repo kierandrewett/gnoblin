@@ -1,0 +1,292 @@
+{
+  "scenario": "model_focus_history",
+  "source": "export {};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('history', gnoblin.focus.history().map((c) => c.id));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "history",
+          "value": [
+            "3",
+            "4",
+            "5"
+          ]
+        }
+      ],
+      "step": "nothing_focused",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 4,
+          "key": "focused",
+          "value": true
+        },
+        {
+          "action": "eval",
+          "js": "rec('history', gnoblin.focus.history().map((c) => c.id));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "history",
+          "value": [
+            "3",
+            "4",
+            "5"
+          ]
+        }
+      ],
+      "step": "four_focused",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 4,
+          "key": "focused",
+          "value": false
+        },
+        {
+          "action": "set",
+          "id": 5,
+          "key": "focused",
+          "value": true
+        },
+        {
+          "action": "eval",
+          "js": "rec('history', gnoblin.focus.history().map((c) => c.id));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "history",
+          "value": [
+            "3",
+            "4",
+            "5"
+          ]
+        }
+      ],
+      "step": "five_focused",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 5,
+          "key": "focused",
+          "value": false
+        },
+        {
+          "action": "set",
+          "id": 3,
+          "key": "focused",
+          "value": true
+        },
+        {
+          "action": "eval",
+          "js": "rec('history', gnoblin.focus.history().map((c) => c.id)); rec('limited', gnoblin.focus.history({ limit: 2 }).map((c) => c.id));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "history",
+          "value": [
+            "3",
+            "4",
+            "5"
+          ]
+        },
+        {
+          "label": "limited",
+          "value": [
+            "3",
+            "4"
+          ]
+        }
+      ],
+      "step": "three_focused",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 4
+        },
+        {
+          "action": "eval",
+          "js": "rec('history', gnoblin.focus.history().map((c) => c.id));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "history",
+          "value": [
+            "3",
+            "5"
+          ]
+        }
+      ],
+      "step": "a_closed_window_leaves_the_history",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('refused', [caught(() => gnoblin.focus.history({ limit: 0 })), caught(() => gnoblin.focus.history({ limit: 1.5 })), caught(() => gnoblin.focus.history({ limit: 257 })),\ncaught(() => gnoblin.focus.history({ sparkle: 1 })), caught(() => gnoblin.focus.history(7)), gnoblin.focus.history({ workspaceId: 'none' }).length]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "refused",
+          "value": [
+            "gnoblin.focus.history: limit is an integer from 1 to 256",
+            "gnoblin.focus.history: limit is an integer from 1 to 256",
+            "gnoblin.focus.history: limit is an integer from 1 to 256",
+            "gnoblin.focus.history: no filter named sparkle; the filters are workspaceId, monitorId, limit",
+            "gnoblin.focus.history: the filter is an object",
+            0
+          ]
+        }
+      ],
+      "step": "refusals",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [
+      {
+        "id": 20,
+        "key": "name",
+        "value": "output-0"
+      },
+      {
+        "id": 20,
+        "key": "connector",
+        "value": "DP-1"
+      },
+      {
+        "id": 20,
+        "key": "x",
+        "value": 0.0
+      },
+      {
+        "id": 20,
+        "key": "y",
+        "value": 0.0
+      }
+    ],
+    "policy": null,
+    "screen": [
+      1000.0,
+      600.0
+    ],
+    "windows": [
+      {
+        "app_id": "app.one",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "one"
+      },
+      {
+        "app_id": "app.two",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "two"
+      },
+      {
+        "app_id": "app.three",
+        "decoration": "server",
+        "id": 5,
+        "props": {},
+        "title": "three"
+      }
+    ]
+  }
+}

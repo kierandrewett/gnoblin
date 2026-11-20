@@ -1,0 +1,299 @@
+{
+  "script": "focus 40\nchord Super+space\ncreate 41 B\nplace 40 0 0 200 200\nplace 41 400 400 200 200\nstep placed 40 41\nseat pointer_x 50\nseat pointer_y 50\ngesture swipe 3 begin 0 0 1 0\ngesture swipe 3 update -4 1 1 0\nstep undecided 40 41\ngesture swipe 3 update -20 2 1 0\nstep left_started 40 41\ngesture swipe 3 update -100 5 1 0\ngesture swipe 3 end -120 5 1 0\nstep left_end 40 41\ngesture swipe 3 begin 0 0 1 0\ngesture swipe 3 update 30 0 1 0\ngesture swipe 3 end 40 0 1 0\nstep right_end 40 41\ngesture swipe 3 begin 0 0 1 0\ngesture swipe 3 update -50 0 1 0\ngesture swipe 3 cancel -50 0 1 0\nstep cancelled 40 41\n",
+  "steps": [
+    {
+      "step": "placed",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            0.0,
+            0.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            400.0,
+            400.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "undecided",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            0.0,
+            0.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            400.0,
+            400.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "left_started",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            50.0,
+            0.0,
+            201.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            400.0,
+            400.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "left_end",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            300.0,
+            10.0,
+            201.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            400.0,
+            400.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "right_end",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            4900.0,
+            30.0,
+            201.0,
+            201.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            400.0,
+            400.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "cancelled",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            125.0,
+            1030.0,
+            202.0,
+            201.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            400.0,
+            400.0,
+            200.0,
+            200.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    }
+  ]
+}

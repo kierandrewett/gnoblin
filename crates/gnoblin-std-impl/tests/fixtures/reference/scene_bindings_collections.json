@@ -1,0 +1,187 @@
+{
+  "scenario": "scene_bindings_collections",
+  "source": "gnoblin.workspaces.add(new Workspace({ id: 'development', layout: new FloatingLayout() }));\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.ws = gnoblin.workspaces.get('development'); ws.properties.bind('name', () => (ws.clients.length > 2 ? 'busy' : 'quiet')); rec('name', ws.name);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "name",
+          "value": "quiet"
+        }
+      ],
+      "step": "bound",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "open",
+          "app_id": "third",
+          "id": 30,
+          "title": "third"
+        },
+        {
+          "action": "eval",
+          "js": "rec('name', ws.name);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "name",
+          "value": "busy"
+        }
+      ],
+      "step": "window_joins",
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 30
+            }
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": 30,
+            "op": "set",
+            "value": 600.0
+          },
+          {
+            "key": "y",
+            "node": 30,
+            "op": "set",
+            "value": 500.0
+          },
+          {
+            "key": "width",
+            "node": 30,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 30,
+            "op": "set",
+            "value": 300.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 30
+        },
+        {
+          "action": "eval",
+          "js": "rec('name', ws.name);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "name",
+          "value": "quiet"
+        }
+      ],
+      "step": "window_leaves",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win2"
+      }
+    ]
+  }
+}

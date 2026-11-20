@@ -1,0 +1,203 @@
+{
+  "scenario": "style_selection_membership",
+  "source": "globalThis.caught = (fn: () => void) => { try { fn(); return 'none'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.where({ appId: 'foot' }).style.cornerRadius = 9; gnoblin.clients.get('4').style.opacity = 0.4;\nrec('styles', gnoblin.clients.map((c) => [c.computedStyle.cornerRadius, c.computedStyle.opacity]));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "styles",
+          "value": [
+            [
+              9,
+              1
+            ],
+            [
+              9,
+              0.4
+            ]
+          ]
+        }
+      ],
+      "step": "selection_style",
+      "writes": [
+        [
+          {
+            "key": "corner_radius",
+            "node": 3,
+            "op": "set",
+            "value": 9.0
+          },
+          {
+            "key": "opacity",
+            "node": 4,
+            "op": "set",
+            "value": 0.4
+          },
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 9.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 4,
+          "key": "app_id",
+          "value": "firefox"
+        },
+        {
+          "action": "eval",
+          "js": "rec('styles', gnoblin.clients.map((c) => [c.computedStyle.cornerRadius, c.computedStyle.opacity]));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "styles",
+          "value": [
+            [
+              9,
+              1
+            ],
+            [
+              0,
+              0.4
+            ]
+          ]
+        }
+      ],
+      "step": "left_the_selection",
+      "writes": [
+        [
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 0.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 4,
+          "key": "app_id",
+          "value": "foot"
+        },
+        {
+          "action": "eval",
+          "js": "rec('radius', gnoblin.clients.get('4').computedStyle.cornerRadius);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "radius",
+          "value": 9
+        }
+      ],
+      "step": "joined_again",
+      "writes": [
+        [
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 9.0
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "win2"
+      }
+    ]
+  }
+}

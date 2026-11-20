@@ -1,0 +1,1760 @@
+{
+  "scenario": "ui_text",
+  "source": "const holder = new Box({ width: 400, height: 400 });\nconst put = (y: number, w: Canvas) => { w.y = y; holder.add(w); return w; };\nconst t1 = put(0, new Text({ text: 'Hello', size: 10 }));\nconst multi = put(20, new Text({ text: 'a\\nbbbb\\ncc', size: 10 }));\nconst roomy = put(80, new Text({ text: 'A long window title', size: 10, ellipsize: true }));\nconst cut = put(100, new Text({ text: 'A long window title', size: 10, ellipsize: true, width: 50 }));\nconst plain = put(120, new Text({ text: 'A long window title', size: 10, width: 50 }));\nconst mono = put(140, new Text({ text: 'ab', size: 13, color: '#c6d0f5', font: 'mono' }));\nconst squeezed = put(160, new Text({ text: 'ab', size: 13, height: 13 }));\nconst wide = put(180, new Text({ text: 'h\\u00e9llo w\\u00f6rld \\u2713', size: 16 }));\nconst empty = put(210, new Text({ text: '', size: 12 }));\nconst icon = put(230, new Icon({ icon: 'window-close-symbolic', size: 16, color: '#fff' }));\nconst iconDefault = put(260, new Icon({ icon: 'folder' }));\nconst texts = [t1, multi, roomy, cut, plain, mono, squeezed, wide, empty];\nconst metrics = () => texts.map((t) => [t.width, t.height, t.ascent, t.shown()]);\nObject.assign(globalThis, { holder, t1, metrics, icon, iconDefault });",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n3",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n4",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n5",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n5",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n6",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n6",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n7",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n7",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n8",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n8",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n9",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n9",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n10",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n10",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n11",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n11",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n12",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n12",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "0000000000002440",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 25.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 15.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000002041fff4d6cd040073616e730500000048656c6c6f",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Hello\" }"
+              ]
+            }
+          },
+          {
+            "args": "0000000000002440",
+            "method": "measure",
+            "node": "n3",
+            "op": "call"
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 45.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000002041fff4d6cd040073616e7309000000610a626262620a6363",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"a\\nbbbb\\ncc\" }"
+              ]
+            }
+          },
+          {
+            "args": "0000000000002440",
+            "method": "measure",
+            "node": "n4",
+            "op": "call"
+          },
+          {
+            "key": "y",
+            "node": "n4",
+            "op": "set",
+            "value": 80.0
+          },
+          {
+            "key": "width",
+            "node": "n4",
+            "op": "set",
+            "value": 95.0
+          },
+          {
+            "key": "height",
+            "node": "n4",
+            "op": "set",
+            "value": 15.0
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000002041fff4d6cd040073616e731300000041206c6f6e672077696e646f77207469746c65",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long window title\" }"
+              ]
+            }
+          },
+          {
+            "args": "0000000000002440",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "y",
+            "node": "n5",
+            "op": "set",
+            "value": 100.0
+          },
+          {
+            "key": "width",
+            "node": "n5",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 15.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000002041fff4d6cd040073616e730c00000041206c6f6e67207769e280a6",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long wi…\" }"
+              ]
+            }
+          },
+          {
+            "args": "0000000000002440",
+            "method": "measure",
+            "node": "n6",
+            "op": "call"
+          },
+          {
+            "key": "y",
+            "node": "n6",
+            "op": "set",
+            "value": 120.0
+          },
+          {
+            "key": "width",
+            "node": "n6",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "height",
+            "node": "n6",
+            "op": "set",
+            "value": 15.0
+          },
+          {
+            "key": "content",
+            "node": "n6",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000002041fff4d6cd040073616e731300000041206c6f6e672077696e646f77207469746c65",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long window title\" }"
+              ]
+            }
+          },
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n7",
+            "op": "call"
+          },
+          {
+            "key": "y",
+            "node": "n7",
+            "op": "set",
+            "value": 140.0
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 13.0
+          },
+          {
+            "key": "height",
+            "node": "n7",
+            "op": "set",
+            "value": 19.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041fff5d0c604006d6f6e6f020000006162",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"mono\", text: \"ab\" }"
+              ]
+            }
+          },
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n8",
+            "op": "call"
+          },
+          {
+            "key": "y",
+            "node": "n8",
+            "op": "set",
+            "value": 160.0
+          },
+          {
+            "key": "width",
+            "node": "n8",
+            "op": "set",
+            "value": 13.0
+          },
+          {
+            "key": "height",
+            "node": "n8",
+            "op": "set",
+            "value": 13.0
+          },
+          {
+            "key": "content",
+            "node": "n8",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000040c000005041fff4d6cd040073616e73020000006162",
+              "paint": [
+                "Text { x: 0.0, y: -3.0, size: 13.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"ab\" }"
+              ]
+            }
+          },
+          {
+            "args": "0000000000003040",
+            "method": "measure",
+            "node": "n9",
+            "op": "call"
+          },
+          {
+            "key": "y",
+            "node": "n9",
+            "op": "set",
+            "value": 180.0
+          },
+          {
+            "key": "width",
+            "node": "n9",
+            "op": "set",
+            "value": 104.0
+          },
+          {
+            "key": "height",
+            "node": "n9",
+            "op": "set",
+            "value": 24.0
+          },
+          {
+            "key": "content",
+            "node": "n9",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000008041fff4d6cd040073616e731100000068c3a96c6c6f2077c3b6726c6420e29c93",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"héllo wörld ✓\" }"
+              ]
+            }
+          },
+          {
+            "args": "0000000000002840",
+            "method": "measure",
+            "node": "n10",
+            "op": "call"
+          },
+          {
+            "key": "y",
+            "node": "n10",
+            "op": "set",
+            "value": 210.0
+          },
+          {
+            "key": "height",
+            "node": "n10",
+            "op": "set",
+            "value": 18.0
+          },
+          {
+            "key": "content",
+            "node": "n10",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000004041fff4d6cd040073616e7300000000",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 12.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ]
+            }
+          },
+          {
+            "key": "y",
+            "node": "n11",
+            "op": "set",
+            "value": 230.0
+          },
+          {
+            "key": "width",
+            "node": "n11",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n11",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n11",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041ffffffff150077696e646f772d636c6f73652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, name: \"window-close-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "y",
+            "node": "n12",
+            "op": "set",
+            "value": 260.0
+          },
+          {
+            "key": "width",
+            "node": "n12",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n12",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n12",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd0600666f6c646572",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"folder\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": "n1",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000c84300000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 400.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('estimate', metrics());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "estimate",
+          "value": [
+            [
+              25,
+              15,
+              11,
+              "Hello"
+            ],
+            [
+              20,
+              45,
+              11,
+              "a\nbbbb\ncc"
+            ],
+            [
+              95,
+              15,
+              11,
+              "A long window title"
+            ],
+            [
+              50,
+              15,
+              11,
+              "A long wi…"
+            ],
+            [
+              50,
+              15,
+              11,
+              "A long window title"
+            ],
+            [
+              13,
+              19,
+              14,
+              "ab"
+            ],
+            [
+              13,
+              13,
+              14,
+              "ab"
+            ],
+            [
+              104,
+              24,
+              17,
+              "héllo wörld ✓"
+            ],
+            [
+              0,
+              18,
+              13,
+              ""
+            ]
+          ]
+        }
+      ],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 400.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                400.0,
+                400.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Hello\" }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                25.0,
+                15.0
+              ]
+            },
+            {
+              "bytes": 45,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"a\\nbbbb\\ncc\" }"
+              ],
+              "rect": [
+                0.0,
+                20.0,
+                20.0,
+                45.0
+              ]
+            },
+            {
+              "bytes": 55,
+              "node": "n4",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long window title\" }"
+              ],
+              "rect": [
+                0.0,
+                80.0,
+                95.0,
+                15.0
+              ]
+            },
+            {
+              "bytes": 48,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long wi…\" }"
+              ],
+              "rect": [
+                0.0,
+                100.0,
+                50.0,
+                15.0
+              ]
+            },
+            {
+              "bytes": 55,
+              "node": "n6",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long window title\" }"
+              ],
+              "rect": [
+                0.0,
+                120.0,
+                50.0,
+                15.0
+              ]
+            },
+            {
+              "bytes": 38,
+              "node": "n7",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"mono\", text: \"ab\" }"
+              ],
+              "rect": [
+                0.0,
+                140.0,
+                13.0,
+                19.0
+              ]
+            },
+            {
+              "bytes": 38,
+              "node": "n8",
+              "paint": [
+                "Text { x: 0.0, y: -3.0, size: 13.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"ab\" }"
+              ],
+              "rect": [
+                0.0,
+                160.0,
+                13.0,
+                13.0
+              ]
+            },
+            {
+              "bytes": 53,
+              "node": "n9",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"héllo wörld ✓\" }"
+              ],
+              "rect": [
+                0.0,
+                180.0,
+                104.0,
+                24.0
+              ]
+            },
+            {
+              "bytes": 36,
+              "node": "n10",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 12.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ],
+              "rect": [
+                0.0,
+                210.0,
+                0.0,
+                18.0
+              ]
+            },
+            {
+              "bytes": 49,
+              "node": "n11",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, name: \"window-close-symbolic\" }"
+              ],
+              "rect": [
+                0.0,
+                230.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 34,
+              "node": "n12",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"folder\" }"
+              ],
+              "rect": [
+                0.0,
+                260.0,
+                16.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "ui_text.estimate.bin",
+          "paint": "estimate"
+        }
+      ],
+      "step": "estimate",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "answer_measures"
+        },
+        {
+          "action": "eval",
+          "js": "rec('measured', metrics());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "measured",
+          "value": [
+            [
+              30,
+              12,
+              9,
+              "Hello"
+            ],
+            [
+              24,
+              36,
+              9,
+              "a\nbbbb\ncc"
+            ],
+            [
+              114,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long …"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              16,
+              16,
+              12,
+              "ab"
+            ],
+            [
+              16,
+              13,
+              12,
+              "ab"
+            ],
+            [
+              125,
+              20,
+              15,
+              "héllo wörld ✓"
+            ],
+            [
+              0,
+              15,
+              11,
+              ""
+            ]
+          ]
+        }
+      ],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 400.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                400.0,
+                400.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Hello\" }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                30.0,
+                12.0
+              ]
+            },
+            {
+              "bytes": 45,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"a\\nbbbb\\ncc\" }"
+              ],
+              "rect": [
+                0.0,
+                20.0,
+                24.0,
+                36.0
+              ]
+            },
+            {
+              "bytes": 55,
+              "node": "n4",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long window title\" }"
+              ],
+              "rect": [
+                0.0,
+                80.0,
+                114.0,
+                12.0
+              ]
+            },
+            {
+              "bytes": 46,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long …\" }"
+              ],
+              "rect": [
+                0.0,
+                100.0,
+                50.0,
+                12.0
+              ]
+            },
+            {
+              "bytes": 55,
+              "node": "n6",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long window title\" }"
+              ],
+              "rect": [
+                0.0,
+                120.0,
+                50.0,
+                12.0
+              ]
+            },
+            {
+              "bytes": 38,
+              "node": "n7",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"mono\", text: \"ab\" }"
+              ],
+              "rect": [
+                0.0,
+                140.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 38,
+              "node": "n8",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"ab\" }"
+              ],
+              "rect": [
+                0.0,
+                160.0,
+                16.0,
+                13.0
+              ]
+            },
+            {
+              "bytes": 53,
+              "node": "n9",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"héllo wörld ✓\" }"
+              ],
+              "rect": [
+                0.0,
+                180.0,
+                125.0,
+                20.0
+              ]
+            },
+            {
+              "bytes": 36,
+              "node": "n10",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 12.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ],
+              "rect": [
+                0.0,
+                210.0,
+                0.0,
+                15.0
+              ]
+            },
+            {
+              "bytes": 49,
+              "node": "n11",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, name: \"window-close-symbolic\" }"
+              ],
+              "rect": [
+                0.0,
+                230.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 34,
+              "node": "n12",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"folder\" }"
+              ],
+              "rect": [
+                0.0,
+                260.0,
+                16.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "ui_text.measured.bin",
+          "paint": "measured"
+        }
+      ],
+      "step": "measured",
+      "writes": [
+        [
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 24.0
+          },
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 36.0
+          },
+          {
+            "key": "width",
+            "node": "n4",
+            "op": "set",
+            "value": 114.0
+          },
+          {
+            "key": "height",
+            "node": "n4",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000002041fff4d6cd040073616e730a00000041206c6f6e6720e280a6",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long …\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n6",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n7",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "width",
+            "node": "n8",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n8",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff4d6cd040073616e73020000006162",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"ab\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n9",
+            "op": "set",
+            "value": 125.0
+          },
+          {
+            "key": "height",
+            "node": "n9",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "height",
+            "node": "n10",
+            "op": "set",
+            "value": 15.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "t1.text = 'Hello, world'; rec('after_change', metrics());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "after_change",
+          "value": [
+            [
+              60,
+              15,
+              11,
+              "Hello, world"
+            ],
+            [
+              24,
+              36,
+              9,
+              "a\nbbbb\ncc"
+            ],
+            [
+              114,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long …"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              16,
+              16,
+              12,
+              "ab"
+            ],
+            [
+              16,
+              13,
+              12,
+              "ab"
+            ],
+            [
+              125,
+              20,
+              15,
+              "héllo wörld ✓"
+            ],
+            [
+              0,
+              15,
+              11,
+              ""
+            ]
+          ]
+        }
+      ],
+      "step": "text_changed",
+      "writes": [
+        [
+          {
+            "args": "0000000000002440",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 60.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 15.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000002041fff4d6cd040073616e730c00000048656c6c6f2c20776f726c64",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Hello, world\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "answer_measures"
+        },
+        {
+          "action": "eval",
+          "js": "rec('answered', metrics());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "answered",
+          "value": [
+            [
+              72,
+              12,
+              9,
+              "Hello, world"
+            ],
+            [
+              24,
+              36,
+              9,
+              "a\nbbbb\ncc"
+            ],
+            [
+              114,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long …"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              16,
+              16,
+              12,
+              "ab"
+            ],
+            [
+              16,
+              13,
+              12,
+              "ab"
+            ],
+            [
+              125,
+              20,
+              15,
+              "héllo wörld ✓"
+            ],
+            [
+              0,
+              15,
+              11,
+              ""
+            ]
+          ]
+        }
+      ],
+      "step": "text_answered",
+      "writes": [
+        [
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 72.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 12.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "t1.size = 20; t1.font = 'mono'; icon.size = 32; iconDefault.icon = 'user-trash'; rec('restyled', metrics());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "restyled",
+          "value": [
+            [
+              120,
+              30,
+              22,
+              "Hello, world"
+            ],
+            [
+              24,
+              36,
+              9,
+              "a\nbbbb\ncc"
+            ],
+            [
+              114,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long …"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              16,
+              16,
+              12,
+              "ab"
+            ],
+            [
+              16,
+              13,
+              12,
+              "ab"
+            ],
+            [
+              125,
+              20,
+              15,
+              "héllo wörld ✓"
+            ],
+            [
+              0,
+              15,
+              11,
+              ""
+            ]
+          ]
+        }
+      ],
+      "step": "restyled",
+      "writes": [
+        [
+          {
+            "args": "0000000000003440",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 120.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000000000a041fff4d6cd04006d6f6e6f0c00000048656c6c6f2c20776f726c64",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 20.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"mono\", text: \"Hello, world\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n11",
+            "op": "set",
+            "value": 32.0
+          },
+          {
+            "key": "height",
+            "node": "n11",
+            "op": "set",
+            "value": 32.0
+          },
+          {
+            "key": "content",
+            "node": "n11",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000000042ffffffff150077696e646f772d636c6f73652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 32.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, name: \"window-close-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "content",
+            "node": "n12",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd0a00757365722d7472617368",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"user-trash\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "answer_measures"
+        },
+        {
+          "action": "eval",
+          "js": "rec('restyled_answered', metrics());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "restyled_answered",
+          "value": [
+            [
+              144,
+              24,
+              18,
+              "Hello, world"
+            ],
+            [
+              24,
+              36,
+              9,
+              "a\nbbbb\ncc"
+            ],
+            [
+              114,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long …"
+            ],
+            [
+              50,
+              12,
+              9,
+              "A long window title"
+            ],
+            [
+              16,
+              16,
+              12,
+              "ab"
+            ],
+            [
+              16,
+              13,
+              12,
+              "ab"
+            ],
+            [
+              125,
+              20,
+              15,
+              "héllo wörld ✓"
+            ],
+            [
+              0,
+              15,
+              11,
+              ""
+            ]
+          ]
+        }
+      ],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 400.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                400.0,
+                400.0
+              ]
+            },
+            {
+              "bytes": 48,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 20.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"mono\", text: \"Hello, world\" }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                144.0,
+                24.0
+              ]
+            },
+            {
+              "bytes": 45,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"a\\nbbbb\\ncc\" }"
+              ],
+              "rect": [
+                0.0,
+                20.0,
+                24.0,
+                36.0
+              ]
+            },
+            {
+              "bytes": 55,
+              "node": "n4",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long window title\" }"
+              ],
+              "rect": [
+                0.0,
+                80.0,
+                114.0,
+                12.0
+              ]
+            },
+            {
+              "bytes": 46,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long …\" }"
+              ],
+              "rect": [
+                0.0,
+                100.0,
+                50.0,
+                12.0
+              ]
+            },
+            {
+              "bytes": 55,
+              "node": "n6",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 10.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"A long window title\" }"
+              ],
+              "rect": [
+                0.0,
+                120.0,
+                50.0,
+                12.0
+              ]
+            },
+            {
+              "bytes": 38,
+              "node": "n7",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"mono\", text: \"ab\" }"
+              ],
+              "rect": [
+                0.0,
+                140.0,
+                16.0,
+                16.0
+              ]
+            },
+            {
+              "bytes": 38,
+              "node": "n8",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"ab\" }"
+              ],
+              "rect": [
+                0.0,
+                160.0,
+                16.0,
+                13.0
+              ]
+            },
+            {
+              "bytes": 53,
+              "node": "n9",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"héllo wörld ✓\" }"
+              ],
+              "rect": [
+                0.0,
+                180.0,
+                125.0,
+                20.0
+              ]
+            },
+            {
+              "bytes": 36,
+              "node": "n10",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 12.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ],
+              "rect": [
+                0.0,
+                210.0,
+                0.0,
+                15.0
+              ]
+            },
+            {
+              "bytes": 49,
+              "node": "n11",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 32.0, colour: Rgba8 { r: 255, g: 255, b: 255, a: 255 }, name: \"window-close-symbolic\" }"
+              ],
+              "rect": [
+                0.0,
+                230.0,
+                32.0,
+                32.0
+              ]
+            },
+            {
+              "bytes": 38,
+              "node": "n12",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"user-trash\" }"
+              ],
+              "rect": [
+                0.0,
+                260.0,
+                16.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "ui_text.restyled.bin",
+          "paint": "restyled"
+        }
+      ],
+      "step": "restyled_answered",
+      "writes": [
+        [
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 144.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 24.0
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

@@ -10,6 +10,13 @@ use std::sync::Arc;
 
 use gnoblin_js::{JsFrame, JsShell, JsShellConfig, JsShellError};
 use gnoblin_testkit::compositor::FakeCompositor;
+use gnoblin_testkit::oracle::Fixtures;
+
+/// What the TypeScript std did in these scenarios, recorded by `cargo xtask oracle record`. The test of a scenario compares its own run
+/// with the file, so a change to the TypeScript that alters a fixture is seen; a native lane compares the native std with the same file.
+pub fn fixtures() -> Fixtures {
+    Fixtures::new("crates/gnoblin-std-impl/tests/fixtures/reference")
+}
 
 #[path = "../../../gnoblin-js/tests/common/native.rs"]
 pub mod native;

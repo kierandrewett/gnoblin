@@ -1,0 +1,758 @@
+{
+  "scenario": "scene_views",
+  "source": "globalThis.fail = (f: () => void) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('root', { instance: gnoblin.scene instanceof Scene, scene_new: fail(() => new Scene()), mpu: gnoblin.scene.metresPerUnit });\nglobalThis.room = new Node({ id: 'xr-room' }); gnoblin.scene.root.add(room);\nrec('mount', { parent: room.parent === gnoblin.scene.root, listed: gnoblin.scene.root.children.includes(room), destroy_root: fail(() => gnoblin.scene.root.destroy()) });\ngnoblin.scene.metresPerUnit = 0.001; rec('mpu', gnoblin.scene.metresPerUnit); rec('bad_mpu', fail(() => { gnoblin.scene.metresPerUnit = 0; }));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "root",
+          "value": {
+            "instance": true,
+            "mpu": 1,
+            "scene_new": "the scene is `gnoblin.scene`; a script does not make one"
+          }
+        },
+        {
+          "label": "mount",
+          "value": {
+            "destroy_root": "SceneRoot#N: the scene's root is the compositor's and cannot be destroyed",
+            "listed": true,
+            "parent": true
+          }
+        },
+        {
+          "label": "mpu",
+          "value": 0.001
+        },
+        {
+          "label": "bad_mpu",
+          "value": "Scene.metresPerUnit: must be a finite number above 0"
+        }
+      ],
+      "step": "scene_root",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "node",
+              "node": "n1",
+              "parent": 1,
+              "props": {
+                "name": "xr-room"
+              }
+            }
+          ],
+          "root": "n1",
+          "tree": "room"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "node",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n1",
+            "op": "set",
+            "value": "xr-room"
+          },
+          {
+            "index": -1,
+            "node": "n1",
+            "op": "insert",
+            "parent": 1
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.v = new View({ id: 'panel', content: gnoblin.clients.at(0), size: { width: 0.9, height: 0.55 }, contentFit: 'contain', input: 'forward' });\nrec('input', v.input);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "input",
+          "value": "forward"
+        }
+      ],
+      "step": "view_of_a_client",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": 0,
+              "props": {
+                "height": 0.55,
+                "name": "panel",
+                "source": {
+                  "node": 3
+                },
+                "width": 0.9
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "panel"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "view",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "key": "name",
+            "node": "n2",
+            "op": "set",
+            "value": "panel"
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 0.9
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 0.55
+          },
+          {
+            "key": "source",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "node": 3
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "v.input = 'none'; rec('input', v.input);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "input",
+          "value": "none"
+        }
+      ],
+      "step": "input_none",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": 0,
+              "props": {
+                "height": 0.55,
+                "input": false,
+                "name": "panel",
+                "source": {
+                  "node": 3
+                },
+                "width": 0.9
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "panel"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "input",
+            "node": "n2",
+            "op": "set",
+            "value": false
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "v.input = 'capture'; rec('input', v.input);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "input",
+          "value": "capture"
+        }
+      ],
+      "step": "input_capture",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": 0,
+              "props": {
+                "height": 0.55,
+                "input": true,
+                "input_mode": "capture",
+                "name": "panel",
+                "source": {
+                  "node": 3
+                },
+                "width": 0.9
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "panel"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "input_mode",
+            "node": "n2",
+            "op": "set",
+            "value": "capture"
+          },
+          {
+            "key": "input",
+            "node": "n2",
+            "op": "set",
+            "value": true
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "v.input = 'forward'; rec('input', v.input);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "input",
+          "value": "forward"
+        }
+      ],
+      "step": "input_forward",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": 0,
+              "props": {
+                "height": 0.55,
+                "input": true,
+                "input_mode": "forward",
+                "name": "panel",
+                "source": {
+                  "node": 3
+                },
+                "width": 0.9
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "panel"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "input_mode",
+            "node": "n2",
+            "op": "set",
+            "value": "forward"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "v.input = false; rec('input', v.input); v.input = true; rec('input', v.input); rec('bad', fail(() => { v.input = 'bogus'; }));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "input",
+          "value": "none"
+        },
+        {
+          "label": "input",
+          "value": "forward"
+        },
+        {
+          "label": "bad",
+          "value": "View#N.input: must be \"forward\", \"capture\", \"none\" or a boolean"
+        }
+      ],
+      "step": "input_booleans",
+      "writes": [
+        [
+          {
+            "key": "input",
+            "node": "n2",
+            "op": "set",
+            "value": true
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.requestTransition(() => { v.position = { x: 0.5, y: 0.2, z: -1.4 }; v.rotation = { x: 0, y: 0.3, z: 0 }; v.size = { width: 1.2, height: 0.75 }; }, { duration: 550, easing: 'ease-out' });\nrec('view', { size: [v.size.width, v.size.height], fit: v.contentFit, content: v.content === gnoblin.clients.at(0) });\nrec('bad', [fail(() => { v.contentFit = 'fill'; }), fail(() => { v.content = {}; })]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "view",
+          "value": {
+            "content": true,
+            "fit": "contain",
+            "size": [
+              1.2,
+              0.75
+            ]
+          }
+        },
+        {
+          "label": "bad",
+          "value": [
+            "View#N.contentFit: must be \"contain\", \"cover\" or \"stretch\"",
+            "View#N.content: must be a client, a workspace or null"
+          ]
+        }
+      ],
+      "step": "view_transition",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "view",
+              "node": "n2",
+              "parent": 0,
+              "props": {
+                "height": 0.75,
+                "input": true,
+                "input_mode": "forward",
+                "name": "panel",
+                "rotation": [
+                  0.0,
+                  0.3,
+                  0.0
+                ],
+                "source": {
+                  "node": 3
+                },
+                "width": 1.2,
+                "x": 0.5,
+                "y": 0.2,
+                "z": -1.4
+              }
+            }
+          ],
+          "root": "n2",
+          "tree": "panel"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "class": "tween",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "key": "x",
+            "node": "n2",
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.55,
+            "tween": "n3",
+            "value": 0.5
+          },
+          {
+            "key": "y",
+            "node": "n2",
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.55,
+            "tween": "n3",
+            "value": 0.2
+          },
+          {
+            "key": "z",
+            "node": "n2",
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.55,
+            "tween": "n3",
+            "value": -1.4
+          },
+          {
+            "key": "rotation",
+            "node": "n2",
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.55,
+            "tween": "n3",
+            "value": [
+              0.0,
+              0.3,
+              0.0
+            ]
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.55,
+            "tween": "n3",
+            "value": 1.2
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "samples": [
+              0.0,
+              0.05197072764439951,
+              0.10213344521674339,
+              0.15095448536611816,
+              0.1985800159599257,
+              0.24508209933366823,
+              0.2904986849936662,
+              0.33484860448921616,
+              0.378138130826099,
+              0.4203644311502813,
+              0.46151751762019466,
+              0.5015814421617734,
+              0.5405347229813913,
+              0.578351144864401,
+              0.6149995321065513,
+              0.6504438764177667,
+              0.6846431874941068,
+              0.7175512306889537,
+              0.7491161526763304,
+              0.7792799902581911,
+              0.807978051413287,
+              0.8351381511761437,
+              0.8606796931467493,
+              0.8845124524461971,
+              0.9065353490060324,
+              0.9266345872630544,
+              0.9446816536639394,
+              0.9605307184118108,
+              0.9740154014703657,
+              0.9849446949228831,
+              0.9930977542237649,
+              0.9982171513679066,
+              1.0
+            ],
+            "seconds": 0.55,
+            "tween": "n3",
+            "value": 0.75
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {
+          "height": 600.0,
+          "width": 800.0
+        },
+        "title": "win1"
+      }
+    ]
+  }
+}

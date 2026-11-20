@@ -1,0 +1,194 @@
+{
+  "script": "focus 40\nchord Super+space\nplace 40 300 200 400 300\nstep placed 40\ndrag Super+Button1 400,250 100,250 2,250 end\nstep no_snap 40\nseat edge_tiling true\ndrag Super+Button1 100,250 300,250 500,250 end\nstep moved 40\ndrag Super+Button1 500,250 100,250 2,250 end\nstep left 40\ndrag Super+Button1 300,250 700,250 998,250 end\nstep right 40\ndrag Super+Button1 700,250 500,300 500,2 end\nstep top 40\ndrag Super+Button1 500,300 600,400 650,500 end\nstep taken 40\n",
+  "steps": [
+    {
+      "step": "placed",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            300.0,
+            200.0,
+            400.0,
+            300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "no_snap",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            0.0,
+            200.0,
+            400.0,
+            300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "moved",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            400.0,
+            200.0,
+            400.0,
+            300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "left",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            0.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "right",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            500.0,
+            0.0,
+            500.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "top",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            0.0,
+            0.0,
+            1000.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "taken",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            0.0,
+            0.0,
+            1000.0,
+            800.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    }
+  ]
+}

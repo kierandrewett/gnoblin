@@ -1,0 +1,1783 @@
+{
+  "scenario": "parts_lock",
+  "source": "globalThis.fakeNow = 1700000000000; Date.now = () => globalThis.fakeNow;\nDate.prototype.getHours = Date.prototype.getUTCHours; Date.prototype.getMinutes = Date.prototype.getUTCMinutes;\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "focused",
+          "value": true
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "window_focused",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 22,
+          "key": "state",
+          "value": "pending"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "lock_requested",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n1",
+            "op": "insert",
+            "parent": 22
+          },
+          {
+            "class": "canvas",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n3",
+            "op": "insert",
+            "parent": "n2"
+          },
+          {
+            "class": "canvas",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n4",
+            "op": "insert",
+            "parent": "n2"
+          },
+          {
+            "class": "canvas",
+            "node": "n5",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n5",
+            "op": "insert",
+            "parent": "n2"
+          },
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": "n4"
+            }
+          },
+          {
+            "key": "engaged",
+            "node": 22,
+            "op": "set",
+            "value": true
+          },
+          {
+            "args": "0000000000004640",
+            "method": "measure",
+            "node": "n3",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 320.0
+          },
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 66.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000003042fff4d6cd040073616e730500000032323a3133",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 44.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"22:13\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "y",
+            "node": "n4",
+            "op": "set",
+            "value": 98.0
+          },
+          {
+            "key": "width",
+            "node": "n4",
+            "op": "set",
+            "value": 320.0
+          },
+          {
+            "key": "height",
+            "node": "n4",
+            "op": "set",
+            "value": 44.0
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e7300000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "y",
+            "node": "n5",
+            "op": "set",
+            "value": 154.0
+          },
+          {
+            "key": "width",
+            "node": "n5",
+            "op": "set",
+            "value": 320.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 19.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffc8ada6040073616e7314000000456e74657220796f75722070617373776f72642e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Enter your password.\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n2",
+            "op": "set",
+            "value": 320.0
+          },
+          {
+            "key": "y",
+            "node": "n2",
+            "op": "set",
+            "value": 266.0
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 360.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 220.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000b44300005c4300008041ff2e1e1e0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 360.0, height: 220.0, radius: 16.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": "n1",
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000484400000000f21b11110000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 17, g: 17, b: 27, a: 242 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "args": "",
+            "method": "heartbeat",
+            "node": 22,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 17, g: 17, b: 27, a: 242 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                800.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n2",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 360.0, height: 220.0, radius: 16.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                320.0,
+                266.0,
+                360.0,
+                220.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 44.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"22:13\" }"
+              ],
+              "rect": [
+                20.0,
+                20.0,
+                320.0,
+                53.0
+              ]
+            },
+            {
+              "bytes": 69,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ],
+              "rect": [
+                20.0,
+                85.0,
+                320.0,
+                44.0
+              ]
+            },
+            {
+              "bytes": 56,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Enter your password.\" }"
+              ],
+              "rect": [
+                20.0,
+                141.0,
+                320.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "parts_lock.hint.bin",
+          "paint": "hint"
+        }
+      ],
+      "step": "measured",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "lock",
+              "node": 22,
+              "parent": 1,
+              "props": {
+                "engaged": true,
+                "state": "pending"
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n1",
+              "parent": 22,
+              "props": {
+                "content": {
+                  "bytes": "474e504c010100000001000000000000000000007a440000484400000000f21b11110000000000000000",
+                  "paint": [
+                    "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 17, g: 17, b: 27, a: 242 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+                  ]
+                },
+                "height": 800.0,
+                "width": 1000.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n2",
+              "parent": "n1",
+              "props": {
+                "content": {
+                  "bytes": "474e504c01010000000100000000000000000000b44300005c4300008041ff2e1e1e0000000000000000",
+                  "paint": [
+                    "Rect { x: 0.0, y: 0.0, width: 360.0, height: 220.0, radius: 16.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+                  ]
+                },
+                "height": 220.0,
+                "width": 360.0,
+                "x": 320.0,
+                "y": 266.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n3",
+              "parent": "n2",
+              "props": {
+                "content": {
+                  "bytes": "474e504c010100000003000000000000000000003042fff4d6cd040073616e730500000032323a3133",
+                  "paint": [
+                    "Text { x: 0.0, y: 0.0, size: 44.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"22:13\" }"
+                  ]
+                },
+                "height": 53.0,
+                "width": 320.0,
+                "x": 20.0,
+                "y": 20.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n4",
+              "parent": "n2",
+              "props": {
+                "content": {
+                  "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e7300000000",
+                  "paint": [
+                    "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                    "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+                  ]
+                },
+                "height": 44.0,
+                "width": 320.0,
+                "x": 20.0,
+                "y": 85.0
+              }
+            },
+            {
+              "class": "canvas",
+              "node": "n5",
+              "parent": "n2",
+              "props": {
+                "content": {
+                  "bytes": "474e504c010100000003000000000000000000005041ffc8ada6040073616e7314000000456e74657220796f75722070617373776f72642e",
+                  "paint": [
+                    "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Enter your password.\" }"
+                  ]
+                },
+                "height": 16.0,
+                "width": 320.0,
+                "x": 20.0,
+                "y": 141.0
+              }
+            }
+          ],
+          "root": 22,
+          "tree": "lock"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 53.0
+          },
+          {
+            "key": "y",
+            "node": "n4",
+            "op": "set",
+            "value": 85.0
+          },
+          {
+            "key": "y",
+            "node": "n5",
+            "op": "set",
+            "value": 141.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "type_secret",
+          "characters": 7
+        },
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 17, g: 17, b: 27, a: 242 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                800.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n2",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 360.0, height: 220.0, radius: 16.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                320.0,
+                266.0,
+                360.0,
+                220.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 44.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"22:13\" }"
+              ],
+              "rect": [
+                20.0,
+                20.0,
+                320.0,
+                53.0
+              ]
+            },
+            {
+              "bytes": 76,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"*******\" }"
+              ],
+              "rect": [
+                20.0,
+                85.0,
+                320.0,
+                44.0
+              ]
+            },
+            {
+              "bytes": 56,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Enter your password.\" }"
+              ],
+              "rect": [
+                20.0,
+                141.0,
+                320.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "parts_lock.typed.bin",
+          "paint": "typed"
+        }
+      ],
+      "step": "typed",
+      "writes": [
+        [
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e73070000002a2a2a2a2a2a2a",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"*******\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": false,
+          "text": ""
+        },
+        {
+          "action": "answer_check",
+          "error": "denied",
+          "result": ""
+        },
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 17, g: 17, b: 27, a: 242 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                800.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n2",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 360.0, height: 220.0, radius: 16.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                320.0,
+                266.0,
+                360.0,
+                220.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 44.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"22:13\" }"
+              ],
+              "rect": [
+                20.0,
+                20.0,
+                320.0,
+                53.0
+              ]
+            },
+            {
+              "bytes": 69,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ],
+              "rect": [
+                20.0,
+                85.0,
+                320.0,
+                44.0
+              ]
+            },
+            {
+              "bytes": 51,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 243, g: 139, b: 168, a: 255 }, font: \"sans\", text: \"Wrong password.\" }"
+              ],
+              "rect": [
+                20.0,
+                141.0,
+                320.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "parts_lock.denied.bin",
+          "paint": "denied"
+        }
+      ],
+      "step": "denied",
+      "writes": [
+        [
+          {
+            "args": "",
+            "method": "authenticate",
+            "node": 22,
+            "op": "call"
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e7300000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 19.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffc8ada6040073616e730b000000436865636b696e672e2e2e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Checking...\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffa88bf3040073616e730f00000057726f6e672070617373776f72642e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 243, g: 139, b: 168, a: 255 }, font: \"sans\", text: \"Wrong password.\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "type_secret",
+          "characters": 5
+        },
+        {
+          "action": "key",
+          "key": "BackSpace",
+          "node": "focus",
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "key",
+          "key": "BackSpace",
+          "node": "focus",
+          "pressed": false,
+          "text": ""
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": false,
+          "text": ""
+        },
+        {
+          "action": "answer_check",
+          "error": "rate-limited",
+          "result": "1500"
+        },
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 17, g: 17, b: 27, a: 242 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                800.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n2",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 360.0, height: 220.0, radius: 16.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                320.0,
+                266.0,
+                360.0,
+                220.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 44.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"22:13\" }"
+              ],
+              "rect": [
+                20.0,
+                20.0,
+                320.0,
+                53.0
+              ]
+            },
+            {
+              "bytes": 69,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ],
+              "rect": [
+                20.0,
+                85.0,
+                320.0,
+                44.0
+              ]
+            },
+            {
+              "bytes": 72,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 243, g: 139, b: 168, a: 255 }, font: \"sans\", text: \"Too many attempts. Try again in 2 s.\" }"
+              ],
+              "rect": [
+                20.0,
+                141.0,
+                320.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "parts_lock.rate_limited.bin",
+          "paint": "rate_limited"
+        }
+      ],
+      "step": "rate_limited",
+      "writes": [
+        [
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e73050000002a2a2a2a2a",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"*****\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e73040000002a2a2a2a",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"****\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "args": "",
+            "method": "authenticate",
+            "node": 22,
+            "op": "call"
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e7300000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 19.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffc8ada6040073616e730b000000436865636b696e672e2e2e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Checking...\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffa88bf3040073616e7324000000546f6f206d616e7920617474656d7074732e2054727920616761696e20696e203220732e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 243, g: 139, b: 168, a: 255 }, font: \"sans\", text: \"Too many attempts. Try again in 2 s.\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "type_secret",
+          "characters": 1
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": false,
+          "text": ""
+        },
+        {
+          "action": "answer_check",
+          "error": "busy",
+          "result": ""
+        },
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 17, g: 17, b: 27, a: 242 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                800.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n2",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 360.0, height: 220.0, radius: 16.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                320.0,
+                266.0,
+                360.0,
+                220.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 44.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"22:13\" }"
+              ],
+              "rect": [
+                20.0,
+                20.0,
+                320.0,
+                53.0
+              ]
+            },
+            {
+              "bytes": 69,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ],
+              "rect": [
+                20.0,
+                85.0,
+                320.0,
+                44.0
+              ]
+            },
+            {
+              "bytes": 66,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 243, g: 139, b: 168, a: 255 }, font: \"sans\", text: \"Checking the previous attempt.\" }"
+              ],
+              "rect": [
+                20.0,
+                141.0,
+                320.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "parts_lock.busy.bin",
+          "paint": "busy"
+        }
+      ],
+      "step": "busy",
+      "writes": [
+        [
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e73010000002a",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"*\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "args": "",
+            "method": "authenticate",
+            "node": 22,
+            "op": "call"
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e7300000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 19.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffc8ada6040073616e730b000000436865636b696e672e2e2e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Checking...\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffa88bf3040073616e731e000000436865636b696e67207468652070726576696f757320617474656d70742e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 243, g: 139, b: 168, a: 255 }, font: \"sans\", text: \"Checking the previous attempt.\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "type_secret",
+          "characters": 1
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": false,
+          "text": ""
+        },
+        {
+          "action": "answer_check",
+          "error": "failed: no PAM",
+          "result": ""
+        },
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 17, g: 17, b: 27, a: 242 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                800.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n2",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 360.0, height: 220.0, radius: 16.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                320.0,
+                266.0,
+                360.0,
+                220.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 44.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"22:13\" }"
+              ],
+              "rect": [
+                20.0,
+                20.0,
+                320.0,
+                53.0
+              ]
+            },
+            {
+              "bytes": 69,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ],
+              "rect": [
+                20.0,
+                85.0,
+                320.0,
+                44.0
+              ]
+            },
+            {
+              "bytes": 70,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 243, g: 139, b: 168, a: 255 }, font: \"sans\", text: \"The password could not be checked.\" }"
+              ],
+              "rect": [
+                20.0,
+                141.0,
+                320.0,
+                16.0
+              ]
+            }
+          ],
+          "file": "parts_lock.failed.bin",
+          "paint": "failed"
+        }
+      ],
+      "step": "failed",
+      "writes": [
+        [
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e73010000002a",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"*\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "args": "",
+            "method": "authenticate",
+            "node": 22,
+            "op": "call"
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e7300000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 19.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffc8ada6040073616e730b000000436865636b696e672e2e2e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Checking...\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffa88bf3040073616e73220000005468652070617373776f726420636f756c64206e6f7420626520636865636b65642e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 243, g: 139, b: 168, a: 255 }, font: \"sans\", text: \"The password could not be checked.\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": false,
+          "text": ""
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "empty_return_is_not_an_attempt",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "type_secret",
+          "characters": 5
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": false,
+          "text": ""
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n1",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 17, g: 17, b: 27, a: 242 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                800.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n2",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 360.0, height: 220.0, radius: 16.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                320.0,
+                266.0,
+                360.0,
+                220.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n3",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 44.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"22:13\" }"
+              ],
+              "rect": [
+                20.0,
+                20.0,
+                320.0,
+                53.0
+              ]
+            },
+            {
+              "bytes": 69,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ],
+              "rect": [
+                20.0,
+                85.0,
+                320.0,
+                44.0
+              ]
+            },
+            {
+              "bytes": 47,
+              "node": "n5",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Checking...\" }"
+              ],
+              "rect": [
+                20.0,
+                141.0,
+                320.0,
+                19.0
+              ]
+            }
+          ],
+          "file": "parts_lock.checking.bin",
+          "paint": "checking"
+        }
+      ],
+      "step": "checking",
+      "writes": [
+        [
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e73050000002a2a2a2a2a",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"*****\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "args": "",
+            "method": "authenticate",
+            "node": 22,
+            "op": "call"
+          }
+        ],
+        [
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n5",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01020000000100000000000000000000a0430000304200002041ff443231000000000000000003000040410000304100007041fff4d6cd040073616e7300000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 44.0, radius: 10.0, fill: Rgba8 { r: 49, g: 50, b: 68, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }",
+                "Text { x: 12.0, y: 11.0, size: 15.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 19.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041ffc8ada6040073616e730b000000436865636b696e672e2e2e",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 166, g: 173, b: 200, a: 255 }, font: \"sans\", text: \"Checking...\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "key",
+          "key": "Return",
+          "node": "focus",
+          "pressed": false,
+          "text": ""
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "return_while_checking",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "answer_check",
+          "error": "",
+          "result": "ok"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "accepted",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "lock",
+              "node": 22,
+              "parent": 1,
+              "props": {
+                "engaged": false,
+                "state": "pending"
+              }
+            }
+          ],
+          "root": 22,
+          "tree": "lock"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "node": "n1",
+            "op": "destroy"
+          },
+          {
+            "key": "engaged",
+            "node": 22,
+            "op": "set",
+            "value": false
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 22,
+          "key": "state",
+          "value": "not-locked"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "unlocked",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "lock",
+              "node": 22,
+              "parent": 1,
+              "props": {
+                "engaged": false,
+                "state": "not-locked"
+              }
+            }
+          ],
+          "root": 22,
+          "tree": "lock"
+        }
+      ],
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      }
+    ]
+  }
+}

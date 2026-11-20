@@ -1,0 +1,425 @@
+{
+  "scenario": "model_output_events",
+  "source": "globalThis.arm = (object: string, collection: string, facade: string, method: string) => {\nconst G = globalThis as any;\nG.offs = [\nG.eval(object)[method]((o: any) => G.log.push('object:' + method + ':' + o.id)),\nG.eval(collection)[method]((o: any) => G.log.push('collection:' + method + ':' + o.id)),\nG.gnoblin[facade]((o: any) => G.log.push('facade:' + method + ':' + o.id)),\n];\n};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('id', gnoblin.outputs.at(0).id);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "id",
+          "value": "20"
+        }
+      ],
+      "step": "output_id",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm('gnoblin.outputs.at(0)', 'gnoblin.outputs', 'onOutputModeChanged', 'onModeChanged');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onModeChanged_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 20,
+          "key": "mode",
+          "value": "801x600@60"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onModeChanged:20",
+        "collection:onModeChanged:20",
+        "facade:onModeChanged:20"
+      ],
+      "step": "onModeChanged_round_1",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onModeChanged_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 20,
+          "key": "mode",
+          "value": "802x600@60"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onModeChanged_round_2",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm('gnoblin.outputs.at(0)', 'gnoblin.outputs', 'onOutputScaleChanged', 'onScaleChanged');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onScaleChanged_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 20,
+          "key": "output_scale",
+          "value": 2.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onScaleChanged:20",
+        "collection:onScaleChanged:20",
+        "facade:onScaleChanged:20"
+      ],
+      "step": "onScaleChanged_round_1",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onScaleChanged_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 20,
+          "key": "output_scale",
+          "value": 3.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onScaleChanged_round_2",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm('gnoblin.outputs.at(0)', 'gnoblin.outputs', 'onOutputGeometryChanged', 'onGeometryChanged');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onGeometryChanged_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 20,
+          "key": "width",
+          "value": 1001.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onGeometryChanged:20",
+        "collection:onGeometryChanged:20",
+        "facade:onGeometryChanged:20"
+      ],
+      "step": "onGeometryChanged_round_1",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onGeometryChanged_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 20,
+          "key": "width",
+          "value": 1002.0
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onGeometryChanged_round_2",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "arm('gnoblin.outputs.at(0)', 'gnoblin.outputs', 'onOutputApplied', 'onApplied');"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onApplied_subscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.outputs.at(0).apply({ scale: 1.1 });"
+        },
+        {
+          "action": "answer_apply",
+          "error": "",
+          "result": ""
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "object:onApplied:20",
+        "collection:onApplied:20",
+        "facade:onApplied:20"
+      ],
+      "step": "onApplied_round_1",
+      "writes": [
+        [
+          {
+            "args": "",
+            "method": "apply",
+            "node": 20,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "offs.forEach((off) => { off(); off(); });"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onApplied_unsubscribed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.outputs.at(0).apply({ scale: 1.2 });"
+        },
+        {
+          "action": "answer_apply",
+          "error": "",
+          "result": ""
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "onApplied_round_2",
+      "writes": [
+        [
+          {
+            "args": "",
+            "method": "apply",
+            "node": 20,
+            "op": "call"
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [
+      {
+        "id": 20,
+        "key": "name",
+        "value": "output-0"
+      },
+      {
+        "id": 20,
+        "key": "connector",
+        "value": "DP-1"
+      },
+      {
+        "id": 20,
+        "key": "x",
+        "value": 0.0
+      },
+      {
+        "id": 20,
+        "key": "y",
+        "value": 0.0
+      }
+    ],
+    "policy": null,
+    "screen": [
+      1000.0,
+      600.0
+    ],
+    "windows": [
+      {
+        "app_id": "app.one",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "one"
+      },
+      {
+        "app_id": "app.two",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "two"
+      }
+    ]
+  }
+}

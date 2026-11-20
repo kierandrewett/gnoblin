@@ -1,0 +1,1543 @@
+{
+  "scenario": "menus_scripted",
+  "source": "startDecorations(); startWindowMenu();\nglobalThis.sel = () => windowMenu.current ? [windowMenu.current.nav.depth, windowMenu.current.nav.selected()?.label ?? null] : null;\nglobalThis.card = () => { const m = windowMenu.current; if (!m) return null; const p = m.panel;\nreturn { x: p.x, y: p.y, width: p.width, height: p.height, secure: [p.secure, m.secure], rows: p.rows.map((r) => [r.label, r.enabled, r.checked]) }; };\nglobalThis.row = (label) => windowMenu.current.panel.rows.find((r) => r.label === label).node;\n\nglobalThis.ran = [];\nwindowMenu.items = () => [{ label: 'Only', run: (w) => globalThis.ran.push(w.title) }, { separator: true }, { label: 'Off', enabled: false }];\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n3"
+          },
+          {
+            "index": -1,
+            "node": "n3",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n4",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n5",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n5",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n6",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n6",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n7",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n7",
+            "op": "insert",
+            "parent": 3
+          },
+          {
+            "index": -1,
+            "node": "n1",
+            "op": "insert",
+            "parent": "n7"
+          },
+          {
+            "key": "decorations_available",
+            "node": 21,
+            "op": "set",
+            "value": true
+          },
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e7303000000e280a6",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"…\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000000000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 0.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "y",
+            "node": "n4",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n4",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n4",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d696e696d697a652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 38.0
+          },
+          {
+            "key": "y",
+            "node": "n5",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d6178696d697a652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 62.0
+          },
+          {
+            "key": "y",
+            "node": "n6",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n6",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n6",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n6",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd150077696e646f772d636c6f73652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n1",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000000000e04100000000ff3426230000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 0.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "y",
+            "node": "n7",
+            "op": "set",
+            "value": -28.0
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": "n7",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e730400000077696e31",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"win1\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000009e430000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 330.0
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 354.0
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 378.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000ff3426230000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "request",
+          "name": "menu",
+          "node": 3,
+          "x": 50.0,
+          "y": 50.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('card', card()); rec('sel', sel());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "card",
+          "value": {
+            "height": 73,
+            "rows": [
+              [
+                "Only",
+                true,
+                false
+              ],
+              [
+                "Off",
+                false,
+                false
+              ]
+            ],
+            "secure": [
+              false,
+              false
+            ],
+            "width": 170,
+            "x": 50,
+            "y": 50
+          }
+        },
+        {
+          "label": "sel",
+          "value": [
+            1,
+            null
+          ]
+        }
+      ],
+      "step": "open",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n8",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n9",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n9",
+            "op": "insert",
+            "parent": "n8"
+          },
+          {
+            "class": "canvas",
+            "node": "n10",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n11",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n12",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n13",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n14",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n14",
+            "op": "insert",
+            "parent": "n10"
+          },
+          {
+            "index": -1,
+            "node": "n11",
+            "op": "insert",
+            "parent": "n10"
+          },
+          {
+            "index": -1,
+            "node": "n13",
+            "op": "insert",
+            "parent": "n10"
+          },
+          {
+            "index": -1,
+            "node": "n12",
+            "op": "insert",
+            "parent": "n10"
+          },
+          {
+            "class": "canvas",
+            "node": "n15",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n15",
+            "op": "insert",
+            "parent": "n10"
+          },
+          {
+            "index": -1,
+            "node": "n10",
+            "op": "insert",
+            "parent": "n9"
+          },
+          {
+            "class": "canvas",
+            "node": "n16",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n16",
+            "op": "insert",
+            "parent": "n9"
+          },
+          {
+            "class": "canvas",
+            "node": "n17",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n18",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n19",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n20",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n21",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n21",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "index": -1,
+            "node": "n18",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "index": -1,
+            "node": "n20",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "index": -1,
+            "node": "n19",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "class": "canvas",
+            "node": "n22",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n22",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "index": -1,
+            "node": "n17",
+            "op": "insert",
+            "parent": "n9"
+          },
+          {
+            "index": -1,
+            "node": "n8",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": "n8"
+            }
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n13",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n20",
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n14",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n14",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n14",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n11",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n11",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n11",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n11",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n13",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n13",
+            "op": "set",
+            "value": 102.0
+          },
+          {
+            "key": "height",
+            "node": "n13",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n13",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73040000004f6e6c79",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Only\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n12",
+            "op": "set",
+            "value": 136.0
+          },
+          {
+            "key": "width",
+            "node": "n12",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n12",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n12",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n15",
+            "op": "set",
+            "value": 154.0
+          },
+          {
+            "key": "width",
+            "node": "n15",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n15",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n15",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n10",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n10",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "width",
+            "node": "n10",
+            "op": "set",
+            "value": 162.0
+          },
+          {
+            "key": "height",
+            "node": "n10",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n10",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000022430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 162.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n16",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n16",
+            "op": "set",
+            "value": 32.0
+          },
+          {
+            "key": "width",
+            "node": "n16",
+            "op": "set",
+            "value": 162.0
+          },
+          {
+            "key": "height",
+            "node": "n16",
+            "op": "set",
+            "value": 9.0
+          },
+          {
+            "key": "content",
+            "node": "n16",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000004100008040000012430000803f00000000ff5a47450000000000000000",
+              "paint": [
+                "Rect { x: 8.0, y: 4.0, width: 146.0, height: 1.0, radius: 0.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n21",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n21",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n21",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n18",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n18",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n18",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n18",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n20",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n20",
+            "op": "set",
+            "value": 102.0
+          },
+          {
+            "key": "height",
+            "node": "n20",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n20",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041ff86706c040073616e73030000004f6666",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 108, g: 112, b: 134, a: 255 }, font: \"sans\", text: \"Off\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n19",
+            "op": "set",
+            "value": 136.0
+          },
+          {
+            "key": "width",
+            "node": "n19",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n19",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n19",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n22",
+            "op": "set",
+            "value": 154.0
+          },
+          {
+            "key": "width",
+            "node": "n22",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n22",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n22",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n17",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n17",
+            "op": "set",
+            "value": 41.0
+          },
+          {
+            "key": "width",
+            "node": "n17",
+            "op": "set",
+            "value": 162.0
+          },
+          {
+            "key": "height",
+            "node": "n17",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n17",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000022430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 162.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n9",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "y",
+            "node": "n9",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "width",
+            "node": "n9",
+            "op": "set",
+            "value": 170.0
+          },
+          {
+            "key": "height",
+            "node": "n9",
+            "op": "set",
+            "value": 73.0
+          },
+          {
+            "key": "content",
+            "node": "n9",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000002a430000924200002041ff2e1e1e0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 170.0, height: 73.0, radius: 10.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n8",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": "n8",
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "content",
+            "node": "n8",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000484400000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "answer_measures"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n8",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                800.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n9",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 170.0, height: 73.0, radius: 10.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                50.0,
+                50.0,
+                170.0,
+                73.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n10",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 162.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                4.0,
+                4.0,
+                162.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n16",
+              "paint": [
+                "Rect { x: 8.0, y: 4.0, width: 146.0, height: 1.0, radius: 0.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                4.0,
+                32.0,
+                162.0,
+                9.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n17",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 162.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                4.0,
+                41.0,
+                162.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n14",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                8.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 9,
+              "node": "n11",
+              "paint": [],
+              "rect": [
+                12.0,
+                0.0,
+                14.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 40,
+              "node": "n13",
+              "paint": [
+                "Text { x: 0.0, y: 5.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Only\" }"
+              ],
+              "rect": [
+                30.0,
+                0.0,
+                102.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 9,
+              "node": "n12",
+              "paint": [],
+              "rect": [
+                136.0,
+                0.0,
+                14.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n15",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                154.0,
+                0.0,
+                8.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n21",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                8.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 9,
+              "node": "n18",
+              "paint": [],
+              "rect": [
+                12.0,
+                0.0,
+                14.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 39,
+              "node": "n20",
+              "paint": [
+                "Text { x: 0.0, y: 5.0, size: 14.0, colour: Rgba8 { r: 108, g: 112, b: 134, a: 255 }, font: \"sans\", text: \"Off\" }"
+              ],
+              "rect": [
+                30.0,
+                0.0,
+                102.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 9,
+              "node": "n19",
+              "paint": [],
+              "rect": [
+                136.0,
+                0.0,
+                14.0,
+                28.0
+              ]
+            },
+            {
+              "bytes": 42,
+              "node": "n22",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                154.0,
+                0.0,
+                8.0,
+                28.0
+              ]
+            }
+          ],
+          "file": "menus_scripted.scripted.bin",
+          "paint": "scripted"
+        }
+      ],
+      "step": "measured",
+      "writes": [
+        [
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000000000005041fff5d0c6040073616e730400000077696e31",
+              "paint": [
+                "Text { x: 0.0, y: 0.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"win1\" }"
+              ]
+            }
+          },
+          {
+            "key": "content",
+            "node": "n13",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000a04000006041fff4d6cd040073616e73040000004f6e6c79",
+              "paint": [
+                "Text { x: 0.0, y: 5.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Only\" }"
+              ]
+            }
+          },
+          {
+            "key": "content",
+            "node": "n20",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000a04000006041ff86706c040073616e73030000004f6666",
+              "paint": [
+                "Text { x: 0.0, y: 5.0, size: 14.0, colour: Rgba8 { r: 108, g: 112, b: 134, a: 255 }, font: \"sans\", text: \"Off\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "key",
+          "key": "Down",
+          "node": {
+            "js": "windowMenu.current.node"
+          },
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "eval",
+          "js": "rec('sel', sel());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "sel",
+          "value": [
+            1,
+            "Only"
+          ]
+        }
+      ],
+      "step": "key_Down",
+      "writes": [
+        [
+          {
+            "key": "content",
+            "node": "n13",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000a04000006041ff1b1111040073616e73040000004f6e6c79",
+              "paint": [
+                "Text { x: 0.0, y: 5.0, size: 14.0, colour: Rgba8 { r: 17, g: 17, b: 27, a: 255 }, font: \"sans\", text: \"Only\" }"
+              ]
+            }
+          },
+          {
+            "key": "content",
+            "node": "n10",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000022430000e0410000c040fffab4890000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 162.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 137, g: 180, b: 250, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "key",
+          "key": "Return",
+          "node": {
+            "js": "windowMenu.current.node"
+          },
+          "pressed": true,
+          "text": ""
+        },
+        {
+          "action": "eval",
+          "js": "rec('sel', sel());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "sel",
+          "value": null
+        }
+      ],
+      "step": "key_Return",
+      "writes": [
+        [
+          {
+            "node": "n8",
+            "op": "destroy"
+          },
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 0
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('ran', globalThis.ran);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "ran",
+          "value": [
+            "win1"
+          ]
+        }
+      ],
+      "step": "ran",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.seen = null; windowMenu.show = (c, x, y) => { globalThis.seen = [c.title, x, y]; return null; };"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "show_replaced",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "request",
+          "name": "menu",
+          "node": 3,
+          "x": 70.0,
+          "y": 80.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('card', card()); rec('sel', sel());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "card",
+          "value": null
+        },
+        {
+          "label": "sel",
+          "value": null
+        }
+      ],
+      "step": "ask_show",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('seen', globalThis.seen);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "seen",
+          "value": [
+            "win1",
+            70,
+            80
+          ]
+        }
+      ],
+      "step": "show_seen",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      }
+    ]
+  }
+}

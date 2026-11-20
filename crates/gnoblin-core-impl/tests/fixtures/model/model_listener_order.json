@@ -1,0 +1,166 @@
+{
+  "scenario": "model_listener_order",
+  "source": "const c = gnoblin.clients.get('3');\nconst note = (who: string) => (...args: any[]) => (globalThis as any).log.push(who + ':' + args.length + ':' + args[0].id + ':' + args[1]);\nc.addListener({ onTitleChanged: note('A') });\nc.onTitleChanged(note('B'));\nc.addListener({ onTitleChanged: note('C'), onFocusChanged: note('c') });\ngnoblin.clients.addListener({ onTitleChanged: note('D') });\ngnoblin.clients.onTitleChanged(note('E'));\ngnoblin.onClientTitleChanged(note('F'));\ngnoblin.clients.addListener({ onTitleChanged: note('G') });\ngnoblin.clients.onFocusChanged(note('f'));\nc.onFocusChanged(note('b'));\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "title",
+          "value": "t1"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "A:2:3:t1",
+        "B:2:3:t1",
+        "C:2:3:t1",
+        "D:2:3:t1",
+        "E:2:3:t1",
+        "F:2:3:t1",
+        "G:2:3:t1"
+      ],
+      "step": "title_one",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "title",
+          "value": "t2"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "A:2:3:t2",
+        "B:2:3:t2",
+        "C:2:3:t2",
+        "D:2:3:t2",
+        "E:2:3:t2",
+        "F:2:3:t2",
+        "G:2:3:t2"
+      ],
+      "step": "title_two",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "focused",
+          "value": true
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "c:2:3:true",
+        "b:2:3:true",
+        "f:2:3:true"
+      ],
+      "step": "focus",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [
+      {
+        "id": 20,
+        "key": "name",
+        "value": "output-0"
+      },
+      {
+        "id": 20,
+        "key": "connector",
+        "value": "DP-1"
+      },
+      {
+        "id": 20,
+        "key": "x",
+        "value": 0.0
+      },
+      {
+        "id": 20,
+        "key": "y",
+        "value": 0.0
+      }
+    ],
+    "policy": null,
+    "screen": [
+      1000.0,
+      600.0
+    ],
+    "windows": [
+      {
+        "app_id": "app.one",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "one"
+      },
+      {
+        "app_id": "app.two",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "two"
+      }
+    ]
+  }
+}

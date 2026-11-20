@@ -1,0 +1,1439 @@
+{
+  "script": "focus 40\nchord Super+3\nstep one 40\ncreate 41 B\nfocus 41\nstep two 40 41\ncreate 42 C\nfocus 42\nstep three 40 41 42\ncreate 43 D\nfocus 43\nstep four 40 41 42 43\nchord Super+F1\nstep toggle 40 41 42 43\nchord Super+F2\nstep swap 40 41 42 43\nchord Super+F3\nstep rotate 40 41 42 43\nchord Super+F4\nstep rotate_back 40 41 42 43\nchord Super+F8\nstep to_root 40 41 42 43\nchord Super+F9\nstep to_root_unstable 40 41 42 43\nchord Super+F10\nstep ratio 40 41 42 43\nchord Super+F11\nstep ratio_exact 40 41 42 43\nchord Super+F12\nstep pseudo 40 41 42 43\nchord Super+F12\nstep pseudo_off 40 41 42 43\nfocus 41\nchord Super+F1\nchord Super+F10\nstep other_window 40 41 42 43\ndestroy 42\nstep closed 40 41 42 43\ndestroy 40\nstep closed_root 40 41 42 43\n",
+  "steps": [
+    {
+      "step": "one",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            12.0,
+            976.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "two",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            12.0,
+            583.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            599.0,
+            12.0,
+            389.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "three",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            12.0,
+            583.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            599.0,
+            12.0,
+            389.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            599.0,
+            479.0,
+            389.0,
+            309.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "four",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            12.0,
+            583.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            599.0,
+            12.0,
+            389.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            599.0,
+            479.0,
+            231.0,
+            309.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            834.0,
+            479.0,
+            154.0,
+            309.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "toggle",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            12.0,
+            583.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            599.0,
+            12.0,
+            389.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            599.0,
+            479.0,
+            389.0,
+            183.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            599.0,
+            666.0,
+            389.0,
+            122.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "swap",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            12.0,
+            583.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            599.0,
+            12.0,
+            389.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            599.0,
+            666.0,
+            389.0,
+            122.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            599.0,
+            479.0,
+            389.0,
+            183.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "rotate",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            12.0,
+            583.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            599.0,
+            12.0,
+            389.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            599.0,
+            479.0,
+            231.0,
+            309.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            834.0,
+            479.0,
+            154.0,
+            309.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "rotate_back",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            12.0,
+            583.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            599.0,
+            12.0,
+            389.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            599.0,
+            666.0,
+            389.0,
+            122.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            599.0,
+            479.0,
+            389.0,
+            183.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "to_root",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            479.0,
+            583.0,
+            183.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            12.0,
+            12.0,
+            583.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            12.0,
+            666.0,
+            583.0,
+            122.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            599.0,
+            12.0,
+            389.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "to_root_unstable",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            479.0,
+            583.0,
+            183.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            12.0,
+            12.0,
+            583.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            12.0,
+            666.0,
+            583.0,
+            122.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            599.0,
+            12.0,
+            389.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "ratio",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            479.0,
+            680.0,
+            183.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            12.0,
+            12.0,
+            680.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            12.0,
+            666.0,
+            680.0,
+            122.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            696.0,
+            12.0,
+            292.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "ratio_exact",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            479.0,
+            291.0,
+            183.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            12.0,
+            12.0,
+            291.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            12.0,
+            666.0,
+            291.0,
+            122.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            307.0,
+            12.0,
+            681.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "pseudo",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            479.0,
+            291.0,
+            183.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            12.0,
+            12.0,
+            291.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            12.0,
+            666.0,
+            291.0,
+            122.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            307.0,
+            12.0,
+            681.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "pseudo_off",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            12.0,
+            479.0,
+            291.0,
+            183.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            12.0,
+            12.0,
+            291.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            12.0,
+            666.0,
+            291.0,
+            122.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            307.0,
+            12.0,
+            681.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "other_window",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            217.0,
+            12.0,
+            86.0,
+            463.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            12.0,
+            12.0,
+            201.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": [
+            217.0,
+            479.0,
+            86.0,
+            309.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            307.0,
+            12.0,
+            681.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "closed",
+      "windows": [
+        {
+          "id": 40,
+          "rect": [
+            217.0,
+            12.0,
+            86.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            12.0,
+            12.0,
+            201.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": null,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            307.0,
+            12.0,
+            681.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "step": "closed_root",
+      "windows": [
+        {
+          "id": 40,
+          "rect": null,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 41,
+          "rect": [
+            12.0,
+            12.0,
+            291.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 42,
+          "rect": null,
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": false,
+          "visible": true,
+          "z": 0.0
+        },
+        {
+          "id": 43,
+          "rect": [
+            307.0,
+            12.0,
+            681.0,
+            776.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiled": true,
+          "visible": true,
+          "z": 0.0
+        }
+      ]
+    }
+  ]
+}

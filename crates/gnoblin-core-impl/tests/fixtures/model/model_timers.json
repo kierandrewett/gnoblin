@@ -1,0 +1,157 @@
+{
+  "scenario": "model_timers",
+  "source": "export {};\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.t0 = gnoblin.timers.now();\ngnoblin.timers.after(100, () => log.push('after 100'));\nconst cancel = gnoblin.timers.after(50, () => log.push('after 50 cancelled')); if (typeof cancel === 'function') cancel(); else if (cancel && cancel.cancel) cancel.cancel();\ngnoblin.timers.after(0, () => log.push('after 0'));\ngnoblin.timers.after(100, () => log.push('after 100 again'));\nrec('now', t0);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "now",
+          "value": 0
+        },
+        "after 0"
+      ],
+      "step": "scheduled",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "advance",
+          "ms": 60
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "sixty",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "advance",
+          "ms": 60
+        },
+        {
+          "action": "eval",
+          "js": "rec('elapsed', gnoblin.timers.now() - t0);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        "after 100",
+        "after 100 again",
+        {
+          "label": "elapsed",
+          "value": 120
+        }
+      ],
+      "step": "hundred_and_twenty",
+      "writes": []
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [
+      {
+        "id": 20,
+        "key": "name",
+        "value": "output-0"
+      },
+      {
+        "id": 20,
+        "key": "connector",
+        "value": "DP-1"
+      },
+      {
+        "id": 20,
+        "key": "x",
+        "value": 0.0
+      },
+      {
+        "id": 20,
+        "key": "y",
+        "value": 0.0
+      }
+    ],
+    "policy": null,
+    "screen": [
+      1000.0,
+      600.0
+    ],
+    "windows": [
+      {
+        "app_id": "app.one",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "one"
+      },
+      {
+        "app_id": "app.two",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "two"
+      }
+    ]
+  }
+}

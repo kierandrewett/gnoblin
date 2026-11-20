@@ -124,6 +124,11 @@ gen-sdks:
 gen-sdks-check:
     cargo xtask gen-sdks --check
 
+# Prove the golden fixtures of the native std port are what the TypeScript std does now, over three runs
+# (design/native-std-port-tests.md). `cargo xtask oracle record` rewrites them.
+oracle-check:
+    cargo xtask oracle check --repeat 3
+
 # Fail on a documented `gnoblin` name the implemented surface lacks, unless
 # `design/docs-parity/allow.toml` lists it.
 docs-parity:

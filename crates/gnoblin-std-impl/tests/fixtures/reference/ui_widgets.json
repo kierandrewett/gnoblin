@@ -1,0 +1,1352 @@
+{
+  "scenario": "ui_widgets",
+  "source": "globalThis.t = new Date(2024, 0, 5, 9, 30, 7);\nconst clock = new Clock({ now: () => (globalThis as any).t, size: 18, color: '#ff0000' });\nconst seconds = new Clock({ now: () => (globalThis as any).t, format: '%a %d %b %Y %I:%M:%S %p' });\nconst holder = new Box({ width: 400, height: 60, direction: 'row', gap: 8, padding: 4 });\nholder.add(clock).add(seconds);\nholder.mountTop();\nObject.assign(globalThis, { clock, seconds, holder });",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n1",
+            "op": "insert",
+            "parent": "n3"
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n3"
+          },
+          {
+            "index": -1,
+            "node": "n3",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "0000000000003240",
+            "method": "measure",
+            "node": "n1",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "x",
+            "node": "n1",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n1",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 45.0
+          },
+          {
+            "key": "height",
+            "node": "n1",
+            "op": "set",
+            "value": 52.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404100009041ff0000ff040073616e730500000030393a3330",
+              "paint": [
+                "Text { x: 0.0, y: 12.0, size: 18.0, colour: Rgba8 { r: 255, g: 0, b: 0, a: 255 }, font: \"sans\", text: \"09:30\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n2",
+            "op": "set",
+            "value": 57.0
+          },
+          {
+            "key": "y",
+            "node": "n2",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 189.0
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 52.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000704100006041fff4d6cd040073616e731b000000467269203035204a616e20323032342030393a33303a303720414d",
+              "paint": [
+                "Text { x: 0.0, y: 15.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Fri 05 Jan 2024 09:30:07 AM\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 60.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000704200000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 60.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "answer_measures"
+        },
+        {
+          "action": "eval",
+          "js": "rec('clocks', [clock.text, seconds.text]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "clocks",
+          "value": [
+            "09:30",
+            "Fri 05 Jan 2024 09:30:07 AM"
+          ]
+        }
+      ],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 60.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                400.0,
+                60.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n1",
+              "paint": [
+                "Text { x: 0.0, y: 15.0, size: 18.0, colour: Rgba8 { r: 255, g: 0, b: 0, a: 255 }, font: \"sans\", text: \"09:30\" }"
+              ],
+              "rect": [
+                4.0,
+                4.0,
+                54.0,
+                52.0
+              ]
+            },
+            {
+              "bytes": 63,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 17.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Fri 05 Jan 2024 09:30:07 AM\" }"
+              ],
+              "rect": [
+                66.0,
+                4.0,
+                227.0,
+                52.0
+              ]
+            }
+          ],
+          "file": "ui_widgets.clocks.bin",
+          "paint": "clocks"
+        }
+      ],
+      "step": "clocks",
+      "writes": [
+        [
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 54.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000704100009041ff0000ff040073616e730500000030393a3330",
+              "paint": [
+                "Text { x: 0.0, y: 15.0, size: 18.0, colour: Rgba8 { r: 255, g: 0, b: 0, a: 255 }, font: \"sans\", text: \"09:30\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n2",
+            "op": "set",
+            "value": 66.0
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 227.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000884100006041fff4d6cd040073616e731b000000467269203035204a616e20323032342030393a33303a303720414d",
+              "paint": [
+                "Text { x: 0.0, y: 17.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Fri 05 Jan 2024 09:30:07 AM\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.t = new Date(2024, 11, 31, 23, 59, 59);"
+        },
+        {
+          "action": "answer_measures"
+        },
+        {
+          "action": "eval",
+          "js": "rec('clocks', [clock.text, seconds.text]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "clocks",
+          "value": [
+            "23:59",
+            "Tue 31 Dec 2024 11:59:59 PM"
+          ]
+        }
+      ],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n3",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 60.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                400.0,
+                60.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n1",
+              "paint": [
+                "Text { x: 0.0, y: 15.0, size: 18.0, colour: Rgba8 { r: 255, g: 0, b: 0, a: 255 }, font: \"sans\", text: \"23:59\" }"
+              ],
+              "rect": [
+                4.0,
+                4.0,
+                54.0,
+                52.0
+              ]
+            },
+            {
+              "bytes": 63,
+              "node": "n2",
+              "paint": [
+                "Text { x: 0.0, y: 17.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Tue 31 Dec 2024 11:59:59 PM\" }"
+              ],
+              "rect": [
+                66.0,
+                4.0,
+                227.0,
+                52.0
+              ]
+            }
+          ],
+          "file": "ui_widgets.clocks_later.bin",
+          "paint": "clocks_later"
+        }
+      ],
+      "step": "clocks_later",
+      "writes": [
+        [
+          {
+            "args": "0000000000003240",
+            "method": "measure",
+            "node": "n1",
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 45.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404100009041ff0000ff040073616e730500000032333a3539",
+              "paint": [
+                "Text { x: 0.0, y: 12.0, size: 18.0, colour: Rgba8 { r: 255, g: 0, b: 0, a: 255 }, font: \"sans\", text: \"23:59\" }"
+              ]
+            }
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 189.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000704100006041fff4d6cd040073616e731b0000005475652033312044656320323032342031313a35393a353920504d",
+              "paint": [
+                "Text { x: 0.0, y: 15.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Tue 31 Dec 2024 11:59:59 PM\" }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": "n2",
+            "op": "set",
+            "value": 57.0
+          }
+        ],
+        [
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 54.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000704100009041ff0000ff040073616e730500000032333a3539",
+              "paint": [
+                "Text { x: 0.0, y: 15.0, size: 18.0, colour: Rgba8 { r: 255, g: 0, b: 0, a: 255 }, font: \"sans\", text: \"23:59\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n2",
+            "op": "set",
+            "value": 66.0
+          },
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 227.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000884100006041fff4d6cd040073616e731b0000005475652033312044656320323032342031313a35393a353920504d",
+              "paint": [
+                "Text { x: 0.0, y: 17.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Tue 31 Dec 2024 11:59:59 PM\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const d = new Date(2024, 0, 5, 14, 7, 9);\nrec('formats', ['%H:%M', '%I:%M %p', '%a %d %b %Y', '%T %%', '%Q', '%F %j', '%A %B %e %y %R', '%S %m'].map((f) => formatTime(f, d)));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "formats",
+          "value": [
+            "14:07",
+            "02:07 PM",
+            "Fri 05 Jan 2024",
+            "14:07:09 %",
+            "%Q",
+            "2024-01-05 005",
+            "Friday January  5 24 14:07",
+            "09 01"
+          ]
+        }
+      ],
+      "step": "formats",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.top = new Bar({ height: 32 }); globalThis.low = new Bar({ edge: 'bottom', height: 20 });\nglobalThis.second = new Bar({ height: 10, fill: '#ff000080' });\ntop.add(new Text({ text: 'left', grow: 1 })); top.add(new Text({ text: 'right' }));"
+        },
+        {
+          "action": "answer_measures"
+        },
+        {
+          "action": "eval",
+          "js": "rec('insets', barInsets()); rec('area', gnoblin.workspaces.area); rec('bars', [top, second, low].map((b) => [b.x, b.y, b.width, b.height, b.visible]));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "insets",
+          "value": {
+            "bottom": 20,
+            "top": 42
+          }
+        },
+        {
+          "label": "area",
+          "value": {
+            "height": 738,
+            "width": 1000,
+            "x": 0,
+            "y": 42
+          }
+        },
+        {
+          "label": "bars",
+          "value": [
+            [
+              0,
+              0,
+              1000,
+              32,
+              true
+            ],
+            [
+              0,
+              32,
+              1000,
+              10,
+              true
+            ],
+            [
+              0,
+              780,
+              1000,
+              20,
+              true
+            ]
+          ]
+        }
+      ],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n4",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 32.0, radius: 0.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                0.0,
+                0.0,
+                1000.0,
+                32.0
+              ]
+            },
+            {
+              "bytes": 40,
+              "node": "n7",
+              "paint": [
+                "Text { x: 0.0, y: 1.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"left\" }"
+              ],
+              "rect": [
+                6.0,
+                6.0,
+                934.0,
+                20.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n8",
+              "paint": [
+                "Text { x: 0.0, y: 1.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"right\" }"
+              ],
+              "rect": [
+                952.0,
+                6.0,
+                42.0,
+                20.0
+              ]
+            }
+          ],
+          "file": "ui_widgets.bars.bin",
+          "paint": "bars"
+        }
+      ],
+      "step": "bars",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n4",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "class": "canvas",
+            "node": "n5",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n5",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "class": "canvas",
+            "node": "n6",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n6",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "class": "canvas",
+            "node": "n7",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n7",
+            "op": "insert",
+            "parent": "n4"
+          },
+          {
+            "class": "canvas",
+            "node": "n8",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n8",
+            "op": "insert",
+            "parent": "n4"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n8",
+            "op": "call"
+          },
+          {
+            "key": "x",
+            "node": "n7",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "y",
+            "node": "n7",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 941.0
+          },
+          {
+            "key": "height",
+            "node": "n7",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n7",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000080bf00006041fff4d6cd040073616e73040000006c656674",
+              "paint": [
+                "Text { x: 0.0, y: -1.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"left\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n8",
+            "op": "set",
+            "value": 959.0
+          },
+          {
+            "key": "y",
+            "node": "n8",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n8",
+            "op": "set",
+            "value": 35.0
+          },
+          {
+            "key": "height",
+            "node": "n8",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "content",
+            "node": "n8",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000080bf00006041fff4d6cd040073616e73050000007269676874",
+              "paint": [
+                "Text { x: 0.0, y: -1.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"right\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n4",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": "n4",
+            "op": "set",
+            "value": 32.0
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000004200000000ff2e1e1e0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 32.0, radius: 0.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "y",
+            "node": "n5",
+            "op": "set",
+            "value": 780.0
+          },
+          {
+            "key": "width",
+            "node": "n5",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000a04100000000ff2e1e1e0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 20.0, radius: 0.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "y",
+            "node": "n6",
+            "op": "set",
+            "value": 32.0
+          },
+          {
+            "key": "width",
+            "node": "n6",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": "n6",
+            "op": "set",
+            "value": 10.0
+          },
+          {
+            "key": "content",
+            "node": "n6",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000204100000000800000ff0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 10.0, radius: 0.0, fill: Rgba8 { r: 255, g: 0, b: 0, a: 128 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 934.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000803f00006041fff4d6cd040073616e73040000006c656674",
+              "paint": [
+                "Text { x: 0.0, y: 1.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"left\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n8",
+            "op": "set",
+            "value": 952.0
+          },
+          {
+            "key": "width",
+            "node": "n8",
+            "op": "set",
+            "value": 42.0
+          },
+          {
+            "key": "content",
+            "node": "n8",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000803f00006041fff4d6cd040073616e73050000007269676874",
+              "paint": [
+                "Text { x: 0.0, y: 1.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"right\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "top.hideWhen = () => true;"
+        },
+        {
+          "action": "eval",
+          "js": "rec('insets', barInsets()); rec('bars', [top, second, low].map((b) => [b.x, b.y, b.width, b.height, b.visible]));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "insets",
+          "value": {
+            "bottom": 20,
+            "top": 10
+          }
+        },
+        {
+          "label": "bars",
+          "value": [
+            [
+              0,
+              0,
+              1000,
+              32,
+              false
+            ],
+            [
+              0,
+              0,
+              1000,
+              10,
+              true
+            ],
+            [
+              0,
+              780,
+              1000,
+              20,
+              true
+            ]
+          ]
+        }
+      ],
+      "step": "top_hidden",
+      "writes": [
+        [
+          {
+            "key": "visible",
+            "node": "n4",
+            "op": "set",
+            "value": false
+          },
+          {
+            "key": "y",
+            "node": "n6",
+            "op": "set",
+            "value": 0.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "second.destroy(); top.destroy(); low.destroy(); rec('insets', barInsets());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "insets",
+          "value": {
+            "bottom": 0,
+            "top": 0
+          }
+        }
+      ],
+      "step": "bars_gone",
+      "writes": [
+        [
+          {
+            "node": "n6",
+            "op": "destroy"
+          },
+          {
+            "node": "n4",
+            "op": "destroy"
+          },
+          {
+            "node": "n5",
+            "op": "destroy"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.now = 0; globalThis.card = toast('saved', { fadeIn: 100, hold: 200, fadeOut: 100, now: () => globalThis.now });"
+        },
+        {
+          "action": "answer_measures"
+        },
+        {
+          "action": "eval",
+          "js": "rec('toast', [card.x, card.y, card.width, card.height, card.opacity]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "toast",
+          "value": [
+            660,
+            44,
+            320,
+            64,
+            0
+          ]
+        }
+      ],
+      "paints": [
+        {
+          "canvases": [
+            {
+              "bytes": 42,
+              "node": "n9",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 64.0, radius: 10.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ],
+              "rect": [
+                660.0,
+                44.0,
+                320.0,
+                64.0
+              ]
+            },
+            {
+              "bytes": 41,
+              "node": "n10",
+              "paint": [
+                "Text { x: 0.0, y: 9.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"saved\" }"
+              ],
+              "rect": [
+                14.0,
+                14.0,
+                292.0,
+                36.0
+              ]
+            }
+          ],
+          "file": "ui_widgets.toast_start.bin",
+          "paint": "toast_start"
+        }
+      ],
+      "step": "toast_start",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n9",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n10",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n10",
+            "op": "insert",
+            "parent": "n9"
+          },
+          {
+            "index": -1,
+            "node": "n9",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "key": "x",
+            "node": "n10",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "y",
+            "node": "n10",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "width",
+            "node": "n10",
+            "op": "set",
+            "value": 292.0
+          },
+          {
+            "key": "height",
+            "node": "n10",
+            "op": "set",
+            "value": 36.0
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n10",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n10",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000e04000006041fff4d6cd040073616e73050000007361766564",
+              "paint": [
+                "Text { x: 0.0, y: 7.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"saved\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n9",
+            "op": "set",
+            "value": 660.0
+          },
+          {
+            "key": "y",
+            "node": "n9",
+            "op": "set",
+            "value": 44.0
+          },
+          {
+            "key": "width",
+            "node": "n9",
+            "op": "set",
+            "value": 320.0
+          },
+          {
+            "key": "height",
+            "node": "n9",
+            "op": "set",
+            "value": 64.0
+          },
+          {
+            "key": "opacity",
+            "node": "n9",
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "content",
+            "node": "n9",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000a0430000804200002041ff5a47450000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 320.0, height: 64.0, radius: 10.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "content",
+            "node": "n10",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000104100006041fff4d6cd040073616e73050000007361766564",
+              "paint": [
+                "Text { x: 0.0, y: 9.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"saved\" }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.now = 50;"
+        },
+        {
+          "action": "settle"
+        },
+        {
+          "action": "eval",
+          "js": "rec('toast', [card.alive, card.opacity, uiCanvasCount()]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "toast",
+          "value": [
+            true,
+            0.5,
+            5
+          ]
+        }
+      ],
+      "step": "fading_in",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": "n9",
+            "op": "set",
+            "value": 0.5
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.now = 150;"
+        },
+        {
+          "action": "settle"
+        },
+        {
+          "action": "eval",
+          "js": "rec('toast', [card.alive, card.opacity, uiCanvasCount()]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "toast",
+          "value": [
+            true,
+            1,
+            5
+          ]
+        }
+      ],
+      "step": "full",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": "n9",
+            "op": "set",
+            "value": 1.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.now = 350;"
+        },
+        {
+          "action": "settle"
+        },
+        {
+          "action": "eval",
+          "js": "rec('toast', [card.alive, card.opacity, uiCanvasCount()]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "toast",
+          "value": [
+            true,
+            0.5,
+            5
+          ]
+        }
+      ],
+      "step": "fading_out",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": "n9",
+            "op": "set",
+            "value": 0.5
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "globalThis.now = 500;"
+        },
+        {
+          "action": "settle"
+        },
+        {
+          "action": "eval",
+          "js": "rec('toast', [card.alive, card.opacity, uiCanvasCount()]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "toast",
+          "value": [
+            false,
+            0.5,
+            3
+          ]
+        }
+      ],
+      "step": "gone",
+      "writes": [
+        [
+          {
+            "node": "n9",
+            "op": "destroy"
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}

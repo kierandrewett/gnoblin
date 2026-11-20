@@ -1,0 +1,1064 @@
+{
+  "scenario": "style_cascade",
+  "source": "globalThis.caught = (fn: () => void) => { try { fn(); return 'none'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.cornerRadius = 12; gnoblin.clients.get('3').style.cornerRadius = 20;\nrec('radii', gnoblin.clients.map((c) => c.computedStyle.cornerRadius));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "radii",
+          "value": [
+            20,
+            12
+          ]
+        }
+      ],
+      "step": "global_and_explicit",
+      "writes": [
+        [
+          {
+            "key": "corner_radius",
+            "node": 3,
+            "op": "set",
+            "value": 20.0
+          },
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 12.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "open",
+          "app_id": "foot",
+          "id": 9,
+          "title": "late"
+        },
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.cornerRadius = 8;\nrec('radii', gnoblin.clients.map((c) => [c.id, c.computedStyle.cornerRadius, c.computedStyle.origin.cornerRadius]));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "radii",
+          "value": [
+            [
+              "3",
+              20,
+              "client"
+            ],
+            [
+              "4",
+              8,
+              "global"
+            ],
+            [
+              "9",
+              8,
+              "global"
+            ]
+          ]
+        }
+      ],
+      "step": "future_clients_inherit",
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 9
+            }
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": 9,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "y",
+            "node": 9,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "width",
+            "node": 9,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 9,
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "corner_radius",
+            "node": 9,
+            "op": "set",
+            "value": 12.0
+          }
+        ],
+        [
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "corner_radius",
+            "node": 9,
+            "op": "set",
+            "value": 8.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const ws = gnoblin.workspaces.at(0);\nconst selHigh = gnoblin.clients.where({ appId: 'foot' }, { priority: 5 });\nconst selLow1 = gnoblin.clients.where({ title: 'win1' });\nconst selLow2 = ws.clients.where({ appId: 'foot' });\nselHigh.style; selLow1.style; selLow2.style;\nconst client = gnoblin.clients.get('3');\nconst scopes = { global: gnoblin.clients, workspace: ws.clients, selLow1, selLow2, selHigh };\nconst names = ['global', 'workspace', 'selLow1', 'selLow2', 'selHigh', 'client'];\nconst styleOf = (name) => (name === 'client' ? client.style : scopes[name].style);\nconst props = { opacity: [0.3, 0.6], cornerRadius: [4, 8], background: ['#111111', '#222222'], shadows: [[{ blur: 3 }], [{ blur: 6 }]] };\nconst read = (name) => { const v = client.computedStyle[name]; return name === 'shadows' ? v[0]?.blur : v; };\nconst clear = () => { for (const n of names) styleOf(n).reset(); };\nconst table = [];\nfor (const prop of Object.keys(props)) {\nclear();\nconst none = client.computedStyle.origin[prop];\nfor (let lo = 0; lo < names.length; lo += 1) {\nfor (let hi = lo + 1; hi < names.length; hi += 1) {\nclear(); styleOf(names[lo])[prop] = props[prop][0]; const alone = read(prop);\nstyleOf(names[hi])[prop] = props[prop][1]; const later = read(prop);\nclear(); styleOf(names[hi])[prop] = props[prop][1]; styleOf(names[lo])[prop] = props[prop][0]; const earlier = read(prop);\ntable.push([prop, names[lo], names[hi], none, alone, later, earlier]);\n}\n}\n}\nclear();\nws.clients.style.cornerRadius = 5; selLow1.style.opacity = 0.5;\nconst c = client.computedStyle;\nrec('matrix', table);\nrec('per_property', [c.cornerRadius, c.opacity, c.origin.cornerRadius, String(c.origin.opacity).replace(/where\\(.*/, 'where(...)')]);\nglobalThis.workspaceId = ws.id;"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "matrix",
+          "value": [
+            [
+              "opacity",
+              "global",
+              "workspace",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "global",
+              "selLow1",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "global",
+              "selLow2",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "global",
+              "selHigh",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "global",
+              "client",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "workspace",
+              "selLow1",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "workspace",
+              "selLow2",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "workspace",
+              "selHigh",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "workspace",
+              "client",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "selLow1",
+              "selLow2",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "selLow1",
+              "selHigh",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "selLow1",
+              "client",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "selLow2",
+              "selHigh",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "selLow2",
+              "client",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "opacity",
+              "selHigh",
+              "client",
+              "default",
+              0.3,
+              0.6,
+              0.6
+            ],
+            [
+              "cornerRadius",
+              "global",
+              "workspace",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "global",
+              "selLow1",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "global",
+              "selLow2",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "global",
+              "selHigh",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "global",
+              "client",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "workspace",
+              "selLow1",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "workspace",
+              "selLow2",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "workspace",
+              "selHigh",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "workspace",
+              "client",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "selLow1",
+              "selLow2",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "selLow1",
+              "selHigh",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "selLow1",
+              "client",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "selLow2",
+              "selHigh",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "selLow2",
+              "client",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "cornerRadius",
+              "selHigh",
+              "client",
+              "default",
+              4,
+              8,
+              8
+            ],
+            [
+              "background",
+              "global",
+              "workspace",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "global",
+              "selLow1",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "global",
+              "selLow2",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "global",
+              "selHigh",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "global",
+              "client",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "workspace",
+              "selLow1",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "workspace",
+              "selLow2",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "workspace",
+              "selHigh",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "workspace",
+              "client",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "selLow1",
+              "selLow2",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "selLow1",
+              "selHigh",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "selLow1",
+              "client",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "selLow2",
+              "selHigh",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "selLow2",
+              "client",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "background",
+              "selHigh",
+              "client",
+              "default",
+              "#N",
+              "#N",
+              "#N"
+            ],
+            [
+              "shadows",
+              "global",
+              "workspace",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "global",
+              "selLow1",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "global",
+              "selLow2",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "global",
+              "selHigh",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "global",
+              "client",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "workspace",
+              "selLow1",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "workspace",
+              "selLow2",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "workspace",
+              "selHigh",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "workspace",
+              "client",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "selLow1",
+              "selLow2",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "selLow1",
+              "selHigh",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "selLow1",
+              "client",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "selLow2",
+              "selHigh",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "selLow2",
+              "client",
+              "default",
+              3,
+              6,
+              6
+            ],
+            [
+              "shadows",
+              "selHigh",
+              "client",
+              "default",
+              3,
+              6,
+              6
+            ]
+          ]
+        },
+        {
+          "label": "per_property",
+          "value": [
+            5,
+            0.5,
+            "workspace:desktop",
+            "where(...)"
+          ]
+        }
+      ],
+      "step": "priority_and_registration_order",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 0.5
+          },
+          {
+            "key": "corner_radius",
+            "node": 3,
+            "op": "set",
+            "value": 5.0
+          },
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 5.0
+          },
+          {
+            "key": "corner_radius",
+            "node": 9,
+            "op": "set",
+            "value": 5.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.reset(); for (const c of gnoblin.clients) c.style.reset();\nconst client = gnoblin.clients.get('3'); const log = [];\ngnoblin.clients.style.background = '#112233'; gnoblin.clients.style.shadows = [{ blur: 10 }];\nlog.push(client.computedStyle.background, client.style.background);\nclient.style.background = null;\nlog.push(client.computedStyle.background, client.style.background, client.computedStyle.origin.background);\nclient.style.unset('background');\nlog.push(client.computedStyle.background, client.style.background);\nclient.style.shadows = [];\nlog.push(client.computedStyle.shadows.length, client.computedStyle.origin.shadows);\nclient.style.unset('shadows');\nlog.push(client.computedStyle.shadows.length, client.computedStyle.origin.shadows);\nclient.style.cornerRadius = 3; client.style.opacity = 0.5; client.style.reset();\nlog.push(client.computedStyle.cornerRadius, client.computedStyle.opacity);\nlog.push(caught(() => client.style.unset('sparkle')));\nrec('log', log);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "not applied: style.background: the tree has no background for a window"
+      ],
+      "log": [
+        {
+          "label": "log",
+          "value": [
+            "#N",
+            null,
+            null,
+            null,
+            "client",
+            "#N",
+            null,
+            0,
+            "client",
+            1,
+            "global",
+            5,
+            0.5,
+            "Client#N.style.unset: no property \"sparkle\" (known: opacity, filter, backdropFilter, cornerRadius, borders, shadows, background)"
+          ]
+        }
+      ],
+      "step": "unset_null_and_empty",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 10.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 10.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 9,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 10.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.reset(); for (const c of gnoblin.clients) c.style.reset();\ngnoblin.clients.style.shadows = [{ blur: 10 }, { blur: 20, y: 4 }];\nconst [a, b] = [gnoblin.clients.get('3'), gnoblin.clients.get('4')];\nconst blurs = (c) => c.computedStyle.shadows.map((s) => s.blur); const log = [];\na.style.shadows[1].blur = 40;\nlog.push(blurs(a), blurs(b), gnoblin.clients.style.shadows.map((s) => s.blur), a.computedStyle.origin.shadows, b.computedStyle.origin.shadows);\ngnoblin.clients.style.shadows[0].blur = 30; log.push(blurs(a), blurs(b));\nb.style.shadows.push({ blur: 1 });\nrec('log', log);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "log",
+          "value": [
+            [
+              10,
+              40
+            ],
+            [
+              10,
+              20
+            ],
+            [
+              10,
+              20
+            ],
+            "client",
+            "global",
+            [
+              10,
+              40
+            ],
+            [
+              30,
+              20
+            ]
+          ]
+        }
+      ],
+      "step": "lists_copy_on_write",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 4.0, blur_radius: 40.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 10.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 1.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 4.0, blur_radius: 20.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 30.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 9,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 4.0, blur_radius: 20.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 30.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('after', [gnoblin.clients.get('4'), gnoblin.clients.get('3')].map((c) => [c.computedStyle.shadows.map((s) => s.blur), c.computedStyle.origin.shadows]));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "after",
+          "value": [
+            [
+              [
+                30,
+                20,
+                1
+              ],
+              "client"
+            ],
+            [
+              [
+                10,
+                40
+              ],
+              "client"
+            ]
+          ]
+        }
+      ],
+      "step": "lists_after_a_frame",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.reset(); for (const c of gnoblin.clients) c.style.reset();\ngnoblin.clients.style.shadows = [{ blur: 10 }];\nconst [a, b] = [gnoblin.clients.get('3'), gnoblin.clients.get('4')];\na.style.shadows = [{ blur: 2 }];\nconst snap = b.computedStyle;\nconst log = [Object.isFrozen(snap), Object.isFrozen(snap.shadows), Object.isFrozen(snap.shadows[0]), Object.isFrozen(snap.origin)];\nlog.push(caught(() => { snap.opacity = 0.1; }) !== 'none');\nfor (const blur of [12, 14, 16]) { gnoblin.clients.style.shadows[0].blur = blur; log.push(a.computedStyle.shadows[0].blur, b.computedStyle.shadows[0].blur); }\nlog.push(snap.shadows[0].blur);\nrec('log', log);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "log",
+          "value": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            2,
+            12,
+            2,
+            14,
+            2,
+            16,
+            10
+          ]
+        }
+      ],
+      "step": "computed_style_is_frozen",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 2.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 16.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 9,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 16.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "win2"
+      }
+    ]
+  }
+}

@@ -1,0 +1,6775 @@
+{
+  "scenario": "menus_lifecycle",
+  "source": "startDecorations(); startWindowMenu();\nglobalThis.sel = () => windowMenu.current ? [windowMenu.current.nav.depth, windowMenu.current.nav.selected()?.label ?? null] : null;\nglobalThis.card = () => { const m = windowMenu.current; if (!m) return null; const p = m.panel;\nreturn { x: p.x, y: p.y, width: p.width, height: p.height, secure: [p.secure, m.secure], rows: p.rows.map((r) => [r.label, r.enabled, r.checked]) }; };\nglobalThis.row = (label) => windowMenu.current.panel.rows.find((r) => r.label === label).node;\n\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n1",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n2",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n3",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n2",
+            "op": "insert",
+            "parent": "n3"
+          },
+          {
+            "index": -1,
+            "node": "n3",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n4",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n4",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n5",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n5",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n6",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n6",
+            "op": "insert",
+            "parent": "n1"
+          },
+          {
+            "class": "canvas",
+            "node": "n7",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n7",
+            "op": "insert",
+            "parent": 3
+          },
+          {
+            "index": -1,
+            "node": "n1",
+            "op": "insert",
+            "parent": "n7"
+          },
+          {
+            "class": "canvas",
+            "node": "n8",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n9",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n10",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n9",
+            "op": "insert",
+            "parent": "n10"
+          },
+          {
+            "index": -1,
+            "node": "n10",
+            "op": "insert",
+            "parent": "n8"
+          },
+          {
+            "class": "canvas",
+            "node": "n11",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n11",
+            "op": "insert",
+            "parent": "n8"
+          },
+          {
+            "class": "canvas",
+            "node": "n12",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n12",
+            "op": "insert",
+            "parent": "n8"
+          },
+          {
+            "class": "canvas",
+            "node": "n13",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n13",
+            "op": "insert",
+            "parent": "n8"
+          },
+          {
+            "class": "canvas",
+            "node": "n14",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n14",
+            "op": "insert",
+            "parent": 4
+          },
+          {
+            "index": -1,
+            "node": "n8",
+            "op": "insert",
+            "parent": "n14"
+          },
+          {
+            "key": "decorations_available",
+            "node": 21,
+            "op": "set",
+            "value": true
+          },
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "key": "height",
+            "node": "n2",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n2",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e7303000000e280a6",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"…\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n3",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "y",
+            "node": "n3",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "height",
+            "node": "n3",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000000000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 0.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "y",
+            "node": "n4",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n4",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n4",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n4",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d696e696d697a652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 38.0
+          },
+          {
+            "key": "y",
+            "node": "n5",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n5",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n5",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d6178696d697a652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 62.0
+          },
+          {
+            "key": "y",
+            "node": "n6",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n6",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n6",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n6",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd150077696e646f772d636c6f73652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n1",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000000000e04100000000ff3426230000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 0.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "y",
+            "node": "n7",
+            "op": "set",
+            "value": -28.0
+          },
+          {
+            "key": "width",
+            "node": "n7",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": "n7",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n7",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n9",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "args": "0000000000002a40",
+            "method": "measure",
+            "node": "n9",
+            "op": "call"
+          },
+          {
+            "key": "content",
+            "node": "n9",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e7303000000e280a6",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"…\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n10",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "y",
+            "node": "n10",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "height",
+            "node": "n10",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n10",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000000000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 0.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n11",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "y",
+            "node": "n11",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n11",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n11",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n11",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d696e696d697a652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-minimize-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n12",
+            "op": "set",
+            "value": 38.0
+          },
+          {
+            "key": "y",
+            "node": "n12",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n12",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n12",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n12",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd180077696e646f772d6d6178696d697a652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-maximize-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n13",
+            "op": "set",
+            "value": 62.0
+          },
+          {
+            "key": "y",
+            "node": "n13",
+            "op": "set",
+            "value": 6.0
+          },
+          {
+            "key": "width",
+            "node": "n13",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "height",
+            "node": "n13",
+            "op": "set",
+            "value": 16.0
+          },
+          {
+            "key": "content",
+            "node": "n13",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000004000000000000000000008041fff4d6cd150077696e646f772d636c6f73652d73796d626f6c6963",
+              "paint": [
+                "Icon { x: 0.0, y: 0.0, size: 16.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, name: \"window-close-symbolic\" }"
+              ]
+            }
+          },
+          {
+            "key": "height",
+            "node": "n8",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n8",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000000000e04100000000ff3426230000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 0.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "y",
+            "node": "n14",
+            "op": "set",
+            "value": -28.0
+          },
+          {
+            "key": "width",
+            "node": "n14",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": "n14",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n14",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "key": "width",
+            "node": "n2",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n2",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e730400000077696e31",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"win1\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n3",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n3",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000009e430000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n4",
+            "op": "set",
+            "value": 330.0
+          },
+          {
+            "key": "x",
+            "node": "n5",
+            "op": "set",
+            "value": 354.0
+          },
+          {
+            "key": "x",
+            "node": "n6",
+            "op": "set",
+            "value": 378.0
+          },
+          {
+            "key": "width",
+            "node": "n1",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n1",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000ff3426230000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n9",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n9",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000300000000000000c000005041fff5d0c6040073616e730400000077696e32",
+              "paint": [
+                "Text { x: 0.0, y: -2.0, size: 13.0, colour: Rgba8 { r: 198, g: 208, b: 245, a: 255 }, font: \"sans\", text: \"win2\" }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n10",
+            "op": "set",
+            "value": 316.0
+          },
+          {
+            "key": "content",
+            "node": "n10",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000009e430000804100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 316.0, height: 16.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n11",
+            "op": "set",
+            "value": 330.0
+          },
+          {
+            "key": "x",
+            "node": "n12",
+            "op": "set",
+            "value": 354.0
+          },
+          {
+            "key": "x",
+            "node": "n13",
+            "op": "set",
+            "value": 378.0
+          },
+          {
+            "key": "width",
+            "node": "n8",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "content",
+            "node": "n8",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c01010000000100000000000000000000c8430000e04100000000ff3426230000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 400.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 35, g: 38, b: 52, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "request",
+          "name": "menu",
+          "node": 3,
+          "x": 50.0,
+          "y": 50.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('card', card()); rec('sel', sel());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "card",
+          "value": {
+            "height": 222,
+            "rows": [
+              [
+                "Maximise",
+                true,
+                false
+              ],
+              [
+                "Minimise",
+                true,
+                false
+              ],
+              [
+                "Move",
+                true,
+                false
+              ],
+              [
+                "Resize",
+                true,
+                false
+              ],
+              [
+                "Always on top",
+                true,
+                false
+              ],
+              [
+                "Move to workspace",
+                true,
+                false
+              ],
+              [
+                "Close",
+                true,
+                false
+              ]
+            ],
+            "secure": [
+              false,
+              false
+            ],
+            "width": 187,
+            "x": 50,
+            "y": 50
+          }
+        },
+        {
+          "label": "sel",
+          "value": [
+            1,
+            null
+          ]
+        }
+      ],
+      "step": "open_first",
+      "writes": [
+        [
+          {
+            "class": "canvas",
+            "node": "n15",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n16",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n16",
+            "op": "insert",
+            "parent": "n15"
+          },
+          {
+            "class": "canvas",
+            "node": "n17",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n18",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n19",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n20",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n21",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n21",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "index": -1,
+            "node": "n18",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "index": -1,
+            "node": "n20",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "index": -1,
+            "node": "n19",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "class": "canvas",
+            "node": "n22",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n22",
+            "op": "insert",
+            "parent": "n17"
+          },
+          {
+            "index": -1,
+            "node": "n17",
+            "op": "insert",
+            "parent": "n16"
+          },
+          {
+            "class": "canvas",
+            "node": "n23",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n24",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n25",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n26",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n27",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n27",
+            "op": "insert",
+            "parent": "n23"
+          },
+          {
+            "index": -1,
+            "node": "n24",
+            "op": "insert",
+            "parent": "n23"
+          },
+          {
+            "index": -1,
+            "node": "n26",
+            "op": "insert",
+            "parent": "n23"
+          },
+          {
+            "index": -1,
+            "node": "n25",
+            "op": "insert",
+            "parent": "n23"
+          },
+          {
+            "class": "canvas",
+            "node": "n28",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n28",
+            "op": "insert",
+            "parent": "n23"
+          },
+          {
+            "index": -1,
+            "node": "n23",
+            "op": "insert",
+            "parent": "n16"
+          },
+          {
+            "class": "canvas",
+            "node": "n29",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n29",
+            "op": "insert",
+            "parent": "n16"
+          },
+          {
+            "class": "canvas",
+            "node": "n30",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n31",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n32",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n33",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n34",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n34",
+            "op": "insert",
+            "parent": "n30"
+          },
+          {
+            "index": -1,
+            "node": "n31",
+            "op": "insert",
+            "parent": "n30"
+          },
+          {
+            "index": -1,
+            "node": "n33",
+            "op": "insert",
+            "parent": "n30"
+          },
+          {
+            "index": -1,
+            "node": "n32",
+            "op": "insert",
+            "parent": "n30"
+          },
+          {
+            "class": "canvas",
+            "node": "n35",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n35",
+            "op": "insert",
+            "parent": "n30"
+          },
+          {
+            "index": -1,
+            "node": "n30",
+            "op": "insert",
+            "parent": "n16"
+          },
+          {
+            "class": "canvas",
+            "node": "n36",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n37",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n38",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n39",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n40",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n40",
+            "op": "insert",
+            "parent": "n36"
+          },
+          {
+            "index": -1,
+            "node": "n37",
+            "op": "insert",
+            "parent": "n36"
+          },
+          {
+            "index": -1,
+            "node": "n39",
+            "op": "insert",
+            "parent": "n36"
+          },
+          {
+            "index": -1,
+            "node": "n38",
+            "op": "insert",
+            "parent": "n36"
+          },
+          {
+            "class": "canvas",
+            "node": "n41",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n41",
+            "op": "insert",
+            "parent": "n36"
+          },
+          {
+            "index": -1,
+            "node": "n36",
+            "op": "insert",
+            "parent": "n16"
+          },
+          {
+            "class": "canvas",
+            "node": "n42",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n43",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n44",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n45",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n46",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n46",
+            "op": "insert",
+            "parent": "n42"
+          },
+          {
+            "index": -1,
+            "node": "n43",
+            "op": "insert",
+            "parent": "n42"
+          },
+          {
+            "index": -1,
+            "node": "n45",
+            "op": "insert",
+            "parent": "n42"
+          },
+          {
+            "index": -1,
+            "node": "n44",
+            "op": "insert",
+            "parent": "n42"
+          },
+          {
+            "class": "canvas",
+            "node": "n47",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n47",
+            "op": "insert",
+            "parent": "n42"
+          },
+          {
+            "index": -1,
+            "node": "n42",
+            "op": "insert",
+            "parent": "n16"
+          },
+          {
+            "class": "canvas",
+            "node": "n48",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n49",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n50",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n51",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n52",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n52",
+            "op": "insert",
+            "parent": "n48"
+          },
+          {
+            "index": -1,
+            "node": "n49",
+            "op": "insert",
+            "parent": "n48"
+          },
+          {
+            "index": -1,
+            "node": "n51",
+            "op": "insert",
+            "parent": "n48"
+          },
+          {
+            "index": -1,
+            "node": "n50",
+            "op": "insert",
+            "parent": "n48"
+          },
+          {
+            "class": "canvas",
+            "node": "n53",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n53",
+            "op": "insert",
+            "parent": "n48"
+          },
+          {
+            "index": -1,
+            "node": "n48",
+            "op": "insert",
+            "parent": "n16"
+          },
+          {
+            "class": "canvas",
+            "node": "n54",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n54",
+            "op": "insert",
+            "parent": "n16"
+          },
+          {
+            "class": "canvas",
+            "node": "n55",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n56",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n57",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n58",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n59",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n59",
+            "op": "insert",
+            "parent": "n55"
+          },
+          {
+            "index": -1,
+            "node": "n56",
+            "op": "insert",
+            "parent": "n55"
+          },
+          {
+            "index": -1,
+            "node": "n58",
+            "op": "insert",
+            "parent": "n55"
+          },
+          {
+            "index": -1,
+            "node": "n57",
+            "op": "insert",
+            "parent": "n55"
+          },
+          {
+            "class": "canvas",
+            "node": "n60",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n60",
+            "op": "insert",
+            "parent": "n55"
+          },
+          {
+            "index": -1,
+            "node": "n55",
+            "op": "insert",
+            "parent": "n16"
+          },
+          {
+            "index": -1,
+            "node": "n15",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": "n15"
+            }
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n20",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n26",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n33",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n39",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n45",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n51",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n58",
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n21",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n21",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n21",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n18",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n18",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n18",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n18",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n20",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n20",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n20",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n20",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73080000004d6178696d697365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Maximise\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n19",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n19",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n19",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n19",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n22",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n22",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n22",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n22",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n17",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n17",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "width",
+            "node": "n17",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n17",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n17",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n27",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n27",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n27",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n24",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n24",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n24",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n24",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n26",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n26",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n26",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n26",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73080000004d696e696d697365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Minimise\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n25",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n25",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n25",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n25",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n28",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n28",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n28",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n28",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n23",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n23",
+            "op": "set",
+            "value": 32.0
+          },
+          {
+            "key": "width",
+            "node": "n23",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n23",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n23",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n29",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n29",
+            "op": "set",
+            "value": 60.0
+          },
+          {
+            "key": "width",
+            "node": "n29",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n29",
+            "op": "set",
+            "value": 9.0
+          },
+          {
+            "key": "content",
+            "node": "n29",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000004100008040000023430000803f00000000ff5a47450000000000000000",
+              "paint": [
+                "Rect { x: 8.0, y: 4.0, width: 163.0, height: 1.0, radius: 0.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n34",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n34",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n34",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n31",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n31",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n31",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n31",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n33",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n33",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n33",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n33",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73040000004d6f7665",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Move\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n32",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n32",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n32",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n32",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n35",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n35",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n35",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n35",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n30",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n30",
+            "op": "set",
+            "value": 69.0
+          },
+          {
+            "key": "width",
+            "node": "n30",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n30",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n30",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n40",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n40",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n40",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n37",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n37",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n37",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n37",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n39",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n39",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n39",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n39",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e7306000000526573697a65",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Resize\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n38",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n38",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n38",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n38",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n41",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n41",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n41",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n41",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n36",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n36",
+            "op": "set",
+            "value": 97.0
+          },
+          {
+            "key": "width",
+            "node": "n36",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n36",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n36",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n46",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n46",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n46",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n43",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n43",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n43",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n43",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n45",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n45",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n45",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n45",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e730d000000416c77617973206f6e20746f70",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Always on top\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n44",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n44",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n44",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n44",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n47",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n47",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n47",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n47",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n42",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n42",
+            "op": "set",
+            "value": 125.0
+          },
+          {
+            "key": "width",
+            "node": "n42",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n42",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n42",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n52",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n52",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n52",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n49",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n49",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n49",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n49",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n51",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n51",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n51",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n51",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73110000004d6f766520746f20776f726b7370616365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Move to workspace\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n50",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n50",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n50",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n50",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010200000002000080400000104100001041000060410000c03ffff4d6cd02000010410000604100008040000098410000c03ffff4d6cd",
+              "paint": [
+                "TextLine { x1: 4.0, y1: 9.0, x2: 9.0, y2: 14.0, width: 1.5, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 } }",
+                "TextLine { x1: 9.0, y1: 14.0, x2: 4.0, y2: 19.0, width: 1.5, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 } }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n53",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n53",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n53",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n53",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n48",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n48",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n48",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n48",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n48",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n54",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n54",
+            "op": "set",
+            "value": 181.0
+          },
+          {
+            "key": "width",
+            "node": "n54",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n54",
+            "op": "set",
+            "value": 9.0
+          },
+          {
+            "key": "content",
+            "node": "n54",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000004100008040000023430000803f00000000ff5a47450000000000000000",
+              "paint": [
+                "Rect { x: 8.0, y: 4.0, width: 163.0, height: 1.0, radius: 0.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n59",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n59",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n59",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n56",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n56",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n56",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n56",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n58",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n58",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n58",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n58",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e7305000000436c6f7365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Close\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n57",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n57",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n57",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n57",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n60",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n60",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n60",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n60",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n55",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n55",
+            "op": "set",
+            "value": 190.0
+          },
+          {
+            "key": "width",
+            "node": "n55",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n55",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n55",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n16",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "y",
+            "node": "n16",
+            "op": "set",
+            "value": 50.0
+          },
+          {
+            "key": "width",
+            "node": "n16",
+            "op": "set",
+            "value": 187.0
+          },
+          {
+            "key": "height",
+            "node": "n16",
+            "op": "set",
+            "value": 222.0
+          },
+          {
+            "key": "content",
+            "node": "n16",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000003b4300005e4300002041ff2e1e1e0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 187.0, height: 222.0, radius: 10.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n15",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": "n15",
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "content",
+            "node": "n15",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000484400000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "request",
+          "name": "menu",
+          "node": 4,
+          "x": 400.0,
+          "y": 300.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('card', card()); rec('sel', sel());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "card",
+          "value": {
+            "height": 222,
+            "rows": [
+              [
+                "Maximise",
+                true,
+                false
+              ],
+              [
+                "Minimise",
+                true,
+                false
+              ],
+              [
+                "Move",
+                true,
+                false
+              ],
+              [
+                "Resize",
+                true,
+                false
+              ],
+              [
+                "Always on top",
+                true,
+                false
+              ],
+              [
+                "Move to workspace",
+                true,
+                false
+              ],
+              [
+                "Close",
+                true,
+                false
+              ]
+            ],
+            "secure": [
+              false,
+              false
+            ],
+            "width": 187,
+            "x": 400,
+            "y": 300
+          }
+        },
+        {
+          "label": "sel",
+          "value": [
+            1,
+            null
+          ]
+        }
+      ],
+      "step": "open_second",
+      "writes": [
+        [
+          {
+            "node": "n15",
+            "op": "destroy"
+          },
+          {
+            "class": "canvas",
+            "node": "n61",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n62",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n62",
+            "op": "insert",
+            "parent": "n61"
+          },
+          {
+            "class": "canvas",
+            "node": "n63",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n64",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n65",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n66",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n67",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n67",
+            "op": "insert",
+            "parent": "n63"
+          },
+          {
+            "index": -1,
+            "node": "n64",
+            "op": "insert",
+            "parent": "n63"
+          },
+          {
+            "index": -1,
+            "node": "n66",
+            "op": "insert",
+            "parent": "n63"
+          },
+          {
+            "index": -1,
+            "node": "n65",
+            "op": "insert",
+            "parent": "n63"
+          },
+          {
+            "class": "canvas",
+            "node": "n68",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n68",
+            "op": "insert",
+            "parent": "n63"
+          },
+          {
+            "index": -1,
+            "node": "n63",
+            "op": "insert",
+            "parent": "n62"
+          },
+          {
+            "class": "canvas",
+            "node": "n69",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n70",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n71",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n72",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n73",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n73",
+            "op": "insert",
+            "parent": "n69"
+          },
+          {
+            "index": -1,
+            "node": "n70",
+            "op": "insert",
+            "parent": "n69"
+          },
+          {
+            "index": -1,
+            "node": "n72",
+            "op": "insert",
+            "parent": "n69"
+          },
+          {
+            "index": -1,
+            "node": "n71",
+            "op": "insert",
+            "parent": "n69"
+          },
+          {
+            "class": "canvas",
+            "node": "n74",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n74",
+            "op": "insert",
+            "parent": "n69"
+          },
+          {
+            "index": -1,
+            "node": "n69",
+            "op": "insert",
+            "parent": "n62"
+          },
+          {
+            "class": "canvas",
+            "node": "n75",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n75",
+            "op": "insert",
+            "parent": "n62"
+          },
+          {
+            "class": "canvas",
+            "node": "n76",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n77",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n78",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n79",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n80",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n80",
+            "op": "insert",
+            "parent": "n76"
+          },
+          {
+            "index": -1,
+            "node": "n77",
+            "op": "insert",
+            "parent": "n76"
+          },
+          {
+            "index": -1,
+            "node": "n79",
+            "op": "insert",
+            "parent": "n76"
+          },
+          {
+            "index": -1,
+            "node": "n78",
+            "op": "insert",
+            "parent": "n76"
+          },
+          {
+            "class": "canvas",
+            "node": "n81",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n81",
+            "op": "insert",
+            "parent": "n76"
+          },
+          {
+            "index": -1,
+            "node": "n76",
+            "op": "insert",
+            "parent": "n62"
+          },
+          {
+            "class": "canvas",
+            "node": "n82",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n83",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n84",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n85",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n86",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n86",
+            "op": "insert",
+            "parent": "n82"
+          },
+          {
+            "index": -1,
+            "node": "n83",
+            "op": "insert",
+            "parent": "n82"
+          },
+          {
+            "index": -1,
+            "node": "n85",
+            "op": "insert",
+            "parent": "n82"
+          },
+          {
+            "index": -1,
+            "node": "n84",
+            "op": "insert",
+            "parent": "n82"
+          },
+          {
+            "class": "canvas",
+            "node": "n87",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n87",
+            "op": "insert",
+            "parent": "n82"
+          },
+          {
+            "index": -1,
+            "node": "n82",
+            "op": "insert",
+            "parent": "n62"
+          },
+          {
+            "class": "canvas",
+            "node": "n88",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n89",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n90",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n91",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n92",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n92",
+            "op": "insert",
+            "parent": "n88"
+          },
+          {
+            "index": -1,
+            "node": "n89",
+            "op": "insert",
+            "parent": "n88"
+          },
+          {
+            "index": -1,
+            "node": "n91",
+            "op": "insert",
+            "parent": "n88"
+          },
+          {
+            "index": -1,
+            "node": "n90",
+            "op": "insert",
+            "parent": "n88"
+          },
+          {
+            "class": "canvas",
+            "node": "n93",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n93",
+            "op": "insert",
+            "parent": "n88"
+          },
+          {
+            "index": -1,
+            "node": "n88",
+            "op": "insert",
+            "parent": "n62"
+          },
+          {
+            "class": "canvas",
+            "node": "n94",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n95",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n96",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n97",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n98",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n98",
+            "op": "insert",
+            "parent": "n94"
+          },
+          {
+            "index": -1,
+            "node": "n95",
+            "op": "insert",
+            "parent": "n94"
+          },
+          {
+            "index": -1,
+            "node": "n97",
+            "op": "insert",
+            "parent": "n94"
+          },
+          {
+            "index": -1,
+            "node": "n96",
+            "op": "insert",
+            "parent": "n94"
+          },
+          {
+            "class": "canvas",
+            "node": "n99",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n99",
+            "op": "insert",
+            "parent": "n94"
+          },
+          {
+            "index": -1,
+            "node": "n94",
+            "op": "insert",
+            "parent": "n62"
+          },
+          {
+            "class": "canvas",
+            "node": "n100",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n100",
+            "op": "insert",
+            "parent": "n62"
+          },
+          {
+            "class": "canvas",
+            "node": "n101",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n102",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n103",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n104",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n105",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n105",
+            "op": "insert",
+            "parent": "n101"
+          },
+          {
+            "index": -1,
+            "node": "n102",
+            "op": "insert",
+            "parent": "n101"
+          },
+          {
+            "index": -1,
+            "node": "n104",
+            "op": "insert",
+            "parent": "n101"
+          },
+          {
+            "index": -1,
+            "node": "n103",
+            "op": "insert",
+            "parent": "n101"
+          },
+          {
+            "class": "canvas",
+            "node": "n106",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n106",
+            "op": "insert",
+            "parent": "n101"
+          },
+          {
+            "index": -1,
+            "node": "n101",
+            "op": "insert",
+            "parent": "n62"
+          },
+          {
+            "index": -1,
+            "node": "n61",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": "n61"
+            }
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n66",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n72",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n79",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n85",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n91",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n97",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n104",
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n67",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n67",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n67",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n64",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n64",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n64",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n64",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n66",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n66",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n66",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n66",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73080000004d6178696d697365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Maximise\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n65",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n65",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n65",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n65",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n68",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n68",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n68",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n68",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n63",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n63",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "width",
+            "node": "n63",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n63",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n63",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n73",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n73",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n73",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n70",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n70",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n70",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n70",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n72",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n72",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n72",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n72",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73080000004d696e696d697365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Minimise\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n71",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n71",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n71",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n71",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n74",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n74",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n74",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n74",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n69",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n69",
+            "op": "set",
+            "value": 32.0
+          },
+          {
+            "key": "width",
+            "node": "n69",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n69",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n69",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n75",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n75",
+            "op": "set",
+            "value": 60.0
+          },
+          {
+            "key": "width",
+            "node": "n75",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n75",
+            "op": "set",
+            "value": 9.0
+          },
+          {
+            "key": "content",
+            "node": "n75",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000004100008040000023430000803f00000000ff5a47450000000000000000",
+              "paint": [
+                "Rect { x: 8.0, y: 4.0, width: 163.0, height: 1.0, radius: 0.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n80",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n80",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n80",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n77",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n77",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n77",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n77",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n79",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n79",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n79",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n79",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73040000004d6f7665",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Move\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n78",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n78",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n78",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n78",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n81",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n81",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n81",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n81",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n76",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n76",
+            "op": "set",
+            "value": 69.0
+          },
+          {
+            "key": "width",
+            "node": "n76",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n76",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n76",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n86",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n86",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n86",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n83",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n83",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n83",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n83",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n85",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n85",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n85",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n85",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e7306000000526573697a65",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Resize\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n84",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n84",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n84",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n84",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n87",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n87",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n87",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n87",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n82",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n82",
+            "op": "set",
+            "value": 97.0
+          },
+          {
+            "key": "width",
+            "node": "n82",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n82",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n82",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n92",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n92",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n92",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n89",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n89",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n89",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n89",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n91",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n91",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n91",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n91",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e730d000000416c77617973206f6e20746f70",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Always on top\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n90",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n90",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n90",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n90",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n93",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n93",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n93",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n93",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n88",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n88",
+            "op": "set",
+            "value": 125.0
+          },
+          {
+            "key": "width",
+            "node": "n88",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n88",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n88",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n98",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n98",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n98",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n95",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n95",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n95",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n95",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n97",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n97",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n97",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n97",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73110000004d6f766520746f20776f726b7370616365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Move to workspace\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n96",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n96",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n96",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n96",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010200000002000080400000104100001041000060410000c03ffff4d6cd02000010410000604100008040000098410000c03ffff4d6cd",
+              "paint": [
+                "TextLine { x1: 4.0, y1: 9.0, x2: 9.0, y2: 14.0, width: 1.5, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 } }",
+                "TextLine { x1: 9.0, y1: 14.0, x2: 4.0, y2: 19.0, width: 1.5, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 } }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n99",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n99",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n99",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n99",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n94",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n94",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n94",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n94",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n94",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n100",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n100",
+            "op": "set",
+            "value": 181.0
+          },
+          {
+            "key": "width",
+            "node": "n100",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n100",
+            "op": "set",
+            "value": 9.0
+          },
+          {
+            "key": "content",
+            "node": "n100",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000004100008040000023430000803f00000000ff5a47450000000000000000",
+              "paint": [
+                "Rect { x: 8.0, y: 4.0, width: 163.0, height: 1.0, radius: 0.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n105",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n105",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n105",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n102",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n102",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n102",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n102",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n104",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n104",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n104",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n104",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e7305000000436c6f7365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Close\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n103",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n103",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n103",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n103",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n106",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n106",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n106",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n106",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n101",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n101",
+            "op": "set",
+            "value": 190.0
+          },
+          {
+            "key": "width",
+            "node": "n101",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n101",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n101",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n62",
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "y",
+            "node": "n62",
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "width",
+            "node": "n62",
+            "op": "set",
+            "value": 187.0
+          },
+          {
+            "key": "height",
+            "node": "n62",
+            "op": "set",
+            "value": 222.0
+          },
+          {
+            "key": "content",
+            "node": "n62",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000003b4300005e4300002041ff2e1e1e0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 187.0, height: 222.0, radius: 10.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n61",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": "n61",
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "content",
+            "node": "n61",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000484400000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('canvases', uiCanvasCount());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "canvases",
+          "value": 60
+        }
+      ],
+      "step": "two_menus_do_not_stack",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "request",
+          "name": "menu",
+          "node": 4,
+          "x": 10.0,
+          "y": 10.0
+        },
+        {
+          "action": "eval",
+          "js": "rec('card', card()); rec('sel', sel());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "card",
+          "value": {
+            "height": 222,
+            "rows": [
+              [
+                "Maximise",
+                true,
+                false
+              ],
+              [
+                "Minimise",
+                true,
+                false
+              ],
+              [
+                "Move",
+                true,
+                false
+              ],
+              [
+                "Resize",
+                true,
+                false
+              ],
+              [
+                "Always on top",
+                true,
+                false
+              ],
+              [
+                "Move to workspace",
+                true,
+                false
+              ],
+              [
+                "Close",
+                true,
+                false
+              ]
+            ],
+            "secure": [
+              false,
+              false
+            ],
+            "width": 187,
+            "x": 10,
+            "y": 10
+          }
+        },
+        {
+          "label": "sel",
+          "value": [
+            1,
+            null
+          ]
+        }
+      ],
+      "step": "ask_again",
+      "writes": [
+        [
+          {
+            "node": "n61",
+            "op": "destroy"
+          },
+          {
+            "class": "canvas",
+            "node": "n107",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n108",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n108",
+            "op": "insert",
+            "parent": "n107"
+          },
+          {
+            "class": "canvas",
+            "node": "n109",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n110",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n111",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n112",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n113",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n113",
+            "op": "insert",
+            "parent": "n109"
+          },
+          {
+            "index": -1,
+            "node": "n110",
+            "op": "insert",
+            "parent": "n109"
+          },
+          {
+            "index": -1,
+            "node": "n112",
+            "op": "insert",
+            "parent": "n109"
+          },
+          {
+            "index": -1,
+            "node": "n111",
+            "op": "insert",
+            "parent": "n109"
+          },
+          {
+            "class": "canvas",
+            "node": "n114",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n114",
+            "op": "insert",
+            "parent": "n109"
+          },
+          {
+            "index": -1,
+            "node": "n109",
+            "op": "insert",
+            "parent": "n108"
+          },
+          {
+            "class": "canvas",
+            "node": "n115",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n116",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n117",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n118",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n119",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n119",
+            "op": "insert",
+            "parent": "n115"
+          },
+          {
+            "index": -1,
+            "node": "n116",
+            "op": "insert",
+            "parent": "n115"
+          },
+          {
+            "index": -1,
+            "node": "n118",
+            "op": "insert",
+            "parent": "n115"
+          },
+          {
+            "index": -1,
+            "node": "n117",
+            "op": "insert",
+            "parent": "n115"
+          },
+          {
+            "class": "canvas",
+            "node": "n120",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n120",
+            "op": "insert",
+            "parent": "n115"
+          },
+          {
+            "index": -1,
+            "node": "n115",
+            "op": "insert",
+            "parent": "n108"
+          },
+          {
+            "class": "canvas",
+            "node": "n121",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n121",
+            "op": "insert",
+            "parent": "n108"
+          },
+          {
+            "class": "canvas",
+            "node": "n122",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n123",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n124",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n125",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n126",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n126",
+            "op": "insert",
+            "parent": "n122"
+          },
+          {
+            "index": -1,
+            "node": "n123",
+            "op": "insert",
+            "parent": "n122"
+          },
+          {
+            "index": -1,
+            "node": "n125",
+            "op": "insert",
+            "parent": "n122"
+          },
+          {
+            "index": -1,
+            "node": "n124",
+            "op": "insert",
+            "parent": "n122"
+          },
+          {
+            "class": "canvas",
+            "node": "n127",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n127",
+            "op": "insert",
+            "parent": "n122"
+          },
+          {
+            "index": -1,
+            "node": "n122",
+            "op": "insert",
+            "parent": "n108"
+          },
+          {
+            "class": "canvas",
+            "node": "n128",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n129",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n130",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n131",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n132",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n132",
+            "op": "insert",
+            "parent": "n128"
+          },
+          {
+            "index": -1,
+            "node": "n129",
+            "op": "insert",
+            "parent": "n128"
+          },
+          {
+            "index": -1,
+            "node": "n131",
+            "op": "insert",
+            "parent": "n128"
+          },
+          {
+            "index": -1,
+            "node": "n130",
+            "op": "insert",
+            "parent": "n128"
+          },
+          {
+            "class": "canvas",
+            "node": "n133",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n133",
+            "op": "insert",
+            "parent": "n128"
+          },
+          {
+            "index": -1,
+            "node": "n128",
+            "op": "insert",
+            "parent": "n108"
+          },
+          {
+            "class": "canvas",
+            "node": "n134",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n135",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n136",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n137",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n138",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n138",
+            "op": "insert",
+            "parent": "n134"
+          },
+          {
+            "index": -1,
+            "node": "n135",
+            "op": "insert",
+            "parent": "n134"
+          },
+          {
+            "index": -1,
+            "node": "n137",
+            "op": "insert",
+            "parent": "n134"
+          },
+          {
+            "index": -1,
+            "node": "n136",
+            "op": "insert",
+            "parent": "n134"
+          },
+          {
+            "class": "canvas",
+            "node": "n139",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n139",
+            "op": "insert",
+            "parent": "n134"
+          },
+          {
+            "index": -1,
+            "node": "n134",
+            "op": "insert",
+            "parent": "n108"
+          },
+          {
+            "class": "canvas",
+            "node": "n140",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n141",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n142",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n143",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n144",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n144",
+            "op": "insert",
+            "parent": "n140"
+          },
+          {
+            "index": -1,
+            "node": "n141",
+            "op": "insert",
+            "parent": "n140"
+          },
+          {
+            "index": -1,
+            "node": "n143",
+            "op": "insert",
+            "parent": "n140"
+          },
+          {
+            "index": -1,
+            "node": "n142",
+            "op": "insert",
+            "parent": "n140"
+          },
+          {
+            "class": "canvas",
+            "node": "n145",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n145",
+            "op": "insert",
+            "parent": "n140"
+          },
+          {
+            "index": -1,
+            "node": "n140",
+            "op": "insert",
+            "parent": "n108"
+          },
+          {
+            "class": "canvas",
+            "node": "n146",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n146",
+            "op": "insert",
+            "parent": "n108"
+          },
+          {
+            "class": "canvas",
+            "node": "n147",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n148",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n149",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n150",
+            "op": "new"
+          },
+          {
+            "class": "canvas",
+            "node": "n151",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n151",
+            "op": "insert",
+            "parent": "n147"
+          },
+          {
+            "index": -1,
+            "node": "n148",
+            "op": "insert",
+            "parent": "n147"
+          },
+          {
+            "index": -1,
+            "node": "n150",
+            "op": "insert",
+            "parent": "n147"
+          },
+          {
+            "index": -1,
+            "node": "n149",
+            "op": "insert",
+            "parent": "n147"
+          },
+          {
+            "class": "canvas",
+            "node": "n152",
+            "op": "new"
+          },
+          {
+            "index": -1,
+            "node": "n152",
+            "op": "insert",
+            "parent": "n147"
+          },
+          {
+            "index": -1,
+            "node": "n147",
+            "op": "insert",
+            "parent": "n108"
+          },
+          {
+            "index": -1,
+            "node": "n107",
+            "op": "insert",
+            "parent": 1
+          },
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": "n107"
+            }
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n112",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n118",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n125",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n131",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n137",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n143",
+            "op": "call"
+          },
+          {
+            "args": "0000000000002c40",
+            "method": "measure",
+            "node": "n150",
+            "op": "call"
+          },
+          {
+            "key": "width",
+            "node": "n113",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n113",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n113",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n110",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n110",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n110",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n110",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n112",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n112",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n112",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n112",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73080000004d6178696d697365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Maximise\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n111",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n111",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n111",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n111",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n114",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n114",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n114",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n114",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n109",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n109",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "width",
+            "node": "n109",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n109",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n109",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n119",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n119",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n119",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n116",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n116",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n116",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n116",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n118",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n118",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n118",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n118",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73080000004d696e696d697365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Minimise\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n117",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n117",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n117",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n117",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n120",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n120",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n120",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n120",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n115",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n115",
+            "op": "set",
+            "value": 32.0
+          },
+          {
+            "key": "width",
+            "node": "n115",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n115",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n115",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n121",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n121",
+            "op": "set",
+            "value": 60.0
+          },
+          {
+            "key": "width",
+            "node": "n121",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n121",
+            "op": "set",
+            "value": 9.0
+          },
+          {
+            "key": "content",
+            "node": "n121",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000004100008040000023430000803f00000000ff5a47450000000000000000",
+              "paint": [
+                "Rect { x: 8.0, y: 4.0, width: 163.0, height: 1.0, radius: 0.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n126",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n126",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n126",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n123",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n123",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n123",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n123",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n125",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n125",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n125",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n125",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73040000004d6f7665",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Move\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n124",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n124",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n124",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n124",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n127",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n127",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n127",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n127",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n122",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n122",
+            "op": "set",
+            "value": 69.0
+          },
+          {
+            "key": "width",
+            "node": "n122",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n122",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n122",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n132",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n132",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n132",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n129",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n129",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n129",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n129",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n131",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n131",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n131",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n131",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e7306000000526573697a65",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Resize\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n130",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n130",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n130",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n130",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n133",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n133",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n133",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n133",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n128",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n128",
+            "op": "set",
+            "value": 97.0
+          },
+          {
+            "key": "width",
+            "node": "n128",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n128",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n128",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n138",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n138",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n138",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n135",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n135",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n135",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n135",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n137",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n137",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n137",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n137",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e730d000000416c77617973206f6e20746f70",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Always on top\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n136",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n136",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n136",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n136",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n139",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n139",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n139",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n139",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n134",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n134",
+            "op": "set",
+            "value": 125.0
+          },
+          {
+            "key": "width",
+            "node": "n134",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n134",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n134",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n144",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n144",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n144",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n141",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n141",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n141",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n141",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n143",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n143",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n143",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n143",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e73110000004d6f766520746f20776f726b7370616365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Move to workspace\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n142",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n142",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n142",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n142",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010200000002000080400000104100001041000060410000c03ffff4d6cd02000010410000604100008040000098410000c03ffff4d6cd",
+              "paint": [
+                "TextLine { x1: 4.0, y1: 9.0, x2: 9.0, y2: 14.0, width: 1.5, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 } }",
+                "TextLine { x1: 9.0, y1: 14.0, x2: 4.0, y2: 19.0, width: 1.5, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 } }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n145",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n145",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n145",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n145",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n140",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n140",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n140",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n140",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n140",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n146",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n146",
+            "op": "set",
+            "value": 181.0
+          },
+          {
+            "key": "width",
+            "node": "n146",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n146",
+            "op": "set",
+            "value": 9.0
+          },
+          {
+            "key": "content",
+            "node": "n146",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000004100008040000023430000803f00000000ff5a47450000000000000000",
+              "paint": [
+                "Rect { x: 8.0, y: 4.0, width: 163.0, height: 1.0, radius: 0.0, fill: Rgba8 { r: 69, g: 71, b: 90, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n151",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n151",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n151",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n148",
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "width",
+            "node": "n148",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n148",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n148",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n150",
+            "op": "set",
+            "value": 30.0
+          },
+          {
+            "key": "width",
+            "node": "n150",
+            "op": "set",
+            "value": 119.0
+          },
+          {
+            "key": "height",
+            "node": "n150",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n150",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000003000000000000404000006041fff4d6cd040073616e7305000000436c6f7365",
+              "paint": [
+                "Text { x: 0.0, y: 3.0, size: 14.0, colour: Rgba8 { r: 205, g: 214, b: 244, a: 255 }, font: \"sans\", text: \"Close\" }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n149",
+            "op": "set",
+            "value": 153.0
+          },
+          {
+            "key": "width",
+            "node": "n149",
+            "op": "set",
+            "value": 14.0
+          },
+          {
+            "key": "height",
+            "node": "n149",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n149",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0100000000",
+              "paint": []
+            }
+          },
+          {
+            "key": "x",
+            "node": "n152",
+            "op": "set",
+            "value": 171.0
+          },
+          {
+            "key": "width",
+            "node": "n152",
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "height",
+            "node": "n152",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n152",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000000410000e04100000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 8.0, height: 28.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n147",
+            "op": "set",
+            "value": 4.0
+          },
+          {
+            "key": "y",
+            "node": "n147",
+            "op": "set",
+            "value": 190.0
+          },
+          {
+            "key": "width",
+            "node": "n147",
+            "op": "set",
+            "value": 179.0
+          },
+          {
+            "key": "height",
+            "node": "n147",
+            "op": "set",
+            "value": 28.0
+          },
+          {
+            "key": "content",
+            "node": "n147",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c0101000000010000000000000000000033430000e0410000c040000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 179.0, height: 28.0, radius: 6.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "x",
+            "node": "n108",
+            "op": "set",
+            "value": 10.0
+          },
+          {
+            "key": "y",
+            "node": "n108",
+            "op": "set",
+            "value": 10.0
+          },
+          {
+            "key": "width",
+            "node": "n108",
+            "op": "set",
+            "value": 187.0
+          },
+          {
+            "key": "height",
+            "node": "n108",
+            "op": "set",
+            "value": 222.0
+          },
+          {
+            "key": "content",
+            "node": "n108",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000003b4300005e4300002041ff2e1e1e0000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 187.0, height: 222.0, radius: 10.0, fill: Rgba8 { r: 30, g: 30, b: 46, a: 255 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          },
+          {
+            "key": "width",
+            "node": "n107",
+            "op": "set",
+            "value": 1000.0
+          },
+          {
+            "key": "height",
+            "node": "n107",
+            "op": "set",
+            "value": 800.0
+          },
+          {
+            "key": "content",
+            "node": "n107",
+            "op": "set",
+            "value": {
+              "bytes": "474e504c010100000001000000000000000000007a440000484400000000000000000000000000000000",
+              "paint": [
+                "Rect { x: 0.0, y: 0.0, width: 1000.0, height: 800.0, radius: 0.0, fill: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke: Rgba8 { r: 0, g: 0, b: 0, a: 0 }, stroke_width: 0.0 }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('canvases', uiCanvasCount());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "canvases",
+          "value": 60
+        }
+      ],
+      "step": "same_count",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 3
+        },
+        {
+          "action": "eval",
+          "js": "rec('open', windowMenu.current !== null);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "open",
+          "value": true
+        }
+      ],
+      "step": "other_window_closed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "destroy",
+          "id": 4
+        },
+        {
+          "action": "eval",
+          "js": "rec('open', windowMenu.current !== null);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "open",
+          "value": false
+        }
+      ],
+      "step": "own_window_closed",
+      "writes": [
+        [
+          {
+            "node": "n107",
+            "op": "destroy"
+          },
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 0
+            }
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "win2"
+      }
+    ]
+  }
+}

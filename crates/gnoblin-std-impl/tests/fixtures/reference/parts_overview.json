@@ -1,0 +1,253 @@
+{
+  "scenario": "parts_overview",
+  "source": "for (const id of ['a', 'b']) gnoblin.workspaces.add(new Workspace({ id }));\nglobalThis.opacities = () => gnoblin.clients.map((c) => c.opacity);\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.workspaces.at(gnoblin.workspaces.length - 1).clients.add(gnoblin.clients.at(gnoblin.clients.length - 1));"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "second_window_moves_to_the_last_workspace",
+      "writes": [
+        [
+          {
+            "key": "x",
+            "node": 4,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "y",
+            "node": 4,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "width",
+            "node": 4,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 4,
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "visible",
+            "node": 4,
+            "op": "set",
+            "value": false
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('on', overview.toggle()); rec('opacity', opacities());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "on",
+          "value": true
+        },
+        {
+          "label": "opacity",
+          "value": [
+            1,
+            1
+          ]
+        }
+      ],
+      "step": "on",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 1.0
+          },
+          {
+            "key": "opacity",
+            "node": 4,
+            "op": "set",
+            "value": 1.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('on', overview.toggle()); rec('opacity', opacities());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "on",
+          "value": false
+        },
+        {
+          "label": "opacity",
+          "value": [
+            1,
+            0.4
+          ]
+        }
+      ],
+      "step": "off",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 1.0
+          },
+          {
+            "key": "opacity",
+            "node": 4,
+            "op": "set",
+            "value": 0.4
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('on', overview.toggle()); rec('on', overview.toggle()); rec('opacity', opacities());"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "on",
+          "value": true
+        },
+        {
+          "label": "on",
+          "value": false
+        },
+        {
+          "label": "opacity",
+          "value": [
+            1,
+            0.4
+          ]
+        }
+      ],
+      "step": "toggled_twice",
+      "writes": [
+        [
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 1.0
+          },
+          {
+            "key": "opacity",
+            "node": 4,
+            "op": "set",
+            "value": 0.4
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "win2"
+      }
+    ]
+  }
+}

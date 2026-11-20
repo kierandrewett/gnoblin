@@ -1,0 +1,854 @@
+{
+  "scenario": "style_effects",
+  "source": "globalThis.caught = (fn: () => void) => { try { fn(); return 'none'; } catch (e) { return (e as Error).message; } };\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 1,
+          "text": "<Super>Button3"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000100000000000000",
+            "method": "claim",
+            "node": 21,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.shadows = [{ x: 1, y: 2, blur: 8, spread: 3, color: '#123' }, { blur: 4, color: '#ff000080' }, { inset: true, blur: 2 }];\ngnoblin.clients.style.backdropFilter = [{ blur: 12 }, { saturate: 1.25 }, { brightness: 1.5 }];\ngnoblin.clients.get('3').style.opacity = 0.7;"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "not applied: style.shadows: an inset shadow has no effect kind"
+      ],
+      "log": [],
+      "step": "shadows_and_backdrop",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 3,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "decoration": "server",
+                "effects": {
+                  "effects": [
+                    "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                  ]
+                },
+                "height": 300.0,
+                "opacity": 0.7,
+                "title": "win1",
+                "width": 400.0
+              }
+            }
+          ],
+          "root": 3,
+          "tree": "windows"
+        },
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 4,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "decoration": "server",
+                "effects": {
+                  "effects": [
+                    "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                  ]
+                },
+                "height": 300.0,
+                "title": "win2",
+                "width": 400.0
+              }
+            }
+          ],
+          "root": 4,
+          "tree": "windows"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 0.7
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 8.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('warnings', gnoblin.clients.get('3').styleWarnings);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "warnings",
+          "value": [
+            "not applied: style.shadows: an inset shadow has no effect kind"
+          ]
+        }
+      ],
+      "step": "warnings",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.get('4').style.shadows[0].blur = 20;"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "element_edit_on_a_copy",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 4,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "decoration": "server",
+                "effects": {
+                  "effects": [
+                    "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 20.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+                  ]
+                },
+                "height": 300.0,
+                "title": "win2",
+                "width": 400.0
+              }
+            }
+          ],
+          "root": 4,
+          "tree": "windows"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.5, contrast: 1.0, saturation: 1.25, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 4.0, spread: 0.0, colour: \"#ff000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 1.0, offset_y: 2.0, blur_radius: 20.0, spread: 3.0, colour: \"#112233ff\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.reset(); gnoblin.clients.get('4').style.reset(); gnoblin.clients.get('3').style.reset();"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "reset",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 3,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "decoration": "server",
+                "effects": {
+                  "effects": []
+                },
+                "height": 300.0,
+                "opacity": 1.0,
+                "title": "win1",
+                "width": 400.0
+              }
+            }
+          ],
+          "root": 3,
+          "tree": "windows"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          },
+          {
+            "key": "opacity",
+            "node": 3,
+            "op": "set",
+            "value": 1.0
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.cornerRadius = 12;\ngnoblin.clients.style.borders = [{ width: 2, color: '#7c3aed', offset: 3 }, { width: 1, inset: true }];\ngnoblin.clients.style.shadows = [{ blur: 8 }];"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "radius_borders_and_a_frame_shadow",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 3,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "corner_radius": 12.0,
+                "decoration": "server",
+                "effects": {
+                  "effects": [
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 8.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                    "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#7c3aedff\", width: 2.0, offset: 3.0, inset: false, frame: false, source: \"\", params: [] }",
+                    "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
+                  ]
+                },
+                "height": 300.0,
+                "opacity": 1.0,
+                "title": "win1",
+                "width": 400.0
+              }
+            }
+          ],
+          "root": 3,
+          "tree": "windows"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 8.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#7c3aedff\", width: 2.0, offset: 3.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 3,
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 8.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#7c3aedff\", width: 2.0, offset: 3.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 12.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.cornerRadius = { topLeft: 4, topRight: 8, bottomRight: 8, bottomLeft: 4 };"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "not applied: style.cornerRadius: a window has one radius for every corner, so the largest of the four (8) is drawn"
+      ],
+      "log": [],
+      "step": "corners_that_differ",
+      "trees": [
+        {
+          "nodes": [
+            {
+              "class": "window",
+              "node": 3,
+              "parent": 1,
+              "props": {
+                "app_id": "foot",
+                "corner_radius": 8.0,
+                "decoration": "server",
+                "effects": {
+                  "effects": [
+                    "Properties { kind: \"shadow\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 8.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: true, source: \"\", params: [] }",
+                    "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#7c3aedff\", width: 2.0, offset: 3.0, inset: false, frame: false, source: \"\", params: [] }",
+                    "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 1.0, offset: 0.0, inset: true, frame: false, source: \"\", params: [] }"
+                  ]
+                },
+                "height": 300.0,
+                "opacity": 1.0,
+                "title": "win1",
+                "width": 400.0
+              }
+            }
+          ],
+          "root": 3,
+          "tree": "windows"
+        }
+      ],
+      "writes": [
+        [
+          {
+            "key": "corner_radius",
+            "node": 3,
+            "op": "set",
+            "value": 8.0
+          },
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 8.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.reset();"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "reset_again",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 0.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.cornerRadius = 12; gnoblin.clients.style.borders = [{ width: 2 }]; gnoblin.clients.style.background = '#000';\ngnoblin.clients.style.filter = [{ contrast: 1.1 }]; gnoblin.clients.style.backdropFilter = [{ blur: 20 }];"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [
+        "not applied: style.backdropFilter: the compositor blurs at a fixed radius of 12, so a BlurFilter's radius only switches the blur on",
+        "not applied: style.background: the tree has no background for a window",
+        "not applied: style.filter: no effect kind filters a window's own content"
+      ],
+      "log": [],
+      "step": "what_no_effect_kind_draws",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 3,
+            "op": "set",
+            "value": 12.0
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 12.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "const c = gnoblin.clients.get('3'); rec('kept', [c.computedStyle.cornerRadius, c.computedStyle.borders.length, c.styleWarnings]);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "kept",
+          "value": [
+            12,
+            1,
+            [
+              "not applied: style.backdropFilter: the compositor blurs at a fixed radius of 12, so a BlurFilter's radius only switches the blur on",
+              "not applied: style.background: the tree has no background for a window",
+              "not applied: style.filter: no effect kind filters a window's own content"
+            ]
+          ]
+        }
+      ],
+      "step": "kept_in_computed_style",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "open",
+          "app_id": "foot",
+          "id": 9,
+          "title": "late"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "a_second_window_says_nothing_more",
+      "writes": [
+        [
+          {
+            "key": "focus",
+            "node": 21,
+            "op": "set",
+            "value": {
+              "node": 9
+            }
+          }
+        ],
+        [
+          {
+            "key": "x",
+            "node": 9,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "y",
+            "node": 9,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "width",
+            "node": 9,
+            "op": "set",
+            "value": 400.0
+          },
+          {
+            "key": "height",
+            "node": 9,
+            "op": "set",
+            "value": 300.0
+          },
+          {
+            "key": "effects",
+            "node": 9,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"blur\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#00000080\", width: 0.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }",
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 9,
+            "op": "set",
+            "value": 12.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.reset();"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "reset_third",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 3,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 4,
+            "op": "set",
+            "value": 0.0
+          },
+          {
+            "key": "effects",
+            "node": 9,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          },
+          {
+            "key": "corner_radius",
+            "node": 9,
+            "op": "set",
+            "value": 0.0
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "set",
+          "id": 3,
+          "key": "skipped",
+          "value": {
+            "texts": [
+              "border: unsupported-by-renderer"
+            ]
+          }
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "compositor_skipped_border",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.borders = [{ width: 2 }]; rec('warnings', gnoblin.clients.get('3').styleWarnings);"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "warnings",
+          "value": [
+            "the compositor does not draw the effect border: unsupported-by-renderer"
+          ]
+        }
+      ],
+      "step": "border_warning",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
+              ]
+            }
+          },
+          {
+            "key": "effects",
+            "node": 9,
+            "op": "set",
+            "value": {
+              "effects": [
+                "Properties { kind: \"border\", downscale: 2, passes: 3, algorithm: \"kawase\", noise: 0.0, brightness: 1.0, contrast: 1.0, saturation: 1.0, tint: \"\", offset_x: 0.0, offset_y: 0.0, blur_radius: 12.0, spread: 0.0, colour: \"#ffffffff\", width: 2.0, offset: 0.0, inset: false, frame: false, source: \"\", params: [] }"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "gnoblin.clients.style.reset();"
+        }
+      ],
+      "claims_held": [
+        "<Super>Button1",
+        "<Super>Button3"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "reset_fourth",
+      "writes": [
+        [
+          {
+            "key": "effects",
+            "node": 3,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          },
+          {
+            "key": "effects",
+            "node": 4,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          },
+          {
+            "key": "effects",
+            "node": 9,
+            "op": "set",
+            "value": {
+              "effects": []
+            }
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": null,
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": [
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 3,
+        "props": {},
+        "title": "win1"
+      },
+      {
+        "app_id": "foot",
+        "decoration": "server",
+        "id": 4,
+        "props": {},
+        "title": "win2"
+      }
+    ]
+  }
+}

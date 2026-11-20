@@ -1,0 +1,523 @@
+{
+  "scenario": "input_chords",
+  "source": "gnoblin.workspaces.add(new Workspace({ id: 'main', layout: 'monocle' }));\nglobalThis.input = gnoblin.input.primary;\ninput.bind('Super+Shift+1', (e: any) => rec('fired', [e.trigger, e.client?.id]));\ninput.bind('Super+k', () => rec('low'));\nglobalThis.high = input.bind('Super+k', new KeyBinding({ id: 'high', trigger: 'Super+k', priority: 5, action: () => rec('high') }));\ninput.bind('Super+a', () => { throw new Error('boom'); });\ninput.bind('Super+b', () => rec('b'));\ninput.bind('Super+z', false);\ninput.bind('Super+d', () => false);\ninput.bind('Super+d', new KeyBinding({ id: 'second', trigger: 'Super+d', priority: -1, action: () => rec('second') }));\nconst layout = new FloatingLayout({ triggers: { move: null, resize: null } });\nlayout.bindings.add(new KeyBinding({ id: 'layout', trigger: 'Super+x', action: () => rec('layout') }));\ninput.attachLayout(layout, (c: any) => c.id === '3');\ninput.bind('Super+x', () => rec('context'));\ninput.devices[0].bind('Super+x', () => { rec('device declines'); return false; });\nglobalThis.conflict = fail(() => input.bind('Super+x', () => {}));\n",
+  "steps": [
+    {
+      "actions": [],
+      "claim_calls": [
+        {
+          "id": 1,
+          "method": "claim",
+          "second": 0,
+          "text": "<Shift><Super>1"
+        },
+        {
+          "id": 2,
+          "method": "claim",
+          "second": 0,
+          "text": "<Super>k"
+        },
+        {
+          "id": 3,
+          "method": "claim",
+          "second": 0,
+          "text": "<Super>a"
+        },
+        {
+          "id": 4,
+          "method": "claim",
+          "second": 0,
+          "text": "<Super>b"
+        },
+        {
+          "id": 5,
+          "method": "claim",
+          "second": 0,
+          "text": "<Super>z"
+        },
+        {
+          "id": 6,
+          "method": "claim",
+          "second": 0,
+          "text": "<Super>d"
+        },
+        {
+          "id": 7,
+          "method": "claim",
+          "second": 0,
+          "text": "<Super>x"
+        },
+        {
+          "id": 8,
+          "method": "claim",
+          "second": 0,
+          "text": "Macro Pad|<Super>x"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "boot",
+      "writes": [
+        [
+          {
+            "args": "01000000000000000000000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          },
+          {
+            "args": "02000000000000000000000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          },
+          {
+            "args": "03000000000000000000000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          },
+          {
+            "args": "04000000000000000000000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          },
+          {
+            "args": "05000000000000000000000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          },
+          {
+            "args": "06000000000000000000000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          },
+          {
+            "args": "07000000000000000000000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          },
+          {
+            "args": "08000000000000000000000000000000",
+            "method": "claim",
+            "node": 5,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "rec('conflict', conflict);"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "conflict",
+          "value": "BindingConflictError: binding \"bind-9:Super+x\" conflicts with \"bind-7:Super+x\": both match Super+x at priority 0; give one a different priority or trigger"
+        }
+      ],
+      "step": "claimed",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Shift><Super>1",
+          "state": "press"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "fired",
+          "value": [
+            "Shift+Super+1",
+            "3"
+          ]
+        }
+      ],
+      "step": "fires",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Shift><Super>1",
+          "state": "repeat"
+        },
+        {
+          "action": "chord",
+          "claim": "<Shift><Super>1",
+          "state": "release"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "only_the_press_runs",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Super>k",
+          "state": "press"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "high"
+        }
+      ],
+      "step": "higher_priority_first",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "high.unbind();"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "unbind_high",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Super>k",
+          "state": "press"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "low"
+        }
+      ],
+      "step": "lower_priority_after",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Super>a",
+          "state": "press"
+        },
+        {
+          "action": "chord",
+          "claim": "<Super>b",
+          "state": "press"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [
+        "KeyBinding \"bind-3:Super+a\".onPress threw: <root>/shell.ts:14:41: boom"
+      ],
+      "log": [
+        {
+          "label": "b"
+        }
+      ],
+      "step": "a_throwing_handler",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Super>a",
+          "state": "press"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "the_same_failure_again",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Super>z",
+          "state": "press"
+        },
+        {
+          "action": "chord",
+          "claim": "<Super>d",
+          "state": "press"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "second"
+        }
+      ],
+      "step": "false_swallows_and_a_returned_false_declines",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "<Super>x",
+          "state": "press"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "layout"
+        }
+      ],
+      "step": "layout_beats_context",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "chord",
+          "claim": "Macro Pad|<Super>x",
+          "state": "press"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [
+        {
+          "label": "device declines"
+        },
+        {
+          "label": "layout"
+        }
+      ],
+      "step": "device_first_then_decline_falls_through",
+      "writes": []
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "input.devices[0].bindingOnly = true;"
+        }
+      ],
+      "claim_calls": [
+        {
+          "id": 9,
+          "method": "claim_device",
+          "second": 0,
+          "text": "Macro Pad"
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x",
+        "Macro Pad"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "binding_only",
+      "writes": [
+        [
+          {
+            "args": "0900000000000000",
+            "method": "claim_device",
+            "node": 5,
+            "op": "call"
+          }
+        ]
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "eval",
+          "js": "input.devices[0].bindingOnly = false;"
+        }
+      ],
+      "claim_calls": [
+        {
+          "id": 9,
+          "method": "unclaim",
+          "second": 0,
+          "text": ""
+        }
+      ],
+      "claims_held": [
+        "<Shift><Super>1",
+        "<Super>k",
+        "<Super>a",
+        "<Super>b",
+        "<Super>z",
+        "<Super>d",
+        "<Super>x",
+        "Macro Pad|<Super>x"
+      ],
+      "diagnostics": [],
+      "log": [],
+      "step": "binding_only_given_up",
+      "writes": [
+        [
+          {
+            "args": "0900000000000000",
+            "method": "unclaim",
+            "node": 5,
+            "op": "call"
+          }
+        ]
+      ]
+    }
+  ],
+  "world": {
+    "input": {
+      "second_seat": false
+    },
+    "nodes": [],
+    "policy": null,
+    "screen": [
+      1000.0,
+      800.0
+    ],
+    "windows": []
+  }
+}
