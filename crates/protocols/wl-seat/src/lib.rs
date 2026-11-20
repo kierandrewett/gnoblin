@@ -7,13 +7,10 @@
 //! already answers "which window", and a second identity between the two would have
 //! to be kept in step with this one.
 //!
-//! Focus itself moves in [`crate::State`], driven by the window manager's
+//! Focus itself moves in the compositor's state, driven by the window manager's
 //! `Effect::Focus`, so a protocol handler never decides who has focus.
 
 use smithay::input::SeatHandler;
-use smithay::input::SeatState;
-use smithay::input::pointer::CursorImageStatus;
-use smithay::input::tablet::TabletSeatHandler;
 use smithay::input::touch::{
     DownEvent, GrabStartData as TouchStart, MotionEvent as TouchMotionEvent, OrientationEvent, ShapeEvent, TouchGrab,
     TouchInnerHandle, UpEvent,
@@ -21,7 +18,17 @@ use smithay::input::touch::{
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point};
 
-use crate::State;
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, ServedInterface};
+
+/// What this protocol advertises.
+///
+/// The seat is not made by a `register` call: the compositor makes the main seat with the session and one more for each
+/// virtual input device that asks, through Smithay's `SeatState::new_wl_seat`, so the crate holds what is its own.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "wl-seat",
+    interfaces: &[ServedInterface::new("wl_seat", 9)],
+    privilege: Privilege::Core,
+};
 
 /// The implicit grab a first touch point installs, which keeps each point with the surface it went down on.
 ///
@@ -31,16 +38,24 @@ use crate::State;
 /// on the other window it landed). Each point's focus is its own, decided when it goes down. A point's motion and
 /// up follow its slot, which the seat keeps, so only `down` and `motion` differ from Smithay's grab. The grab ends
 /// when the last point lifts; while it lasts it is what `xdg_toplevel.move` and `resize` match their serial against.
-struct ImplicitTouchGrab {
-    start_data: TouchStart<State>,
+pub struct ImplicitTouchGrab<D: SeatHandler<TouchFocus = WlSurface> + 'static> {
+    start_data: TouchStart<D>,
     points: usize,
 }
 
-impl TouchGrab<State> for ImplicitTouchGrab {
+impl<D: SeatHandler<TouchFocus = WlSurface> + 'static> ImplicitTouchGrab<D> {
+    /// The grab a first touch point installs, with that point already down.
+    #[must_use]
+    pub const fn new(start_data: TouchStart<D>) -> Self {
+        Self { start_data, points: 1 }
+    }
+}
+
+impl<D: SeatHandler<TouchFocus = WlSurface> + 'static> TouchGrab<D> for ImplicitTouchGrab<D> {
     fn down(
         &mut self,
-        data: &mut State,
-        handle: &mut TouchInnerHandle<'_, State>,
+        data: &mut D,
+        handle: &mut TouchInnerHandle<'_, D>,
         focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &DownEvent,
     ) {
@@ -48,7 +63,7 @@ impl TouchGrab<State> for ImplicitTouchGrab {
         self.points += 1;
     }
 
-    fn up(&mut self, data: &mut State, handle: &mut TouchInnerHandle<'_, State>, event: &UpEvent) {
+    fn up(&mut self, data: &mut D, handle: &mut TouchInnerHandle<'_, D>, event: &UpEvent) {
         handle.up(data, event);
         self.points = self.points.saturating_sub(1);
         if self.points == 0 {
@@ -58,65 +73,34 @@ impl TouchGrab<State> for ImplicitTouchGrab {
 
     fn motion(
         &mut self,
-        data: &mut State,
-        handle: &mut TouchInnerHandle<'_, State>,
+        data: &mut D,
+        handle: &mut TouchInnerHandle<'_, D>,
         focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &TouchMotionEvent,
     ) {
         handle.motion(data, focus, event);
     }
 
-    fn frame(&mut self, data: &mut State, handle: &mut TouchInnerHandle<'_, State>) {
+    fn frame(&mut self, data: &mut D, handle: &mut TouchInnerHandle<'_, D>) {
         handle.frame(data);
     }
 
-    fn cancel(&mut self, data: &mut State, handle: &mut TouchInnerHandle<'_, State>) {
+    fn cancel(&mut self, data: &mut D, handle: &mut TouchInnerHandle<'_, D>) {
         handle.cancel(data);
         handle.unset_grab(self, data);
     }
 
-    fn shape(&mut self, data: &mut State, handle: &mut TouchInnerHandle<'_, State>, event: &ShapeEvent) {
+    fn shape(&mut self, data: &mut D, handle: &mut TouchInnerHandle<'_, D>, event: &ShapeEvent) {
         handle.shape(data, event);
     }
 
-    fn orientation(&mut self, data: &mut State, handle: &mut TouchInnerHandle<'_, State>, event: &OrientationEvent) {
+    fn orientation(&mut self, data: &mut D, handle: &mut TouchInnerHandle<'_, D>, event: &OrientationEvent) {
         handle.orientation(data, event);
     }
 
-    fn start_data(&self) -> &TouchStart<State> {
+    fn start_data(&self) -> &TouchStart<D> {
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut State) {}
-}
-
-impl SeatHandler for State {
-    type KeyboardFocus = WlSurface;
-    type PointerFocus = WlSurface;
-    type TouchFocus = WlSurface;
-
-    fn seat_state(&mut self) -> &mut SeatState<Self> {
-        &mut self.seat_state
-    }
-
-    fn cursor_image(&mut self, _seat: &smithay::input::Seat<Self>, image: CursorImageStatus) {
-        // Both cursor protocols land here — a shipped buffer from
-        // `wl_pointer.set_cursor` and a named shape from
-        // `wp_cursor_shape_manager_v1` — so the renderer that draws a cursor has one value
-        // to read.
-        self.set_cursor_image(image);
-    }
-
-    fn touch_down_grab(&mut self, start_data: TouchStart<Self>) -> impl TouchGrab<Self> {
-        ImplicitTouchGrab { start_data, points: 1 }
-    }
-}
-
-impl TabletSeatHandler for State {
-    /// A tablet tool's focus target.
-    ///
-    /// It is a surface for the same reason the pointer's is: nothing between the seat and
-    /// the protocol needs a second identity, and the cursor-shape device asks for this
-    /// associated type whether or not a tablet is connected.
-    type ToolFocus = WlSurface;
+    fn unset(&mut self, _data: &mut D) {}
 }

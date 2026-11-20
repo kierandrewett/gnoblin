@@ -23,14 +23,8 @@ pub mod image_copy_session;
 /// The generated halves of the Gnoblin-owned protocols; see the module for why the
 /// generated code carries the one `unsafe_code` allow in this crate.
 mod wire;
-/// `wl_compositor` and `wl_subcompositor`: surfaces, subsurfaces and buffer commits.
-pub mod wl_compositor;
 /// `wl_data_device_manager`: the clipboard and drag-and-drop device manager.
 pub mod wl_data_device_manager;
-/// `wl_seat`: keyboard and pointer focus over surfaces.
-pub mod wl_seat;
-/// `xdg_shell`: toplevels, popups, configure and ack.
-pub mod xdg_shell;
 /// `zwlr_screencopy_manager_v1`: one-shot screencopy of an output or region.
 pub mod zwlr_screencopy_v1;
 /// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.

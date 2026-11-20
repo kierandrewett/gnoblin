@@ -30,7 +30,7 @@ use smithay::reexports::wayland_server::{Client, DataInit, Dispatch, DisplayHand
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
 use crate::State;
-use crate::protocols::wl_compositor::WlCompositorClientState;
+use crate::glue::ClientState as WlCompositorClientState;
 use crate::request_guard::Screened;
 
 impl<I, UserData> Dispatch<I, UserData> for State

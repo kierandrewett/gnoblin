@@ -1,7 +1,7 @@
 //! XML protocol `wayland` (`<protocol name="wayland">`); interfaces served: `wl_compositor`, `wl_subcompositor`.
 //!
 //! `wl_compositor` and `wl_subcompositor` (XML `wayland.xml`), with the sync-subsurface rules
-//! applied in its commit handler. `wl_shm` lives in `wl_shm.rs`.
+//! applied in its commit handler. `wl_shm` has a crate of its own.
 //!
 //! Surfaces, subsurfaces and shared-memory buffers are Smithay's job once the
 //! handlers below exist: the compositor keeps surface state, tracks the buffer tree
@@ -25,23 +25,43 @@
 //! 6. The window the surface belongs to, through its subsurface parents or its popup root, is marked so its surface
 //!    tree (`surface_tree.rs`) is built again before the next frame, and the surface is recorded as having
 //!    committed so its pixels are damaged.
+//!
+//! The compositor's handler (`CompositorHandler`) stays with the state it answers for: it runs steps 1 to 6 in order, and
+//! step 2 is [`verify_buffer`], which is this crate's.
 
 use std::sync::{Arc, OnceLock};
 
 use gnoblin_render_frame::shm::{ShmError, probe};
-use smithay::backend::renderer::utils::{RendererSurfaceStateUserData, on_commit_buffer_handler};
+use smithay::backend::renderer::utils::RendererSurfaceStateUserData;
 use smithay::reexports::wayland_server::backend::ClientData;
 use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{Client, Resource};
-use smithay::wayland::compositor::{
-    CompositorClientState, CompositorHandler, CompositorState, get_parent, is_sync_subsurface, with_states,
-};
-use smithay::xwayland::XWaylandClientData;
+use smithay::reexports::wayland_server::{GlobalDispatch, Resource};
+use smithay::wayland::GlobalData;
+use smithay::wayland::compositor::{CompositorClientState, CompositorState, with_states};
 
-use crate::ProcessIdentity;
-use crate::State;
 use gnoblin_wayland_api::access::{Access, Registration};
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
+
+/// What this protocol advertises.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "wl-compositor",
+    interfaces: &[
+        ServedInterface::new("wl_compositor", 5),
+        ServedInterface::new("wl_subcompositor", 1),
+    ],
+    privilege: Privilege::Core,
+};
+
+/// Creates the `wl_compositor` and `wl_subcompositor` globals.
+pub fn register<D>(registrar: &Registrar<'_>) -> CompositorState
+where
+    D: GlobalDispatch<smithay::reexports::wayland_server::protocol::wl_compositor::WlCompositor, GlobalData>
+        + GlobalDispatch<smithay::reexports::wayland_server::protocol::wl_subcompositor::WlSubcompositor, GlobalData>
+        + 'static,
+{
+    CompositorState::new::<D>(registrar.display())
+}
 
 /// Data every connected client carries.
 ///
@@ -50,21 +70,23 @@ use gnoblin_wayland_api::access::{Access, Registration};
 /// server, which is why [`CompositorHandler::client_compositor_state`] can rely on
 /// it existing: a client's own requests cannot reach that path.
 ///
+/// `P` is what the compositor records of a connection's process; the protocol only holds the slot.
+///
 /// It also carries the connection's [`Registration`], which is how the access roster
 /// learns that a connection is gone: dropping this data is the one thing a disconnect
 /// reliably does.
 #[derive(Debug)]
-pub struct WlCompositorClientState {
+pub struct WlCompositorClientState<P> {
     /// Smithay's per-client compositor state.
     pub compositor_state: CompositorClientState,
     /// The connection's claim on its access-roster entry.
     pub registration: Registration,
     /// The connection's process, read when it connected; unset where its credentials
     /// could not be read.
-    pub process: OnceLock<ProcessIdentity>,
+    pub process: OnceLock<P>,
 }
 
-impl WlCompositorClientState {
+impl<P> WlCompositorClientState<P> {
     /// The data a connection is inserted with.
     #[must_use]
     pub fn new(access: &Arc<Access>) -> Self {
@@ -76,70 +98,7 @@ impl WlCompositorClientState {
     }
 }
 
-impl ClientData for WlCompositorClientState {}
-
-impl CompositorHandler for State {
-    fn compositor_state(&mut self) -> &mut CompositorState {
-        &mut self.compositor_state
-    }
-
-    fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        // Xwayland is inserted with Smithay's own client data, because its compositor
-        // state is where the client scale and the X11 surface association live; every
-        // other client carries this server's [`WlCompositorClientState`].
-        if let Some(state) = client.get_data::<WlCompositorClientState>() {
-            return &state.compositor_state;
-        }
-        &client
-            .get_data::<XWaylandClientData>()
-            .expect("every client is inserted with its compositor state")
-            .compositor_state
-    }
-
-    fn new_surface(&mut self, surface: &WlSurface) {
-        // A commit that attaches a dmabuf waits for the buffer's fences: see the protocol module.
-        crate::protocols::zwp_linux_dmabuf_v1::hold_commit_until_ready(surface);
-    }
-
-    fn destroyed(&mut self, surface: &WlSurface) {
-        // A touch point on a surface cannot outlive it, whether it was a toplevel or a subsurface.
-        self.end_touches_on(surface);
-        // A subsurface or a popup that goes leaves its window's tree without a commit to say so.
-        self.mark_all_surface_trees_dirty();
-    }
-
-    fn commit(&mut self, surface: &WlSurface) {
-        // Positions the surface's parents asked for land with the state that has just been applied, ahead of
-        // everything below that reads where a subsurface is.
-        crate::subsurface_position::applied(surface);
-        on_commit_buffer_handler::<Self>(surface);
-        // A buffer whose pool the client shrank is the client's error; so is a viewport source that reaches
-        // past the buffer the commit left attached.
-        verify_buffer(surface);
-        gnoblin_wayland_protocols::wp_viewporter::validate_commit(surface);
-        self.popups.commit(surface);
-        self.popup_committed(surface);
-        // The window the surface belongs to draws its surface tree again, and this surface's pixels with it.
-        self.surface_committed(surface);
-        // A lock surface with a buffer is the only surface input may reach while the
-        // session is covered, so the lock hears about it before anything else runs.
-        self.lock_surface_committed(surface);
-        if is_sync_subsurface(surface) {
-            // A synchronous subsurface's commit is applied with its parent's, so
-            // attributing it here would report a window change twice.
-            return;
-        }
-        // A layer surface is not a toplevel and is not a parent of one, so it is
-        // recomputed before the window path: a bar's commit changes its rectangle, its
-        // exclusive zone and possibly the work area, never a window's state.
-        self.layer_surface_committed(surface);
-        let mut root = surface.clone();
-        while let Some(parent) = get_parent(&root) {
-            root = parent;
-        }
-        self.toplevel_committed(&root);
-    }
-}
+impl<P: Send + Sync + 'static> ClientData for WlCompositorClientState<P> {}
 
 /// Raises `wl_shm.invalid_fd` on the buffer a surface shows when the client shrank the pool's file under
 /// it, which is the only way its pixels can be gone.
@@ -147,7 +106,7 @@ impl CompositorHandler for State {
 /// The check reads the last byte of the buffer (`gnoblin_render_frame::shm::probe`), so it costs the same
 /// for any size. Without it the first read of the missing pages is a bus error the renderer survives by
 /// drawing nothing, and the client is never told.
-fn verify_buffer(surface: &WlSurface) {
+pub fn verify_buffer(surface: &WlSurface) {
     let buffer = with_states(surface, |states| {
         let renderer = states.data_map.get::<RendererSurfaceStateUserData>()?;
         let renderer = renderer.lock().ok()?;

@@ -9,11 +9,14 @@
 //! One file per protocol crate, named after its module, so a protocol's glue is one file to read.
 
 mod core;
+pub(crate) use wl_compositor::ClientState;
 mod ext_background_effect_v1;
 mod ext_data_control_v1;
 mod ext_foreign_toplevel_list_v1;
 mod ext_idle_notify_v1;
+mod wl_compositor;
 mod wl_output;
+mod wl_seat;
 mod wl_shm;
 mod wp_fifo_v1;
 mod wp_fractional_scale_v1;
@@ -23,6 +26,7 @@ mod wp_tearing_control_v1;
 mod xdg_activation_v1;
 mod xdg_dialog_v1;
 mod xdg_foreign;
+mod xdg_shell;
 mod xdg_system_bell_v1;
 mod xdg_toplevel_icon_v1;
 mod xdg_toplevel_tag_v1;

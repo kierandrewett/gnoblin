@@ -57,13 +57,13 @@ use gnoblin_types::{ClientId, OutputId, Rect, WindowId};
 use gnoblin_wm_api::{WindowManager, WindowManagerFactory, WmOptions};
 
 use crate::frame::{FrameStats, Screenshots};
+use crate::glue::ClientState as WlCompositorClientState;
 use crate::observation::{
     MenuAnchor, MenuSource, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal, WindowVisual,
     WindowVisualRefusal,
 };
 use crate::protocols::capture_shared::{CastRefusal, CastStream};
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
-use crate::protocols::wl_compositor::WlCompositorClientState;
 use crate::state::State;
 use gnoblin_wayland_api::access::ClientRole;
 use gnoblin_wayland_protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;

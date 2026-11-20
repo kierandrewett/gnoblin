@@ -2413,7 +2413,9 @@ dependencies = [
  "gnoblin-wayland-ext-foreign-toplevel-list-v1",
  "gnoblin-wayland-ext-idle-notify-v1",
  "gnoblin-wayland-foreign-toplevel-shared",
+ "gnoblin-wayland-wl-compositor",
  "gnoblin-wayland-wl-output",
+ "gnoblin-wayland-wl-seat",
  "gnoblin-wayland-wl-shm",
  "gnoblin-wayland-wp-alpha-modifier-v1",
  "gnoblin-wayland-wp-content-type-v1",
@@ -2428,6 +2430,7 @@ dependencies = [
  "gnoblin-wayland-xdg-activation-v1",
  "gnoblin-wayland-xdg-dialog-v1",
  "gnoblin-wayland-xdg-foreign",
+ "gnoblin-wayland-xdg-shell",
  "gnoblin-wayland-xdg-system-bell-v1",
  "gnoblin-wayland-xdg-toplevel-icon-v1",
  "gnoblin-wayland-xdg-toplevel-tag-v1",
@@ -2458,10 +2461,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-wayland-wl-compositor"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-render-frame",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
 name = "gnoblin-wayland-wl-output"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-log",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wl-seat"
+version = "0.2.0-alpha.0"
+dependencies = [
  "gnoblin-wayland-api",
  "smithay",
 ]
@@ -2583,6 +2603,14 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "getrandom",
  "gnoblin-log",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-xdg-shell"
+version = "0.2.0-alpha.0"
+dependencies = [
  "gnoblin-wayland-api",
  "smithay",
 ]

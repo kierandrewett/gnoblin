@@ -671,8 +671,8 @@ impl State {
         let registrar = gnoblin_wayland_api::Registrar::new(&display_handle, &access);
         let output_manager = ZwlrOutputManagementV1State::new(display_handle.clone());
 
-        let compositor_state = CompositorState::new::<Self>(&display_handle);
-        let xdg_shell_state = XdgShellState::new::<Self>(&display_handle);
+        let compositor_state = gnoblin_wayland_protocols::wl_compositor::register::<Self>(&registrar);
+        let xdg_shell_state = gnoblin_wayland_protocols::xdg_shell::register::<Self>(&registrar);
         let shm_state = gnoblin_wayland_protocols::wl_shm::register::<Self>(&registrar);
         let output_manager_state = OutputManagerState::new();
         gnoblin_wayland_protocols::zxdg_output_v1::register::<Self>(&registrar);
@@ -1069,7 +1069,7 @@ impl State {
     pub(crate) fn insert_client(
         &mut self,
         stream: std::os::unix::net::UnixStream,
-        data: Arc<crate::protocols::wl_compositor::WlCompositorClientState>,
+        data: Arc<crate::glue::ClientState>,
         role: ClientRole,
     ) -> std::io::Result<Client> {
         let client = self.display_handle.insert_client(
@@ -1122,9 +1122,7 @@ impl State {
     pub(crate) fn adopt_client(&mut self, stream: std::os::unix::net::UnixStream) -> std::io::Result<u64> {
         let client = self.insert_client(
             stream,
-            Arc::new(crate::protocols::wl_compositor::WlCompositorClientState::new(
-                &self.access,
-            )),
+            Arc::new(crate::glue::ClientState::new(&self.access)),
             ClientRole::Unprivileged,
         )?;
         let tag = u64::try_from(self.adopted.len()).unwrap_or(u64::MAX).saturating_add(1);
@@ -1164,9 +1162,7 @@ impl State {
     pub(crate) fn adopt_view(&mut self, stream: std::os::unix::net::UnixStream) -> std::io::Result<Client> {
         let client = self.insert_client(
             stream,
-            Arc::new(crate::protocols::wl_compositor::WlCompositorClientState::new(
-                &self.access,
-            )),
+            Arc::new(crate::glue::ClientState::new(&self.access)),
             ClientRole::View,
         )?;
         log::debug!(area = "access", client = ?client.id(), "a view connection joined");
@@ -1181,9 +1177,7 @@ impl State {
     pub(crate) fn accept_sandbox(&mut self, stream: std::os::unix::net::UnixStream) -> std::io::Result<Client> {
         let client = self.insert_client(
             stream,
-            Arc::new(crate::protocols::wl_compositor::WlCompositorClientState::new(
-                &self.access,
-            )),
+            Arc::new(crate::glue::ClientState::new(&self.access)),
             ClientRole::Sandboxed,
         )?;
         log::debug!(area = "access", client = ?client.id(), "a sandboxed connection joined");
@@ -2398,7 +2392,7 @@ impl State {
             return Some(crate::WindowProcess::Disconnected);
         };
         let identity = client
-            .get_data::<crate::protocols::wl_compositor::WlCompositorClientState>()
+            .get_data::<crate::glue::ClientState>()
             .and_then(|data| data.process.get().copied());
         Some(match identity {
             Some(identity) => crate::WindowProcess::Connected(identity),

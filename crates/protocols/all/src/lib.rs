@@ -10,7 +10,9 @@ pub use gnoblin_wayland_ext_data_control_v1 as ext_data_control_v1;
 pub use gnoblin_wayland_ext_foreign_toplevel_list_v1 as ext_foreign_toplevel_list_v1;
 pub use gnoblin_wayland_ext_idle_notify_v1 as ext_idle_notify_v1;
 pub use gnoblin_wayland_foreign_toplevel_shared as foreign_toplevel_shared;
+pub use gnoblin_wayland_wl_compositor as wl_compositor;
 pub use gnoblin_wayland_wl_output as wl_output;
+pub use gnoblin_wayland_wl_seat as wl_seat;
 pub use gnoblin_wayland_wl_shm as wl_shm;
 pub use gnoblin_wayland_wp_alpha_modifier_v1 as wp_alpha_modifier_v1;
 pub use gnoblin_wayland_wp_content_type_v1 as wp_content_type_v1;
@@ -25,6 +27,7 @@ pub use gnoblin_wayland_wp_viewporter as wp_viewporter;
 pub use gnoblin_wayland_xdg_activation_v1 as xdg_activation_v1;
 pub use gnoblin_wayland_xdg_dialog_v1 as xdg_dialog_v1;
 pub use gnoblin_wayland_xdg_foreign as xdg_foreign;
+pub use gnoblin_wayland_xdg_shell as xdg_shell;
 pub use gnoblin_wayland_xdg_system_bell_v1 as xdg_system_bell_v1;
 pub use gnoblin_wayland_xdg_toplevel_icon_v1 as xdg_toplevel_icon_v1;
 pub use gnoblin_wayland_xdg_toplevel_tag_v1 as xdg_toplevel_tag_v1;
@@ -82,6 +85,9 @@ pub const ALL: &[&ProtocolInfo] = &[
     &zwp_text_input_v3::PROTOCOL,
     &ext_foreign_toplevel_list_v1::PROTOCOL,
     &zwlr_foreign_toplevel_management_v1::PROTOCOL,
+    &wl_compositor::PROTOCOL,
+    &wl_seat::PROTOCOL,
+    &xdg_shell::PROTOCOL,
     &zwlr_layer_shell_v1::PROTOCOL,
     &xdg_activation_v1::PROTOCOL,
     &zxdg_decoration_v1::PROTOCOL,

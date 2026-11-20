@@ -18,6 +18,7 @@ gnoblin-log = '{ path = "../../gnoblin-log" }'
 getrandom = '{ workspace = true }'
 gnoblin-input = '{ path = "../../gnoblin-input" }'
 gnoblin-authority = '{ path = "../../gnoblin-authority" }'
+gnoblin-render-frame = '{ path = "../../gnoblin-render-frame" }'
 wayland-protocols-misc = '{ version = "0.3.12", features = ["server"] }'
 
 [[crate]]
@@ -265,6 +266,27 @@ kind = "protocol"
 interfaces = [["zwlr_foreign_toplevel_manager_v1", 3]]
 needs = ["foreign-toplevel-shared"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+
+[[crate]]
+name = "wl-compositor"
+description = "The wl_compositor and wl_subcompositor Wayland protocols of gnoblin-wayland: surfaces, subsurfaces and the client state every connection carries."
+kind = "protocol"
+interfaces = [["wl_compositor", 5], ["wl_subcompositor", 1]]
+deps = ["smithay", "gnoblin-render-frame"]
+
+[[crate]]
+name = "wl-seat"
+description = "The wl_seat Wayland protocol of gnoblin-wayland: keyboard, pointer and touch focus over surfaces."
+kind = "protocol"
+interfaces = [["wl_seat", 9]]
+deps = ["smithay"]
+
+[[crate]]
+name = "xdg-shell"
+description = "The xdg_wm_base Wayland protocol of gnoblin-wayland: toplevels, popups, configure and acknowledge."
+kind = "protocol"
+interfaces = [["xdg_wm_base", 7]]
+deps = ["smithay"]
 
 [[crate]]
 name = "zwlr-layer-shell-v1"

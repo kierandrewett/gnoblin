@@ -1,6 +1,6 @@
-//! XML protocol `xdg_shell` (`<protocol name="xdg_shell">`); interfaces served: `xdg_shell`.
+//! `gnoblin-wayland-xdg-shell`: toplevels, popups, configure and acknowledge, as the state answers them.
 //!
-//! `xdg_shell`: toplevels, popups, configure and acknowledge.
+//! The crate holds the global; the handler is here because every answer is a window-manager decision.
 //!
 //! A toplevel is taken into management when the client creates it, and it takes
 //! focus when it first commits a buffer: focus follows the map, which is what the
