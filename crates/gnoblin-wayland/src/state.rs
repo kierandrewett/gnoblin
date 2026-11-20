@@ -418,7 +418,7 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) idle_notify_global: GlobalId,
     /// Kept alive so `ext_background_effect_manager_v1` stays registered; the bind is
-    /// gated by the access roster in [`crate::protocols::ext_background_effect_v1`].
+    /// gated by the access roster in `gnoblin-wayland-ext-background-effect-v1`.
     #[allow(dead_code)]
     pub(crate) background_effect_global: GlobalId,
     /// Per-output gamma and power control, applied through [`crate::output_control`].
@@ -665,7 +665,11 @@ impl State {
         wm: Box<dyn WindowManager>,
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
-        let registrar = gnoblin_wayland_api::Registrar::new(&display_handle);
+        // Every privileged global takes its per-client filter from this one roster, so
+        // a protocol cannot forget the policy: the registrar is the only way a protocol crate gets
+        // one, and the roster is the only answer it gives.
+        let access = Arc::new(Access::new());
+        let registrar = gnoblin_wayland_api::Registrar::new(&display_handle, &access);
         let output_manager = ZwlrOutputManagementV1State::new(display_handle.clone());
 
         let compositor_state = CompositorState::new::<Self>(&display_handle);
@@ -695,11 +699,6 @@ impl State {
             None => (None, None),
         };
 
-        // Every privileged global takes its per-client filter from this one roster, so
-        // a protocol cannot forget the policy: the closure is the only way it is
-        // created, and the roster is the only answer it gives.
-        let access = Arc::new(Access::new());
-
         let layer_shell_state = WlrLayerShellState::new_with_filter::<Self, _>(&display_handle, {
             let access = Arc::clone(&access);
             move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::LayerShell)
@@ -712,28 +711,15 @@ impl State {
         let data_device_state = DataDeviceState::new::<Self>(&display_handle);
         let primary_selection_state = gnoblin_wayland_protocols::zwp_primary_selection_v1::register::<Self>(&registrar);
         let ext_data_control_state =
-            ExtDataControlState::new::<Self, _>(&display_handle, Some(&primary_selection_state), {
-                let access = Arc::clone(&access);
-                move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::DataControl)
-            });
+            gnoblin_wayland_protocols::ext_data_control_v1::register::<Self>(&registrar, &primary_selection_state);
         let wlr_data_control_state =
-            WlrDataControlState::new::<Self, _>(&display_handle, Some(&primary_selection_state), {
-                let access = Arc::clone(&access);
-                move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::WlrDataControl)
-            });
-        // A sandbox may not create another sandbox: `wp_security_context_v1` says
-        // nesting is how a sandboxed client escapes its own restrictions, so the
-        // manager is hidden from the connections that already have one. Every other
-        // connection may create one, and what the sandbox buys is a *denied* role for
-        // the connection it creates.
-        let security_context_state = crate::protocols::wp_security_context_v1::global(&display_handle, {
-            let access = Arc::clone(&access);
-            move |client: &Client| access.role(&client.id()) != ClientRole::Sandboxed
-        });
+            gnoblin_wayland_protocols::wlr_data_control_v1::register::<Self>(&registrar, &primary_selection_state);
+        let security_context_state = gnoblin_wayland_protocols::wp_security_context_v1::register::<Self>(&registrar);
 
         let foreign_toplevel_global =
             crate::protocols::zwlr_foreign_toplevel_management_v1::global(&display_handle, &access);
-        let background_effect_global = crate::protocols::ext_background_effect_v1::global(&display_handle, &access);
+        let background_effect_global =
+            gnoblin_wayland_protocols::ext_background_effect_v1::register::<Self>(&registrar);
         // Created when the configuration advertises them; whether the host can honour
         // them is checked at start-up, before any client connects.
         let gamma_global = Global::GammaControl
@@ -792,7 +778,7 @@ impl State {
         let fifo_manager_state = gnoblin_wayland_protocols::wp_fifo_v1::register::<Self>(&registrar);
         let alpha_modifier_state = gnoblin_wayland_protocols::wp_alpha_modifier_v1::register::<Self>(&registrar);
         let text_input_state = crate::protocols::zwp_text_input_v3::text_input_global(&display_handle);
-        let input_method_state = crate::protocols::zwp_input_method_v2::input_method_global(&display_handle, &access);
+        let input_method_state = gnoblin_wayland_protocols::zwp_input_method_v2::register::<Self>(&registrar);
         let virtual_keyboard_global =
             crate::protocols::zwp_virtual_keyboard_v1::virtual_keyboard_global(&display_handle, &access);
 
@@ -1527,7 +1513,7 @@ impl State {
             Some(SmithayPoint::from((rect.x, rect.y))),
         );
         let global = gnoblin_wayland_protocols::wl_output::create_global::<Self>(
-            &gnoblin_wayland_api::Registrar::new(&self.display_handle),
+            &gnoblin_wayland_api::Registrar::new(&self.display_handle, &self.access),
             &smithay_output,
         );
 

@@ -8,10 +8,6 @@
 
 /// Pixel path shared by the three capture protocols: frames, sources and sessions.
 pub mod capture_shared;
-/// `ext_background_effect_v1`: blur behind a client's own surface.
-pub mod ext_background_effect_v1;
-/// `ext_data_control_v1`: clipboard access for privileged clients (standard protocol).
-pub mod ext_data_control_v1;
 /// `ext_foreign_toplevel_list_v1`: the read-only, standardised toplevel list.
 pub mod ext_foreign_toplevel_list_v1;
 /// `ext_idle_notify_v1`: idle and resume notifications driven by the session tick counter.
@@ -39,16 +35,12 @@ pub mod wl_compositor;
 pub mod wl_data_device_manager;
 /// `wl_seat`: keyboard and pointer focus over surfaces.
 pub mod wl_seat;
-/// `wp_security_context_v1`: sandbox security contexts for applications.
-pub mod wp_security_context_v1;
 /// `xdg_activation_v1`: one-shot activation tokens.
 pub mod xdg_activation_v1;
 /// `zxdg_exporter_v2` and `zxdg_importer_v2`: export a toplevel handle to another client.
 pub mod xdg_foreign;
 /// `xdg_shell`: toplevels, popups, configure and ack.
 pub mod xdg_shell;
-/// `zwlr_data_control_v1`: clipboard access for privileged clients (wlroots).
-pub mod zwlr_data_control_v1;
 /// `zwlr_foreign_toplevel_manager_v1`: the window list a taskbar reads.
 pub mod zwlr_foreign_toplevel_management_v1;
 /// `zwlr_gamma_control_manager_v1`: per-output gamma ramps.
@@ -61,8 +53,6 @@ pub mod zwlr_output_management_v1;
 pub mod zwlr_output_power_management_v1;
 /// `zwlr_screencopy_manager_v1`: one-shot screencopy of an output or region.
 pub mod zwlr_screencopy_v1;
-/// `zwp_input_method_manager_v2`: the privileged input-method half of a text conversation.
-pub mod zwp_input_method_v2;
 /// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.
 pub mod zwp_linux_dmabuf_v1;
 /// `zwp_tablet_manager_v2`: drawing tablets, their tools and pads.

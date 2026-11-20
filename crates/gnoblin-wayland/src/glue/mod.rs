@@ -9,17 +9,22 @@
 //! One file per protocol crate, named after its module, so a protocol's glue is one file to read.
 
 mod core;
+mod ext_background_effect_v1;
+mod ext_data_control_v1;
 mod wl_output;
 mod wl_shm;
 mod wp_fifo_v1;
 mod wp_fractional_scale_v1;
 mod wp_presentation_time;
+mod wp_security_context_v1;
 mod wp_tearing_control_v1;
 mod xdg_dialog_v1;
 mod xdg_system_bell_v1;
 mod xdg_toplevel_icon_v1;
 mod xdg_toplevel_tag_v1;
+mod zwlr_data_control_v1;
 mod zwp_idle_inhibit_v1;
+mod zwp_input_method_v2;
 mod zwp_keyboard_shortcuts_inhibit_v1;
 mod zwp_pointer_constraints_v1;
 mod zwp_primary_selection_v1;

@@ -20,17 +20,16 @@
 
 use std::sync::Arc;
 
-use gnoblin_types::{Rect, WindowId};
+use gnoblin_types::Rect;
+use gnoblin_wayland_api::access::{Access, AccessPolicy, Global};
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
 use smithay::reexports::wayland_protocols::ext::background_effect::v1::server::ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1;
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New};
+use smithay::reexports::wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New};
 use smithay::wayland::background_effect::{BackgroundEffectSurfaceCachedState, ExtBackgroundEffectHandler};
 use smithay::wayland::compositor::{RectangleKind, RegionAttributes, with_states};
 use smithay::wayland::{GlobalData, GlobalDispatch2};
-
-use crate::State;
-use gnoblin_wayland_api::access::{Access, AccessPolicy, Global};
 
 /// The version this session serves: the staging protocol's first version.
 const MANAGER_VERSION: u32 = 1;
@@ -44,31 +43,45 @@ pub enum ExtBackgroundEffectV1ObservedBlurRect {
     Subtract(Rect),
 }
 
-impl ExtBackgroundEffectHandler for State {}
+/// What this protocol advertises.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "ext-background-effect-v1",
+    interfaces: &[ServedInterface::new(
+        "ext_background_effect_manager_v1",
+        MANAGER_VERSION,
+    )],
+    privilege: Privilege::Roster(Global::BackgroundEffect),
+};
 
 /// Creates the `ext_background_effect_manager_v1` global gated by the access roster.
-pub(crate) fn global(display_handle: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
-    display_handle.create_global::<State, ExtBackgroundEffectManagerV1, _>(
+pub fn register<D>(registrar: &Registrar<'_>) -> GlobalId
+where
+    D: GlobalDispatch<ExtBackgroundEffectManagerV1, ExtBackgroundEffectV1ManagerGlobalData> + 'static,
+{
+    registrar.display().create_global::<D, ExtBackgroundEffectManagerV1, _>(
         MANAGER_VERSION,
         ExtBackgroundEffectV1ManagerGlobalData {
-            access: Arc::clone(access),
+            access: Arc::clone(registrar.access()),
         },
     )
 }
 
 /// The global's data: the roster, consulted at every bind.
-struct ExtBackgroundEffectV1ManagerGlobalData {
+pub struct ExtBackgroundEffectV1ManagerGlobalData {
     access: Arc<Access>,
 }
 
-impl GlobalDispatch2<ExtBackgroundEffectManagerV1, State> for ExtBackgroundEffectV1ManagerGlobalData {
+impl<D> GlobalDispatch2<ExtBackgroundEffectManagerV1, D> for ExtBackgroundEffectV1ManagerGlobalData
+where
+    D: ExtBackgroundEffectHandler + Dispatch<ExtBackgroundEffectManagerV1, GlobalData> + 'static,
+{
     fn bind(
         &self,
-        state: &mut State,
+        state: &mut D,
         _dh: &DisplayHandle,
         _client: &Client,
         resource: New<ExtBackgroundEffectManagerV1>,
-        data_init: &mut DataInit<'_, State>,
+        data_init: &mut DataInit<'_, D>,
     ) {
         // Smithay's own request handling takes the manager object from here, and the
         // manager announces the capability it serves, as Smithay's own bind does.
@@ -81,29 +94,19 @@ impl GlobalDispatch2<ExtBackgroundEffectManagerV1, State> for ExtBackgroundEffec
     }
 }
 
-impl State {
-    /// The committed blur region of a surface, or [`None`] when it has none.
-    ///
-    /// The renderer's blur pass calls this per surface; the region is read under the
-    /// surface's state lock and nothing is copied.
-    pub fn with_blur_region<T>(&self, surface: &WlSurface, f: impl FnOnce(&RegionAttributes) -> T) -> Option<T> {
-        with_states(surface, |states| {
-            let mut cached = states.cached_state.get::<BackgroundEffectSurfaceCachedState>();
-            cached.current().blur_region.as_ref().map(f)
-        })
-    }
-
-    /// The committed blur region of a window's surface, as the control seam reads it.
-    ///
-    /// [`None`] means the window has no surface or its surface committed no region.
-    pub(crate) fn window_blur_region(&self, window: WindowId) -> Option<Vec<ExtBackgroundEffectV1ObservedBlurRect>> {
-        let surface = self.windows.get(&window)?.surface.wl_surface()?;
-        self.with_blur_region(&surface, observed)
-    }
+/// The committed blur region of a surface, or [`None`] when it has none.
+///
+/// The renderer's blur pass calls this per surface; the region is read under the
+/// surface's state lock and nothing is copied.
+pub fn with_blur_region<T>(surface: &WlSurface, f: impl FnOnce(&RegionAttributes) -> T) -> Option<T> {
+    with_states(surface, |states| {
+        let mut cached = states.cached_state.get::<BackgroundEffectSurfaceCachedState>();
+        cached.current().blur_region.as_ref().map(f)
+    })
 }
 
 /// The pieces of a committed region, in the order the client sent them.
-fn observed(region: &RegionAttributes) -> Vec<ExtBackgroundEffectV1ObservedBlurRect> {
+pub fn observed(region: &RegionAttributes) -> Vec<ExtBackgroundEffectV1ObservedBlurRect> {
     region
         .rects
         .iter()

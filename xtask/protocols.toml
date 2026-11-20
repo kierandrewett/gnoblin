@@ -15,6 +15,7 @@
 smithay = '{ workspace = true }'
 gnoblin-types = '{ workspace = true }'
 gnoblin-log = '{ path = "../../gnoblin-log" }'
+wayland-protocols-misc = '{ version = "0.3.12", features = ["server"] }'
 
 [[crate]]
 name = "wp-alpha-modifier-v1"
@@ -168,4 +169,39 @@ name = "zwp-pointer-constraints-v1"
 description = "The zwp_pointer_constraints_v1 Wayland protocol of gnoblin-wayland: locked and confined pointers."
 kind = "protocol"
 interfaces = [["zwp_pointer_constraints_v1", 1]]
+deps = ["smithay", "gnoblin-log"]
+
+[[crate]]
+name = "ext-data-control-v1"
+description = "The ext_data_control_manager_v1 Wayland protocol of gnoblin-wayland: clipboard access for privileged clients."
+kind = "protocol"
+interfaces = [["ext_data_control_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
+name = "wlr-data-control-v1"
+description = "The zwlr_data_control_manager_v1 Wayland protocol of gnoblin-wayland: clipboard access for privileged clients (wlroots)."
+kind = "protocol"
+interfaces = [["zwlr_data_control_manager_v1", 2]]
+deps = ["smithay"]
+
+[[crate]]
+name = "zwp-input-method-v2"
+description = "The zwp_input_method_manager_v2 Wayland protocol of gnoblin-wayland: the privileged input-method half of a text conversation."
+kind = "protocol"
+interfaces = [["zwp_input_method_manager_v2", 1]]
+deps = ["smithay", "gnoblin-log", "wayland-protocols-misc"]
+
+[[crate]]
+name = "ext-background-effect-v1"
+description = "The ext_background_effect_manager_v1 Wayland protocol of gnoblin-wayland: a client's blur behind its own surface."
+kind = "protocol"
+interfaces = [["ext_background_effect_manager_v1", 1]]
+deps = ["smithay", "gnoblin-types"]
+
+[[crate]]
+name = "wp-security-context-v1"
+description = "The wp_security_context_manager_v1 Wayland protocol of gnoblin-wayland: application sandboxes, marked before their first request."
+kind = "protocol"
+interfaces = [["wp_security_context_manager_v1", 1]]
 deps = ["smithay", "gnoblin-log"]

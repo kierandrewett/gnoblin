@@ -35,3 +35,8 @@ gnoblin-wayland-wp-viewporter = { path = "../wp-viewporter" }
 gnoblin-wayland-wp-cursor-shape-v1 = { path = "../wp-cursor-shape-v1" }
 gnoblin-wayland-xdg-output = { path = "../xdg-output" }
 gnoblin-wayland-zwp-pointer-constraints-v1 = { path = "../zwp-pointer-constraints-v1" }
+gnoblin-wayland-ext-data-control-v1 = { path = "../ext-data-control-v1" }
+gnoblin-wayland-wlr-data-control-v1 = { path = "../wlr-data-control-v1" }
+gnoblin-wayland-zwp-input-method-v2 = { path = "../zwp-input-method-v2" }
+gnoblin-wayland-ext-background-effect-v1 = { path = "../ext-background-effect-v1" }
+gnoblin-wayland-wp-security-context-v1 = { path = "../wp-security-context-v1" }

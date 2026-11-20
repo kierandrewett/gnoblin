@@ -316,7 +316,7 @@ pub use xwayland::XwaylandSession;
 /// Access policy: which global a client role may bind, and the registration that records it.
 pub use gnoblin_wayland_api::access::{Access, AccessPolicy, ClientRole, Global, Registration};
 /// The observed blur rectangle that `ext-background-effect-v1` reports.
-pub use protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
+pub use gnoblin_wayland_protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 
 gnoblin_log::logger!(log = "wayland");
 

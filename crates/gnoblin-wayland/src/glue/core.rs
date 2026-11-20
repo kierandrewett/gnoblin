@@ -19,6 +19,10 @@ impl WindowHost for State {
         State::window_of(self, surface)
     }
 
+    fn geometry_of(&self, window: WindowId) -> Option<Rect> {
+        State::geometry_of(self, window)
+    }
+
     fn sync_window_role(&mut self, window: WindowId) {
         State::sync_window_role(self, window);
     }

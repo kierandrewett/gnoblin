@@ -2499,3 +2499,45 @@ left = "gnoblin-portal-core::Refusal"
 right = "xdg-desktop-portal-gnoblin::Refusal"
 kind = "same-name"
 reason = "a portal refusal is the negotiation's own value in `gnoblin-portal-core`; the other crate's type of the same name refuses something else"
+
+[[allow]]
+left = "gnoblin-wayland::ExtIdleNotifyV1NotifierUserData"
+right = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
+kind = "same-shape"
+reason = "each protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
+
+[[allow]]
+left = "gnoblin-wayland::ManagerGlobalData"
+right = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
+kind = "same-shape"
+reason = "each protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
+
+[[allow]]
+left = "gnoblin-wayland::ViewSourceGlobal"
+right = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
+kind = "same-shape"
+reason = "each protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
+
+[[allow]]
+left = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
+right = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
+kind = "same-shape"
+reason = "each protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
+
+[[allow]]
+left = "gnoblin-wayland::ZwlrGammaControlV1ManagerGlobalData"
+right = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
+kind = "same-shape"
+reason = "each protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
+
+[[allow]]
+left = "gnoblin-wayland::ZwlrOutputPowerManagementV1ManagerGlobalData"
+right = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
+kind = "same-shape"
+reason = "each protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
+
+[[allow]]
+left = "gnoblin-wayland::ZwlrScreencopyV1Global"
+right = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
+kind = "same-shape"
+reason = "each protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"

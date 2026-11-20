@@ -22,14 +22,32 @@
 //! `tests/selection.rs`: `a_data_control_manager_needs_a_privileged_client`,
 //! `turning_data_control_off_hides_both_managers`, `a_selection_does_not_outlive_its_owner`.
 
+use smithay::reexports::wayland_protocols::ext::data_control::v1::server::ext_data_control_manager_v1::ExtDataControlManagerV1;
+use smithay::reexports::wayland_server::GlobalDispatch;
 use smithay::wayland::selection::ext_data_control::{
-    DataControlHandler as ExtDataControlHandler, DataControlState as ExtDataControlState,
+    DataControlState as ExtDataControlState, ExtDataControlManagerGlobalData,
+};
+use smithay::wayland::selection::primary_selection::PrimarySelectionState;
+
+use gnoblin_wayland_api::access::Global;
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
+
+/// What this protocol advertises.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "ext-data-control-v1",
+    interfaces: &[ServedInterface::new("ext_data_control_manager_v1", 1)],
+    privilege: Privilege::Roster(Global::DataControl),
 };
 
-use crate::State;
-
-impl ExtDataControlHandler for State {
-    fn data_control_state(&mut self) -> &mut ExtDataControlState {
-        &mut self.ext_data_control_state
-    }
+/// Creates the `ext_data_control_manager_v1` global, visible to the clients the roster calls privileged. The primary
+/// selection is offered through it too.
+pub fn register<D>(registrar: &Registrar<'_>, primary_selection: &PrimarySelectionState) -> ExtDataControlState
+where
+    D: GlobalDispatch<ExtDataControlManagerV1, ExtDataControlManagerGlobalData> + 'static,
+{
+    ExtDataControlState::new::<D, _>(
+        registrar.display(),
+        Some(primary_selection),
+        registrar.filter(Global::DataControl),
+    )
 }

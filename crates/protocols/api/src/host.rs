@@ -14,6 +14,9 @@ pub trait WindowHost {
     /// The policy identity of the window that owns `surface`, if it owns one.
     fn window_of(&self, surface: &WlSurface) -> Option<WindowId>;
 
+    /// The rectangle the window occupies in the layout, if it has one.
+    fn geometry_of(&self, window: WindowId) -> Option<Rect>;
+
     /// Re-reads the protocol state that decides a window's kind (a dialog hint, a parent) and
     /// tells the window manager when the kind changed.
     fn sync_window_role(&mut self, window: WindowId);
