@@ -15,6 +15,7 @@ use gnoblin_object::{Fail, Res, Val};
 use gnoblin_std_abi::layouts::{ActionDesc, LAYOUT_KINDS, LayoutKindDesc, OptionDesc, ValueDesc, ValueShape};
 
 use super::layouts::{OwnedLayout, layout_members};
+use super::values::{client_of, client_val};
 use super::{edit, look};
 use crate::builtin::{ActionEnv, Builtin, OptionSet, Val as Value, decode_value, encode_value};
 use crate::floating::grow;
@@ -31,7 +32,7 @@ fn object_val(desc: &ValueDesc, value: &Value) -> Val {
         (Value::Num(number), ValueShape::Enum(_)) => enumeration(*number as u32 + 1),
         (Value::Num(number), ValueShape::Int) => Val::Int(*number as i64),
         (Value::Num(number), _) => Val::Double(*number),
-        (Value::Node(node), _) => Val::Uint(*node),
+        (Value::Node(node), _) => client_val(*node),
         (Value::Text(text), _) => Val::Text(text.clone()),
     }
 }
@@ -46,7 +47,7 @@ fn table_val(desc: &ValueDesc, value: &Val) -> Res<Value> {
         ValueShape::Number => Value::Num(value.double()?),
         ValueShape::Int => Value::Num(value.int()? as f64),
         ValueShape::Enum(_) => Value::Num(f64::from(value.enum_value()?.wrapping_sub(1))),
-        ValueShape::Node => Value::Node(value.uint()?),
+        ValueShape::Node => Value::Node(client_of(value)?),
         ValueShape::Text => Value::Text(value.text()?.to_owned()),
     })
 }

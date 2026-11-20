@@ -46,6 +46,7 @@ A std shell (examples 2, 6, 9, 19 and 20) links `libgnoblin-std.so.1`. In a sour
 | 23  | [`23-native-services`](23-native-services/src/lib.rs)       | Rust, TypeScript, Python | Core      | `gnoblin ./target/debug/libnative_services.so` (or `gnoblin ./examples/23-native-services-ts/shell.ts`), then `<Super>e` asks for the session lock                                       |
 | 24  | [`24-native-scene`](24-native-scene/src/lib.rs)             | Rust, TypeScript, Python | Core, std | `gnoblin ./target/debug/libnative_scene.so` (or `gnoblin ./24-native-scene-ts/shell.ts`), then read the view and camera nodes with `gnoblinctl tree`                                     |
 | 25  | [`25-native-style`](25-native-style/src/lib.rs)             | Rust, TypeScript, Python | Core, std | `gnoblin ./target/debug/libnative_style.so` (or `gnoblin ./25-native-style-ts/shell.ts`), then read the `style:` lines the shell logs                                                    |
+| 26  | [`26-native-objects`](26-native-objects/src/lib.rs)         | Rust, TypeScript, Python | Core, std | `gnoblin ./target/debug/libnative_objects.so` (or `gnoblin ./26-native-objects-ts/shell.ts`), then read the `objects:` lines it logs and the window tiles with `gnoblinctl tree`         |
 
 Example 19 sets a custom shader. A window draws it unless the compositor's `compositor.user-shaders` setting is switched off, and only on a renderer that draws shaders; see
 [custom shaders](../docs/custom-shaders.md).

@@ -1,0 +1,19 @@
+[package]
+name = "gnoblin-fixture-shell-objects"
+description = "Test fixture: a std shell that does what shell-tiling does for the layouts, through the classes of the object protocol (workspace, the built-in layout classes and client state), so a test can hold the classes to the TypeScript library."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "shell_objects"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../gnoblin-core" }
+gnoblin-std = { path = "../../../gnoblin-std" }
+
+[lints]
+workspace = true

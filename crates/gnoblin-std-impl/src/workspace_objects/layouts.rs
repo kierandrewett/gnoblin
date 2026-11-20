@@ -17,7 +17,7 @@ use gnoblin_object::{Fail, Obj, Res, Val};
 use gnoblin_std_abi as sabi;
 
 use super::shell_layout::{self, LayoutMemberIds, ObjectLayout};
-use super::values::{checked_rect, member_val, rect_of, rect_val, wire_of};
+use super::values::{checked_rect, client_of, member_val, rect_of, rect_val, wire_of};
 use crate::floating::{DEFAULT_CASCADE_STEP, PlaceMode, apart_from, place_rect};
 use crate::layout::{Known, LayoutObj};
 use crate::object::record::{field, flag_field, number_field};
@@ -149,7 +149,7 @@ pub(super) fn layout_members<'a>(class: ClassBuilder<'a, OwnedLayout>) -> ClassB
         })
         .method("client_added", |held, cx, args| {
             let context = shell_layout::context_of(&args[0])?;
-            let client = args[1].uint()?;
+            let client = client_of(&args[1])?;
             let g = gnoblin_core::private::gnoblin_for(cx.ctx()).map_err(|error| Fail::err(error.to_string()))?;
             let none = HashMap::new();
             let floated = std::collections::HashSet::new();
@@ -166,7 +166,7 @@ pub(super) fn layout_members<'a>(class: ClassBuilder<'a, OwnedLayout>) -> ClassB
         })
         .method("client_removed", |held, cx, args| {
             let context = shell_layout::context_of(&args[0])?;
-            let client = args[1].uint()?;
+            let client = client_of(&args[1])?;
             if let Some(next) = held.layout.client_removed(&context, client)
                 && let Ok(g) = gnoblin_core::private::gnoblin_for(cx.ctx())
             {
@@ -179,7 +179,7 @@ pub(super) fn layout_members<'a>(class: ClassBuilder<'a, OwnedLayout>) -> ClassB
             Ok(Val::None)
         })
         .method("clients_swapped", |held, _, args| {
-            held.layout.clients_swapped(args[0].uint()?, args[1].uint()?);
+            held.layout.clients_swapped(client_of(&args[0])?, client_of(&args[1])?);
             Ok(Val::None)
         })
         .method("revision", |held, _, _| Ok(Val::Uint(held.layout.revision())))
@@ -190,7 +190,7 @@ pub(super) fn layout_members<'a>(class: ClassBuilder<'a, OwnedLayout>) -> ClassB
             }
             Ok(Val::List(
                 held.layout
-                    .find_split(args[0].uint()?, x, y)
+                    .find_split(client_of(&args[0])?, x, y)
                     .iter()
                     .map(shell_layout::split_val)
                     .collect(),

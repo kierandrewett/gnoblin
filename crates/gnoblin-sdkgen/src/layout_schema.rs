@@ -36,7 +36,7 @@ fn type_of(kind: &str, name: &str, desc: &ValueDesc) -> String {
         ValueShape::Number => "double".to_owned(),
         ValueShape::Int => "int".to_owned(),
         ValueShape::Enum(_) => format!("enum:{}", enum_name(kind, name)),
-        ValueShape::Node => "uint".to_owned(),
+        ValueShape::Node => "string".to_owned(),
         ValueShape::Text => "string".to_owned(),
     }
 }

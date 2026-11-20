@@ -147,7 +147,7 @@ since = "0.2.0"
 # place).
 [[object.property]]
 name = "children"
-type = "list<uint>"
+type = "list<string>"
 since = "0.2.0"
 
 # The workspace's rectangle. A tiling layout insets it by `outer_gap` itself.
@@ -173,7 +173,7 @@ default = 0.0
 # The child that has the keyboard; left out when none has.
 [[object.property]]
 name = "focused"
-type = "uint"
+type = "string"
 since = "0.2.0"
 optional = true
 
@@ -188,7 +188,7 @@ kind = "record"
 # The client this placement is for.
 [[object.property]]
 name = "node"
-type = "uint"
+type = "string"
 since = "0.2.0"
 
 # The client's rectangle; left out, the client stays where it is.
@@ -681,7 +681,7 @@ type = "object:layout_context"
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 # A client left the workspace.
 [[object.method]]
@@ -695,7 +695,7 @@ type = "object:layout_context"
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 # The workspace's rectangle changed.
 [[object.method]]
@@ -719,11 +719,11 @@ default = "native"
 
 [[object.method.param]]
 name = "a"
-type = "uint"
+type = "string"
 
 [[object.method.param]]
 name = "b"
-type = "uint"
+type = "string"
 
 # A number that changes when one of the layout's own options does, so the workspace computes again. Absent, the layout never changes by
 # itself and the shell calls `invalidate`.
@@ -743,7 +743,7 @@ default = "native"
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 [[object.method.param]]
 name = "x"
@@ -834,7 +834,7 @@ readonly = true
 # The clients, in order.
 [[object.property]]
 name = "members"
-type = "list<uint>"
+type = "list<string>"
 since = "0.2.0"
 readonly = true
 
@@ -846,7 +846,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 # The selection of this collection whose clients match `query`: a live list that follows the parent as clients come, go and change.
 [[object.method]]
@@ -866,7 +866,7 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 # Takes `client` out of the workspace: it has no workspace until it is given one, and no window is closed. Answers whether it was there.
 [[object.method]]
@@ -876,7 +876,7 @@ returns = "bool"
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 # Takes every client out of the workspace.
 [[object.method]]
@@ -890,11 +890,11 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "a"
-type = "uint"
+type = "string"
 
 [[object.method.param]]
 name = "b"
-type = "uint"
+type = "string"
 
 # Every client of the compositor, in the order they appeared.
 [[object.method]]
@@ -910,7 +910,7 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "client"
-type = "uint"
+type = "string"
 
 # A client left the collection (it moved, was removed, closed, or stopped matching the selection).
 [[object.signal]]
@@ -919,7 +919,7 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "client"
-type = "uint"
+type = "string"
 
 # What the library remembers about one client beyond the tree: its workspace, whether the shell floated it, the room its frame takes, the
 # sizes it allows itself, the rectangle it floats at and the zone it is snapped to.
@@ -930,7 +930,7 @@ since = "0.2.0"
 # The client's node number.
 [[object.property]]
 name = "node"
-type = "uint"
+type = "string"
 since = "0.2.0"
 readonly = true
 
@@ -1036,7 +1036,7 @@ returns = "object:client_state"
 
 [[object.method.param]]
 name = "node"
-type = "uint"
+type = "string"
 
 # ---- workspaces ----------------------------------------------------------------------------------------------------------------------
 
@@ -1146,7 +1146,7 @@ optional = true
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 [[object.method.param]]
 name = "x"
@@ -1204,7 +1204,7 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "client"
-type = "uint"
+type = "string"
 
 # A client left the workspace.
 [[object.signal]]
@@ -1213,7 +1213,7 @@ since = "0.2.0"
 
 [[object.signal.field]]
 name = "client"
-type = "uint"
+type = "string"
 
 # `gnoblin.workspaces`: the list of workspaces. Adding one gives it the windows that wait for a workspace; removing one moves its windows
 # to the neighbour before it (the one after it, for the first), which is shown where the removed one was. The last workspace stays.
@@ -1280,7 +1280,7 @@ optional = true
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 # The workspace an output shows, or none.
 [[object.method]]
@@ -1378,7 +1378,7 @@ returns = "object:client_areas"
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 # A reload gives `client` back to `workspace`: it moves, with its dialogs, but is not refitted. `arrived` says a layout may place it.
 # Answers whether it moved.
@@ -1393,7 +1393,7 @@ type = "object:workspace"
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 [[object.method.param]]
 name = "arrived"
@@ -1406,7 +1406,7 @@ since = "0.2.0"
 
 [[object.method.param]]
 name = "client"
-type = "uint"
+type = "string"
 
 [[object.method.param]]
 name = "zone"

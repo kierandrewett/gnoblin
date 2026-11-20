@@ -1851,8 +1851,47 @@ starts the library's desktop (`events::open`), as `open` of the table does.
   are properties, its actions are methods (an action that only reads something that may be absent, `strip_layout.pin`, is a read-only optional
   property). `stock.rs` walks the same table, so a kind added there is a class in every language and in the library the day the generator runs.
 
-Not yet (later slices): the replay of the `tiling`, `examples` and `anim_style` fixtures, example 26 and `modular::native_objects`, the rollback of
-a transition for workspaces, `View.content` as a workspace, and the `active_workspace` writer.
+**The replay (slice 2).** `crates/gnoblin-std-impl/tests/objects.rs` plays the scripts of nine recorded `tiling_*` fixtures to `shell-objects`
+(`crates/gnoblin-std-impl/fixtures/shell-objects`), which has the chords of `shell-tiling` over the classes of `gnoblin_std::objects` (a workspace,
+the built-in layout classes and their actions, `client_state`), in the launcher over the real core and the real library, and holds every window's
+rectangle, `tiled`, `visible`, depth, rotation and scale to the fixture at every step: the arc, the carousel, the dwindle's arrivals, actions,
+preselection and two pointer options, and the strip's opening and scrolling. Example 26 (`examples/26-native-objects`, with `-ts` and `-py`) and
+`modular::native_objects` run a workspace from Rust, TypeScript and Python in a real session: the library's master and stack layout, a layout
+the shell implements (equal columns), and a divider moved with `find_split` and `set_split`.
+
+**Allowances of the replay** (each is in the test, with its reason): (1) the nine fixtures whose scripts drag with a pointer chord or make a gesture
+(`binding_priority`, `directed_gesture`, `dwindle_drag`, `gesture_cancel_on_close`, `pointer_move_resize`, `resize_limits`, `snap`,
+`split_resize_drag`, `tile_swap`) are not replayed: a drag and a gesture are bindings, whose classes are NpStdPolicy's and NpCoreInput's; the
+divider they move is moved from the object protocol by `modular::native_objects`, and a test checks each of these scripts does drag or gesture.
+(2) `examples_tiling_layouts`, `examples_floating_placement` and `anim_style_transitions` come from scenarios with fixture shells of their own
+(`shell-layouts` with a swap binding, the example 2 shell, `shell-anim`); the gap is those shells over the classes, which no lane has written yet.
+(3) A number is the fixture's within 1e-9 of its size: the carousel's depth differs in the last binary digit (`-1559.3945806691095` and `-1559.3945806691097`). (4) A layout that a shell of the std table made has no object: `workspace.layout` answers none for it.
+
+**How a client is named over the protocol (a decision for the owner).** The compositor numbers a window's node with the top bit set
+(`9223372036854775812`), and `Val::Uint` reaches JavaScript as a double, which holds 53 bits: a client passed as `uint` came back rounded
+(`9223372036854776000`), so a layout's placements named nodes that were not its children and the library refused them. Python has arbitrary
+integers, so it does not round. The convention that exists already is the core's `client.id`, which is `string`, the node number as text, and
+the old TypeScript `Client.id` was the same; the scene's `scene_node.node` is a `uint` because the library makes those nodes and their numbers are
+small. **Chosen:** every client in `workspace.toml` (a layout's `children`, `focused` and placements, `client_collection` members, `client_state.node`,
+the clients a method takes, the signals) is the node number as text, as `client.id` is; outputs stay `uint` (they are not numbered with the top
+bit on the compositors I read; a shell of a compositor that does needs the same change). Alternatives, with their costs: (1) `uint` that the JavaScript
+runtime hands out as `BigInt` above 2^53: every `uint` the TypeScript SDK reads becomes `number | bigint`, and arithmetic on it throws, which touches
+every class that has a `uint`; (2) a new catalog type `node` that the three SDKs render as a string in JavaScript and an integer in Python and Rust:
+the cleanest for a shell, and a change to the schema parser, the checks and the four generators; (3) a typed `client` object (the core's
+`gnoblin.model.client`): the right end state, which the generators refuse today (a member whose type names a class of the other namespace), so it
+needs the second `Objects` in the typed handle. The text id costs a parse and an allocation on each crossing and nothing else.
+
+**Importers of the TypeScript modules** (nothing is deleted before NpFlip). `host/workspace.ts` is imported by `host/{console,desks,displays,install,
+layout_bridge,lifecycle,membership,members,policy,restore,roots,services,show,snapshot,state,style_scopes,workspace_state,workspaces,xr_bridge}.ts` and
+`host.ts`; `host/workspaces.ts` by `host/{lifecycle,roots}.ts`; `host/membership.ts` by `host/{frame,install,lifecycle,members,services,show,snapshot,
+workspaces,workspace}.ts`; `host/desks.ts` by `host/{frame,members,policy,restore,snapshot,work_area}.ts`; `host/client_state.ts` by `host/{frame,
+membership,members,snap_host,xr_bridge}.ts`; `host/show.ts` by `host/{members,policy,restore,roots,snapshot,workspace}.ts` and `host.ts`;
+`host/layout_bridge.ts` by `host/{frame,restore,workspace_state,workspace}.ts`; `host/members.ts` by `host/install.ts`. `workspace.ts` is imported by
+`focus.ts` and `host/{layout_bridge,restore,workspace}.ts`; `layout.ts` by `index.ts`, `workspace.ts`, `host/{layout_bridge,workspace_state,workspace}.ts`
+and the layouts `arc`, `dwindle`, `floating`, `grid`, `master-stack`, `native` and `strip`; the other `layouts/*` by `index.ts`, `workspace.ts` and
+`host/{layout_bridge,workspace}.ts`. All paths are under `data/js/gnoblin-std/`.
+
+Not yet (slice 3): the rollback of a transition for workspaces, `View.content` as a workspace, and the `active_workspace` writer.
 
 #### NpStdDisplay (4 days)
 

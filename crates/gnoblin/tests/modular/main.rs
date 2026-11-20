@@ -20,6 +20,7 @@ mod js_esm;
 mod motion;
 mod native_model;
 mod native_object;
+mod native_objects;
 mod native_scene;
 mod native_services;
 mod native_std;

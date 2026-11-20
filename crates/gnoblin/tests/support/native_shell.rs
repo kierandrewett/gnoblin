@@ -141,6 +141,8 @@ pub struct StdShells {
     pub scene: PathBuf,
     /// Example 25: a style on every window, and a transition the shell aborts; the library's rollback is read back and logged.
     pub style: PathBuf,
+    /// Example 26: a workspace with the library's layout, then one of the shell's own, then the library's again with its divider moved.
+    pub objects: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -177,6 +179,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-scene",
             "-p",
             "gnoblin-example-native-style",
+            "-p",
+            "gnoblin-example-native-objects",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -197,6 +201,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         ui: debug.join("libnative_ui.so"),
         scene: debug.join("libnative_scene.so"),
         style: debug.join("libnative_style.so"),
+        objects: debug.join("libnative_objects.so"),
     })
 }
 

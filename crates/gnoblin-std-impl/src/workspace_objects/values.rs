@@ -14,6 +14,19 @@ pub(crate) const NOTICE_SHOWN: u32 = 0x100;
 /// A notice that no listener of the table hears: the workspace `member` stopped being shown on the output `output`.
 pub(crate) const NOTICE_HIDDEN: u32 = 0x101;
 
+/// A client as the value it has in the catalog: its node number as text, as the core's `client.id` is. A node number has the top bit set
+/// and a script's number (a double in JavaScript) holds 53 bits, so a number would round it.
+pub(super) fn client_val(node: NodeId) -> Val {
+    Val::Text(node.to_string())
+}
+
+/// The node a client value names.
+pub(super) fn client_of(value: &Val) -> Res<NodeId> {
+    let text = value.text()?;
+    text.parse::<NodeId>()
+        .map_err(|_| Fail::type_error(format!("a client is the number of its node as text, got `{text}`")))
+}
+
 /// A `layout_rect` as a value.
 pub(super) fn rect_val(rect: &Rect) -> Val {
     record(vec![
@@ -119,7 +132,7 @@ pub(super) fn told_by(st: &State, notice: &Notice) -> Vec<(SignalHome, &'static 
                     told.push((
                         SignalHome::Collection(*holder),
                         if added { "added" } else { "removed" },
-                        vec![SignalField::Plain(Val::Uint(notice.member))],
+                        vec![SignalField::Plain(client_val(notice.member))],
                     ));
                     if let Some(workspace) = st
                         .ws
@@ -129,7 +142,7 @@ pub(super) fn told_by(st: &State, notice: &Notice) -> Vec<(SignalHome, &'static 
                         told.push((
                             SignalHome::Workspace(workspace),
                             if added { "client_added" } else { "client_removed" },
-                            vec![SignalField::Plain(Val::Uint(notice.member))],
+                            vec![SignalField::Plain(client_val(notice.member))],
                         ));
                     }
                 } else if coll.kind == abi::STD_COLLECTION_WORKSPACES && *holder == st.roots[2] {

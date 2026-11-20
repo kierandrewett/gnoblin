@@ -14,7 +14,7 @@ use gnoblin_object::server::{Cx, ShellImpl};
 use gnoblin_object::{Fail, MemberId, Res, Val};
 use gnoblin_std_abi::{GnoblinStdSplit, STD_AXIS_X, STD_AXIS_Y, STD_SPLIT_CROSS};
 
-use super::values::{member_val, rect_field, rect_of, rect_val, wire_of};
+use super::values::{client_of, client_val, member_val, rect_field, rect_of, rect_val, wire_of};
 use crate::error::{Fail as StdFail, Res as StdRes};
 use crate::layout::{LayoutContext, Placement};
 use crate::object::record::{field, flag_field, number_field, record};
@@ -109,7 +109,7 @@ impl ObjectLayout {
         self.hook(
             self.ids.client_added,
             "client_added",
-            &[self.context(cx), Val::Uint(client)],
+            &[self.context(cx), client_val(client)],
         );
     }
 
@@ -118,7 +118,7 @@ impl ObjectLayout {
         self.hook(
             self.ids.client_removed,
             "client_removed",
-            &[self.context(cx), Val::Uint(client)],
+            &[self.context(cx), client_val(client)],
         );
     }
 
@@ -136,7 +136,7 @@ impl ObjectLayout {
         self.hook(
             self.ids.clients_swapped,
             "clients_swapped",
-            &[Val::Uint(a), Val::Uint(b)],
+            &[client_val(a), client_val(b)],
         );
     }
 
@@ -165,7 +165,7 @@ impl ObjectLayout {
             .shell
             .call(
                 self.ids.find_split,
-                &[Val::Uint(client), Val::Double(x), Val::Double(y)],
+                &[client_val(client), Val::Double(x), Val::Double(y)],
             )
             .ok()?;
         // The answer is a list of one divider, or an empty list when the point has none.
@@ -213,11 +213,11 @@ fn workspace_text(ctx: GnoblinCtx, id: crate::state::Id) -> String {
 pub(super) fn context_val(ctx: GnoblinCtx, cx: &LayoutContext) -> Val {
     record(vec![
         Val::Text(workspace_text(ctx, cx.workspace)),
-        Val::List(cx.children.iter().map(|child| Val::Uint(*child)).collect()),
+        Val::List(cx.children.iter().map(|child| client_val(*child)).collect()),
         rect_val(&cx.area),
         Val::Double(cx.gap_inner),
         Val::Double(cx.gap_outer),
-        cx.focused.map_or(Val::None, Val::Uint),
+        cx.focused.map_or(Val::None, client_val),
     ])
 }
 
@@ -228,7 +228,7 @@ pub(super) fn context_of(value: &Val) -> Res<LayoutContext> {
         .ok_or_else(|| Fail::type_error("a layout context needs its `children`"))?
         .list()?
         .iter()
-        .map(Val::uint)
+        .map(client_of)
         .collect::<Res<Vec<_>>>()?;
     let area = field(fields, 2).ok_or_else(|| Fail::type_error("a layout context needs its `area`"))?;
     Ok(LayoutContext {
@@ -237,7 +237,7 @@ pub(super) fn context_of(value: &Val) -> Res<LayoutContext> {
         area: rect_of(area)?,
         gap_inner: number_field(fields, 3, 0.0)?,
         gap_outer: number_field(fields, 4, 0.0)?,
-        focused: field(fields, 5).map(Val::uint).transpose()?,
+        focused: field(fields, 5).map(client_of).transpose()?,
         pointer: None,
     })
 }
@@ -245,7 +245,7 @@ pub(super) fn context_of(value: &Val) -> Res<LayoutContext> {
 /// A placement as a `layout_placement` value.
 pub(super) fn placement_val(placement: &Placement) -> Val {
     record(vec![
-        Val::Uint(placement.node),
+        client_val(placement.node),
         placement.bounds.as_ref().map_or(Val::None, rect_val),
         Val::Bool(placement.visible),
         Val::Bool(placement.tiled),
@@ -285,9 +285,8 @@ pub(super) fn placements_of(answer: &Val, children: &[NodeId]) -> Res<Vec<Placem
     let mut placements = Vec::with_capacity(items.len());
     for item in items {
         let fields = item.record()?;
-        let node = field(fields, 0)
-            .ok_or_else(|| Fail::type_error("a placement needs the `node` it is for"))?
-            .uint()?;
+        let node =
+            client_of(field(fields, 0).ok_or_else(|| Fail::type_error("a placement needs the `node` it is for"))?)?;
         if !children.contains(&node) {
             return Err(Fail::type_error(format!(
                 "placement for node {node}, which is not one of the workspace's clients"
