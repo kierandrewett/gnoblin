@@ -19,7 +19,7 @@
 //! - `button` is a button edge. A pointer destroyed with a button down releases it, which Smithay does before
 //!   it removes the device.
 //! - `axis`, `axis_source`, `axis_discrete`, `axis_stop` and `frame` make one scroll frame
-//!   ([`crate::scroll::Scroll`]): a wheel step counts its 1/120 units, a finger or continuous source carries
+//!   ([`crate::scroll::ScrollFrame`]): a wheel step counts its 1/120 units, a finger or continuous source carries
 //!   pixels only, and a stop ends a kinetic scroll. A frame is sent whole, so a client sees one `wl_pointer`
 //!   axis group per `frame` request.
 //!
@@ -40,7 +40,7 @@
 //! 2. A move and a click reach the client under the pointer: `a_virtual_pointer_moves_and_clicks_a_window`.
 //! 3. An absolute move lands where its fraction says, on the whole layout and on a named output:
 //!    `an_absolute_motion_lands_at_its_fraction_of_the_layout`.
-//! 4. Scroll frames keep their source, steps and stop:
+//! 4. ScrollFrame frames keep their source, steps and stop:
 //!    `a_wheel_frame_reaches_the_client_with_its_steps`, `a_finger_frame_reaches_the_client_and_stops`.
 //! 5. A pointer destroyed with a button down releases it: `a_destroyed_pointer_releases_its_held_button`.
 //! 6. A modal that is up takes the click and the client sees none: `a_virtual_click_under_a_modal_goes_to_the_modal`.
@@ -105,7 +105,7 @@ impl ScrollAxis {
 /// One scroll frame: a source and what each axis did. A wheel step is the case where the source is
 /// [`AxisSource::Wheel`] and every axis carries its steps, so the compositor has one routing path for both.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Scroll {
+pub struct ScrollFrame {
     /// What produced the scroll.
     pub source: AxisSource,
     /// The horizontal axis, `None` when the frame did not touch it.
@@ -114,7 +114,7 @@ pub struct Scroll {
     pub vertical: Option<ScrollAxis>,
 }
 
-impl Scroll {
+impl ScrollFrame {
     /// A wheel scroll of `horizontal` and `vertical` in 1/120 of a step; an axis that did not move is untouched.
     #[must_use]
     pub fn wheel(horizontal: i32, vertical: i32) -> Self {
@@ -160,7 +160,7 @@ pub trait Host: OutputHost + VirtualPointerHandler + Sized + 'static {
     /// Delivers one button edge; `button` is the Linux input event code.
     fn deliver_button(&mut self, button: u32, pressed: bool);
     /// Delivers one scroll frame.
-    fn deliver_scroll(&mut self, scroll: Scroll);
+    fn deliver_scroll(&mut self, scroll: ScrollFrame);
     /// The outputs and the logical rectangle each occupies, in the layout's order.
     fn layout(&self) -> Vec<(OutputId, Rect)>;
     /// The pointers' bookkeeping.
@@ -303,7 +303,7 @@ fn bounds(layout: &[(OutputId, Rect)]) -> Option<Rect> {
 }
 
 /// One `frame` of axis requests as a scroll frame.
-fn scroll_of(event: &impl PointerAxisEvent<VirtualPointerBackend>) -> Scroll {
+fn scroll_of(event: &impl PointerAxisEvent<VirtualPointerBackend>) -> ScrollFrame {
     let axis = |axis: Axis| {
         let pixels = event.amount(axis)?;
         // A discrete wheel step counts 120 units a step; the value is a whole number of them.
@@ -313,7 +313,7 @@ fn scroll_of(event: &impl PointerAxisEvent<VirtualPointerBackend>) -> Scroll {
         let stop = pixels == 0.0 && steps.is_none();
         Some(ScrollAxis { pixels, steps, stop })
     };
-    Scroll {
+    ScrollFrame {
         source: event.source(),
         horizontal: axis(Axis::Horizontal),
         vertical: axis(Axis::Vertical),
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn a_wheel_step_is_fifteen_pixels_and_120_units() {
-        let scroll = Scroll::wheel(0, 120);
+        let scroll = ScrollFrame::wheel(0, 120);
         assert_eq!(scroll.horizontal, None);
         let vertical = scroll.vertical.expect("the vertical axis moved");
         assert_eq!(vertical.steps, Some(120));
@@ -335,12 +335,12 @@ mod tests {
 
     #[test]
     fn a_scroll_that_moved_nothing_is_empty() {
-        assert!(Scroll::wheel(0, 0).is_empty());
+        assert!(ScrollFrame::wheel(0, 0).is_empty());
     }
 
     #[test]
     fn a_stop_is_not_empty() {
-        let scroll = Scroll {
+        let scroll = ScrollFrame {
             source: AxisSource::Finger,
             horizontal: None,
             vertical: Some(ScrollAxis {
@@ -404,12 +404,12 @@ mod tests {
     }
 
     #[test]
-    fn the_middle_of_two_outputs_is_on_the_seam() {
+    fn a_quarter_and_three_quarters_of_two_outputs_land_one_on_each() {
         let (output, _) = place(&two_outputs(), None, 0.25, 0.0).expect("a layout");
         assert_eq!(output, LEFT);
         let (output, at) = place(&two_outputs(), None, 0.75, 0.0).expect("a layout");
         assert_eq!(output, RIGHT);
-        assert_eq!(at.x, 500);
+        assert_eq!(at.x, 499, "0.75 of 1999 is 1499.25, 499 on the second output");
     }
 
     #[test]

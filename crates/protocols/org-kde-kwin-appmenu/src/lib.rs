@@ -80,7 +80,7 @@ pub trait Host: Sized + 'static {
 }
 
 /// One appmenu object a client made.
-struct Record {
+struct AppmenuRecord {
     /// The surface it belongs to.
     surface: WlSurface,
     /// The object, to tell it from the client's others.
@@ -97,7 +97,7 @@ pub struct KdeAppmenus {
     #[allow(dead_code)]
     global: GlobalId,
     /// Every live appmenu object.
-    records: Vec<Record>,
+    records: Vec<AppmenuRecord>,
     /// The next stamp.
     clock: u64,
 }
@@ -115,7 +115,7 @@ impl KdeAppmenus {
 }
 
 /// The user data of a bound manager.
-pub struct ManagerUserData;
+pub struct OrgKdeKwinAppmenuManagerUserData;
 
 /// The user data of one appmenu object: the surface it belongs to.
 pub struct AppmenuUserData {
@@ -123,17 +123,17 @@ pub struct AppmenuUserData {
 }
 
 /// The global data of the manager.
-pub struct ManagerGlobalData;
+pub struct OrgKdeKwinAppmenuManagerGlobalData;
 
 /// Creates the `org_kde_kwin_appmenu_manager` global.
 pub fn register<D>(registrar: &Registrar<'_>) -> KdeAppmenus
 where
-    D: GlobalDispatch<OrgKdeKwinAppmenuManager, ManagerGlobalData> + 'static,
+    D: GlobalDispatch<OrgKdeKwinAppmenuManager, OrgKdeKwinAppmenuManagerGlobalData> + 'static,
 {
     KdeAppmenus {
         global: registrar
             .display()
-            .create_global::<D, OrgKdeKwinAppmenuManager, _>(MANAGER_VERSION, ManagerGlobalData),
+            .create_global::<D, OrgKdeKwinAppmenuManager, _>(MANAGER_VERSION, OrgKdeKwinAppmenuManagerGlobalData),
         records: Vec::new(),
         clock: 0,
     }
@@ -187,9 +187,9 @@ fn is_object_path(path: &str) -> bool {
         })
 }
 
-impl<D> GlobalDispatch2<OrgKdeKwinAppmenuManager, D> for ManagerGlobalData
+impl<D> GlobalDispatch2<OrgKdeKwinAppmenuManager, D> for OrgKdeKwinAppmenuManagerGlobalData
 where
-    D: Dispatch<OrgKdeKwinAppmenuManager, ManagerUserData> + 'static,
+    D: Dispatch<OrgKdeKwinAppmenuManager, OrgKdeKwinAppmenuManagerUserData> + 'static,
 {
     fn bind(
         &self,
@@ -199,11 +199,11 @@ where
         resource: New<OrgKdeKwinAppmenuManager>,
         data_init: &mut DataInit<'_, D>,
     ) {
-        data_init.init(resource, ManagerUserData);
+        data_init.init(resource, OrgKdeKwinAppmenuManagerUserData);
     }
 }
 
-impl<D> Dispatch2<OrgKdeKwinAppmenuManager, D> for ManagerUserData
+impl<D> Dispatch2<OrgKdeKwinAppmenuManager, D> for OrgKdeKwinAppmenuManagerUserData
 where
     D: Host + Dispatch<OrgKdeKwinAppmenu, AppmenuUserData> + 'static,
 {
@@ -224,7 +224,7 @@ where
                     surface: surface.clone(),
                 },
             );
-            state.appmenus().records.push(Record {
+            state.appmenus().records.push(AppmenuRecord {
                 surface,
                 object,
                 address: None,

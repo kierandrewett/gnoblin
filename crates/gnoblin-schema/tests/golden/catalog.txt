@@ -695,6 +695,7 @@ object seat since 0.2.0 secret false
   property effect_kinds type list<string> since 0.2.0 secret false
   property user_shaders type bool since 0.2.0 secret false
   property decorations_available type bool since 0.2.0 secret false
+  property active_workspace type string since 0.2.0 secret false
   property builtin_motion type bool since 0.2.0 secret false
   property grabbed type string since 0.2.0 secret false
   property cursor_shape type string since 0.2.0 secret false
@@ -876,6 +877,8 @@ object window since 0.2.0 secret false
   property from_launcher type bool since 0.2.0 secret false
   property decoration type string since 0.2.0 secret false
   property decoration_wanted type string since 0.2.0 secret false
+  property appmenu_service type string since 0.2.0 secret false
+  property appmenu_path type string since 0.2.0 secret false
   property frame_policy type string since 0.2.0 secret false
   property frame_rate type double since 0.2.0 secret false
   property report_presented type bool since 0.2.0 secret false
@@ -2563,19 +2566,21 @@ message Seat {
     // since 0.2.0
     bool decorations_available = 41;
     // since 0.2.0
-    bool builtin_motion = 42;
+    string active_workspace = 42;
     // since 0.2.0
-    string grabbed = 43;
+    bool builtin_motion = 43;
     // since 0.2.0
-    string cursor_shape = 44;
+    string grabbed = 44;
     // since 0.2.0
-    bytes cursor_image = 45;
+    string cursor_shape = 45;
     // since 0.2.0
-    int64 cursor_hotspot_x = 46;
+    bytes cursor_image = 46;
     // since 0.2.0
-    int64 cursor_hotspot_y = 47;
+    int64 cursor_hotspot_x = 47;
     // since 0.2.0
-    bool cursor_hidden = 48;
+    int64 cursor_hotspot_y = 48;
+    // since 0.2.0
+    bool cursor_hidden = 49;
   }
 
   // Method `warp`, since 0.2.0.
@@ -2973,13 +2978,17 @@ message Window {
     // since 0.2.0
     string decoration_wanted = 32;
     // since 0.2.0
-    string frame_policy = 33;
+    string appmenu_service = 33;
     // since 0.2.0
-    double frame_rate = 34;
+    string appmenu_path = 34;
     // since 0.2.0
-    bool report_presented = 35;
+    string frame_policy = 35;
     // since 0.2.0
-    uint64 presented = 36;
+    double frame_rate = 36;
+    // since 0.2.0
+    bool report_presented = 37;
+    // since 0.2.0
+    uint64 presented = 38;
   }
 
   // Method `focus`, since 0.2.0.

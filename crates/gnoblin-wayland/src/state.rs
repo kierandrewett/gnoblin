@@ -2046,7 +2046,7 @@ impl State {
     /// A scroll frame a device sent that the backend's one scroll event cannot state (a
     /// finger or continuous source, or a stop), taken through the same gates every input
     /// event meets and then routed as a wheel is.
-    pub(crate) fn input_scroll(&mut self, scroll: gnoblin_wayland_protocols::zwlr_virtual_pointer_v1::Scroll) {
+    pub(crate) fn input_scroll(&mut self, scroll: gnoblin_wayland_protocols::zwlr_virtual_pointer_v1::ScrollFrame) {
         let time = InputTime::now();
         // The gates read the kind of event, not its amount, so an empty scroll stands for any.
         let probe = InputEvent::PointerAxis {
@@ -2062,7 +2062,11 @@ impl State {
 
     /// Sends a scroll to what is under the pointer: a shell node gets the pixel distance and no client does, and a
     /// client gets one `wl_pointer` axis group. A scroll that moved nothing and stopped nothing sends nothing.
-    fn route_scroll(&mut self, scroll: gnoblin_wayland_protocols::zwlr_virtual_pointer_v1::Scroll, time: InputTime) {
+    fn route_scroll(
+        &mut self,
+        scroll: gnoblin_wayland_protocols::zwlr_virtual_pointer_v1::ScrollFrame,
+        time: InputTime,
+    ) {
         if scroll.is_empty() {
             return;
         }
@@ -4374,7 +4378,7 @@ impl Host for State {
             InputEvent::PointerAxis {
                 horizontal, vertical, ..
             } => self.route_scroll(
-                gnoblin_wayland_protocols::zwlr_virtual_pointer_v1::Scroll::wheel(horizontal, vertical),
+                gnoblin_wayland_protocols::zwlr_virtual_pointer_v1::ScrollFrame::wheel(horizontal, vertical),
                 time,
             ),
             // A gesture a shell claimed goes to that shell and to no client or binding; any other is

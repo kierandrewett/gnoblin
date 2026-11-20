@@ -76,7 +76,7 @@ pub(crate) const IMPLICIT_ID: &str = "1";
 
 /// One workspace as a client is told it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WorkspaceInfo {
+pub struct WorkspaceListing {
     /// The declared id, which is stable for the workspace's life.
     pub id: String,
     /// The name a panel shows.
@@ -86,9 +86,9 @@ pub struct WorkspaceInfo {
 }
 
 /// What the session has now: its workspaces and its outputs.
-pub struct Snapshot {
+pub struct WorkspaceSnapshot {
     /// The workspaces, in declaration order.
-    pub workspaces: Vec<WorkspaceInfo>,
+    pub workspaces: Vec<WorkspaceListing>,
     /// The outputs, which are all in the one group.
     pub outputs: Vec<Output>,
 }
@@ -97,7 +97,7 @@ pub struct Snapshot {
 /// protocol can be served from outside this crate's state.
 pub trait Host: Sized + 'static {
     /// The workspaces and outputs the session has now.
-    fn workspace_snapshot(&self) -> Snapshot;
+    fn workspace_snapshot(&self) -> WorkspaceSnapshot;
     /// The display, which creates the objects a client is sent.
     fn workspace_display(&self) -> DisplayHandle;
     /// The protocol's bookkeeping.
@@ -107,12 +107,12 @@ pub trait Host: Sized + 'static {
 /// The workspaces a session has, from its declared `id:name` items and the id the shell named active.
 ///
 /// An item with no colon is an id that is also its name. No declared items is the one implicit workspace.
-pub fn workspaces_of(declared: &[String], active: Option<&str>) -> Vec<WorkspaceInfo> {
-    let mut workspaces: Vec<WorkspaceInfo> = declared
+pub fn workspaces_of(declared: &[String], active: Option<&str>) -> Vec<WorkspaceListing> {
+    let mut workspaces: Vec<WorkspaceListing> = declared
         .iter()
         .map(|item| {
             let (id, name) = item.split_once(':').unwrap_or((item.as_str(), item.as_str()));
-            WorkspaceInfo {
+            WorkspaceListing {
                 id: id.to_owned(),
                 name: name.to_owned(),
                 active: false,
@@ -120,7 +120,7 @@ pub fn workspaces_of(declared: &[String], active: Option<&str>) -> Vec<Workspace
         })
         .collect();
     if workspaces.is_empty() {
-        workspaces.push(WorkspaceInfo {
+        workspaces.push(WorkspaceListing {
             id: IMPLICIT_ID.to_owned(),
             name: IMPLICIT_ID.to_owned(),
             active: false,
@@ -137,14 +137,14 @@ pub fn workspaces_of(declared: &[String], active: Option<&str>) -> Vec<Workspace
 }
 
 /// What one bound manager has been told.
-struct Bound {
+struct BoundManager {
     manager: ExtWorkspaceManagerV1,
     /// The group, once it has been sent.
     group: Option<ExtWorkspaceGroupHandleV1>,
     /// The `wl_output` objects of this client the group has been told about.
     outputs: Vec<WlOutput>,
     /// The workspaces this client has handles for, with what it was last told of each.
-    workspaces: Vec<(WorkspaceInfo, ExtWorkspaceHandleV1)>,
+    workspaces: Vec<(WorkspaceListing, ExtWorkspaceHandleV1)>,
 }
 
 /// The global and every bound manager.
@@ -152,16 +152,16 @@ pub struct Workspaces {
     /// Kept alive so `ext_workspace_manager_v1` stays registered; the bind is gated by the access roster.
     #[allow(dead_code)]
     global: GlobalId,
-    bound: Vec<Bound>,
+    bound: Vec<BoundManager>,
 }
 
 /// The global data of the manager: the roster's answer for who may bind it.
-pub struct ManagerGlobalData {
+pub struct ExtWorkspaceV1ManagerGlobalData {
     filter: Box<dyn for<'c> Fn(&'c Client) -> bool + Send + Sync>,
 }
 
 /// The user data of a bound manager.
-pub struct ManagerUserData;
+pub struct ExtWorkspaceV1ManagerUserData;
 
 /// The user data of a group handle.
 pub struct GroupUserData;
@@ -172,12 +172,12 @@ pub struct WorkspaceUserData;
 /// Creates the `ext_workspace_manager_v1` global behind the access roster.
 pub fn register<D>(registrar: &Registrar<'_>) -> Workspaces
 where
-    D: GlobalDispatch<ExtWorkspaceManagerV1, ManagerGlobalData> + 'static,
+    D: GlobalDispatch<ExtWorkspaceManagerV1, ExtWorkspaceV1ManagerGlobalData> + 'static,
 {
     Workspaces {
         global: registrar.display().create_global::<D, ExtWorkspaceManagerV1, _>(
             MANAGER_VERSION,
-            ManagerGlobalData {
+            ExtWorkspaceV1ManagerGlobalData {
                 filter: Box::new(registrar.filter(Global::Workspace)),
             },
         ),
@@ -203,7 +203,7 @@ where
 }
 
 /// Sends one manager what changed since it was last told. `true` when something was sent.
-fn sync<D>(display: &DisplayHandle, bound: &mut Bound, snapshot: &Snapshot) -> bool
+fn sync<D>(display: &DisplayHandle, bound: &mut BoundManager, snapshot: &WorkspaceSnapshot) -> bool
 where
     D: Dispatch<ExtWorkspaceGroupHandleV1, GroupUserData> + Dispatch<ExtWorkspaceHandleV1, WorkspaceUserData> + 'static,
 {
@@ -297,7 +297,7 @@ where
 }
 
 /// The state bits a workspace has.
-fn state_of(workspace: &WorkspaceInfo) -> WorkspaceState {
+fn state_of(workspace: &WorkspaceListing) -> WorkspaceState {
     if workspace.active {
         WorkspaceState::Active
     } else {
@@ -305,10 +305,10 @@ fn state_of(workspace: &WorkspaceInfo) -> WorkspaceState {
     }
 }
 
-impl<D> GlobalDispatch2<ExtWorkspaceManagerV1, D> for ManagerGlobalData
+impl<D> GlobalDispatch2<ExtWorkspaceManagerV1, D> for ExtWorkspaceV1ManagerGlobalData
 where
     D: Host
-        + Dispatch<ExtWorkspaceManagerV1, ManagerUserData>
+        + Dispatch<ExtWorkspaceManagerV1, ExtWorkspaceV1ManagerUserData>
         + Dispatch<ExtWorkspaceGroupHandleV1, GroupUserData>
         + Dispatch<ExtWorkspaceHandleV1, WorkspaceUserData>
         + 'static,
@@ -321,8 +321,8 @@ where
         resource: New<ExtWorkspaceManagerV1>,
         data_init: &mut DataInit<'_, D>,
     ) {
-        let bound = data_init.init(resource, ManagerUserData);
-        state.workspaces().bound.push(Bound {
+        let bound = data_init.init(resource, ExtWorkspaceV1ManagerUserData);
+        state.workspaces().bound.push(BoundManager {
             manager: bound,
             group: None,
             outputs: Vec::new(),
@@ -338,7 +338,7 @@ where
     }
 }
 
-impl<D: Host> Dispatch2<ExtWorkspaceManagerV1, D> for ManagerUserData {
+impl<D: Host> Dispatch2<ExtWorkspaceManagerV1, D> for ExtWorkspaceV1ManagerUserData {
     fn request(
         &self,
         state: &mut D,
@@ -417,13 +417,13 @@ impl<D: Host> Dispatch2<ExtWorkspaceHandleV1, D> for WorkspaceUserData {
 
 #[cfg(test)]
 mod tests {
-    use super::{WorkspaceInfo, workspaces_of};
+    use super::{WorkspaceListing, workspaces_of};
 
     fn declared(items: &[&str]) -> Vec<String> {
         items.iter().map(|item| (*item).to_owned()).collect()
     }
 
-    fn active_ids(list: &[WorkspaceInfo]) -> Vec<&str> {
+    fn active_ids(list: &[WorkspaceListing]) -> Vec<&str> {
         list.iter()
             .filter(|workspace| workspace.active)
             .map(|workspace| workspace.id.as_str())

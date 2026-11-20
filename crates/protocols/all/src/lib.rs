@@ -11,9 +11,9 @@ pub use gnoblin_wayland_ext_foreign_toplevel_list_v1 as ext_foreign_toplevel_lis
 pub use gnoblin_wayland_ext_idle_notify_v1 as ext_idle_notify_v1;
 pub use gnoblin_wayland_ext_workspace_v1 as ext_workspace_v1;
 pub use gnoblin_wayland_foreign_toplevel_shared as foreign_toplevel_shared;
-pub use gnoblin_wayland_wl_compositor as wl_compositor;
 pub use gnoblin_wayland_org_kde_kwin_appmenu as org_kde_kwin_appmenu;
 pub use gnoblin_wayland_org_kde_kwin_server_decoration as org_kde_kwin_server_decoration;
+pub use gnoblin_wayland_wl_compositor as wl_compositor;
 pub use gnoblin_wayland_wl_output as wl_output;
 pub use gnoblin_wayland_wl_seat as wl_seat;
 pub use gnoblin_wayland_wl_shm as wl_shm;

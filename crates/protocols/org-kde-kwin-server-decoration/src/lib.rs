@@ -49,8 +49,8 @@ use wayland_protocols_plasma::server_decoration::server::org_kde_kwin_server_dec
     self as manager, OrgKdeKwinServerDecorationManager,
 };
 
-use gnoblin_wayland_types::decoration::DecorationWanted;
 use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
+use gnoblin_wayland_types::decoration::DecorationWanted;
 
 gnoblin_log::logger!(log = "wayland");
 
@@ -85,7 +85,7 @@ pub trait Host: Sized + 'static {
 }
 
 /// One decoration object a client made.
-struct Record {
+struct KdeDecorationRecord {
     /// The surface it decorates.
     surface: WlSurface,
     /// The object, which is told each mode.
@@ -104,16 +104,16 @@ pub struct KdeDecorations {
     /// The bound managers, which hear the default mode again when it changes.
     managers: Vec<OrgKdeKwinServerDecorationManager>,
     /// Every live decoration object.
-    records: Vec<Record>,
+    records: Vec<KdeDecorationRecord>,
 }
 
 /// The global data of the manager: whether the configuration offers it.
-pub struct ManagerGlobalData {
+pub struct OrgKdeKwinServerDecorationManagerGlobalData {
     offered: bool,
 }
 
 /// The user data of a bound manager.
-pub struct ManagerUserData;
+pub struct OrgKdeKwinServerDecorationManagerUserData;
 
 /// The user data of one decoration object: the surface it decorates.
 pub struct DecorationUserData {
@@ -124,12 +124,15 @@ pub struct DecorationUserData {
 /// false the client sees a compositor that has no such protocol.
 pub fn register<D>(registrar: &Registrar<'_>, offered: bool) -> KdeDecorations
 where
-    D: GlobalDispatch<OrgKdeKwinServerDecorationManager, ManagerGlobalData> + 'static,
+    D: GlobalDispatch<OrgKdeKwinServerDecorationManager, OrgKdeKwinServerDecorationManagerGlobalData> + 'static,
 {
     KdeDecorations {
         global: registrar
             .display()
-            .create_global::<D, OrgKdeKwinServerDecorationManager, _>(MANAGER_VERSION, ManagerGlobalData { offered }),
+            .create_global::<D, OrgKdeKwinServerDecorationManager, _>(
+                MANAGER_VERSION,
+                OrgKdeKwinServerDecorationManagerGlobalData { offered },
+            ),
         managers: Vec::new(),
         records: Vec::new(),
     }
@@ -185,9 +188,9 @@ pub fn default_changed<H: Host>(host: &mut H, available: bool) {
     }
 }
 
-impl<D> GlobalDispatch2<OrgKdeKwinServerDecorationManager, D> for ManagerGlobalData
+impl<D> GlobalDispatch2<OrgKdeKwinServerDecorationManager, D> for OrgKdeKwinServerDecorationManagerGlobalData
 where
-    D: Host + Dispatch<OrgKdeKwinServerDecorationManager, ManagerUserData> + 'static,
+    D: Host + Dispatch<OrgKdeKwinServerDecorationManager, OrgKdeKwinServerDecorationManagerUserData> + 'static,
 {
     fn bind(
         &self,
@@ -197,7 +200,7 @@ where
         resource: New<OrgKdeKwinServerDecorationManager>,
         data_init: &mut DataInit<'_, D>,
     ) {
-        let bound = data_init.init(resource, ManagerUserData);
+        let bound = data_init.init(resource, OrgKdeKwinServerDecorationManagerUserData);
         bound.default_mode(mode_of(state.decorations_available()));
         state.kde_decorations().managers.push(bound);
     }
@@ -207,7 +210,7 @@ where
     }
 }
 
-impl<D> Dispatch2<OrgKdeKwinServerDecorationManager, D> for ManagerUserData
+impl<D> Dispatch2<OrgKdeKwinServerDecorationManager, D> for OrgKdeKwinServerDecorationManagerUserData
 where
     D: Host + Dispatch<OrgKdeKwinServerDecoration, DecorationUserData> + 'static,
 {
@@ -232,7 +235,7 @@ where
                 // client that wants the server's default.
                 let first = mode_of(state.answer_is_server(DecorationWanted::Server));
                 object.mode(first);
-                state.kde_decorations().records.push(Record {
+                state.kde_decorations().records.push(KdeDecorationRecord {
                     surface: surface.clone(),
                     object,
                     requested: None,

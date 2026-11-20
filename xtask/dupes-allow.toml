@@ -2841,3 +2841,33 @@ left = "gnoblin-wayland-zwp-virtual-keyboard-v1::ZwpVirtualKeyboardV1ManagerGlob
 right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
+
+[[allow]]
+left = "gnoblin-sdkgen::Library"
+right = "xtask::Library"
+kind = "same-name"
+reason = "the SDK generator's `Library` is one ABI (core or std) as the generators read it; the other two are a native library probed in an image and an installed library checked by `dist-check`"
+
+[[allow]]
+left = "gnoblin-sdkgen::LockReport"
+right = "xtask::AbiReport"
+kind = "same-shape"
+reason = "the surface lock's comparison report and the ABI lock's have the same two lists because the surface lock is deliberately checked the way `abi-check` checks the ABI; the generator is a library the build links and xtask is not, so neither can use the other's"
+
+[[allow]]
+left = "gnoblin-wayland-org-kde-kwin-appmenu::AppmenuUserData"
+right = "gnoblin-wayland-org-kde-kwin-server-decoration::DecorationUserData"
+kind = "same-shape"
+reason = "each is the surface its protocol object belongs to; the objects are different protocols' and share no code"
+
+[[allow]]
+left = "gnoblin-wayland-org-kde-kwin-appmenu::AppmenuUserData"
+right = "gnoblin-wayland-wp-tearing-control-v1::WpTearingControlV1TearingControlUserData"
+kind = "same-shape"
+reason = "each is the surface its protocol object belongs to; the objects are different protocols' and share no code"
+
+[[allow]]
+left = "gnoblin-wayland-org-kde-kwin-server-decoration::DecorationUserData"
+right = "gnoblin-wayland-wp-tearing-control-v1::WpTearingControlV1TearingControlUserData"
+kind = "same-shape"
+reason = "each is the surface its protocol object belongs to; the objects are different protocols' and share no code"

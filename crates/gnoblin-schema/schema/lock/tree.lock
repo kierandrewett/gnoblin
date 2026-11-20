@@ -268,6 +268,7 @@ member | screen.width | property double rw,animated | 0.2.0
 member | screen.x | property double rw,animated | 0.2.0
 member | screen.y | property double rw,animated | 0.2.0
 member | screen.z | property double rw,animated | 0.2.0
+member | seat.active_workspace | property string rw | 0.2.0
 member | seat.auto_raise | property bool ro | 0.2.0
 member | seat.auto_raise_delay | property int ro | 0.2.0
 member | seat.builtin_motion | property bool rw | 0.2.0
@@ -429,6 +430,8 @@ member | view.x | property double rw,animated | 0.2.0
 member | view.y | property double rw,animated | 0.2.0
 member | view.z | property double rw,animated | 0.2.0
 member | window.app_id | property string ro | 0.2.0
+member | window.appmenu_path | property string ro | 0.2.0
+member | window.appmenu_service | property string ro | 0.2.0
 member | window.clip | property bool rw | 0.2.0
 member | window.close | method () | 0.2.0
 member | window.corner_radius | property double rw,animated | 0.2.0

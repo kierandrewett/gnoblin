@@ -2,7 +2,7 @@
 
 use gnoblin_backend::{Host as _, InputEvent};
 use gnoblin_types::{DeviceId, OutputId, Point, Rect};
-use gnoblin_wayland_protocols::zwlr_virtual_pointer_v1::{self, Scroll, VirtualPointers};
+use gnoblin_wayland_protocols::zwlr_virtual_pointer_v1::{self, ScrollFrame, VirtualPointers};
 use smithay::backend::input::InputEvent as DeviceEvent;
 use smithay::wayland::virtual_pointer::{VirtualPointerBackend, VirtualPointerHandler};
 
@@ -33,7 +33,7 @@ impl zwlr_virtual_pointer_v1::Host for State {
         });
     }
 
-    fn deliver_scroll(&mut self, scroll: Scroll) {
+    fn deliver_scroll(&mut self, scroll: ScrollFrame) {
         self.input_scroll(scroll);
     }
 
