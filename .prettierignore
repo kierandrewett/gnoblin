@@ -1,10 +1,8 @@
-subprojects/
 build/
 install/
 dist/
 target/
 node_modules/
-banks/
 *.patch
 *.lock
 crates/gnoblin-js/tests/spec/

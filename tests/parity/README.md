@@ -126,11 +126,11 @@ that reason.
 On Agent37 the same Fedora 45 root file system as above builds and runs it, with four differences that are properties of
 that sandbox, not of Gnoblin. None of them changes what the compositor does:
 
-- `build.sh` runs `scripts/list-tarball-sources.sh`, which uses bash process substitution (`< <(...)`). That needs
+- The legacy tree's `build.sh` runs its `scripts/list-tarball-sources.sh`, which uses bash process substitution (`< <(...)`). That needs
   `/dev/fd`, which needs `/proc`, which a chroot there does not have, so the step stops with "/dev/fd/63: No such file or
   directory". The throwaway checkout in the root had its three `<(...)` uses replaced by a here-string and a temporary
   file; the repository's script is unchanged.
-- `scripts/install-fedora-build-deps.sh` printed "Transaction failed: Rpm transaction failed" for a systemd trigger
+- The legacy tree's `scripts/install-fedora-build-deps.sh` printed "Transaction failed: Rpm transaction failed" for a systemd trigger
   (`Failed to import file '/usr/lib/systemd/catalog/dbus-broker-launch.catalog'`), after the packages were installed,
   except `gstreamer1`, which was missing and made the Mutter link fail with undefined `gst_*` references until it was
   installed by hand.
@@ -183,7 +183,8 @@ are not the same thing, and Mutter paces its frame callbacks at 60 Hz where the 
 
 ## Contract recording
 
-`scripts/contract-inventory.py` reads the contract out of the C sources. `scripts/contract-record.py` is its other half:
+`contracts/` holds the contract read out of the legacy C sources. `scripts/contract-record.py` records what the legacy
+session really answered to it:
 it connects to a running legacy session (API 1.93), asks every operation of the inventory once with an empty argument
 table, subscribes to every event the session offers and writes `contracts/recorded-session.json`. A subscription takes at
 most 64 names and a later one replaces an earlier one, so the recorder uses one connection per slice of 64; `windows` and

@@ -215,6 +215,11 @@ ext-deny:
 # The extension workspace's whole gate.
 ext-ci: ext-fmt-check ext-clippy ext-test ext-deny
 
+# Syntax checks of the scripts and the tests of the package repository tool, the RPM target probe, the reference session
+# matrix, the incident resource reporter and the contract recording (tests/check-fast.sh). They need no build.
+script-tests:
+    tests/check-fast.sh
+
 # Check the TypeScript shell sources, lint all tracked JS/TS, and format-check every tracked TS declaration/source.
 js-check:
     scripts/js-typecheck.sh

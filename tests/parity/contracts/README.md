@@ -1,7 +1,7 @@
 # Contract inventory
 
 The parity harness has to hold three implementations to one list of names: Gnoblin on Mutter, stock
-Mutter, and the Rust candidate. This directory is that list, read out of the C sources that own it.
+Mutter, and the Rust candidate. This directory is that list, read out of the legacy C sources that own it.
 Nothing here is hand-written: every entry records the file and line it was read from, so a
 disagreement can be settled by opening the source at that line.
 
@@ -35,21 +35,16 @@ Each file is a JSON object:
 handed the wrong file fails instead of misreading it. Entries are sorted by their name, so a
 regenerated file differs only where the sources differ.
 
-## Regenerating
+## Provenance
 
-```console
-$ python3 scripts/contract-inventory.py           # rewrite this directory
-$ python3 scripts/contract-inventory.py --check   # exit 1 when a file is stale
-```
+These files are frozen. They were read out of the legacy `main` branch at `5bb523e9c` (API 1.93) by
+`scripts/contract-inventory.py`, which was deleted with the Mutter product tree. To regenerate them, check out that
+commit and run the script there: it reads only the C sources named below, does not build, run or connect to a compositor,
+and needs Python 3.11 or later. Nothing in this branch reads the sources, so the files change only when the legacy
+product's contract is re-read on purpose; `crates/gnoblin-config/tests/contract.rs` holds the Rust configuration to
+`config-keys.json`.
 
-The script needs Python 3.11 or later and nothing else. It does not build, run or connect to a
-compositor, so it works on a machine with no session and in any checkout. `--check` compares the
-checked-in files, including the counts list below, with what the sources say and exits non-zero
-with the stale paths, which is what `tests/contract-inventory.test.py` runs, the same way the other
-contract tests run: `python3 tests/contract-inventory.test.py`. Run the write form after changing
-the C tables; a review then sees the contract change as a diff instead of reading prose.
-
-The script reads only these sources:
+Every `src/` path on this page is a path of the legacy tree.
 
 | Source                                 | Read for                                                                                |
 | -------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -62,8 +57,7 @@ The script reads only these sources:
 | `src/control/gnoblin-overrides.h`      | The sections and keys that may change at runtime                                        |
 | `src/cli/gnoblinctl-cli.c`             | `commands[]` and `help_entries[]`                                                       |
 
-A construct the script cannot read raises instead of being skipped, so a table that grows a new
-shape fails the check rather than losing rows quietly.
+A construct the script could not read raised instead of being skipped, so no row was lost quietly.
 
 ## Entry fields
 
@@ -131,8 +125,7 @@ no text extraction can read reliably.
   (`option(cli, "app-id")`) and the JSON shapes come from `src/cli/gnoblinctl-render*.c`, both
   without a declaration. Commands and actions are complete; their options are not.
 - **`gnoblinctl` action to wire operation mapping.** `src/cli/gnoblinctl-dispatch.c` assigns the
-  method inside per-command branches, so the mapping is not a table. `tests/gnoblinctl-cli.test.py`
-  and the recorded CLI output are the gate for that mapping.
+  method inside per-command branches, so the mapping is not a table. The recorded CLI output is the gate for that mapping.
 - **Per-section configuration keys.** `gnoblin.configure` accepts the sections listed in
   `config-keys.json`; which keys are legal inside each section is checked by hand-written
   validators (`src/config/gnoblin-config-validate.c`, `gnoblin-config-windows.c` and others). Only
@@ -149,10 +142,8 @@ no text extraction can read reliably.
   `mutter.monitor-manager.monitors-changed` and five others. They are the reference
   implementation's names rather than Gnoblin's, so they are out of scope here and belong in the
   divergence ledger when the candidate stops forwarding them.
-- **The Lua API surface itself.** `gnoblin.d.lua` and the annotations under `src/config/lua/api`
-  are already turned into `src/config/lua/gnoblin-lua-signatures.inc` by
-  `scripts/gen-lua-api.py`; this inventory links operations to Lua entries rather than repeating
-  that surface.
+- **The Lua API surface itself.** `gnoblin.d.lua` and the annotations of the legacy tree are
+  not repeated here; this inventory links operations to Lua entries.
 - **Wayland protocol globals.** The plan asks for reference `wayland-info` output as well. That has
   to come from a running session, so it cannot be extracted from the sources and is not here.
 
@@ -160,7 +151,7 @@ no text extraction can read reliably.
 
 Scenarios, fixtures and the runner live beside this directory. A scenario names a method, an event
 or a command, and that name is checked against these files, so a rename in the C sources shows up as
-a diff here rather than as coverage that quietly stops matching anything.
+a diff here when the files are re-read, rather than as coverage that quietly stops matching anything.
 
 ## Recorded session
 

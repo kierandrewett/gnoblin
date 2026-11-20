@@ -458,34 +458,8 @@ class PublishPlans(unittest.TestCase):
             )
 
 
-class GnoblinNightlyVersion(unittest.TestCase):
-    """A nightly version reaches the file that the source bundle and the packages read it from."""
-
-    def setUp(self):
-        self.copy = Path(tempfile.mkdtemp(prefix="pkgrepo-gnoblin-"))
-        self.addCleanup(shutil.rmtree, self.copy, True)
-        shutil.copytree(ROOT / "scripts", self.copy / "scripts", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        (self.copy / "src").mkdir()
-        for name in ("gnoblin-version.json", "gnome-versions.json"):
-            shutil.copy(ROOT / "src" / name, self.copy / "src" / name)
-
-    def run_script(self, *args):
-        return subprocess.run(
-            [sys.executable, str(self.copy / "scripts" / args[0]), *args[1:]],
-            capture_output=True,
-            text=True,
-        )
-
-    def test_nightly_version_in_the_version_file(self):
-        semver = "0.1.13-nightly.20261031.142.gabc1234"
-        result = self.run_script("apply-nightly-version.py", semver)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads((self.copy / "data/gnoblin-version.json").read_text())["version"], semver)
-        self.assertEqual(self.run_script("gnoblin-version.py", "get", "version").stdout.strip(), semver)
-
-    def test_only_nightly_versions_are_accepted(self):
-        self.assertEqual(self.run_script("apply-nightly-version.py", "0.1.13").returncode, 2)
-        self.assertEqual(self.run_script("apply-nightly-version.py", "0.1.13-rc1").returncode, 2)
+class NightlySpellings(unittest.TestCase):
+    """The package spellings of a nightly version agree with each other."""
 
     def test_the_spellings_agree_with_the_tool(self):
         value = versions.nightly("0.1.12", "0.1.12", "20261031", 142, "abc1234")

@@ -159,14 +159,14 @@ From `wayland-info` against the session (`wayland-globals.txt`, with the client'
 | `zxdg_output_manager_v1` | 3 | standard family | v3 | yes | - |
 | `wl_data_device_manager` | 3 | standard family | v3 | yes | - |
 | `xdg_toplevel_drag_manager_v1` | 1 | standard family | - | no | - |
-| `zwp_primary_selection_device_manager_v1` | 1 | standard family | v1 | yes | - |
+| `zwp_primary_selection_device_manager_v1` | 1 | standard family | v1 | no | - |
 | `wl_subcompositor` | 1 | standard family | v1 | yes | - |
 | `xdg_wm_base` | 7 | standard family | v7 | yes | - |
 | `gtk_shell1` | 7 | private | v7 | yes | `gnoblin-compat-wayland-gtk-shell1` |
 | `wp_viewporter` | 1 | standard family | v1 | yes | - |
 | `wp_fractional_scale_manager_v1` | 1 | standard family | v1 | yes | - |
 | `zwp_pointer_gestures_v1` | 3 | standard family | v3 | yes | - |
-| `zwp_tablet_manager_v2` | 2 | standard family | v2 | no | - |
+| `zwp_tablet_manager_v2` | 2 | standard family | v2 | yes | - |
 | `wp_pointer_warp_v1` | 1 | standard family | - | no | - |
 | `wl_seat` | 10 | standard family | v10 | yes | - |
 | `zwp_relative_pointer_manager_v1` | 1 | standard family | - | yes | - |
@@ -204,7 +204,7 @@ adapter matrix declares for each request:
 | `gtk_shell1.get_gtk_surface` | supported |
 | `gtk_surface1.set_dbus_properties` | partial |
 
-Globals Mutter offers that the candidate's sources never name (8): `xdg_toplevel_drag_manager_v1`, `zwp_tablet_manager_v2`, `wp_pointer_warp_v1`, `wp_color_manager_v1`, `xdg_session_manager_v1`, `wp_commit_timing_manager_v1`, `wp_color_representation_manager_v1`, `wl_fixes`.
+Globals Mutter offers that the candidate's sources never name (8): `xdg_toplevel_drag_manager_v1`, `zwp_primary_selection_device_manager_v1`, `wp_pointer_warp_v1`, `wp_color_manager_v1`, `xdg_session_manager_v1`, `wp_commit_timing_manager_v1`, `wp_color_representation_manager_v1`, `wl_fixes`.
 
 ## Adapter crates with no matrix
 

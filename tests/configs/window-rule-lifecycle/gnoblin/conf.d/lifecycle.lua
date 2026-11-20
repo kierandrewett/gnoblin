@@ -1,1 +1,0 @@
--- Window rules are changed by the devkit lifecycle check.

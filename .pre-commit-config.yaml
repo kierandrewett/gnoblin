@@ -1,7 +1,7 @@
 # Shared language checks match Bingux; Gnoblin also syncs issue tracking.
 minimum_pre_commit_version: "4.6.2"
 default_stages: [pre-commit]
-exclude: '(^|/)(subprojects|build|install|dist|target|node_modules|vendor|third_party|tomlc99|banks)/|\.patch$|\.lock$'
+exclude: '(^|/)(build|install|dist|target|node_modules|vendor|third_party)/|\.patch$|\.lock$'
 repos:
   - repo: local
     hooks:
@@ -53,15 +53,6 @@ repos:
         types: [python]
         additional_dependencies: ["ruff==0.16.7"]
         require_serial: true
-      - id: clang-check
-        name: clang-check
-        entry: clang-format --dry-run --Werror
-        language: python
-        types_or: [c, c++]
-        # The session lock overlay follows Mutter's style instead of the repo-wide format.
-        exclude: ^src/protocols/session-lock/meta-wayland-session-lock\.[ch]$
-        additional_dependencies: ["clang-format==23.1.1"]
-        require_serial: true
       - id: shfmt-check
         name: shfmt-check
         entry: shfmt -i 4 -ci -d
@@ -73,35 +64,15 @@ repos:
         name: prettier-check
         entry: prettier --check
         language: node
-        files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html|ts)$'
+        files: '\.(mjs|cjs|js|json|ya?ml|md|scss|css|html|ts)$'
         additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
         language_version: "22.16.0"
-        require_serial: true
-      - id: javascript-check
-        name: javascript-check
-        entry: python3 scripts/format-qt.py --javascript
-        language: node
-        files: '\.js$'
-        additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
-        language_version: "22.16.0"
-        require_serial: true
-      - id: qml-check
-        name: qml-check
-        entry: python3 scripts/format-qt.py
-        language: system
-        files: '\.qml$'
         require_serial: true
       - id: rustfmt-check
         name: rustfmt-check
         entry: rustfmt --edition 2024 --config skip_children=true --check
         language: system
         types: [rust]
-        require_serial: true
-      - id: nixfmt-check
-        name: nixfmt-check
-        entry: env -u LD_LIBRARY_PATH nix shell github:NixOS/nixpkgs/b6018f87da91d19d0ab4cf979885689b469cdd41#nixfmt --command nixfmt --check
-        language: system
-        types: [nix]
         require_serial: true
       - id: beads-github-sync
         name: Sync Beads with GitHub Issues
@@ -118,14 +89,6 @@ repos:
         additional_dependencies: ["ruff==0.16.7"]
         stages: [manual]
         require_serial: true
-      - id: clang-format
-        name: clang-format
-        entry: clang-format -i
-        language: python
-        types_or: [c, c++]
-        additional_dependencies: ["clang-format==23.1.1"]
-        stages: [manual]
-        require_serial: true
       - id: shfmt-format
         name: shfmt-format
         entry: shfmt -i 4 -ci -w
@@ -138,25 +101,9 @@ repos:
         name: prettier-format
         entry: prettier --write
         language: node
-        files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html|ts)$'
+        files: '\.(mjs|cjs|js|json|ya?ml|md|scss|css|html|ts)$'
         additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
         language_version: "22.16.0"
-        stages: [manual]
-        require_serial: true
-      - id: javascript-format
-        name: javascript-format
-        entry: python3 scripts/format-qt.py --javascript --write
-        language: node
-        files: '\.js$'
-        additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
-        language_version: "22.16.0"
-        stages: [manual]
-        require_serial: true
-      - id: qml-format
-        name: qml-format
-        entry: python3 scripts/format-qt.py --write
-        language: system
-        files: '\.qml$'
         stages: [manual]
         require_serial: true
       - id: rustfmt-format
@@ -164,12 +111,5 @@ repos:
         entry: rustfmt --edition 2024 --config skip_children=true
         language: system
         types: [rust]
-        stages: [manual]
-        require_serial: true
-      - id: nixfmt-format
-        name: nixfmt-format
-        entry: env -u LD_LIBRARY_PATH nix shell github:NixOS/nixpkgs/b6018f87da91d19d0ab4cf979885689b469cdd41#nixfmt --command nixfmt
-        language: system
-        types: [nix]
         stages: [manual]
         require_serial: true

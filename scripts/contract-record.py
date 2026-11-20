@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Record what a live Gnoblin session answers on its control socket, next to the contract inventory.
 
-scripts/contract-inventory.py reads the contract out of the C sources and never starts a compositor. This script is its
-other half: it connects to a running legacy session (the patched Mutter with the Lua runtime, API 1.93), asks every
+The inventory in tests/parity/contracts was read out of the legacy C sources and never started a compositor. This script
+connects to a running legacy session (the patched Mutter with the Lua runtime, API 1.93), asks every
 operation of the inventory once and records the answer, subscribes to every event the session offers and records the
 events that arrive, and writes tests/parity/contracts/recorded-session.json. A parity target that implements the same
 socket can then be held to what the reference really answered, not to what the sources suggest it would.
@@ -13,8 +13,8 @@ Usage:
 
 `--drive CMD` runs CMD (through the shell) after the event subscription is made and before it is read, so a client can
 map a window and the window events arrive. The environment of the session is the caller's business: this script never
-starts a compositor and only speaks the line-delimited JSON of the socket (src/cli/gnoblinctl-client.c is the client
-whose requests it repeats).
+starts a compositor and only speaks the line-delimited JSON of the socket (the legacy tree's src/cli/gnoblinctl-client.c
+is the client whose requests it repeats).
 
 An operation is asked with an empty argument table. That is a deliberate choice: it records the answer to the plain
 call, which is the answer of every read operation and the refusal of every write operation that needs arguments. The
@@ -59,7 +59,7 @@ ANSWER_SECONDS = 5.0
 EVENT_TAIL_SECONDS = 2.0
 # Samples keep the shape of the answer and not its size: lists are cut to this many elements, strings to this length.
 SAMPLE_LIST = 3
-# The most event names one subscription may name (src/control/gnoblin-control-requests.c).
+# The most event names one subscription may name (src/control/gnoblin-control-requests.c of the legacy tree).
 SUBSCRIBE_MAX = 64
 # Names in the hello event's list that are streams started by an operation, not names a subscription accepts.
 SNAPSHOT_STREAMS = {"windows", "monitors"}

@@ -9,7 +9,7 @@
 # control socket is RUNTIME_DIR/compositor-v1.sock; scripts/parity-gnoblinctl talks to it. The script stays in the
 # foreground until the runner kills its process group.
 #
-# The session is the one `scripts/run-gnoblin-devkit.sh` starts: the guardian in devkit mode, which runs the patched
+# The session is the one the legacy tree's `scripts/run-gnoblin-devkit.sh` starts: the guardian in devkit mode, which runs the patched
 # Mutter on its headless backend with one 1280x720 virtual monitor, the Lua runtime and the control socket. The devkit
 # only matters for the headless backend: Mutter would also start its viewer window, so the host display is unset and
 # GNOBLIN_DEVKIT_KEEP_SESSION keeps the session alive when the viewer fails to open (patch devkit-keep-session-after-
@@ -17,8 +17,8 @@
 # runner's.
 #
 # Environment:
-#   GNOBLIN_PARITY_GNOBLIN_PREFIX  install prefix of a Gnoblin build made with GNOBLIN_DEVKIT=enabled (`./build.sh
-#                                  --prefix`). Required.
+#   GNOBLIN_PARITY_GNOBLIN_PREFIX  install prefix of a Gnoblin build made with GNOBLIN_DEVKIT=enabled (the legacy tree's
+#                                  `./build.sh --prefix`, see scripts/parity-reference.sh). Required.
 #   GNOBLIN_PARITY_MUTTER_ROOT     run inside this root file system with chroot (root only), as for parity-mutter51.
 #   GNOBLIN_PARITY_PROC_SHIM       preload this library (built from scripts/parity-proc-shim.c, a path inside the root) in
 #                                  the guardian and its children: for a root file system without /proc.

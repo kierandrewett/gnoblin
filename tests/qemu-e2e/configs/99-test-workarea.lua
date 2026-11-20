@@ -1,5 +1,0 @@
--- Logs each gnoblin.output.changed event with its changed list, so a test can see work_area changes.
-gnoblin.on("gnoblin.output.changed", function(event)
-    local changed = table.concat(event.changed or {}, ",")
-    gnoblin.process.spawn({ "sh", "-c", "echo \"$1\" >> /tmp/workarea-events.log", "sh", "changed=" .. changed })
-end)

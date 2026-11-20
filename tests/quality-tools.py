@@ -19,12 +19,9 @@ class QualityToolsTest(unittest.TestCase):
                 ".pre-commit-config.yaml",
                 ".prettierrc.json",
                 ".prettierignore",
-                ".clang-format",
-                ".stylua.toml",
                 ".ruff.toml",
                 "eslint.config.mjs",
                 "scripts/quality.sh",
-                "scripts/format-qt.py",
             ):
                 destination = root / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -32,15 +29,10 @@ class QualityToolsTest(unittest.TestCase):
             samples = {
                 "sample.py": "value=  1\n",
                 "without-extension": "#!/usr/bin/env python3\nvalue=  1\n",
-                "sample.c": "int main(void){return 0;}\n",
                 "sample.sh": '#!/usr/bin/env bash\nset -euo pipefail\nif true; then echo "ok"; fi\n',
-                "sample.js": '.pragma library\n.import "Other.js" as Other\nfunction value(){return 1}\n',
+                "sample.js": "function value(){return 1}\n",
                 "sample.mjs": "export const value={a:1}\n",
-                "sample.qml": "import QtQuick\nQtObject { property int value: 1 }\n",
-                "sample.inc.qml": "    QtObject { id: first }\n    QtObject { id: second }\n",
-                "sample.lua": "local value={a=1}\nreturn value\n",
                 "sample.rs": 'fn main(){println!("ok");}\n',
-                "sample.nix": "{value=1;}\n",
                 "file with spaces.json": '{"value":1}\n',
                 "build/ignored.py": "deliberately invalid Python (\n",
             }
@@ -71,23 +63,11 @@ class QualityToolsTest(unittest.TestCase):
             self.assertIn(result.returncode, (0, 1), result.stdout + result.stderr)
             result = run("lint")
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertTrue((root / "sample.js").read_text().startswith(samples["sample.js"].split("function")[0]))
+            self.assertEqual((root / "sample.js").read_text(), "function value() {\n    return 1;\n}\n")
             self.assertNotEqual(initial["without-extension"], (root / "without-extension").read_bytes())
             self.assertEqual(initial["build/ignored.py"], (root / "build/ignored.py").read_bytes())
             result = run("format")
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-            # A parser failure must not replace the file with partial output.
-            for filename in ("sample.qml", "sample.inc.qml"):
-                broken = root / filename
-                broken.write_text("QtObject { property int value: (\n")
-                before = broken.read_bytes()
-                result = subprocess.run(
-                    ["python3", "scripts/format-qt.py", "--write", filename], cwd=root, capture_output=True
-                )
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn(filename.encode(), result.stderr)
-                self.assertEqual(before, broken.read_bytes())
 
 
 if __name__ == "__main__":

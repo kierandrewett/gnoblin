@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The fast checks: manifests, patch metadata, script syntax, and the configuration and package tests.
-# They need no build and no session. Run them with "make check".
+# The fast checks of the scripts: shell and Python syntax, and the tests of the package repository tool, the RPM target
+# probe, the reference session matrix, the incident resource reporter and the contract recording.
+# They need no build and no session. Run them with `just script-tests`.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
@@ -9,12 +10,8 @@ run() {
     "$@"
 }
 
-run ./scripts/gnome-versions.py check
-run ./scripts/manage-patches.py check
-run python3 tests/patch-series.test.py
-
-printf '+ bash -n scripts/*.sh tests/*.sh src/tools/*.sh\n'
-for file in scripts/*.sh tests/*.sh src/tools/*.sh; do
+printf '+ bash -n scripts/*.sh tests/*.sh\n'
+for file in scripts/*.sh tests/*.sh; do
     bash -n "$file"
 done
 
@@ -23,14 +20,8 @@ cache="$(mktemp -d)"
 trap 'rm -rf -- "$cache"' EXIT
 PYTHONPYCACHEPREFIX="$cache" python3 -m py_compile scripts/*.py tests/*.py
 
-run ./tests/test-log-diagnostics.sh
-run ./tests/test-secure-state.sh
-run ./tests/config-seed.test.sh
-run python3 tests/frame-renderer-policy.test.py
-run python3 tests/session-environment.test.py
-run python3 tests/package-isolation.test.py
-run python3 tests/pkgsmith-packages.test.py
 run python3 tests/pkgrepo.test.py
-run python3 tests/check-build-deps.test.py
-run python3 tests/test_generate_mutter_keybinding_catalog.py
-run ./tests/test-config.sh
+run python3 tests/rpm-target-probe.test.py
+run python3 tests/reference-session-matrix.test.py
+run python3 tests/incident-resources.test.py
+run python3 tests/contract-record.test.py

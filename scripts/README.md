@@ -1,131 +1,49 @@
 # Scripts
 
-Most of these scripts are not meant to be run by hand. `./build.sh` and CMake run the build
-ones, the workflows run the release ones, and the rest are tools. This page says which is
-which, so you can tell what a script is for before you run it.
+The Rust build needs no script: `cargo xtask` and `just` do the work (see `justfile` and `docs/source-development.md`). The
+scripts here are the tools CI, the parity and conformance harnesses, and the issue and documentation checks call. This page
+says what each is for, so you can tell before you run it.
 
-## What to run
+## Build inputs
 
-| You want to                               | Run                    |
-| ----------------------------------------- | ---------------------- |
-| See what a build would change             | `./build.sh --dry-run` |
-| Build                                     | `make` or `./build.sh` |
-| Try the build in a window                 | `make preview`         |
-| Install the build and add the login entry | `make install`         |
-| Run the fast checks                       | `make check`           |
-| Run the CTest suites                      | `make test`            |
+| Script                           | What it does                                                                                      | Run by                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `ci-install-system-libraries.sh` | Install the system packages the Rust workspaces need, on a hosted runner or in a Fedora container | `rust.yml`, `wlcs.yml`, `parity-reference.sh`, you |
+| `native-probe.sh`                | Probe one target image for the native libraries the workspace needs, and store the report         | by hand (`cargo xtask native-probe` documents it)  |
+| `oci-rootfs.py`                  | Unpack a container image from its registry into a plain directory, with no container runtime      | `native-probe.sh`                                  |
+| `probe-rpm-target.py`            | Record the library floor of a distribution image                                                  | `rpm-target-probes.yml`                            |
+| `check-packaging-targets.py`     | Validate the package target list in `design/package-targets.json`                                 | `packaging-targets.yml`                            |
+| `pkgrepo/`                       | Build, sign and upload the RPM, APT, pacman and Alpine repositories (`pkgrepo/README.md`)         | `package-repository.yml`                           |
 
-`./build.sh` is the build. `make` is a short way to run it for the prefix `/usr/local/lib/gnoblin`, with the stage `build/stage` and the build directory `build/make`. It holds no other logic. `make` installs nothing. `make install` copies the build to the prefix and registers it.
+## Conformance and parity
 
-## Which files are public
+| Script                                                                                                          | What it does                                                                               | Run by                                   |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| `wlcs.sh`, `wlcs-run.py`                                                                                        | Build Canonical's Wayland Conformance Suite and run the core subset against the compositor | `wlcs.yml`                               |
+| `parity-reference.sh`                                                                                           | Build Mutter 51 and the legacy Gnoblin, and run the parity scenarios against all three     | `parity-reference.yml`                   |
+| `parity-mutter51`, `parity-mutter-gnoblin`, `parity-gnoblinctl`, `parity-launcher-lib.sh`, `parity-proc-shim.c` | Launch the reference sessions the parity runner drives                                     | `gnoblin-parity`                         |
+| `reference-session-record.sh`, `reference-session-sessions.py`                                                  | Record what a stock Mutter 51 session puts on the bus and its Wayland socket               | by hand                                  |
+| `reference-session-matrix.py`                                                                                   | Compare the recorded reference session with the adapters' support matrices                 | `tests/reference-session-matrix.test.py` |
+| `contract-record.py`                                                                                            | Record what a live legacy session answers on its control socket                            | by hand                                  |
+| `real-host-conformance.sh`                                                                                      | Run the nested backend against a real host compositor, Sway or Weston                      | by hand                                  |
+| `xr-smoke.sh`                                                                                                   | Whole-stack XR smoke test with a simulated headset                                         | by hand                                  |
 
-No script names the public files. `cmake/public-entries.cmake` reads the finished prefix and lists every file with `gnoblin` in its name under `share/wayland-sessions`, `share/xdg-desktop-portal`,
-`share/dbus-1/services`, `lib/systemd/user` and `share/man/man1`. The build writes the list to
-`share/gnoblin/public-entries.txt` in the prefix. `make install` and `cmake/system-layout.cmake` both use it. To ship a new login or portal file, install it into the prefix under one of those directories with a name that
-contains `gnoblin`. Nothing else needs to change.
+## Shell checks
 
-## Build
+| Script                                    | What it does                                            | Run by          |
+| ----------------------------------------- | ------------------------------------------------------- | --------------- |
+| `js-typecheck.sh`, `js-lint.sh`           | Type-check and lint the TypeScript shell sources        | `just js-check` |
+| `js-types-check.sh`, `js-types-check.mjs` | Prove the editor files `gnoblinctl types init` writes   | `just js-check` |
+| `js-shell-screenshots.sh`                 | Take pictures of the shipped shell on a real compositor | by hand         |
 
-Run by `./build.sh` through CMake. Run them by hand only to
-debug a step.
+## Quality, issues and documentation
 
-The source steps are CMake script files, not shell scripts. `cmake/source-step.cmake` runs one step by name, and
-`cmake/source-lib.cmake` and `cmake/source-prepare.cmake` hold the code. Run a step like this from the repository root:
+| Script                          | What it does                                                    |
+| ------------------------------- | --------------------------------------------------------------- |
+| `quality.sh`                    | Lint and format (`./scripts/quality.sh lint`)                   |
+| `markdown-style.py`             | The Markdown review that the pre-commit hook runs               |
+| `gnoblin-issues`                | Sync Beads issues with GitHub                                   |
+| `gnoblin-incident-resources.py` | Record bounded DRM ownership observations during a GPU incident |
 
-```sh
-cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
-```
-
-| Action              | Arguments                       | What it does                                                                     |
-| ------------------- | ------------------------------- | -------------------------------------------------------------------------------- |
-| `prepare`           | `SOURCE_MODE`, `PROJECTS`       | Check out the pinned submodules, or unpack a source bundle                       |
-| `apply-patches`     | `PROJECT`                       | Reset a submodule to its tag, copy the overlay, apply `patches/<name>/series`    |
-| `component-sources` | `PROJECT`, `BUILD_ROOT`         | Run `apply-patches` when the patches, overlay or pins changed since the last run |
-| `overlay`           | `PROJECT`, `SOURCE_DIR`, `MODE` | Copy, list or remove the overlay files. `MODE` is `copy`, `list` or `remove`     |
-| `state-check`       | `PROJECT`, `TAG`                | Refuse to reset a submodule that has local changes                               |
-| `state-record`      | `PROJECT`, `TAG`                | Record the state of a patched submodule so the next run accepts it               |
-| `ensure-release`    | `PROJECTS`                      | Check that the submodules match the release tags                                 |
-
-`PROJECT` is `mutter` or `xdg-desktop-portal-gnome`. `PROJECTS` is a list separated by semicolons. `SOURCE_MODE` is
-`checkout` or `release-archive`. A reset refuses to run on a submodule with local changes. Set
-`GNOBLIN_FORCE_RESET=1` only to discard them on purpose.
-
-| Script                                  | What it does                                                               | Run by                        |
-| --------------------------------------- | -------------------------------------------------------------------------- | ----------------------------- |
-| `checkout-submodules-with-retry.sh`     | Fetch submodules, retrying GNOME GitLab errors                             | workflows, CMake              |
-| `check-build-deps.py`                   | Check that the development libraries the pinned sources need are installed | CMake                         |
-| `build-identity.py`                     | Write the build identity that `--version` prints, with the build time      | CMake                         |
-| `embed-config.py`                       | Embed the default Lua configuration tree in a C file                       | CMake                         |
-| `generate-mutter-keybinding-catalog.py` | Export Mutter's keybinding descriptors for the Lua API                     | `component-build.cmake`       |
-| `build-adwaita-hyprcursor.py`           | Package the Adwaita cursor vectors for Hyprcursor                          | `cmake/install-session.cmake` |
-| `cmake/install-session.cmake`           | Install the session files, units, schemas and man pages into the prefix    | CMake                         |
-| `cmake/system-layout.cmake`             | Add the public entries a package ships outside the prefix                  | CMake (`--layout system`)     |
-| `build-man-pages.py`                    | Write `gnoblin(1)` and `gnoblinctl(1)`                                     | `cmake/install-session.cmake` |
-| `gnome-versions.py`                     | Read, check and advance the pinned GNOME version                           | `build.sh`, workflows         |
-| `gnoblin-version.py`                    | Read the Gnoblin release version                                           | scripts, workflows            |
-
-## Your session
-
-| Script                           | What it does                                                                                                                   | Run by                                        |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- |
-| `register-session.sh`            | Copy a staged build to its prefix, link the commands, install the login entry, portal files, units and man pages. Needs `sudo` | `make install`, `build.sh --register-session` |
-| `run-staged.sh`                  | Run a command with a staged build shown at its prefix, in a private mount namespace. No root                                   | `make preview`, `register-session.sh`         |
-| `run-gnoblin-devkit.sh`          | Start the compositor in a nested viewer window                                                                                 | `build.sh --preview`, `make preview`, tests   |
-| `run-clean-devkit.sh`            | Same, with a clean configuration                                                                                               | by hand                                       |
-| `devkit_dbus.py`                 | Write the private D-Bus configuration a nested run uses                                                                        | the devkit scripts                            |
-| `devkit-document-portal-stub.py` | A stand-in document portal for nested runs                                                                                     | `devkit_dbus.py`                              |
-| `gnoblin-state.sh`               | Write persistent development logs safely                                                                                       | `run-gnoblin-devkit.sh`                       |
-| `gnoblin-test-ibus.sh`           | Start an IBus daemon on the private bus                                                                                        | the devkit tests                              |
-
-## Releases and packages
-
-Run by the workflows and by `./build.sh package`.
-
-| Script                                      | What it does                                                           | Run by                                  |
-| ------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------- |
-| `build-release-assets.sh`                   | Write the source bundle, the component archives and checksums          | `build.sh package`                      |
-| `make-tarball.sh`                           | Write the patched Mutter or portal source archive                      | `build-release-assets.sh`               |
-| `list-tarball-sources.sh`                   | List the files a source archive needs                                  | `make-tarball.sh`                       |
-| `make-gsettings-desktop-schemas-tarball.sh` | Write the pinned GSettings schema archive                              | `build-release-assets.sh`               |
-| `build-source-bundle.sh`                    | Join the archives into the source bundle                               | `build-release-assets.sh`               |
-| `install-fedora-build-deps.sh`              | Install the Fedora packages that `build.sh` needs                      | `packages.yml`, the test workflows      |
-| `build-prefix.sh`                           | Build everything Gnoblin ships into a prefix for pkgsmith              | `packages.yml`, by hand                 |
-| `install-pkgsmith.sh`                       | Build the pkgsmith commit pinned in `pkgsmith.ref`                     | `packages.yml`, by hand                 |
-| `build-packages.sh`                         | Write the packages from a prefix with pkgsmith                         | `packages.yml`, by hand                 |
-| `check-package-install.sh`                  | Install, run, coexist with GNOME and remove the packages on one system | `packages.yml`                          |
-| `check-release-tag.sh`                      | Check a release tag against the version in the tree                    | `release.yml`                           |
-| `check-rpm-isolation.py`                    | Reject an RPM that could replace GNOME files                           | `packages.yml`                          |
-| `check-packaging-targets.py`                | Validate the package target list                                       | a workflow                              |
-| `probe-rpm-target.py`                       | Record the library floor of a distribution image                       | a workflow                              |
-| `pkgrepo/`                                  | Build, sign and upload the RPM, APT and pacman repositories            | `package-repository.yml`, `nightly.yml` |
-| `apply-nightly-version.py`                  | Give a CI checkout a nightly version                                   | `release.yml`                           |
-
-## Patches
-
-| Script                           | What it does                                                    |
-| -------------------------------- | --------------------------------------------------------------- |
-| `manage-patches.py`              | Export, check and renumber the patches; see `patches/README.md` |
-| `gen-gnoblin-protocols-patch.sh` | Regenerate the protocol patch (see `src/protocols/README.md`)   |
-
-## Checks, tools and documentation
-
-| Script                                               | What it does                                          |
-| ---------------------------------------------------- | ----------------------------------------------------- |
-| `quality.sh`                                         | Lint and format (`./scripts/quality.sh lint`)         |
-| `markdown-style.py`                                  | The Markdown review that the pre-commit hook runs     |
-| `format-qt.py`                                       | Format QML and JavaScript that has Qt directives      |
-| `capture-doc-examples.sh`, `composite-doc-cursor.py` | Capture a clean screenshot of a nested session        |
-| `gnoblin-issues`                                     | Sync Beads issues with GitHub                         |
-| `qemu-e2e`, `qemu-e2e-provision`, `qemu-e2e-soak`    | The graphical test guest (`tests/qemu-e2e/README.md`) |
-| `report-app-e2e-failures.py`                         | Summarise application test failures for an issue      |
-| `build-frame-probe.sh`                               | Build the framebuffer reader for window damage tests  |
-| `build-mtk-region-copy-probe.sh`                     | Build a probe that counts region copies               |
-
-## Not called by anything
-
-These three have no caller in the repository. They may still be useful by hand. If you do not
-use them, they can be removed.
-
-- `run-normal-config-devkit.sh`: a nested session that copies your normal configuration.
-- `build-hyprcursor-test.sh`: builds the cursor bridge check.
-- `report-mtk-region-copy-probe.sh`: reads the output of the region copy probe.
+`just script-tests` runs `tests/check-fast.sh`: syntax checks of these scripts and the tests of `pkgrepo`,
+`probe-rpm-target.py`, `reference-session-matrix.py`, `gnoblin-incident-resources.py` and `contract-record.py`.

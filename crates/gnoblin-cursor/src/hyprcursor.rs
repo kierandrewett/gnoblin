@@ -1,5 +1,4 @@
-//! Compiled Hyprcursor themes, in the layout `hyprcursor-util --create` writes
-//! (the layout `scripts/build-adwaita-hyprcursor.py` produces).
+//! Compiled Hyprcursor themes, in the layout `hyprcursor-util --create` writes.
 //!
 //! Implemented, and only this:
 //! - `manifest.hl` at the theme root. Its `cursors_directory` key names the

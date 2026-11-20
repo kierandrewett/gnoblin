@@ -7,10 +7,9 @@
 #   mutter   build Mutter 51.0 from the upstream tag into $GNOBLIN_PARITY_MUTTER_PREFIX (default /opt/mutter51); a
 #            prefix that already holds bin/mutter is kept
 #   gnoblin  build the legacy C Gnoblin with the devkit (its headless backend) into $GNOBLIN_PARITY_GNOBLIN_PREFIX
-#            (default /opt/gnoblin) from the tree in $GNOBLIN_PARITY_GNOBLIN_SOURCE (default: this checkout, with its
-#            submodules); a prefix that already holds bin/gnoblin is kept. The tree must be a legacy one: the Rust
-#            compositor's branch dropped files the patched Mutter still installs (`data/default-config/config/
-#            50-pointer.lua`), so CI builds `main` here (.github/workflows/parity-reference.yml)
+#            (default /opt/gnoblin) from the legacy tree in $GNOBLIN_PARITY_GNOBLIN_SOURCE (required: a checkout of `main`
+#            at the commit .github/workflows/parity-reference.yml pins, with its submodules); a prefix that already holds
+#            bin/gnoblin is kept. This checkout cannot be that tree: it no longer holds the Mutter product
 #   run      run tests/parity/scenarios with GNOBLIN_PARITY_MUTTER51 set to scripts/parity-mutter51 and
 #            GNOBLIN_PARITY_MUTTER_GNOBLIN to scripts/parity-mutter-gnoblin, requiring that every `mutter51` and
 #            `mutter-gnoblin` row ran, and write the report to REPORT (default target/parity-report.txt)
@@ -61,7 +60,7 @@ cmd_gnoblin() {
         echo "parity-reference: keeping the Gnoblin in $gnoblin_prefix"
         return
     fi
-    local source="${GNOBLIN_PARITY_GNOBLIN_SOURCE:-$root}"
+    local source="${GNOBLIN_PARITY_GNOBLIN_SOURCE:?set GNOBLIN_PARITY_GNOBLIN_SOURCE to a checkout of the legacy main branch}"
     # The legacy tree's own list of build requirements, the one its prefix build and its test jobs install from.
     "$source/scripts/install-fedora-build-deps.sh" --with-test-tools
     # The pinned Mutter, the portal backend and imgui are submodules; a checkout that has them already keeps them.

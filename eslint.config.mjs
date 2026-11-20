@@ -3,23 +3,11 @@ import { createRequire } from "node:module";
 const require = createRequire(process.argv[1]);
 const tseslint = require("typescript-eslint");
 
-// Qt directives are removed only from the text passed to ESLint.
-const qtDirectives = {
-    processors: {
-        javascript: {
-            preprocess: (text) => [text.replace(/^\.(?:pragma|import)\b.*$/gm, (line) => " ".repeat(line.length))],
-            postprocess: (messages) => messages.flat(),
-        },
-    },
-};
-
 export default [
     // A recorded declaration emit, compared and never edited (design/native-std-port-tests.md, section 5).
     { ignores: ["tests/ts-compat/old-surface/**"] },
     {
         files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
-        plugins: { qt: qtDirectives },
-        processor: "qt/javascript",
         rules: {
             "constructor-super": "error",
             "for-direction": "error",
