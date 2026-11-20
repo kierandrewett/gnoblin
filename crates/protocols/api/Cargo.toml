@@ -15,3 +15,7 @@ workspace = true
 smithay.workspace = true
 # A window is named by the identity the window manager already uses.
 gnoblin-types.workspace = true
+# The access roster names the configured protocol toggles, so the one list of protocol names is the schema's.
+gnoblin-config = { path = "../../gnoblin-config" }
+# Log lines carry this tier's component.
+gnoblin-log = { path = "../../gnoblin-log" }

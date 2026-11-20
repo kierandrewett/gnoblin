@@ -83,9 +83,9 @@ use gnoblin_authority::{AppId, Authority, Claimant, Event, LaunchOrigin, Session
 use gnoblin_types::{ClientId as ConnectionId, Tick, WindowId};
 
 use crate::State;
-use crate::access::ClientRole;
 use crate::observation::ActivationDenial;
 use crate::window_request::WindowRequest;
+use gnoblin_wayland_api::access::ClientRole;
 
 use crate::log;
 

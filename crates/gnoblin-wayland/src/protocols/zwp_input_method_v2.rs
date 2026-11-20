@@ -5,7 +5,7 @@
 //! An input method (IBus, fcitx, an on-screen keyboard) holds a `zwp_input_method_v2` on the
 //! seat and answers the focused text input with `commit_string`, `preedit_string` and
 //! `delete_surrounding_text`. It is privileged: it sees what the user types everywhere, so
-//! [`AccessPolicy`](crate::access::AccessPolicy) decides who may bind the global.
+//! [`AccessPolicy`](gnoblin_wayland_api::access::AccessPolicy) decides who may bind the global.
 //!
 //! # Refusals and failure modes
 //!
@@ -27,7 +27,7 @@ use smithay::utils::{Logical, Rectangle};
 use smithay::wayland::input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface};
 
 use crate::State;
-use crate::access::{Access, AccessPolicy, Global};
+use gnoblin_wayland_api::access::{Access, AccessPolicy, Global};
 
 use crate::log;
 

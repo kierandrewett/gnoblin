@@ -49,7 +49,7 @@ use gnoblin_types::{ClientId, OutputId, Point, Rect, Size, Tick};
 
 use super::capture_shared::{ScreencopyPending, timestamp};
 use crate::State;
-use crate::access::{Access, AccessPolicy, Global};
+use gnoblin_wayland_api::access::{Access, AccessPolicy, Global};
 
 use crate::log;
 

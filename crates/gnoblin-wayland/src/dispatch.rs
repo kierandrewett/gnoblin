@@ -9,7 +9,7 @@
 //! ## Why here rather than in each global's own filter
 //!
 //! A privileged global carries a per-client filter its own module wires to the roster
-//! ([`crate::access::decide`]). A *core* global does not: `wl_compositor`, `wl_seat`,
+//! ([`gnoblin_wayland_api::access::decide`]). A *core* global does not: `wl_compositor`, `wl_seat`,
 //! `xdg_wm_base` and `ext_session_lock_manager_v1` are created by Smithay's own states with no
 //! filter, and every client is meant to see them. A role that must see none of them cannot be
 //! expressed in a filter that is not there, and wiring a filter into each of fifty globals
@@ -17,7 +17,7 @@
 //!
 //! Every global the state serves, Smithay's and this crate's and a compat extension's, is
 //! bound through `State: GlobalDispatch<I, U>`, so this is the one place every global passes.
-//! The gate asks [`crate::access::ClientRole::sees_interface`], which for the `view` role is
+//! The gate asks [`gnoblin_wayland_api::access::ClientRole::sees_interface`], which for the `view` role is
 //! an allow-list by interface name: a global added later is hidden from it until someone adds
 //! the name on purpose. It runs *in addition to* the global's own filter, never instead of it.
 //!

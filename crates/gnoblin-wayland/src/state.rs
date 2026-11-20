@@ -78,7 +78,6 @@ use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
 use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 use gnoblin_wm_api::{Open, Standing, WindowKind, WindowManager, WindowState, WmEffect, WmOptions, WmRefusal};
 
-use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::frame_policy::{CallbackPacer, Pacing};
 use crate::keyboard::KeyboardTables;
 use crate::layer_draw::LayerPick;
@@ -100,6 +99,7 @@ use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
 use crate::window_request::{Decider, WindowRequest, X11Flags};
+use gnoblin_wayland_api::access::{Access, AccessPolicy, ClientRole, Global};
 use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
 use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
 use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;

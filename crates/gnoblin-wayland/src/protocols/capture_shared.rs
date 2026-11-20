@@ -34,8 +34,8 @@
 //! ## Access
 //!
 //! The globals are gated by the session's one access roster, exactly like the shell
-//! protocols: [`crate::access::Global::Screencopy`] and
-//! [`crate::access::Global::ImageCopyCapture`] are privileged, so an application that did
+//! protocols: [`gnoblin_wayland_api::access::Global::Screencopy`] and
+//! [`gnoblin_wayland_api::access::Global::ImageCopyCapture`] are privileged, so an application that did
 //! not earn the role never sees them, and `Global::is_advertised` also answers the
 //! `protocols` configuration, so a distribution or a user can turn a capture protocol
 //! off. Capture keeps no policy of its own: a connection's role is recorded when it is
@@ -90,8 +90,8 @@ use gnoblin_types::{ClientId, NodeId, OutputId, Point, Rect, Size, Tick, WindowI
 
 use super::zwlr_screencopy_v1::ZwlrScreencopyV1Global;
 use crate::State;
-use crate::access::{Access, AccessPolicy, Global};
 use gnoblin_pipewire_export::{PipewireExport, PlaneSource, write_region};
+use gnoblin_wayland_api::access::{Access, AccessPolicy, Global};
 
 use crate::log;
 

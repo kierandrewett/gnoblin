@@ -16,7 +16,10 @@
 //! A need that only one protocol has lives in that protocol's own host trait. An operation
 //! enters this crate when a second crate needs it, so the crate never becomes a copy of `State`.
 
+pub mod access;
 pub mod host;
 pub mod protocol;
 
 pub use protocol::{Privilege, ProtocolInfo, Registrar, ServedInterface};
+
+gnoblin_log::logger!(log = "wayland");

@@ -46,8 +46,8 @@ use wayland_protocols_wlr::output_management::v1::server::{
 };
 
 use crate::State;
-use crate::access::{Access, Global};
 use crate::output_config::{HeadInfo, HeadRequest, ModeRequest};
+use gnoblin_wayland_api::access::{Access, Global};
 
 use crate::log;
 

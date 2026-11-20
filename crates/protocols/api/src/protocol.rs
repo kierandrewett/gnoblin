@@ -2,6 +2,8 @@
 
 use smithay::reexports::wayland_server::DisplayHandle;
 
+use crate::access::Global;
+
 /// One global a protocol advertises: its interface name and the highest version served.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ServedInterface {
@@ -27,6 +29,9 @@ pub enum Privilege {
     /// Every client that is not sandboxed sees it, but the global is gated through the roster so
     /// that a session can turn it off.
     Open,
+    /// A privileged global: the roster decides which clients see it, and a client that is not privileged or trusted
+    /// does not.
+    Roster(Global),
 }
 
 /// What one protocol crate says about itself: the one place that names its globals.

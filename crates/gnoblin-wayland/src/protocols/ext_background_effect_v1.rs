@@ -30,7 +30,7 @@ use smithay::wayland::compositor::{RectangleKind, RegionAttributes, with_states}
 use smithay::wayland::{GlobalData, GlobalDispatch2};
 
 use crate::State;
-use crate::access::{Access, AccessPolicy, Global};
+use gnoblin_wayland_api::access::{Access, AccessPolicy, Global};
 
 /// The version this session serves: the staging protocol's first version.
 const MANAGER_VERSION: u32 = 1;

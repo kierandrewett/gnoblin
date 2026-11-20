@@ -56,7 +56,6 @@ use gnoblin_output::LayoutError;
 use gnoblin_types::{ClientId, OutputId, Rect, WindowId};
 use gnoblin_wm_api::{WindowManager, WindowManagerFactory, WmOptions};
 
-use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{
     MenuAnchor, MenuSource, Observer, PresentAnswer, SessionSnapshot, WindowChange, WindowChangeRefusal, WindowVisual,
@@ -67,6 +66,7 @@ use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlu
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::wl_compositor::WlCompositorClientState;
 use crate::state::State;
+use gnoblin_wayland_api::access::ClientRole;
 
 use crate::log;
 
@@ -164,7 +164,7 @@ pub struct Config {
     pub socket_path: Option<PathBuf>,
     /// Where the session's own processes connect.
     ///
-    /// A connection accepted here is recorded as [`crate::access::ClientRole::Privileged`]
+    /// A connection accepted here is recorded as [`gnoblin_wayland_api::access::ClientRole::Privileged`]
     /// and may bind the privileged globals; a connection on the ordinary socket may
     /// not. [`None`] means a session with no privileged path, which is the safe
     /// default: nothing is privileged by accident.

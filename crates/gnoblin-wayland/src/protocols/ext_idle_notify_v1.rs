@@ -58,7 +58,7 @@ use gnoblin_input::Activity;
 use gnoblin_types::ClientId;
 
 use crate::State;
-use crate::access::{Access, ClientRole};
+use gnoblin_wayland_api::access::{Access, ClientRole};
 
 use crate::log;
 

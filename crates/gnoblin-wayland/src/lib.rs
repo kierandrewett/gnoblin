@@ -205,7 +205,6 @@
 //! session lock reads no clock either: its barrier is a generation counter, and the
 //! loop's turn is the only thing that decides when a dead connection is noticed.
 
-mod access;
 mod clock;
 mod cursor;
 mod devices;
@@ -315,7 +314,7 @@ pub use state::State;
 pub use xwayland::XwaylandSession;
 
 /// Access policy: which global a client role may bind, and the registration that records it.
-pub use access::{Access, AccessPolicy, ClientRole, Global, Registration};
+pub use gnoblin_wayland_api::access::{Access, AccessPolicy, ClientRole, Global, Registration};
 /// The observed blur rectangle that `ext-background-effect-v1` reports.
 pub use protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 

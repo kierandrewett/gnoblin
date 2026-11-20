@@ -22,10 +22,10 @@ use gnoblin_capture::Target;
 use gnoblin_types::NodeId;
 
 use crate::State;
-use crate::access::{Access, AccessPolicy, Global};
 use crate::protocols::wire::view_source::gnoblin_view_source_manager_v1::{
     self as manager, GnoblinViewSourceManagerV1,
 };
+use gnoblin_wayland_api::access::{Access, AccessPolicy, Global};
 
 /// The global's data: who may bind it.
 pub(crate) struct ViewSourceGlobal {

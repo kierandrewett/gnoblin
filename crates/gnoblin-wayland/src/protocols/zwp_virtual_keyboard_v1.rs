@@ -3,7 +3,7 @@
 //!
 //! A virtual keyboard injects key events into whatever has focus, the way a physical one
 //! does. It is privileged: the access roster decides which connections may bind the
-//! manager, through [`crate::access`].
+//! manager, through `gnoblin_wayland_api::access`.
 //!
 //! ## The keymap
 //!
@@ -59,8 +59,8 @@ use smithay::wayland::{Dispatch2, GlobalDispatch2};
 use gnoblin_types::KeyState;
 
 use crate::State;
-use crate::access::{Access, Global};
 use crate::log;
+use gnoblin_wayland_api::access::{Access, Global};
 
 /// The version of `zwp_virtual_keyboard_manager_v1` this session serves.
 pub const MANAGER_VERSION: u32 = 1;

@@ -14,7 +14,7 @@
 //!   client to write into it — the compositor never copies the bytes itself;
 //! - the two privileged globals, which a clipboard manager uses to read and write the
 //!   selection without being the focused application. Those are decided per client
-//!   ([`crate::access`]): a sandboxed or unprivileged application does not see them at
+//!   (`gnoblin_wayland_api::access`): a sandboxed or unprivileged application does not see them at
 //!   all, so a manager cannot be smuggled into a sandbox.
 //!
 //! ## Focus is the gate for the ordinary clipboard

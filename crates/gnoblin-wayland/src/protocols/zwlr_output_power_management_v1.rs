@@ -41,7 +41,7 @@ use wayland_protocols_wlr::output_power_management::v1::server::{
 };
 
 use crate::State;
-use crate::access::{Access, Global};
+use gnoblin_wayland_api::access::{Access, Global};
 
 use crate::log;
 

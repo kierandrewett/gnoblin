@@ -6,7 +6,7 @@
 //! the compositor it is already connected to for a *listener*, and connects its own
 //! child processes there. Each connection that arrives on that listener is a client of
 //! its own — its own registry, its own objects — and it is marked
-//! [`crate::access::ClientRole::Sandboxed`] before its first request is dispatched, which is
+//! [`gnoblin_wayland_api::access::ClientRole::Sandboxed`] before its first request is dispatched, which is
 //! what makes "a sandboxed client sees no privileged global" true rather than hoped
 //! for.
 //!

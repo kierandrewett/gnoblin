@@ -58,7 +58,7 @@ use wayland_protocols_wlr::gamma_control::v1::server::{
 use gnoblin_types::OutputId;
 
 use crate::State;
-use crate::access::{Access, Global};
+use gnoblin_wayland_api::access::{Access, Global};
 
 use crate::log;
 

@@ -41,7 +41,7 @@ use smithay::xwayland::XWaylandClientData;
 
 use crate::ProcessIdentity;
 use crate::State;
-use crate::access::{Access, Registration};
+use gnoblin_wayland_api::access::{Access, Registration};
 
 /// Data every connected client carries.
 ///

@@ -18,7 +18,7 @@
 //! With no shell the window manager decides, and `close` is the protocol's own
 //! `xdg_toplevel.close`, which goes to the client because only the client decides whether it exits.
 //!
-//! Access is decided per client ([`crate::access`]): a taskbar inside an application
+//! Access is decided per client (`gnoblin_wayland_api::access`): a taskbar inside an application
 //! sandbox sees neither global.
 //!
 //! ## Failure modes first
@@ -64,8 +64,8 @@ use gnoblin_types::{OutputId, WindowId};
 
 use super::foreign_toplevel_shared::{Sent, States, ToplevelChanges, ToplevelEntry, ToplevelState};
 use crate::State;
-use crate::access::{Access, Global};
 use crate::window_request::WindowRequest;
+use gnoblin_wayland_api::access::{Access, Global};
 
 use crate::log;
 
@@ -146,7 +146,11 @@ impl GlobalDispatch2<ZwlrForeignToplevelManagerV1, State> for ZwlrForeignTopleve
     }
 
     fn can_view(&self, client: &Client) -> bool {
-        crate::access::AccessPolicy::allows(&*self.access, &client.id(), Global::ForeignToplevelManagement)
+        gnoblin_wayland_api::access::AccessPolicy::allows(
+            &*self.access,
+            &client.id(),
+            Global::ForeignToplevelManagement,
+        )
     }
 }
 
