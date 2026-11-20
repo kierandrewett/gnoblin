@@ -237,9 +237,15 @@ a closure property, a signal and an interface, and refuse one that gets them wro
    A file's path is logical (`python/gnoblin/std.py`): it is relative to whatever directory the caller writes the files under.
 2. Add one line to `targets()` in `crates/gnoblin-sdkgen/src/lib.rs`.
 3. Read the specification, not source text. `SdkSpec` holds the catalog (`node_classes`, objects, members, types) and, per library
-   (`core`, `std`): constant groups, handle typedefs, callbacks, records with each field classified as a scalar, handle, text, nested
-   record, or an unrepresentable pointer, and the function table with every argument classified, its return, its object and its
-   receiver. `text.rs` has the casing helpers and an indenting writer.
+   (`core`, `std`):
+    - constant groups: `ConstGroup::type_name` gives `EventKind` or `PlacementFlags`;
+    - handle typedefs and callbacks;
+    - records, with each field classified as a scalar, handle, text, nested record, or an unrepresentable pointer;
+    - the function table, with every argument classified (`Arg::Text`, `Arg::Records`, `Arg::Out`, `Arg::Callback`, ...), its
+      return, its object and its receiver.
+
+    `text.rs` has the casing helpers and an indenting writer.
+
 4. Call `gnoblin_sdkgen::emit_for_build(&["<language>"])` from the `build.rs` of the crate that embeds the output, and add the crate
    to `SDKGEN_USERS` in `xtask/src/deps.rs`.
 
