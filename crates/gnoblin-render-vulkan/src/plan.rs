@@ -176,7 +176,9 @@ impl FramePlan {
         );
         for draw in &mut self.draws {
             draw.uniform_offset += uniforms as u32;
-            draw.user_offset += user as u32;
+            if matches!(draw.kind, PassKind::User(_)) {
+                draw.user_offset += user as u32;
+            }
             draw.instance += instances as u32;
         }
         batch.uniforms.extend_from_slice(&self.uniforms);
@@ -551,11 +553,16 @@ impl Draws {
         let offset = built.draws.len() * UNIFORM_STRIDE;
         built.uniforms.resize(offset + UNIFORM_STRIDE, 0);
         built.uniforms[offset..offset + self.block.len()].copy_from_slice(&self.block);
-        let user_offset = built.user.len();
-        if let Some(block) = user {
-            built.user.resize(user_offset + UNIFORM_STRIDE, 0);
-            built.user[user_offset..user_offset + block.len()].copy_from_slice(block);
-        }
+        // A draw with no block of its own points the second binding at the first one, which is always inside the buffer.
+        let user_offset = match user {
+            Some(block) => {
+                let at = built.user.len();
+                built.user.resize(at + UNIFORM_STRIDE, 0);
+                built.user[at..at + block.len()].copy_from_slice(block);
+                at
+            }
+            None => 0,
+        };
         let instance = built.draws.len();
         built.instances.extend_from_slice(&[
             quad.x as f32,

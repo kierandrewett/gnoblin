@@ -190,7 +190,7 @@ impl Vulkan {
             .map_err(|result| VulkanError::driver("clear the target", result))?;
         Ok(Self {
             recorder,
-            shaders: ShaderPipelines::new(&context),
+            shaders: ShaderPipelines::new(&context, &pipelines),
             pipelines,
             target,
             cursor_under: Saved::default(),
@@ -200,6 +200,14 @@ impl Vulkan {
             epoch: Instant::now(),
             context,
         })
+    }
+
+    /// The signal this renderer asks for another frame on: a shell's shader pipeline finished building on the worker thread,
+    /// so a node drawn without its pass can be drawn with it. The backend asks the target (`Target::take_redraw`) and
+    /// damages the output; it may install a waker to wake its loop.
+    #[must_use]
+    pub fn redraw_signal(&self) -> gnoblin_render_frame::redraw::RedrawSignal {
+        self.shaders.redraw_signal()
     }
 
     /// The target's size in physical pixels.

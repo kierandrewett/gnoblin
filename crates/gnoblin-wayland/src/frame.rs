@@ -332,6 +332,11 @@ pub fn render(
     let mut damage: Vec<Rect> = Vec::new();
     let mut drawn_outputs: Vec<OutputId> = Vec::new();
     for output in outputs {
+        // A renderer that finished work after its last draw (a shader pipeline built on a worker thread) asks for the
+        // output again, which the composer answers as it answers any damage.
+        if backend.target(output).is_some_and(|target| target.take_redraw()) {
+            state.composer.damage_output(output);
+        }
         let drawn = backend.render(state, output);
         let changed = state.frame_damage(output).is_some();
         if let Err(error) = &drawn {

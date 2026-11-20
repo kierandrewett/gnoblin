@@ -159,6 +159,8 @@ pub(super) struct Faults {
     pub submit: Cell<Option<vk::Result>>,
     /// Fail the next creation of a shell's shader pipeline, after its source compiled.
     pub pipeline: Cell<Option<vk::Result>>,
+    /// Make the next shader build wait this long on its worker before it starts, as a slow driver would.
+    pub build_delay: Cell<Option<std::time::Duration>>,
 }
 
 /// The loader, instance and logical device, with the memory properties and limits the

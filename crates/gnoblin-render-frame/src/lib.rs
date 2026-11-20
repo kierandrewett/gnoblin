@@ -38,6 +38,8 @@ pub mod frame;
 pub mod geometry;
 /// A frame's pixels, copied out of a renderer.
 pub mod image;
+/// A renderer's request for another frame, for work that finishes after `draw` returned.
+pub mod redraw;
 /// The renderer-neutral half of the shader pipeline.
 pub mod shader;
 /// Writes rendered pixels into a client's `wl_shm` buffer.

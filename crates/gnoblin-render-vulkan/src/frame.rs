@@ -713,6 +713,7 @@ impl Vulkan {
     /// reported on the frame's timings with a short code and left out: its node is drawn without the pass. A pass that was not
     /// marked as reading the backdrop but whose source does is refused too, because the frame would not have built one.
     fn resolve_shaders(&mut self, frame: &OutputFrame) -> (Shaders, Vec<(ShaderKey, vk::Pipeline)>) {
+        self.shaders.begin_frame();
         let mut shaders = Shaders {
             layers: vec![Vec::new(); frame.layers().len()],
             time: self.epoch.elapsed().as_secs_f32(),
@@ -730,7 +731,7 @@ impl Vulkan {
                 let outcome = match found.iter().find(|(held, _)| *held == key) {
                     Some((_, outcome)) => *outcome,
                     None => {
-                        let outcome = self.shaders.resolve(&self.pipelines, pass);
+                        let outcome = self.shaders.resolve(pass);
                         found.push((key, outcome));
                         outcome
                     }

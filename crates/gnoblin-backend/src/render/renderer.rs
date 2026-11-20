@@ -201,6 +201,22 @@ impl AnyRenderer {
         }
     }
 
+    /// The signal the renderer asks for another frame on, when it can: only the Vulkan renderer builds anything after
+    /// `draw` returned. A backend may install a waker on it to wake its event loop.
+    #[must_use]
+    pub fn redraw_signal(&self) -> Option<gnoblin_render_frame::redraw::RedrawSignal> {
+        match self {
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(vulkan) => Some(vulkan.redraw_signal()),
+            _ => None,
+        }
+    }
+
+    /// Whether the renderer asked for another frame since the last call, which clears the request.
+    pub fn take_redraw(&mut self) -> bool {
+        self.redraw_signal().is_some_and(|signal| signal.take())
+    }
+
     /// The bytes the installed renderer holds for its output, by what holds them.
     #[must_use]
     pub fn footprint(&self) -> Footprint {

@@ -336,6 +336,13 @@ pub trait Target {
     /// Damage rectangles are in the target's own logical space and may lie partly
     /// or wholly outside it; clipping is the target's job.
     fn present(&mut self, damage: &[Rect]) -> Present;
+
+    /// Whether the renderer asked for another frame since the last call (a shader pipeline finished building on its
+    /// worker thread), which clears the request. The compositor then damages the output so the next frame draws it
+    /// again. The default is that no renderer ever asks.
+    fn take_redraw(&mut self) -> bool {
+        false
+    }
 }
 
 /// One input event a backend delivered.

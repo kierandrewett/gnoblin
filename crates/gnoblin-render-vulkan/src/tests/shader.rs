@@ -44,9 +44,23 @@ fn with_passes(mut layer: Layer, passes: &[Pass]) -> Layer {
     layer
 }
 
-/// Draws `frame` and reads the target back.
+/// Draws `frame` until the worker has answered for every source in it, then reads the target back. The draws before the last
+/// are the ones that find a pass still compiling, and their reports are dropped.
+fn settle(vulkan: &mut Vulkan, frame: &OutputFrame, scale: Scale) {
+    for _ in 0..4000 {
+        vulkan.draw(frame, scale).expect("the frame");
+        if vulkan.shaders.pending() == 0 {
+            return;
+        }
+        frame.shader_timings().take();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    panic!("the worker did not answer in 20 s");
+}
+
+/// Draws `frame`, after its shaders are built, and reads the target back.
 fn draw(vulkan: &mut Vulkan, frame: &OutputFrame) -> Image {
-    vulkan.draw(frame, Scale::IDENTITY).expect("the frame");
+    settle(vulkan, frame, Scale::IDENTITY);
     vulkan.screenshot().expect("a readback")
 }
 
@@ -349,7 +363,7 @@ fn a_pass_that_reads_a_backdrop_it_was_not_flagged_for_is_refused() {
 }
 
 #[test]
-fn a_pipeline_the_driver_refuses_is_tried_again_next_frame() {
+fn a_pipeline_the_driver_refuses_is_reported_and_the_layer_is_drawn_without_it() {
     let Some(mut vulkan) = renderer(SIZE) else { return };
     let mut frame = frame(Color::BLACK, SIZE);
     frame.push_layer(shaded(
@@ -367,15 +381,6 @@ fn a_pipeline_the_driver_refuses_is_tried_again_next_frame() {
     let report = frame.shader_timings().take();
     assert_eq!(report.refused.len(), 1);
     assert_eq!(report.refused[0].1, "pipeline-failed");
-    assert_eq!(
-        vulkan.shaders.len(),
-        0,
-        "a driver failure is not remembered as the source's"
-    );
-
-    let image = draw(&mut vulkan, &frame);
-    assert_pixel(&image, (12, 12), [0, 255, 0, 255], BLEND);
-    assert!(frame.shader_timings().take().refused.is_empty());
     clean(&vulkan);
 }
 
@@ -399,22 +404,13 @@ fn many_sources(count: usize) -> (OutputFrame, Vec<ShaderKey>) {
 }
 
 #[test]
-fn the_pipelines_are_kept_by_source_and_the_least_recently_used_leave_after_64() {
+fn the_pipelines_are_kept_by_source_and_never_more_than_64() {
     let Some(mut vulkan) = renderer(SIZE) else { return };
-    // 70 sources in one frame: more than the cache holds, so the ones it evicts were recorded into this frame's commands.
     let (frame, keys) = many_sources(70);
-    let image = draw(&mut vulkan, &frame);
-    for index in [0, 31, 32, 69] {
-        let (x, y) = ((index % 32) * 2, (index / 32) * 2);
-        assert_pixel(&image, (x, y), [0, 255, 0, 255], BLEND);
-    }
+    draw(&mut vulkan, &frame);
     assert_eq!(vulkan.shaders.len(), 64, "the cache is bounded");
-    assert!(!vulkan.shaders.contains(keys[0]), "the first source left");
-    assert!(vulkan.shaders.contains(keys[69]), "the last stays");
-    // The next frame makes the evicted ones again, and draws the same.
-    let image = draw(&mut vulkan, &frame);
-    assert_pixel(&image, (0, 0), [0, 255, 0, 255], BLEND);
-    assert_eq!(vulkan.shaders.len(), 64);
+    assert!(vulkan.shaders.contains(keys[0]), "a source the frame used stays");
+    assert!(!vulkan.shaders.contains(keys[69]), "the extra was never built");
     clean(&vulkan);
 }
 
@@ -495,7 +491,7 @@ fn a_shader_layer_and_its_backdrop_are_in_physical_pixels_at_a_scale() {
         Color::WHITE,
         &[pass("return backdrop(vec2<f32>(uv.x, 1.0 - uv.y));", &[])],
     ));
-    vulkan.draw(&frame, Scale::integral(2)).expect("the frame");
+    settle(&mut vulkan, &frame, Scale::integral(2));
     let image = vulkan.screenshot().expect("a readback");
     assert_pixel(&image, (20, 12), [0, 0, 255, 255], BLEND);
     assert_pixel(&image, (20, 36), [255, 0, 0, 255], BLEND);
@@ -548,5 +544,121 @@ fn a_chain_of_identity_passes_equals_none_for_a_cropped_surface() {
     let identity = pass("return c;", &[]);
     let shaded = draw(&mut vulkan, &build(&[identity.clone(), identity.clone(), identity]));
     assert_close("three identity passes against none", &plain, &shaded, BLEND);
+    clean(&vulkan);
+}
+
+#[test]
+fn the_first_draw_does_not_wait_for_the_build_and_a_later_one_has_the_pass() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let signal = vulkan.redraw_signal();
+    let broken_first = pass(SWAP, &[]);
+    let key = match &broken_first {
+        Pass::Shader(shader) => shader.key(),
+        _ => unreachable!("a shader pass"),
+    };
+    let mut frame = frame(Color::BLACK, SIZE);
+    frame.push_layer(shaded(Rect::new(8, 8, 16, 16), colour(255, 0, 0, 255), &[broken_first]));
+    // A build that takes 400 ms, as a slow driver's would.
+    vulkan.context.faults.build_delay.set(Some(Duration::from_millis(400)));
+    let started = std::time::Instant::now();
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+    let took = started.elapsed();
+    println!("the first draw took {took:?} with a 400 ms build");
+    assert!(
+        took < Duration::from_millis(300),
+        "the draw waited for the build: {took:?}"
+    );
+    let image = vulkan.screenshot().expect("a readback");
+    assert_pixel(&image, (12, 12), [255, 0, 0, 255], 0);
+    assert_eq!(
+        frame.shader_timings().take().refused,
+        [(key, "compiling".to_owned())],
+        "the node says it is compiling"
+    );
+    assert!(!signal.take(), "the build is not done, so no frame is asked for");
+    let mut asked = false;
+    for _ in 0..1000 {
+        if signal.take() {
+            asked = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(asked, "the worker asked for another frame when the build was done");
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+    let image = vulkan.screenshot().expect("a readback");
+    assert_pixel(&image, (12, 12), [0, 255, 0, 255], BLEND);
+    assert!(frame.shader_timings().take().refused.is_empty());
+    clean(&vulkan);
+}
+
+#[test]
+fn dropping_the_renderer_during_a_build_is_safe() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(Color::BLACK, SIZE);
+    frame.push_layer(shaded(
+        Rect::new(8, 8, 16, 16),
+        colour(255, 0, 0, 255),
+        &[pass(SWAP, &[])],
+    ));
+    vulkan.context.faults.build_delay.set(Some(Duration::from_millis(300)));
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+    assert_eq!(vulkan.shaders.pending(), 1);
+    clean(&vulkan);
+    // The worker is still in its build: the drop joins it before the device goes.
+    drop(vulkan);
+}
+
+#[test]
+fn a_device_lost_during_a_build_is_safe_and_drains_the_worker() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(Color::BLACK, SIZE);
+    frame.push_layer(shaded(
+        Rect::new(8, 8, 16, 16),
+        colour(255, 0, 0, 255),
+        &[pass(SWAP, &[])],
+    ));
+    vulkan.context.faults.build_delay.set(Some(Duration::from_millis(300)));
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+    vulkan.context.faults.submit.set(Some(vk::Result::ERROR_DEVICE_LOST));
+    assert_eq!(vulkan.draw(&frame, Scale::IDENTITY), Err(RenderError::Lost));
+    assert_eq!(vulkan.shaders.pending(), 0);
+    assert_eq!(vulkan.shaders.len(), 0);
+}
+
+#[test]
+fn a_frame_with_more_sources_than_the_cache_holds_refuses_the_extras_and_builds_nothing_again() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let (frame, keys) = many_sources(70);
+    let image = draw(&mut vulkan, &frame);
+    for index in [0, 31, 32, 63] {
+        let (x, y) = ((index % 32) * 2, (index / 32) * 2);
+        assert_pixel(&image, (x, y), [0, 255, 0, 255], BLEND);
+    }
+    for index in [64, 69] {
+        let (x, y) = ((index % 32) * 2, (index / 32) * 2);
+        assert_pixel(&image, (x, y), [255, 0, 0, 255], 0);
+    }
+    let report = frame.shader_timings().take();
+    let full: Vec<ShaderKey> = report
+        .refused
+        .iter()
+        .filter(|(_, code)| code == "cache-full")
+        .map(|(key, _)| *key)
+        .collect();
+    assert_eq!(full, keys[64..], "the extras, and only they, are cache-full");
+    assert_eq!(vulkan.shaders.len(), 64);
+    assert!(vulkan.shaders.contains(keys[0]) && !vulkan.shaders.contains(keys[69]));
+    // Steady frames build nothing: the same 64 stay, and a frame is cheap.
+    for _ in 0..3 {
+        let started = std::time::Instant::now();
+        vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+        let took = started.elapsed();
+        println!("a steady frame of 70 sources took {took:?}");
+        assert!(took < Duration::from_millis(500), "{took:?}");
+        assert_eq!(vulkan.shaders.pending(), 0, "nothing is built again");
+        assert_eq!(vulkan.shaders.len(), 64);
+        frame.shader_timings().take();
+    }
     clean(&vulkan);
 }

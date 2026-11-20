@@ -1013,6 +1013,10 @@ impl Target for NestedTarget {
         self.output.effective_scale()
     }
 
+    fn take_redraw(&mut self) -> bool {
+        self.renderer.take_redraw()
+    }
+
     fn draw(&mut self, frame: &OutputFrame) -> Result<(), RenderError> {
         self.renderer.draw(frame, self.output.effective_scale())?;
         self.display = frame.has_secure().then(|| frame.clone());
