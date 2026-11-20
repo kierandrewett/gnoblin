@@ -43,7 +43,9 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         },
         None,
     )?;
-    let root = clients.clone();
+    let Some(root) = model.clients()? else {
+        return Ok(());
+    };
     terminals
         .on_added(move |client, _| {
             g.log(&format!(
