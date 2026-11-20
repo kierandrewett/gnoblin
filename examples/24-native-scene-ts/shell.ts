@@ -4,7 +4,6 @@
 //
 // Makes a perspective camera and a view drawn through it, mounts both under the scene's root and logs the placement it reads back. Every
 // line starts with `scene:`, as the Rust shell of the same example spells it.
-import { gnoblin } from "gnoblin-core";
 import { Camera3d, Scene, View } from "gnoblin-std/generated/objects";
 import type {} from "gnoblin-std";
 
@@ -19,6 +18,6 @@ const view = new View({
 });
 scene.add(view);
 const at = view.position;
-gnoblin.log(
+console.log(
     `scene: the view ${view.id} is node ${view.node} at ${at.x} ${at.y} ${at.z}, the camera ${camera.id} is node ${camera.node} with fov ${camera.fov}`,
 );
