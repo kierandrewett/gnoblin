@@ -1487,6 +1487,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core-abi",
  "gnoblin-macros",
+ "gnoblin-object",
  "gnoblin-sdkgen",
 ]
 
@@ -1546,6 +1547,14 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-example-native-linked"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
+name = "gnoblin-example-native-object"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",
@@ -2238,6 +2247,8 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",
  "gnoblin-core-abi",
+ "gnoblin-object",
+ "gnoblin-sdkgen",
  "gnoblin-std-abi",
 ]
 

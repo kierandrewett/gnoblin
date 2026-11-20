@@ -57,6 +57,7 @@ mod error;
 mod gesture;
 mod layout;
 mod layouts;
+pub mod objects;
 mod output;
 mod query;
 mod scene;

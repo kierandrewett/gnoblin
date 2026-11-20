@@ -131,6 +131,7 @@ members = [
     "examples/09-native-linked",
     "examples/10-hot-reload",
     "examples/19-shader-tint",
+    "examples/20-native-object",
     "xtask",
 ]
 # `extensions/` packages are separate workspaces with their own lockfiles and target dirs (design/xr-extension.md).

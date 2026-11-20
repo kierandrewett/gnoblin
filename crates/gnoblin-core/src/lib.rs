@@ -46,6 +46,7 @@ mod generated {
 }
 mod gnoblin;
 mod input;
+pub mod objects;
 mod owned;
 mod process;
 mod sys;

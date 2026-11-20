@@ -1,4 +1,4 @@
-//! Links the installed std library without building it.
+//! Links the installed std library without building it, and writes the typed classes of `gnoblin.std`.
 //!
 //! The link stub (`GNOBLIN_STD_LIB_DIR` for a real library) is what makes a std shell record `NEEDED libgnoblin-std.so.1` and no copy of
 //! the library. See `gnoblin_std_abi::build_support` and `design/modular-framework.md` section 4.3. The core is linked the same way
@@ -7,4 +7,5 @@
 
 fn main() {
     gnoblin_std_abi::build_support::link_std();
+    gnoblin_sdkgen::emit_for_build(&["object-api"]);
 }

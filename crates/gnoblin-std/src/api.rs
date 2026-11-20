@@ -64,7 +64,7 @@ thread_local! {
 }
 
 /// The text of the library's last failure on this thread.
-fn last_error_text() -> String {
+pub(crate) fn last_error_text() -> String {
     // SAFETY: with a null buffer and zero capacity `gnoblin_std_last_error` only returns the length.
     let len = unsafe { sys::gnoblin_std_last_error(core::ptr::null_mut(), 0) };
     if len == 0 {

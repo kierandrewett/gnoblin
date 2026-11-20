@@ -16,6 +16,8 @@ next-major = ["gnoblin-core-abi/next-major"]
 
 [dependencies]
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+# The client half of the object protocol, which the typed classes of `gnoblin.model` are written over.
+gnoblin-object = { path = "../gnoblin-object" }
 gnoblin-macros = { path = "../gnoblin-macros" }
 
 [build-dependencies]

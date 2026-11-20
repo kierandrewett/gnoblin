@@ -18,6 +18,7 @@ mod support;
 mod document;
 mod js_esm;
 mod motion;
+mod native_object;
 mod native_std;
 mod no_std;
 mod no_workspaces;

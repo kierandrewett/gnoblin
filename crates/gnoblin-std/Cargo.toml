@@ -13,10 +13,14 @@ build = "build.rs"
 gnoblin-core = { path = "../gnoblin-core" }
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
 gnoblin-std-abi = { path = "../gnoblin-std-abi" }
+# The client half of the object protocol, which the typed classes of `gnoblin.std` are written over.
+gnoblin-object = { path = "../gnoblin-object" }
 
 [build-dependencies]
 # The link stub runs in build.rs, so the helper code is a build dependency only.
 gnoblin-std-abi = { path = "../gnoblin-std-abi", features = ["build-support"] }
+# The typed classes of `gnoblin.std` are generated at build time and never committed.
+gnoblin-sdkgen = { path = "../gnoblin-sdkgen" }
 
 # The workspace table forbids unsafe code; the SDK's FFI modules need it. Only the modules that open with
 # `#![allow(unsafe_code)]` and a SAFETY note use it.

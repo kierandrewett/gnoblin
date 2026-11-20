@@ -18,7 +18,7 @@ cargo build -p gnoblin-example-minimal-core-shell
 gnoblin ./target/debug/libminimal_core_shell.so
 ```
 
-A std shell (examples 2, 6, 9 and 19) links `libgnoblin-std.so.1`. In a source tree run `cargo xtask stage` first, and put `target/debug` on
+A std shell (examples 2, 6, 9, 19 and 20) links `libgnoblin-std.so.1`. In a source tree run `cargo xtask stage` first, and put `target/debug` on
 `LD_LIBRARY_PATH` for the shell; an installed Gnoblin has the library where the loader looks.
 
 | #   | Directory                                                   | Language           | Layers    | Run                                                                                                                 |
@@ -38,6 +38,7 @@ A std shell (examples 2, 6, 9 and 19) links `libgnoblin-std.so.1`. In a source t
 | 19  | [`19-shader-tint`](19-shader-tint/src/lib.rs)               | Rust               | Core, std | `gnoblin ./target/debug/libshader_tint.so`, then `<Super>w` logs why a shader is not drawn                          |
 | 19  | [`19-shader-tint-ts`](19-shader-tint-ts/shell.ts)           | TypeScript         | Core, std | `gnoblin ./examples/19-shader-tint-ts/shell.ts`                                                                     |
 | 19  | [`19-shader-tint-py`](19-shader-tint-py/shell.py)           | Python             | Core, std | `gnoblin ./examples/19-shader-tint-py/shell.py`                                                                     |
+| 20  | [`20-native-object`](20-native-object/src/lib.rs)           | Rust               | Core, std | `gnoblin ./target/debug/libnative_object.so`, then `<Super>e` types into the entry the shell made                   |
 
 Example 19 sets a custom shader. A window draws it unless the compositor's `compositor.user-shaders` setting is switched off, and only on a renderer that draws shaders; see
 [custom shaders](../docs/custom-shaders.md).

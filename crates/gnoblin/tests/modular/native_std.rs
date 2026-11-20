@@ -26,7 +26,7 @@ use crate::support::{Mapper, scene};
 
 /// A session whose compositor serves the std shell at `shell`. The shell records no run path, so the staged libraries are on the
 /// loader's path.
-fn start_std(shell: &Path) -> Gnoblin {
+pub(crate) fn start_std(shell: &Path) -> Gnoblin {
     let launch = Launch::compositor(&[])
         .with_arg(shell)
         .with_env("LD_LIBRARY_PATH", &staged_library_path());
@@ -50,7 +50,7 @@ fn std_file(path: &str) -> bool {
 
 /// One mapping of the core and one of std, and the shell as one more.
 #[track_caller]
-fn assert_one_core_one_std(session: &Gnoblin) {
+pub(crate) fn assert_one_core_one_std(session: &Gnoblin) {
     let files = session.mapped_files();
     assert_eq!(
         files.iter().filter(|path| core_file(path)).count(),

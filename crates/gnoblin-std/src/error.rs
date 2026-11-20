@@ -8,6 +8,7 @@ use std::fmt;
 
 use gnoblin_core::CoreError;
 pub use gnoblin_core::ErrorKind;
+use gnoblin_object::Fail;
 
 /// A failed call: what kind of failure, and the library's text for it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,5 +54,11 @@ impl std::error::Error for Error {}
 impl From<CoreError> for Error {
     fn from(error: CoreError) -> Error {
         Error::new(error.kind(), error.to_string())
+    }
+}
+
+impl From<Fail> for Error {
+    fn from(fail: Fail) -> Error {
+        Error::new(ErrorKind::from_code(fail.code), fail.message)
     }
 }

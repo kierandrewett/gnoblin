@@ -190,6 +190,7 @@ stands. Rust ones build with `cargo build -p <package>` from the source tree; sc
 | `19-shader-tint`        | Rust               | Core, std | A shader filter that tints every window, and a chord that says why one is not drawn.          |
 | `19-shader-tint-ts`     | TypeScript         | Core, std | The same tint in TypeScript.                                                                  |
 | `19-shader-tint-py`     | Python             | Core, std | The same tint in Python.                                                                      |
+| `20-native-object`      | Rust               | Core, std | The typed object API of std: an entry model edited and heard, a focus decision.               |
 
 The numbers also name behaviours that are not shells of their own:
 

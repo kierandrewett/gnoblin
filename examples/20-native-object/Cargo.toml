@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-example-native-object"
+description = "Example 20: a native shell that uses the typed object API of libgnoblin-std: an entry model made, edited, read and listened to, and the focus policy's decision called as a function."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "native_object"
+crate-type = ["cdylib"]
+
+# The shell depends on the std SDK and the core SDK and nothing else. The typed classes it uses (`gnoblin_std::objects`) are written at
+# build time from the library's catalog and call the library through its object table.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../crates/gnoblin-std" }
+
+[lints]
+workspace = true

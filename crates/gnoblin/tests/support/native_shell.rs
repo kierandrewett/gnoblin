@@ -123,6 +123,8 @@ pub struct StdShells {
     pub linked: PathBuf,
     /// Example 19: a custom shader on the style of every window; `<Super>w` logs the style warnings of the windows.
     pub shader_tint: PathBuf,
+    /// Example 20: the typed object API of std: an entry model edited and listened to, and a focus decision; `<Super>e` types into it.
+    pub object: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -151,6 +153,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-linked",
             "-p",
             "gnoblin-example-shader-tint",
+            "-p",
+            "gnoblin-example-native-object",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -167,6 +171,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         layout: debug.join("librust_layout.so"),
         linked: debug.join("libnative_linked.so"),
         shader_tint: debug.join("libshader_tint.so"),
+        object: debug.join("libnative_object.so"),
     })
 }
 
@@ -988,6 +993,7 @@ pub const KEY_T: u32 = 20;
 pub const KEY_X: u32 = 45;
 pub const KEY_RIGHT: u32 = 106;
 pub const KEY_DOWN: u32 = 108;
+pub const KEY_E: u32 = 18;
 pub const KEY_TAB: u32 = 15;
 
 /// The `Mod4` bit of an xkb modifier mask, which `pc+us` gives the Super keys.
