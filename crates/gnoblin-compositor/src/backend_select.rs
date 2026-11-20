@@ -14,8 +14,8 @@
 //!    is also what makes `gnoblin` started from a terminal on a GNOME or Sway desktop open a window instead of
 //!    failing.
 //! 2. **A login session with a seat, and a DRM node** (`XDG_SEAT`, or a `libseat` seatd socket, plus a
-//!    `/dev/dri/card*`): `drm`. A display manager or a VT login with logind or seatd is how the legacy session
-//!    started on hardware, and it is the only case with no host display.
+//!    `/dev/dri/card*`): `drm`. A display manager or a VT login with logind or seatd is how a session
+//!    starts on hardware, and it is the only case with no host display.
 //! 3. **Otherwise** `headless`: a session with nothing to draw on still has to run (CI, containers, services).
 //!
 //! `DISPLAY` alone (an X11 host) selects nothing: the nested backend is a Wayland client, and an X11 server cannot

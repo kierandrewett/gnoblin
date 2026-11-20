@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn a_nested_session_with_a_gpu_renderer_contacts_its_parent_instead_of_refusing_the_renderer() {
-        // The nested backend draws with every renderer the headless one does, so a GPU renderer is no longer refused
+        // The nested backend draws with every renderer the headless one does, so a GPU renderer is not refused
         // before the parent is reached: the failure here is the missing parent socket, and the renderer is only
         // refused (naming the setting) when the machine cannot create it.
         let socket = std::env::temp_dir().join(format!("gnoblin-renderer-{}.sock", std::process::id()));
