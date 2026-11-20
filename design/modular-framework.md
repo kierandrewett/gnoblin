@@ -3077,17 +3077,16 @@ package builds), `wlcs` (needs the wlcs build), `infra` (Terraform), `applicatio
 ### 36.2 Tests per member
 
 Sums of every test target (`cargo test -p MEMBER`, one `--test NAME` per target for crates with many; doc tests where a library has
-them; the doc step of a cdylib-only crate is refused by cargo and is not counted). This is the **final** table, from the last round
-(36.7): `ab4635da1` (D11, the motion flip) with the two test fixes of 36.7 (`c83fe1348`). Earlier rounds' tables were
-superseded.
+them; the doc step of a cdylib-only crate is refused by cargo and is not counted). This is the table of the last round (36.8), run on
+`9d20a9a6d` (the shader pass), with the one test fix of 36.8 counted as rerun. Earlier rounds' tables were superseded.
 
 | Member                                       |   Passed | Failed | Ignored | Result   |
 | -------------------------------------------- | -------: | -----: | ------: | -------- |
-| `gnoblin`                                    |      231 |      0 |       2 | pass     |
+| `gnoblin`                                    |      237 |      0 |       2 | pass     |
 | `gnoblin-a11y`                               |       45 |      0 |       0 | pass     |
 | `gnoblin-animation`                          |       26 |      0 |       0 | pass     |
 | `gnoblin-authority`                          |       21 |      0 |       0 | pass     |
-| `gnoblin-backend`                            |      454 |      0 |       2 | pass     |
+| `gnoblin-backend`                            |      468 |      0 |       2 | pass     |
 | `gnoblin-backend-drm`                        |      209 |      0 |       0 | pass     |
 | `gnoblin-capture`                            |       47 |      0 |       0 | pass     |
 | `gnoblin-cli-style`                          |       25 |      0 |       0 | pass     |
@@ -3111,19 +3110,20 @@ superseded.
 | `gnoblin-compat-wayland-gtk-shell1`          |        8 |      0 |       0 | pass     |
 | `gnoblin-compat-wayland-mutter-x11-interop`  |        7 |      0 |       0 | pass     |
 | `gnoblin-compat-x11-xsettings`               |        6 |      0 |       0 | pass     |
-| `gnoblin-compositor`                         |      615 |      0 |       0 | pass     |
+| `gnoblin-compositor`                         |      627 |      0 |       0 | pass     |
 | `gnoblin-config`                             |      155 |      0 |       0 | pass     |
 | `gnoblin-config-codegen`                     |        3 |      0 |       0 | pass     |
 | `gnoblin-config-migrate`                     |       62 |      0 |       0 | pass     |
 | `gnoblin-core`                               |        7 |      0 |       7 | pass     |
 | `gnoblin-core-abi`                           |       11 |      0 |       0 | pass     |
-| `gnoblin-core-impl`                          |      156 |      0 |       0 | pass     |
+| `gnoblin-core-impl`                          |      161 |      0 |       0 | pass     |
 | `gnoblin-cursor`                             |       47 |      0 |       0 | pass     |
 | `gnoblin-example-hot-reload`                 |        0 |      0 |       0 | no tests |
 | `gnoblin-example-minimal-core-shell`         |        0 |      0 |       0 | no tests |
 | `gnoblin-example-native-linked`              |        0 |      0 |       0 | no tests |
 | `gnoblin-example-no-workspaces`              |        0 |      0 |       0 | no tests |
 | `gnoblin-example-rust-layout`                |        0 |      0 |       0 | no tests |
+| `gnoblin-example-shader-tint`                |        0 |      0 |       0 | no tests |
 | `gnoblin-example-std-prelude`                |        0 |      0 |       0 | no tests |
 | `gnoblin-fixture-launcher`                   |        0 |      0 |       0 | no tests |
 | `gnoblin-fixture-runtime-test`               |        0 |      0 |       0 | no tests |
@@ -3139,7 +3139,7 @@ superseded.
 | `gnoblin-fixture-shell-wake`                 |        0 |      0 |       0 | no tests |
 | `gnoblin-input`                              |       95 |      0 |       0 | pass     |
 | `gnoblin-input-eis`                          |       56 |      0 |       0 | pass     |
-| `gnoblin-js`                                 |     1010 |      0 |       5 | pass     |
+| `gnoblin-js`                                 |     1013 |      0 |       5 | pass     |
 | `gnoblin-js-types`                           |       18 |      0 |       0 | pass     |
 | `gnoblin-keyring-handoff`                    |       10 |      0 |       0 | pass     |
 | `gnoblin-keyring-store`                      |       23 |      0 |       0 | pass     |
@@ -3161,11 +3161,11 @@ superseded.
 | `gnoblin-portal-ui`                          |       24 |      0 |       0 | pass     |
 | `gnoblin-proto`                              |       54 |      0 |       0 | pass     |
 | `gnoblin-provider-wire`                      |       11 |      0 |       0 | pass     |
-| `gnoblin-render`                             |      281 |      0 |       0 | pass     |
-| `gnoblin-render-frame`                       |       44 |      0 |       0 | pass     |
-| `gnoblin-render-gles`                        |       82 |      0 |       0 | pass     |
+| `gnoblin-render`                             |      285 |      0 |       0 | pass     |
+| `gnoblin-render-frame`                       |       88 |      0 |       1 | pass     |
+| `gnoblin-render-gles`                        |      116 |      0 |       1 | pass     |
 | `gnoblin-render-software`                    |       68 |      0 |       1 | pass     |
-| `gnoblin-render-vulkan`                      |       42 |      0 |       1 | pass     |
+| `gnoblin-render-vulkan`                      |       75 |      0 |       1 | pass     |
 | `gnoblin-runtime-js`                         |       10 |      0 |       0 | pass     |
 | `gnoblin-runtime-python`                     |       11 |      0 |       0 | pass     |
 | `gnoblin-schema`                             |       64 |      0 |       0 | pass     |
@@ -3185,13 +3185,13 @@ superseded.
 | `gnoblin-std`                                |       12 |      0 |       9 | pass     |
 | `gnoblin-std-abi`                            |       12 |      0 |       0 | pass     |
 | `gnoblin-std-dyn`                            |        5 |      0 |       0 | pass     |
-| `gnoblin-std-impl`                           |       88 |      0 |       0 | pass     |
+| `gnoblin-std-impl`                           |       92 |      0 |       0 | pass     |
 | `gnoblin-std-portal`                         |       17 |      0 |       0 | pass     |
 | `gnoblin-std-wm`                             |       34 |      0 |       0 | pass     |
 | `gnoblin-testkit`                            |       25 |      0 |       0 | pass     |
 | `gnoblin-tree-client`                        |       47 |      0 |       0 | pass     |
 | `gnoblin-types`                              |       33 |      0 |       0 | pass     |
-| `gnoblin-wayland`                            |      882 |      0 |       7 | pass     |
+| `gnoblin-wayland`                            |      884 |      0 |       7 | pass     |
 | `gnoblin-wlcs`                               |        6 |      0 |       0 | pass     |
 | `gnoblin-wm-api`                             |       15 |      0 |       0 | pass     |
 | `gnoblin-xwayland`                           |       57 |      0 |       0 | pass     |
@@ -3199,7 +3199,7 @@ superseded.
 | `pam-gnoblin-keyring`                        |        6 |      0 |       0 | pass     |
 | `xdg-desktop-portal-gnoblin`                 |       67 |      0 |       0 | pass     |
 | `xtask`                                      |      244 |      0 |       0 | pass     |
-| **116 members**                              | **6908** |  **0** |  **40** |          |
+| **117 members**                              | **7069** |  **0** |  **42** |          |
 
 ### 36.3 Failures and their classification
 
@@ -3713,3 +3713,28 @@ Nothing else failed. The fixes are test-side only; no production code changed in
 
 Not done: the container, Nix, wlcs and Terraform workflows of 36.1; the gates other than fmt and clippy were not rerun after the two
 test fixes (they touch two test files).
+
+### 36.8 Shader pass round (lane GateTip, fifth run)
+
+Run on `9d20a9a6d` on three fresh boxes (the Vulkan packages `libvulkan1`, `mesa-vulkan-drivers` (lavapipe) and `vulkan-validationlayers`
+installed), then the overlap rerun on `4628d0398` (`9d20a9a6d` plus the `ProtoCrates`/`NativeArch` design commits, `e0e37357c`'s deletion of
+`protocols/gnoblin-blur-fade-v1.xml`, and the fix below).
+
+**Passed on `9d20a9a6d`:** all 47 gate steps (fmt, check, clippy `-D warnings`, the xtask gates, `js-typecheck`/`js-lint`/prettier, `check-packaging-targets`,
+docs build, `just deny`/`ext-deny`, `core-only`, extension workspace, `pipewire-test`, `dist-check`, `msrv`); the clean-checkout proof (stage,
+`dist install --prefix`, `dist-check`, installed types, `gnoblinctl config init`/`check`/`check --types`); every test target of all 117
+members, one binary at a time, including `gnoblin` (`modular` with `shader_filter` (6), `motion` and `style_reload`; `abi_upgrade`; the rest),
+`gnoblin-compositor`, `gnoblin-wayland`, `gnoblin-backend`(+`-drm`), `gnoblin-render`, `-render-frame`, `-render-gles` and `-render-vulkan`
+(75 tests on lavapipe, not skipped), `gnoblin-js`, the runtimes, `core-impl`, `std-impl`, `xtask`, `gnoblinctl`. Totals: 7069 passed, 0 failed,
+42 ignored.
+
+**Passed on `4628d0398` (the overlap):** `xtask layout`, `docs-parity`, `native-libs`, `deps`; prettier over `design/*.md` and `CHANGELOG.md`; the docs build;
+`gnoblin-config` (its `contract` test names `blur-fade`); `time_units`; `cargo check --workspace --all-targets`.
+
+| Id  | Failure                                                                                                                                  | Class                                               | Root cause and fix                                                                                                                                                                                                                                                                                                                                           |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| H1  | `gnoblin-js` `time_units::no_script_facing_time_is_documented_or_named_in_seconds`: `style/filters.ts:129: ... t is the time in seconds` | **Fixed**, test-side (`4628d0398`'s parent, pushed) | `ShaderFilter`'s doc names the `t` argument of a WGSL `effect` function in seconds, the shader language's clock, as every shader's `time` is. It is read by GPU code in the source string, never set or read by a script as a parameter, so the scan allows the line with that reason in `SECONDS_ALLOWED`. Passes on both SHAs. No production code changed. |
+| H2  | `gnoblin-service-polkit` `--test dbus` (2)                                                                                               | **Harness**, not a failure                          | My per-target split did not build the crate's example; the whole crate passes (6), as in 36.3 F3.                                                                                                                                                                                                                                                            |
+
+**Not run on `4628d0398`:** the full 47 gate steps and the per-member table were run on `9d20a9a6d` only. The run was stopped on request to free the
+boxes, so on the later SHA only the overlap above ran. Nothing was run for the container, Nix, wlcs and Terraform workflows (36.1).
