@@ -172,7 +172,9 @@ fn invariants_hold_over_random_sequences() {
 
             // `locked` reaches an owner at most once. Re-announcing it after a
             // hotplug would tell a locker that has already authenticated that it
-            // is locked again.
+            // is locked again. The generator reuses a handful of client numbers, so a
+            // locker that died and asks again is a new owner, as a new connection is
+            // in the compositor: the record is dropped when the owner it names is gone.
             for effect in &effects {
                 if let Effect::SendLocked { locker } = effect {
                     assert_ne!(
@@ -183,7 +185,7 @@ fn invariants_hold_over_random_sequences() {
                     announced = Some(*locker);
                 }
             }
-            if lock.state() == State::Unlocked {
+            if lock.state() == State::Unlocked || lock.locker() != announced {
                 announced = None;
             }
         }

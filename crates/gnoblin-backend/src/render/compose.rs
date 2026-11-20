@@ -1555,11 +1555,12 @@ impl Composer {
     }
 
     /// Follows the shell's hold on the tree. When the hold changed since the last check, every
-    /// window is resynced: placed by the composer again, or left to the shell.
-    pub fn follow_placement(&mut self) {
+    /// window is resynced: placed by the composer again, or left to the shell. Returns whether
+    /// the hold changed, which is when the windows' published places may be stale.
+    pub fn follow_placement(&mut self) -> bool {
         let holds = self.scene.holder_attached();
         if holds == self.placing {
-            return;
+            return false;
         }
         self.placing = holds;
         if !holds {
@@ -1570,6 +1571,7 @@ impl Composer {
         for window in order {
             self.sync_animated(window);
         }
+        true
     }
 
     /// The transform a window's node should reach. While the shell holds the tree, the node's

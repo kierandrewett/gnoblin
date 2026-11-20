@@ -4039,8 +4039,12 @@ impl Host for State {
         let destroyed = self.tree.take_destroyed();
         self.release_seat_nodes(&destroyed);
         self.deliver_seat_inputs();
-        // Placement follows the shell's hold as the drain left it.
-        self.composer.follow_placement();
+        // Placement follows the shell's hold as the drain left it. A hand-over moves windows, and the places the
+        // observation and the lists publish are read after this frame, so they are published now and not as a side
+        // effect of whichever frame is presented next.
+        if self.composer.follow_placement() {
+            self.publish();
+        }
         // A node whose effects the renderer cannot draw says so in its read-only `skipped` list.
         self.composer.publish_skipped_effects();
         // The damage is taken once for every output, because the backend renders one
