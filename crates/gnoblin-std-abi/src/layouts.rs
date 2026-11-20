@@ -637,6 +637,14 @@ pub fn layout_kind(id: u32) -> Option<&'static LayoutKindDesc> {
     LAYOUT_KINDS.iter().find(|kind| kind.id == id)
 }
 
+impl ActionDesc {
+    /// Whether the action only reads: it takes nothing and its answer may be absent. The object catalog says it with an optional
+    /// read-only property (an object result is the only one that may be none, so a method cannot), and the library serves it as one.
+    pub fn is_reading(&self) -> bool {
+        self.args.is_empty() && self.returns.is_some_and(|returns| returns.optional)
+    }
+}
+
 impl LayoutKindDesc {
     /// The option called `name`.
     pub fn option(&self, name: &str) -> Option<&'static OptionDesc> {

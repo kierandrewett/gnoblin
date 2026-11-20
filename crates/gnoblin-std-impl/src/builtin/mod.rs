@@ -26,7 +26,7 @@ use crate::layout::{LayoutContext, Placement};
 use crate::state::NodeId;
 
 pub(crate) use carousel::{RingShape, ring_slots};
-pub(crate) use wire::{encode_value, read_args, read_one, read_options, read_set, read_text};
+pub(crate) use wire::{decode_value, encode_value, read_args, read_one, read_options, read_set, read_text};
 
 /// A value of an option, an argument or an answer.
 #[derive(Clone, Debug, PartialEq)]

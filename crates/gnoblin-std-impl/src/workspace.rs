@@ -362,6 +362,25 @@ impl State {
         }
     }
 
+    /// Takes the workspace out of the list unless it is the last one: a shell with nowhere to put a window is unusable. Whether it was
+    /// taken: a workspace that is not in the list is not.
+    pub(crate) fn remove_workspace_checked(&mut self, workspace: Id) -> Res<bool> {
+        let attached = self.workspace(workspace)?.attached;
+        if !attached || self.workspaces.len() < 2 {
+            return Ok(false);
+        }
+        self.remove_workspace(workspace);
+        Ok(true)
+    }
+
+    /// Takes every workspace out of the list, closing no window. The last one goes too, which a shell that clears the list is about to
+    /// fill again.
+    pub(crate) fn clear_workspaces(&mut self) {
+        for workspace in self.workspaces.clone() {
+            self.remove_workspace(workspace);
+        }
+    }
+
     /// `client.moveToWorkspace(workspace)`: 1 when it moved, 0 when it is refused.
     pub(crate) fn move_client_to(&mut self, client: NodeId, workspace: Id) -> Res<bool> {
         let attached = self.workspace(workspace)?.attached;

@@ -95,6 +95,14 @@ A local file may use keys a compositor file may not:
 The wire never carries such a namespace and the `gnoblin` catalog hash (`gnoblin_catalog_hash`) does not include it. The namespace has
 a hash of its own (`Catalog::namespace_fingerprint`), which its object table reports.
 
+A catalog may also take a schema file that is not on disk (`Catalog::load_dirs_with`). The std catalog does, for the built-in layouts:
+
+- `layouts.toml` is written from `gnoblin_std_abi::layouts::LAYOUT_KINDS` (`crates/gnoblin-sdkgen/src/layout_schema.rs`), one class
+  `<kind>_layout` for each kind, so the table stays the one source.
+- Its surface lock is `crates/gnoblin-std-abi/schema/lock/layouts.lock`.
+- Each class extends the interface `layout`: it has the interface's methods and its own options and actions, and a call that takes a `layout`
+  takes it, or an object a shell implemented.
+
 | Target         | Writes                                                                                                 | Consumed by                                                         |
 | -------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
 | `objects`      | `rust-objects/{model,std}_catalog.rs`: the static `CATALOG` of each namespace and its `CATALOG_HASH`   | `build.rs` of `gnoblin-core-impl`, `-std-impl`                      |

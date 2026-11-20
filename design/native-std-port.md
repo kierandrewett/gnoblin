@@ -1825,6 +1825,35 @@ O11 (a text constant inside the crate) was not needed: nothing was found that Py
 - **Acceptance:** `modular::native_workspaces` from Python and Rust: workspaces made, windows adopted and tiled by each stock
   layout, a script layout, a divider drag. Rectangles equal the `tiling`, `examples` and `anim_style` fixtures.
 
+**What exists (slice 1: the classes).** `workspace.toml` declares the classes below and `crates/gnoblin-std-impl/src/workspace_objects/` implements
+them over the library's own state (`workspace.rs`, `desks.rs`, `collection.rs`, `client_state.rs`, `layout.rs`, `builtin/`), so the std table's
+`workspace_*`, `collection_*`, `client_*` and `policy_*` functions, which the TypeScript library still calls, and the classes see one set of
+workspaces, one list of clients and one layout pass. A client is named by its node number, as in the style classes. Using any of these classes
+starts the library's desktop (`events::open`), as `open` of the table does.
+
+- `workspace` (retained, `ctor = ["id"]`): `id`, `name`, `gaps`, `layout`, `clients`, `attached`, `active`, `index`, `output`; `show`,
+  `invalidate`, `walk`, `find_split`, `set_split`, `reset_split`; the signals `shown`, `hidden`, `client_added`, `client_removed`. Asking again
+  for a workspace gives the same object. `workspaces` (service) is the list: `list`, `length`, `add`, `remove` (the last workspace stays), `clear`,
+  `by_id`, `of_client`, `of_output`, and the signals `added` and `removed`.
+- `desks` (service): the output policy (`outputs`) and the workspace policy (`workspaces`) as records, and what a shell that keeps its own
+  objects asks of the desk: `output`, `set_insets`, `span`, `areas`, `restore_client`, `restore_snap`.
+- `client_collection`: the clients of a workspace (mutable: `add`, `remove`, `clear`, `swap`), every client (`all`) or a selection (`where`, a
+  `client_query`); `length`, `members`, `contains`, and the signals `added` and `removed`. `client_state` (`of(node)`): `workspace`, `floating`,
+  `inset`, `min_size`, `max_size`, `floating_bounds`, `snap`, `move_to_workspace`, `snap_to`, `unsnap`, `forget_snap`.
+- `layout` (interface): `compute` is required; `client_added`, `client_removed`, `area_changed`, `clients_swapped`, `revision`, `find_split`
+  (a list of one divider, or none: an interface method answers a value, and only a library's own method may answer none), `set_split` (Rust
+  `move_split`: `set_split` is the dwindle's setter of `split`) and `reset_split` are optional. The library calls them from its layout pass
+  (`workspace_objects/shell_layout.rs`, the layout kind `Kind::Object`) and checks what `compute` answers as it checks a layout of the C table.
+  `floating_layout` and the built-in kinds are classes that extend `layout`, so a workspace takes any of them, and each has `compute` and the hooks
+  run natively. A layout of the library places one workspace.
+- **The built-in layouts are generated.** `gnoblin-sdkgen` writes `layouts.toml` (never on disk) from `gnoblin_std_abi::layouts::LAYOUT_KINDS`
+  (`crates/gnoblin-sdkgen/src/layout_schema.rs`, loaded with `Catalog::load_dirs_with`): a kind `dwindle` is the class `dwindle_layout`, its options
+  are properties, its actions are methods (an action that only reads something that may be absent, `strip_layout.pin`, is a read-only optional
+  property). `stock.rs` walks the same table, so a kind added there is a class in every language and in the library the day the generator runs.
+
+Not yet (later slices): the replay of the `tiling`, `examples` and `anim_style` fixtures, example 26 and `modular::native_objects`, the rollback of
+a transition for workspaces, `View.content` as a workspace, and the `active_workspace` writer.
+
 #### NpStdDisplay (4 days)
 
 - **Owns:** `gnoblin-std-impl/src/{displays,display_api}.rs`, catalog `display.toml`.

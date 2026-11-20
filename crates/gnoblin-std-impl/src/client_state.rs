@@ -104,8 +104,29 @@ impl State {
         true
     }
 
+    /// Marks the client floating, or not: a layout leaves a floating client where it is. Its workspace is laid out again.
+    pub(crate) fn set_floating(&mut self, client: NodeId, floating: bool) -> Result<(), Fail> {
+        let rec = self
+            .rec
+            .get_mut(&client)
+            .ok_or_else(|| Fail::new(abi::E_NO_SUCH_NODE, format!("node {client} is not a client")))?;
+        rec.floating = floating;
+        if let Some(workspace) = rec.workspace.and_then(|id| self.ws.get_mut(&id)) {
+            workspace.dirty = true;
+        }
+        Ok(())
+    }
+
+    /// `unsnapClient` of a client the library knows: whether it was snapped. A node that is not a client is refused.
+    pub(crate) fn unsnap_known(&mut self, client: NodeId, forget: bool) -> Result<bool, Fail> {
+        if !self.rec.contains_key(&client) {
+            return Err(Fail::new(abi::E_NO_SUCH_NODE, format!("node {client} is not a client")));
+        }
+        Ok(self.unsnap_client(client, forget))
+    }
+
     /// The `GnoblinStdClientState` of a client.
-    fn client_state_of(&self, client: NodeId) -> Option<GnoblinStdClientState> {
+    pub(crate) fn client_state_of(&self, client: NodeId) -> Option<GnoblinStdClientState> {
         let rec = self.rec.get(&client)?;
         let mut flags = 0;
         let (min_width, min_height) = rec.min.map_or((0.0, 0.0), |size| {
@@ -157,7 +178,7 @@ impl State {
 
     /// Keeps the frame inset, the size limits and the floating rectangle `state` carries. A new inset marks the workspace dirty:
     /// a layout places the frame, so the content moves with what the frame takes.
-    fn set_client_state(&mut self, client: NodeId, state: &GnoblinStdClientState) -> Result<(), Fail> {
+    pub(crate) fn set_client_state(&mut self, client: NodeId, state: &GnoblinStdClientState) -> Result<(), Fail> {
         let inset = Inset {
             top: state.inset_top,
             right: state.inset_right,

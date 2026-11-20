@@ -12,7 +12,8 @@ use crate::error::{Fail, Res};
 use crate::floating::{DEFAULT_CASCADE_STEP, PlaceMode};
 use crate::layout::LayoutObj;
 use crate::nodes;
-use crate::state::{Id, NodeId, State};
+use crate::state::{Id, NodeId, Notice, State};
+use crate::workspace_objects::{NOTICE_HIDDEN, NOTICE_SHOWN};
 
 /// The workspace shown by an output, and how its windows are handled when outputs come and go.
 #[derive(Clone, Debug)]
@@ -233,6 +234,15 @@ impl State {
             return;
         }
         self.desks[at].shown = next;
+        // The objects of the object protocol hear which workspace stopped being shown and which started, on which output.
+        let output = self.desks[at].output.unwrap_or(0);
+        for (kind, workspace) in [(NOTICE_HIDDEN, before), (NOTICE_SHOWN, next)] {
+            if let Some(workspace) = workspace {
+                let mut notice = Notice::new(kind, workspace, Vec::new());
+                notice.output = output;
+                self.notices.push(notice);
+            }
+        }
         if let Some(workspace) = next.and_then(|id| self.ws.get_mut(&id)) {
             workspace.dirty = true;
         }

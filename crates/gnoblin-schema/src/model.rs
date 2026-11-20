@@ -698,6 +698,13 @@ impl Catalog {
     /// order given. The catalogs a library serves (`crates/gnoblin-core-abi/schema`, `crates/gnoblin-std-abi/schema`) are loaded
     /// together so a class of one can name a class of the other; `skip` names subdirectories to leave out of every directory.
     pub fn load_dirs(dirs: &[&Path], skip: &[&str]) -> Result<Catalog, SchemaError> {
+        Self::load_dirs_with(dirs, skip, &[])
+    }
+
+    /// [`Catalog::load_dirs`] with schema files that are not on disk: each is an origin (the path the file would have, which names its
+    /// lock) and its text, read after the files of the directories. A library whose classes are written from a table of its own (the
+    /// built-in layouts) gives the table's schema this way.
+    pub fn load_dirs_with(dirs: &[&Path], skip: &[&str], generated: &[(&str, &str)]) -> Result<Catalog, SchemaError> {
         let mut paths = Vec::new();
         for dir in dirs {
             let mut found = Vec::new();
@@ -740,7 +747,18 @@ impl Catalog {
             .map(|dir| dir.display().to_string())
             .collect::<Vec<_>>()
             .join(", ");
-        if paths.is_empty() {
+        let given = generated.len();
+        for (origin, text) in generated {
+            match crate::parse::parse_schema(origin, text) {
+                Ok(schema) => schemas.push(schema),
+                Err(SchemaError::Invalid {
+                    problems: file_problems,
+                    ..
+                }) => problems.extend(file_problems),
+                Err(error) => problems.push(error.to_string()),
+            }
+        }
+        if paths.is_empty() && given == 0 {
             problems.push("no .toml schema files found".to_owned());
         }
         if !problems.is_empty() {

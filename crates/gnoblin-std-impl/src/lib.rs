@@ -63,6 +63,7 @@ mod table;
 mod turn;
 mod ui;
 mod workspace;
+mod workspace_objects;
 
 pub use exports::{gnoblin_std_abi_version, gnoblin_std_get_api, gnoblin_std_last_error};
 

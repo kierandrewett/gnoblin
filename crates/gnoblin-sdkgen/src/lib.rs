@@ -25,6 +25,7 @@
 //! | `typescript` | `js/gnoblin-core/generated/` and `js/gnoblin-std/generated/`: types, schema table, ABI, verbs  |
 
 pub mod abi_c;
+mod layout_schema;
 mod layouts;
 mod model;
 mod object_api;

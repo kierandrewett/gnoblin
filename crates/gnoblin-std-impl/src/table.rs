@@ -606,17 +606,7 @@ unsafe extern "C" fn client_move_to_workspace(
 
 unsafe extern "C" fn client_set_floating(ctx: GnoblinCtx, client: GnoblinNode, floating: u32) -> i32 {
     call("client_set_floating", || {
-        mutate(ctx, |st| {
-            let rec = st
-                .rec
-                .get_mut(&client)
-                .ok_or_else(|| Fail::new(abi::E_NO_SUCH_NODE, format!("node {client} is not a client")))?;
-            rec.floating = floating != 0;
-            if let Some(workspace) = rec.workspace.and_then(|id| st.ws.get_mut(&id)) {
-                workspace.dirty = true;
-            }
-            Ok(abi::E_OK)
-        })
+        mutate(ctx, |st| st.set_floating(client, floating != 0).map(|()| abi::E_OK))
     })
 }
 
@@ -728,15 +718,7 @@ unsafe extern "C" fn workspace_add(ctx: GnoblinCtx, workspace: GnoblinStdWorkspa
 
 unsafe extern "C" fn workspace_remove(ctx: GnoblinCtx, workspace: GnoblinStdWorkspace) -> i32 {
     call("workspace_remove", || {
-        mutate(ctx, |st| {
-            let attached = st.workspace(workspace)?.attached;
-            // The last workspace stays: a shell with nowhere to put a window is unusable.
-            if !attached || st.workspaces.len() < 2 {
-                return Ok(0);
-            }
-            st.remove_workspace(workspace);
-            Ok(1)
-        })
+        mutate(ctx, |st| st.remove_workspace_checked(workspace).map(i32::from))
     })
 }
 

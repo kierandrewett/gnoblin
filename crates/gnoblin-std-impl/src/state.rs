@@ -110,6 +110,8 @@ pub(crate) struct Notice {
     pub(crate) only: Option<Id>,
     pub(crate) text: String,
     pub(crate) flag: u32,
+    /// For the notices of the object protocol: the output a workspace was shown on or hidden from.
+    pub(crate) output: NodeId,
     pub(crate) rect: Rect,
 }
 
@@ -122,6 +124,7 @@ impl Notice {
             only: None,
             text: String::new(),
             flag: 0,
+            output: 0,
             rect: Rect::default(),
         }
     }
@@ -275,6 +278,7 @@ impl Std {
             }
             for notice in notices {
                 self.deliver(&notice);
+                crate::workspace_objects::announce(self, &notice);
             }
         }
         self.draining.set(false);
@@ -389,6 +393,7 @@ pub(crate) fn retire(ctx: GnoblinCtx) {
     if let Some(std) = std {
         // Each binding's `drop_user` runs while the shell's code is still mapped.
         crate::bindings::retire(&std);
+        crate::workspace_objects::retired(std.st.borrow().ctx);
         let (regs, workspaces, graveyard) = {
             let mut st = std.st.borrow_mut();
             // The generation ends its hold on the compositor: the `tween` nodes of the transitions still running go.

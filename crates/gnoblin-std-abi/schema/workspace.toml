@@ -1,0 +1,1417 @@
+# The `workspace` module of `gnoblin.std`: workspaces and the list of them, the desks that say which output shows which workspace and the
+# policies that decide it, the membership of clients, the `layout` interface a shell implements to place windows, and the floating layout.
+#
+# A workspace is a place windows are laid out in. The compositor does not know it: the library makes it, keeps its clients as a collection
+# the shell may change, and asks its layout where they go. Removing a workspace, or a window from one, never closes the window. A client is
+# named by its node number (the `id` of the core's client), as in the style classes.
+#
+# The built-in layouts (master and stack, grid, monocle, dwindle, strip, arc, carousel) are classes of this module that `gnoblin-sdkgen`
+# writes from `gnoblin_std_abi::layouts::LAYOUT_KINDS`, the one table of their options and actions (`crates/gnoblin-sdkgen/src/layouts.rs`),
+# so a class here is never a second copy of that list.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# ---- enums ---------------------------------------------------------------------------------------------------------------------------
+
+# Where the floating layout puts a window that has no place yet: the first spot of the area that overlaps nothing (`smart`), the middle
+# of the area (`center`), or a cascade from its top left (`cascade`). A spot that is taken is cascaded from.
+[[enum]]
+name = "place_mode"
+since = "0.2.0"
+values = ["smart", "center", "cascade"]
+
+# How the outputs share workspaces: each shows its own (`separate`), every output shows what the lead output shows and the compositor
+# mirrors them (`duplicate`), or one workspace is laid out over the union of the outputs, which show a part each (`extend`).
+[[enum]]
+name = "output_policy_mode"
+since = "0.2.0"
+values = ["separate", "duplicate", "extend"]
+
+# Where workspaces come from: the shell adds and removes every one (`manual`), or the library adds one for each output that appears and
+# removes it when the output goes (`per_output`).
+[[enum]]
+name = "workspace_policy_mode"
+since = "0.2.0"
+values = ["manual", "per_output"]
+
+# The pointer's axis that carries a divider.
+[[enum]]
+name = "split_axis"
+since = "0.2.0"
+values = ["horizontal", "vertical"]
+
+# The part of the work area a snapped window tiles to: the left half, the right half, or all of it.
+[[enum]]
+name = "snap_zone"
+since = "0.2.0"
+values = ["left", "right", "top"]
+
+# ---- records -------------------------------------------------------------------------------------------------------------------------
+
+# A rectangle in the compositor's logical pixels.
+[[object]]
+name = "layout_rect"
+since = "0.2.0"
+kind = "record"
+
+# Left edge.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Top edge.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Width, 0 or more.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Height, 0 or more.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The gaps of a workspace's layout, in logical pixels, each a finite number of at least 0.
+[[object]]
+name = "gaps"
+since = "0.2.0"
+kind = "record"
+
+# The gap between tiles.
+[[object.property]]
+name = "inner"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The gap between the tiles and the edge of the area.
+[[object.property]]
+name = "outer"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# How a workspace is shown.
+[[object]]
+name = "show_options"
+since = "0.2.0"
+kind = "record"
+
+# Milliseconds the slide between the two workspaces takes; 0 switches at once.
+[[object.property]]
+name = "duration"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# How much of the slide a touchpad gesture has made already, 0 to 1.
+[[object.property]]
+name = "progress"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The output to show it on; left out, the one under the pointer (the primary output when no pointer says).
+[[object.property]]
+name = "output"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# What a layout is told when it computes or hears a hook. A copy: a layout may keep what it reads, and nothing it does to it reaches the
+# workspace.
+[[object]]
+name = "layout_context"
+since = "0.2.0"
+kind = "record"
+
+# The id of the workspace the layout belongs to.
+[[object.property]]
+name = "workspace"
+type = "string"
+since = "0.2.0"
+
+# The clients to place, in the workspace's order: the tiled ones (a floating, fullscreen or maximised client, and a dialog, keep their own
+# place).
+[[object.property]]
+name = "children"
+type = "list<uint>"
+since = "0.2.0"
+
+# The workspace's rectangle. A tiling layout insets it by `outer_gap` itself.
+[[object.property]]
+name = "area"
+type = "object:layout_rect"
+since = "0.2.0"
+
+# The workspace's gap between tiles.
+[[object.property]]
+name = "inner_gap"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The workspace's gap between the tiles and the edge of the area.
+[[object.property]]
+name = "outer_gap"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The child that has the keyboard; left out when none has.
+[[object.property]]
+name = "focused"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# Where one client goes: what a layout's `compute` answers, one for each client it places. A client the layout gives no placement is
+# placed with the defaults (not tiled, shown, no depth, no rotation, unit scale). A placement for a node that is not one of the
+# context's children, or with a number that is not finite, makes the whole answer refused before anything is written.
+[[object]]
+name = "layout_placement"
+since = "0.2.0"
+kind = "record"
+
+# The client this placement is for.
+[[object.property]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+
+# The client's rectangle; left out, the client stays where it is.
+[[object.property]]
+name = "bounds"
+type = "object:layout_rect"
+since = "0.2.0"
+optional = true
+
+# Whether the client is shown.
+[[object.property]]
+name = "visible"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# Whether the client is in a tiled layout, so it drops the border and rounding it draws itself.
+[[object.property]]
+name = "tiled"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# Depth along the viewing axis; negative is in front of the camera.
+[[object.property]]
+name = "z"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Rotation about the x, y and z axes, in radians; left out, none.
+[[object.property]]
+name = "rotation"
+type = "list<double>"
+since = "0.2.0"
+optional = true
+
+# Scale along the x, y and z axes; left out, 1 along each.
+[[object.property]]
+name = "scale"
+type = "list<double>"
+since = "0.2.0"
+optional = true
+
+# How far the rectangle moves along x, or (without `bounds`) the client's own size centred in the area.
+[[object.property]]
+name = "offset_x"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# How far the rectangle moves along y.
+[[object.property]]
+name = "offset_y"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# A divider a drag moves, as a layout describes it: dragging the pointer `span` pixels along `axis` moves `ratio` by one, in the direction
+# `direction` says. The layout holds `ratio` to `min` and `max`. With `cross`, a second divider on another axis moves with it.
+[[object]]
+name = "layout_split"
+since = "0.2.0"
+kind = "record"
+
+# Names this drag's dividers in `set_split` and `reset_split`; it is valid until the next `find_split` of the layout.
+[[object.property]]
+name = "token"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# The axis of the pointer's travel that moves the divider.
+[[object.property]]
+name = "axis"
+type = "enum:split_axis"
+since = "0.2.0"
+default = "horizontal"
+
+# 1 when moving the pointer right or down grows `ratio`, -1 when it shrinks it.
+[[object.property]]
+name = "direction"
+type = "int"
+since = "0.2.0"
+default = 1
+
+# Pixels of pointer travel that change `ratio` by 1. Above zero.
+[[object.property]]
+name = "span"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# The lowest ratio the layout allows.
+[[object.property]]
+name = "min"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The highest ratio the layout allows.
+[[object.property]]
+name = "max"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# The divider's position now, as a ratio.
+[[object.property]]
+name = "ratio"
+type = "double"
+since = "0.2.0"
+default = 0.5
+
+# The axis of the second divider; left out when the drag moves one divider only.
+[[object.property]]
+name = "cross_axis"
+type = "enum:split_axis"
+since = "0.2.0"
+optional = true
+
+# The direction of the second divider.
+[[object.property]]
+name = "cross_direction"
+type = "int"
+since = "0.2.0"
+default = 1
+
+# The pointer travel that changes the second ratio by 1.
+[[object.property]]
+name = "cross_span"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# The lowest ratio of the second divider.
+[[object.property]]
+name = "cross_min"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The highest ratio of the second divider.
+[[object.property]]
+name = "cross_max"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# The second divider's position as a ratio.
+[[object.property]]
+name = "cross_ratio"
+type = "double"
+since = "0.2.0"
+default = 0.5
+
+# How the outputs share workspaces: what `desks.outputs` holds.
+[[object]]
+name = "output_policy"
+since = "0.2.0"
+kind = "record"
+
+# How the outputs share.
+[[object.property]]
+name = "mode"
+type = "enum:output_policy_mode"
+since = "0.2.0"
+default = "separate"
+
+# For `duplicate` and `extend`: the output the others copy or the span starts from; left out, the primary output.
+[[object.property]]
+name = "lead"
+type = "uint"
+since = "0.2.0"
+optional = true
+
+# Where workspaces come from: what `desks.workspaces` holds.
+[[object]]
+name = "workspace_policy"
+since = "0.2.0"
+kind = "record"
+
+# Where they come from.
+[[object.property]]
+name = "mode"
+type = "enum:workspace_policy_mode"
+since = "0.2.0"
+default = "manual"
+
+# For `per_output`: the workspaces are named `<prefix><n>`, `n` counting from 1. Empty reads as `workspace-`.
+[[object.property]]
+name = "name_prefix"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# For `per_output`: the gaps of every workspace it makes.
+[[object.property]]
+name = "gaps"
+type = "object:gaps"
+since = "0.2.0"
+optional = true
+
+# For `per_output`: where the floating layout of every workspace it makes puts a new window.
+[[object.property]]
+name = "placement"
+type = "enum:place_mode"
+since = "0.2.0"
+default = "smart"
+
+# For `per_output`: the distance between cascade positions; 0 reads as 32.
+[[object.property]]
+name = "cascade_step"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# What the desk knows about an output: whether it shows a workspace, which, and the room it has.
+[[object]]
+name = "output_desk"
+since = "0.2.0"
+kind = "record"
+
+# Whether the output has a desk (it is on and mirrors nothing).
+[[object.property]]
+name = "has_desk"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# Whether the desk waits hidden for an output to return.
+[[object.property]]
+name = "parked"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The id of the workspace the output shows; left out when it shows none.
+[[object.property]]
+name = "workspace"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The output's rectangle; left out for an output with no size yet.
+[[object.property]]
+name = "rect"
+type = "object:layout_rect"
+since = "0.2.0"
+optional = true
+
+# What a layout tiles in on the output: its rectangle less the room the shell's bars take.
+[[object.property]]
+name = "area"
+type = "object:layout_rect"
+since = "0.2.0"
+optional = true
+
+# The output a window is on and the room it may be laid out in.
+[[object]]
+name = "client_areas"
+since = "0.2.0"
+kind = "record"
+
+# The rectangle of the output the window is on; left out when it is on none.
+[[object.property]]
+name = "output"
+type = "object:layout_rect"
+since = "0.2.0"
+optional = true
+
+# The work area of that output.
+[[object.property]]
+name = "area"
+type = "object:layout_rect"
+since = "0.2.0"
+optional = true
+
+# The room a window's frame takes on each side of its content, in logical pixels, each side 0 or more. The frame a layout places is the
+# content with this much added on each side.
+[[object]]
+name = "frame_inset"
+since = "0.2.0"
+kind = "record"
+
+# Room above the content.
+[[object.property]]
+name = "top"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Room to the right of the content.
+[[object.property]]
+name = "right"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Room below the content.
+[[object.property]]
+name = "bottom"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Room to the left of the content.
+[[object.property]]
+name = "left"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# A width and a height a window may be resized to, in logical pixels.
+[[object]]
+name = "size_limit"
+since = "0.2.0"
+kind = "record"
+
+# The width.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+# The height.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# Where a window is snapped, and where it floated before.
+[[object]]
+name = "client_snap"
+since = "0.2.0"
+kind = "record"
+
+# The zone the window is tiled to.
+[[object.property]]
+name = "zone"
+type = "enum:snap_zone"
+since = "0.2.0"
+
+# The rectangle the window floated at before it was snapped.
+[[object.property]]
+name = "floating"
+type = "object:layout_rect"
+since = "0.2.0"
+
+# What a client is asked to match when a selection of the clients is made: every field that is given must equal the client's, and a field
+# left out is not asked.
+[[object]]
+name = "client_query"
+since = "0.2.0"
+kind = "record"
+
+# The client's app id.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The client's title.
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The id of the workspace the client is on; empty matches a client on none.
+[[object.property]]
+name = "workspace"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Whether the client has the keyboard.
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Whether the client is fullscreen.
+[[object.property]]
+name = "fullscreen"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Whether the client is maximised.
+[[object.property]]
+name = "maximised"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Whether the client is minimised.
+[[object.property]]
+name = "minimised"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# What the floating layout is asked: where a new window of a size goes among the windows that are already there.
+[[object]]
+name = "floating_query"
+since = "0.2.0"
+kind = "record"
+
+# How the window is placed.
+[[object.property]]
+name = "mode"
+type = "enum:place_mode"
+since = "0.2.0"
+default = "smart"
+
+# The distance between cascade positions; 0 reads as 32.
+[[object.property]]
+name = "step"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The window's width, frame included. Below 1 it is read as 1.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+# The window's height, frame included. Below 1 it is read as 1.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# The rectangle the window goes in.
+[[object.property]]
+name = "area"
+type = "object:layout_rect"
+since = "0.2.0"
+
+# The rectangles of the windows already there, frame included.
+[[object.property]]
+name = "occupied"
+type = "list<object:layout_rect>"
+since = "0.2.0"
+
+# After the spot is chosen, a window that would sit exactly on the top-left corner of another is moved back toward the area's origin one
+# step at a time, so a cascade that ran out of room does not pile windows on one point.
+[[object.property]]
+name = "apart"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# ---- the layout interface and the floating layout ------------------------------------------------------------------------------------
+
+# What a shell implements to place a workspace's windows. `compute` answers where the tiled clients go; every other method is optional and
+# the library does nothing for one the shell left out. Every method runs on the shell thread from the library's layout pass, never inside a
+# call of the shell's. A layout of the library's own (the floating layout, the built-in ones) is an object of a class that extends this
+# one, so a workspace takes either.
+[[object]]
+name = "layout"
+since = "0.2.0"
+kind = "interface"
+
+# Places the workspace's tiled clients: one placement for each it moves. Pure: the same context gives the same placements. A failure, or
+# a placement the library refuses, leaves the workspace as it was and fails the transition that was committing.
+[[object.method]]
+name = "compute"
+since = "0.2.0"
+returns = "list<object:layout_placement>"
+required = true
+
+[[object.method.param]]
+name = "context"
+type = "object:layout_context"
+
+# A client joined the workspace.
+[[object.method]]
+name = "client_added"
+since = "0.2.0"
+default = "native"
+
+[[object.method.param]]
+name = "context"
+type = "object:layout_context"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# A client left the workspace.
+[[object.method]]
+name = "client_removed"
+since = "0.2.0"
+default = "native"
+
+[[object.method.param]]
+name = "context"
+type = "object:layout_context"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# The workspace's rectangle changed.
+[[object.method]]
+name = "area_changed"
+since = "0.2.0"
+default = "native"
+
+[[object.method.param]]
+name = "before"
+type = "object:layout_rect"
+
+[[object.method.param]]
+name = "now"
+type = "object:layout_rect"
+
+# Two clients traded places in the workspace's order.
+[[object.method]]
+name = "clients_swapped"
+since = "0.2.0"
+default = "native"
+
+[[object.method.param]]
+name = "a"
+type = "uint"
+
+[[object.method.param]]
+name = "b"
+type = "uint"
+
+# A number that changes when one of the layout's own options does, so the workspace computes again. Absent, the layout never changes by
+# itself and the shell calls `invalidate`.
+[[object.method]]
+name = "revision"
+since = "0.2.0"
+returns = "uint"
+default = "native"
+
+# The divider a drag that pressed `client` at (`x`, `y`) would move: a list of one divider, or an empty list when there is none there (an
+# interface method answers a value, and only a library's own method may answer none). Absent, the layout has no dividers.
+[[object.method]]
+name = "find_split"
+since = "0.2.0"
+returns = "list<object:layout_split>"
+default = "native"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+[[object.method.param]]
+name = "x"
+type = "double"
+
+[[object.method.param]]
+name = "y"
+type = "double"
+
+# Moves the dividers `find_split` returned. (In Rust the method is `move_split`: `set_split` is the setter of the dwindle's `split` option.)
+[[object.method]]
+name = "set_split"
+since = "0.2.0"
+default = "native"
+export = { rust = "move_split" }
+
+[[object.method.param]]
+name = "token"
+type = "uint"
+
+[[object.method.param]]
+name = "ratio"
+type = "double"
+
+[[object.method.param]]
+name = "cross_ratio"
+type = "double"
+optional = true
+
+# Puts the dividers `find_split` returned back as they were.
+[[object.method]]
+name = "reset_split"
+since = "0.2.0"
+default = "native"
+
+[[object.method.param]]
+name = "token"
+type = "uint"
+
+# The library's floating layout: a window is placed once when it joins the workspace and is left where the user puts it. It is what a
+# workspace has until a shell gives it another.
+[[object]]
+name = "floating_layout"
+since = "0.2.0"
+base = "layout"
+
+# Where a window that has no place yet goes.
+[[object.property]]
+name = "placement"
+type = "enum:place_mode"
+since = "0.2.0"
+default = "smart"
+
+# The distance between cascade positions in logical pixels; 0 reads as 32.
+[[object.property]]
+name = "cascade_step"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Where a new window of a size goes among the windows already there: the rectangle the floating layout would give it. A function that
+# reads nothing of the library's state and never starts its desktop.
+[[object.method]]
+name = "place"
+since = "0.2.0"
+function = true
+returns = "object:layout_rect"
+
+[[object.method.param]]
+name = "query"
+type = "object:floating_query"
+
+# ---- clients -------------------------------------------------------------------------------------------------------------------------
+
+# A live list of clients, in order. A workspace's clients are one the shell changes (`add`, `remove`, `swap`, `clear`); the list of every
+# client and a selection of one (`where`) follow what the library tracks and refuse a change. A member is a client's node number.
+[[object]]
+name = "client_collection"
+since = "0.2.0"
+
+# How many clients the collection holds.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The clients, in order.
+[[object.property]]
+name = "members"
+type = "list<uint>"
+since = "0.2.0"
+readonly = true
+
+# Whether `client` is in the collection now.
+[[object.method]]
+name = "contains"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# The selection of this collection whose clients match `query`: a live list that follows the parent as clients come, go and change.
+[[object.method]]
+name = "where"
+since = "0.2.0"
+returns = "object:client_collection"
+
+[[object.method.param]]
+name = "query"
+type = "object:client_query"
+
+# Moves `client` onto the workspace this collection belongs to, leaving the one it was on. Refused for the list of every client and for a
+# selection.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# Takes `client` out of the workspace: it has no workspace until it is given one, and no window is closed. Answers whether it was there.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# Takes every client out of the workspace.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# Trades the places of two clients in the workspace's order; its layout hears of it from its next pass.
+[[object.method]]
+name = "swap"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "a"
+type = "uint"
+
+[[object.method.param]]
+name = "b"
+type = "uint"
+
+# Every client of the compositor, in the order they appeared.
+[[object.method]]
+name = "all"
+since = "0.2.0"
+function = true
+returns = "object:client_collection"
+
+# A client joined the collection.
+[[object.signal]]
+name = "added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "uint"
+
+# A client left the collection (it moved, was removed, closed, or stopped matching the selection).
+[[object.signal]]
+name = "removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "uint"
+
+# What the library remembers about one client beyond the tree: its workspace, whether the shell floated it, the room its frame takes, the
+# sizes it allows itself, the rectangle it floats at and the zone it is snapped to.
+[[object]]
+name = "client_state"
+since = "0.2.0"
+
+# The client's node number.
+[[object.property]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The workspace the client is on; none when it is on none.
+[[object.property]]
+name = "workspace"
+type = "object:workspace"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# Whether the shell floated the client: a layout leaves it where it is.
+[[object.property]]
+name = "floating"
+type = "bool"
+since = "0.2.0"
+
+# The room the client's frame takes round its content.
+[[object.property]]
+name = "inset"
+type = "object:frame_inset"
+since = "0.2.0"
+
+# The least the client may be resized to; none when the shell said nothing.
+[[object.property]]
+name = "min_size"
+type = "object:size_limit"
+since = "0.2.0"
+optional = true
+
+# The most the client may be resized to; none when the shell said nothing.
+[[object.property]]
+name = "max_size"
+type = "object:size_limit"
+since = "0.2.0"
+optional = true
+
+# The rectangle the client floats at, when the shell kept one.
+[[object.property]]
+name = "floating_bounds"
+type = "object:layout_rect"
+since = "0.2.0"
+optional = true
+
+# The zone the client is snapped to, and where it floated before; none when it is not snapped.
+[[object.property]]
+name = "snap"
+type = "object:client_snap"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# Moves the client to `workspace`, which must be in the list. Answers whether it moved: it does not for a fullscreen client, a dialog, a
+# workspace it is on already, or a client that is gone.
+[[object.method]]
+name = "move_to_workspace"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "workspace"
+type = "object:workspace"
+
+# Snaps the client to `zone` of `area`, less the room its frame takes: it tiles there and remembers where it floated. A maximised client
+# floats first. `edge_tiling` is the shell's setting of whether edges tile (left out, it does); with it off nothing happens. Answers
+# whether the client was snapped.
+[[object.method]]
+name = "snap_to"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "zone"
+type = "enum:snap_zone"
+
+[[object.method.param]]
+name = "area"
+type = "object:layout_rect"
+
+[[object.method.param]]
+name = "edge_tiling"
+type = "bool"
+optional = true
+
+# Takes the client out of its snap zone and puts it back where it floated. Answers whether it was snapped.
+[[object.method]]
+name = "unsnap"
+since = "0.2.0"
+returns = "bool"
+
+# Forgets the snap and leaves the client where it is. Answers whether it was snapped.
+[[object.method]]
+name = "forget_snap"
+since = "0.2.0"
+returns = "bool"
+
+# The state of the client with this node number.
+[[object.method]]
+name = "of"
+since = "0.2.0"
+function = true
+returns = "object:client_state"
+
+[[object.method.param]]
+name = "node"
+type = "uint"
+
+# ---- workspaces ----------------------------------------------------------------------------------------------------------------------
+
+# A place windows are laid out in. A shell makes it, gives it a layout and adds it to `workspaces`; it stays usable after it leaves the
+# list. Its id is what finds it across a reload: a workspace an earlier generation left in the library is the one a new workspace of that
+# id becomes.
+[[object]]
+name = "workspace"
+since = "0.2.0"
+retained = true
+ctor = ["id"]
+
+# The workspace's id, unique among the workspaces in the list.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The name people see; empty reads as the id.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# The gaps of the layout, in logical pixels.
+[[object.property]]
+name = "gaps"
+type = "object:gaps"
+since = "0.2.0"
+
+# The layout that places the workspace's windows; the floating layout until a shell gives another. The windows stay where they are until
+# it computes. None while the layout is one that a shell of the TypeScript library gave through the std table.
+[[object.property]]
+name = "layout"
+type = "object:layout"
+since = "0.2.0"
+optional = true
+
+# The workspace's clients, in order.
+[[object.property]]
+name = "clients"
+type = "object:client_collection"
+since = "0.2.0"
+readonly = true
+
+# Whether the workspace is in the list.
+[[object.property]]
+name = "attached"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether an output shows the workspace. With several outputs several workspaces are active.
+[[object.property]]
+name = "active"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The position in the list, or -1 while it is not in it.
+[[object.property]]
+name = "index"
+type = "int"
+since = "0.2.0"
+readonly = true
+
+# The node of the output that shows the workspace, or 0 while none does.
+[[object.property]]
+name = "output"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Shows the workspace on the output under the pointer, or the one `options` names, sliding when it has a duration.
+[[object.method]]
+name = "show"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "options"
+type = "object:show_options"
+optional = true
+
+# Asks the layout to compute again. A layout with no `revision` calls for this when its own options change.
+[[object.method]]
+name = "invalidate"
+since = "0.2.0"
+
+# Moves the keyboard focus `step` windows along the workspace's windows, in the order they are listed: 1 to the next, -1 to the
+# previous. Nothing moves when no window of the workspace has the focus, and a step past either end leaves the focus where it is.
+[[object.method]]
+name = "walk"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "step"
+type = "int"
+
+# The divider a drag that pressed `client` at (`x`, `y`) would move: none when the layout has none there.
+[[object.method]]
+name = "find_split"
+since = "0.2.0"
+returns = "object:layout_split"
+optional = true
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+[[object.method.param]]
+name = "x"
+type = "double"
+
+[[object.method.param]]
+name = "y"
+type = "double"
+
+# Moves the dividers `find_split` returned to `ratio` (and `cross_ratio` when the drag has a second).
+[[object.method]]
+name = "set_split"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "token"
+type = "uint"
+
+[[object.method.param]]
+name = "ratio"
+type = "double"
+
+[[object.method.param]]
+name = "cross_ratio"
+type = "double"
+optional = true
+
+# Puts the dividers `find_split` returned back as they were.
+[[object.method]]
+name = "reset_split"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "token"
+type = "uint"
+
+# The workspace shows on an output.
+[[object.signal]]
+name = "shown"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "uint"
+
+# The workspace stopped showing on an output.
+[[object.signal]]
+name = "hidden"
+since = "0.2.0"
+
+# A client joined the workspace.
+[[object.signal]]
+name = "client_added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "uint"
+
+# A client left the workspace.
+[[object.signal]]
+name = "client_removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "uint"
+
+# `gnoblin.workspaces`: the list of workspaces. Adding one gives it the windows that wait for a workspace; removing one moves its windows
+# to the neighbour before it (the one after it, for the first), which is shown where the removed one was. The last workspace stays.
+[[object]]
+name = "workspaces"
+since = "0.2.0"
+kind = "service"
+
+# The workspaces in the list, in order.
+[[object.property]]
+name = "list"
+type = "list<object:workspace>"
+since = "0.2.0"
+readonly = true
+
+# How many workspaces are in the list.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Adds a workspace to the list. Refused when another workspace in the list has its id.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "workspace"
+type = "object:workspace"
+
+# Takes a workspace out of the list. Answers whether it was taken: the last one is not, and one that is not in the list is not.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "workspace"
+type = "object:workspace"
+
+# Takes every workspace out of the list, closing no window. The last one goes too, which a shell that clears the list fills again.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# The workspace in the list with this id, or none.
+[[object.method]]
+name = "by_id"
+since = "0.2.0"
+returns = "object:workspace"
+optional = true
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# The workspace a client is on, or none.
+[[object.method]]
+name = "of_client"
+since = "0.2.0"
+returns = "object:workspace"
+optional = true
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# The workspace an output shows, or none.
+[[object.method]]
+name = "of_output"
+since = "0.2.0"
+returns = "object:workspace"
+optional = true
+
+[[object.method.param]]
+name = "output"
+type = "uint"
+
+# A workspace joined the list.
+[[object.signal]]
+name = "added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "workspace"
+type = "object:workspace"
+
+# A workspace left the list.
+[[object.signal]]
+name = "removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "workspace"
+type = "object:workspace"
+
+# `gnoblin.desks`: which output shows which workspace, the policies that decide it, and what the desk knows about an output. A desk is what
+# an output shows: one workspace at a time.
+[[object]]
+name = "desks"
+since = "0.2.0"
+kind = "service"
+
+# How the outputs share workspaces.
+[[object.property]]
+name = "outputs"
+type = "object:output_policy"
+since = "0.2.0"
+
+# Where workspaces come from.
+[[object.property]]
+name = "workspaces"
+type = "object:workspace_policy"
+since = "0.2.0"
+
+# What the desk knows about `output`.
+[[object.method]]
+name = "output"
+since = "0.2.0"
+returns = "object:output_desk"
+
+[[object.method.param]]
+name = "output"
+type = "uint"
+
+# The room the shell's bars take from the top and the bottom of `output`: every workspace is laid out in what is left.
+[[object.method]]
+name = "set_insets"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "uint"
+
+[[object.method.param]]
+name = "top"
+type = "double"
+
+[[object.method.param]]
+name = "bottom"
+type = "double"
+
+# Stretches one workspace over the outputs `members` (the lead first); an empty list ends the span.
+[[object.method]]
+name = "span"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "lead"
+type = "uint"
+
+[[object.method.param]]
+name = "members"
+type = "list<uint>"
+
+# The output a client is on and the room it may be laid out in; for client 0, the primary output's.
+[[object.method]]
+name = "areas"
+since = "0.2.0"
+returns = "object:client_areas"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+# A reload gives `client` back to `workspace`: it moves, with its dialogs, but is not refitted. `arrived` says a layout may place it.
+# Answers whether it moved.
+[[object.method]]
+name = "restore_client"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "workspace"
+type = "object:workspace"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+[[object.method.param]]
+name = "arrived"
+type = "bool"
+
+# A reload gives `client` back its snap: the zone it was in and the rectangle it floated at.
+[[object.method]]
+name = "restore_snap"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "uint"
+
+[[object.method.param]]
+name = "zone"
+type = "enum:snap_zone"
+
+[[object.method.param]]
+name = "floating"
+type = "object:layout_rect"

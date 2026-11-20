@@ -31,6 +31,7 @@ use crate::error::{Fail, Res};
 use crate::floating::{DEFAULT_HEIGHT, DEFAULT_WIDTH, Inset, PlaceMode, apart_from, grow, place_rect, shrink};
 use crate::nodes;
 use crate::state::{Id, NodeId};
+use crate::workspace_objects::shell_layout::ObjectLayout;
 
 /// Where one client goes, as a layout said it and the library checked it.
 #[derive(Clone, Debug, PartialEq)]
@@ -78,6 +79,8 @@ pub(crate) enum Kind {
     Foreign(Foreign),
     /// A built-in layout of the library's own (`builtin/`).
     Builtin(Builtin),
+    /// A layout an object of the shell implements, reached through the object protocol (`workspace_objects/shell_layout.rs`).
+    Object(ObjectLayout),
 }
 
 /// A workspace's layout.
@@ -299,6 +302,13 @@ impl LayoutObj {
         })
     }
 
+    /// A layout an object of the shell implements (the `layout` interface of the object protocol).
+    pub(crate) fn object(object: ObjectLayout) -> Rc<LayoutObj> {
+        Rc::new(LayoutObj {
+            kind: Kind::Object(object),
+        })
+    }
+
     /// The built-in layout, if this is one.
     pub(crate) fn as_builtin(&self) -> Option<&Builtin> {
         match &self.kind {
@@ -322,6 +332,7 @@ impl LayoutObj {
                 None => 0,
             },
             Kind::Builtin(_) => 0,
+            Kind::Object(object) => object.revision(),
         }
     }
 
@@ -332,6 +343,7 @@ impl LayoutObj {
             Kind::Floating { .. } => false,
             Kind::Foreign(foreign) => foreign.vtable.client_removed.is_some(),
             Kind::Builtin(builtin) => builtin.hands_focus(),
+            Kind::Object(object) => object.handles_removal(),
         }
     }
 
@@ -341,6 +353,7 @@ impl LayoutObj {
             Kind::Floating { .. } => Ok(Vec::new()),
             Kind::Foreign(foreign) => foreign.compute(cx),
             Kind::Builtin(builtin) => Ok(builtin.compute(cx)),
+            Kind::Object(object) => object.compute(cx),
         }
     }
 
@@ -350,6 +363,7 @@ impl LayoutObj {
             Kind::Floating { mode, step, placed } => place_floating(g, cx, client, (*mode, *step), placed, known),
             Kind::Foreign(foreign) => foreign.hook_client(foreign.vtable.client_added, cx, client),
             Kind::Builtin(_) => {}
+            Kind::Object(object) => object.client_added(cx, client),
         }
     }
 
@@ -361,18 +375,26 @@ impl LayoutObj {
                 None
             }
             Kind::Builtin(builtin) => builtin.client_removed(cx, client),
+            Kind::Object(object) => {
+                object.client_removed(cx, client);
+                None
+            }
             Kind::Floating { .. } => None,
         }
     }
 
     /// The workspace's rectangle changed.
     pub(crate) fn area_changed(&self, old: &Rect, new: &Rect) {
-        if let Kind::Foreign(foreign) = &self.kind
-            && let Some(hook) = foreign.vtable.area_changed
-        {
-            let (old, new) = (rect_out(old), rect_out(new));
-            // SAFETY: `hook` and `user` are the shell's; the two rectangles are live locals.
-            let _ = catch_unwind(AssertUnwindSafe(|| unsafe { hook(foreign.user, &old, &new) }));
+        match &self.kind {
+            Kind::Foreign(foreign) => {
+                if let Some(hook) = foreign.vtable.area_changed {
+                    let (old, new) = (rect_out(old), rect_out(new));
+                    // SAFETY: `hook` and `user` are the shell's; the two rectangles are live locals.
+                    let _ = catch_unwind(AssertUnwindSafe(|| unsafe { hook(foreign.user, &old, &new) }));
+                }
+            }
+            Kind::Object(object) => object.area_changed(old, new),
+            Kind::Floating { .. } | Kind::Builtin(_) => {}
         }
     }
 
@@ -387,6 +409,7 @@ impl LayoutObj {
                 }
             }
             Kind::Builtin(builtin) => builtin.clients_swapped(a, b),
+            Kind::Object(object) => object.clients_swapped(a, b),
             Kind::Floating { .. } => {}
         }
     }
@@ -397,6 +420,7 @@ impl LayoutObj {
         let foreign = match &self.kind {
             Kind::Foreign(foreign) => foreign,
             Kind::Builtin(builtin) => return builtin.find_split(client, x, y).map(|split| split.to_raw()),
+            Kind::Object(object) => return object.find_split(client, x, y),
             Kind::Floating { .. } => return None,
         };
         let find = foreign.vtable.find_split?;
@@ -429,6 +453,7 @@ impl LayoutObj {
     pub(crate) fn set_split(&self, token: u64, ratio: f64, cross_ratio: f64) {
         match &self.kind {
             Kind::Builtin(builtin) => builtin.set_split(token, ratio, (!cross_ratio.is_nan()).then_some(cross_ratio)),
+            Kind::Object(object) => object.set_split(token, ratio, cross_ratio),
             Kind::Foreign(foreign) => {
                 if let Some(hook) = foreign.vtable.set_split {
                     // SAFETY: `hook` and `user` are the shell's.
@@ -445,6 +470,7 @@ impl LayoutObj {
     pub(crate) fn reset_split(&self, token: u64) {
         match &self.kind {
             Kind::Builtin(builtin) => builtin.reset_split(token),
+            Kind::Object(object) => object.reset_split(token),
             Kind::Foreign(foreign) => {
                 if let Some(hook) = foreign.vtable.reset_split {
                     // SAFETY: `hook` and `user` are the shell's.

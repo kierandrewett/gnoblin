@@ -53,7 +53,15 @@ impl SdkSpec {
         let catalog_hash = catalog.fingerprint();
         let model_dirs: Vec<std::path::PathBuf> = MODEL_DIRS.iter().map(|dir| root.join(dir)).collect();
         let model_dirs: Vec<&Path> = model_dirs.iter().map(std::path::PathBuf::as_path).collect();
-        let objects = Catalog::load_dirs(&model_dirs, &[])
+        // The built-in layouts are the std catalog's file `layouts.toml`, written from `gnoblin_std_abi::layouts::LAYOUT_KINDS`
+        // (`layout_schema.rs`) and never on disk.
+        let layouts_origin = root
+            .join(MODEL_DIRS[1])
+            .join(crate::layout_schema::ORIGIN_FILE)
+            .display()
+            .to_string();
+        let layouts = crate::layout_schema::schema_text();
+        let objects = Catalog::load_dirs_with(&model_dirs, &[], &[(layouts_origin.as_str(), layouts.as_str())])
             .map_err(|error| format!("the catalogs of the libraries do not load: {error}"))?;
         let mut libraries: Vec<Library> = Vec::new();
         for (name, reflection) in [

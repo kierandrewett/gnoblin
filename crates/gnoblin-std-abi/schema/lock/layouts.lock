@@ -1,0 +1,133 @@
+# The public surface of the `layouts` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+enum | dwindle_direction | values left right up down none | 0.2.0
+enum | dwindle_force_split | values by_pointer first second | 0.2.0
+enum | dwindle_pointer | values none seat fixed | 0.2.0
+enum | dwindle_preselected | values left right up down none | 0.2.0
+enum | dwindle_split | values aspect horizontal vertical | 0.2.0
+enum | dwindle_split_bias | values first opened | 0.2.0
+enum | grid_fill | values row column | 0.2.0
+enum | master_stack_orientation | values left right top bottom | 0.2.0
+
+member | arc_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
+member | arc_layout.client_added | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | arc_layout.client_removed | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | arc_layout.clients_swapped | method (a:uint, b:uint) native-default | 0.2.0
+member | arc_layout.compute | method (context:object:layout_context) -> list<object:layout_placement> required | 0.2.0
+member | arc_layout.find_split | method (client:uint, x:double, y:double) -> list<object:layout_split> native-default | 0.2.0
+member | arc_layout.radius | property double rw | 0.2.0
+member | arc_layout.reset_split | method (token:uint) native-default | 0.2.0
+member | arc_layout.revision | method () -> uint native-default | 0.2.0
+member | arc_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
+member | arc_layout.spacing | property double rw | 0.2.0
+member | carousel_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
+member | carousel_layout.card_height | property double rw | 0.2.0
+member | carousel_layout.card_width | property double rw | 0.2.0
+member | carousel_layout.client_added | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | carousel_layout.client_removed | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | carousel_layout.clients_swapped | method (a:uint, b:uint) native-default | 0.2.0
+member | carousel_layout.compute | method (context:object:layout_context) -> list<object:layout_placement> required | 0.2.0
+member | carousel_layout.find_split | method (client:uint, x:double, y:double) -> list<object:layout_split> native-default | 0.2.0
+member | carousel_layout.fov | property double rw | 0.2.0
+member | carousel_layout.reset_split | method (token:uint) native-default | 0.2.0
+member | carousel_layout.revision | method () -> uint native-default | 0.2.0
+member | carousel_layout.rotate | method (steps:int) | 0.2.0
+member | carousel_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
+member | dwindle_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
+member | dwindle_layout.client_added | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | dwindle_layout.client_removed | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | dwindle_layout.clients_swapped | method (a:uint, b:uint) native-default | 0.2.0
+member | dwindle_layout.compute | method (context:object:layout_context) -> list<object:layout_placement> required | 0.2.0
+member | dwindle_layout.find_split | method (client:uint, x:double, y:double) -> list<object:layout_split> native-default | 0.2.0
+member | dwindle_layout.force_split | property enum:dwindle_force_split rw | 0.2.0
+member | dwindle_layout.gap | property double rw,optional | 0.2.0
+member | dwindle_layout.is_pseudotiled | method (client:uint) -> bool | 0.2.0
+member | dwindle_layout.move_to_root | method (stable:bool) -> bool | 0.2.0
+member | dwindle_layout.permanent_direction_override | property bool rw | 0.2.0
+member | dwindle_layout.pointer | property enum:dwindle_pointer rw | 0.2.0
+member | dwindle_layout.pointer_x | property double rw,optional | 0.2.0
+member | dwindle_layout.pointer_y | property double rw,optional | 0.2.0
+member | dwindle_layout.preselect | method (direction:enum:dwindle_direction) | 0.2.0
+member | dwindle_layout.preselected | method () -> enum:dwindle_preselected | 0.2.0
+member | dwindle_layout.preserve_split | property bool rw | 0.2.0
+member | dwindle_layout.pseudotile | method (width?:double, height?:double) -> bool | 0.2.0
+member | dwindle_layout.ratio | property double rw | 0.2.0
+member | dwindle_layout.reset_split | method (token:uint) native-default | 0.2.0
+member | dwindle_layout.revision | method () -> uint native-default | 0.2.0
+member | dwindle_layout.rotate_split | method (angle:double) -> bool | 0.2.0
+member | dwindle_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
+member | dwindle_layout.set_split_ratio | method (ratio:double) -> bool | 0.2.0
+member | dwindle_layout.smart_resizing | property bool rw | 0.2.0
+member | dwindle_layout.smart_split | property bool rw | 0.2.0
+member | dwindle_layout.split | property enum:dwindle_split rw | 0.2.0
+member | dwindle_layout.split_bias | property enum:dwindle_split_bias rw | 0.2.0
+member | dwindle_layout.split_ratio | method (amount:double) -> bool | 0.2.0
+member | dwindle_layout.split_width_multiplier | property double rw | 0.2.0
+member | dwindle_layout.swap_split | method () -> bool | 0.2.0
+member | dwindle_layout.toggle_split | method () -> bool | 0.2.0
+member | dwindle_layout.use_active_for_splits | property bool rw | 0.2.0
+member | grid_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
+member | grid_layout.client_added | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | grid_layout.client_removed | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | grid_layout.clients_swapped | method (a:uint, b:uint) native-default | 0.2.0
+member | grid_layout.columns | property int rw | 0.2.0
+member | grid_layout.compute | method (context:object:layout_context) -> list<object:layout_placement> required | 0.2.0
+member | grid_layout.fill | property enum:grid_fill rw | 0.2.0
+member | grid_layout.find_split | method (client:uint, x:double, y:double) -> list<object:layout_split> native-default | 0.2.0
+member | grid_layout.gap | property double rw,optional | 0.2.0
+member | grid_layout.reset_split | method (token:uint) native-default | 0.2.0
+member | grid_layout.revision | method () -> uint native-default | 0.2.0
+member | grid_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
+member | master_stack_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
+member | master_stack_layout.client_added | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | master_stack_layout.client_removed | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | master_stack_layout.clients_swapped | method (a:uint, b:uint) native-default | 0.2.0
+member | master_stack_layout.compute | method (context:object:layout_context) -> list<object:layout_placement> required | 0.2.0
+member | master_stack_layout.find_split | method (client:uint, x:double, y:double) -> list<object:layout_split> native-default | 0.2.0
+member | master_stack_layout.gap | property double rw,optional | 0.2.0
+member | master_stack_layout.master_count | property int rw | 0.2.0
+member | master_stack_layout.orientation | property enum:master_stack_orientation rw | 0.2.0
+member | master_stack_layout.ratio | property double rw | 0.2.0
+member | master_stack_layout.reset_split | method (token:uint) native-default | 0.2.0
+member | master_stack_layout.revision | method () -> uint native-default | 0.2.0
+member | master_stack_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
+member | monocle_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
+member | monocle_layout.client_added | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | monocle_layout.client_removed | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | monocle_layout.clients_swapped | method (a:uint, b:uint) native-default | 0.2.0
+member | monocle_layout.compute | method (context:object:layout_context) -> list<object:layout_placement> required | 0.2.0
+member | monocle_layout.find_split | method (client:uint, x:double, y:double) -> list<object:layout_split> native-default | 0.2.0
+member | monocle_layout.reset_split | method (token:uint) native-default | 0.2.0
+member | monocle_layout.revision | method () -> uint native-default | 0.2.0
+member | monocle_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
+member | strip_layout.area_changed | method (before:object:layout_rect, now:object:layout_rect) native-default | 0.2.0
+member | strip_layout.client_added | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | strip_layout.client_removed | method (context:object:layout_context, client:uint) native-default | 0.2.0
+member | strip_layout.clients_swapped | method (a:uint, b:uint) native-default | 0.2.0
+member | strip_layout.column | property double rw | 0.2.0
+member | strip_layout.compute | method (context:object:layout_context) -> list<object:layout_placement> required | 0.2.0
+member | strip_layout.find_split | method (client:uint, x:double, y:double) -> list<object:layout_split> native-default | 0.2.0
+member | strip_layout.focus_left | method () | 0.2.0
+member | strip_layout.focus_right | method () | 0.2.0
+member | strip_layout.pin | property double ro,optional | 0.2.0
+member | strip_layout.reset_split | method (token:uint) native-default | 0.2.0
+member | strip_layout.revision | method () -> uint native-default | 0.2.0
+member | strip_layout.scroll_to | method (offset?:double) | 0.2.0
+member | strip_layout.set_split | method (token:uint, ratio:double, cross_ratio?:double) native-default | 0.2.0
+
+object | arc_layout | base layout | 0.2.0
+object | carousel_layout | base layout | 0.2.0
+object | dwindle_layout | base layout | 0.2.0
+object | grid_layout | base layout | 0.2.0
+object | master_stack_layout | base layout | 0.2.0
+object | monocle_layout | base layout | 0.2.0
+object | strip_layout | base layout | 0.2.0
