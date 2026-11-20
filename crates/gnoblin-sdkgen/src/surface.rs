@@ -79,6 +79,9 @@ fn property_detail(property: &Property) -> String {
     if property.animated {
         text.push_str(",animated");
     }
+    if property.optional {
+        text.push_str(",optional");
+    }
     if property.secret {
         text.push_str(",secret");
     }

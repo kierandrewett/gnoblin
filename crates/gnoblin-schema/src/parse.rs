@@ -62,6 +62,8 @@
 //!   `callback:<name>`.
 //! - `returns = "<type>"` on a method, `required = true` and `default = "native"` on a method of an interface.
 //! - `python = { dunder = "__len__" }` on a method: the Python special method the member is.
+//! - `optional = true` on a property: a record may leave the field out (the same key a method parameter has). A field with neither a
+//!   default nor this is always there.
 //! - `inert = "reason"` on a member: accepted and not applied. `abi = "fn:<name>"`: served by an existing typed table function.
 //! - `base = "<namespace>.<class>"`: a class of another namespace's catalog; the members are not copied into the derived class.
 
@@ -160,6 +162,8 @@ struct RawProperty {
     readonly: bool,
     #[serde(default)]
     animated: bool,
+    #[serde(default)]
+    optional: bool,
     default: Option<toml::Value>,
     #[serde(default)]
     inert: Option<String>,
@@ -571,6 +575,12 @@ fn parse_properties(
             raw_property.abi.as_ref(),
             raw_property.export.as_ref(),
         );
+        local_only(scope, problems, &owner, "optional", raw_property.optional);
+        if raw_property.optional && raw_property.default.is_some() {
+            problems.push(format!(
+                "{owner}: a property with a default is always there, so it is not `optional`"
+            ));
+        }
         let Some(ty) = type_of(problems, raw_property.ty.as_deref(), &owner) else {
             continue;
         };
@@ -603,6 +613,7 @@ fn parse_properties(
             default,
             readonly: raw_property.readonly,
             animated: raw_property.animated,
+            optional: raw_property.optional,
             extras,
         });
     }
@@ -1097,5 +1108,43 @@ mod tests {
         assert_eq!(schema.objects.len(), 2);
         let catalog = Catalog::new(vec![schema]).expect("fixture validates alone");
         assert_eq!(catalog.namespaces().len(), 1);
+    }
+
+    /// A record of a local namespace, with the properties `members` declares.
+    fn local_record(members: &str) -> String {
+        format!(
+            "namespace = \"test\"\nversion = \"0.2.0\"\nlocal = true\n\n[[object]]\nname = \"span\"\nsince = \"0.2.0\"\nkind = \"record\"\n{members}"
+        )
+    }
+
+    #[test]
+    fn an_optional_property_is_a_key_of_a_local_namespace_and_never_has_a_default() {
+        let property = "\n[[object.property]]\nname = \"closed\"\ntype = \"bool\"\nsince = \"0.2.0\"\n";
+        let schema = parse_schema("test.toml", &local_record(&format!("{property}optional = true\n"))).expect("schema");
+        assert!(schema.objects[0].properties[0].optional);
+        let schema = parse_schema("test.toml", &local_record(property)).expect("schema");
+        assert!(
+            !schema.objects[0].properties[0].optional,
+            "a property is always there unless it says otherwise"
+        );
+
+        let Err(crate::SchemaError::Invalid { problems: refused, .. }) = parse_schema(
+            "test.toml",
+            &local_record(&format!("{property}optional = true\ndefault = false\n")),
+        ) else {
+            panic!("a default and `optional` together are refused");
+        };
+        assert!(
+            refused.iter().any(|problem| problem.contains("is always there")),
+            "{refused:?}"
+        );
+
+        let found = problems(&format!("{property}optional = true\n"));
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("`optional`") && problem.contains("local = true")),
+            "the compositor's own files do not use it: {found:?}"
+        );
     }
 }

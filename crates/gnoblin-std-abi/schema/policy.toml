@@ -92,24 +92,28 @@ since = "0.2.0"
 name = "from_launcher"
 type = "bool"
 since = "0.2.0"
+optional = true
 
 # For `enter` and `motion`: some window holds a pressed pointer button.
 [[object.property]]
 name = "held"
 type = "bool"
 since = "0.2.0"
+optional = true
 
 # For `leave`: this window holds the pressed button.
 [[object.property]]
 name = "held_here"
 type = "bool"
 since = "0.2.0"
+optional = true
 
 # For `leave`: this window has the keyboard focus.
 [[object.property]]
 name = "focused"
 type = "bool"
 since = "0.2.0"
+optional = true
 
 # What to do about an event. A `focus_after` or `raise_after` is a delay in milliseconds that a leave or a new rest cancels.
 [[object]]
@@ -140,12 +144,14 @@ since = "0.2.0"
 name = "focus_after"
 type = "double"
 since = "0.2.0"
+optional = true
 
 # Raise the window after this long, if it has the focus then. Left out for none.
 [[object.property]]
 name = "raise_after"
 type = "double"
 since = "0.2.0"
+optional = true
 
 # The focus policy. Its functions need no desktop.
 [[object]]

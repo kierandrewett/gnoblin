@@ -15,13 +15,13 @@ enum | new_window_policy | values allow prevent | 0.2.0
 
 member | focus_action.clear | property bool rw | 0.2.0
 member | focus_action.focus | property bool rw | 0.2.0
-member | focus_action.focus_after | property double rw | 0.2.0
+member | focus_action.focus_after | property double rw,optional | 0.2.0
 member | focus_action.raise | property bool rw | 0.2.0
-member | focus_action.raise_after | property double rw | 0.2.0
-member | focus_event.focused | property bool rw | 0.2.0
-member | focus_event.from_launcher | property bool rw | 0.2.0
-member | focus_event.held | property bool rw | 0.2.0
-member | focus_event.held_here | property bool rw | 0.2.0
+member | focus_action.raise_after | property double rw,optional | 0.2.0
+member | focus_event.focused | property bool rw,optional | 0.2.0
+member | focus_event.from_launcher | property bool rw,optional | 0.2.0
+member | focus_event.held | property bool rw,optional | 0.2.0
+member | focus_event.held_here | property bool rw,optional | 0.2.0
 member | focus_event.kind | property enum:focus_event_kind rw | 0.2.0
 member | focus_policy.focus_decision | function (settings:object:focus_settings, event:object:focus_event) -> object:focus_action | 0.2.0
 member | focus_policy.hover_focus | function (settings:object:focus_settings, hovering:bool, entered:bool) -> bool | 0.2.0

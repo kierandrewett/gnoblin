@@ -416,6 +416,9 @@ pub struct Property {
     pub readonly: bool,
     /// True when a `set` may carry `seconds` to animate the change; without it the set is refused `not-animated`.
     pub animated: bool,
+    /// True when a record may leave the field out because it has no value to say (a delay that is none, a flag an event of another kind
+    /// does not use). A field with neither a default nor this is always there. Local namespaces only, and not with a default.
+    pub optional: bool,
     /// What only a local namespace's property carries: `inert`, `abi` and the names in each language.
     pub extras: Extras,
 }
@@ -907,8 +910,7 @@ impl Catalog {
 
     /// A 64-bit fingerprint of one namespace's catalog, everything a generated SDK or a library reads from it: kinds, bases,
     /// constructors, every member with its type, flags and defaults, enums, callbacks and errors. A library reports it through its
-    /// object table, and a generated SDK compares it with its own, so a library upgraded without its runtime is refused with both
-    /// hashes named. Comments, `since` versions and the order of files do not move it.
+    /// object table, so a generated SDK and its library can tell whether they were built from the same catalog. Comments, `since` versions and the order of files do not move it.
     pub fn namespace_fingerprint(&self, namespace: &Namespace) -> u64 {
         use std::fmt::Write as _;
         let mut text = format!("namespace {}\n", namespace.as_str());
@@ -928,13 +930,14 @@ impl Catalog {
             for property in &object.properties {
                 let _ = writeln!(
                     text,
-                    "p {} {} default={:?} ro={} anim={} secret={} extras={:?}",
+                    "p {} {} default={:?} ro={} anim={} secret={} optional={} extras={:?}",
                     property.name,
                     property.ty,
                     property.default,
                     property.readonly,
                     property.animated,
                     property.secret,
+                    property.optional,
                     property.extras
                 );
             }
