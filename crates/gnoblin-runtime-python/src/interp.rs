@@ -130,6 +130,8 @@ fn boot_once(api: &GnoblinApi) -> Result<(), String> {
     Python::attach(|py| -> PyResult<()> {
         let path = py.import("sys")?.getattr("path")?;
         path.call_method1("insert", (0, package.display().to_string()))?;
+        // The generated modules come from this library, ahead of anything on the path.
+        crate::embedded::install(py)?;
         py.import("gnoblin._runtime")?.call_method0("install")?;
         py.import("gnoblin")?;
         Ok(())

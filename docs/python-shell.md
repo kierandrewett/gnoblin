@@ -45,7 +45,10 @@ directory: two equal shells stop the start with a list of both.
   look in first.
 - **The package**, `gnoblin`, installed as data in `<prefix>/share/gnoblin/python/`. The runtime puts it on the `sys.path` of its
   own interpreter and nowhere else, so it is invisible to the Python you run in a terminal. `GNOBLIN_PYTHON_DIR` names a
-  directory that holds it, to read it from instead (a source tree runs the `data/python` it was built from).
+  directory that holds it, to read it from instead (a source tree runs the `data/python` it was built from). Its generated
+  modules (`gnoblin._generated` and `gnoblin.std`) are not read from there: the runtime library carries them, written from the
+  schema and the ABI crates when it was built, and serves them to its interpreter ahead of the path. The copies `dist` installs
+  beside the package, with the stubs, are for editors and checkers.
 
 Libraries you installed for your Python (`requests`, `numpy`) import as usual.
 
@@ -219,7 +222,7 @@ Point the checker at `<prefix>/share/gnoblin/python`, or add it to `extraPaths`.
 
 `gnoblin.std` is the object model above the core: collections of clients, outputs and workspaces, layouts, pointer bindings,
 transitions, styles and scene nodes. It is **generated** from the function table of `libgnoblin-std.so.1`
-(`cargo xtask gen-sdks`; [the generator](sdk-generator.md)), so it has every function of the table and none the library lacks.
+(`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)), so it has every function of the table and none the library lacks.
 
 `std.py` and its `std.pyi` are typed:
 

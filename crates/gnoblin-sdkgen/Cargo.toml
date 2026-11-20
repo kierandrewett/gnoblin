@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-sdkgen"
+description = "The one generator of every language SDK: Rust, Python and TypeScript bindings and their editor files, rendered from the schema catalog and the two ABI crates at build time."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The catalog the object model is described by.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# The two ABIs, read through their own `reflect` declarations (constants, handles, callbacks, `repr(C)` records and the function tables).
+gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+gnoblin-std-abi = { path = "../gnoblin-std-abi" }
+
+[dev-dependencies]
+tempfile = "3.23.0"
+
+[lints]
+workspace = true

@@ -5,7 +5,7 @@
 //! functions. This module is the script's door to them and it is generic on purpose, as `__gnoblinStd` is: `call("gnoblin.session",
 //! "logout", [], onAnswer, 0)` resolves the class and the method in the catalog, converts the script's values to the kinds the
 //! catalog says the parameters have, and hands the call to the core. The typed spelling (`verbs.session.logout()`,
-//! `verbs.session.onBell(fn)`) is generated from the same catalog into `data/js/gnoblin-core/generated/verbs.ts`, so a verb added to
+//! `verbs.session.onBell(fn)`) is generated from the same catalog into the generated `gnoblin-core/generated/verbs` module, so a verb added to
 //! the schema changes no line here.
 //!
 //! The answer and the signals come back through the core's dispatch, which the runtime runs between frames: the core calls the

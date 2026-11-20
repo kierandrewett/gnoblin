@@ -1,6 +1,10 @@
-//! Records which engine and type-stripper versions this build links, for the bytecode cache's directory name.
+//! Records which engine and type-stripper versions this build links, for the bytecode cache's directory name, and embeds the
+//! generated half of the stock library.
 //!
-//! The stock library is not embedded: it is installed data (`share/gnoblin/js`), read at run time (`src/stock.rs`).
+//! The hand-written stock library is not embedded: it is installed data (`share/gnoblin/js`), read at run time (`src/stock.rs`).
+//! What `gnoblin-sdkgen` generates from the schema and the ABI crates (`gnoblin-core/generated/*` and `gnoblin-std/generated/*`)
+//! is nobody's source and is committed nowhere: this script renders it into `OUT_DIR` and writes `stock_embedded.rs`, the table
+//! `src/stock.rs` serves those modules from, so they cannot be older or newer than the libraries the runtime is built with.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -10,7 +14,30 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     println!("cargo:rustc-env=GNOBLIN_JS_TOOLCHAIN={}", toolchain(&manifest));
+    embed_generated();
     ExitCode::SUCCESS
+}
+
+/// Renders the TypeScript target into `OUT_DIR/js/` and writes `OUT_DIR/stock_embedded.rs`: `(path under the library root,
+/// source)` for every generated module, the source included from where it was written.
+fn embed_generated() {
+    let paths = gnoblin_sdkgen::emit_for_build(&["typescript"]);
+    let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
+    let mut table = String::from("/// The generated modules of the stock library, by path under the library root.\n");
+    table.push_str("pub(crate) static GENERATED: &[(&str, &str)] = &[\n");
+    for path in &paths {
+        let Some(file) = path.strip_prefix("js/") else {
+            continue;
+        };
+        let source = out.join(path);
+        let _ = writeln!(
+            table,
+            "    ({file:?}, include_str!({:?})),",
+            source.display().to_string()
+        );
+    }
+    table.push_str("];\n");
+    fs::write(out.join("stock_embedded.rs"), table).expect("OUT_DIR is writable");
 }
 
 /// The crates whose versions decide what bytecode a module compiles to: the engine, and the oxc crates that strip the

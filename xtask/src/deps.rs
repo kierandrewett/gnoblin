@@ -411,6 +411,10 @@ const RULES: &[Rule] = &[
         check: sdk_isolation,
     },
     Rule {
+        id: "sdkgen-isolation",
+        check: sdkgen_isolation,
+    },
+    Rule {
         id: "impl-sealed",
         check: impl_sealed,
     },
@@ -1308,11 +1312,67 @@ fn sdk_isolation(package: &Package, dep: &Dep) -> Option<String> {
     if package.name == "gnoblin-core-abi" && dep.name == "gnoblin-schema" && dep.kind == DepKind::Build {
         return None;
     }
+    // The generator renders the SDK's generated half in `build.rs`; it is a build dependency and never linked (`sdkgen_isolation`).
+    if dep.name == SDKGEN_CRATE && dep.kind == DepKind::Build {
+        return None;
+    }
     Some(format!(
         "an SDK crate names only SDK crates ({}) among workspace crates; `{}` would be compiled into every shell",
         SDK.join(", "),
         dep.name
     ))
+}
+
+/// The generator of every language SDK. It reads the schema catalog and the two ABI crates and nothing else, so it can run in the
+/// `build.rs` of the crates that embed its output without any of them being a dependency of it.
+const SDKGEN_CRATE: &str = "gnoblin-sdkgen";
+
+/// The workspace crates [`SDKGEN_CRATE`] may name.
+const SDKGEN_ALLOWED: &[&str] = &["gnoblin-schema", "gnoblin-core-abi", "gnoblin-std-abi"];
+
+/// The crates that run the generator: the SDK and runtime crates whose `build.rs` renders what they embed or include, and the workspace
+/// automation that installs and checks it. The edge is a build dependency only (a development dependency for a test that reads the
+/// rendered files), so the generator is never part of a shell, a library or the session.
+const SDKGEN_USERS: &[&str] = &[
+    "gnoblin-core",
+    "gnoblin-std-dyn",
+    "gnoblin-js",
+    "gnoblin-runtime-python",
+    "xtask",
+];
+
+/// The generator names only the catalog and the ABIs, and only the crates in [`SDKGEN_USERS`] name it, as a build dependency.
+///
+/// `gnoblin-sdkgen` must not depend on `gnoblin-core`, `gnoblin-std`, `gnoblin-std-dyn`, `gnoblin-js` or the runtimes: they consume its
+/// output, so an edge back would make the build cyclic and let a generated file describe the crate that includes it.
+fn sdkgen_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name == SDKGEN_CRATE {
+        if dep.kind == DepKind::Dev || !is_workspace_crate(&dep.name) || SDKGEN_ALLOWED.contains(&dep.name.as_str()) {
+            return None;
+        }
+        return Some(format!(
+            "`{SDKGEN_CRATE}` reads the schema and the two ABI crates ({}) and no crate that consumes its output, but depends on `{}`",
+            SDKGEN_ALLOWED.join(", "),
+            dep.name
+        ));
+    }
+    if dep.name != SDKGEN_CRATE {
+        return None;
+    }
+    if !SDKGEN_USERS.contains(&package.name.as_str()) {
+        return Some(format!(
+            "`{SDKGEN_CRATE}` is used by the crates that render what they embed ({}), not by `{}`",
+            SDKGEN_USERS.join(", "),
+            package.name
+        ));
+    }
+    if dep.kind == DepKind::Normal && package.name != "xtask" {
+        return Some(format!(
+            "`{}` may use `{SDKGEN_CRATE}` from `build.rs` (a build dependency) or a test (a development dependency), not as a normal dependency",
+            package.name
+        ));
+    }
+    None
 }
 
 /// Nothing depends on an implementation crate. The loader finds a cdylib by file name, and the launcher
@@ -2327,6 +2387,66 @@ mod tests {
             edge_violations("gnoblin-core", "gnoblin-compositor", "dev"),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn the_generator_is_a_build_dependency_of_the_crates_that_embed_its_output() {
+        for user in [
+            "gnoblin-core",
+            "gnoblin-std-dyn",
+            "gnoblin-js",
+            "gnoblin-runtime-python",
+        ] {
+            assert_eq!(
+                edge_violations(user, "gnoblin-sdkgen", "build"),
+                Vec::<String>::new(),
+                "{user}"
+            );
+        }
+        assert_eq!(
+            edge_violations("gnoblin-runtime-python", "gnoblin-sdkgen", "dev"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            edge_violations("xtask", "gnoblin-sdkgen", "normal"),
+            Vec::<String>::new()
+        );
+        for (user, kind) in [("gnoblin-core", "normal"), ("gnoblin-js", "normal")] {
+            let found = edge_violations(user, "gnoblin-sdkgen", kind);
+            assert!(
+                found.iter().any(|line| line.contains("[sdkgen-isolation]")),
+                "{user} {kind}: {found:?}"
+            );
+        }
+        let stranger = edge_violations("gnoblin-compositor", "gnoblin-sdkgen", "build");
+        assert!(
+            stranger.iter().any(|line| line.contains("[sdkgen-isolation]")),
+            "{stranger:?}"
+        );
+    }
+
+    #[test]
+    fn the_generator_names_the_schema_and_the_abi_crates_and_no_consumer_of_its_output() {
+        for dep in ["gnoblin-schema", "gnoblin-core-abi", "gnoblin-std-abi"] {
+            assert_eq!(
+                edge_violations("gnoblin-sdkgen", dep, "normal"),
+                Vec::<String>::new(),
+                "{dep}"
+            );
+        }
+        for dep in [
+            "gnoblin-core",
+            "gnoblin-std",
+            "gnoblin-std-dyn",
+            "gnoblin-js",
+            "gnoblin-js-types",
+        ] {
+            let found = edge_violations("gnoblin-sdkgen", dep, "normal");
+            assert!(
+                found.iter().any(|line| line.contains("[sdkgen-isolation]")),
+                "{dep}: {found:?}"
+            );
+        }
     }
 
     #[test]

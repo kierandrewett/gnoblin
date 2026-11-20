@@ -3,7 +3,7 @@
 //! It is generic on purpose, as `_gnoblin_core` is. `call("collection_len", handle)` converts the arguments to the call layer's
 //! [`Dyn`] (`gnoblin-std-dyn`, whose per-function code is generated from the table), calls the installed library for the generation
 //! `_gnoblin_core` acts on, and converts what comes back. The typed classes a script uses (`gnoblin.std.Workspace` and the rest) are
-//! generated from the same table into `data/python/gnoblin/std.py`, so a function added to the table changes no line here.
+//! generated from the same table into the generated `gnoblin/std.py`, so a function added to the table changes no line here.
 //!
 //! The library is opened the first time a script asks (`load`), never when the runtime starts: a shell that does not use std runs on
 //! a machine that does not have it.

@@ -3,7 +3,7 @@
 //!
 //! Like the rest of the module this layer names a class, a method and a signal as the catalog does, and moves values by position.
 //! The typed spelling (`verbs.session.logout()`, `verbs.session.on_bell(fn)`) is generated from the schema into
-//! `gnoblin/_generated/verbs.py`, so a method added to the schema adds no line here.
+//! the generated `gnoblin/_generated/verbs.py`, so a method added to the schema adds no line here.
 
 use gnoblin_core::Value;
 use pyo3::prelude::*;

@@ -110,7 +110,8 @@ dynamic facts above, and that the ABI the lock names is one the tree has.
    documentation; never between two fields.
 2. Implement it in the library's `table.rs` and set the field in the static table.
 3. Give the SDK a wrapper that checks the table's `size` with `table_has` and returns `Unsupported` (`None` for a getter) on a table that is too short.
-4. Run `cargo xtask abi-check --update` and `cargo xtask gen-sdks`, and commit the lock and the generated files with the change. Raise the
+4. Run `cargo xtask abi-check --update`, and commit the lock with the change. Nothing generated is committed: the SDKs are rendered by the
+   build ([the generator](sdk-generator.md)), and `cargo xtask gen-sdks --check` proves they still render. Raise the
    minor in `ABI_MINOR` when the change ships in a release.
 5. Add the function to the upgrade test only when it needs behaviour of its own. The test knob already appends one.
 

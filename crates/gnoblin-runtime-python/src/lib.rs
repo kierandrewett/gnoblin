@@ -28,6 +28,7 @@
 
 mod callback;
 mod convert;
+mod embedded;
 mod errors;
 mod events;
 mod generation;

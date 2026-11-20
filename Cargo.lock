@@ -1486,6 +1486,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core-abi",
  "gnoblin-macros",
+ "gnoblin-sdkgen",
 ]
 
 [[package]]
@@ -1706,6 +1707,7 @@ dependencies = [
  "gnoblin-paint",
  "gnoblin-proto",
  "gnoblin-runtime-js",
+ "gnoblin-sdkgen",
  "gnoblin-secret",
  "gnoblin-shell-host",
  "gnoblin-std-dyn",
@@ -2021,6 +2023,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",
  "gnoblin-core-abi",
+ "gnoblin-sdkgen",
  "gnoblin-std-dyn",
  "pyo3",
 ]
@@ -2032,6 +2035,16 @@ dependencies = [
  "gnoblin-types",
  "serde",
  "toml",
+]
+
+[[package]]
+name = "gnoblin-sdkgen"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
+ "gnoblin-schema",
+ "gnoblin-std-abi",
+ "tempfile",
 ]
 
 [[package]]
@@ -2221,6 +2234,7 @@ name = "gnoblin-std-dyn"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core-abi",
+ "gnoblin-sdkgen",
  "gnoblin-std-abi",
 ]
 
@@ -5817,6 +5831,7 @@ dependencies = [
  "gnoblin-core-abi",
  "gnoblin-js-types",
  "gnoblin-schema",
+ "gnoblin-sdkgen",
  "gnoblin-shell-host",
  "gnoblin-std-abi",
  "proc-macro2",

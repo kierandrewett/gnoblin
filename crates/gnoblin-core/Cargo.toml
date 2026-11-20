@@ -21,6 +21,8 @@ gnoblin-macros = { path = "../gnoblin-macros" }
 [build-dependencies]
 # The link stub and the `panic = "abort"` check run in build.rs, so the helper code is a build dependency only.
 gnoblin-core-abi = { path = "../gnoblin-core-abi", features = ["build-support"] }
+# The schema's names, the typed node classes and the error kinds are generated at build time and never committed.
+gnoblin-sdkgen = { path = "../gnoblin-sdkgen" }
 
 # The workspace table forbids unsafe code; the SDK's FFI modules need it. Only the modules that open with
 # `#![allow(unsafe_code)]` and a SAFETY note use it.

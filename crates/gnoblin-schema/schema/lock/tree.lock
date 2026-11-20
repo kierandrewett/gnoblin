@@ -1,0 +1,487 @@
+# The public surface of the `tree` namespace of the schema catalog: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-schema/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+member | camera.clip | property bool rw | 0.2.0
+member | camera.corner_radius | property double rw,animated | 0.2.0
+member | camera.destroyed | signal () | 0.2.0
+member | camera.effects | property list<object:effect> rw | 0.2.0
+member | camera.far | property double rw | 0.2.0
+member | camera.fov | property double rw,animated | 0.2.0
+member | camera.fov_down | property double rw | 0.2.0
+member | camera.fov_left | property double rw | 0.2.0
+member | camera.fov_right | property double rw | 0.2.0
+member | camera.fov_up | property double rw | 0.2.0
+member | camera.height | property double rw,animated | 0.2.0
+member | camera.id | property uint ro | 0.2.0
+member | camera.input | property bool rw | 0.2.0
+member | camera.input_mode | property string rw | 0.2.0
+member | camera.ipd | property double rw | 0.2.0
+member | camera.layer_budget | property uint ro | 0.2.0
+member | camera.metres | property double rw | 0.2.0
+member | camera.name | property string rw | 0.2.0
+member | camera.near | property double rw | 0.2.0
+member | camera.opacity | property double rw,animated | 0.2.0
+member | camera.parent | property object:node ro | 0.2.0
+member | camera.projection | property string rw | 0.2.0
+member | camera.rotation | property list<double> rw,animated | 0.2.0
+member | camera.scale | property list<double> rw,animated | 0.2.0
+member | camera.secure | property bool rw | 0.2.0
+member | camera.skipped | property list<string> ro | 0.2.0
+member | camera.tags | property list<string> rw | 0.2.0
+member | camera.visible | property bool rw | 0.2.0
+member | camera.width | property double rw,animated | 0.2.0
+member | camera.x | property double rw,animated | 0.2.0
+member | camera.y | property double rw,animated | 0.2.0
+member | camera.z | property double rw,animated | 0.2.0
+member | canvas.clip | property bool rw | 0.2.0
+member | canvas.content | property bytes rw | 0.2.0
+member | canvas.corner_radius | property double rw,animated | 0.2.0
+member | canvas.destroyed | signal () | 0.2.0
+member | canvas.effects | property list<object:effect> rw | 0.2.0
+member | canvas.height | property double rw,animated | 0.2.0
+member | canvas.id | property uint ro | 0.2.0
+member | canvas.input | property bool rw | 0.2.0
+member | canvas.input_mode | property string rw | 0.2.0
+member | canvas.measure | method () | 0.2.0
+member | canvas.name | property string rw | 0.2.0
+member | canvas.opacity | property double rw,animated | 0.2.0
+member | canvas.parent | property object:node ro | 0.2.0
+member | canvas.placement | property string rw | 0.2.0
+member | canvas.rotation | property list<double> rw,animated | 0.2.0
+member | canvas.scale | property list<double> rw,animated | 0.2.0
+member | canvas.secure | property bool rw | 0.2.0
+member | canvas.skipped | property list<string> ro | 0.2.0
+member | canvas.tags | property list<string> rw | 0.2.0
+member | canvas.visible | property bool rw | 0.2.0
+member | canvas.width | property double rw,animated | 0.2.0
+member | canvas.x | property double rw,animated | 0.2.0
+member | canvas.y | property double rw,animated | 0.2.0
+member | canvas.z | property double rw,animated | 0.2.0
+member | change.class | property string rw | 0.2.0
+member | change.index | property int rw | 0.2.0
+member | change.key | property string rw | 0.2.0
+member | change.kind | property string rw | 0.2.0
+member | change.node | property uint rw | 0.2.0
+member | change.parent | property uint rw | 0.2.0
+member | change.removed | property list<uint> rw | 0.2.0
+member | change.value_bool | property bool rw | 0.2.0
+member | change.value_bytes | property bytes rw | 0.2.0
+member | change.value_double | property double rw | 0.2.0
+member | change.value_effects | property list<object:effect> rw | 0.2.0
+member | change.value_int | property int rw | 0.2.0
+member | change.value_kind | property string rw | 0.2.0
+member | change.value_list | property list<double> rw | 0.2.0
+member | change.value_node | property uint rw | 0.2.0
+member | change.value_text | property string rw | 0.2.0
+member | change.value_texts | property list<string> rw | 0.2.0
+member | change.value_uint | property uint rw | 0.2.0
+member | controller.claimed | property list<string> rw | 0.2.0
+member | controller.clip | property bool rw | 0.2.0
+member | controller.corner_radius | property double rw,animated | 0.2.0
+member | controller.destroyed | signal () | 0.2.0
+member | controller.effects | property list<object:effect> rw | 0.2.0
+member | controller.grip | property double ro | 0.2.0
+member | controller.hand | property string ro | 0.2.0
+member | controller.height | property double rw,animated | 0.2.0
+member | controller.id | property uint ro | 0.2.0
+member | controller.input | property bool rw | 0.2.0
+member | controller.input_mode | property string rw | 0.2.0
+member | controller.name | property string rw | 0.2.0
+member | controller.opacity | property double rw,animated | 0.2.0
+member | controller.parent | property object:node ro | 0.2.0
+member | controller.primary | property bool ro | 0.2.0
+member | controller.rotation | property list<double> rw,animated | 0.2.0
+member | controller.scale | property list<double> rw,animated | 0.2.0
+member | controller.secondary | property bool ro | 0.2.0
+member | controller.secure | property bool rw | 0.2.0
+member | controller.skipped | property list<string> ro | 0.2.0
+member | controller.tags | property list<string> rw | 0.2.0
+member | controller.thumbstick_click | property bool ro | 0.2.0
+member | controller.thumbstick_x | property double ro | 0.2.0
+member | controller.thumbstick_y | property double ro | 0.2.0
+member | controller.tracked | property bool ro | 0.2.0
+member | controller.trigger | property double ro | 0.2.0
+member | controller.visible | property bool rw | 0.2.0
+member | controller.width | property double rw,animated | 0.2.0
+member | controller.x | property double rw,animated | 0.2.0
+member | controller.y | property double rw,animated | 0.2.0
+member | controller.z | property double rw,animated | 0.2.0
+member | effect.algorithm | property string rw | 0.2.0
+member | effect.blur_radius | property double rw | 0.2.0
+member | effect.brightness | property double rw | 0.2.0
+member | effect.colour | property string rw | 0.2.0
+member | effect.contrast | property double rw | 0.2.0
+member | effect.downscale | property uint rw | 0.2.0
+member | effect.frame | property bool rw | 0.2.0
+member | effect.inset | property bool rw | 0.2.0
+member | effect.kind | property string rw | 0.2.0
+member | effect.noise | property double rw | 0.2.0
+member | effect.offset | property double rw | 0.2.0
+member | effect.offset_x | property double rw | 0.2.0
+member | effect.offset_y | property double rw | 0.2.0
+member | effect.params | property list<double> rw | 0.2.0
+member | effect.passes | property uint rw | 0.2.0
+member | effect.saturation | property double rw | 0.2.0
+member | effect.source | property string rw | 0.2.0
+member | effect.spread | property double rw | 0.2.0
+member | effect.tint | property string rw | 0.2.0
+member | effect.width | property double rw | 0.2.0
+member | lock.authenticate | method (text:string) | 0.2.0
+member | lock.clip | property bool rw | 0.2.0
+member | lock.corner_radius | property double rw,animated | 0.2.0
+member | lock.destroyed | signal () | 0.2.0
+member | lock.effects | property list<object:effect> rw | 0.2.0
+member | lock.engaged | property bool rw | 0.2.0
+member | lock.heartbeat | method () | 0.2.0
+member | lock.height | property double rw,animated | 0.2.0
+member | lock.id | property uint ro | 0.2.0
+member | lock.input | property bool rw | 0.2.0
+member | lock.input_mode | property string rw | 0.2.0
+member | lock.lock | method () | 0.2.0
+member | lock.name | property string rw | 0.2.0
+member | lock.opacity | property double rw,animated | 0.2.0
+member | lock.parent | property object:node ro | 0.2.0
+member | lock.requested | signal () | 0.2.0
+member | lock.rotation | property list<double> rw,animated | 0.2.0
+member | lock.scale | property list<double> rw,animated | 0.2.0
+member | lock.secure | property bool rw | 0.2.0
+member | lock.skipped | property list<string> ro | 0.2.0
+member | lock.state | property string ro | 0.2.0
+member | lock.tags | property list<string> rw | 0.2.0
+member | lock.visible | property bool rw | 0.2.0
+member | lock.width | property double rw,animated | 0.2.0
+member | lock.x | property double rw,animated | 0.2.0
+member | lock.y | property double rw,animated | 0.2.0
+member | lock.z | property double rw,animated | 0.2.0
+member | node.clip | property bool rw | 0.2.0
+member | node.corner_radius | property double rw,animated | 0.2.0
+member | node.destroyed | signal () | 0.2.0
+member | node.effects | property list<object:effect> rw | 0.2.0
+member | node.height | property double rw,animated | 0.2.0
+member | node.id | property uint ro | 0.2.0
+member | node.input | property bool rw | 0.2.0
+member | node.input_mode | property string rw | 0.2.0
+member | node.name | property string rw | 0.2.0
+member | node.opacity | property double rw,animated | 0.2.0
+member | node.parent | property object:node ro | 0.2.0
+member | node.rotation | property list<double> rw,animated | 0.2.0
+member | node.scale | property list<double> rw,animated | 0.2.0
+member | node.secure | property bool rw | 0.2.0
+member | node.skipped | property list<string> ro | 0.2.0
+member | node.tags | property list<string> rw | 0.2.0
+member | node.visible | property bool rw | 0.2.0
+member | node.width | property double rw,animated | 0.2.0
+member | node.x | property double rw,animated | 0.2.0
+member | node.y | property double rw,animated | 0.2.0
+member | node.z | property double rw,animated | 0.2.0
+member | op.args | property bytes rw | 0.2.0
+member | op.button | property uint rw | 0.2.0
+member | op.class | property string rw | 0.2.0
+member | op.delay | property double rw | 0.2.0
+member | op.dx | property double rw | 0.2.0
+member | op.dy | property double rw | 0.2.0
+member | op.id | property uint rw | 0.2.0
+member | op.index | property int rw | 0.2.0
+member | op.input_kind | property string rw | 0.2.0
+member | op.key | property string rw | 0.2.0
+member | op.kind | property string rw | 0.2.0
+member | op.method | property string rw | 0.2.0
+member | op.node | property uint rw | 0.2.0
+member | op.parent | property uint rw | 0.2.0
+member | op.samples | property list<double> rw | 0.2.0
+member | op.seat | property uint rw | 0.2.0
+member | op.seconds | property double rw | 0.2.0
+member | op.state | property uint rw | 0.2.0
+member | op.text | property string rw,secret | 0.2.0
+member | op.token | property uint rw | 0.2.0
+member | op.tween | property uint rw | 0.2.0
+member | op.value_bool | property bool rw | 0.2.0
+member | op.value_bytes | property bytes rw | 0.2.0
+member | op.value_double | property double rw | 0.2.0
+member | op.value_effects | property list<object:effect> rw | 0.2.0
+member | op.value_int | property int rw | 0.2.0
+member | op.value_kind | property string rw | 0.2.0
+member | op.value_list | property list<double> rw | 0.2.0
+member | op.value_node | property uint rw | 0.2.0
+member | op.value_text | property string rw | 0.2.0
+member | op.value_texts | property list<string> rw | 0.2.0
+member | op.value_uint | property uint rw | 0.2.0
+member | op.x | property double rw | 0.2.0
+member | op.y | property double rw | 0.2.0
+member | screen.apply | method (text:string) | 0.2.0
+member | screen.camera | property object:node rw | 0.2.0
+member | screen.capture | method () | 0.2.0
+member | screen.clip | property bool rw | 0.2.0
+member | screen.connector | property string ro | 0.2.0
+member | screen.corner_radius | property double rw,animated | 0.2.0
+member | screen.destroyed | signal () | 0.2.0
+member | screen.effects | property list<object:effect> rw | 0.2.0
+member | screen.enabled | property bool ro | 0.2.0
+member | screen.fps | property uint rw | 0.2.0
+member | screen.gpu_memory_budget_bytes | property double ro | 0.2.0
+member | screen.gpu_memory_bytes | property double ro | 0.2.0
+member | screen.gpu_memory_capture_bytes | property double ro | 0.2.0
+member | screen.gpu_memory_clients_bytes | property double ro | 0.2.0
+member | screen.gpu_memory_evicted_total | property double ro | 0.2.0
+member | screen.gpu_memory_refused_total | property double ro | 0.2.0
+member | screen.gpu_memory_scratch_bytes | property double ro | 0.2.0
+member | screen.gpu_memory_staging_bytes | property double ro | 0.2.0
+member | screen.gpu_memory_target_bytes | property double ro | 0.2.0
+member | screen.gpu_memory_views_bytes | property double ro | 0.2.0
+member | screen.height | property double rw,animated | 0.2.0
+member | screen.id | property uint ro | 0.2.0
+member | screen.identity | property string ro | 0.2.0
+member | screen.input | property bool rw | 0.2.0
+member | screen.input_mode | property string rw | 0.2.0
+member | screen.make | property string ro | 0.2.0
+member | screen.mirror_of | property string ro | 0.2.0
+member | screen.mode | property string ro | 0.2.0
+member | screen.mode_changed | signal () | 0.2.0
+member | screen.model | property string ro | 0.2.0
+member | screen.name | property string ro | 0.2.0
+member | screen.opacity | property double rw,animated | 0.2.0
+member | screen.output_scale | property double ro | 0.2.0
+member | screen.parent | property object:node ro | 0.2.0
+member | screen.primary | property bool rw | 0.2.0
+member | screen.rotation | property list<double> rw,animated | 0.2.0
+member | screen.scale | property list<double> rw,animated | 0.2.0
+member | screen.screen_height | property double ro | 0.2.0
+member | screen.screen_width | property double ro | 0.2.0
+member | screen.screen_x | property double ro | 0.2.0
+member | screen.screen_y | property double ro | 0.2.0
+member | screen.secure | property bool rw | 0.2.0
+member | screen.skipped | property list<string> ro | 0.2.0
+member | screen.source | property object:node rw | 0.2.0
+member | screen.supersample | property double ro | 0.2.0
+member | screen.tags | property list<string> rw | 0.2.0
+member | screen.transform | property string ro | 0.2.0
+member | screen.visible | property bool rw | 0.2.0
+member | screen.width | property double rw,animated | 0.2.0
+member | screen.x | property double rw,animated | 0.2.0
+member | screen.y | property double rw,animated | 0.2.0
+member | screen.z | property double rw,animated | 0.2.0
+member | seat.auto_raise | property bool ro | 0.2.0
+member | seat.auto_raise_delay | property int ro | 0.2.0
+member | seat.builtin_motion | property bool rw | 0.2.0
+member | seat.chord | signal (id:int, chord:string, state:string) | 0.2.0
+member | seat.claim | method (id:int, chord:string, grab:bool, device:string) | 0.2.0
+member | seat.claim_device | method (id:int, device:string) | 0.2.0
+member | seat.claim_gesture | method (id:int, kind:string, fingers:int, device:string) | 0.2.0
+member | seat.claim_pointer | method (id:int, device:string) | 0.2.0
+member | seat.clip | property bool rw | 0.2.0
+member | seat.corner_radius | property double rw,animated | 0.2.0
+member | seat.cursor_hidden | property bool rw | 0.2.0
+member | seat.cursor_hotspot_x | property int rw | 0.2.0
+member | seat.cursor_hotspot_y | property int rw | 0.2.0
+member | seat.cursor_image | property bytes rw | 0.2.0
+member | seat.cursor_shape | property string rw | 0.2.0
+member | seat.decorations_available | property bool rw | 0.2.0
+member | seat.destroyed | signal () | 0.2.0
+member | seat.device | property list<string> ro | 0.2.0
+member | seat.double_click | property string ro | 0.2.0
+member | seat.drag_constraint | property string ro | 0.2.0
+member | seat.edge_tiling | property bool ro | 0.2.0
+member | seat.effect_kinds | property list<string> ro | 0.2.0
+member | seat.effects | property list<object:effect> rw | 0.2.0
+member | seat.focus | property object:node rw | 0.2.0
+member | seat.focus_change_on_pointer_rest | property bool ro | 0.2.0
+member | seat.focus_mode | property string ro | 0.2.0
+member | seat.focus_new_windows | property string ro | 0.2.0
+member | seat.gesture | signal (id:int, kind:string, fingers:int, phase:string, dx:double, dy:double, scale:double, rotation:double) | 0.2.0
+member | seat.grab | method (id:int, node:int, scope:string) | 0.2.0
+member | seat.grabbed | property string ro | 0.2.0
+member | seat.height | property double rw,animated | 0.2.0
+member | seat.id | property uint ro | 0.2.0
+member | seat.input | property bool rw | 0.2.0
+member | seat.input_mode | property string rw | 0.2.0
+member | seat.middle_click | property string ro | 0.2.0
+member | seat.name | property string ro | 0.2.0
+member | seat.opacity | property double rw,animated | 0.2.0
+member | seat.parent | property object:node ro | 0.2.0
+member | seat.pointer_button | signal (claim:int, button:int, state:string, x:double, y:double, time:int) | 0.2.0
+member | seat.pointer_chord | signal (phase:string, claim:int, x:double, y:double, dx:double, dy:double, button:int, modifiers:string, time:int) | 0.2.0
+member | seat.pointer_x | property double ro | 0.2.0
+member | seat.pointer_y | property double ro | 0.2.0
+member | seat.raise_on_click | property bool ro | 0.2.0
+member | seat.reduced_motion | property bool ro | 0.2.0
+member | seat.right_click | property string ro | 0.2.0
+member | seat.rotation | property list<double> rw,animated | 0.2.0
+member | seat.scale | property list<double> rw,animated | 0.2.0
+member | seat.screen | property object:node ro | 0.2.0
+member | seat.secure | property bool rw | 0.2.0
+member | seat.skipped | property list<string> ro | 0.2.0
+member | seat.tags | property list<string> rw | 0.2.0
+member | seat.unclaim | method (id:int) | 0.2.0
+member | seat.ungrab | method (id:int) | 0.2.0
+member | seat.user_shaders | property bool ro | 0.2.0
+member | seat.visible | property bool rw | 0.2.0
+member | seat.warp | method () | 0.2.0
+member | seat.width | property double rw,animated | 0.2.0
+member | seat.workspaces | property list<string> ro | 0.2.0
+member | seat.x | property double rw,animated | 0.2.0
+member | seat.y | property double rw,animated | 0.2.0
+member | seat.z | property double rw,animated | 0.2.0
+member | snapshot_node.app_id | property string rw | 0.2.0
+member | snapshot_node.class | property string rw | 0.2.0
+member | snapshot_node.id | property uint rw | 0.2.0
+member | snapshot_node.index | property int rw | 0.2.0
+member | snapshot_node.parent | property uint rw | 0.2.0
+member | snapshot_node.props | property list<object:change> rw | 0.2.0
+member | snapshot_node.title | property string rw | 0.2.0
+member | surface.anchor | property list<string> ro | 0.2.0
+member | surface.app_id | property string ro | 0.2.0
+member | surface.clip | property bool rw | 0.2.0
+member | surface.corner_radius | property double rw,animated | 0.2.0
+member | surface.destroyed | signal () | 0.2.0
+member | surface.effects | property list<object:effect> rw | 0.2.0
+member | surface.exclusive_zone | property double ro | 0.2.0
+member | surface.height | property double rw,animated | 0.2.0
+member | surface.id | property uint ro | 0.2.0
+member | surface.input | property bool rw | 0.2.0
+member | surface.input_mode | property string rw | 0.2.0
+member | surface.layer | property string ro | 0.2.0
+member | surface.mapped | property bool ro | 0.2.0
+member | surface.margin | property list<double> ro | 0.2.0
+member | surface.name | property string rw | 0.2.0
+member | surface.namespace | property string ro | 0.2.0
+member | surface.opacity | property double rw,animated | 0.2.0
+member | surface.parent | property object:node ro | 0.2.0
+member | surface.placement_override | property bool rw | 0.2.0
+member | surface.requested_size | property list<double> ro | 0.2.0
+member | surface.reserve | property list<double> rw | 0.2.0
+member | surface.role | property string ro | 0.2.0
+member | surface.rotation | property list<double> rw,animated | 0.2.0
+member | surface.scale | property list<double> rw,animated | 0.2.0
+member | surface.secure | property bool rw | 0.2.0
+member | surface.skipped | property list<string> ro | 0.2.0
+member | surface.stack | property int rw | 0.2.0
+member | surface.tags | property list<string> rw | 0.2.0
+member | surface.visible | property bool rw | 0.2.0
+member | surface.width | property double rw,animated | 0.2.0
+member | surface.x | property double rw,animated | 0.2.0
+member | surface.y | property double rw,animated | 0.2.0
+member | surface.z | property double rw,animated | 0.2.0
+member | tree.answer | signal (token:uint, result:bytes, error:string) | 0.2.0
+member | tree.attach | method (version:uint, mode:string) | 0.2.0
+member | tree.attached | signal (epoch:uint, root:uint, serial:uint) | 0.2.0
+member | tree.call | method (node:uint, method:string, args:bytes, token:uint) | 0.2.0
+member | tree.changes | signal (serial:uint, changes:list<object:change>) | 0.2.0
+member | tree.event | signal (frame:uint, seq:uint, node:uint, kind:string, x:double, y:double, button:uint, key:string, text:string, dx:double, dy:double, request:string, pressed:bool) | 0.2.0
+member | tree.reply | signal (serial:uint, applied:bool, failed_op:int, code:string, removed:list<uint>) | 0.2.0
+member | tree.snapshot | signal (serial:uint, chunk:uint, last:bool, nodes:list<object:snapshot_node>) | 0.2.0
+member | tree.track_ended | signal (node:uint, property:string, reason:string, tween:uint) | 0.2.0
+member | tree.transact | method (base_serial:uint, serial:uint, ops:list<object:op>) secret | 0.2.0
+member | tween.clip | property bool rw | 0.2.0
+member | tween.corner_radius | property double rw,animated | 0.2.0
+member | tween.destroyed | signal () | 0.2.0
+member | tween.effects | property list<object:effect> rw | 0.2.0
+member | tween.height | property double rw,animated | 0.2.0
+member | tween.id | property uint ro | 0.2.0
+member | tween.input | property bool rw | 0.2.0
+member | tween.input_mode | property string rw | 0.2.0
+member | tween.name | property string rw | 0.2.0
+member | tween.opacity | property double rw,animated | 0.2.0
+member | tween.parent | property object:node ro | 0.2.0
+member | tween.paused | property bool rw | 0.2.0
+member | tween.progress | property double rw | 0.2.0
+member | tween.reverse | property bool rw | 0.2.0
+member | tween.rotation | property list<double> rw,animated | 0.2.0
+member | tween.scale | property list<double> rw,animated | 0.2.0
+member | tween.secure | property bool rw | 0.2.0
+member | tween.skipped | property list<string> ro | 0.2.0
+member | tween.tags | property list<string> rw | 0.2.0
+member | tween.visible | property bool rw | 0.2.0
+member | tween.width | property double rw,animated | 0.2.0
+member | tween.x | property double rw,animated | 0.2.0
+member | tween.y | property double rw,animated | 0.2.0
+member | tween.z | property double rw,animated | 0.2.0
+member | view.camera | property object:node rw | 0.2.0
+member | view.capture | method () | 0.2.0
+member | view.clip | property bool rw | 0.2.0
+member | view.corner_radius | property double rw,animated | 0.2.0
+member | view.destroyed | signal () | 0.2.0
+member | view.effects | property list<object:effect> rw | 0.2.0
+member | view.fps | property uint rw | 0.2.0
+member | view.height | property double rw,animated | 0.2.0
+member | view.id | property uint ro | 0.2.0
+member | view.input | property bool rw | 0.2.0
+member | view.input_mode | property string rw | 0.2.0
+member | view.name | property string rw | 0.2.0
+member | view.opacity | property double rw,animated | 0.2.0
+member | view.parent | property object:node ro | 0.2.0
+member | view.rotation | property list<double> rw,animated | 0.2.0
+member | view.scale | property list<double> rw,animated | 0.2.0
+member | view.secure | property bool rw | 0.2.0
+member | view.skipped | property list<string> ro | 0.2.0
+member | view.source | property object:node rw | 0.2.0
+member | view.tags | property list<string> rw | 0.2.0
+member | view.visible | property bool rw | 0.2.0
+member | view.width | property double rw,animated | 0.2.0
+member | view.x | property double rw,animated | 0.2.0
+member | view.y | property double rw,animated | 0.2.0
+member | view.z | property double rw,animated | 0.2.0
+member | window.app_id | property string ro | 0.2.0
+member | window.clip | property bool rw | 0.2.0
+member | window.close | method () | 0.2.0
+member | window.corner_radius | property double rw,animated | 0.2.0
+member | window.decoration | property string ro | 0.2.0
+member | window.decoration_wanted | property string ro | 0.2.0
+member | window.destroyed | signal () | 0.2.0
+member | window.effects | property list<object:effect> rw | 0.2.0
+member | window.focus | method () | 0.2.0
+member | window.focused | property bool ro | 0.2.0
+member | window.frame_policy | property string rw | 0.2.0
+member | window.frame_rate | property double rw | 0.2.0
+member | window.from_launcher | property bool ro | 0.2.0
+member | window.fullscreen | property bool rw | 0.2.0
+member | window.height | property double rw,animated | 0.2.0
+member | window.id | property uint ro | 0.2.0
+member | window.input | property bool rw | 0.2.0
+member | window.input_mode | property string rw | 0.2.0
+member | window.kill | method () | 0.2.0
+member | window.maximised | property bool rw | 0.2.0
+member | window.minimised | property bool rw | 0.2.0
+member | window.name | property string rw | 0.2.0
+member | window.opacity | property double rw,animated | 0.2.0
+member | window.parent | property object:node ro | 0.2.0
+member | window.parent_window | property object:window ro | 0.2.0
+member | window.presented | property uint ro | 0.2.0
+member | window.report_presented | property bool rw | 0.2.0
+member | window.rotation | property list<double> rw,animated | 0.2.0
+member | window.scale | property list<double> rw,animated | 0.2.0
+member | window.secure | property bool rw | 0.2.0
+member | window.skipped | property list<string> ro | 0.2.0
+member | window.tags | property list<string> rw | 0.2.0
+member | window.tiled | property bool rw | 0.2.0
+member | window.title | property string ro | 0.2.0
+member | window.unresponsive | property bool ro | 0.2.0
+member | window.visible | property bool rw | 0.2.0
+member | window.width | property double rw,animated | 0.2.0
+member | window.x | property double rw,animated | 0.2.0
+member | window.y | property double rw,animated | 0.2.0
+member | window.z | property double rw,animated | 0.2.0
+
+object | camera | base node | 0.2.0
+object | canvas | base node | 0.2.0
+object | change | base none record | 0.2.0
+object | controller | base node | 0.2.0
+object | effect | base none record | 0.2.0
+object | lock | base node | 0.2.0
+object | node | base none | 0.2.0
+object | op | base none record | 0.2.0
+object | screen | base view | 0.2.0
+object | seat | base node | 0.2.0
+object | snapshot_node | base none record | 0.2.0
+object | surface | base node | 0.2.0
+object | tree | base none | 0.2.0
+object | tween | base node | 0.2.0
+object | view | base node | 0.2.0
+object | window | base node | 0.2.0

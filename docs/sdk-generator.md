@@ -1,13 +1,47 @@
 # The SDK generator
 
-Every language SDK of Gnoblin is written by one command from three sources of truth, so the SDKs cannot drift from the
-compositor and adding a language is one file.
+Every language SDK of Gnoblin is written by one library, `gnoblin-sdkgen`, from three sources of truth, so the SDKs cannot drift from
+the compositor and adding a language is one file. **Nothing it writes is committed.** A build renders what it embeds, an install
+renders what an editor reads, and a person who wants to read a generated file asks for a copy.
 
 ```sh
-cargo xtask gen-sdks            # write every generated file
-cargo xtask gen-sdks --check    # fail when a generated file is stale (CI runs this)
-cargo xtask gen-sdks --target python
+cargo xtask gen-sdks                    # a readable copy of every generated file, in target/sdk
+cargo xtask gen-sdks --out DIR          # the same, somewhere else
+cargo xtask gen-sdks --target python    # one target
+cargo xtask gen-sdks --check            # prove the generator is sound (CI runs this)
+cargo xtask gen-sdks --update           # record an additive change of the catalogue in the surface locks
 ```
+
+## Where the files go
+
+| Call site                              | When        | Writes                                                                                                     |
+| -------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------- |
+| `build.rs` of `gnoblin-core`           | every build | `OUT_DIR/rust-core/generated.rs`, which the crate's `lib.rs` includes                                      |
+| `build.rs` of `gnoblin-std-dyn`        | every build | `OUT_DIR/rust-std-dyn/generated.rs`, which the crate's `lib.rs` includes                                   |
+| `build.rs` of `gnoblin-js`             | every build | `OUT_DIR/js/**`, and `stock_embedded.rs`, the table the crate's `stock.rs` serves the modules from         |
+| `build.rs` of `gnoblin-runtime-python` | every build | `OUT_DIR/python/**`, and `python_embedded.rs`, the table the crate's `embedded.rs` serves the modules from |
+| `cargo xtask dist install`             | install     | the same TypeScript and Python files under `share/gnoblin/js` and `share/gnoblin/python`, for editors      |
+| `cargo xtask gen-sdks [--out DIR]`     | by hand     | a copy of everything, with the Rust passed through the pinned `rustfmt`                                    |
+
+A `build.rs` runs again when the schema directory, an ABI crate or the generator changes (`cargo:rerun-if-changed` and the
+build-dependency edge), and only then. It renders only its own target and rewrites a file only when the text changed, so a build
+that did not touch the catalogue touches no file. `gnoblin-sdkgen` is a build dependency of those four crates and of nothing else
+(`cargo xtask deps` enforces it, and that the generator names only the schema and the two ABI crates).
+
+Generated Rust is not formatted in a build: the compiler does not care, and `gen-sdks` formats the copy a person reads.
+
+### What the runtimes do with it
+
+- **Rust.** `gnoblin-core` and `gnoblin-std-dyn` `include!` the file inside an inline module, so `crate::generated::...` is the path
+  it always was.
+- **JavaScript and TypeScript.** `gnoblin-js` embeds `gnoblin-core/generated/*` and `gnoblin-std/generated/*` and serves them under
+  those paths beside the files of a package that is installed. A generated module wins over a file of the same path in the library
+  directory, so what runs is always what this runtime was built with. `stock_sources_in` and `editor_library_in` list both, which is why
+  `gnoblinctl types init` and `gnoblinctl config check --types` give an editor the same modules the shell runs. A prefix that has no
+  std package serves no std module, generated or not, so example 17 keeps its error.
+- **Python.** `gnoblin-runtime-python` embeds `gnoblin._generated.*` and `gnoblin.std` and puts a finder first on `sys.meta_path` of
+  its own interpreter. The hand-written package on disk finds them through it, so an older file of the same name in a prefix is never
+  imported.
 
 ## The sources
 
@@ -23,41 +57,61 @@ and every generated file names it in its banner.
 
 ## What is generated, and what is not
 
-| Target       | Generated                                                                                                                                                                                                                                     | Written by hand                                                                                                       |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `rust`       | `crates/gnoblin-core/src/generated/`: schema name constants and the catalog hash, a typed wrapper per node class, `ErrorKind` with its code and symbol conversions                                                                            | composites (`Window::geometry`), closures and trampolines, events, macros                                             |
-| `std-dyn`    | `crates/gnoblin-std-dyn/src/generated.rs`: the dynamic call of every std table function, the record readers and writers, the callback and vtable trampolines                                                                                  | `Dyn`, `StdLib` (`dlopen`), the arena, the conversions (`crates/gnoblin-std-dyn/src`)                                 |
-| `python`     | `data/python/gnoblin/_generated/`: `classes.py` and `classes.pyi` (a descriptor per member), `abi.py` (constants), `verbs.py` (the `gnoblin` namespace's verbs and signals); `gnoblin/std.py` and `std.pyi`: the std table, typed             | `_base.py` (`Node`, `Property`, `Method`, `Signal`), `_std_base.py`, `_std_sugar.py`, the loader, named subscriptions |
-| `typescript` | `data/js/gnoblin-core/generated/`: `schema.ts` (property, method and signal interfaces, the `TREE_CLASSES` table), `abi.ts`, `verbs.ts` (the `gnoblin` namespace's verbs and signals); `data/js/gnoblin-std/generated/`: the std table, typed | `gnoblin-std/native.ts` (the spellings), the class library of `gnoblin-core` and `gnoblin-std`                        |
+| Target       | Generated                                                                                                                                                                                                                           | Written by hand                                                                                                       |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `rust`       | `rust-core/generated.rs`: schema name constants and the catalog hash, a typed wrapper per node class, `ErrorKind` with its code and symbol conversions                                                                              | composites (`Window::geometry`), closures and trampolines, events, macros                                             |
+| `std-dyn`    | `rust-std-dyn/generated.rs`: the dynamic call of every std table function, the record readers and writers, the callback and vtable trampolines                                                                                      | `Dyn`, `StdLib` (`dlopen`), the arena, the conversions (`crates/gnoblin-std-dyn/src`)                                 |
+| `python`     | `python/gnoblin/_generated/`: `classes.py` and `classes.pyi` (a descriptor per member), `abi.py` (constants), `verbs.py` (the `gnoblin` namespace's verbs and signals); `gnoblin/std.py` and `std.pyi`: the std table, typed        | `_base.py` (`Node`, `Property`, `Method`, `Signal`), `_std_base.py`, `_std_sugar.py`, the loader, named subscriptions |
+| `typescript` | `js/gnoblin-core/generated/`: `schema.ts` (property, method and signal interfaces, the `TREE_CLASSES` table), `abi.ts`, `verbs.ts` (the `gnoblin` namespace's verbs and signals); `js/gnoblin-std/generated/`: the std table, typed | `gnoblin-std/native.ts` (the spellings), the class library of `gnoblin-core` and `gnoblin-std`                        |
 
-A generated file starts with a banner that names the command and the catalog hash. Generated Rust passes through the pinned
-`rustfmt`; generated Python and TypeScript are excluded from ruff, prettier and the pre-commit hooks.
+A generated file starts with a banner that names the generator, the target and the catalogue hash.
 
-## Freshness
+## What `--check` proves
 
-`cargo xtask gen-sdks --check` regenerates in memory and compares with the tree. It fails on a changed file and on a file in a
-generated directory that no target produces any more. `just gen-sdks-check` runs it and is part of `just workspace-ci`; the unit
-test `sdk::tests::the_committed_sdks_are_fresh` makes `cargo test -p xtask` fail on drift too.
+No file is committed, so there is no committed file to be stale. What `cargo xtask gen-sdks --check` (and `just gen-sdks-check`, part of
+`just workspace-ci` and the `gen-sdks` job of CI) proves instead:
+
+1. **Every target renders, deterministically.** The generator renders twice and compares the bytes. It reads no clock, environment
+   variable or locale, and orders everything by name.
+2. **The Python compiles.** The rendered modules go through `python3 -m py_compile` (skipped, and said so, where there is no `python3`).
+   Cargo checks the Rust; `scripts/js-typecheck.sh` checks the TypeScript against the hand-written library.
+3. **The public surface is the one on record.** `crates/gnoblin-schema/schema/lock/<namespace>.lock` lists every object and member
+   of each namespace with the version that added it, one line each:
+
+    ```text
+    member | tree | window.title | property string rw | 0.1.0
+    ```
+
+    The comparison is the one `abi-check` makes for the C ABI. A recorded entry that is gone or changed fails when the lock's
+    `released` line covers its `since`, with no way to bless it inside the major, and is only a stale lock before the release. A new
+    entry is additive: `cargo xtask gen-sdks --update` records it. A hand edit of a lock is caught the same way. The SDKs of every
+    language follow the catalogue, so a lock that holds proves they keep every released member.
+
+4. **The C ABI is the one on record.** The same command runs what `cargo xtask abi-check` runs: `abi.lock` of both libraries, and the
+   golden shells of example 12.
+
+The unit tests of the crate (`cargo test -p gnoblin-sdkgen`) cover the same ground from inside: two renders are equal, every file
+carries the banner and the hash, no two targets write one path, and a surface lock round-trips.
 
 ## Adding a language
 
-1. Add `xtask/src/sdk/<language>.rs` with a type that implements `Target`: `name()`, `owned_dirs()` (directories whose every
-   file is generated) and `generate(&SdkSpec) -> Vec<File>`.
-2. Add one line to `targets()` in `xtask/src/sdk/mod.rs`.
+1. Add `crates/gnoblin-sdkgen/src/<language>.rs` with a type that implements `Target`: `name()` and `generate(&SdkSpec) -> Vec<File>`.
+   A file's path is logical (`python/gnoblin/std.py`): it is relative to whatever directory the caller writes the files under.
+2. Add one line to `targets()` in `crates/gnoblin-sdkgen/src/lib.rs`.
 3. Read the specification, not source text. `SdkSpec` holds the catalog (`node_classes`, objects, members, types) and, per library
    (`core`, `std`): constant groups (`ConstGroup::type_name` gives `EventKind` or `PlacementFlags`), handle typedefs, callbacks, records
    with each field classified as a scalar, handle, text, nested record, or an unrepresentable pointer, and the function table with every
    argument classified (`Arg::Text`, `Arg::Records`, `Arg::Out`, `Arg::Callback`, ...), its return, its object and its receiver.
    `text.rs` has the casing helpers and an indenting writer.
-4. Run `cargo xtask gen-sdks`, commit the output, and add the generated directory to the formatter excludes if the language has
-   a formatter that would rewrite it.
+4. Call `gnoblin_sdkgen::emit_for_build(&["<language>"])` from the `build.rs` of the crate that embeds the output, and add the crate
+   to `SDKGEN_USERS` in `xtask/src/deps.rs`.
 
 The three targets above are the proof: they share the model and nothing else.
 
 ## The std binding
 
 The std ABI's function table is the third source, and it is declarative enough that **no language hand-writes a binding of it**.
-The model (`xtask/src/sdk/model.rs`) classifies every table argument and every record field into the shapes a script runtime can
+The model (`crates/gnoblin-sdkgen/src/model.rs`) classifies every table argument and every record field into the shapes a script runtime can
 marshal:
 
 | Shape                                  | Example                                                      | A script sees                             |
@@ -77,7 +131,7 @@ From it the generator writes three things:
    conversion of its values to and from `Dyn` (`gnoblin-runtime-python/src/std_native.rs`, `gnoblin-runtime-js/src/std_native.rs`) and
    exposes one native, `gnoblin._std.call(name, *args)` and `__gnoblinStd.call(name, args)`. A function added to the table is callable
    from both the day the generator runs.
-2. **The typed classes**: `gnoblin/std.py` and `std.pyi`, `data/js/gnoblin-std/generated/*.ts`: a class per handle type and per object
+2. **The typed classes**: `gnoblin/std.py` and `std.pyi`, `gnoblin-std/generated/*.ts`: a class per handle type and per object
    of the table, a record per `repr(C)` record, an enumeration per constant group.
 3. **The layouts and bindings**: one class per entry of `gnoblin_std_abi::layouts::{LAYOUT_KINDS, BINDING_KINDS}` with its options as
    properties (defaults, bounds and enumerations from the table), its actions as methods, and `attach`/`start`.

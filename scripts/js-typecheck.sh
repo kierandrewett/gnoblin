@@ -3,7 +3,12 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 temporary_config="$(mktemp "${TMPDIR:-/tmp}/gnoblin-js-tsconfig.XXXXXX.json")"
-trap 'rm -f "$temporary_config"' EXIT
+generated="$(mktemp -d "${TMPDIR:-/tmp}/gnoblin-js-generated.XXXXXX")"
+trap 'rm -rf "$temporary_config" "$generated"' EXIT
+
+# The generated modules of both packages (`gnoblin-core/generated`, `gnoblin-std/generated`) are committed nowhere: the generator renders
+# them, as a build does, and the paths below find them beside the hand-written library.
+(cd "$repo_root" && cargo xtask gen-sdks --out "$generated" --target typescript >/dev/null)
 
 cat >"$temporary_config" <<EOF
 {
@@ -17,13 +22,14 @@ cat >"$temporary_config" <<EOF
     "lib": ["ES2023"],
     "paths": {
       "gnoblin-core": ["$repo_root/data/js/gnoblin-core/index.ts"],
-      "gnoblin-core/*": ["$repo_root/data/js/gnoblin-core/*"],
+      "gnoblin-core/*": ["$repo_root/data/js/gnoblin-core/*", "$generated/js/gnoblin-core/*"],
       "gnoblin-std": ["$repo_root/data/js/gnoblin-std/index.ts"],
-      "gnoblin-std/*": ["$repo_root/data/js/gnoblin-std/*"]
+      "gnoblin-std/*": ["$repo_root/data/js/gnoblin-std/*", "$generated/js/gnoblin-std/*"]
     }
   },
   "include": [
-    "$repo_root/data/js/**/*.ts"
+    "$repo_root/data/js/**/*.ts",
+    "$generated/js/**/*.ts"
   ]
 }
 EOF

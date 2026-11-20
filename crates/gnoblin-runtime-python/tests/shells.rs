@@ -856,9 +856,15 @@ def place(window):
 #[test]
 fn the_stub_file_declares_every_public_name_of_the_package() {
     let script = repo_root().join("crates/gnoblin-runtime-python/tests/check_stubs.py");
+    // The generated classes are not committed: render the Python target where the script can read it.
+    let generated = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("sdk-stubs");
+    let spec = gnoblin_sdkgen::SdkSpec::load(&repo_root()).expect("the catalog and the ABIs load");
+    let rendered = gnoblin_sdkgen::render(&spec, Some("python")).expect("the Python target renders");
+    gnoblin_sdkgen::write_files(&generated, &gnoblin_sdkgen::files_of(&rendered)).expect("the files are written");
     let output = std::process::Command::new("python3")
         .arg(&script)
         .arg(repo_root().join("data/python"))
+        .arg(&generated)
         .output()
         .expect("python3 runs");
     assert!(

@@ -3,7 +3,7 @@
 //! A script runtime does not bind the std table function by function. It converts its own values to [`Dyn`] and calls
 //! [`StdLib::call`] with the name of a table entry; this crate checks the arguments, fills in the `repr(C)` records, calls the
 //! function, reads the records it wrote and hands the result back as a [`Dyn`]. Every function of the table, every record and
-//! every callback trampoline is **generated** by `cargo xtask gen-sdks` from `gnoblin-std-abi` (`generated.rs`), so a function
+//! every callback trampoline is **generated** by `gnoblin-sdkgen` from `gnoblin-std-abi` (`build.rs` writes it to `OUT_DIR`), so a function
 //! added to the table is callable from every language the day the generator runs, and no runtime lists a function or a record.
 //!
 //! What is written by hand is what does not depend on the table:
@@ -20,9 +20,11 @@
 
 mod arena;
 mod convert;
-// Written by `cargo xtask gen-sdks`.
+// Written by `gnoblin-sdkgen` from `build.rs` into `OUT_DIR`; nothing of it is committed.
 #[allow(dead_code, unused_variables, unused_mut, clippy::all)]
-mod generated;
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/rust-std-dyn/generated.rs"));
+}
 mod library;
 
 use std::rc::Rc;

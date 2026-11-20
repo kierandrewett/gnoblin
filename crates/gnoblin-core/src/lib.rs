@@ -39,8 +39,11 @@ compile_error!(
 mod callback;
 mod error;
 mod events;
-// Written by `cargo xtask gen-sdks`, already formatted by the pinned rustfmt.
-mod generated;
+// Written by `gnoblin-sdkgen` from `build.rs` into `OUT_DIR` (nothing of it is committed): the schema's names, the typed node
+// classes and the error kinds.
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/rust-core/generated.rs"));
+}
 mod gnoblin;
 mod input;
 mod owned;

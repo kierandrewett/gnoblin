@@ -45,7 +45,7 @@
 //!     order and one file name, which is the shell that discovery selects.
 //! 12. **A removed setting reads as a typo.** A key that used to exist is refused
 //!     with what replaced it, before the unknown-key pass.
-//! 13. **Generated and hand-written validators disagree.** `tests/generated.rs`
+//! 13. **Generated and hand-written validators disagree.** `tests/catalogue.rs`
 //!     re-reads the catalogue: every default is inside its own range, every alias
 //!     names a current spelling, and the hooks the schema lists are the hooks that
 //!     exist.

@@ -17,6 +17,8 @@ gnoblin-schema = { path = "../crates/gnoblin-schema" }
 gnoblin-core-abi = { path = "../crates/gnoblin-core-abi", features = ["build-support"] }
 # The std library's ABI is read the same way: its lock, its header and its link stub (`gnoblin-std-abi`).
 gnoblin-std-abi = { path = "../crates/gnoblin-std-abi", features = ["build-support"] }
+# The generator of every language SDK: `dist` installs its editor files and `docs-parity` reads its TypeScript surface.
+gnoblin-sdkgen = { path = "../crates/gnoblin-sdkgen" }
 # The declarations a prefix installs (`share/gnoblin/types/`): the globals and the tsconfig, from the crate `gnoblinctl types init` writes them with.
 gnoblin-js-types = { path = "../crates/gnoblin-js-types" }
 

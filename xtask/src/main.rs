@@ -2,7 +2,6 @@
 //! duplicate-type report over every crate's sources, and the code generation the
 //! schema drives.
 
-mod abi_c;
 mod abi_check;
 mod allow;
 mod compat_report;
@@ -13,6 +12,7 @@ mod docs_parity;
 mod dupes;
 mod elf;
 mod gen_proto;
+mod gen_sdks;
 mod golden;
 mod layout;
 mod logging;
@@ -22,11 +22,14 @@ mod native_probe;
 mod oracle;
 mod profiles;
 mod protocol_crates;
-mod sdk;
 mod stage;
 #[cfg(test)]
 mod test_fixtures;
 mod watch_shell;
+
+// The C-type grammar and the header renderer live in the generator library, which needs them to read the ABIs; the commands here
+// keep their `crate::abi_c` spelling.
+pub(crate) use gnoblin_sdkgen::abi_c;
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -62,8 +65,10 @@ subcommands:
                      disagree, or a released entry changed
   abi-header [--std] [--out FILE]  write the C header generated from the ABI crate (include/gnoblin/core.h, or std.h
                      with --std)
-  gen-sdks [--check] [--target NAME]  write every language SDK (Rust, Python, TypeScript) from the schema catalog and the two
-                     ABI crates, or with --check fail when a generated file is stale; see xtask/src/sdk/mod.rs
+  gen-sdks [--out DIR] [--check] [--update] [--target NAME]
+                     write a readable copy of every generated SDK file to target/sdk; --check proves the generator renders
+                     deterministically, its Python compiles and the public surface and the C ABI match their locks; --update
+                     records an additive change in crates/gnoblin-schema/schema/lock; see xtask/src/gen_sdks.rs
   oracle record | check [--repeat N] | list
                      write, or prove stable, the golden fixtures recorded from the TypeScript std for the native std port;
                      see xtask/src/oracle.rs
@@ -81,7 +86,7 @@ fn main() -> ExitCode {
         ("deps", []) => deps_command(),
         ("gen-proto", []) => gen_proto::run(),
         ("layout", []) => layout::run(),
-        ("gen-sdks", _) => sdk::run(&rest),
+        ("gen-sdks", _) => gen_sdks::run(&rest),
         ("protocol-crates", _) => protocol_crates::run(&rest),
         ("logging", []) => logging::run(),
         ("native-libs", []) => native_libs::run(),

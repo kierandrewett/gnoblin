@@ -26,6 +26,14 @@ gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
 # host links one concrete libpython anyway (design/modular-framework.md, 10.1).
 pyo3 = { version = "0.30", default-features = false, features = ["macros"] }
 
+[build-dependencies]
+# The generated half of the `gnoblin` package (typed classes, ABI constants, verbs, the std bindings) is rendered at build time and embedded.
+gnoblin-sdkgen = { path = "../gnoblin-sdkgen" }
+
+[dev-dependencies]
+# `tests/shells.rs` renders the Python target to check the stubs against it: the generated classes are not committed.
+gnoblin-sdkgen = { path = "../gnoblin-sdkgen" }
+
 # The workspace table forbids unsafe code; a library that exports a C entry and calls through a C table needs it. Only the modules
 # that open with `#![allow(unsafe_code)]` and a SAFETY note use it.
 [lints.rust]

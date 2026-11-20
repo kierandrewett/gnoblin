@@ -14,10 +14,6 @@ crates/gnoblin-js-types/tests/golden/
 design/adapter-support-matrices.md
 tests/native-probe/MATRIX.md
 
-# Written by `cargo xtask gen-sdks`; `--check` keeps them current, so they are not reformatted.
-data/js/gnoblin-core/generated/
-data/js/gnoblin-std/generated/
-
 # Recorded by `cargo xtask oracle record`; a formatter would change what `check` compares byte for byte.
 crates/gnoblin-std-impl/tests/fixtures/reference/
 crates/gnoblin-js/tests/fixtures/paint/

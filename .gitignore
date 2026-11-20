@@ -55,3 +55,14 @@ infra/site/.svelte-kit/
 
 # Generated configuration reference and settings catalogue.
 crates/gnoblin-config/generated/
+
+# The generated SDKs (crates/gnoblin-sdkgen): a build renders them into OUT_DIR, `cargo xtask dist` into the prefix and
+# `cargo xtask gen-sdks` into target/sdk (ignored above). Nothing generated is committed; these rules catch a file written to the
+# places an earlier revision kept them.
+/data/js/gnoblin-core/generated/
+/data/js/gnoblin-std/generated/
+/data/python/gnoblin/_generated/
+/data/python/gnoblin/std.py
+/data/python/gnoblin/std.pyi
+/crates/gnoblin-core/src/generated/
+/crates/gnoblin-std-dyn/src/generated.rs

@@ -122,11 +122,24 @@ enum InstallItem {
     },
     /// Every regular file under a repository directory, installed under `to` with the same relative paths, as plain data.
     Tree { from: &'static str, to: &'static str },
+    /// The files `gnoblin-sdkgen` renders for one language, installed under `to` with the paths of the library they belong to. No
+    /// generated file is committed, so a tree made from the repository gets these from the generator, as it gets the C header.
+    Sdk { to: &'static str, set: SdkSet },
     /// An empty directory the layout needs (a place other packages install into), made when `requires_built` was built.
     Dir {
         to: &'static str,
         requires_built: &'static str,
     },
+}
+
+/// The language an [`InstallItem::Sdk`] installs the generated files of.
+#[derive(Clone, Copy, Debug)]
+enum SdkSet {
+    /// `gnoblin-core/generated/*` and `gnoblin-std/generated/*`: the modules the runtime also embeds, installed so a `tsconfig.json`
+    /// that maps the packages to the installed library finds every module an editor opens.
+    TypeScript,
+    /// `gnoblin/_generated/*` and `gnoblin/std.py(i)`: likewise for the Python package, whose stubs import them.
+    Python,
 }
 
 /// What a generated development file is.
@@ -285,6 +298,12 @@ const ITEMS: &[InstallItem] = &[
         from: "data/js/gnoblin-std",
         to: "share/gnoblin/js/gnoblin-std",
     },
+    // The generated modules of both packages (`generated/*`), beside the sources that import them. The runtime serves its own copy,
+    // embedded when it was built; these are what an editor opens when the installed `tsconfig.json` maps a package to this directory.
+    InstallItem::Sdk {
+        to: "share/gnoblin/js",
+        set: SdkSet::TypeScript,
+    },
     // The declarations of a TypeScript shell (section 11: `share/gnoblin/types/**`). The two packages are declared by their own sources, which
     // the generated bindings of `gen-sdks` (`gnoblin-std/generated/*`) are part of, so this directory holds what is not a source of the
     // library: the globals, the two entry modules as the runtime builds them (the stock index plus its host module's exports), and the
@@ -322,6 +341,12 @@ const ITEMS: &[InstallItem] = &[
     InstallItem::Tree {
         from: "data/python",
         to: "share/gnoblin/python",
+    },
+    // The generated modules of the package (`gnoblin/_generated/*`, `gnoblin/std.py`) and the stub of the std module, for the same
+    // reason: the stubs of the package import them, and the interpreter serves its own embedded copy.
+    InstallItem::Sdk {
+        to: "share/gnoblin/python",
+        set: SdkSet::Python,
     },
     // The two places a shell package installs into: launcher files under `share`, the modules they name under the core's
     // library directory (`module` in a launcher file is relative to it; `$libdir/gnoblin/` is also where the runtime
@@ -788,6 +813,25 @@ fn plan(repo: &Path, built: &Path, libdir: &str) -> Result<Vec<Planned>, DistErr
                     planned.push(Planned {
                         to: format!("{}/{relative}", expand_libdir(to, libdir)),
                         content: PlannedContent::File(file),
+                        mode: FileMode::Data,
+                        template: false,
+                    });
+                }
+            }
+            InstallItem::Sdk { to, set } => {
+                let (target, prefix) = match set {
+                    SdkSet::TypeScript => ("typescript", "js/"),
+                    SdkSet::Python => ("python", "python/"),
+                };
+                let spec = gnoblin_sdkgen::SdkSpec::load(repo).map_err(DistError::Generate)?;
+                let rendered = gnoblin_sdkgen::render(&spec, Some(target)).map_err(DistError::Generate)?;
+                for (path, text) in gnoblin_sdkgen::files_of(&rendered) {
+                    let Some(relative) = path.strip_prefix(prefix) else {
+                        continue;
+                    };
+                    planned.push(Planned {
+                        to: format!("{}/{relative}", expand_libdir(to, libdir)),
+                        content: PlannedContent::Bytes(text.into_bytes()),
                         mode: FileMode::Data,
                         template: false,
                     });
@@ -1409,6 +1453,22 @@ mod tests {
         ] {
             assert!(with.iter().any(|entry| entry.to == wanted), "{wanted} is installed");
         }
+        // Nothing generated is committed, so the generated modules and the stub of the std module come from the generator.
+        for wanted in [
+            "share/gnoblin/python/gnoblin/_generated/classes.py",
+            "share/gnoblin/python/gnoblin/_generated/classes.pyi",
+            "share/gnoblin/python/gnoblin/std.py",
+            "share/gnoblin/python/gnoblin/std.pyi",
+        ] {
+            let entry = with
+                .iter()
+                .find(|entry| entry.to == wanted)
+                .unwrap_or_else(|| panic!("{wanted} is installed"));
+            assert!(
+                matches!(entry.content, PlannedContent::Bytes(_)),
+                "{wanted} is generated, not copied"
+            );
+        }
     }
 
     #[test]
@@ -1621,6 +1681,20 @@ mod tests {
                 assert_eq!(entry.mode, FileMode::Data);
                 assert!(!entry.template);
             }
+        }
+        // The generated modules come from the generator, not from a committed file, and land beside the sources that import them.
+        for generated in [
+            "share/gnoblin/js/gnoblin-core/generated/abi.ts",
+            "share/gnoblin/js/gnoblin-core/generated/schema.ts",
+            "share/gnoblin/js/gnoblin-std/generated/classes.ts",
+            "share/gnoblin/js/gnoblin-std/generated/records.ts",
+        ] {
+            let entry = with
+                .iter()
+                .find(|entry| entry.to == generated)
+                .unwrap_or_else(|| panic!("{generated} is not planned"));
+            assert!(matches!(entry.content, PlannedContent::Bytes(_)), "{generated}");
+            assert_eq!(entry.mode, FileMode::Data);
         }
         // The starter is installed as the packaged default shell, which discovery runs on a fresh install (tier 7).
         let shell = with

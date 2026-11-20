@@ -1,7 +1,7 @@
 # Shared language checks match Bingux; Gnoblin also syncs issue tracking.
 minimum_pre_commit_version: "4.6.2"
 default_stages: [pre-commit]
-exclude: '(^|/)(subprojects|build|install|dist|target|node_modules|vendor|third_party|tomlc99|banks)/|\.patch$|\.lock$|^data/python/gnoblin/_generated/|^data/python/gnoblin/std\.pyi?$|^data/js/gnoblin-(core|std)/generated/'
+exclude: '(^|/)(subprojects|build|install|dist|target|node_modules|vendor|third_party|tomlc99|banks)/|\.patch$|\.lock$'
 repos:
   - repo: local
     hooks:

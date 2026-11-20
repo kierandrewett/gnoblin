@@ -423,6 +423,21 @@ pub fn check_layout(root: &Path, libdir: &str) -> Vec<String> {
             ));
         }
     }
+    // Nothing generated is committed, so these exist only because `dist install` rendered them: the modules the editors open beside
+    // the sources that import them, and the stubs of the Python package.
+    for file in [
+        "share/gnoblin/js/gnoblin-core/generated/abi.ts",
+        "share/gnoblin/js/gnoblin-core/generated/schema.ts",
+        "share/gnoblin/js/gnoblin-std/generated/classes.ts",
+        "share/gnoblin/python/gnoblin/_generated/classes.pyi",
+        "share/gnoblin/python/gnoblin/std.pyi",
+    ] {
+        if !root.join(file).is_file() {
+            problems.push(format!(
+                "{file} is missing: it is rendered by `cargo xtask dist` from the schema and the ABI crates, and committed nowhere"
+            ));
+        }
+    }
     problems
 }
 
@@ -1642,6 +1657,9 @@ mod tests {
             "share/gnoblin/shells/ is missing",
             "share/gnoblin/js/gnoblin-core/index.ts is missing",
             "share/gnoblin/js/gnoblin-std/index.ts is missing",
+            "share/gnoblin/js/gnoblin-core/generated/abi.ts is missing",
+            "share/gnoblin/js/gnoblin-std/generated/classes.ts is missing",
+            "share/gnoblin/python/gnoblin/std.pyi is missing",
             "share/gnoblin/types/gnoblin.d.ts is missing",
             "share/gnoblin/types/tsconfig.json is missing",
             "share/gnoblin/types/gnoblin-core/index.ts is missing",

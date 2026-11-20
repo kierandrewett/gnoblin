@@ -1,10 +1,16 @@
-//! The stock library: the TypeScript every generation can import as `gnoblin-core` and `gnoblin-std`, read from the installed data.
+//! The stock library: the TypeScript every generation can import as `gnoblin-core` and `gnoblin-std`.
 //!
-//! The sources live in `data/js/gnoblin-core/` and `data/js/gnoblin-std/` and are installed as data under
-//! `<prefix>/share/gnoblin/js/<package>/` (`cargo xtask dist`). Nothing is compiled into the engine or into the runtime library
-//! that hosts it: the loader finds a package by the directories of [`stock_search_path`], and a package that is in none of them is an
-//! import error that says where it looked (`gnoblin-std is not installed (looked in: ...)`). A shell that imports only `gnoblin-core`
-//! therefore runs on a prefix that has no std library, which is the point of the split.
+//! The hand-written sources live in `data/js/gnoblin-core/` and `data/js/gnoblin-std/` and are installed as data under
+//! `<prefix>/share/gnoblin/js/<package>/` (`cargo xtask dist`). They are read at run time: the loader finds a package by the
+//! directories of [`stock_search_path`], and a package that is in none of them is an import error that says where it looked
+//! (`gnoblin-std is not installed (looked in: ...)`). A shell that imports only `gnoblin-core` therefore runs on a prefix that has
+//! no std library, which is the point of the split.
+//!
+//! The generated modules (`gnoblin-core/generated/*`, `gnoblin-std/generated/*`: the schema's classes, the ABI constants, the verbs,
+//! the std classes and records) are the exception. `gnoblin-sdkgen` renders them from the schema and the ABI crates in `build.rs`
+//! and this crate embeds them, so a module can never describe a different catalog from the libraries the runtime was built with.
+//! They appear under their usual paths, beside the files of the package that is present, and win over an installed file of the same
+//! path.
 //!
 //! [`stock_sources_in`] reads the packages once and returns the name to TypeScript map [`JsConfig::embed_typescript`](crate::JsConfig)
 //! takes. The modules import one another by their package names (`gnoblin-std/layout`), because the loader resolves a relative import
@@ -172,9 +178,43 @@ fn package_root<'a>(dirs: &'a [PathBuf], package: &str) -> Option<&'a Path> {
         .find(|dir| dir.join(package).join("index.ts").is_file())
 }
 
-/// The stock library as the files of each package that `dirs` hold: `(path under the library root, import name)` in path order. A
-/// package no directory holds is absent, which is how a prefix with no std library reads.
-fn listing(dirs: &[PathBuf]) -> Result<Vec<(PathBuf, String, String)>, StockError> {
+// `GENERATED`: the modules `gnoblin-sdkgen` rendered from the schema and the ABI crates when this crate was built, by path under the
+// library root (`gnoblin-core/generated/abi.ts`). `build.rs` writes the table; nothing of it is committed.
+include!(concat!(env!("OUT_DIR"), "/stock_embedded.rs"));
+
+/// Where an embedded module reports its source from: it has no file, so the path is a label under this directory.
+const EMBEDDED_ROOT: &str = "<generated>";
+
+/// One module of the stock library: a file under a library root, or a generated module the runtime was built with.
+struct Listed {
+    /// The file, or for an embedded module a label under [`EMBEDDED_ROOT`]: what a stack frame and a diagnostic name.
+    path: PathBuf,
+    /// The path under the library root, with `/` separators.
+    file: String,
+    /// The import name.
+    name: String,
+    /// The text of an embedded module; `None` for a file to read.
+    embedded: Option<&'static str>,
+}
+
+impl Listed {
+    /// The TypeScript of the module.
+    fn read(&self) -> Result<String, StockError> {
+        match self.embedded {
+            Some(source) => Ok(source.to_owned()),
+            None => fs::read_to_string(&self.path).map_err(|error| StockError::Unreadable {
+                path: self.path.clone(),
+                reason: error.to_string(),
+            }),
+        }
+    }
+}
+
+/// The stock library as the modules of each package that `dirs` hold, in path order: the files of the package's directory and the
+/// generated modules of the package, which this runtime carries. A generated module wins over a file of the same path (an install
+/// that predates it), so what runs is always what this build generated. A package no directory holds is absent, which is how a
+/// prefix with no std library reads.
+fn listing(dirs: &[PathBuf]) -> Result<Vec<Listed>, StockError> {
     let mut found = Vec::new();
     for package in PACKAGES {
         let Some(root) = package_root(dirs, package) else {
@@ -182,11 +222,30 @@ fn listing(dirs: &[PathBuf]) -> Result<Vec<(PathBuf, String, String)>, StockErro
         };
         let mut files = Vec::new();
         collect(root, &root.join(package), &mut files)?;
-        files.sort();
-        for file in files {
-            let name = import_name(&file);
-            found.push((root.join(&file), file, name));
-        }
+        let prefix = format!("{package}/");
+        let embedded: Vec<(&'static str, &'static str)> = GENERATED
+            .iter()
+            .copied()
+            .filter(|(file, _)| file.starts_with(&prefix))
+            .collect();
+        files.retain(|file| !embedded.iter().any(|(generated, _)| generated == file));
+        let mut modules: Vec<Listed> = files
+            .into_iter()
+            .map(|file| Listed {
+                path: root.join(&file),
+                name: import_name(&file),
+                file,
+                embedded: None,
+            })
+            .collect();
+        modules.extend(embedded.into_iter().map(|(file, source)| Listed {
+            path: Path::new(EMBEDDED_ROOT).join(file),
+            file: file.to_owned(),
+            name: import_name(file),
+            embedded: Some(source),
+        }));
+        modules.sort_by(|a, b| a.file.cmp(&b.file));
+        found.extend(modules);
     }
     Ok(found)
 }
@@ -200,15 +259,12 @@ fn listing(dirs: &[PathBuf]) -> Result<Vec<(PathBuf, String, String)>, StockErro
 /// A file of a package that is there cannot be read.
 pub fn stock_sources_in(dirs: &[PathBuf]) -> Result<HashMap<String, JsTypeScriptModule>, StockError> {
     let mut modules = HashMap::new();
-    for (path, _, name) in listing(dirs)? {
-        let source = fs::read_to_string(&path).map_err(|error| StockError::Unreadable {
-            path: path.clone(),
-            reason: error.to_string(),
-        })?;
+    for listed in listing(dirs)? {
+        let source = listed.read()?;
         modules.insert(
-            name,
+            listed.name,
             JsTypeScriptModule {
-                path,
+                path: listed.path,
                 source: Cow::Owned(source),
             },
         );
@@ -219,23 +275,20 @@ pub fn stock_sources_in(dirs: &[PathBuf]) -> Result<HashMap<String, JsTypeScript
 /// The stock library as an editor and a type checker read it: `(path under the library root, TypeScript)` for every module in
 /// path order, so each starts with its package directory (`gnoblin-std/scene/node.ts`). These are the real sources, byte for byte,
 /// except the package entries (`gnoblin-core/index.ts`, `gnoblin-std/index.ts`), which are the modules the runtime builds (the
-/// stock index plus [`host_export`]). `gnoblinctl types init` writes them next to the user's config, so
-/// `import ... from "gnoblin-std/scene/node"` opens the file the shell runs.
+/// stock index plus [`host_export`]). The generated modules are the ones this runtime was built with. `gnoblinctl types init` writes
+/// them next to the user's config, so `import ... from "gnoblin-std/scene/node"` opens the file the shell runs.
 ///
 /// # Errors
 ///
 /// A file of a package that is there cannot be read.
 pub fn editor_library_in(dirs: &[PathBuf]) -> Result<Vec<(String, String)>, StockError> {
     let mut library = Vec::new();
-    for (path, file, name) in listing(dirs)? {
-        let mut text = fs::read_to_string(&path).map_err(|error| StockError::Unreadable {
-            path: path.clone(),
-            reason: error.to_string(),
-        })?;
-        if PACKAGES.contains(&name.as_str()) {
-            text.push_str(&host_export(&name));
+    for listed in listing(dirs)? {
+        let mut text = listed.read()?;
+        if PACKAGES.contains(&listed.name.as_str()) {
+            text.push_str(&host_export(&listed.name));
         }
-        library.push((file, text));
+        library.push((listed.file, text));
     }
     Ok(library)
 }
@@ -511,6 +564,51 @@ mod tests {
         fs::create_dir_all(&core).expect("the package directory");
         fs::write(core.join("index.ts"), "export const x = 1;\n").expect("an index");
         let sources = stock_sources_in(&[scratch.path().to_path_buf()]).expect("a core-only library reads");
-        assert_eq!(sources.keys().map(String::as_str).collect::<Vec<_>>(), ["gnoblin-core"]);
+        let names: BTreeSet<&str> = sources.keys().map(String::as_str).collect();
+        assert!(names.contains("gnoblin-core"));
+        assert!(
+            names.iter().all(|name| !name.starts_with("gnoblin-std")),
+            "a prefix without the std package serves no std module, generated or not: {names:?}"
+        );
+        assert!(
+            names.contains("gnoblin-core/generated/abi"),
+            "the generated modules of a present package come with the runtime, not with the prefix"
+        );
+    }
+
+    /// The generated modules are the runtime's own: a file of the same path in the library directory (an install that predates the
+    /// runtime) does not replace one.
+    #[test]
+    fn a_generated_module_wins_over_an_installed_file_of_its_path() {
+        let scratch = tempfile::tempdir().expect("a directory");
+        let generated = scratch.path().join("gnoblin-core/generated");
+        fs::create_dir_all(&generated).expect("the package directory");
+        fs::write(scratch.path().join("gnoblin-core/index.ts"), "export const x = 1;\n").expect("an index");
+        fs::write(generated.join("abi.ts"), "export const OLD_INSTALL_MARKER = true;\n")
+            .expect("a stale generated file");
+        let sources = stock_sources_in(&[scratch.path().to_path_buf()]).expect("the library reads");
+        let abi = &sources["gnoblin-core/generated/abi"];
+        assert!(!abi.source.contains("OLD_INSTALL_MARKER"), "{}", abi.source);
+        assert!(abi.path.starts_with(EMBEDDED_ROOT), "{}", abi.path.display());
+    }
+
+    /// Every module the generator renders for the TypeScript target is embedded, under the path the hand-written modules import it by.
+    #[test]
+    fn the_generated_modules_of_both_packages_are_embedded() {
+        let files: BTreeSet<&str> = GENERATED.iter().map(|(file, _)| *file).collect();
+        for expected in [
+            "gnoblin-core/generated/abi.ts",
+            "gnoblin-core/generated/schema.ts",
+            "gnoblin-core/generated/verbs.ts",
+            "gnoblin-std/generated/classes.ts",
+            "gnoblin-std/generated/native.ts",
+        ] {
+            assert!(files.contains(expected), "{expected} is not embedded: {files:?}");
+        }
+        assert!(
+            GENERATED
+                .iter()
+                .all(|(_, source)| source.starts_with("// GENERATED by gnoblin-sdkgen"))
+        );
     }
 }

@@ -95,13 +95,13 @@ each file is the library's ABI version, and `pkg-config --atleast-version=1.0 gn
 
 ## Shells and their data
 
-| Path                                   | What it is                                                                           |
-| -------------------------------------- | ------------------------------------------------------------------------------------ |
-| `share/gnoblin/default-shell/shell.ts` | The shell a fresh install runs when you choose none.                                 |
-| `share/gnoblin/shells/`                | Launcher files (`name.toml`) that name an installed shell. Empty on a fresh install. |
-| `<libdir>/gnoblin/shells/`             | The native shell libraries that launcher files name with `module`.                   |
-| `share/gnoblin/js/`                    | The TypeScript library, `gnoblin-core` and `gnoblin-std`, as source.                 |
-| `share/gnoblin/python/`                | The `gnoblin` Python package a `.py` shell imports, with its type stubs.             |
+| Path                                   | What it is                                                                                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `share/gnoblin/default-shell/shell.ts` | The shell a fresh install runs when you choose none.                                                                                                                     |
+| `share/gnoblin/shells/`                | Launcher files (`name.toml`) that name an installed shell. Empty on a fresh install.                                                                                     |
+| `<libdir>/gnoblin/shells/`             | The native shell libraries that launcher files name with `module`.                                                                                                       |
+| `share/gnoblin/js/`                    | The TypeScript library, `gnoblin-core` and `gnoblin-std`, as source. Its `generated/` modules are written by `cargo xtask dist` for editors; the runtime serves its own. |
+| `share/gnoblin/python/`                | The `gnoblin` Python package a `.py` shell imports, with its type stubs. The generated modules and stubs are written by `cargo xtask dist`.                              |
 
 A shell package installs its library into `<libdir>/gnoblin/shells/` and a launcher file into `share/gnoblin/shells/`.
 [Start Gnoblin and choose a shell](starting-gnoblin.md#installed-shells) describes the launcher file and how Gnoblin finds it.

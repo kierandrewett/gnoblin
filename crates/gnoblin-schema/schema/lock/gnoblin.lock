@@ -1,0 +1,145 @@
+# The public surface of the `gnoblin` namespace of the schema catalog: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-schema/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+member | config.reload_failed | signal (path:string, error:string, sequence:uint, time:uint) | 0.2.0
+member | config.reloaded | signal (path:string, revision:uint, warnings:list<string>, not_applied:list<string>, sequence:uint, time:uint) | 0.2.0
+member | eis.close | method (session:uint) | 0.2.0
+member | eis.open | method (session:uint, owner:string, capabilities:uint, path:string) | 0.2.0
+member | idle.idle_ms | property uint rw | 0.2.0
+member | idle.inhibit | method (holder:string) | 0.2.0
+member | idle.inhibitors | property uint rw | 0.2.0
+member | idle.uninhibit | method (holder:string) | 0.2.0
+member | operation.completed | signal (operation_id:uint, method:string, ok:bool, error:string, sequence:uint, time:uint) | 0.2.0
+member | output.added | signal (output_id:string, output:object:output) | 0.2.0
+member | output.apply | method (x?:int, y?:int, scale?:double, transform?:uint, enabled?:bool, mode?:string, supersample?:double) | 0.2.0
+member | output.changed | signal (output_id:string, output:object:output, changed:list<string>) | 0.2.0
+member | output.closed | signal () | 0.2.0
+member | output.enabled | property bool rw | 0.2.0
+member | output.height | property uint rw | 0.2.0
+member | output.make | property string rw | 0.2.0
+member | output.mode | property string rw | 0.2.0
+member | output.model | property string rw | 0.2.0
+member | output.modes | property list<string> rw | 0.2.0
+member | output.name | property string rw | 0.2.0
+member | output.primary | property bool rw | 0.2.0
+member | output.removed | signal (output_id:string, last:object:output) | 0.2.0
+member | output.scale | property double rw | 0.2.0
+member | output.supersample | property double rw | 0.2.0
+member | output.transform | property uint rw | 0.2.0
+member | output.width | property uint rw | 0.2.0
+member | output.x | property int rw | 0.2.0
+member | output.y | property int rw | 0.2.0
+member | portal_outcome.cancelled | method (request_id:uint, reason:string) | 0.2.0
+member | portal_outcome.declined | method (request_id:uint) | 0.2.0
+member | portal_outcome.error | method (request_id:uint, code:string, message:string) | 0.2.0
+member | portal_outcome.handled | method (request_id:uint, uris:list<string>, choice:string, remember:bool, copies:uint, pages:string, grant_bits:uint, cursor_mode:uint) | 0.2.0
+member | portal_ui.account | method (request_id:uint, app_id:string, deadline_ms:uint, reason:string, name:string, avatar_uri:string) | 0.2.0
+member | portal_ui.app_chooser | method (request_id:uint, app_id:string, deadline_ms:uint, content_type:string, last_choice:string, filter_text:string, choice_ids:list<string>, choice_labels:list<string>) | 0.2.0
+member | portal_ui.background | method (request_id:uint, app_id:string, deadline_ms:uint, reason:string, autostart_requested:bool) | 0.2.0
+member | portal_ui.cancel | method (request_id:uint) | 0.2.0
+member | portal_ui.dynamic_launcher | method (request_id:uint, app_id:string, deadline_ms:uint, name:string, icon:string, desktop_file_id:string) | 0.2.0
+member | portal_ui.file_chooser | method (request_id:uint, app_id:string, deadline_ms:uint, mode:string, title:string, multiple:bool, filter_names:list<string>, filter_patterns:list<string>, current_filter:int, current_folder:string, current_name:string, choice_ids:list<string>, choice_labels:list<string>) | 0.2.0
+member | portal_ui.input_capture | method (request_id:uint, app_id:string, deadline_ms:uint, capabilities:uint) | 0.2.0
+member | portal_ui.pick_color | method (request_id:uint, app_id:string, deadline_ms:uint) | 0.2.0
+member | portal_ui.print | method (request_id:uint, app_id:string, deadline_ms:uint, title:string, choice_ids:list<string>, choice_labels:list<string>, copies:uint, max_copies:uint, pages:string) | 0.2.0
+member | portal_ui.remote_desktop | method (request_id:uint, app_id:string, deadline_ms:uint, device_types:uint) | 0.2.0
+member | portal_ui.screen_cast | method (request_id:uint, app_id:string, deadline_ms:uint, source_types:uint, cursor_mode:uint, multiple:bool) | 0.2.0
+member | portal_ui.screenshot | method (request_id:uint, app_id:string, deadline_ms:uint, interactive:bool) | 0.2.0
+member | portal_ui.secret | method (request_id:uint, app_id:string, deadline_ms:uint, label:string) | 0.2.0
+member | portal_ui.wallpaper | method (request_id:uint, app_id:string, deadline_ms:uint, uri:string, options:string) | 0.2.0
+member | request.answer | method (request:uint, answer:bytes) | 0.2.0
+member | request.claim | method (request:uint) | 0.2.0
+member | request.decline | method (request:uint) | 0.2.0
+member | request.finished | signal (request:uint, completion:string, reason:string) | 0.2.0
+member | request.offered | signal (request:uint, deadline:uint, slot:string, title:string, message:string, subject:bytes) | 0.2.0
+member | session.backend | property string rw | 0.2.0
+member | session.bell | signal (count:uint) | 0.2.0
+member | session.hibernate | function () | 0.2.0
+member | session.lock_available | property bool rw | 0.2.0
+member | session.lock_revision | property uint rw | 0.2.0
+member | session.lock_state | property string rw | 0.2.0
+member | session.lock_state_changed | signal (state:string, revision:uint) | 0.2.0
+member | session.logout | function () | 0.2.0
+member | session.poweroff | function () | 0.2.0
+member | session.ready | signal () | 0.2.0
+member | session.reboot | function () | 0.2.0
+member | session.reload_requested | signal (generation:uint) | 0.2.0
+member | session.slot_auth_polkit | property string rw | 0.2.0
+member | session.slot_idle_policy | property string rw | 0.2.0
+member | session.slot_location_agent | property string rw | 0.2.0
+member | session.slot_prompt_secret | property string rw | 0.2.0
+member | session.suspend | function () | 0.2.0
+member | session.version | property string rw | 0.2.0
+member | settings.accent_blue | property double rw | 0.2.0
+member | settings.accent_green | property double rw | 0.2.0
+member | settings.accent_red | property double rw | 0.2.0
+member | settings.button_layout | property string rw | 0.2.0
+member | settings.color_scheme | property uint rw | 0.2.0
+member | settings.contrast | property uint rw | 0.2.0
+member | settings.cursor_size | property uint rw | 0.2.0
+member | settings.cursor_theme | property string rw | 0.2.0
+member | settings.document_font_name | property string rw | 0.2.0
+member | settings.enable_animations | property bool rw | 0.2.0
+member | settings.font_name | property string rw | 0.2.0
+member | settings.gtk_theme | property string rw | 0.2.0
+member | settings.icon_theme | property string rw | 0.2.0
+member | settings.monospace_font_name | property string rw | 0.2.0
+member | settings.reduced_motion | property uint rw | 0.2.0
+member | settings.text_scaling_factor | property double rw | 0.2.0
+member | window.app_id | property string rw | 0.2.0
+member | window.changed | signal (window_id:uint, changed:list<string>, window:object:window) | 0.2.0
+member | window.close | method () | 0.2.0
+member | window.closed | signal () | 0.2.0
+member | window.created | signal (window:object:window) | 0.2.0
+member | window.focus | method () | 0.2.0
+member | window.focused | property bool rw | 0.2.0
+member | window.height | property uint rw | 0.2.0
+member | window.icon | property string rw | 0.2.0
+member | window.id | property uint rw | 0.2.0
+member | window.kill | method () | 0.2.0
+member | window.menu_requested | signal (x:int, y:int, width:uint, height:uint, source:string, seat:string) | 0.2.0
+member | window.modal | property bool rw | 0.2.0
+member | window.move | method (x:int, y:int) | 0.2.0
+member | window.pid | property uint rw | 0.2.0
+member | window.present | method () | 0.2.0
+member | window.request_menu | method (x:int, y:int, width:uint, height:uint) | 0.2.0
+member | window.reset_visuals | method () | 0.2.0
+member | window.resize | method (width:uint, height:uint) | 0.2.0
+member | window.set_fullscreen | method (value:bool) | 0.2.0
+member | window.set_maximized | method (value:bool) | 0.2.0
+member | window.set_minimized | method (value:bool) | 0.2.0
+member | window.set_offset | method (x:double, y:double) | 0.2.0
+member | window.set_opacity | method (opacity:double) | 0.2.0
+member | window.set_output | method (output:object:output) | 0.2.0
+member | window.set_scale | method (scale:double) | 0.2.0
+member | window.set_workspace | method (workspace:object:workspace) | 0.2.0
+member | window.tag | property string rw | 0.2.0
+member | window.title | property string rw | 0.2.0
+member | window.unresponsive | property bool rw | 0.2.0
+member | window.width | property uint rw | 0.2.0
+member | window.x | property int rw | 0.2.0
+member | window.y | property int rw | 0.2.0
+member | workspace.created | signal (workspace:object:workspace) | 0.2.0
+member | workspace.id | property uint rw | 0.2.0
+member | workspace.removed | signal (workspace_id:uint, last:object:workspace) | 0.2.0
+
+object | config | base none | 0.2.0
+object | eis | base none | 0.2.0
+object | idle | base none | 0.2.0
+object | operation | base none | 0.2.0
+object | output | base none | 0.2.0
+object | portal_outcome | base none | 0.2.0
+object | portal_ui | base none | 0.2.0
+object | request | base none | 0.2.0
+object | session | base none | 0.2.0
+object | settings | base none | 0.2.0
+object | window | base none | 0.2.0
+object | workspace | base none | 0.2.0

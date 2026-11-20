@@ -3,7 +3,7 @@
 //! It is generic on purpose, as `__gnoblinHost` is not: `call("collection_len", handle)` converts the script's values to the call
 //! layer's [`Dyn`] (`gnoblin-std-dyn`, whose per-function code is generated from the table), calls the installed library for the
 //! generation that is starting or serving, and converts what comes back. The typed classes a shell uses (`gnoblin-std/native`) are
-//! generated from the same table into `data/js/gnoblin-std/generated/`, so a function added to the table changes no line here.
+//! generated from the same table into the generated `gnoblin-std/generated/` modules, so a function added to the table changes no line here.
 //!
 //! A function or an object a script gives the library (a listener, a layout) stays in the script's own context, in a table of
 //! references (`__gnoblinStdSupport`), and the library holds only its number. The library calls it back from the core's dispatch, which

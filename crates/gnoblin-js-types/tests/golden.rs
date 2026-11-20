@@ -30,7 +30,7 @@ fn the_declarations_match_the_golden() {
 
 #[test]
 fn the_generated_tsconfig_matches_the_golden() {
-    matches_golden("tsconfig.generated.json", &render_generated_tsconfig());
+    matches_golden("tsconfig.library.json", &render_generated_tsconfig());
 }
 
 #[test]

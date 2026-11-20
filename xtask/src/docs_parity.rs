@@ -1,7 +1,8 @@
 //! The docs-parity gate: a name that a shell-api or events page documents must be implemented.
 //!
 //! The implemented surface is what a script imports: the library's own sources (`data/js/gnoblin-core` and
-//! `data/js/gnoblin-std`), which `gnoblinctl types init` hands an editor as they are, and the schema's signals. A
+//! `data/js/gnoblin-std`) with the modules `gnoblin-sdkgen` generates for them (`generated/*`, rendered here, because no
+//! generated file is committed), which `gnoblinctl types init` hands an editor as they are, and the schema's signals. A
 //! dotted `gnoblin.` name is followed member by member from the `Gnoblin` class through the types it names. A
 //! `gnoblin.<object>.<signal>` event is a signal of the schema. A `.method(` call is matched by name across every
 //! class and interface, because a page does not say which object the receiver is.
@@ -608,21 +609,37 @@ fn load_docs(root: &Path) -> Result<Vec<Mention>, String> {
 }
 
 /// The text the implemented surface is read from: every source of the library under `LIBRARY`, package by package and
-/// in path order within each. The library is the real TypeScript that `gnoblinctl types init` hands an editor, so a
-/// name the docs promise is checked against the classes a script imports and not against a second declaration of
-/// them.
+/// in path order within each, with the generated modules of the package at the paths they are imported by. The library is the
+/// real TypeScript that `gnoblinctl types init` hands an editor, so a name the docs promise is checked against the classes a
+/// script imports and not against a second declaration of them.
 fn load_surface(root: &Path) -> Result<String, String> {
+    let spec = gnoblin_sdkgen::SdkSpec::load(root)?;
+    let generated = gnoblin_sdkgen::files_of(&gnoblin_sdkgen::render(&spec, Some("typescript"))?);
     let mut text = String::new();
     for package in LIBRARY {
-        let mut sources = Vec::new();
-        collect_sources(&root.join(package), &mut sources)?;
+        let mut sources: Vec<(String, String)> = Vec::new();
+        let mut files = Vec::new();
+        collect_sources(&root.join(package), &mut files)?;
+        for source in files {
+            let relative = source
+                .strip_prefix(root.join(package))
+                .map_or_else(|_| source.display().to_string(), |path| path.display().to_string());
+            sources.push((
+                relative,
+                fs::read_to_string(&source).map_err(|error| format!("could not read {}: {error}", source.display()))?,
+            ));
+        }
+        let name = package.rsplit('/').next().unwrap_or(package);
+        let prefix = format!("js/{name}/");
+        for (path, generated_text) in &generated {
+            if let Some(relative) = path.strip_prefix(&prefix) {
+                sources.push((relative.to_owned(), generated_text.clone()));
+            }
+        }
         sources.sort();
-        for source in sources {
+        for (_, source) in sources {
             text.push('\n');
-            text.push_str(
-                &fs::read_to_string(&source)
-                    .map_err(|error| format!("could not read {}: {error}", source.display()))?,
-            );
+            text.push_str(&source);
         }
     }
     Ok(text)

@@ -2375,13 +2375,13 @@ reason = "gnoblin-core's `View` is the schema class `view` as a typed node wrapp
 
 [[allow]]
 left = "gnoblin-std-impl::Scalar"
-right = "xtask::Scalar"
+right = "gnoblin-sdkgen::Scalar"
 kind = "same-name"
 reason = "the SDK generator's `Scalar` is an ABI number or handle type; the std library's is a style scalar value"
 
 [[allow]]
 left = "gnoblin-std-impl::Shape"
-right = "xtask::Shape"
+right = "gnoblin-sdkgen::Shape"
 kind = "same-name"
 reason = "the SDK generator's `Shape` is what an ABI record field is to a script; the std SDK's is a layout geometry"
 
@@ -2442,7 +2442,7 @@ reason = "the SDK's name for which side or corner a resize takes and the library
 
 [[allow]]
 left = "gnoblin-config-migrate::Needs"
-right = "xtask::Needs"
+right = "gnoblin-sdkgen::Needs"
 kind = "same-name"
 reason = "a set of what a generator or a migration has to emit, found by walking its input; two unrelated tools of one name, neither can use the other's crate"
 
@@ -2895,3 +2895,15 @@ left = "gnoblin-wayland-zwp-virtual-keyboard-v1::ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
+
+[[allow]]
+left = "gnoblin-sdkgen::Library"
+right = "xtask::Library"
+kind = "same-name"
+reason = "the SDK generator's `Library` is one ABI (core or std) as the generators read it; the other two are a native library probed in an image and an installed library checked by `dist-check`"
+
+[[allow]]
+left = "gnoblin-sdkgen::LockReport"
+right = "xtask::AbiReport"
+kind = "same-shape"
+reason = "the surface lock's comparison report and the ABI lock's have the same two lists because the surface lock is deliberately checked the way `abi-check` checks the ABI; the generator is a library the build links and xtask is not, so neither can use the other's"

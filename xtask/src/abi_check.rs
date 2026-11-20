@@ -522,18 +522,14 @@ fn check_golden(root: &Path) -> Result<bool, String> {
     Ok(false)
 }
 
-/// Checks every library's lock; the first failure decides the exit code, and the rest are still reported.
-fn check(root: &Path, update: bool) -> Result<ExitCode, String> {
+/// Checks every library's lock and the golden shells; every failure is reported, and the answer says whether there was none.
+pub(crate) fn check(root: &Path, update: bool) -> Result<bool, String> {
     let mut all_match = true;
     for target in TARGETS {
         all_match &= check_target(root, update, target)?;
     }
     all_match &= check_golden(root)?;
-    Ok(if all_match {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
-    })
+    Ok(all_match)
 }
 
 /// ManifestEntry point for `cargo xtask abi-check`.
@@ -547,7 +543,8 @@ pub fn run_check(args: &[String]) -> ExitCode {
         }
     };
     match check(Path::new("."), update) {
-        Ok(code) => code,
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::FAILURE,
         Err(message) => {
             eprintln!("[abi-check] {message}");
             ExitCode::from(2)

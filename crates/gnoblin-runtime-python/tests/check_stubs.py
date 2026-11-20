@@ -1,4 +1,5 @@
-"""Checks that the stubs declare what the package and the runtime really have. Run with the `data/python` directory as argument.
+"""Checks that the stubs declare what the package and the runtime really have. Run with the `data/python` directory as argument, then the
+directory `gnoblin-sdkgen` wrote the Python target to (the generated classes are not committed, so the test renders them first).
 
 Nothing is imported: `gnoblin` runs only inside a shell, so the sources are read with `ast`.
 """
@@ -9,6 +10,7 @@ import re
 import sys
 
 root = pathlib.Path(sys.argv[1])
+generated_root = pathlib.Path(sys.argv[2]) / "python" / "gnoblin"
 problems = []
 
 
@@ -48,7 +50,7 @@ for node in stub_tree.body:
         for alias in node.names:
             if alias.name != "*" and alias.asname:
                 stub_imports.add(alias.asname)
-generated = all_names(parse(package / "_generated" / "classes.py")) or set()
+generated = all_names(parse(generated_root / "_generated" / "classes.py")) or set()
 if init_names is None:
     problems.append("gnoblin/__init__.py has no literal __all__")
 else:

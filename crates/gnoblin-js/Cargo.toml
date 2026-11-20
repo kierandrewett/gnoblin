@@ -59,6 +59,10 @@ serde.workspace = true
 # SHA-256 it was written with (the `bytecode` module).
 sha2.workspace = true
 
+[build-dependencies]
+# The generated half of the stock library (`gnoblin-core/generated`, `gnoblin-std/generated`) is rendered at build time and embedded.
+gnoblin-sdkgen = { path = "../gnoblin-sdkgen" }
+
 [dev-dependencies]
 # The loader and budget tests write real module trees and symlinks under a temp root.
 tempfile = "3.23.0"
