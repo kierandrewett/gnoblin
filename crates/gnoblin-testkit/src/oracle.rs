@@ -26,7 +26,7 @@ pub const OUT_VARIABLE: &str = "GNOBLIN_ORACLE_OUT";
 
 /// Whether fixtures are compared or written.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode {
+pub enum OracleMode {
     /// Compare with the committed file. The default.
     Check,
     /// Write the file.
@@ -38,17 +38,17 @@ pub enum Mode {
 /// # Panics
 ///
 /// `GNOBLIN_ORACLE` holds something other than `record` or `check`.
-pub fn mode() -> Mode {
+pub fn mode() -> OracleMode {
     match std::env::var(MODE_VARIABLE).as_deref() {
-        Ok("record") => Mode::Record,
-        Ok("check" | "") | Err(_) => Mode::Check,
+        Ok("record") => OracleMode::Record,
+        Ok("check" | "") | Err(_) => OracleMode::Check,
         Ok(other) => panic!("{MODE_VARIABLE} is `{other}`; it is `record` or `check`"),
     }
 }
 
 /// Whether this process records.
 pub fn recording() -> bool {
-    mode() == Mode::Record
+    mode() == OracleMode::Record
 }
 
 /// The workspace root: the testkit sits at `crates/gnoblin-testkit`.
@@ -134,7 +134,7 @@ impl Fixtures {
     #[track_caller]
     fn settle(&self, file: &str, actual: Vec<u8>) {
         match mode() {
-            Mode::Record => {
+            OracleMode::Record => {
                 let dir = self.target();
                 fs::create_dir_all(&dir).unwrap_or_else(|error| panic!("{}: {error}", dir.display()));
                 let path = dir.join(file);
@@ -142,7 +142,7 @@ impl Fixtures {
                     fs::write(&path, &actual).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
                 }
             }
-            Mode::Check => {
+            OracleMode::Check => {
                 let path = self.committed().join(file);
                 let expected = fs::read(&path).unwrap_or_else(|error| {
                     panic!(

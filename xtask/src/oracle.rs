@@ -75,24 +75,24 @@ const PRODUCERS: &[Producer] = &[
 ];
 
 #[derive(Debug, PartialEq, Eq)]
-enum Action {
+enum OracleCommand {
     Record,
     Check { repeat: usize },
     List,
 }
 
-fn parse(args: &[String]) -> Result<Action, String> {
+fn parse(args: &[String]) -> Result<OracleCommand, String> {
     match args {
-        [word] if word == "record" => Ok(Action::Record),
-        [word] if word == "list" => Ok(Action::List),
+        [word] if word == "record" => Ok(OracleCommand::Record),
+        [word] if word == "list" => Ok(OracleCommand::List),
         [word, rest @ ..] if word == "check" => match rest {
-            [] => Ok(Action::Check { repeat: 1 }),
+            [] => Ok(OracleCommand::Check { repeat: 1 }),
             [flag, count] if flag == "--repeat" => {
                 let repeat: usize = count.parse().map_err(|_| format!("`{count}` is not a count"))?;
                 if repeat == 0 {
                     return Err("`--repeat` is at least 1".to_owned());
                 }
-                Ok(Action::Check { repeat })
+                Ok(OracleCommand::Check { repeat })
             }
             _ => Err("`check` takes only `--repeat N`".to_owned()),
         },
@@ -116,14 +116,14 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     };
     match command {
-        Action::List => {
+        OracleCommand::List => {
             for (dir, maker) in FIXTURE_DIRS {
                 println!("{dir}\n    {maker}");
             }
             ExitCode::SUCCESS
         }
-        Action::Record => record(&root),
-        Action::Check { repeat } => check(&root, repeat),
+        OracleCommand::Record => record(&root),
+        OracleCommand::Check { repeat } => check(&root, repeat),
     }
 }
 
@@ -137,6 +137,7 @@ fn produce(root: &Path, out: Option<&Path>) -> Result<(), String> {
             .current_dir(root)
             .args(producer.args)
             .env("GNOBLIN_ORACLE", "record")
+            .env("TZ", "UTC")
             .env_remove("GNOBLIN_FAKE_REFUSE_EVERY");
         match out {
             Some(out) => command.env("GNOBLIN_ORACLE_OUT", out),
@@ -278,12 +279,12 @@ mod tests {
 
     #[test]
     fn the_command_line_is_record_check_or_list() {
-        assert_eq!(parse(&strings(&["record"])), Ok(Action::Record));
-        assert_eq!(parse(&strings(&["list"])), Ok(Action::List));
-        assert_eq!(parse(&strings(&["check"])), Ok(Action::Check { repeat: 1 }));
+        assert_eq!(parse(&strings(&["record"])), Ok(OracleCommand::Record));
+        assert_eq!(parse(&strings(&["list"])), Ok(OracleCommand::List));
+        assert_eq!(parse(&strings(&["check"])), Ok(OracleCommand::Check { repeat: 1 }));
         assert_eq!(
             parse(&strings(&["check", "--repeat", "3"])),
-            Ok(Action::Check { repeat: 3 })
+            Ok(OracleCommand::Check { repeat: 3 })
         );
         assert!(parse(&strings(&["check", "--repeat", "0"])).is_err());
         assert!(parse(&strings(&["check", "--repeat", "x"])).is_err());

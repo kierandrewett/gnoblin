@@ -7,6 +7,8 @@
 //!
 //! The fixture is the scenario's description and its result, so a native lane replays the actions and compares the steps.
 
+#![allow(dead_code)]
+
 use gnoblin_paint::decode;
 use gnoblin_testkit::compositor::{FakeCompositor, ROOT, text};
 use gnoblin_testkit::oracle::{Fixtures, Value, Writes, hex, json, number};
@@ -275,6 +277,7 @@ pub const MIDDLE: u64 = 274;
 /// What every scenario's source starts with: the library's exports as globals, and `rec`, which logs a value for the step.
 const PRELUDE: &str = "(globalThis as any).log = [];\n\
     (globalThis as any).g = globalThis;\n\
+    Date.now = () => 1700000000000;\n\
     (globalThis as any).rec = (label: string, value: unknown) => { (globalThis as any).log.push({ label, value }); };\n\
     (globalThis as any).caught = (f: () => unknown) => { try { f(); return 'none'; } catch (e) { return (e as Error).message; } };\n\
     (globalThis as any).fail = (f: () => unknown) => { try { f(); return 'accepted'; } catch (e) { return (e as Error).name + ': ' + (e as Error).message; } };\n";
@@ -641,6 +644,7 @@ impl Scn {
     }
 
     /// One phase of a touchpad gesture of `kind` (`swipe` or `pinch`) with `fingers`, moved by `dx`, `dy`, scaled and turned.
+    #[allow(clippy::too_many_arguments)]
     pub fn gesture(
         &mut self,
         kind: &str,
@@ -797,6 +801,7 @@ impl Scn {
     }
 
     /// A snapshot of the subtree under `at`: each node's class, parent and properties, a paint list as its ops.
+    #[allow(clippy::type_complexity)]
     pub fn tree(&mut self, label: &str, at: At) -> &mut Scn {
         let root = self.resolve(at);
         let nodes: Vec<(u64, String, u64, Vec<(String, MirrorValue)>)> = {
