@@ -595,6 +595,11 @@ pub struct State {
     /// The output whose frame the host described last, and its damage, so the frame
     /// hook can record what was drawn.
     pub(crate) last_frame: Option<(OutputId, Vec<Rect>)>,
+    /// The timer that wakes the loop for a switched-off shader pass: see [`crate::shader_wake`].
+    pub(crate) shader_wake: crate::shader_wake::ShaderWake,
+    /// What a renderer's worker thread calls to wake the event loop when it asks for another frame
+    /// ([`gnoblin_render_frame::redraw::RedrawSignal`]). The session sets it once; every turn installs it on each output's target.
+    pub(crate) redraw_waker: Option<gnoblin_render_frame::redraw::Waker>,
 
     /// The session lock and protection-cover policy. Every request, output change
     /// and committed lock surface is an event for it, and the effects it returns are
@@ -923,6 +928,8 @@ impl State {
             modal_events: Vec::new(),
             lock_card: crate::lock_card::LockCardTables::default(),
             last_frame: None,
+            redraw_waker: None,
+            shader_wake: crate::shader_wake::ShaderWake::default(),
             lock: Lock::new(),
             lock_embargo: Embargo::RELEASED,
             lock_tables: ExtSessionLockV1Tables::default(),

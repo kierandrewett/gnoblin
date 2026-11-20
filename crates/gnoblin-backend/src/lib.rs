@@ -343,6 +343,11 @@ pub trait Target {
     fn take_redraw(&mut self) -> bool {
         false
     }
+
+    /// Installs what the renderer calls from its worker thread when it asks for another frame, so the event loop wakes
+    /// and draws it instead of showing it at the next turn that happens for another reason. The host installs one
+    /// waker on every target every turn; a target whose renderer never asks ignores it. The default ignores it.
+    fn set_redraw_waker(&mut self, _waker: gnoblin_render_frame::redraw::Waker) {}
 }
 
 /// One input event a backend delivered.

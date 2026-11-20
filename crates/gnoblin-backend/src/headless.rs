@@ -328,6 +328,10 @@ impl Target for HeadlessTarget {
         self.renderer.take_redraw()
     }
 
+    fn set_redraw_waker(&mut self, waker: gnoblin_render_frame::redraw::Waker) {
+        self.renderer.set_redraw_waker(waker);
+    }
+
     fn draw(&mut self, frame: &OutputFrame) -> Result<(), RenderError> {
         self.renderer.draw(frame, self.scale)?;
         self.display = frame.has_secure().then(|| frame.clone());

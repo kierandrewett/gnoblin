@@ -95,25 +95,55 @@ impl Composer {
             // The pass is out of the frames from now on, but a node that is not repainted keeps the pixels the slow pass drew:
             // the nodes that carry a struck source are repainted without it. The frame that was just drawn is left without it too,
             // for a backend that draws it again.
-            let nodes: Vec<NodeId> = self
-                .scene
-                .effect_nodes()
-                .filter(|node| {
-                    self.scene.effects(*node).is_some_and(|effects| {
-                        effects
-                            .passes()
-                            .iter()
-                            .any(|pass| matches!(pass, Pass::Shader(shader) if struck.contains(&shader.key())))
-                    })
-                })
-                .collect();
-            for node in nodes {
-                if let Some(bounds) = self.scene.absolute_bounds(node) {
-                    self.scene.damage_rect(bounds);
-                }
-            }
+            self.damage_shader_nodes(&struck);
             self.drop_switched_shaders(frame);
         }
+    }
+
+    /// Damages every node that carries a pass of one of `keys`, so it is drawn again with or without the pass.
+    fn damage_shader_nodes(&mut self, keys: &[ShaderKey]) {
+        let nodes: Vec<NodeId> = self
+            .scene
+            .effect_nodes()
+            .filter(|node| {
+                self.scene.effects(*node).is_some_and(|effects| {
+                    effects
+                        .passes()
+                        .iter()
+                        .any(|pass| matches!(pass, Pass::Shader(shader) if keys.contains(&shader.key())))
+                })
+            })
+            .collect();
+        for node in nodes {
+            if let Some(bounds) = self.scene.absolute_bounds(node) {
+                self.scene.damage_rect(bounds);
+            }
+        }
+    }
+
+    /// Switches back on the sources whose time is up and damages their nodes, so an output that is otherwise idle draws the pass
+    /// again. The session's clock calls it with every advance ([`Composer::advance_motion`]); it walks the few sources that
+    /// ever took a strike, and none while nothing was struck.
+    pub(super) fn rearm_shaders(&mut self) {
+        let now = self.shader_now();
+        let back = self.shaders.watchdog.rearmed(now);
+        if !back.is_empty() {
+            self.damage_shader_nodes(&back);
+        }
+    }
+
+    /// When the earliest switched-off shader comes back, on the composer's own clock ([`Composer::advance_motion`] moves it), or
+    /// [`None`] while none is switched off. The loop sets one one-shot timer for this and none otherwise, so an idle output
+    /// wakes for the return of a pass and for nothing else.
+    #[must_use]
+    pub fn shader_rearm_at(&self) -> Option<Duration> {
+        self.shaders.watchdog.next_rearm()
+    }
+
+    /// The composer's clock, the one [`Composer::shader_rearm_at`] is on.
+    #[must_use]
+    pub fn shader_clock(&self) -> Duration {
+        self.shader_now()
     }
 
     /// The time the watchdog counts its cool-offs in: the composer's own clock, which the session advances with the time that passed.

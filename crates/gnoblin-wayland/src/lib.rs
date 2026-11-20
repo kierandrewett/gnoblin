@@ -232,6 +232,7 @@ mod request_tap;
 mod seat_grab;
 mod selection_bridge;
 mod server;
+mod shader_wake;
 mod shell_cursor;
 mod state;
 mod subsurface_position;

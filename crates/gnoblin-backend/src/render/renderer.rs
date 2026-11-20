@@ -212,6 +212,14 @@ impl AnyRenderer {
         }
     }
 
+    /// Installs what the renderer's worker thread calls when it asks for another frame, so the event loop wakes for it.
+    /// A renderer that never asks ignores it.
+    pub fn set_redraw_waker(&self, waker: gnoblin_render_frame::redraw::Waker) {
+        if let Some(signal) = self.redraw_signal() {
+            signal.set_waker(waker);
+        }
+    }
+
     /// Whether the renderer asked for another frame since the last call, which clears the request.
     pub fn take_redraw(&mut self) -> bool {
         self.redraw_signal().is_some_and(|signal| signal.take())

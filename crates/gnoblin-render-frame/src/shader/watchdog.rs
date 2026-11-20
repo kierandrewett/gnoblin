@@ -150,6 +150,26 @@ impl Watchdog {
             .map(|_| Switched::OverBudget)
     }
 
+    /// The sources whose time is up at `now`: their passes are drawn again from this call on. Each is returned once, so the caller
+    /// repaints the nodes that carry it. A refused source never comes back.
+    pub fn rearmed(&mut self, now: Duration) -> Vec<ShaderKey> {
+        let mut back = Vec::new();
+        for (key, tally) in &mut self.standing {
+            if tally.off_until.is_some_and(|until| now >= until) {
+                tally.off_until = None;
+                back.push(*key);
+            }
+        }
+        back
+    }
+
+    /// When the earliest switched-off source comes back, on the clock the caller passes to [`Self::observe`], or [`None`] while
+    /// nothing is switched off (a refused source is not: it stays off). The caller wakes its loop for this time and no other.
+    #[must_use]
+    pub fn next_rearm(&self) -> Option<Duration> {
+        self.standing.values().filter_map(|tally| tally.off_until).min()
+    }
+
     /// Folds one draw into the state: `report` is what [`ShaderTimings::take`](super::ShaderTimings::take) returned for the frame, and
     /// `drawn` is every source the frame held (`OutputFrame::shader_keys`). Returns what to log.
     pub fn observe(&mut self, now: Duration, drawn: &[ShaderKey], report: &ShaderReport) -> Vec<Ruling> {
@@ -196,6 +216,8 @@ impl Watchdog {
             cause,
         });
         if standing.strikes >= STRIKES_TO_REFUSE {
+            // It stays off for good, so there is no time to come back at.
+            standing.off_until = None;
             self.refusals.refuse(key);
             events.push(Ruling::Refused { key });
         }
@@ -403,5 +425,35 @@ mod tests {
         let mut replaced = Watchdog::default();
         replaced.set_refusals(refusals);
         assert_eq!(replaced.switched(k, now), Some(Switched::Refused));
+    }
+
+    #[test]
+    fn a_struck_source_is_rearmed_once_at_its_time_and_a_refused_one_never() {
+        let mut dog = Watchdog::default();
+        let mut now = Duration::ZERO;
+        let a = key(1);
+        assert_eq!(dog.next_rearm(), None, "nothing is struck, so nothing to wake for");
+        run(&mut dog, &mut now, a, SLOW, 3);
+        let at = dog.next_rearm().expect("a struck source has a time");
+        assert!(at > now && at <= now + DISABLE_FOR);
+        assert!(
+            dog.rearmed(at - Duration::from_millis(1)).is_empty(),
+            "not before its time"
+        );
+        assert_eq!(dog.rearmed(at), [a]);
+        assert!(dog.rearmed(at + DISABLE_FOR).is_empty(), "each source comes back once");
+        assert_eq!(dog.next_rearm(), None, "and then there is nothing to wake for");
+        assert_eq!(dog.switched(a, at), None);
+        // Two strikes later the third refuses: no time is kept for a source that stays off.
+        for _ in 0..2 {
+            now = at + DISABLE_FOR;
+            run(&mut dog, &mut now, a, SLOW, 3);
+            if let Some(next) = dog.next_rearm() {
+                dog.rearmed(next);
+            }
+        }
+        assert!(dog.refusals().refuses(a));
+        assert_eq!(dog.next_rearm(), None);
+        assert!(dog.rearmed(now + DISABLE_FOR * 100).is_empty());
     }
 }

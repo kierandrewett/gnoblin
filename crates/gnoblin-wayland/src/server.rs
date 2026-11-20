@@ -491,6 +491,12 @@ impl Server {
         state.composer.set_effect_kinds(backend.effect_kinds());
         // Whether the tree accepts a shader effect: the seat says so, so a shell can adapt before it writes one.
         state.composer.set_user_shaders(config.user_shaders);
+        // A renderer that finishes work after its draw (a shader pipeline built on a worker thread) wakes the loop through the
+        // same ping a shell's submission does, so the frame that shows the result is drawn at once.
+        state.redraw_waker = Some(Arc::new({
+            let ping = ping.clone();
+            move || ping.ping()
+        }));
         // The watchdog refuses a source into the list the tree host asks, so a refused source is refused again at the next write.
         state.composer.set_shader_refusals(config.shader_refusals.clone());
         // A renderer that draws a View's subtree into a texture takes the View's description instead of its pixels.

@@ -4380,6 +4380,90 @@ mod shader_watchdog {
         assert!(!frame.layers().is_empty());
     }
 
+    /// The next frame of the output as the host asks for it, with no damage added: `None` when nothing changed.
+    fn idle_frame(composer: &mut Composer, output: OutputId) -> Option<OutputFrame> {
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        let changed = composer.compose(output, &mut frame);
+        composer.end_frame();
+        changed.then_some(frame)
+    }
+
+    #[test]
+    fn a_struck_pass_comes_back_on_an_output_with_nothing_else_to_draw_when_its_time_is_up() {
+        let (mut composer, output, _canvas) = shaded();
+        assert_eq!(composer.shader_rearm_at(), None, "nothing struck: no time to wake for");
+        for _ in 0..FRAMES_OVER_BUDGET {
+            draw(&mut composer, output, SLOW);
+        }
+        let at = composer
+            .shader_rearm_at()
+            .expect("a struck pass has a time it comes back at");
+        let frame = idle_frame(&mut composer, output).expect("the strike repaints the node without the pass");
+        assert!(frame.shader_keys().is_empty());
+        assert!(
+            idle_frame(&mut composer, output).is_none(),
+            "and then the output is idle"
+        );
+        assert_eq!(
+            composer.shader_rearm_at(),
+            Some(at),
+            "the time does not move while the clock stands"
+        );
+
+        // The clock runs to a millisecond before the time: still idle, still off, still waiting for the same time.
+        let wait = u32::try_from((at - composer.shader_clock()).as_millis()).unwrap();
+        composer.advance_motion(wait - 1);
+        assert!(
+            idle_frame(&mut composer, output).is_none(),
+            "nothing repaints before the time is up"
+        );
+        assert_eq!(composer.shader_rearm_at(), Some(at));
+
+        // The last millisecond draws the pass again, with no write and no other damage.
+        composer.advance_motion(1);
+        let frame = idle_frame(&mut composer, output).expect("the return of the pass damages its node");
+        assert_eq!(
+            frame.shader_keys(),
+            [gnoblin_render::ShaderKey::of(SOURCE)],
+            "the frame that follows carries the pass"
+        );
+        assert_eq!(
+            composer.shader_rearm_at(),
+            None,
+            "a pass that is back leaves no time to wake for"
+        );
+        assert!(
+            idle_frame(&mut composer, output).is_none(),
+            "and one repaint is all it costs"
+        );
+        composer.advance_motion(1_000_000);
+        assert!(
+            idle_frame(&mut composer, output).is_none(),
+            "no repeated repaint on an idle output"
+        );
+    }
+
+    #[test]
+    fn a_refused_source_leaves_no_time_to_wake_for() {
+        let (mut composer, output, _canvas) = shaded();
+        for strike in 1..=STRIKES_TO_REFUSE {
+            for _ in 0..FRAMES_OVER_BUDGET {
+                draw(&mut composer, output, SLOW);
+            }
+            if strike < STRIKES_TO_REFUSE {
+                let at = composer.shader_rearm_at().expect("a struck pass has a time");
+                composer.advance_motion(u32::try_from((at - composer.shader_clock()).as_millis()).unwrap());
+            }
+        }
+        assert!(
+            composer
+                .shader_refusals()
+                .refuses(gnoblin_render::ShaderKey::of(SOURCE))
+        );
+        assert_eq!(composer.shader_rearm_at(), None, "a refusal never comes back");
+    }
+
     #[test]
     fn a_frame_within_the_budget_ends_the_run_of_slow_ones() {
         let (mut composer, output, canvas) = shaded();

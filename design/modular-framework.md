@@ -3528,10 +3528,11 @@ Decisions the owner may overrule:
 2. The result of a build is kept as it is, a driver refusal (`pipeline-failed`) included, until the cache evicts it: a failure for want of
    memory does not heal by itself. A frame that draws more than 64 distinct sources leaves the extras out as `cache-full`: it never evicts
    what it has used, so the same 64 stay built and nothing is rebuilt every frame.
-3. The redraw request is a pull: the backend asks the target before it renders an output (`Target::take_redraw`, then
-   `Composer::damage_output`), so the pass appears on the next frame the loop draws. The renderer's `RedrawSignal` also takes a waker,
-   and no backend installs one yet, so a loop that sleeps with nothing else to do shows the pass at its next wake. GLES stays
-   synchronous (known risk: its first draw of a source still waits for the compile, 37.10) and does not use the signal.
+3. The redraw request is taken before the frame's damage is (`Target::take_redraw`, then `Composer::damage_output`, at the top of `frame::render`; taken after, it
+   would have waited a further turn), and the worker's request
+   also wakes the loop: the session installs a waker on every output's target each turn (`Target::set_redraw_waker`, from
+   `State::redraw_waker`), which pings the loop's own wake source, so a finished build is drawn on the turn it wakes and not at the next turn
+   something else causes (37.14). GLES stays synchronous (known risk: its first draw of a source still waits for the compile, 37.10) and does not use the signal.
 4. Backdrops nest at most three deep, as GLES does; a deeper layer loses its backdrop passes and keeps its others.
 5. The scratch images, the backdrop images and the one-pixel textures live for one frame and are not in `Vulkan::footprint`.
 6. The timestamps are written at the bottom of the pipe on both sides of a draw, so the number is the draw's own completion time on a
@@ -3600,12 +3601,18 @@ shell built before had to be rebuilt. That broke the promise of `docs/abi-compat
   `shader::watchdog::Watchdog`. No renderer signature changed. `record_refused` is not a strike: it is how a driver's compile failure names itself
   in `skipped` (`shader: <reason>`).
 - **Time.** The cool-off runs on the composer's own clock (`view_clock_ms`, advanced by the session), so a test moves it and nothing reads a wall clock.
+- **The return of a pass.** `Composer::advance_motion` calls `rearm_shaders`: a source whose time is up is switched back on once and the nodes that
+  carry it are damaged, so an output with nothing else to draw draws the pass again. `Composer::shader_rearm_at` is the time of the earliest
+  switched-off source (none while nothing is struck, and none for a refused one). `State::arm_shader_wake` (`gnoblin-wayland/src/shader_wake.rs`),
+  called at the end of each frame turn, sets one one-shot calloop timer for that time, if none is armed, and the turn the timer wakes advances
+  the clock and re-arms the pass. Nothing is struck, no timer; a timer that fired is not repeated. The loop's own 100 ms timeout would turn
+  the clock anyway; the timer is what keeps the return exact if that timeout is ever lengthened.
 - **Tests.** The state machine on made-up costs (`watchdog.rs`), the composer with a fake renderer that reports costs, a lost device and a program it could
   not build (`compose/tests.rs`, `shader_watchdog`), the write refusal (`tree_effects.rs`), and the frame helpers (`frame.rs`).
 - **Decisions the owner may overrule.** (a) Three frames _in a row_, not three in a window: a frame within budget ends the run, so a driver stall
   that hits one frame in a hundred never strikes. (b) 10 s before a struck pass is tried again; the alternative is to stay off until the shell
-  writes the list again. (c) A device loss is one strike for every source in the frame, with no wait for three frames. (d) A pass that comes back
-  is drawn at the node's next repaint, not on a timer, so an idle output shows no shader until something repaints it.
+  writes the list again. (c) A device loss is one strike for every source in the frame, with no wait for three frames. (d) A pass comes
+  back on its own clock with its nodes damaged, so an idle output shows it again without a write.
 
 ## 38. D11, window motion as std policy, and the stale statements of sections 31 to 34 (lane TsStdObjects)
 

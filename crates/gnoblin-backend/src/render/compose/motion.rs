@@ -86,6 +86,7 @@ impl Composer {
     /// It also moves a visual bell's flash on, so the next frame shows its fade.
     pub fn advance_motion(&mut self, elapsed_ms: u32) {
         self.view_clock_ms = self.view_clock_ms.saturating_add(u64::from(elapsed_ms));
+        self.rearm_shaders();
         self.motion.advance(&mut self.scene, elapsed_ms);
         self.reap_motion_ends();
         self.advance_flash(elapsed_ms);

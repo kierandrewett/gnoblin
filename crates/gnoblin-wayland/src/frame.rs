@@ -313,13 +313,6 @@ pub fn render(
     // Capture hears the turn before anything is drawn: a session the lock covers is
     // stopped here, so no frame of it is produced for the iteration that follows.
     state.poll_capture();
-    // A View of a window that shows a GPU buffer reads its pixels back through the backend, where the buffer lives.
-    state.begin_frame_reading(&mut |dmabuf| {
-        backend
-            .read_dmabuf(dmabuf)
-            .map_err(|error| log::debug!(area = "frame", %error, "a client's GPU buffer was not read for a View"))
-            .ok()
-    });
     // An output with no place of its own (a mirror, or one that is off) is drawn after the ones that have: a mirror
     // shows the finished picture of its source, so the source is drawn first whatever order the backend lists them.
     let outputs: Vec<OutputId> = backend
@@ -328,15 +321,30 @@ pub fn render(
         .map(|output| output.id)
         .filter(|output| !state.is_shadow(*output))
         .collect();
+    // A renderer that finished work after its last draw (a shader pipeline built on a worker thread) asks for the output again, and
+    // the request is taken before the frame's damage is, so the damage it makes is in this turn's frame and not the next one's.
+    for output in &outputs {
+        let waker = state.redraw_waker.clone();
+        if let Some(target) = backend.target(*output) {
+            if let Some(waker) = waker {
+                target.set_redraw_waker(waker);
+            }
+            if target.take_redraw() {
+                state.composer.damage_output(*output);
+            }
+        }
+    }
+    // A View of a window that shows a GPU buffer reads its pixels back through the backend, where the buffer lives.
+    state.begin_frame_reading(&mut |dmabuf| {
+        backend
+            .read_dmabuf(dmabuf)
+            .map_err(|error| log::debug!(area = "frame", %error, "a client's GPU buffer was not read for a View"))
+            .ok()
+    });
     let mut drew = false;
     let mut damage: Vec<Rect> = Vec::new();
     let mut drawn_outputs: Vec<OutputId> = Vec::new();
     for output in outputs {
-        // A renderer that finished work after its last draw (a shader pipeline built on a worker thread) asks for the
-        // output again, which the composer answers as it answers any damage.
-        if backend.target(output).is_some_and(|target| target.take_redraw()) {
-            state.composer.damage_output(output);
-        }
         let drawn = backend.render(state, output);
         let changed = state.frame_damage(output).is_some();
         if let Err(error) = &drawn {
@@ -399,6 +407,8 @@ pub fn render(
     // shell that watches it hears a change on the iteration that made it.
     state.publish_gpu_memory(backend);
     state.end_frame();
+    // A shader pass the watchdog switched off this turn comes back on a clock; the loop is woken for that time and no other.
+    state.arm_shader_wake();
     // A popup that hangs wholly off every output is drawn nowhere, so its commit damages nothing and no frame
     // follows it; its client is answered all the same, because there is no frame of it to wait for. A window the
     // shell throttles is answered when its interval has passed, which a still screen draws no frame for.
@@ -1037,5 +1047,211 @@ mod tests {
             "the frame kept for an output the session no longer has is released with it"
         );
         assert_eq!(state.capture_cache_bytes(second), 0);
+    }
+
+    /// A target whose renderer finishes work after its draw returned, as the Vulkan renderer does with a shader pipeline: it
+    /// asks for another frame on a [`RedrawSignal`] and wakes the loop through whatever waker the host installed.
+    struct Asking {
+        signal: gnoblin_render_frame::redraw::RedrawSignal,
+    }
+
+    impl gnoblin_backend::Target for Asking {
+        fn size(&self) -> gnoblin_types::Size {
+            gnoblin_types::Size::new(64, 48)
+        }
+
+        fn scale(&self) -> gnoblin_types::Scale {
+            gnoblin_types::Scale::integral(1)
+        }
+
+        fn draw(&mut self, _frame: &OutputFrame) -> Result<(), RenderError> {
+            Ok(())
+        }
+
+        fn present(&mut self, _damage: &[Rect]) -> Present {
+            Present::Nothing
+        }
+
+        fn take_redraw(&mut self) -> bool {
+            self.signal.take()
+        }
+
+        fn set_redraw_waker(&mut self, waker: gnoblin_render_frame::redraw::Waker) {
+            self.signal.set_waker(waker);
+        }
+    }
+
+    /// A backend with one such target, which records whether each frame the host described had anything to draw.
+    struct Redrawing {
+        outputs: Vec<gnoblin_backend::Output>,
+        target: Asking,
+        frame: OutputFrame,
+        described: Vec<bool>,
+    }
+
+    impl Backend<State> for Redrawing {
+        fn name(&self) -> &'static str {
+            "redrawing"
+        }
+
+        fn outputs(&self) -> &[gnoblin_backend::Output] {
+            &self.outputs
+        }
+
+        fn output(&self, id: OutputId) -> Option<&gnoblin_backend::Output> {
+            self.outputs.iter().find(|output| output.id == id)
+        }
+
+        fn target(&mut self, _id: OutputId) -> Option<&mut dyn gnoblin_backend::Target> {
+            Some(&mut self.target)
+        }
+
+        fn input(&mut self) -> &mut dyn InputSource {
+            unreachable!("this backend has no input")
+        }
+
+        fn register(&mut self, _loop_handle: &LoopHandle<'static, State>) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn render(&mut self, host: &mut State, output: OutputId) -> Result<Present, BackendError> {
+            let described = host.frame(output, &mut self.frame);
+            self.described.push(described);
+            Ok(Present::Nothing)
+        }
+
+        fn capture(&mut self, _output: OutputId, _with_cursor: bool) -> Option<Image> {
+            None
+        }
+
+        fn dispatch(&mut self, _host: &mut State) -> Vec<gnoblin_backend::BackendEvent> {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn a_renderer_that_finishes_after_its_draw_wakes_the_loop_and_gets_a_frame_with_no_other_damage() {
+        let (headless, mut state) = session();
+        let wakes = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        state.redraw_waker = Some(Arc::new({
+            let wakes = Arc::clone(&wakes);
+            move || {
+                wakes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }));
+        let signal = gnoblin_render_frame::redraw::RedrawSignal::new();
+        let mut backend = Redrawing {
+            outputs: Backend::<State>::outputs(&headless).to_vec(),
+            target: Asking { signal: signal.clone() },
+            frame: OutputFrame::new(),
+            described: Vec::new(),
+        };
+        let stats = Arc::new(Mutex::new(FrameStats::default()));
+        let screenshots = Screenshots::default();
+
+        // The output's first frame, and then nothing: an idle output describes no frame.
+        render(&mut backend, &mut state, &stats, &screenshots);
+        render(&mut backend, &mut state, &stats, &screenshots);
+        assert_eq!(
+            backend.described.last(),
+            Some(&false),
+            "nothing changed, nothing is described"
+        );
+        assert_eq!(
+            wakes.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "and nothing woke the loop"
+        );
+
+        // The worker thread finishes: it asks for a frame, and that wakes the loop through the waker the host installed.
+        let worker = std::thread::spawn(move || signal.request());
+        worker.join().expect("the worker ran");
+        assert_eq!(
+            wakes.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the host installed its waker on the target, so the request woke the loop"
+        );
+
+        // The turn the wake started draws the frame, with no damage but the request.
+        render(&mut backend, &mut state, &stats, &screenshots);
+        assert_eq!(
+            backend.described.last(),
+            Some(&true),
+            "the request alone is damage enough for a frame"
+        );
+        render(&mut backend, &mut state, &stats, &screenshots);
+        assert_eq!(
+            backend.described.last(),
+            Some(&false),
+            "one request is one frame, not a repaint every turn"
+        );
+        assert_eq!(
+            wakes.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "installing the waker every turn woke nothing"
+        );
+    }
+
+    /// A shader source `shader_drawn` has been told took three slow frames, so the watchdog switched it off.
+    fn strike_a_shader(state: &mut State) {
+        use gnoblin_render::{Pass, ShaderPass};
+        use gnoblin_render_frame::frame::{Layer, Solid};
+        let pass = ShaderPass::new("fn effect() { /* slow */ }", &[], false);
+        let key = pass.key();
+        let mut frame = OutputFrame::new();
+        let mut solid = Solid::new(Rect::new(0, 0, 8, 8), gnoblin_types::Color::WHITE);
+        solid.effects.push(Pass::Shader(pass)).expect("a shader pass");
+        frame.push_layer(Layer::Solid(solid));
+        for _ in 0..gnoblin_render_frame::shader::FRAMES_OVER_BUDGET {
+            frame
+                .shader_timings()
+                .record(key, gnoblin_render_frame::shader::SHADER_FRAME_BUDGET * 2);
+            state.composer.shader_drawn(&mut frame);
+        }
+        assert!(state.composer.shader_rearm_at().is_some(), "the shader took a strike");
+    }
+
+    #[test]
+    fn the_loop_is_woken_once_for_the_time_a_struck_pass_comes_back_and_never_while_nothing_is_struck() {
+        use smithay::reexports::calloop::EventLoop;
+        use std::time::{Duration, Instant};
+
+        let (_backend, mut state) = session();
+        let mut event_loop: EventLoop<'static, State> = EventLoop::try_new().expect("a loop");
+        state.loop_handle = Some(event_loop.handle());
+
+        // Nothing struck: no timer is armed, and the loop is not woken.
+        state.arm_shader_wake();
+        assert!(
+            !state.shader_wake.armed(),
+            "nothing is struck, so there is nothing to wake for"
+        );
+        event_loop
+            .dispatch(Some(Duration::from_millis(60)), &mut state)
+            .expect("a turn");
+        assert_eq!(state.shader_wake.fired(), 0);
+
+        // A strike, with the composer's clock a few milliseconds short of the time the pass comes back.
+        strike_a_shader(&mut state);
+        let at = state.composer.shader_rearm_at().expect("a time");
+        let wait = at - state.composer.shader_clock() - Duration::from_millis(40);
+        state.composer.advance_motion(u32::try_from(wait.as_millis()).unwrap());
+        state.arm_shader_wake();
+        assert!(state.shader_wake.armed());
+        state.arm_shader_wake();
+        state.arm_shader_wake();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while state.shader_wake.fired() == 0 {
+            assert!(Instant::now() < deadline, "the timer never woke the loop");
+            event_loop
+                .dispatch(Some(Duration::from_millis(20)), &mut state)
+                .expect("a turn");
+        }
+        assert!(!state.shader_wake.armed(), "a timer that fired is not armed any more");
+        // Three arming calls were one timer, and a timer that fired is not repeated.
+        event_loop
+            .dispatch(Some(Duration::from_millis(150)), &mut state)
+            .expect("a turn");
+        assert_eq!(state.shader_wake.fired(), 1);
     }
 }

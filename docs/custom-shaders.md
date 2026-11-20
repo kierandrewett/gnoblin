@@ -213,8 +213,8 @@ so compare colours with a tolerance.
 
 The compositor times each shader source in every frame it draws. A source that takes more than 50 ms in three frames in a
 row is switched off for ten seconds: the window is drawn without it, the node's `skipped` list says `shader: over-budget`,
-and the compositor logs a warning with the source's hash. It comes back, at the window's next repaint, when the ten
-seconds are up. A source that is switched off three times, or whose frame was in flight when the graphics device was lost
+and the compositor logs a warning with the source's hash. It comes back when the ten seconds are up, and the window is
+repainted with it, whether or not anything else changed. A source that is switched off three times, or whose frame was in flight when the graphics device was lost
 three times, is refused for the rest of the session: `skipped` says `shader: refused-for-session`, and writing the same
 source again is refused `bad-value` before it is validated. A different source is not affected. Make the shader cheaper
 (fewer texture reads, a smaller loop, fewer `backdrop` calls) and write it again; a changed source has a new hash.
