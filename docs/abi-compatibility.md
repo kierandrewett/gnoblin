@@ -41,6 +41,38 @@ The rules of `design/modular-framework.md` section 5.8, as a developer reads the
 A change that is not allowed in a minor is a new major: a new SONAME (`libgnoblin-core.so.2`) that installs beside the old one, so
 shells built for each keep loading the library they were built for.
 
+## The object protocol
+
+A class of the desktop or of the object model is not a function of a table. Both libraries serve their classes through one table, `GnoblinObjectApi`
+(`gnoblin-core-abi`), that `object_api(ctx, namespace, out)` returns: `gnoblin.model` from the core and `gnoblin.std` from std. The table is
+appended to `GnoblinApi` and `GnoblinStdApi` once, and what it serves comes from a catalog, so adding a class, a property, a method or a
+signal changes the catalog and never `abi.lock`:
+
+| Change                                           | `abi.lock`    | What changes                                                                           |
+| ------------------------------------------------ | ------------- | -------------------------------------------------------------------------------------- |
+| a class, a member, an enum value or a callback   | unchanged     | a catalog file and its lock, `crates/gnoblin-{core,std}-abi/schema/lock/<module>.lock` |
+| a function of a class                            | unchanged     | the same                                                                               |
+| a new kind of value, a new function of the table | one new entry | the ABI crate, in the way of the table above, and a minor                              |
+
+The rules a shell and a library keep, which the table's documentation states in full:
+
+- Every function runs on the shell thread. Inputs are borrowed for the call and the library copies what it keeps. A value the library
+  writes is lent until the next call into the table on that thread, and is never `VALUE_OWNED`.
+- A handle (`GnoblinObj`) is a slot and a generation, so the handle of an object that is gone is `E_STALE` and never names a new object.
+  A handle the library hands out, as a result, a signal's field or a callback's argument, is one reference the receiver `release`s. An
+  object that nothing holds ends when the last reference goes, unless its class is retained or it has a parent.
+- A class, a member and an enum value have the id the catalog gives them in this process. A base class's members come first, so a
+  member of a base has the id it has in every class derived from it. A client looks a name up once.
+- The library never runs a closure or an implemented method inside `create`, `update`, `set`, `call` or `destroy`. A change is told from the
+  next turn of the dispatch, and the changes of one turn to a property are told once. A `listen` is for a signal or a property.
+- A closure (`VALUE_CLOSURE`) or an implemented interface (`implement`) is adopted only when the call that carried it returns `E_OK`; after
+  any other result the shell still owns its `user`. When the library lets go, `drop_user` runs once, while the generation's code is mapped.
+- `catalog_hash` of the table is the hash of the namespace's catalog, so a generated SDK built from another catalog is refused with both
+  hashes named. The `gnoblin` namespace's hash (`gnoblin_catalog_hash`) does not include a namespace a library serves.
+
+`gnoblin-object` is the one implementation of both ends. `cargo xtask gen-sdks --check` proves the catalogs of the two libraries and their
+locks, and the golden shells prove the table did not move what they were built against: B1 appended `object_api` and no function was moved.
+
 ## What a shell sees
 
 Both libraries answer `gnoblin_abi_version` (`gnoblin_std_abi_version` for std) with their major, minor and patch. The SDK asks for the
