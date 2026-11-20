@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2023"],
+    "skipLibCheck": true,
+    "paths": {
+      "gnoblin-core": ["./old-surface/gnoblin-core/index.d.ts"],
+      "gnoblin-core/*": ["./old-surface/gnoblin-core/*"],
+      "gnoblin-std": ["./old-surface/gnoblin-std/index.d.ts"],
+      "gnoblin-std/*": ["./old-surface/gnoblin-std/*"],
+      "gnoblin-std-next": ["./old-surface/gnoblin-std/index.d.ts"]
+    }
+  },
+  "files": ["compat.ts"]
+}

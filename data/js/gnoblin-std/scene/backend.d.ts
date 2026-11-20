@@ -1,0 +1,49 @@
+import { GnoblinError } from "gnoblin-core/errors";
+import type { ErrorCode } from "gnoblin-core/errors";
+import type { WorkspaceSource } from "gnoblin-std/scene_mirror";
+/** Provides the backend and constructor state shared by scene objects. */
+export declare const sceneState: {
+    /** The host the module runs on, given once by `attachScene`. */
+    backend: SceneBackend | null;
+    /** Set while the scene root is wrapped: the node already exists in the tree, so the constructor makes none. */
+    wrapping: NodeId | null;
+};
+/** A node of the compositor tree, identified by its number. */
+export type NodeId = number;
+/** A node property value represented by one string, number or boolean. */
+export type Scalar = string | number | boolean;
+/** A node property value that the host can read or write. */
+export type HostValue = Scalar | number[] | string[];
+/** What the scene classes need of the host. The shell's Rust host implements it. */
+export interface SceneBackend {
+    /** Makes a node of `class` (`Node`, `Camera` or `View`): its id, or the refusal code as text. */
+    create(cls: string): NodeId | string;
+    /** Puts `node` under `parent` at `index` (negative is last); a node already in the tree moves. */
+    insert(node: NodeId, parent: NodeId, index: number): string | undefined;
+    /** Destroys a node and its descendants. Returns a refusal message when destruction fails. */
+    destroy(node: NodeId): string | undefined;
+    /** Returns child node ids in tree order. */
+    children(node: NodeId): NodeId[];
+    /** Returns the parent node id, or undefined for a root node. */
+    parent(node: NodeId): NodeId | undefined;
+    /** The root node where scene content is mounted. */
+    root(): NodeId;
+    /** Reads a node property, or returns undefined when it has no value. */
+    get(node: NodeId, key: string): HostValue | undefined;
+    /** Writes a node property and returns a refusal message on failure. */
+    set(node: NodeId, key: string, value: HostValue): string | undefined;
+    /** The node id for a client object, or undefined when it is not a client. */
+    nodeOf(content: object): NodeId | undefined;
+    /** The client object for a node id, or undefined when it is not a client node. */
+    contentOf(node: NodeId): object | undefined;
+    /** Workspace data for a client object, or undefined when it is not a workspace client. */
+    workspace(content: object): WorkspaceSource | undefined;
+}
+/** What a failed operation on a scene node throws: a `GnoblinError` that a script can also catch by its own type. */
+export declare class SceneError extends GnoblinError {
+    constructor(code: ErrorCode, target: string, message: string);
+}
+/** Gives the module its backend. The host module calls it once, before any user code runs. */
+export declare function attachScene(next: SceneBackend): void;
+/** The backend, or a thrown error when the module has none yet. */
+export declare function host(): SceneBackend;

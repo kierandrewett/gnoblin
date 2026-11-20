@@ -22,3 +22,4 @@ data/js/gnoblin-std/generated/
 crates/gnoblin-std-impl/tests/fixtures/reference/
 crates/gnoblin-js/tests/fixtures/paint/
 crates/gnoblin-core-impl/tests/fixtures/model/
+tests/ts-compat/old-surface/

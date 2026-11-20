@@ -50,9 +50,9 @@ run, as before. The lane that deletes the reference swaps the TypeScript side fo
 
 ## 3. Not covered, and why
 
-- **`.d.ts` emit and `tests/ts-compat`.** Not done in this change: no `old-surface.d.ts`, `compat.ts` or golden scripts
-  (`tests/modular/golden-scripts`). They need `tsc` over the library and the generated-SDK lane's output. NpGate cannot delete what is
-  not there; the lane that owns the generated declarations records them.
+- **Golden scripts** (`tests/modular/golden-scripts/{shell.ts,shell.py}` and their recorded trace). Not done. They need the generated SDKs
+  and a real-session run of the modular harness, so they belong to the lane that generates the SDKs (NpGenOut/NpObjectAbiB), which can
+  record the trace from the released catalog.
 - **The Python half.** The scenarios run the TypeScript library only. A Python scenario that drives the same actions is each native lane's own
   proof (section 6.5 of the plan).
 - **Core services** (`session`, `process`, `idle`, `launches`, `dialogs`, `authentication`, virtual outputs, output config). The existing
@@ -84,3 +84,11 @@ module; a module also runs, unasserted, in any test that imports `gnoblin-std`.
 | `extensions/xr/*`                                                | `xr.rs`                                                                                                     |
 | `gnoblin-core/host/*`, `subscriptions.ts`, `session/*`           | `subscriptions.rs`, `host_api.rs`, `host_global.rs`, `client_requests.rs`, oracle `model`                   |
 | `gnoblin-core/bindings/*`, `input/*`, `devices.ts`               | `input.rs`, `input_devices.rs`, oracle `input`                                                              |
+
+## 5. Declaration compatibility
+
+`tests/ts-compat/old-surface/` is the declaration emit of the library as it stands (`tsc --declaration --emitDeclarationOnly`, TypeScript
+7.0.2, strict; 229 files). `tests/ts-compat/compat.ts` asserts, for 34 classes a shell extends or constructs, that the class of
+`gnoblin-std-next` is assignable to the old one. Until the generator produces declarations, `tsconfig.json` maps `gnoblin-std-next` to the old
+tree, so the file type-checks against the old declarations alone (`tests/ts-compat/check.sh`). The lane that generates `gnoblin-std.d.ts`
+changes that one `paths` entry. NpGate deletes the directory after the owner signs off the new surface.
