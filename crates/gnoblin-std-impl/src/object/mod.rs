@@ -47,6 +47,7 @@ fn build() -> Library {
     entry_model::register(&mut builder);
     focus::register(&mut builder);
     crate::ui::register(&mut builder);
+    crate::scene::register(&mut builder);
     builder.finish(HOOKS)
 }
 
@@ -76,6 +77,11 @@ fn foreign(ctx: GnoblinCtx, namespace: &str) -> Res<gnoblin_object::client::Api>
         ctx,
         gnoblin_core::private::last_error,
     ))
+}
+
+/// The object protocol of the core (`gnoblin.model`), for a class that reads the object model as a binding's function does.
+pub(crate) fn core_api(ctx: GnoblinCtx) -> Res<gnoblin_object::client::Api> {
+    foreign(ctx, "gnoblin.model")
 }
 
 fn core_fail(error: gnoblin_core::CoreError) -> Fail {

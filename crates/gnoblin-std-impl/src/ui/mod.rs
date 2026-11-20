@@ -22,6 +22,7 @@ mod classes;
 mod clock;
 mod entry;
 mod input;
+pub(crate) use input::CanvasEvent;
 mod layout;
 mod paint;
 mod session;

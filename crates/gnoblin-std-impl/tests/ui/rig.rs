@@ -295,9 +295,27 @@ struct Allowance {
     native: f64,
 }
 
+/// A place where the fixture holds a value of a node of the compositor's own that only the TypeScript engine's bookkeeping explains
+/// (see [`Rig::allow_shared`]).
+struct SharedAllowance {
+    step: &'static str,
+    node: u64,
+    key: &'static str,
+    fixture: Value,
+    native: Value,
+}
+
 /// The shell's side and the recorder.
 pub struct Rig {
     pub api: Api,
+    /// The object protocol of `gnoblin.model`, the core's: the windows and what binds to them.
+    pub core: Api,
+    /// The table of the library, for what the TypeScript library reached through it and the object protocol does not serve yet (a
+    /// transition, the desktop's workspaces).
+    pub std: &'static GnoblinStdApi,
+    /// Lines a shell's own runtime would report (a closure that threw): the replay's closures push them, as the TypeScript runtime
+    /// reported its own.
+    pub reports: Rc<RefCell<Vec<String>>>,
     pub ctx: GnoblinCtx,
     pub comp: FakeCompositor,
     pub clock: ManualClock,
@@ -311,27 +329,53 @@ pub struct Rig {
     expected: Vec<Value>,
     fold: Fold,
     allowances: Vec<Allowance>,
+    /// How far a number of a step's log may be from the fixture's (zero: equal), for scenarios that compute numbers.
+    tolerance: f64,
+    /// Values of the compositor's own nodes that the fixture holds because of the TypeScript engine's own copy of a window's state.
+    shared_allowances: Vec<SharedAllowance>,
+    /// The labels of the log entries the next step does not compare, for what only a dynamically typed shell can say.
+    skipped: Vec<&'static str>,
+    /// Nodes the replay made to probe what the fixture's script held in its own objects: they are not compared.
+    probes: Vec<u64>,
     _lock: MutexGuard<'static, ()>,
 }
 
 impl Rig {
     /// A generation of the core with the std library and a desktop of `width` by `height` and no window.
     pub fn new(name: &'static str, width: f64, height: f64) -> Rig {
-        Rig::open(name, width, height, false)
+        Rig::open(name, width, height, false, 0)
+    }
+
+    /// As [`Rig::new`] with `count` server-decorated windows of 800 by 600 (ids 3 on, titled `win1`, app id `foot`), as the oracle's
+    /// scene scenarios have them.
+    pub fn with_windows(name: &'static str, width: f64, height: f64, count: u64) -> Rig {
+        Rig::open(name, width, height, false, count)
     }
 
     /// A generation with no fixture behind it: a test of what the toolkit does on its own terms.
     pub fn scratch(width: f64, height: f64) -> Rig {
-        Rig::open("scratch", width, height, true)
+        Rig::open("scratch", width, height, true, 0)
     }
 
-    fn open(name: &'static str, width: f64, height: f64, scratch: bool) -> Rig {
+    /// As [`Rig::scratch`] with `count` windows, as [`Rig::with_windows`] makes them.
+    pub fn scratch_with_windows(width: f64, height: f64, count: u64) -> Rig {
+        Rig::open("scratch", width, height, true, count)
+    }
+
+    fn open(name: &'static str, width: f64, height: f64, scratch: bool, windows: u64) -> Rig {
         let lock = process_lock();
         // SAFETY: the tests of this file run one at a time under `process_lock`, and nothing else reads the environment meanwhile.
         unsafe { std::env::set_var("TZ", "UTC") };
         host::reset_session();
         let comp = FakeCompositor::new();
         comp.add_desktop(width, height);
+        for n in 0..windows {
+            comp.add_window_decorated(3 + n, &format!("win{}", n + 1), "foot", "server");
+            if let Some(node) = comp.borrow_mut().nodes.get_mut(&(3 + n)) {
+                node.props.insert("width".to_owned(), MirrorValue::Double(800.0));
+                node.props.insert("height".to_owned(), MirrorValue::Double(600.0));
+            }
+        }
         comp.borrow_mut().refuse_every = 0;
         host::set_tree_link_provider(Box::new(Provider(comp.clone())));
         let clock = ManualClock::default();
@@ -352,8 +396,17 @@ impl Rig {
         assert_eq!(code, abi::E_OK, "{}", last_error());
         // SAFETY: the table `object_api` returns is static.
         let api = Api::new(unsafe { &*raw }, ctx, last_error);
+        let mut core_raw: *const abi::GnoblinObjectApi = std::ptr::null();
+        // SAFETY: `core_raw` is a live local the core writes.
+        let code = unsafe { (host::api().object_api)(ctx, GnoblinStr::borrowed("gnoblin.model"), &raw mut core_raw) };
+        assert_eq!(code, abi::E_OK, "{}", last_error());
+        // SAFETY: the table `object_api` returns is static.
+        let core = Api::new(unsafe { &*core_raw }, ctx, last_error);
         Rig {
             api,
+            core,
+            std: table,
+            reports: Rc::new(RefCell::new(Vec::new())),
             ctx,
             comp,
             clock,
@@ -374,6 +427,10 @@ impl Rig {
             },
             fold: Fold::default(),
             allowances: Vec::new(),
+            tolerance: 0.0,
+            shared_allowances: Vec::new(),
+            skipped: Vec::new(),
+            probes: Vec::new(),
             _lock: lock,
         }
     }
@@ -390,11 +447,13 @@ impl Rig {
             self.dispatch();
         }
         self.diagnostics.extend(ui_testing::take_diagnostics());
+        self.diagnostics.extend(self.reports.borrow_mut().drain(..));
     }
 
     /// The lines the toolkit reported since the last call.
     pub fn reported(&mut self) -> Vec<String> {
         self.diagnostics.extend(ui_testing::take_diagnostics());
+        self.diagnostics.extend(self.reports.borrow_mut().drain(..));
         std::mem::take(&mut self.diagnostics)
     }
 
@@ -442,6 +501,52 @@ impl Rig {
         self.api
             .call_static(class, member, args)
             .unwrap_or_else(|fail| panic!("{name}: {fail}"))
+    }
+
+    /// Says that at step `step` the fixture holds `fixture` for `key` of the compositor's node `node`, because the TypeScript engine
+    /// wrote it back from a copy of its own (the rollback of a failed transition callback restores the engine's last copy of a
+    /// window's state, which had not heard of the earlier writes), and that the native run holds `native`: what the failed callback
+    /// left alone. The fixture's value must be exactly what is named, and from this step on the fixture's state holds the native
+    /// value until a write of the fixture's own sets it again.
+    pub fn allow_shared(&mut self, step: &'static str, node: u64, key: &'static str, fixture: Value, native: Value) {
+        self.shared_allowances.push(SharedAllowance {
+            step,
+            node,
+            key,
+            fixture,
+            native,
+        });
+    }
+
+    /// The compositor changes a property of a node of its own, as a scenario's action does: what the shell's writes left of it is no
+    /// longer what the compositor holds, and the fixture's state takes the new value.
+    pub fn external(&mut self, id: u64, key: &str, value: MirrorValue) {
+        let held = self.writes.value(&value);
+        self.comp.external_set(id, key, value);
+        self.fold.shared.insert(format!("{id}.{key}"), held);
+    }
+
+    /// The compositor destroys a node of its own: the shell's writes to it are gone with it.
+    pub fn external_destroy(&mut self, id: u64) {
+        self.comp.destroy(id);
+        let prefix = format!("{id}.");
+        self.fold.shared.retain(|key, _| !key.starts_with(&prefix));
+    }
+
+    /// The numbers of the next steps' logs may differ from the fixture's by `tolerance`: the scenario computes them.
+    pub fn tolerate(&mut self, tolerance: f64) {
+        self.tolerance = tolerance;
+    }
+
+    /// The next step does not compare the log entries with these labels: only a dynamically typed shell can fill them, and the
+    /// test says why where it skips them.
+    pub fn skip(&mut self, labels: &[&'static str]) {
+        self.skipped.extend_from_slice(labels);
+    }
+
+    /// The node `node` is the replay's own probe of what the fixture's script held in an object of its own: it is not compared.
+    pub fn probe(&mut self, node: u64) {
+        self.probes.push(node);
     }
 
     /// Records `value` under `label` in the step being made.
@@ -493,17 +598,50 @@ impl Rig {
             .collect();
         let log = Value::Array(std::mem::take(&mut *self.log.borrow_mut()));
         let diagnostics = json!(std::mem::take(&mut self.diagnostics));
-        assert_eq!(log, want["log"], "step `{label}` of `{}`: the log", self.name);
+        let skipped = std::mem::take(&mut self.skipped);
+        let wanted_log = Value::Array(
+            want["log"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|entry| !skipped.iter().any(|name| entry["label"] == json!(name)))
+                .cloned()
+                .collect(),
+        );
+        if self.tolerance > 0.0 {
+            if let Some(difference) = close(&log, &wanted_log, self.tolerance) {
+                panic!(
+                    "step `{label}` of `{}`: the log: {difference}\nnative {log}\nfixture {wanted_log}",
+                    self.name
+                );
+            }
+        } else {
+            assert_eq!(log, wanted_log, "step `{label}` of `{}`: the log", self.name);
+        }
         compare_diagnostics(&diagnostics, &want["diagnostics"], label, self.name);
         self.fold.apply(&want["writes"]);
         for allowance in self.allowances.iter().filter(|held| held.step == label) {
             self.fold.override_number(allowance);
         }
+        for allowance in self.shared_allowances.iter().filter(|held| held.step == label) {
+            let key = format!("{}.{}", allowance.node, allowance.key);
+            assert_eq!(
+                self.fold.shared.get(&key),
+                Some(&allowance.fixture),
+                "the fixture's {key} is not what was allowed for"
+            );
+            self.fold.shared.insert(key, allowance.native.clone());
+        }
         let shared = self.fold.shared_keys();
         let actual = Value::Object(self.state(&shared).into_iter().collect());
         let wanted = Value::Object(self.fold.state().into_iter().collect());
+        let same = if self.tolerance > 0.0 {
+            close(&actual, &wanted, self.tolerance).is_none()
+        } else {
+            actual == wanted
+        };
         assert!(
-            actual == wanted,
+            same,
             "step `{label}` of `{}`: the shell's nodes differ:\n{}",
             self.name,
             differences(&actual, &wanted)
@@ -615,7 +753,13 @@ impl Rig {
     /// The shell's nodes, whole, as the compositor holds them now: class, parent, children and properties by the names the recorder
     /// gave them. `shared` names the properties of the compositor's own nodes that the fixture's writes touched.
     fn state(&mut self, shared: &[(String, String)]) -> BTreeMap<String, Value> {
-        let made = self.writes.names();
+        let probes = self.probes.clone();
+        let made: Vec<(u64, String)> = self
+            .writes
+            .names()
+            .into_iter()
+            .filter(|(id, _)| !probes.contains(id))
+            .collect();
         let mut out = BTreeMap::new();
         let nodes: Vec<Held> = {
             let borrowed = self.comp.borrow();
@@ -672,17 +816,30 @@ impl Rig {
             for allowance in self.allowances.iter().filter(|held| held.step == label) {
                 override_rect(want, allowance);
             }
-            assert_eq!(
-                step["trees"], want["trees"],
-                "step `{label}` of `{}`: the trees",
-                self.name
-            );
+            if self.tolerance > 0.0 {
+                if let Some(difference) = close(&step["trees"], &want["trees"], self.tolerance) {
+                    panic!("step `{label}` of `{}`: the trees: {difference}", self.name);
+                }
+            } else {
+                assert_eq!(
+                    step["trees"], want["trees"],
+                    "step `{label}` of `{}`: the trees",
+                    self.name
+                );
+            }
             assert_eq!(
                 step["paints"], want["paints"],
                 "step `{label}` of `{}`: the paints",
                 self.name
             );
         }
+    }
+}
+
+impl Drop for Rig {
+    /// The generation ends while the core is still there to be told: its objects go, and the nodes they hold.
+    fn drop(&mut self) {
+        host::close_generation(self.ctx);
     }
 }
 
@@ -753,7 +910,7 @@ fn compare_diagnostics(actual: &Value, expected: &Value, label: &str, name: &str
     let tail = |line: &Value, number: bool| {
         let line = line.as_str().unwrap_or("");
         let line = if number {
-            line.replace('#', "#N")
+            unnumber(line).replace('#', "#N")
         } else {
             line.to_owned()
         };
@@ -936,4 +1093,55 @@ pub fn callback(run: impl FnMut(&[Val]) -> gnoblin_object::Res<Val> + 'static) -
 /// A number as the oracle's writes show it.
 pub fn double(value: f64) -> Value {
     number(value)
+}
+
+/// Strips the digits of a node number out of a line: `Camera2D#12` is `Camera2D#`.
+pub fn unnumber(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut after_hash = false;
+    for ch in line.chars() {
+        if after_hash && ch.is_ascii_digit() {
+            continue;
+        }
+        after_hash = ch == '#';
+        out.push(ch);
+    }
+    out
+}
+
+/// A line the way the recorder keeps it: the digits of a node number are `N`.
+pub fn recorded(line: &str) -> String {
+    unnumber(line).replace('#', "#N")
+}
+
+/// Where two values differ by more than `tolerance`, or none: numbers are close, a missing number (`null`) is one that is not a
+/// number, and everything else is equal.
+pub fn close(native: &Value, fixture: &Value, tolerance: f64) -> Option<String> {
+    match (native, fixture) {
+        (Value::Number(a), Value::Number(b)) => {
+            let (a, b) = (a.as_f64()?, b.as_f64()?);
+            ((a - b).abs() > tolerance).then(|| format!("{a} against {b}"))
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            if a.len() != b.len() {
+                return Some(format!("{} items against {}", a.len(), b.len()));
+            }
+            a.iter()
+                .zip(b)
+                .enumerate()
+                .find_map(|(at, (a, b))| close(a, b, tolerance).map(|why| format!("[{at}]: {why}")))
+        }
+        (Value::Object(a), Value::Object(b)) => {
+            if let Some(key) = a
+                .keys()
+                .find(|key| !b.contains_key(*key))
+                .or_else(|| b.keys().find(|key| !a.contains_key(*key)))
+            {
+                return Some(format!("the key `{key}` is in one and not the other"));
+            }
+            a.iter()
+                .find_map(|(key, a)| close(a, &b[key], tolerance).map(|why| format!(".{key}: {why}")))
+        }
+        (a, b) => (a != b).then(|| format!("{a} against {b}")),
+    }
 }

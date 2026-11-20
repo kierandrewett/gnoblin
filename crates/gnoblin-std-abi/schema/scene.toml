@@ -1,0 +1,609 @@
+# The `scene` module of `gnoblin.std`: nodes, views and cameras a shell makes in the compositor's tree.
+#
+# A scene node is a node of the tree that the library made for the shell. The library remembers what kind it made (a plain node, a
+# view, a camera, a flat camera), so a property means what it means for that kind (a flat camera's `zoom` is the node's scale), and it
+# checks every write before the tree sees it: a number is finite, a projection is one of the three names, a zoom is above zero. A write
+# made while a transition is being staged is held with it, so a camera can be moved, zoomed and rolled by a transition.
+#
+# Nodes are retained: they stay in the tree when the shell lets go of its reference, and end with `destroy`, with their parent, or
+# when the generation ends. A `view` draws a client or a workspace without moving it; a workspace is drawn as a mirror of child views
+# that the library keeps in step with the windows on it.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# What a pointer that reaches a node does: `forward` hits the node and, for a view of a client, goes on into the client in the client's
+# own surface coordinates; `capture` hits the node and stops there, and the shell hears the node's `pointer` signal; `none` misses the
+# node, and its children are still tested.
+[[enum]]
+name = "input_mode"
+since = "0.2.0"
+values = ["forward", "capture", "none"]
+
+# How a camera maps its scene into an image.
+[[enum]]
+name = "projection"
+since = "0.2.0"
+values = ["orthographic", "perspective", "stereo"]
+
+# How a workspace's picture fits the rectangle of a view: `contain` keeps its shape and shows all of it, `cover` keeps its shape and
+# fills the view, `stretch` fills the view whatever the shape.
+[[enum]]
+name = "content_fit"
+since = "0.2.0"
+values = ["contain", "cover", "stretch"]
+
+# What the pointer did on a node.
+[[enum]]
+name = "pointer_edge"
+since = "0.2.0"
+values = ["enter", "motion", "leave", "press", "release"]
+
+# Gives a number for a bound property.
+[[callback]]
+name = "compute_number"
+since = "0.2.0"
+returns = "double"
+
+# Gives true or false for a bound property.
+[[callback]]
+name = "compute_flag"
+since = "0.2.0"
+returns = "bool"
+
+# Gives text for a bound property.
+[[callback]]
+name = "compute_text"
+since = "0.2.0"
+returns = "string"
+
+# Gives a list of numbers (a rotation, a scale) for a bound property.
+[[callback]]
+name = "compute_numbers"
+since = "0.2.0"
+returns = "list<double>"
+
+# The width and height of a view's picture.
+[[object]]
+name = "scene_size"
+since = "0.2.0"
+kind = "record"
+
+# The width in client pixels.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+# The height in client pixels.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# A pointer edge on a node. The point is in the node's own plane and units.
+[[object]]
+name = "scene_pointer"
+since = "0.2.0"
+kind = "record"
+
+# What the pointer did.
+[[object.property]]
+name = "edge"
+type = "enum:pointer_edge"
+since = "0.2.0"
+
+# The horizontal coordinate in the node's plane.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+# The vertical coordinate in the node's plane.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# The button number from the kernel on a press and a release (272 is the left button); other edges say 0.
+[[object.property]]
+name = "button"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# One bound property of a scene node: the way to end it.
+[[object]]
+name = "node_binding"
+since = "0.2.0"
+kind = "handle"
+
+# The property the binding writes.
+[[object.property]]
+name = "property"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the binding still runs. Its node, a second binding of the same property and `dispose` end it.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Ends the binding. The property keeps the last value written.
+[[object.method]]
+name = "dispose"
+since = "0.2.0"
+
+# The bindings of one scene node: `node.properties`. A property has one binding; binding it again replaces the first. The library
+# runs the function under dependency tracking (every property it reads, of this library and of the object model, is recorded with what
+# it gave), writes the result, and runs it again, from the turn after a change, when a property it read has changed. It runs the first
+# time from the turn after the call. A binding that is still changing after eight runs in one turn is left as it is and reported once.
+[[object]]
+name = "node_bindings"
+since = "0.2.0"
+kind = "handle"
+
+# Binds the number property `name` to what `compute` gives.
+[[object.method]]
+name = "bind_number"
+since = "0.2.0"
+returns = "object:node_binding"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "compute"
+type = "callback:compute_number"
+
+# Binds the flag property `name` to what `compute` gives.
+[[object.method]]
+name = "bind_flag"
+since = "0.2.0"
+returns = "object:node_binding"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "compute"
+type = "callback:compute_flag"
+
+# Binds the text property `name` to what `compute` gives.
+[[object.method]]
+name = "bind_text"
+since = "0.2.0"
+returns = "object:node_binding"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "compute"
+type = "callback:compute_text"
+
+# Binds the property `name` that is a list of numbers (`rotation`, `scale`) to what `compute` gives.
+[[object.method]]
+name = "bind_numbers"
+since = "0.2.0"
+returns = "object:node_binding"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "compute"
+type = "callback:compute_numbers"
+
+# Ends the binding of `name` and answers whether there was one.
+[[object.method]]
+name = "unbind"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# Ends every binding of the node.
+[[object.method]]
+name = "dispose"
+since = "0.2.0"
+
+# A node of the compositor's tree that the library made for the shell: placed in its parent's units, with children, and with a
+# `pointer` signal when it takes input. A plain `scene_node` draws nothing; it groups what is under it.
+[[object]]
+name = "scene_node"
+since = "0.2.0"
+retained = true
+
+# A stable name for the node, `name` as well. It reads as the node's number in the tree until one is given.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+
+# The display name.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+
+# The position along X in the parent's units.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The position along Y in the parent's units.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The position along Z in the parent's units.
+[[object.property]]
+name = "z"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The position as a vector: writing it sets `x`, `y` and `z`.
+[[object.property]]
+name = "position"
+type = "object:vec3"
+since = "0.2.0"
+
+# The angles about X, Y and Z in radians, turned about X, then Y, then Z. To set it from a quaternion, use `place`.
+[[object.property]]
+name = "rotation"
+type = "object:vec3"
+since = "0.2.0"
+
+# The scale along each axis. To give one number for every axis, use `place`.
+[[object.property]]
+name = "scale"
+type = "object:vec3"
+since = "0.2.0"
+
+# The node's own placement: its position, its rotation and one uniform scale (the first component of `scale`). Writing it writes all
+# three parts; `place` writes the parts it is given.
+[[object.property]]
+name = "transform"
+type = "object:pose"
+since = "0.2.0"
+
+# Whether the node is drawn.
+[[object.property]]
+name = "visible"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# From 0 (transparent) to 1 (opaque).
+[[object.property]]
+name = "opacity"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# What a pointer that reaches the node does.
+[[object.property]]
+name = "input"
+type = "enum:input_mode"
+since = "0.2.0"
+default = "forward"
+
+# Metres in one unit of this node's space. The library keeps it: the tree has no property for it. It must be above 0.
+[[object.property]]
+name = "metres_per_unit"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# The node's number in the tree.
+[[object.property]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Whether the node is still in the tree.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The scene node this one is under, or none for one with none or one the library did not make.
+[[object.property]]
+name = "parent"
+type = "object:scene_node"
+since = "0.2.0"
+readonly = true
+
+# The children the library made, in tree order.
+[[object.property]]
+name = "children"
+type = "list<object:scene_node>"
+since = "0.2.0"
+readonly = true
+
+# The placement in the space of the topmost scene ancestor: the parents' placements composed in.
+[[object.property]]
+name = "world_transform"
+type = "object:pose"
+since = "0.2.0"
+readonly = true
+
+# The reactive properties of the node: `node.properties.bind_number("opacity", compute)`.
+[[object.property]]
+name = "properties"
+type = "object:node_bindings"
+since = "0.2.0"
+readonly = true
+
+# Puts `child` last under this node, or at `index` (negative is last). A child already in the tree moves. Answers the child.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+returns = "object:scene_node"
+
+[[object.method.param]]
+name = "child"
+type = "object:scene_node"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+optional = true
+
+# The first descendant the library made whose name is `name`, depth first, or none.
+[[object.method]]
+name = "find"
+since = "0.2.0"
+returns = "object:scene_node"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# Places the node: the parts given are checked together before any is written, and a part left out stays as it is.
+[[object.method]]
+name = "place"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "parts"
+type = "object:transform_parts"
+
+# A pointer edge reached the node. Told from the next turn, for a node whose `input` is `capture`.
+[[object.signal]]
+name = "pointer"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "event"
+type = "object:scene_pointer"
+
+# A view draws a client or a workspace in the scene without moving what it shows. A client is drawn directly and stretched to the
+# view's rectangle. A workspace is drawn as a mirror of child views, one for each window on it, fitted to the rectangle by `fit`.
+[[object]]
+name = "view"
+since = "0.2.0"
+base = "scene_node"
+retained = true
+
+# The camera the picture is drawn through, or none for the flat default.
+[[object.property]]
+name = "camera"
+type = "object:camera3d"
+since = "0.2.0"
+
+# The picture's rectangle in client pixels: writing it sets `width` and `height`.
+[[object.property]]
+name = "size"
+type = "object:scene_size"
+since = "0.2.0"
+
+# The picture's width in client pixels.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The picture's height in client pixels.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# How a workspace's picture fits the rectangle. A client is stretched whatever this says.
+[[object.property]]
+name = "fit"
+type = "enum:content_fit"
+since = "0.2.0"
+default = "stretch"
+
+# The client the view draws, by its node number (the `id` of the client), or 0 for none. Setting it ends a workspace mirror.
+[[object.property]]
+name = "source"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# The workspace the view mirrors, by its id, or empty for none. Setting it clears `source` and starts the mirror.
+[[object.property]]
+name = "workspace"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# How often the picture is redrawn, in frames a second; 0 is on demand.
+[[object.property]]
+name = "fps"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# Whether the view shows nothing: it has no client (it never had one, or the client is gone) and no workspace.
+[[object.property]]
+name = "orphaned"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Draws through no camera again: the flat default.
+[[object.method]]
+name = "clear_camera"
+since = "0.2.0"
+
+# A camera that projects what is under it in three dimensions. A view draws through its camera.
+[[object]]
+name = "camera3d"
+since = "0.2.0"
+base = "scene_node"
+retained = true
+
+# How the camera maps its scene into an image.
+[[object.property]]
+name = "projection"
+type = "enum:projection"
+since = "0.2.0"
+default = "orthographic"
+
+# Metres in one unit of the camera's space.
+[[object.property]]
+name = "metres"
+type = "double"
+since = "0.2.0"
+default = 0.001
+
+# The near clipping distance in camera-space units.
+[[object.property]]
+name = "near"
+type = "double"
+since = "0.2.0"
+default = 0.1
+
+# The far clipping distance in camera-space units.
+[[object.property]]
+name = "far"
+type = "double"
+since = "0.2.0"
+default = 1000.0
+
+# The vertical field of view in degrees.
+[[object.property]]
+name = "fov"
+type = "double"
+since = "0.2.0"
+default = 60.0
+
+# The distance between a stereo camera's eyes, in metres.
+[[object.property]]
+name = "ipd"
+type = "double"
+since = "0.2.0"
+default = 0.063
+
+# The visible height in scene units of an orthographic camera; above 0. The library keeps it: the tree has no property for it.
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.2.0"
+default = 1000.0
+
+# The number of layers the headset can carry in one frame, or 0 before the XR program reports one.
+[[object.property]]
+name = "layer_budget"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# A flat camera: it says where a viewport looks, how much it magnifies and its roll. It is a plain node used flat, so a transition can
+# animate it: its `x` and `y` are where it looks, its `zoom` is the node's scale and its `roll` the rotation about the view axis.
+[[object]]
+name = "camera2d"
+since = "0.2.0"
+base = "scene_node"
+retained = true
+
+# The magnification, above 0: 1 shows the content at its size.
+[[object.property]]
+name = "zoom"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# The roll about the view axis, in radians.
+[[object.property]]
+name = "roll"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Whether the camera is the identity view: no pan, zoom 1 and no roll.
+[[object.property]]
+name = "identity"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The scene: the one tree the shell's nodes hang from. Its functions need nothing but the tree.
+[[object]]
+name = "scene"
+since = "0.2.0"
+kind = "service"
+
+# The root node of the tree, where scene content is mounted. It is the compositor's and cannot be destroyed.
+[[object.property]]
+name = "root"
+type = "object:scene_node"
+since = "0.2.0"
+readonly = true
+
+# Metres in one scene unit. A camera that renders the scene carries its own unit in `camera3d.metres`. It must be above 0.
+[[object.property]]
+name = "metres_per_unit"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# The cameras the library made that are still in the tree.
+[[object.property]]
+name = "cameras"
+type = "list<object:camera3d>"
+since = "0.2.0"
+readonly = true
+
+# Mounts `node` under the root if it has no parent, and answers it.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+returns = "object:scene_node"
+
+[[object.method.param]]
+name = "node"
+type = "object:scene_node"
+
+# The first node under the root, depth first, whose name is `name`, or none.
+[[object.method]]
+name = "find"
+since = "0.2.0"
+returns = "object:scene_node"
+
+[[object.method.param]]
+name = "name"
+type = "string"

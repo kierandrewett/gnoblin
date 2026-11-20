@@ -79,6 +79,11 @@ pub(crate) fn turn(std: &Rc<Std>) {
         acknowledge_writes(std, &g);
     }
     std.drain();
+    // The views of workspaces follow what the pass did.
+    let ctx = std.st.borrow().ctx;
+    if let Some(world) = crate::scene::registry::find(ctx) {
+        world.mirror_turn();
+    }
 }
 
 /// The passes of a turn that a staged transition runs against its staged state, so what they write is staged with the callback's:

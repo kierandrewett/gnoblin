@@ -57,6 +57,12 @@ impl Fail {
     }
 }
 
+impl From<Fail> for gnoblin_object::Fail {
+    fn from(fail: Fail) -> gnoblin_object::Fail {
+        gnoblin_object::Fail::new(fail.code, fail.message)
+    }
+}
+
 impl From<CoreError> for Fail {
     fn from(error: CoreError) -> Fail {
         Fail::new(error.kind().code(), error.to_string())

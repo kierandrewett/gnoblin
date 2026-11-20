@@ -1,0 +1,164 @@
+# The public surface of the `scene` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | compute_flag | () -> bool | 0.2.0
+callback | compute_number | () -> double | 0.2.0
+callback | compute_numbers | () -> list<double> | 0.2.0
+callback | compute_text | () -> string | 0.2.0
+
+enum | content_fit | values contain cover stretch | 0.2.0
+enum | input_mode | values forward capture none | 0.2.0
+enum | pointer_edge | values enter motion leave press release | 0.2.0
+enum | projection | values orthographic perspective stereo | 0.2.0
+
+member | camera2d.add | method (child:object:scene_node, index?:int) -> object:scene_node | 0.2.0
+member | camera2d.alive | property bool ro | 0.2.0
+member | camera2d.children | property list<object:scene_node> ro | 0.2.0
+member | camera2d.find | method (name:string) -> object:scene_node | 0.2.0
+member | camera2d.id | property string rw | 0.2.0
+member | camera2d.identity | property bool ro | 0.2.0
+member | camera2d.input | property enum:input_mode rw | 0.2.0
+member | camera2d.metres_per_unit | property double rw | 0.2.0
+member | camera2d.name | property string rw | 0.2.0
+member | camera2d.node | property uint ro | 0.2.0
+member | camera2d.opacity | property double rw | 0.2.0
+member | camera2d.parent | property object:scene_node ro | 0.2.0
+member | camera2d.place | method (parts:object:transform_parts) | 0.2.0
+member | camera2d.pointer | signal (event:object:scene_pointer) | 0.2.0
+member | camera2d.position | property object:vec3 rw | 0.2.0
+member | camera2d.properties | property object:node_bindings ro | 0.2.0
+member | camera2d.roll | property double rw | 0.2.0
+member | camera2d.rotation | property object:vec3 rw | 0.2.0
+member | camera2d.scale | property object:vec3 rw | 0.2.0
+member | camera2d.transform | property object:pose rw | 0.2.0
+member | camera2d.visible | property bool rw | 0.2.0
+member | camera2d.world_transform | property object:pose ro | 0.2.0
+member | camera2d.x | property double rw | 0.2.0
+member | camera2d.y | property double rw | 0.2.0
+member | camera2d.z | property double rw | 0.2.0
+member | camera2d.zoom | property double rw | 0.2.0
+member | camera3d.add | method (child:object:scene_node, index?:int) -> object:scene_node | 0.2.0
+member | camera3d.alive | property bool ro | 0.2.0
+member | camera3d.children | property list<object:scene_node> ro | 0.2.0
+member | camera3d.far | property double rw | 0.2.0
+member | camera3d.find | method (name:string) -> object:scene_node | 0.2.0
+member | camera3d.fov | property double rw | 0.2.0
+member | camera3d.id | property string rw | 0.2.0
+member | camera3d.input | property enum:input_mode rw | 0.2.0
+member | camera3d.ipd | property double rw | 0.2.0
+member | camera3d.layer_budget | property uint ro | 0.2.0
+member | camera3d.metres | property double rw | 0.2.0
+member | camera3d.metres_per_unit | property double rw | 0.2.0
+member | camera3d.name | property string rw | 0.2.0
+member | camera3d.near | property double rw | 0.2.0
+member | camera3d.node | property uint ro | 0.2.0
+member | camera3d.opacity | property double rw | 0.2.0
+member | camera3d.parent | property object:scene_node ro | 0.2.0
+member | camera3d.place | method (parts:object:transform_parts) | 0.2.0
+member | camera3d.pointer | signal (event:object:scene_pointer) | 0.2.0
+member | camera3d.position | property object:vec3 rw | 0.2.0
+member | camera3d.projection | property enum:projection rw | 0.2.0
+member | camera3d.properties | property object:node_bindings ro | 0.2.0
+member | camera3d.rotation | property object:vec3 rw | 0.2.0
+member | camera3d.scale | property object:vec3 rw | 0.2.0
+member | camera3d.size | property double rw | 0.2.0
+member | camera3d.transform | property object:pose rw | 0.2.0
+member | camera3d.visible | property bool rw | 0.2.0
+member | camera3d.world_transform | property object:pose ro | 0.2.0
+member | camera3d.x | property double rw | 0.2.0
+member | camera3d.y | property double rw | 0.2.0
+member | camera3d.z | property double rw | 0.2.0
+member | node_binding.alive | property bool ro | 0.2.0
+member | node_binding.dispose | method () | 0.2.0
+member | node_binding.property | property string ro | 0.2.0
+member | node_bindings.bind_flag | method (name:string, compute:callback:compute_flag) -> object:node_binding | 0.2.0
+member | node_bindings.bind_number | method (name:string, compute:callback:compute_number) -> object:node_binding | 0.2.0
+member | node_bindings.bind_numbers | method (name:string, compute:callback:compute_numbers) -> object:node_binding | 0.2.0
+member | node_bindings.bind_text | method (name:string, compute:callback:compute_text) -> object:node_binding | 0.2.0
+member | node_bindings.dispose | method () | 0.2.0
+member | node_bindings.unbind | method (name:string) -> bool | 0.2.0
+member | scene.add | method (node:object:scene_node) -> object:scene_node | 0.2.0
+member | scene.cameras | property list<object:camera3d> ro | 0.2.0
+member | scene.find | method (name:string) -> object:scene_node | 0.2.0
+member | scene.metres_per_unit | property double rw | 0.2.0
+member | scene.root | property object:scene_node ro | 0.2.0
+member | scene_node.add | method (child:object:scene_node, index?:int) -> object:scene_node | 0.2.0
+member | scene_node.alive | property bool ro | 0.2.0
+member | scene_node.children | property list<object:scene_node> ro | 0.2.0
+member | scene_node.find | method (name:string) -> object:scene_node | 0.2.0
+member | scene_node.id | property string rw | 0.2.0
+member | scene_node.input | property enum:input_mode rw | 0.2.0
+member | scene_node.metres_per_unit | property double rw | 0.2.0
+member | scene_node.name | property string rw | 0.2.0
+member | scene_node.node | property uint ro | 0.2.0
+member | scene_node.opacity | property double rw | 0.2.0
+member | scene_node.parent | property object:scene_node ro | 0.2.0
+member | scene_node.place | method (parts:object:transform_parts) | 0.2.0
+member | scene_node.pointer | signal (event:object:scene_pointer) | 0.2.0
+member | scene_node.position | property object:vec3 rw | 0.2.0
+member | scene_node.properties | property object:node_bindings ro | 0.2.0
+member | scene_node.rotation | property object:vec3 rw | 0.2.0
+member | scene_node.scale | property object:vec3 rw | 0.2.0
+member | scene_node.transform | property object:pose rw | 0.2.0
+member | scene_node.visible | property bool rw | 0.2.0
+member | scene_node.world_transform | property object:pose ro | 0.2.0
+member | scene_node.x | property double rw | 0.2.0
+member | scene_node.y | property double rw | 0.2.0
+member | scene_node.z | property double rw | 0.2.0
+member | scene_pointer.button | property uint rw | 0.2.0
+member | scene_pointer.edge | property enum:pointer_edge rw | 0.2.0
+member | scene_pointer.x | property double rw | 0.2.0
+member | scene_pointer.y | property double rw | 0.2.0
+member | scene_size.height | property double rw | 0.2.0
+member | scene_size.width | property double rw | 0.2.0
+member | view.add | method (child:object:scene_node, index?:int) -> object:scene_node | 0.2.0
+member | view.alive | property bool ro | 0.2.0
+member | view.camera | property object:camera3d rw | 0.2.0
+member | view.children | property list<object:scene_node> ro | 0.2.0
+member | view.clear_camera | method () | 0.2.0
+member | view.find | method (name:string) -> object:scene_node | 0.2.0
+member | view.fit | property enum:content_fit rw | 0.2.0
+member | view.fps | property uint rw | 0.2.0
+member | view.height | property double rw | 0.2.0
+member | view.id | property string rw | 0.2.0
+member | view.input | property enum:input_mode rw | 0.2.0
+member | view.metres_per_unit | property double rw | 0.2.0
+member | view.name | property string rw | 0.2.0
+member | view.node | property uint ro | 0.2.0
+member | view.opacity | property double rw | 0.2.0
+member | view.orphaned | property bool ro | 0.2.0
+member | view.parent | property object:scene_node ro | 0.2.0
+member | view.place | method (parts:object:transform_parts) | 0.2.0
+member | view.pointer | signal (event:object:scene_pointer) | 0.2.0
+member | view.position | property object:vec3 rw | 0.2.0
+member | view.properties | property object:node_bindings ro | 0.2.0
+member | view.rotation | property object:vec3 rw | 0.2.0
+member | view.scale | property object:vec3 rw | 0.2.0
+member | view.size | property object:scene_size rw | 0.2.0
+member | view.source | property uint rw | 0.2.0
+member | view.transform | property object:pose rw | 0.2.0
+member | view.visible | property bool rw | 0.2.0
+member | view.width | property double rw | 0.2.0
+member | view.workspace | property string rw | 0.2.0
+member | view.world_transform | property object:pose ro | 0.2.0
+member | view.x | property double rw | 0.2.0
+member | view.y | property double rw | 0.2.0
+member | view.z | property double rw | 0.2.0
+
+object | camera2d | base scene_node retained | 0.2.0
+object | camera3d | base scene_node retained | 0.2.0
+object | node_binding | base none | 0.2.0
+object | node_bindings | base none | 0.2.0
+object | scene | base none service | 0.2.0
+object | scene_node | base none retained | 0.2.0
+object | scene_pointer | base none record | 0.2.0
+object | scene_size | base none record | 0.2.0
+object | view | base scene_node retained | 0.2.0

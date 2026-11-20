@@ -29,7 +29,7 @@ pub(crate) struct CanvasEvent {
 
 impl CanvasEvent {
     /// Reads the fields of the signal in the schema's order: frame, seq, node, kind, x, y, button, key, text, dx, dy, request, pressed.
-    fn read(event: &SignalEvent<'_>) -> Option<CanvasEvent> {
+    pub(crate) fn read(event: &SignalEvent<'_>) -> Option<CanvasEvent> {
         if event.len() < 13 {
             return None;
         }

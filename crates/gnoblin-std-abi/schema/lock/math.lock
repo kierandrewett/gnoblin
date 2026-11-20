@@ -1,0 +1,71 @@
+# The public surface of the `math` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+member | geometry.add | function (a:object:vec3, b:object:vec3) -> object:vec3 | 0.2.0
+member | geometry.cross | function (a:object:vec3, b:object:vec3) -> object:vec3 | 0.2.0
+member | geometry.distance | function (a:object:vec3, b:object:vec3) -> double | 0.2.0
+member | geometry.dot | function (a:object:vec3, b:object:vec3) -> double | 0.2.0
+member | geometry.euler_of_quaternion | function (quaternion:object:quaternion) -> object:vec3 | 0.2.0
+member | geometry.intersect | function (plane:object:plane, ray:object:ray) -> object:ray_hit | 0.2.0
+member | geometry.length | function (a:object:vec3) -> double | 0.2.0
+member | geometry.normalize | function (a:object:vec3) -> object:vec3 | 0.2.0
+member | geometry.pose_identity | function () -> object:pose | 0.2.0
+member | geometry.pose_inverse | function (pose:object:pose) -> object:pose | 0.2.0
+member | geometry.pose_multiply | function (a:object:pose, b:object:pose) -> object:pose | 0.2.0
+member | geometry.pose_normalise | function (pose:object:pose) -> object:pose | 0.2.0
+member | geometry.pose_plane | function (pose:object:pose) -> object:plane | 0.2.0
+member | geometry.pose_translation | function (x:double, y:double, z:double) -> object:pose | 0.2.0
+member | geometry.ray_at | function (ray:object:ray, distance:double) -> object:vec3 | 0.2.0
+member | geometry.rotation_from_angles | function (target:string, angles:object:vec3) -> object:vec3 | 0.2.0
+member | geometry.rotation_from_list | function (target:string, parts:list<double>) -> object:vec3 | 0.2.0
+member | geometry.rotation_from_quaternion | function (target:string, quaternion:object:quaternion) -> object:vec3 | 0.2.0
+member | geometry.scale | function (a:object:vec3, factor:double) -> object:vec3 | 0.2.0
+member | geometry.scale_from_list | function (target:string, parts:list<double>) -> object:vec3 | 0.2.0
+member | geometry.scale_from_number | function (target:string, value:double) -> object:vec3 | 0.2.0
+member | geometry.scale_from_vector | function (target:string, value:object:vec3) -> object:vec3 | 0.2.0
+member | geometry.subtract | function (a:object:vec3, b:object:vec3) -> object:vec3 | 0.2.0
+member | geometry.transform_direction | function (pose:object:pose, direction:object:vec3) -> object:vec3 | 0.2.0
+member | geometry.transform_from | function (target:string, parts:object:transform_parts) -> object:transform_parts | 0.2.0
+member | geometry.transform_point | function (pose:object:pose, point:object:vec3) -> object:vec3 | 0.2.0
+member | geometry.vec3_of | function (parts:list<double>) -> object:vec3 | 0.2.0
+member | geometry.vector_checked | function (target:string, value:object:vec3) -> object:vec3 | 0.2.0
+member | geometry.vector_from | function (target:string, parts:list<double>) -> object:vec3 | 0.2.0
+member | plane.normal | property object:vec3 rw | 0.2.0
+member | plane.point | property object:vec3 rw | 0.2.0
+member | pose.position | property object:vec3 rw | 0.2.0
+member | pose.rotation | property object:vec3 rw | 0.2.0
+member | pose.scale | property double rw | 0.2.0
+member | quaternion.w | property double rw | 0.2.0
+member | quaternion.x | property double rw | 0.2.0
+member | quaternion.y | property double rw | 0.2.0
+member | quaternion.z | property double rw | 0.2.0
+member | ray.direction | property object:vec3 rw | 0.2.0
+member | ray.origin | property object:vec3 rw | 0.2.0
+member | ray_hit.distance | property double rw | 0.2.0
+member | ray_hit.hit | property bool rw | 0.2.0
+member | ray_hit.point | property object:vec3 rw,optional | 0.2.0
+member | transform_parts.orientation | property object:quaternion rw,optional | 0.2.0
+member | transform_parts.position | property object:vec3 rw,optional | 0.2.0
+member | transform_parts.rotation | property object:vec3 rw,optional | 0.2.0
+member | transform_parts.scale | property object:vec3 rw,optional | 0.2.0
+member | transform_parts.uniform_scale | property double rw,optional | 0.2.0
+member | vec3.x | property double rw | 0.2.0
+member | vec3.y | property double rw | 0.2.0
+member | vec3.z | property double rw | 0.2.0
+
+object | geometry | base none service | 0.2.0
+object | plane | base none record | 0.2.0
+object | pose | base none record | 0.2.0
+object | quaternion | base none record | 0.2.0
+object | ray | base none record | 0.2.0
+object | ray_hit | base none record | 0.2.0
+object | transform_parts | base none record | 0.2.0
+object | vec3 | base none record | 0.2.0

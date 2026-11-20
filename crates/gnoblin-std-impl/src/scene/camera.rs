@@ -5,10 +5,11 @@
 //! is a plain node used flat: its position is `x` and `y`, its zoom is the node's scale (`[zoom, zoom, 1]`) and its roll is the
 //! rotation about the view axis (`[0, 0, roll]`), so a transition can animate all three.
 
+use gnoblin_core::Gnoblin;
+
+use super::{Kind, SceneState, read_through, write};
 use crate::animation::staging::Prop;
 use crate::error::{Fail, Res};
-use crate::scene::{Kind, write};
-use crate::state::State;
 
 /// How a camera maps its scene into an image.
 const PROJECTIONS: [&str; 3] = ["orthographic", "perspective", "stereo"];
@@ -41,41 +42,49 @@ fn positive(prop: &Prop, label: &str, key: &str) -> Res<f64> {
 }
 
 /// A write the camera kinds take of their own, or `None` for a key every node takes.
-pub(crate) fn set(st: &mut State, node: u64, kind: Kind, label: &str, key: &str, prop: &Prop) -> Option<Res<()>> {
+pub(crate) fn set(
+    scene: &mut SceneState,
+    g: &Gnoblin,
+    node: u64,
+    kind: Kind,
+    label: &str,
+    key: &str,
+    prop: &Prop,
+) -> Option<Res<()>> {
     match (kind, key) {
         (Kind::Camera3D, "projection") => Some(match prop {
-            Prop::Text(text) if PROJECTIONS.contains(&text.as_str()) => write(st, node, label, key, prop.clone()),
+            Prop::Text(text) if PROJECTIONS.contains(&text.as_str()) => write(g, node, label, key, prop.clone()),
             _ => Err(Fail::type_error(format!(
                 "{label}.projection: must be \"orthographic\", \"perspective\" or \"stereo\""
             ))),
         }),
         (Kind::Camera3D, "metres" | "near" | "far" | "fov" | "ipd") => {
-            Some(number(prop, label, key).and_then(|value| write(st, node, label, key, Prop::Number(value))))
+            Some(number(prop, label, key).and_then(|value| write(g, node, label, key, Prop::Number(value))))
         }
         (Kind::Camera3D, "size") => Some(positive(prop, label, key).map(|value| {
-            st.scene.sizes.insert(node, value);
+            scene.sizes.insert(node, value);
         })),
         (Kind::Camera2D, "zoom") => Some(
             positive(prop, label, key)
-                .and_then(|value| write(st, node, label, "scale", Prop::Triple([value, value, 1.0]))),
+                .and_then(|value| write(g, node, label, "scale", Prop::Triple([value, value, 1.0]))),
         ),
         (Kind::Camera2D, "roll") => Some(
             number(prop, label, key)
-                .and_then(|value| write(st, node, label, "rotation", Prop::Triple([0.0, 0.0, value]))),
+                .and_then(|value| write(g, node, label, "rotation", Prop::Triple([0.0, 0.0, value]))),
         ),
         _ => None,
     }
 }
 
 /// What a camera reports of itself that the tree does not hold.
-pub(crate) fn get(st: &State, node: u64, kind: Kind, key: &str) -> Option<Prop> {
+pub(crate) fn get(scene: &SceneState, g: &Gnoblin, node: u64, kind: Kind, key: &str) -> Option<Prop> {
     match (kind, key) {
-        (Kind::Camera3D, "size") => Some(Prop::Number(st.scene.sizes.get(&node).copied().unwrap_or(1000.0))),
-        (Kind::Camera2D, "zoom") => match st.transition_get(node, "scale") {
+        (Kind::Camera3D, "size") => Some(Prop::Number(scene.sizes.get(&node).copied().unwrap_or(1000.0))),
+        (Kind::Camera2D, "zoom") => match read_through(g, node, "scale") {
             Some(Prop::Triple([zoom, _, _])) => Some(Prop::Number(zoom)),
             _ => None,
         },
-        (Kind::Camera2D, "roll") => match st.transition_get(node, "rotation") {
+        (Kind::Camera2D, "roll") => match read_through(g, node, "rotation") {
             Some(Prop::Triple([_, _, roll])) => Some(Prop::Number(roll)),
             _ => None,
         },

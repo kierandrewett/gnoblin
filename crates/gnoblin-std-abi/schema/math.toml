@@ -1,0 +1,615 @@
+# The `math` module of `gnoblin.std`: the arithmetic of points, directions, rays, planes and poses that a scene is placed with.
+#
+# The values are records, so a shell holds plain data and the library does the arithmetic: `geometry` is a set of functions that take
+# and answer them and need no desktop. A pose is a position, a rotation and one scale. Rotations are Euler angles in radians about
+# X, then Y, then Z, which is the matrix `Rz * Ry * Rx`, the order of the compositor's tree. A quaternion is turned into those angles
+# where a rotation is written (`rotation_from_quaternion`).
+#
+# The `_from` functions check what a shell gives before it is written to a node, as the scene does: they name the place that was
+# given (`target`, such as `Node#7.rotation`) in the error, and answer the three numbers the tree stores.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# A point or a direction in three dimensions. Positions use the units of the node's parent; rays and planes use the units of their
+# inputs.
+[[object]]
+name = "vec3"
+since = "0.2.0"
+kind = "record"
+
+# The horizontal coordinate.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The vertical coordinate.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The depth coordinate.
+[[object.property]]
+name = "z"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# A rotation as a quaternion. A quaternion that is not of unit length is normalised where it is used.
+[[object]]
+name = "quaternion"
+since = "0.2.0"
+kind = "record"
+
+# The first imaginary part.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The second imaginary part.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The third imaginary part.
+[[object.property]]
+name = "z"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The real part.
+[[object.property]]
+name = "w"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# A position, a rotation and a uniform scale. A scale applies to points before the rotation.
+[[object]]
+name = "pose"
+since = "0.2.0"
+kind = "record"
+
+# The translation in the parent's space.
+[[object.property]]
+name = "position"
+type = "object:vec3"
+since = "0.2.0"
+
+# The angles in radians about X, then Y, then Z.
+[[object.property]]
+name = "rotation"
+type = "object:vec3"
+since = "0.2.0"
+
+# The uniform scale.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+default = 1.0
+
+# A half line from `origin` along `direction`, which need not be a unit vector.
+[[object]]
+name = "ray"
+since = "0.2.0"
+kind = "record"
+
+# Where the ray starts.
+[[object.property]]
+name = "origin"
+type = "object:vec3"
+since = "0.2.0"
+
+# Which way it goes; a distance along the ray is in lengths of this vector.
+[[object.property]]
+name = "direction"
+type = "object:vec3"
+since = "0.2.0"
+
+# A plane through `point` with a normal vector.
+[[object]]
+name = "plane"
+since = "0.2.0"
+kind = "record"
+
+# Any point on the plane.
+[[object.property]]
+name = "point"
+type = "object:vec3"
+since = "0.2.0"
+
+# The normal vector of the plane.
+[[object.property]]
+name = "normal"
+type = "object:vec3"
+since = "0.2.0"
+
+# Where a ray meets a plane. `hit` is false when the ray is parallel to the plane or the plane is behind its start, and then there
+# is no `point`.
+[[object]]
+name = "ray_hit"
+since = "0.2.0"
+kind = "record"
+
+# Whether the ray reaches the plane.
+[[object.property]]
+name = "hit"
+type = "bool"
+since = "0.2.0"
+
+# How far along the ray, in lengths of its direction. Zero for a miss.
+[[object.property]]
+name = "distance"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The point where it meets the plane.
+[[object.property]]
+name = "point"
+type = "object:vec3"
+since = "0.2.0"
+optional = true
+
+# A placement with each part optional: a part left out is not written. A rotation is `rotation` (angles) or `orientation` (a
+# quaternion), not both; a scale is `scale` (an amount per axis) or `uniform_scale` (one amount for every axis), not both.
+[[object]]
+name = "transform_parts"
+since = "0.2.0"
+kind = "record"
+
+# The position, or none to leave it.
+[[object.property]]
+name = "position"
+type = "object:vec3"
+since = "0.2.0"
+optional = true
+
+# The rotation as angles in radians, or none.
+[[object.property]]
+name = "rotation"
+type = "object:vec3"
+since = "0.2.0"
+optional = true
+
+# The rotation as a quaternion, or none.
+[[object.property]]
+name = "orientation"
+type = "object:quaternion"
+since = "0.2.0"
+optional = true
+
+# The scale along each axis, or none.
+[[object.property]]
+name = "scale"
+type = "object:vec3"
+since = "0.2.0"
+optional = true
+
+# One scale for every axis, or none.
+[[object.property]]
+name = "uniform_scale"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The arithmetic of the module. Its functions need no desktop.
+[[object]]
+name = "geometry"
+since = "0.2.0"
+kind = "service"
+
+# The sum of two vectors.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "a"
+type = "object:vec3"
+
+[[object.method.param]]
+name = "b"
+type = "object:vec3"
+
+# `a` minus `b`.
+[[object.method]]
+name = "subtract"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "a"
+type = "object:vec3"
+
+[[object.method.param]]
+name = "b"
+type = "object:vec3"
+
+# Each coordinate of `a` times `factor`.
+[[object.method]]
+name = "scale"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "a"
+type = "object:vec3"
+
+[[object.method.param]]
+name = "factor"
+type = "double"
+
+# The dot product.
+[[object.method]]
+name = "dot"
+since = "0.2.0"
+function = true
+returns = "double"
+
+[[object.method.param]]
+name = "a"
+type = "object:vec3"
+
+[[object.method.param]]
+name = "b"
+type = "object:vec3"
+
+# The cross product `a` x `b`.
+[[object.method]]
+name = "cross"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "a"
+type = "object:vec3"
+
+[[object.method.param]]
+name = "b"
+type = "object:vec3"
+
+# The length of a vector.
+[[object.method]]
+name = "length"
+since = "0.2.0"
+function = true
+returns = "double"
+
+[[object.method.param]]
+name = "a"
+type = "object:vec3"
+
+# The unit vector the same way, or the zero vector for the zero vector.
+[[object.method]]
+name = "normalize"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "a"
+type = "object:vec3"
+
+# The distance between two points.
+[[object.method]]
+name = "distance"
+since = "0.2.0"
+function = true
+returns = "double"
+
+[[object.method.param]]
+name = "a"
+type = "object:vec3"
+
+[[object.method.param]]
+name = "b"
+type = "object:vec3"
+
+# A vector from a list, with zero for each missing coordinate and the extra ones left out.
+[[object.method]]
+name = "vec3_of"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "parts"
+type = "list<double>"
+
+# The point `distance` along a ray, in lengths of its direction.
+[[object.method]]
+name = "ray_at"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "ray"
+type = "object:ray"
+
+[[object.method.param]]
+name = "distance"
+type = "double"
+
+# Where a ray crosses a plane: a miss when the ray is parallel to it or the plane is behind the ray's start.
+[[object.method]]
+name = "intersect"
+since = "0.2.0"
+function = true
+returns = "object:ray_hit"
+
+[[object.method.param]]
+name = "plane"
+type = "object:plane"
+
+[[object.method.param]]
+name = "ray"
+type = "object:ray"
+
+# The pose with no translation, rotation or scaling.
+[[object.method]]
+name = "pose_identity"
+since = "0.2.0"
+function = true
+returns = "object:pose"
+
+# A pose that translates by `x`, `y` and `z`.
+[[object.method]]
+name = "pose_translation"
+since = "0.2.0"
+function = true
+returns = "object:pose"
+
+[[object.method.param]]
+name = "x"
+type = "double"
+
+[[object.method.param]]
+name = "y"
+type = "double"
+
+[[object.method.param]]
+name = "z"
+type = "double"
+
+# The pose that places `b` inside `a`.
+[[object.method]]
+name = "pose_multiply"
+since = "0.2.0"
+function = true
+returns = "object:pose"
+
+[[object.method.param]]
+name = "a"
+type = "object:pose"
+
+[[object.method.param]]
+name = "b"
+type = "object:pose"
+
+# The inverse of a pose.
+[[object.method]]
+name = "pose_inverse"
+since = "0.2.0"
+function = true
+returns = "object:pose"
+
+[[object.method.param]]
+name = "pose"
+type = "object:pose"
+
+# Applies a pose's rotation to a direction, without translating or scaling it.
+[[object.method]]
+name = "transform_direction"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "pose"
+type = "object:pose"
+
+[[object.method.param]]
+name = "direction"
+type = "object:vec3"
+
+# Applies a pose to a point.
+[[object.method]]
+name = "transform_point"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "pose"
+type = "object:pose"
+
+[[object.method.param]]
+name = "point"
+type = "object:vec3"
+
+# The plane through a pose's position, facing along its local +Z.
+[[object.method]]
+name = "pose_plane"
+since = "0.2.0"
+function = true
+returns = "object:plane"
+
+[[object.method.param]]
+name = "pose"
+type = "object:pose"
+
+# The angles about X, Y and Z, in radians, of a quaternion. A quaternion of length zero is refused.
+[[object.method]]
+name = "euler_of_quaternion"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "quaternion"
+type = "object:quaternion"
+
+# Three finite numbers from a list of three. `target` names where it was given, for the error.
+[[object.method]]
+name = "vector_from"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "target"
+type = "string"
+
+[[object.method.param]]
+name = "parts"
+type = "list<double>"
+
+# Three finite numbers from a vector.
+[[object.method]]
+name = "vector_checked"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "target"
+type = "string"
+
+[[object.method.param]]
+name = "value"
+type = "object:vec3"
+
+# Three angles in radians from a list of three.
+[[object.method]]
+name = "rotation_from_list"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "target"
+type = "string"
+
+[[object.method.param]]
+name = "parts"
+type = "list<double>"
+
+# Three angles in radians from a vector of angles.
+[[object.method]]
+name = "rotation_from_angles"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "target"
+type = "string"
+
+[[object.method.param]]
+name = "angles"
+type = "object:vec3"
+
+# Three angles in radians from a quaternion, which is normalised first.
+[[object.method]]
+name = "rotation_from_quaternion"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "target"
+type = "string"
+
+[[object.method.param]]
+name = "quaternion"
+type = "object:quaternion"
+
+# A scale along each axis from one number for every axis.
+[[object.method]]
+name = "scale_from_number"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "target"
+type = "string"
+
+[[object.method.param]]
+name = "value"
+type = "double"
+
+# A scale along each axis from a list of three.
+[[object.method]]
+name = "scale_from_list"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "target"
+type = "string"
+
+[[object.method.param]]
+name = "parts"
+type = "list<double>"
+
+# A scale along each axis from a vector.
+[[object.method]]
+name = "scale_from_vector"
+since = "0.2.0"
+function = true
+returns = "object:vec3"
+
+[[object.method.param]]
+name = "target"
+type = "string"
+
+[[object.method.param]]
+name = "value"
+type = "object:vec3"
+
+# A placement with each part checked and turned into what the tree stores: the position, the angles and the scale along each axis,
+# and none for a part left out.
+[[object.method]]
+name = "transform_from"
+since = "0.2.0"
+function = true
+returns = "object:transform_parts"
+
+[[object.method.param]]
+name = "target"
+type = "string"
+
+[[object.method.param]]
+name = "parts"
+type = "object:transform_parts"
+
+# The same placement with the rotation as the angles the library reports for it: about X and Z within a half turn either way and about
+# Y within a quarter turn either way, and zero about Z at a quarter turn about Y, where X and Z turn the same way.
+[[object.method]]
+name = "pose_normalise"
+since = "0.2.0"
+function = true
+returns = "object:pose"
+
+[[object.method.param]]
+name = "pose"
+type = "object:pose"
