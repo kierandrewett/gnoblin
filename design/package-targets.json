@@ -33,7 +33,7 @@
       "architecture": "x86_64",
       "image": "fedora:43",
       "lifecycle": "upstream-current",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -54,7 +54,7 @@
       "architecture": "x86_64",
       "image": "fedora:44",
       "lifecycle": "upstream-current",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -75,20 +75,17 @@
       "architecture": "x86_64",
       "image": "fedora:45",
       "lifecycle": "upstream-pre-release",
-      "adapter": "pkgsmith",
-      "status": "existing-path",
-      "support": "candidate",
-      "ci": [
-        ".github/workflows/packages.yml",
-        ".github/workflows/release.yml"
-      ],
+      "adapter": "xtask-dist",
+      "status": "planned",
+      "support": "unsupported",
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
-        "install": true,
-        "coinstall": true,
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
         "graphical-session": false,
-        "removal": true
+        "removal": false
       },
       "evidence": [
         {
@@ -109,9 +106,7 @@
       "adapter": "rpm-el",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -132,9 +127,7 @@
       "adapter": "rpm-el",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -155,9 +148,7 @@
       "adapter": "rpm-el",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -175,7 +166,7 @@
       "architecture": "x86_64",
       "image": "debian:11",
       "lifecycle": "upstream-lts-ended",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "probe-needed",
       "support": "unsupported",
       "ci": [],
@@ -196,7 +187,7 @@
       "architecture": "x86_64",
       "image": "debian:12",
       "lifecycle": "upstream-lts",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -217,7 +208,7 @@
       "architecture": "x86_64",
       "image": "debian:13",
       "lifecycle": "upstream-full",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -238,7 +229,7 @@
       "architecture": "x86_64",
       "image": "ubuntu:22.04",
       "lifecycle": "upstream-standard",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -259,7 +250,7 @@
       "architecture": "x86_64",
       "image": "ubuntu:24.04",
       "lifecycle": "upstream-standard",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -280,7 +271,7 @@
       "architecture": "x86_64",
       "image": "ubuntu:26.04",
       "lifecycle": "upstream-standard",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -301,20 +292,17 @@
       "architecture": "x86_64",
       "image": "archlinux:base",
       "lifecycle": "rolling",
-      "adapter": "pkgsmith",
-      "status": "existing-path",
-      "support": "candidate",
-      "ci": [
-        ".github/workflows/packages.yml",
-        ".github/workflows/release.yml"
-      ],
+      "adapter": "xtask-dist",
+      "status": "planned",
+      "support": "unsupported",
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
-        "install": true,
-        "coinstall": true,
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
         "graphical-session": false,
-        "removal": true
+        "removal": false
       },
       "evidence": [
         {
@@ -337,7 +325,7 @@
       "architecture": "x86_64",
       "image": "registry.opensuse.org/opensuse/leap:15.5",
       "lifecycle": "upstream-eol",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "probe-needed",
       "support": "unsupported",
       "ci": [],
@@ -358,12 +346,10 @@
       "architecture": "x86_64",
       "image": "registry.opensuse.org/opensuse/leap:15.6",
       "lifecycle": "upstream-eol",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -381,12 +367,10 @@
       "architecture": "x86_64",
       "image": "registry.opensuse.org/opensuse/leap:16.0",
       "lifecycle": "upstream-current",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -404,20 +388,17 @@
       "architecture": "x86_64",
       "image": "registry.opensuse.org/opensuse/tumbleweed:latest",
       "lifecycle": "rolling",
-      "adapter": "pkgsmith",
+      "adapter": "xtask-dist",
       "status": "existing-path",
-      "support": "candidate",
-      "ci": [
-        ".github/workflows/packages.yml",
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "support": "unsupported",
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": true,
-        "package-build": true,
-        "install": true,
-        "coinstall": true,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
         "graphical-session": false,
-        "removal": true
+        "removal": false
       },
       "evidence": [
         {
@@ -436,14 +417,12 @@
       "image": "nixos/nix:2.31.2",
       "channel": "nixos-25.05",
       "lifecycle": "channel-eol",
-      "adapter": "nix",
-      "status": "existing-path",
+      "adapter": "xtask-dist",
+      "status": "planned",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/nix.yml"
-      ],
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
+        "dependency-probe": false,
         "package-build": false,
         "install": false,
         "coinstall": false,
@@ -460,14 +439,12 @@
       "image": "nixos/nix:2.31.2",
       "channel": "nixos-25.11",
       "lifecycle": "channel-eol",
-      "adapter": "nix",
-      "status": "existing-path",
+      "adapter": "xtask-dist",
+      "status": "planned",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/nix.yml"
-      ],
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
+        "dependency-probe": false,
         "package-build": false,
         "install": false,
         "coinstall": false,
@@ -484,15 +461,13 @@
       "image": "nixos/nix:2.31.2",
       "channel": "nixos-26.05",
       "lifecycle": "channel-current",
-      "adapter": "nix",
-      "status": "existing-path",
+      "adapter": "xtask-dist",
+      "status": "planned",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/nix.yml"
-      ],
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
+        "dependency-probe": false,
+        "package-build": false,
         "install": false,
         "coinstall": false,
         "graphical-session": false,
@@ -508,15 +483,13 @@
       "image": "nixos/nix:2.31.2",
       "channel": "nixos-unstable",
       "lifecycle": "rolling",
-      "adapter": "nix",
-      "status": "existing-path",
+      "adapter": "xtask-dist",
+      "status": "planned",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/nix.yml"
-      ],
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
+        "dependency-probe": false,
+        "package-build": false,
         "install": false,
         "coinstall": false,
         "graphical-session": false,

@@ -1,9 +1,12 @@
 name: Package repository
 
-# Builds the signed RPM, APT, pacman and Alpine repository of one Gnoblin channel from the packages the release pipeline
-# built, checks it the way a client would, and uploads it. The release workflow calls this after its package jobs: the
-# stable channel after a release tag publishes, the nightly channel from nightly.yml. design/package-repositories.md has
-# the layout, the version rules and the key handling.
+# Builds the signed RPM, APT, pacman and Alpine repository of one Gnoblin channel from the packages a release pipeline
+# built, checks it the way a client would, and uploads it. design/package-repositories.md has the layout, the version
+# rules and the key handling.
+#
+# Nothing calls this workflow yet. The Mutter release pipeline that did (release.yml, packages.yml and nightly.yml) was
+# removed with the Mutter product tree; the Rust release workflow that replaces it is tracked in issue #379. That workflow
+# must upload the packages as artifacts named packages-<release_tag>-<arch> and call this one.
 #
 # Without the signing key (a fork, a pull request, a run before the key exists) the tree is built and verified with a
 # throw-away key, kept as a workflow artifact, and not uploaded. Publication needs all of:
@@ -81,8 +84,7 @@ jobs:
       PROJECT: gnoblin
       CHANNEL: ${{ inputs.channel }}
       # The Debian suite the deb packages are for. The prefix needs glibc 2.43, glib 2.86, GTK 4.20 and the other
-      # libraries of design/package-repositories.md, which Debian testing has. scripts/check-package-install.sh
-      # installs them there.
+      # libraries of design/package-repositories.md, which Debian testing has.
       DEB_SUITE: forky
       REPO_URL: ${{ vars.REPO_URL || 'https://repo.gnoblin.org' }}
     steps:
