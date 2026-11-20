@@ -2,7 +2,7 @@
 """Record what a live Gnoblin session answers on its control socket, next to the contract inventory.
 
 The inventory in tests/parity/contracts was read out of the Mutter-based C sources and never started a compositor. This script
-connects to a running Mutter-based session (the patched Mutter with the Lua runtime, API 1.93), asks every
+connects to a running Mutter-based session (the patched Mutter, API 1.93), asks every
 operation of the inventory once and records the answer, subscribes to every event the session offers and records the
 events that arrive, and writes tests/parity/contracts/recorded-session.json. A parity target that implements the same
 socket can then be held to what the reference really answered, not to what the sources suggest it would.

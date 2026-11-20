@@ -3,7 +3,7 @@
 Configure the shell with one TypeScript file, `shell.ts`. You install nothing and run no build step: the shell reads the
 file as it is, and reloads it when you save.
 
-The session runs this shell unless you pick another: see [Where the config lives](#where-the-config-lives). A directory with only an `init.lua` runs the stock config (see [Which shell runs](#which-shell-runs)).
+The session runs this shell unless you pick another: see [Where the config lives](#where-the-config-lives).
 
 ## Write your first config
 
@@ -56,7 +56,6 @@ Next:
 files in one directory leave Gnoblin with no way to choose.
 
 - A `shell.ts`, `shell.js` or any other `shell.*` file stops it. Add `--force` to write the starter over `shell.ts`.
-- An `init.lua` does not stop it: the new `shell.ts` runs, and nothing reads the old file.
 
 Open the file. As written it does exactly what the shell does when there is no `shell.ts`, so nothing changes until you
 edit it. The lines that start with `// ` are examples. Remove the `// ` to switch one on:
@@ -97,7 +96,7 @@ The first place that gives exactly one shell wins.
 - With no shell at all, `gnoblin` says where it looked and exits 1. No compositor starts.
 
 [Start Gnoblin and choose a shell](/starting-gnoblin) has an example for each place, the exact messages, and the
-installed-shell file formats. `GNOBLIN_SHELL` with a `.lua` file is refused with the migrate command.
+installed-shell file formats.
 
 Two commands show the result without starting a session:
 
@@ -157,11 +156,11 @@ it evaluated cleanly, and logs `generation N active` as a native shell does.
 
 ### The stock library is installed data, and its generated half is built in
 
-`gnoblin-core` and `gnoblin-std` are TypeScript files, installed under `share/gnoblin/js/gnoblin-core/` and
-`share/gnoblin/js/gnoblin-std/`. The runtime reads them from there. The modules under `generated/` in each package (the schema's
-classes, the ABI constants, the verbs, and the std classes and records) are the exception: they are written from the schema and the ABI
-crates when the runtime is built, and the runtime library carries them, so they always describe the libraries it was built with. An
-installed copy of one (`dist` writes them for editors) is never read in its place. The runtime looks for the rest, in order, in:
+`gnoblin-core` and `gnoblin-std` are TypeScript files, installed under `share/gnoblin/js/gnoblin-core/` and `share/gnoblin/js/gnoblin-std/`. The runtime reads them from there.
+
+The modules under `generated/` in each package (the schema's classes, the ABI constants, the verbs, and the std classes and records) are the exception: they are written from the schema and the ABI crates when the runtime is built, and the runtime library carries them, so they always describe the libraries it was built with.
+
+An installed copy of one (`dist` writes them for editors) is never read in its place. The runtime looks for the rest, in order, in:
 
 1. the one directory `GNOBLIN_JS_STOCK_DIR` names, when it is set and not empty (to work on the stock library, point it at
    `data/js` of a source tree; a build tree's `cargo` environment does);
@@ -178,20 +177,6 @@ gnoblin-std is not installed (looked in: /home/you/.local/share/gnoblin/js, /usr
 
 The starter is the packaged default shell, `share/gnoblin/default-shell/shell.ts` (`shells/default/shell.ts` in a source tree): it is what `gnoblin` runs on a fresh
 install and what `gnoblinctl config init` writes.
-
-### If you still have an `init.lua`
-
-Gnoblin does not read Lua. When the config directory has an `init.lua` and nothing selects a shell, the session
-starts on the stock config and logs one warning:
-
-```text
-/home/you/.config/gnoblin/init.lua: this is a Lua config and Gnoblin no longer runs Lua, so the stock desktop runs instead;
-run `gnoblinctl config migrate` to convert it to shell.ts (see docs/migrating-from-lua.md)
-```
-
-[Migrating from Lua](migrating-from-lua.md) maps each Lua construct to its TypeScript equivalent. Run
-`gnoblinctl config migrate` to convert your `init.lua` to a `shell.ts`, or `gnoblinctl config init` to write a starter.
-When a `shell.ts` exists, nothing reads the `init.lua` beside it.
 
 ## Check a file
 
@@ -248,10 +233,9 @@ object](js-settings.md) lists them.
 
 ## The native std binding: `gnoblin-std/native`
 
-`import { ... } from "gnoblin-std/native"` is the **generated** binding of `libgnoblin-std.so.1`: the same collections, workspaces,
-layouts, bindings, transitions, styles and scene nodes the Rust and Python SDKs have, written by `gnoblin-sdkgen` (at build time, never committed) from the
-library's function table ([the generator](sdk-generator.md)) and calling it through `__gnoblinStd`, which the JavaScript runtime
-library installs. A shell that imports it fails at the import, naming `libgnoblin-std.so.1`, when the library is not installed.
+`import { ... } from "gnoblin-std/native"` is the **generated** binding of `libgnoblin-std.so.1`: the same collections, workspaces, layouts, bindings, transitions, styles and scene nodes the Rust and Python SDKs have, written by `gnoblin-sdkgen` (at build time, never committed) from the library's function table ([the generator](sdk-generator.md)) and calling it through `__gnoblinStd`, which the JavaScript runtime library installs.
+
+A shell that imports it fails at the import, naming `libgnoblin-std.so.1`, when the library is not installed.
 
 ```ts
 import { EventKind, GridLayout, clients, createWorkspace, insetArea, tile } from "gnoblin-std/native";
@@ -280,35 +264,28 @@ view of the core's (`tree_link_open`/`tree_link_attach`), and what the engine wr
 that one connection, one transaction on the wire at a time. A shell may therefore use `gnoblin-core`'s objects and
 `gnoblin-std/native` together, as `examples/03-typescript-std/shell.ts` does.
 
-The stock layouts of `gnoblin-std` (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `KioskLayout`, `DwindleLayout`, `StripLayout`, `ArcLayout`, `Carousel3dLayout`) are thin classes over the
-library's built-in layouts: the options are plain fields as before, the algorithm is `libgnoblin-std`'s (`Builtin`, made by
-`builtin_new`, which belongs to no workspace). They need `libgnoblin-std.so.1`, like `gnoblin-std/native`; their option errors are the
-library's. An action (`DwindleLayout.toggleSplit(workspace)`, `StripLayout.focusLeft(workspace)`) is the library's too: it runs against the workspace's windows and
-hands the keyboard to the window the library names. `FloatingLayout` asks the library where a new window goes (`floating_place`) and keeps the host contract (see design section 25.5).
+- The stock layouts of `gnoblin-std` (`MasterStackLayout`, `GridLayout`, `MonocleLayout`, `KioskLayout`, `DwindleLayout`, `StripLayout`, `ArcLayout`, `Carousel3dLayout`) are thin classes over the library's built-in layouts: the options are plain fields as before, the algorithm is `libgnoblin-std`'s (`Builtin`, made by `builtin_new`, which belongs to no workspace).
+- They need `libgnoblin-std.so.1`, like `gnoblin-std/native`; their option errors are the library's.
+- An action (`DwindleLayout.toggleSplit(workspace)`, `StripLayout.focusLeft(workspace)`) is the library's too: it runs against the workspace's windows and hands the keyboard to the window the library names.
+- `FloatingLayout` asks the library where a new window goes (`floating_place`) and keeps the host contract (see design section 25.5).
 
-The stock drag classes (`ClientMoveBinding`, `ClientResizeBinding`, `ClientSwapBinding`, `SplitResizeBinding`) are still
-`PointerDragBinding` subclasses, so the engine's matcher picks the binding and a script's own subclass keeps working, but what a
-drag decides is the library's: each hook gives `libgnoblin-std` one step (`drag_step`) and writes back the answer. `clampAxis`,
-`constrainRect`, `resizedRect`, `edgeZone`, `tileRect` and `gestureDirection` call the library too. A script that wants the library to
-match the chord as well uses `Binding.drag`, `Binding.gesture` or `new MoveBinding().start()` from `gnoblin-std/native`; those start
-the library's desktop, so a shell that keeps its own workspaces uses the engine's `KeyBinding` and `PointerDragBinding`.
+- The stock drag classes (`ClientMoveBinding`, `ClientResizeBinding`, `ClientSwapBinding`, `SplitResizeBinding`) are still `PointerDragBinding` subclasses, so the engine's matcher picks the binding and a script's own subclass keeps working, but what a drag decides is the library's: each hook gives `libgnoblin-std` one step (`drag_step`) and writes back the answer.
+- `clampAxis`, `constrainRect`, `resizedRect`, `edgeZone`, `tileRect` and `gestureDirection` call the library too.
+- A script that wants the library to match the chord as well uses `Binding.drag`, `Binding.gesture` or `new MoveBinding().start()` from `gnoblin-std/native`; those start the library's desktop, so a shell that keeps its own workspaces uses the engine's `KeyBinding` and `PointerDragBinding`.
 
-`OutputProfile` and `Display` are thin objects over the library's profiles and displays (`profile_*`, `display_*`): what a script writes is checked
-here, in the words of the property that is wrong, and the library applies each profile when its monitor connects and again when it returns,
-gives every output a display, mirrors and spans, and shows a viewport's workspace. Its requests to the compositor go out as one `apply` per
-output, and an output with a request in flight is not asked again until the compositor has answered (the answer reaches the output's
-`onApplied` listeners). A shell on `gnoblin-std/native` alone gets the same behaviour from `Profile` and `Display`.
+- `OutputProfile` and `Display` are thin objects over the library's profiles and displays (`profile_*`, `display_*`): what a script writes is checked here, in the words of the property that is wrong, and the library applies each profile when its monitor connects and again when it returns, gives every output a display, mirrors and spans, and shows a viewport's workspace.
+- Its requests to the compositor go out as one `apply` per output, and an output with a request in flight is not asked again until the compositor has answered (the answer reaches the output's `onApplied` listeners).
+- A shell on `gnoblin-std/native` alone gets the same behaviour from `Profile` and `Display`.
 
 `examples/03-typescript-std/` has the shells the tests run. The hand-written part of the binding is `gnoblin-std/native`
 itself (`clients()`, `tile`, `createWorkspace`).
 
 ## The object classes: `gnoblin-std/generated/objects`
 
-The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object
-protocol, and `gnoblin-std/generated/objects` has a class for each of its types. They are **generated** from the catalog the library serves
-(`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)) and embedded in the runtime library, and so are
-their declarations, which `gnoblinctl types init` and `gnoblinctl check --types` give the editor. A class added to the catalog is a class
-here with no change to the runtime. `gnoblin-core/generated/objects` is the same for the core's `gnoblin.model`.
+- The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object protocol, and `gnoblin-std/generated/objects` has a class for each of its types.
+- They are **generated** from the catalog the library serves (`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)) and embedded in the runtime library, and so are their declarations, which `gnoblinctl types init` and `gnoblinctl check --types` give the editor.
+- A class added to the catalog is a class here with no change to the runtime.
+- `gnoblin-core/generated/objects` is the same for the core's `gnoblin.model`.
 
 ```ts
 import { EntryModel, FocusPolicy } from "gnoblin-std/generated/objects";

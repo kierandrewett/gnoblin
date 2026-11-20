@@ -131,7 +131,7 @@ that sandbox, not of Gnoblin. None of them changes what the compositor does:
   (`Failed to import file '/usr/lib/systemd/catalog/dbus-broker-launch.catalog'`), after the packages were installed,
   except `gstreamer1`, which was missing and made the Mutter link fail with undefined `gst_*` references until it was
   installed by hand.
-- The guardian finds itself with `readlink("/proc/self/exe")` to start its supervisor and Lua worker. Without `/proc` that
+- The guardian finds itself with `readlink("/proc/self/exe")` to start its supervisor and worker. Without `/proc` that
   fails ("could not locate installed executable"). `scripts/parity-proc-shim.c` is a preload library that answers that one
   link with the path the process was executed by and passes every other `readlink` through. Build it in the root with
   `cc -shared -fPIC -O2 -o /opt/parity-proc-shim.so scripts/parity-proc-shim.c -ldl` and set `GNOBLIN_PARITY_PROC_SHIM`.

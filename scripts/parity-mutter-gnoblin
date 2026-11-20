@@ -10,7 +10,7 @@
 # foreground until the runner kills its process group.
 #
 # The session is the one the Mutter-based tree's `scripts/run-gnoblin-devkit.sh` starts: the guardian in devkit mode, which runs the patched
-# Mutter on its headless backend with one 1280x720 virtual monitor, the Lua runtime and the control socket. The devkit
+# Mutter on its headless backend with one 1280x720 virtual monitor and the control socket. The devkit
 # only matters for the headless backend: Mutter would also start its viewer window, so the host display is unset and
 # GNOBLIN_DEVKIT_KEEP_SESSION keeps the session alive when the viewer fails to open (patch devkit-keep-session-after-
 # viewer-exit). Nothing of the host session is used: the bus, the XDG directories and the runtime directory are the
