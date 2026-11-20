@@ -86,7 +86,7 @@ gnoblin-std-portal = { path = "../gnoblin-std-portal" }
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # A real client for the real Wayland socket: the end-to-end tests drive the
 # session the way another process would.
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 # A real X11 client, to prove the session's X server accepts a connection.
 x11rb = "0.14.0"
@@ -94,7 +94,7 @@ x11rb = "0.14.0"
 # end-to-end tests exercise the shipped code rather than a copy of it.
 gnoblinctl = { path = "../gnoblinctl" }
 # A temporary directory for the two sockets, so a test run touches no shared path.
-tempfile = "3.23.0"
+tempfile.workspace = true
 # The EI client the end-to-end EIS test speaks to the endpoint with, the same crate the
 # endpoint itself is written against.
 reis = { version = "0.7.1", default-features = false }
@@ -103,13 +103,6 @@ prost.workspace = true
 # The portal backend's own library, served on a private session bus against a live session:
 # the consent end to end test drives the real D-Bus methods into the real compositor.
 xdg-desktop-portal-gnoblin = { path = "../xdg-desktop-portal-gnoblin" }
-# The real services role, which serves the Gnoblin keyring on a private bus and offers its unlock prompt to the stock
-# shell through the compositor, so the keyring's `prompt.secret` path is tested as the session runs it.
-gnoblin-services = { path = "../gnoblin-services" }
-# The real ScreenSaver service and the connection it reads the lock through, so the lock end to end test takes the
-# lock the way a locker on the user's desktop does: `org.freedesktop.ScreenSaver.Lock` on a private bus.
-gnoblin-service-core = { path = "../gnoblin-service-core" }
-gnoblin-service-screensaver = { path = "../gnoblin-service-screensaver" }
 gnoblin-lock-auth = { path = "../gnoblin-lock-auth" }
 zbus.workspace = true
 # Decodes the PNG a View capture writes, so a test reads the pixels the compositor composed.

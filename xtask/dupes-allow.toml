@@ -189,12 +189,6 @@ kind = "same-name"
 reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
 
 [[allow]]
-left = "gnoblin-model::Observation"
-right = "gnoblin-testkit::Observation"
-kind = "same-name"
-reason = "the graph's published observation and the test kit's recorded one are different records of different streams"
-
-[[allow]]
 left = "gnoblin-output::Effect"
 right = "gnoblin-session::Effect"
 kind = "same-name"
@@ -1408,12 +1402,6 @@ kind = "same-name"
 reason = "the clipped source and destination rectangles of a GPU copy and a session's startup plan are different things"
 
 [[allow]]
-left = "gnoblin-backend::SelectionTarget"
-right = "gnoblin-wayland::WlDataDeviceManagerSelectionKind"
-kind = "same-shape"
-reason = "the backend contract names the two selections without Smithay's type, as the compositor's own record of them does; a conversion each way sits beside the compositor's handler"
-
-[[allow]]
 left = "gnoblin-backend::Part"
 right = "gnoblin-types::Edge"
 kind = "same-shape"
@@ -1702,18 +1690,6 @@ kind = "same-name"
 reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
 
 [[allow]]
-left = "gnoblin-core::Window"
-right = "gnoblin-wm-api::Window"
-kind = "same-name"
-reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
-
-[[allow]]
-left = "gnoblin-core::WindowRequest"
-right = "gnoblin-wayland::WindowRequest"
-kind = "same-name"
-reason = "the SDK names what a shell author handles, in the shell vocabulary of the ABI; the other crate's type is internal to its own subsystem. An SDK crate may name no workspace crate (sdk-isolation), so neither can be reused for the other"
-
-[[allow]]
 left = "gnoblin-render::Node"
 right = "gnoblin-testkit::Node"
 kind = "same-name"
@@ -1844,12 +1820,6 @@ left = "gnoblin-std-impl::LayoutContext"
 right = "gnoblin-std::LayoutContext"
 kind = "same-name"
 reason = "the SDK's LayoutContext carries Clients and a Workspace handle; the library's carries node ids: the two sides of the C ABI"
-
-[[allow]]
-left = "gnoblin-std-impl::Kind"
-right = "gnoblin-std::LayoutSpec"
-kind = "same-shape"
-reason = "both say a layout is the library's floating one or the shell's own; one is the library's object, the other the SDK's argument to the table"
 
 [[allow]]
 left = "gnoblin-std-impl::Want"
@@ -2284,66 +2254,6 @@ kind = "same-name"
 reason = "unrelated types that share a name: the std library and SDK name what a shell animates, styles and places, the other crate names its own concept"
 
 [[allow]]
-left = "gnoblin-backend-drm::Screen"
-right = "gnoblin-core::Screen"
-kind = "same-name"
-reason = "gnoblin-core's `Screen` is the schema class `screen` as a typed node wrapper (generated); the DRM crate's is a libinput screen mapping"
-
-[[allow]]
-left = "gnoblin-backend-drm::Seat"
-right = "gnoblin-core::Seat"
-kind = "same-name"
-reason = "gnoblin-core's `Seat` is the schema class `seat` as a typed node wrapper (generated); the DRM crate's is a logind seat"
-
-[[allow]]
-left = "gnoblin-backend::Seat"
-right = "gnoblin-core::Seat"
-kind = "same-name"
-reason = "gnoblin-core's `Seat` is the schema class `seat` as a typed node wrapper (generated); the nested backend's is its input seat"
-
-[[allow]]
-left = "gnoblin-core::Camera"
-right = "gnoblin-render::Camera"
-kind = "same-name"
-reason = "gnoblin-core's `Camera` is the schema class `camera` as a typed node wrapper (generated); the renderer's is the projection it draws with"
-
-[[allow]]
-left = "gnoblin-core::Canvas"
-right = "gnoblin-paint::Canvas"
-kind = "same-name"
-reason = "gnoblin-core's `Canvas` is the schema class `canvas` as a typed node wrapper (generated); the paint crate's is its raster surface"
-
-[[allow]]
-left = "gnoblin-core::Lock"
-right = "gnoblin-lock::Lock"
-kind = "same-name"
-reason = "gnoblin-core's `Lock` is the schema class `lock` as a typed node wrapper (generated); the lock crate's is the lock state machine"
-
-[[allow]]
-left = "gnoblin-core::Surface"
-right = "gnoblin-render-frame::Surface"
-kind = "same-name"
-reason = "gnoblin-core's `Surface` is the schema class `surface` as a typed node wrapper (generated); the frame crate's is a renderer surface description"
-
-[[allow]]
-left = "gnoblin-core::Surface"
-right = "gnoblin-wayland::Surface"
-kind = "same-name"
-reason = "gnoblin-core's `Surface` is the schema class `surface` as a typed node wrapper (generated); the Wayland engine's is a protocol surface"
-
-[[allow]]
-left = "gnoblin-core::View"
-right = "gnoblin-render-frame::View"
-kind = "same-name"
-reason = "gnoblin-core's `View` is the schema class `view` as a typed node wrapper (generated); the frame crate's is a renderer view description"
-
-[[allow]]
-left = "gnoblin-core::View"
-right = "gnoblin-std::View"
-kind = "same-name"
-reason = "gnoblin-core's `View` is the schema class `view` as a typed node wrapper (generated); the std SDK's is its scene view of a node"
-
-[[allow]]
 left = "gnoblin-std-impl::Scalar"
 right = "gnoblin-sdkgen::Scalar"
 kind = "same-name"
@@ -2429,12 +2339,6 @@ kind = "same-shape"
 reason = "an ABI code and its text, the library's failure and the call layer's view of it; the call layer is an SDK crate and cannot name the implementation"
 
 [[allow]]
-left = "gnoblin-core-impl::CoreRole"
-right = "gnoblin-render::Actor"
-kind = "same-shape"
-reason = "the role the core serves in this process and the party that made a scene change both name the compositor and the shell; one is a command line, the other a tree rule, and the render crate cannot depend on the core"
-
-[[allow]]
 left = "gnoblin-capture::Refusal"
 right = "gnoblin-portal-core::Refusal"
 kind = "same-name"
@@ -2502,12 +2406,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
-right = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2550,12 +2448,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-zwlr-gamma-control-v1::ZwlrGammaControlV1ManagerGlobalData"
-right = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-zwlr-gamma-control-v1::ZwlrGammaControlV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2592,12 +2484,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-zwlr-output-power-management-v1::ZwlrOutputPowerManagementV1ManagerGlobalData"
-right = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-zwlr-output-power-management-v1::ZwlrOutputPowerManagementV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2628,12 +2514,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-ext-idle-notify-v1::ExtIdleNotifyV1NotifierUserData"
-right = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-ext-idle-notify-v1::ExtIdleNotifyV1NotifierUserData"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2658,12 +2538,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland::ViewSourceGlobal"
-right = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ViewSourceGlobal"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2683,24 +2557,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 [[allow]]
 left = "gnoblin-wayland::ViewSourceGlobal"
 right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-right = "gnoblin-wayland-zwp-virtual-keyboard-v1::ZwpVirtualKeyboardV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 

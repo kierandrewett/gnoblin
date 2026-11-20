@@ -22,8 +22,8 @@ gnoblin-secret.workspace = true
 # The stock window manager the sessions run, so a suite acts on the desktop users get.
 gnoblin-std-wm = { path = "../../gnoblin-std-wm" }
 # The real client: a `wayland-client` connection over the session's own socket proves the round trip.
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 wayland-protocols-plasma = { version = "0.3.12", features = ["client"] }
-tempfile = "3.23.0"
+tempfile.workspace = true

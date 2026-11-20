@@ -1174,7 +1174,6 @@ dependencies = [
 name = "gnoblin-compat-dbus-gnome-shell-screenshot"
 version = "0.2.0-alpha.0"
 dependencies = [
- "futures-lite",
  "gnoblin-client",
  "gnoblin-compat-core",
  "gnoblin-log",
@@ -1260,7 +1259,6 @@ dependencies = [
 name = "gnoblin-compat-host"
 version = "0.2.0-alpha.0"
 dependencies = [
- "futures-lite",
  "gnoblin-compat-core",
  "gnoblin-compat-dbus-gnome-shell-introspect",
  "gnoblin-compat-dbus-mutter-displayconfig",
@@ -1278,7 +1276,6 @@ dependencies = [
  "tempfile",
  "wayland-client",
  "x11rb",
- "zbus",
 ]
 
 [[package]]
@@ -1299,7 +1296,6 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-types",
  "gnoblin-wayland",
- "tempfile",
  "wayland-backend",
  "wayland-client",
  "wayland-scanner",
@@ -1314,7 +1310,6 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-types",
  "gnoblin-wayland",
- "tempfile",
  "wayland-backend",
  "wayland-client",
  "wayland-scanner",
@@ -1358,9 +1353,6 @@ dependencies = [
  "gnoblin-render-frame",
  "gnoblin-schema",
  "gnoblin-secret",
- "gnoblin-service-core",
- "gnoblin-service-screensaver",
- "gnoblin-services",
  "gnoblin-std-portal",
  "gnoblin-std-wm",
  "gnoblin-tree-client",
@@ -1970,7 +1962,6 @@ dependencies = [
 name = "gnoblin-portal-core"
 version = "0.2.0-alpha.0"
 dependencies = [
- "gnoblin-schema",
  "gnoblin-types",
 ]
 
@@ -2033,7 +2024,6 @@ dependencies = [
 name = "gnoblin-render-frame"
 version = "0.2.0-alpha.0"
 dependencies = [
- "gnoblin-log",
  "gnoblin-render",
  "gnoblin-types",
  "naga",
@@ -2190,7 +2180,6 @@ dependencies = [
  "gnoblin-polkit-auth",
  "gnoblin-service-core",
  "gnoblin-service-testkit",
- "gnoblin-types",
  "zbus",
 ]
 
@@ -2244,7 +2233,6 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-proto",
- "gnoblin-schema",
  "gnoblin-service-core",
  "gnoblin-service-keyring",
  "gnoblin-service-location",
@@ -2395,7 +2383,6 @@ version = "0.2.0-alpha.0"
 name = "gnoblin-wayland"
 version = "0.2.0-alpha.0"
 dependencies = [
- "getrandom",
  "gnoblin-authority",
  "gnoblin-backend",
  "gnoblin-capture",
@@ -2427,7 +2414,6 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-misc",
- "wayland-protocols-plasma",
  "wayland-protocols-wlr",
  "wayland-scanner",
  "x11rb",
@@ -2533,7 +2519,6 @@ name = "gnoblin-wayland-foreign-toplevel-shared"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-types",
- "gnoblin-wayland-api",
 ]
 
 [[package]]
@@ -3100,7 +3085,6 @@ dependencies = [
  "gnoblin-backend",
  "gnoblin-config",
  "gnoblin-render",
- "gnoblin-secret",
  "gnoblin-std-wm",
  "gnoblin-types",
  "gnoblin-wayland",
@@ -6134,7 +6118,6 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-proto",
- "gnoblin-schema",
  "gnoblin-types",
  "zbus",
  "zeroize",

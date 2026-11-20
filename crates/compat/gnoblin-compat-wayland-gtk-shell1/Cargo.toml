@@ -30,5 +30,4 @@ wayland-scanner.workspace = true
 
 [dev-dependencies]
 gnoblin-types = { path = "../../gnoblin-types" }
-tempfile = "3.23.0"
 wayland-client.workspace = true

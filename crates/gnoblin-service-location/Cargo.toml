@@ -32,7 +32,7 @@ gnoblin-log = { path = "../gnoblin-log" }
 # The private bus the D-Bus tests start for themselves, shared with the other service crates.
 gnoblin-service-testkit = { path = "../gnoblin-service-testkit" }
 # The policy tests write a configuration file into a temporary directory.
-tempfile = "3.23.0"
+tempfile.workspace = true
 
 [lints]
 workspace = true

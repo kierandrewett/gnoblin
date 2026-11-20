@@ -16,4 +16,4 @@ gnoblin-xwayland = { path = "../../gnoblin-xwayland" }
 gnoblin-log = { path = "../../gnoblin-log" }
 
 [dev-dependencies]
-tempfile = "3.23.0"
+tempfile.workspace = true

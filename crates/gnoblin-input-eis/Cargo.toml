@@ -29,10 +29,10 @@ gnoblin-wayland = { path = "../gnoblin-wayland" }
 # The stock window manager the test session runs.
 gnoblin-std-wm = { path = "../gnoblin-std-wm" }
 # The client half of the protocols those tests exercise.
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 # A socket, runtime directory and shared-memory file per test.
-tempfile = "3.23.0"
+tempfile.workspace = true
 
 [lints]
 workspace = true

@@ -10,8 +10,6 @@ publish.workspace = true
 [dependencies]
 # The request vocabulary the agent's answers travel in, and the tick a deadline is measured in.
 gnoblin-model = { path = "../gnoblin-model" }
-# The primitives the agent names: the owner of a request.
-gnoblin-types = { path = "../gnoblin-types" }
 # The shared agent machinery: the offerer, the slots and the provider the agent reaches the
 # compositor through.
 gnoblin-service-core = { path = "../gnoblin-service-core" }

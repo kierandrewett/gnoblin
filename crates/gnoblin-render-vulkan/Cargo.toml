@@ -36,9 +36,9 @@ naga = { workspace = true, features = ["spv-out"] }
 
 [dev-dependencies]
 # The shared-memory files of the in-process Wayland client (`harness.rs`).
-tempfile = "3.23.0"
+tempfile.workspace = true
 # The client side of `wl_shm` for the in-process client, and the software renderer whose
 # readbacks the parity tests compare with. Its `test-support` feature exposes the composed
 # readback the overlay parity test reads.
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 gnoblin-render-software = { path = "../gnoblin-render-software", features = ["test-support"] }

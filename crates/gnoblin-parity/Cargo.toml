@@ -25,10 +25,10 @@ gnoblin-std-wm = { path = "../gnoblin-std-wm" }
 gnoblin-std-portal = { path = "../gnoblin-std-portal" }
 gnoblin-wayland = { path = "../gnoblin-wayland" }
 gnoblinctl = { path = "../gnoblinctl" }
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 wayland-protocols = { version = "0.32.13", features = ["client"] }
 # A private temporary directory for the candidate's two sockets.
-tempfile = "3.23.0"
+tempfile.workspace = true
 # The Mutter reference runs in a process group of its own and is stopped by signalling the group. `event` is `poll`, which
 # the Wayland client waits on without sleeping in steps, `time` the monotonic clock the EI frame stamps carry, and
 # `param` the page size and clock tick rate the performance baseline reads `/proc` with.

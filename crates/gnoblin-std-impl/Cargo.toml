@@ -57,7 +57,7 @@ gnoblin-std-dyn = { path = "../gnoblin-std-dyn" }
 gnoblin-shell-host = { path = "../gnoblin-shell-host" }
 gnoblin-testkit = { path = "../gnoblin-testkit" }
 gnoblin-tree-client = { path = "../gnoblin-tree-client" }
-tempfile = "3.23.0"
+tempfile.workspace = true
 
 [build-dependencies]
 gnoblin-std-abi = { path = "../gnoblin-std-abi" }

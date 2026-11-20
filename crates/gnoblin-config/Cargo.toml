@@ -27,8 +27,6 @@ gnoblin-config-codegen = { path = "../gnoblin-config-codegen" }
 # A private temporary directory for the store tests, and nothing else: the
 # validation core takes its input as an argument precisely so it needs no fixture.
 gnoblin-testkit = { path = "../gnoblin-testkit" }
-# The contract test reads the recorded key inventory generated from the C loader.
-serde_json.workspace = true
 
 [lints]
 workspace = true

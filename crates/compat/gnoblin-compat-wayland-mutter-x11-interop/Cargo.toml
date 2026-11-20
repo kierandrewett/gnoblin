@@ -27,5 +27,4 @@ wayland-server.workspace = true
 wayland-scanner.workspace = true
 
 [dev-dependencies]
-tempfile = "3.23.0"
 wayland-client.workspace = true

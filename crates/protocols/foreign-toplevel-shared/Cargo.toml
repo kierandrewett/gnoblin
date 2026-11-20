@@ -12,5 +12,4 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-gnoblin-wayland-api = { path = "../api" }
 gnoblin-types = { workspace = true }

@@ -30,7 +30,7 @@ gnoblin-backend = { path = "../gnoblin-backend" }
 # Positions and output identities in the shared primitives.
 gnoblin-types.workspace = true
 # A private directory for the session's socket, so a run touches no shared one.
-tempfile = "3.23.0"
+tempfile.workspace = true
 
 [dev-dependencies]
 # A real client that reads the registry, to prove the descriptor lists what the session advertises.

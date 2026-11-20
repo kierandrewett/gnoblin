@@ -15,7 +15,7 @@ gnoblin-core-abi = { path = "../gnoblin-core-abi" }
 gnoblin-std-abi = { path = "../gnoblin-std-abi" }
 
 [dev-dependencies]
-tempfile = "3.23.0"
+tempfile.workspace = true
 
 [lints]
 workspace = true

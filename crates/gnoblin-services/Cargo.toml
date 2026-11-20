@@ -51,9 +51,6 @@ futures-lite.workspace = true
 gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
-# The tests build the graph from the checked-in schema, so the slot property names
-# this crate publishes are checked against the contract rather than a fixture.
-gnoblin-schema = { path = "../gnoblin-schema" }
 # The private bus the D-Bus tests start for themselves, shared with the other service crates.
 gnoblin-service-testkit = { path = "../gnoblin-service-testkit" }
 

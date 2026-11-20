@@ -61,7 +61,7 @@ gnoblin-log = { path = "../gnoblin-log" }
 # `File::write_all_at` rather than an `mmap`, one copy per frame more than a real client
 # would make, which is why `nested/mod.rs` states the dmabuf path as a follow-up rather
 # than a second code path here.
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 # The client side of `xdg_shell` and of the scale protocols. `staging` is the
 # feature that carries `wp_fractional_scale_v1`; a parent that does not offer it
 # falls back to the integer scale of the `wl_output` a surface is on. `unstable` carries the

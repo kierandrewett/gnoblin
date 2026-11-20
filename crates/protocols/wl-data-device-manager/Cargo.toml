@@ -18,6 +18,6 @@ smithay = { workspace = true }
 [dev-dependencies]
 gnoblin-config = { path = "../../gnoblin-config" }
 gnoblin-wayland-testkit = { path = "../testkit" }
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }

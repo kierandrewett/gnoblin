@@ -93,8 +93,6 @@ gnoblin-authority = { path = "../gnoblin-authority" }
 wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
 # Log lines go through the `gnoblin-log` facade's macros, so each one carries this crate's component.
 gnoblin-log = { path = "../gnoblin-log" }
-# Random bytes for xdg-foreign handles, drawn from the kernel. Already in Cargo.lock.
-getrandom = { workspace = true }
 # The Gnoblin-owned protocols' server halves, generated from `protocols/` at compile
 # time. Checking the generated code in would let the XML and the code drift, which is
 # exactly what a wire-compatible port cannot afford.
@@ -125,18 +123,16 @@ gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # The real client the integration tests run against the server. A `wayland-client`
 # connection over the test's own socket is what proves the round trip: no display,
 # no session, no compositor from the environment.
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 # The client side of the protocols the tests exercise, generated from the same XML
 # the server side uses.
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 # `zwlr_foreign_toplevel_manager_v1`'s client half, from the same wlroots XML the
 # server in `protocols::zwlr_foreign_toplevel_management_v1` is generated from.
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
-# The client half of KDE's server-decoration and appmenu protocols, from the XML the protocol crates serve.
-wayland-protocols-plasma = { version = "0.3.12", features = ["client"] }
 # A temporary directory and a shared-memory file for the test's socket and buffers,
 # so a test run touches no shared path.
-tempfile = "3.23.0"
+tempfile.workspace = true
 # Reads back the PNG a View capture writes.
 png.workspace = true
 # The colours a test's stand-in host describes its frame in. The engine's dependency

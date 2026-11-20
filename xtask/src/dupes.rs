@@ -34,7 +34,8 @@
 //!
 //! # Running the gate
 //!
-//! `cargo xtask dupes` fails on any hit the allow-list does not waive: the shared
+//! `cargo xtask dupes` fails on any hit the allow-list does not waive, and on any allow entry that waives nothing, so the list
+//! cannot go stale: the shared
 //! types have moved into `gnoblin-types` and every remaining pair is either that or
 //! a reviewed homonym, so a new duplicate is a regression rather than the state of
 //! the migration. The check runs locally, as every check in this rewrite does:
@@ -243,7 +244,7 @@ pub fn run(deny: bool) -> ExitCode {
     }
 }
 
-/// Print the report and return whether every hit was allowed.
+/// Print the report and return whether every hit was allowed and no allow entry is stale.
 fn report(root: &Path, deny: bool) -> Result<bool, String> {
     let crates = workspace_crates(root)?;
     let definitions = scan(&crates, root)?;
@@ -283,16 +284,22 @@ fn report(root: &Path, deny: bool) -> Result<bool, String> {
     if !definitions.is_empty() && unallowed > 0 && !deny {
         println!("[dupes] warning mode: {unallowed} hit(s) reported, exiting zero; pass --deny to fail");
     }
-    for entry in &allow {
-        let used = hits.iter().any(|hit| entry.permits(hit));
-        if !used {
-            println!(
-                "[dupes] warning: allow entry {} <-> {} matches nothing",
-                entry.left, entry.right
-            );
-        }
+    let stale = stale_entries(&allow, &hits);
+    for entry in &stale {
+        println!(
+            "[dupes] stale allow entry {} <-> {} matches nothing; remove it from {ALLOW_FILE}",
+            entry.left, entry.right
+        );
     }
-    Ok(unallowed == 0)
+    Ok(unallowed == 0 && stale.is_empty())
+}
+
+/// The allow entries that waive no hit, so the list cannot outlive the duplicates it excused.
+fn stale_entries<'a>(allow: &'a [AllowEntry], hits: &[Hit]) -> Vec<&'a AllowEntry> {
+    allow
+        .iter()
+        .filter(|entry| !hits.iter().any(|hit| entry.permits(hit)))
+        .collect()
 }
 
 /// The workspace members, as crate roots to scan. A member that ends in `/*` stands for every directory
@@ -705,6 +712,28 @@ mod tests {
             ..entry.clone()
         };
         assert!(!other_kind.permits(widget), "the kind scopes the entry");
+    }
+
+    #[test]
+    fn an_allow_entry_that_waives_nothing_is_stale() {
+        let (_, definitions) = scan_fixture("dupes");
+        let hits = hits(&definitions);
+        let live = AllowEntry {
+            left: "alpha::Widget".to_owned(),
+            right: "beta::Widget".to_owned(),
+            kind: Some("same-name".to_owned()),
+            reason: "fixture".to_owned(),
+        };
+        let gone = AllowEntry {
+            left: "alpha::Gone".to_owned(),
+            right: "beta::Gone".to_owned(),
+            kind: None,
+            reason: "fixture".to_owned(),
+        };
+        let allow = [live, gone];
+        let stale = stale_entries(&allow, &hits);
+        assert_eq!(stale.len(), 1);
+        assert_eq!(stale[0].left, "alpha::Gone");
     }
 
     #[test]

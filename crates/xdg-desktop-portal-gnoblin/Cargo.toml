@@ -50,5 +50,3 @@ async-io.workspace = true
 zbus.workspace = true
 
 [dev-dependencies]
-# The checked-in schema the test graph is built from.
-gnoblin-schema = { path = "../gnoblin-schema" }

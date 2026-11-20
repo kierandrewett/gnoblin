@@ -29,12 +29,10 @@ gnoblin-session = { path = "../../gnoblin-session" }
 # The services role's linked-agent contract and the GeoClue agent the role always links.
 gnoblin-services = { path = "../../gnoblin-services" }
 gnoblin-log = { path = "../../gnoblin-log" }
-zbus.workspace = true
-futures-lite.workspace = true
 
 [dev-dependencies]
 # The XSETTINGS and interop tests run a real client against the session, as a toolkit would.
 gnoblin-xwayland = { path = "../../gnoblin-xwayland" }
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 x11rb = "0.14.0"
-tempfile = "3.23.0"
+tempfile.workspace = true

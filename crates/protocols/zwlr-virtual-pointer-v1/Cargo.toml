@@ -22,5 +22,5 @@ gnoblin-render-frame = { path = "../../gnoblin-render-frame" }
 gnoblin-types = { workspace = true }
 gnoblin-wayland = { path = "../../gnoblin-wayland" }
 gnoblin-wayland-testkit = { path = "../testkit" }
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }

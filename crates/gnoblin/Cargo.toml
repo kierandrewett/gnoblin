@@ -53,7 +53,7 @@ all = { level = "deny", priority = -1 }
 [dev-dependencies]
 # The tests run the built binary, so the exit codes and the flags are the shipped
 # ones rather than a function that happens to share their names.
-tempfile = "3.23.0"
+tempfile.workspace = true
 # The guardian tests ask the session what it serves through the real command line client,
 # and read the version the compositor advertises from the crate that serves it.
 gnoblinctl = { path = "../gnoblinctl" }
@@ -69,7 +69,7 @@ rustix = { workspace = true, features = ["process", "net", "time"] }
 # not name the shell (and the shell's crate may not name the compositor), so the test lives where both are
 # allowed. It maps real windows with a Wayland client, reads the scene back as a tree observer, and reads what
 # the shell logged.
-wayland-client = "0.31.14"
+wayland-client.workspace = true
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 # `tests/native_shell.rs` types a chord into a real session through `zwp_virtual_keyboard_v1`, as an on-screen keyboard does: the
 # spawned binary has no input tap to inject through.
