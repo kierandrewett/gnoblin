@@ -24,7 +24,7 @@ const MAX_IDLE_MS: f64 = 86_400_000.0;
 const MAX_WATCHES: usize = 256;
 
 /// One watch.
-struct Watch {
+struct IdleWatchState {
     id: String,
     ms: f64,
     idle: bool,
@@ -39,7 +39,7 @@ struct Hold {
 
 /// What the service keeps for a generation.
 #[derive(Default)]
-struct Table {
+struct IdleTable {
     service: Obj,
     hooked: bool,
     /// The last reading: milliseconds idle, and how many holds.
@@ -56,7 +56,7 @@ struct Table {
 }
 
 thread_local! {
-    static IDLE: PerGeneration<Table> = PerGeneration::new();
+    static IDLE: PerGeneration<IdleTable> = PerGeneration::new();
 }
 
 /// The last reading the table holds, or what the owner connection says now.
@@ -134,7 +134,7 @@ fn evaluate(cx: &Cx<'_>, watch: Obj, reading: Option<(u64, u64)>) {
         return;
     };
     let moved = cx
-        .with_state::<Watch, _>(watch, |state| {
+        .with_state::<IdleWatchState, _>(watch, |state| {
             let idle = inhibitors == 0 && idle_ms as f64 >= state.ms;
             (state.alive && idle != state.idle).then(|| {
                 state.idle = idle;
@@ -187,7 +187,7 @@ fn lost(cx: &Cx<'_>, why: &str) {
     }
     for watch in watches {
         let resumed = cx
-            .with_state::<Watch, _>(watch, |state| std::mem::replace(&mut state.idle, false))
+            .with_state::<IdleWatchState, _>(watch, |state| std::mem::replace(&mut state.idle, false))
             .unwrap_or(false);
         if resumed {
             let me = cx.object_value(watch);
@@ -226,7 +226,7 @@ fn watch(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
     });
     let obj = cx.spawn(
         "idle_watch",
-        Watch {
+        IdleWatchState {
             id,
             ms,
             idle: false,
@@ -254,7 +254,7 @@ fn watch(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
 }
 
 /// Ends a watch: its `closed` is told once.
-fn cancel(cx: &Cx<'_>, watch: &mut Watch) {
+fn cancel(cx: &Cx<'_>, watch: &mut IdleWatchState) {
     if !watch.alive {
         return;
     }
@@ -365,7 +365,7 @@ fn release(cx: &Cx<'_>, hold: &mut Hold) {
 
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
-        .class::<Watch>("idle_watch")
+        .class::<IdleWatchState>("idle_watch")
         .ctor(|_, _| Err(Fail::refused("a watch is made with `gnoblin.idle.watch`")))
         .get("id", |state, _| Ok(Val::Text(state.id.clone())))
         .get("ms", |state, _| Ok(Val::Double(state.ms)))

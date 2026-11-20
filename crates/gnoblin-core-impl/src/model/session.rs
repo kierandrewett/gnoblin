@@ -28,24 +28,24 @@ use crate::verbs::OwnerRequest;
 const UNKNOWN: &str = "unknown";
 
 /// What a reload gave.
-struct Reloaded {
+struct ReloadedConfig {
     revision: u64,
     not_applied: Vec<String>,
 }
 
 /// What the services keep for a generation.
 #[derive(Default)]
-struct Table {
+struct SessionTable {
     session: Obj,
     runtime: Obj,
     hooked: bool,
     session_listeners: Registered,
     runtime_listeners: Registered,
-    last_reload: Option<Reloaded>,
+    last_reload: Option<ReloadedConfig>,
 }
 
 thread_local! {
-    static SESSION: PerGeneration<Table> = PerGeneration::new();
+    static SESSION: PerGeneration<SessionTable> = PerGeneration::new();
 }
 
 /// The code a compositor refusal is reported under: the wire's kebab-case, spelled as the docs spell it.
@@ -111,7 +111,7 @@ fn reload_config(cx: &Cx<'_>) -> Res<Val> {
             Ok(text) => {
                 let mut lines = text.lines();
                 let revision = lines.next().and_then(|line| line.parse().ok()).unwrap_or(0);
-                let reloaded = Reloaded {
+                let reloaded = ReloadedConfig {
                     revision,
                     not_applied: lines.map(str::to_owned).collect(),
                 };

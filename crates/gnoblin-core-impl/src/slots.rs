@@ -113,7 +113,7 @@ impl SlotLinkProvider for OwnerSlots {
 }
 
 /// What the shell tells the thread.
-enum Command {
+enum SlotCommand {
     Claim(String),
     Release(String),
     /// Claims `request` and answers it with `answer`.
@@ -127,7 +127,7 @@ enum Command {
 
 /// The slot link and its thread, as a session holds them.
 pub(crate) struct SlotConnection {
-    commands: Sender<Command>,
+    commands: Sender<SlotCommand>,
     /// Written to wake the thread when a command is waiting.
     wake: OwnedFd,
     stop: Arc<AtomicBool>,
@@ -156,7 +156,7 @@ impl SlotConnection {
         })
     }
 
-    fn send(&self, command: Command) {
+    fn send(&self, command: SlotCommand) {
         if self.commands.send(command).is_ok() {
             let _ = rustix::io::write(&self.wake, &1_u64.to_ne_bytes());
         }
@@ -164,23 +164,23 @@ impl SlotConnection {
 
     /// Claims `slot` as the shell. A refusal is published as [`SlotNotice::Refused`].
     pub(crate) fn claim(&self, slot: &str) {
-        self.send(Command::Claim(slot.to_owned()));
+        self.send(SlotCommand::Claim(slot.to_owned()));
     }
 
     /// Gives a claimed slot back.
     pub(crate) fn release(&self, slot: &str) {
-        self.send(Command::Release(slot.to_owned()));
+        self.send(SlotCommand::Release(slot.to_owned()));
     }
 
     /// Says that no generation observes the slot (`gap`), or that one does again. The claim stays through a gap, and a request that
     /// comes in it is refused after the hold, never served by the built-in dialog.
     pub(crate) fn gap(&self, gap: bool) {
-        self.send(Command::Gap(gap));
+        self.send(SlotCommand::Gap(gap));
     }
 
     /// Answers `request`: `deny` refuses it by policy, anything else is `pass`, which leaves it to the built-in dialog.
     pub(crate) fn answer(&self, request: u64, deny: bool) {
-        self.send(Command::Answer {
+        self.send(SlotCommand::Answer {
             request,
             answer: if deny { b"deny" } else { b"pass" },
         });
@@ -205,7 +205,7 @@ fn publish(notice: SlotNotice) {
 /// dropped. A request the shell does not answer within `timings.hold` is refused here.
 fn serve(
     provider: &dyn SlotLinkProvider,
-    commands: &Receiver<Command>,
+    commands: &Receiver<SlotCommand>,
     wake: &OwnedFd,
     stop: &AtomicBool,
     timings: SlotTimings,
@@ -226,7 +226,7 @@ fn serve(
     while !stop.load(Ordering::Relaxed) {
         while let Ok(command) = commands.try_recv() {
             match command {
-                Command::Claim(slot) => {
+                SlotCommand::Claim(slot) => {
                     // A claim a generation made stands for the next one: it is not made twice.
                     gap_since = None;
                     if !claimed.contains(&slot) {
@@ -238,13 +238,13 @@ fn serve(
                         }
                     }
                 }
-                Command::Release(slot) => {
+                SlotCommand::Release(slot) => {
                     claimed.remove(&slot);
                     if let Err(error) = link.release_slot(&slot) {
                         log::debug!(area = "slots", "{slot} was not released: {error}");
                     }
                 }
-                Command::Answer { request, answer } => {
+                SlotCommand::Answer { request, answer } => {
                     unanswered.remove(&request);
                     if refused.remove(&request) {
                         continue;
@@ -254,7 +254,7 @@ fn serve(
                         log::debug!(area = "slots", request, "the verdict was not delivered: {error}");
                     }
                 }
-                Command::Gap(gap) => gap_since = gap.then(Instant::now),
+                SlotCommand::Gap(gap) => gap_since = gap.then(Instant::now),
             }
         }
         match link.poll() {

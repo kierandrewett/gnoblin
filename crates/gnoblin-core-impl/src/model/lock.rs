@@ -34,7 +34,7 @@ const UNANSWERED: &str = "failed: the compositor did not answer the password che
 
 /// What the service keeps for a generation.
 #[derive(Default)]
-struct Table {
+struct LockTable {
     service: Obj,
     /// The checks asked and not answered, by token: the registration that hears the answer and the timer that ends the wait.
     checks: BTreeMap<u64, (u64, u64)>,
@@ -43,7 +43,7 @@ struct Table {
 }
 
 thread_local! {
-    static LOCK: PerGeneration<Table> = PerGeneration::new();
+    static LOCK: PerGeneration<LockTable> = PerGeneration::new();
 }
 
 /// The tree's lock node, if it has one.

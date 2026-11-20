@@ -1586,9 +1586,14 @@ sent once and given back, a refused hold, cancel, the limits, a lost connection,
 launches (pending at once, started with `closed` last, a window that was there already, focus and application changes, the oldest match, the
 deadline, `finish`, a replaced token, the 64-launch registry, the argument limits); dialogs and authentication (decline, pass, an unknown kind, a
 request that ended in its window, the polkit description, the claim and its release); the session lock (state, node, screen, `engage`,
-`authenticate`, an answer told once, the heartbeat rate, the 30-second deadline); virtual outputs and insets. Not covered, and left to the flip: the
-refusal of `reload_config` while the configuration loads, `error_codes` (the code table is generated from the catalog at the flip), the TypeScript
-and Python halves, and `modular::native_services` with its example; the existing `host_*`, `lock` and `xr` tests stay the TypeScript half.
+`authenticate`, an answer told once, the heartbeat rate, the 30-second deadline); virtual outputs and insets. Not covered: the refusal of `reload_config` while the configuration loads (it needs a staged generation, which the object protocol's tests cannot
+make; the check is `glue::loading`, a generation that is not `Active`), and the TypeScript test `error_codes` (the code table is generated from the
+catalog at the flip; the native codes are the ABI's `E_*` and the operation's `error_code`). `modular::native_services` runs example 23
+(`examples/23-native-services`, Rust, TypeScript and Python) in a real session: a program with its exit code and output, a launch that times
+out, an idle watch that fires, and the session lock request settling. It does not show a watch resuming at a key: whether the headless
+compositor's virtual keyboard resets its idle reading is not established, and the resume is tested against the connection's readings. It also
+cannot offer a dialog request, so the dialog policy is tested against the fake slot only. The existing `host_*`, `lock` and `xr` tests stay the
+TypeScript half.
 
 **Deviations from the TypeScript surface.** A spawn option `env` is a list of `NAME=value`. The process and idle listener methods are `on_exited`,
 `on_idle`, `on_resume` and `on_closed` (and the signals of those names), and a watch's `idle` property is `is_idle` because `idle` is its signal. A

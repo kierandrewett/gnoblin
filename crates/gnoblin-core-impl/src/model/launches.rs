@@ -30,32 +30,32 @@ const APPLICATION_MAX: usize = 512;
 
 /// Where a launch is.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Phase {
+enum LaunchPhase {
     Pending,
     Started,
     TimedOut,
     Ended,
 }
 
-impl Phase {
+impl LaunchPhase {
     fn name(self) -> &'static str {
         match self {
-            Phase::Pending => "pending",
-            Phase::Started => "started",
-            Phase::TimedOut => "timed_out",
-            Phase::Ended => "ended",
+            LaunchPhase::Pending => "pending",
+            LaunchPhase::Started => "started",
+            LaunchPhase::TimedOut => "timed_out",
+            LaunchPhase::Ended => "ended",
         }
     }
 }
 
 /// One launch of the registry.
-struct Record {
+struct LaunchRecord {
     obj: Obj,
     token: String,
     application: String,
     timeout_ms: u64,
     started_at: f64,
-    phase: Phase,
+    phase: LaunchPhase,
     revision: u64,
     /// The timer that ends it at its deadline, while it is pending.
     timer: u64,
@@ -64,19 +64,19 @@ struct Record {
 
 /// What the service keeps for a generation.
 #[derive(Default)]
-struct Table {
+struct LaunchTable {
     service: Obj,
-    records: Vec<Record>,
+    records: Vec<LaunchRecord>,
 }
 
 thread_local! {
-    static LAUNCHES: PerGeneration<Table> = PerGeneration::new();
+    static LAUNCHES: PerGeneration<LaunchTable> = PerGeneration::new();
 }
 
 /// The state of every object of the class: a launch is told by its object.
-struct Launch {
+struct LaunchState {
     /// What the launch was when it left the registry: a launch stays readable after it is gone.
-    frozen: Option<Record>,
+    frozen: Option<LaunchRecord>,
 }
 
 /// The form two application ids are compared in: lowercase, no `.desktop`.
@@ -86,8 +86,8 @@ fn normalise(name: &str) -> String {
 }
 
 /// Leaves `pending` for `phase`, and queues what is told of it. False for a launch that is not pending.
-fn settle(cx: &Cx<'_>, record: &mut Record, phase: Phase, reason: &str) -> bool {
-    if record.phase != Phase::Pending {
+fn settle(cx: &Cx<'_>, record: &mut LaunchRecord, phase: LaunchPhase, reason: &str) -> bool {
+    if record.phase != LaunchPhase::Pending {
         return false;
     }
     record.phase = phase;
@@ -100,9 +100,9 @@ fn settle(cx: &Cx<'_>, record: &mut Record, phase: Phase, reason: &str) -> bool 
         .collect();
     cx.emit_on(record.obj, "changed", vec![launch.clone(), Val::List(fields)]);
     match phase {
-        Phase::Started => cx.emit_on(record.obj, "started", vec![launch.clone()]),
-        Phase::TimedOut => cx.emit_on(record.obj, "timed_out", vec![launch.clone()]),
-        Phase::Pending | Phase::Ended => {}
+        LaunchPhase::Started => cx.emit_on(record.obj, "started", vec![launch.clone()]),
+        LaunchPhase::TimedOut => cx.emit_on(record.obj, "timed_out", vec![launch.clone()]),
+        LaunchPhase::Pending | LaunchPhase::Ended => {}
     }
     cx.emit_on(record.obj, "closed", vec![launch, Val::Text(reason.to_owned())]);
     true
@@ -119,9 +119,9 @@ fn answered(cx: &Cx<'_>, app_id: &str) {
             if let Some(record) = table
                 .records
                 .iter_mut()
-                .find(|record| record.phase == Phase::Pending && normalise(&record.application) == wanted)
+                .find(|record| record.phase == LaunchPhase::Pending && normalise(&record.application) == wanted)
             {
-                settle(cx, record, Phase::Started, "started");
+                settle(cx, record, LaunchPhase::Started, "started");
             }
         });
     });
@@ -132,7 +132,7 @@ fn expired(cx: &Cx<'_>, launch: Obj) {
     LAUNCHES.with(|launches| {
         launches.with(cx.ctx(), |table| {
             if let Some(record) = table.records.iter_mut().find(|record| record.obj == launch) {
-                settle(cx, record, Phase::TimedOut, "timed_out");
+                settle(cx, record, LaunchPhase::TimedOut, "timed_out");
             }
         });
     });
@@ -232,8 +232,8 @@ fn begin(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
     let (timeout_ms, listener_val) = options_of(cx, args.get(2))?;
     let ctx = cx.ctx();
     let service = cx.me();
-    let obj = cx.spawn("launch", Launch { frozen: None })?;
-    let mut record = Record {
+    let obj = cx.spawn("launch", LaunchState { frozen: None })?;
+    let mut record = LaunchRecord {
         obj,
         token: token.clone(),
         application,
@@ -241,7 +241,7 @@ fn begin(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
         started_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0.0, |since| since.as_secs_f64() * 1000.0),
-        phase: Phase::Pending,
+        phase: LaunchPhase::Pending,
         revision: 0,
         timer: 0,
         listeners: Vec::new(),
@@ -255,7 +255,7 @@ fn begin(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
         launches.with(ctx, |table| {
             table.records.iter().position(|held| held.token == token).map(|at| {
                 let mut earlier = table.records.remove(at);
-                settle(cx, &mut earlier, Phase::Ended, "replaced");
+                settle(cx, &mut earlier, LaunchPhase::Ended, "replaced");
                 earlier
             })
         })
@@ -270,7 +270,7 @@ fn begin(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
                 table
                     .records
                     .iter()
-                    .position(|held| held.phase != Phase::Pending)
+                    .position(|held| held.phase != LaunchPhase::Pending)
                     .map(|at| table.records.remove(at))
             })
         });
@@ -281,7 +281,7 @@ fn begin(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
                 settle(
                     cx,
                     &mut record,
-                    Phase::Ended,
+                    LaunchPhase::Ended,
                     &format!("the registry holds {MAX_LAUNCHES} pending launches"),
                 );
                 leave(cx, record);
@@ -302,7 +302,7 @@ fn begin(cx: &Cx<'_>, args: &[Val]) -> Res<Val> {
 }
 
 /// The record of the launch `state` is, read by `work`: the registry's, or the one the launch kept when it left it.
-fn read<R>(state: &Launch, cx: &Cx<'_>, work: impl Fn(&Record) -> R) -> Res<R> {
+fn read<R>(state: &LaunchState, cx: &Cx<'_>, work: impl Fn(&LaunchRecord) -> R) -> Res<R> {
     let me = cx.me();
     let held = LAUNCHES.with(|launches| {
         launches.with(cx.ctx(), |table| {
@@ -320,15 +320,15 @@ fn read<R>(state: &Launch, cx: &Cx<'_>, work: impl Fn(&Record) -> R) -> Res<R> {
 }
 
 /// A launch left the registry: it keeps what it was, and the library lets go of it once what is queued has been told.
-fn leave(cx: &Cx<'_>, record: Record) {
+fn leave(cx: &Cx<'_>, record: LaunchRecord) {
     let obj = record.obj;
-    let _ = cx.with_state::<Launch, _>(obj, |launch| launch.frozen = Some(record));
+    let _ = cx.with_state::<LaunchState, _>(obj, |launch| launch.frozen = Some(record));
     cx.later_on(obj, move |cx| cx.unhold(obj));
 }
 
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
-        .class::<Launch>("launch")
+        .class::<LaunchState>("launch")
         .ctor(|_, _| Err(Fail::refused("a launch is made by `gnoblin.launches.begin`")))
         .get("token", |state, cx| {
             read(state, cx, |record| Val::Text(record.token.clone()))
@@ -347,7 +347,7 @@ pub(super) fn register(builder: &mut Builder) {
             cx.enum_val("launch_state", name)
         })
         .get("alive", |state, cx| {
-            read(state, cx, |record| Val::Bool(record.phase == Phase::Pending))
+            read(state, cx, |record| Val::Bool(record.phase == LaunchPhase::Pending))
         })
         .get("revision", |state, cx| {
             read(state, cx, |record| Val::Uint(record.revision))
@@ -357,7 +357,7 @@ pub(super) fn register(builder: &mut Builder) {
             LAUNCHES.with(|launches| {
                 launches.with(cx.ctx(), |table| {
                     if let Some(record) = table.records.iter_mut().find(|record| record.obj == me) {
-                        settle(cx, record, Phase::Ended, "ended");
+                        settle(cx, record, LaunchPhase::Ended, "ended");
                     }
                 });
             });
@@ -382,7 +382,7 @@ pub(super) fn register(builder: &mut Builder) {
         .get("pending", |_, cx| {
             Ok(Val::Bool(LAUNCHES.with(|launches| {
                 launches.with(cx.ctx(), |table| {
-                    table.records.iter().any(|record| record.phase == Phase::Pending)
+                    table.records.iter().any(|record| record.phase == LaunchPhase::Pending)
                 })
             })))
         })

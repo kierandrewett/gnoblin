@@ -28,18 +28,18 @@ const SLOT: &str = "dialogs.observe";
 
 /// What a request is.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
+enum RequestKind {
     Consent,
     Secret,
     Auth,
 }
 
-impl Kind {
+impl RequestKind {
     fn name(self) -> &'static str {
         match self {
-            Kind::Consent => "consent",
-            Kind::Secret => "secret",
-            Kind::Auth => "auth",
+            RequestKind::Consent => "consent",
+            RequestKind::Secret => "secret",
+            RequestKind::Auth => "auth",
         }
     }
 }
@@ -53,8 +53,8 @@ struct Authentication {
 }
 
 /// A request the listeners are shown.
-pub(super) struct Request {
-    kind: Kind,
+pub(super) struct OfferedRequest {
+    kind: RequestKind,
     app_id: String,
     subject: String,
     deadline: f64,
@@ -67,7 +67,7 @@ pub(super) struct Request {
 
 /// What the services keep for a generation.
 #[derive(Default)]
-struct Table {
+struct DialogTable {
     dialogs: Obj,
     authentication: Obj,
     hooked: bool,
@@ -82,7 +82,7 @@ struct Table {
 }
 
 thread_local! {
-    static DIALOGS: PerGeneration<Table> = PerGeneration::new();
+    static DIALOGS: PerGeneration<DialogTable> = PerGeneration::new();
     /// The generations that hold the slot now. The claim belongs to the shell instance and outlives a generation: it is given back when
     /// an observer wants none, and kept through the gap between one generation and the next.
     static OBSERVERS: RefCell<BTreeSet<GnoblinCtx>> = const { RefCell::new(BTreeSet::new()) };
@@ -224,7 +224,7 @@ fn authentication_details(payload: &[u8]) -> (String, String, Vec<String>) {
 }
 
 /// Whether any listener could use the slot.
-fn wanted(table: &Table) -> bool {
+fn wanted(table: &DialogTable) -> bool {
     !table.dialog_listeners.is_empty() || !table.authentication_listeners.is_empty()
 }
 
@@ -319,7 +319,7 @@ fn slot_event(cx: &Cx<'_>, notice: SlotNotice) {
             // The window ended (answered, refused, timed out): a late `decline` has nothing to refuse.
             let obj = DIALOGS.with(|dialogs| dialogs.with(ctx, |table| table.held.get(&request).copied()));
             if let Some(obj) = obj {
-                let _ = cx.with_state::<Request, _>(obj, |state| state.open = false);
+                let _ = cx.with_state::<OfferedRequest, _>(obj, |state| state.open = false);
             }
         }
         SlotNotice::Lost(why) => {
@@ -331,7 +331,7 @@ fn slot_event(cx: &Cx<'_>, notice: SlotNotice) {
                 })
             });
             for obj in held.into_values() {
-                let _ = cx.with_state::<Request, _>(obj, |state| state.open = false);
+                let _ = cx.with_state::<OfferedRequest, _>(obj, |state| state.open = false);
                 cx.later_on(obj, move |cx| cx.unhold(obj));
             }
             cx.log(
@@ -357,8 +357,8 @@ fn slot_event(cx: &Cx<'_>, notice: SlotNotice) {
 /// A request was offered: the listeners are shown it, and the verdict goes after them.
 fn offered(cx: &Cx<'_>, id: u64, deadline: u64, title: &str, message: &str, subject: &[u8]) {
     let ctx = cx.ctx();
-    let mut request = Request {
-        kind: Kind::Consent,
+    let mut request = OfferedRequest {
+        kind: RequestKind::Consent,
         app_id: String::new(),
         subject: String::new(),
         deadline: deadline as f64,
@@ -368,16 +368,16 @@ fn offered(cx: &Cx<'_>, id: u64, deadline: u64, title: &str, message: &str, subj
         authentication: Authentication::default(),
     };
     if let Some(interface) = title.strip_prefix("consent:") {
-        request.kind = Kind::Consent;
+        request.kind = RequestKind::Consent;
         request.subject = interface.to_owned();
         request.app_id = String::from_utf8_lossy(subject).into_owned();
     } else if title == "secret" {
-        request.kind = Kind::Secret;
+        request.kind = RequestKind::Secret;
         request.subject = message.to_owned();
         request.app_id = String::from_utf8_lossy(subject).into_owned();
     } else if title == "auth" {
         let (action_id, requester, identities) = authentication_details(subject);
-        request.kind = Kind::Auth;
+        request.kind = RequestKind::Auth;
         // polkit names a process and never an application, so the verified application id is always empty.
         request.subject = requester;
         request.authentication = Authentication {
@@ -391,7 +391,7 @@ fn offered(cx: &Cx<'_>, id: u64, deadline: u64, title: &str, message: &str, subj
         return;
     }
     let kind = request.kind;
-    let class = if kind == Kind::Auth {
+    let class = if kind == RequestKind::Auth {
         "authentication_request"
     } else {
         "dialog_request"
@@ -412,9 +412,9 @@ fn offered(cx: &Cx<'_>, id: u64, deadline: u64, title: &str, message: &str, subj
     });
     let shown = cx.object_value(obj);
     match kind {
-        Kind::Consent => cx.emit_on(dialogs, "consent_request", vec![shown]),
-        Kind::Secret => cx.emit_on(dialogs, "secret_request", vec![shown]),
-        Kind::Auth => cx.emit_on(authentication, "authentication_request", vec![shown]),
+        RequestKind::Consent => cx.emit_on(dialogs, "consent_request", vec![shown]),
+        RequestKind::Secret => cx.emit_on(dialogs, "secret_request", vec![shown]),
+        RequestKind::Auth => cx.emit_on(authentication, "authentication_request", vec![shown]),
     }
     // The settling call is queued last, so it runs last: the queue runs in order.
     cx.later_on(obj, move |cx| settle(cx, id, obj));
@@ -425,7 +425,7 @@ fn settle(cx: &Cx<'_>, id: u64, obj: Obj) {
     let ctx = cx.ctx();
     let held = DIALOGS.with(|dialogs| dialogs.with(ctx, |table| table.held.remove(&id).is_some()));
     let outcome = cx
-        .with_state::<Request, _>(obj, |state| {
+        .with_state::<OfferedRequest, _>(obj, |state| {
             let was_open = state.open;
             state.open = false;
             (was_open, state.declined, state.reason.clone())
@@ -491,7 +491,7 @@ fn listen(cx: &Cx<'_>, authentication: bool, listener_val: &Val, add: bool) -> R
 }
 
 /// The members every request class has.
-fn request_members<'a>(class: ClassBuilder<'a, Request>) -> ClassBuilder<'a, Request> {
+fn request_members<'a>(class: ClassBuilder<'a, OfferedRequest>) -> ClassBuilder<'a, OfferedRequest> {
     class
         .ctor(|_, _| Err(Fail::refused("a request is offered by the compositor")))
         .get("kind", |state, cx| cx.enum_val("dialog_kind", state.kind.name()))
@@ -514,8 +514,8 @@ fn request_members<'a>(class: ClassBuilder<'a, Request>) -> ClassBuilder<'a, Req
 }
 
 pub(super) fn register(builder: &mut Builder) {
-    let _ = request_members(builder.class::<Request>("dialog_request"));
-    let _ = request_members(builder.class::<Request>("authentication_request"))
+    let _ = request_members(builder.class::<OfferedRequest>("dialog_request"));
+    let _ = request_members(builder.class::<OfferedRequest>("authentication_request"))
         .get("action_id", |state, _| {
             Ok(Val::Text(state.authentication.action_id.clone()))
         })

@@ -20,44 +20,18 @@ use super::values::{enum_name, fields_of};
 use crate::events::{ExitNotice, ShellEvent};
 use crate::session;
 
-/// How a process ended.
-#[derive(Clone)]
-struct Ended {
-    exit_code: Option<i32>,
-    signal: Option<String>,
-    timed_out: bool,
-    stdout: Option<String>,
-    stderr: Option<String>,
-    stdout_truncated: bool,
-    stderr_truncated: bool,
-}
-
-impl Ended {
-    fn of(notice: &ExitNotice) -> Ended {
-        Ended {
-            exit_code: notice.code,
-            signal: notice.signal.clone(),
-            timed_out: notice.timed_out,
-            stdout: notice.stdout.clone(),
-            stderr: notice.stderr.clone(),
-            stdout_truncated: notice.truncated & 1 != 0,
-            stderr_truncated: notice.truncated & 2 != 0,
-        }
-    }
-}
-
 /// One started program.
-pub(super) struct Process {
+pub(super) struct ProcessState {
     id: u64,
     argv: Vec<String>,
-    ended: Option<Ended>,
+    ended: Option<ExitNotice>,
     /// The operation `wait` returned: the same one every time.
     waiting: Option<Obj>,
 }
 
 /// What the service keeps for a generation.
 #[derive(Default)]
-struct Table {
+struct ProcessTable {
     service: Obj,
     hooked: bool,
     /// The processes that have not ended, oldest first: their ids and objects.
@@ -66,7 +40,7 @@ struct Table {
 }
 
 thread_local! {
-    static PROCESSES: PerGeneration<Table> = PerGeneration::new();
+    static PROCESSES: PerGeneration<ProcessTable> = PerGeneration::new();
 }
 
 /// The words a failed spawn or kill carries, in the code the ABI has for them.
@@ -138,19 +112,19 @@ fn options_of(cx: &Cx<'_>, options: Option<&Val>) -> Res<SpawnOptions> {
 }
 
 /// The record `process_exit` of an ending.
-fn exit_value(cx: &Cx<'_>, ended: &Ended) -> Res<Val> {
+fn exit_value(cx: &Cx<'_>, ended: &ExitNotice) -> Res<Val> {
     let some_text = |text: &Option<String>| text.clone().map_or(Val::None, Val::Text);
     glue::record(
         cx,
         "process_exit",
         vec![
-            ended.exit_code.map_or(Val::None, |code| Val::Int(i64::from(code))),
+            ended.code.map_or(Val::None, |code| Val::Int(i64::from(code))),
             some_text(&ended.signal),
             Val::Bool(ended.timed_out),
             some_text(&ended.stdout),
             some_text(&ended.stderr),
-            Val::Bool(ended.stdout_truncated),
-            Val::Bool(ended.stderr_truncated),
+            Val::Bool(ended.truncated & 1 != 0),
+            Val::Bool(ended.truncated & 2 != 0),
         ],
     )
 }
@@ -178,7 +152,7 @@ pub(super) fn spawn(cx: &Cx<'_>, argv: Vec<String>, options: Option<&Val>) -> Re
         session::with(|session| session.spawn(&argv, &options)).map_err(|error| failure(&error, "gnoblin.spawn"))?;
     let obj = cx.spawn(
         "process",
-        Process {
+        ProcessState {
             id: started.id,
             argv,
             ended: None,
@@ -244,9 +218,9 @@ fn exited(cx: &Cx<'_>, notice: &ExitNotice) {
     let Some(obj) = found else {
         return;
     };
-    let ended = Ended::of(notice);
+    let ended = notice.clone();
     let waiting = cx
-        .with_state::<Process, _>(obj, |process| {
+        .with_state::<ProcessState, _>(obj, |process| {
             process.ended = Some(ended);
             process.waiting
         })
@@ -262,7 +236,7 @@ fn exited(cx: &Cx<'_>, notice: &ExitNotice) {
 }
 
 /// The record `process_exit`, or none while the program runs.
-fn exit_of(state: &Process, cx: &Cx<'_>) -> Res<Val> {
+fn exit_of(state: &ProcessState, cx: &Cx<'_>) -> Res<Val> {
     match &state.ended {
         Some(ended) => exit_value(cx, ended),
         None => Ok(Val::None),
@@ -271,7 +245,7 @@ fn exit_of(state: &Process, cx: &Cx<'_>) -> Res<Val> {
 
 pub(super) fn register(builder: &mut Builder) {
     let _ = builder
-        .class::<Process>("process")
+        .class::<ProcessState>("process")
         .ctor(|_, _| Err(Fail::refused("a process is started with `gnoblin.spawn`")))
         .get("id", |state, _| Ok(Val::Uint(state.id)))
         .get("argv", |state, _| {
@@ -296,7 +270,7 @@ pub(super) fn register(builder: &mut Builder) {
             Ok(state
                 .ended
                 .as_ref()
-                .and_then(|ended| ended.exit_code)
+                .and_then(|ended| ended.code)
                 .map_or(Val::None, |code| Val::Int(i64::from(code))))
         })
         .get("signal", |state, _| {
