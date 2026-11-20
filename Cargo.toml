@@ -81,6 +81,7 @@ members = [
     "crates/gnoblin-log",
     "crates/gnoblin-js",
     "crates/gnoblin-model",
+    "crates/gnoblin-object",
     "crates/gnoblin-output",
     "crates/gnoblin-paint",
     "crates/gnoblin-pipewire-export",
