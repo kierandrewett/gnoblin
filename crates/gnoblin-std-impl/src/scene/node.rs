@@ -5,12 +5,12 @@ use gnoblin_object::server::{Builder, ClassBuilder, Cx};
 use gnoblin_object::{Fail, Res, Val};
 
 use super::bindings::bindings_val;
-use super::registry::{NodeHandle, World, world_of};
+use super::registry::{NodeHandle, SceneWorld, world_of};
 use super::{Kind, camera};
 use crate::animation::staging::Prop;
-use crate::math::spatial::{self, Given, Parsed};
-use crate::math::transform::Pose;
-use crate::math::vector::Vec3;
+use crate::math::spatial::{self, Given, ParsedTransform};
+use crate::math::transform::Placement;
+use crate::math::vector::Point3;
 use crate::math::{given_of, pose_val, triple_val, vec3_of};
 
 type Class<'a> = ClassBuilder<'a, NodeHandle>;
@@ -96,12 +96,12 @@ impl NodeHandle {
     }
 
     /// The node's own placement.
-    fn pose(&self) -> Res<Pose> {
+    fn pose(&self) -> Res<Placement> {
         self.world.pose_at(self.node)
     }
 
     /// Writes the parts of a placement that were given.
-    fn place(&self, parts: &Parsed) -> Res<()> {
+    fn place(&self, parts: &ParsedTransform) -> Res<()> {
         if let Some(position) = parts.position {
             self.put("position", Prop::Triple(position))?;
         }
@@ -115,7 +115,7 @@ impl NodeHandle {
     }
 
     /// The placement in the space of the topmost scene ancestor.
-    fn world_pose(&self) -> Res<Pose> {
+    fn world_pose(&self) -> Res<Placement> {
         let mut pose = self.pose()?;
         let mut at = self.node;
         while let Some((parent, _)) = self.world.parent_of(at) {
@@ -213,7 +213,7 @@ fn node_members(class: Class<'_>) -> Class<'_> {
             let pose = crate::math::pose_of(&value)?;
             let given = Given {
                 position: Some(pose.position),
-                rotation: Some(Vec3::of(&pose.rotation())),
+                rotation: Some(Point3::of(&pose.rotation())),
                 uniform_scale: Some(pose.scale),
                 ..Given::default()
             };
@@ -308,7 +308,7 @@ fn node_members(class: Class<'_>) -> Class<'_> {
 }
 
 /// The first descendant of `node` the library made whose name is `name`, depth first.
-pub(super) fn find_below(world: &World, node: u64, name: &str) -> Option<u64> {
+pub(super) fn find_below(world: &SceneWorld, node: u64, name: &str) -> Option<u64> {
     for (child, _) in world.children_of(node) {
         let named = matches!(
             super::read_through(&world.g, child, "name"),

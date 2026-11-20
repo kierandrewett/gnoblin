@@ -8,14 +8,14 @@ use gnoblin_object::{Fail, Res, Val};
 
 use super::Kind;
 use super::node::{find_below, node_of};
-use super::registry::{NodeHandle, World, world_of};
+use super::registry::{NodeHandle, SceneWorld, world_of};
 
 /// The state of the scene service.
-struct Service {
-    world: Rc<World>,
+struct SceneService {
+    world: Rc<SceneWorld>,
 }
 
-impl Service {
+impl SceneService {
     /// The object that holds the tree's own root, made the first time it is asked for.
     fn root(&self, cx: &mut gnoblin_object::server::Cx<'_>) -> Res<Val> {
         let node = self.world.root()?;
@@ -40,8 +40,8 @@ pub(super) fn register(builder: &mut Builder) {
     super::view::register(builder);
     super::bindings::register(builder);
     let _ = builder
-        .class::<Service>("scene")
-        .ctor(|cx, _inits| Ok(Service { world: world_of(cx)? }))
+        .class::<SceneService>("scene")
+        .ctor(|cx, _inits| Ok(SceneService { world: world_of(cx)? }))
         .get("root", |service, cx| service.root(cx))
         .get("metres_per_unit", |service, _| {
             Ok(Val::Double(service.world.metres.get()))

@@ -8,7 +8,7 @@
 use gnoblin_core::{NodeId, Rect};
 use gnoblin_object::{Fail, Res};
 
-use super::registry::World;
+use super::registry::SceneWorld;
 use super::{Kind, read_through, write};
 use crate::animation::staging::Prop;
 use crate::nodes;
@@ -28,7 +28,7 @@ pub(crate) struct Mirror {
 }
 
 /// One window of the mirrored workspace: its node and its rectangle in the compositor's logical pixels.
-struct Shown {
+struct MirroredWindow {
     node: u64,
     rect: Rect,
     visible: bool,
@@ -37,7 +37,7 @@ struct Shown {
 /// What the mirror reads of a workspace.
 struct Source {
     /// The windows on the workspace now, in stacking order.
-    clients: Vec<Shown>,
+    clients: Vec<MirroredWindow>,
     /// The rectangle the workspace fills (its output), or none while no output shows it.
     area: Option<Rect>,
 }
@@ -62,7 +62,7 @@ pub(crate) fn fit_scale(fit: u32, area: (f64, f64), size: (f64, f64)) -> ([f64; 
 }
 
 /// The smallest rectangle that holds every window: the area of a workspace no output shows.
-fn bounding_box(items: &[Shown]) -> Rect {
+fn bounding_box(items: &[MirroredWindow]) -> Rect {
     if items.is_empty() {
         return Rect::new(0.0, 0.0, 0.0, 0.0);
     }
@@ -79,7 +79,7 @@ fn bounding_box(items: &[Shown]) -> Rect {
     Rect::new(left, top, right - left, bottom - top)
 }
 
-impl World {
+impl SceneWorld {
     /// What the library knows of the workspace `id`: `None` when there is no such workspace.
     fn workspace_source(&self, id: &str) -> Option<Source> {
         let std = crate::state::find(self.ctx)?;
@@ -94,7 +94,7 @@ impl World {
             .get(&workspace)?
             .clients
             .iter()
-            .map(|client| Shown {
+            .map(|client| MirroredWindow {
                 node: *client,
                 rect: nodes::rect_of(&self.g, *client),
                 visible: !nodes::flag(&self.g, *client, "minimised")

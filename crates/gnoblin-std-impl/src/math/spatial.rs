@@ -4,7 +4,7 @@
 //! A value of the wrong kind never gets here: the object protocol refuses a text where a vector is declared. What is checked is
 //! what the type cannot say: a number is finite, a list has three numbers, a quaternion has a length.
 
-use super::vector::Vec3;
+use super::vector::Point3;
 use crate::error::{Fail, Res};
 
 /// A number that is finite, or a refusal naming `target` and what the number is.
@@ -31,7 +31,7 @@ pub(crate) fn vector_from(target: &str, parts: &[f64]) -> Res<[f64; 3]> {
 }
 
 /// Three finite numbers from a vector.
-pub(crate) fn vector_checked(target: &str, vector: Vec3) -> Res<[f64; 3]> {
+pub(crate) fn vector_checked(target: &str, vector: Point3) -> Res<[f64; 3]> {
     Ok([
         finite(target, vector.x, "x")?,
         finite(target, vector.y, "y")?,
@@ -67,7 +67,7 @@ pub(crate) fn rotation_from_list(target: &str, parts: &[f64]) -> Res<[f64; 3]> {
 }
 
 /// Three angles in radians from a vector.
-pub(crate) fn rotation_from_angles(target: &str, angles: Vec3) -> Res<[f64; 3]> {
+pub(crate) fn rotation_from_angles(target: &str, angles: Point3) -> Res<[f64; 3]> {
     vector_checked(target, angles).map_err(|_| not_angles(target))
 }
 
@@ -96,13 +96,13 @@ pub(crate) fn scale_from_list(target: &str, parts: &[f64]) -> Res<[f64; 3]> {
 }
 
 /// The scale along each axis from a vector.
-pub(crate) fn scale_from_vector(target: &str, value: Vec3) -> Res<[f64; 3]> {
+pub(crate) fn scale_from_vector(target: &str, value: Point3) -> Res<[f64; 3]> {
     vector_checked(target, value).map_err(|_| not_scale(target))
 }
 
 /// A transform with each part turned into the three numbers the tree stores, or none where nothing was given.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct Parsed {
+pub(crate) struct ParsedTransform {
     pub(crate) position: Option<[f64; 3]>,
     pub(crate) rotation: Option<[f64; 3]>,
     pub(crate) scale: Option<[f64; 3]>,
@@ -111,15 +111,15 @@ pub(crate) struct Parsed {
 /// What a script may give as a transform, each part left out when not given.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Given {
-    pub(crate) position: Option<Vec3>,
-    pub(crate) rotation: Option<Vec3>,
+    pub(crate) position: Option<Point3>,
+    pub(crate) rotation: Option<Point3>,
     pub(crate) orientation: Option<[f64; 4]>,
-    pub(crate) scale: Option<Vec3>,
+    pub(crate) scale: Option<Point3>,
     pub(crate) uniform_scale: Option<f64>,
 }
 
 /// Checks the parts of a transform, in the order position, rotation, scale.
-pub(crate) fn transform_from(target: &str, given: &Given) -> Res<Parsed> {
+pub(crate) fn transform_from(target: &str, given: &Given) -> Res<ParsedTransform> {
     if given.rotation.is_some() && given.orientation.is_some() {
         return Err(Fail::type_error(format!(
             "{target}.orientation: a transform has one rotation, `rotation` or `orientation`"
@@ -146,7 +146,7 @@ pub(crate) fn transform_from(target: &str, given: &Given) -> Res<Parsed> {
         (None, Some(uniform)) => Some(scale_from_number(&place, uniform)?),
         (None, None) => None,
     };
-    Ok(Parsed {
+    Ok(ParsedTransform {
         position,
         rotation,
         scale,
@@ -181,7 +181,7 @@ mod tests {
         let given = Given {
             scale: None,
             uniform_scale: Some(2.0),
-            position: Some(Vec3::new(1.0, 2.0, 3.0)),
+            position: Some(Point3::new(1.0, 2.0, 3.0)),
             ..Given::default()
         };
         let parsed = transform_from("t", &given).expect("a transform");

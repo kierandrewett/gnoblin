@@ -18,18 +18,18 @@ use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Fail, Obj, Res, Val};
 
-use super::bindings::Engine;
+use super::bindings::BindingEngine;
 use super::mirror::Mirror;
 use super::{Kind, SceneState};
 use crate::animation::staging::Prop;
-use crate::math::transform::Pose;
-use crate::math::vector::Vec3;
+use crate::math::transform::Placement;
+use crate::math::vector::Point3;
 use crate::object::with_lib;
 use crate::ui::CanvasEvent;
 
 thread_local! {
     /// The scene of each generation of this thread: a shell has one thread, and a test may run several generations in turn.
-    static WORLDS: RefCell<HashMap<GnoblinCtx, Rc<World>>> = RefCell::new(HashMap::new());
+    static WORLDS: RefCell<HashMap<GnoblinCtx, Rc<SceneWorld>>> = RefCell::new(HashMap::new());
 }
 
 /// The properties of a window that a mirror or a binding may follow.
@@ -74,7 +74,7 @@ pub(crate) struct Entry {
 }
 
 /// The scene of one generation.
-pub(crate) struct World {
+pub(crate) struct SceneWorld {
     pub(crate) ctx: GnoblinCtx,
     pub(crate) g: Gnoblin,
     /// What the checked writes of nodes keep (the kinds the library made).
@@ -85,13 +85,13 @@ pub(crate) struct World {
     /// The generation is ending: the objects that go no longer take their nodes with them.
     pub(crate) ending: Cell<bool>,
     pub(crate) mirrors: RefCell<HashMap<u64, Mirror>>,
-    pub(crate) engine: RefCell<Engine>,
+    pub(crate) engine: RefCell<BindingEngine>,
     /// A turn of the scene is posted and has not run.
     pub(crate) pending: Cell<bool>,
 }
 
 /// The scene of the generation `ctx`, if it has one.
-pub(crate) fn find(ctx: GnoblinCtx) -> Option<Rc<World>> {
+pub(crate) fn find(ctx: GnoblinCtx) -> Option<Rc<SceneWorld>> {
     WORLDS.with(|worlds| worlds.borrow().get(&ctx).cloned())
 }
 
@@ -104,13 +104,13 @@ fn forget(ctx: GnoblinCtx) {
 /// # Errors
 ///
 /// The core refuses the ABI, the tree cannot be attached, or a subscription is refused.
-pub(crate) fn world_for(ctx: GnoblinCtx) -> Res<Rc<World>> {
+pub(crate) fn world_for(ctx: GnoblinCtx) -> Res<Rc<SceneWorld>> {
     if let Some(world) = find(ctx) {
         return Ok(world);
     }
     let g = gnoblin_core::private::gnoblin_for(ctx).map_err(core_fail)?;
     g.attach().map_err(core_fail)?;
-    let world = Rc::new(World {
+    let world = Rc::new(SceneWorld {
         ctx,
         g,
         state: RefCell::new(SceneState::default()),
@@ -118,7 +118,7 @@ pub(crate) fn world_for(ctx: GnoblinCtx) -> Res<Rc<World>> {
         metres: Cell::new(1.0),
         ending: Cell::new(false),
         mirrors: RefCell::new(HashMap::new()),
-        engine: RefCell::new(Engine::default()),
+        engine: RefCell::new(BindingEngine::default()),
         pending: Cell::new(false),
     });
     WORLDS.with(|worlds| worlds.borrow_mut().insert(ctx, Rc::clone(&world)));
@@ -130,7 +130,7 @@ pub(crate) fn world_for(ctx: GnoblinCtx) -> Res<Rc<World>> {
 }
 
 /// The scene for an object call, from the generation the call is for.
-pub(crate) fn world_of(cx: &Cx<'_>) -> Res<Rc<World>> {
+pub(crate) fn world_of(cx: &Cx<'_>) -> Res<Rc<SceneWorld>> {
     world_for(cx.ctx())
 }
 
@@ -139,7 +139,7 @@ fn core_fail(error: gnoblin_core::CoreError) -> Fail {
 }
 
 /// Subscribes the scene to what it needs of the compositor.
-fn subscribe(world: &Rc<World>) -> Res<()> {
+fn subscribe(world: &Rc<SceneWorld>) -> Res<()> {
     let ctx = world.ctx;
     let g = &world.g;
     g.on_shutdown(move || shutdown(ctx)).map_err(core_fail)?;
@@ -207,7 +207,7 @@ fn shutdown(ctx: GnoblinCtx) {
 /// The handle an object of the scene holds: the generation's scene and the node. When the object ends, the node goes with it, unless
 /// it is the tree's own root.
 pub(crate) struct NodeHandle {
-    pub(crate) world: Rc<World>,
+    pub(crate) world: Rc<SceneWorld>,
     pub(crate) node: u64,
     /// The tree's root, which is the compositor's: the object that holds it ends without taking it.
     pub(crate) root: bool,
@@ -219,7 +219,7 @@ impl Drop for NodeHandle {
     }
 }
 
-impl World {
+impl SceneWorld {
     /// Writes a line to the generation's log.
     pub(crate) fn warn(&self, message: &str) {
         #[cfg(any(test, feature = "testing"))]
@@ -305,7 +305,7 @@ impl World {
     }
 
     /// The placement of a node: its position, rotation and first scale.
-    pub(crate) fn pose_at(&self, node: u64) -> Res<Pose> {
+    pub(crate) fn pose_at(&self, node: u64) -> Res<Placement> {
         let state = self.state.borrow();
         let read = |key: &str| state.get(&self.g, node, key).map_err(Fail::from);
         let number = |key: &str| -> Res<f64> {
@@ -320,8 +320,8 @@ impl World {
                 _ => default,
             })
         };
-        let position = Vec3::new(number("x")?, number("y")?, number("z")?);
-        Ok(Pose::new(
+        let position = Point3::new(number("x")?, number("y")?, number("z")?);
+        Ok(Placement::new(
             position,
             triple("rotation", [0.0; 3])?,
             triple("scale", [1.0; 3])?[0],

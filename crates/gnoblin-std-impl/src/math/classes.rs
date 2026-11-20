@@ -7,8 +7,8 @@ use gnoblin_object::server::Builder;
 use gnoblin_object::{Fail, Res, Val};
 
 use super::spatial::{self, Given};
-use super::transform::Pose;
-use super::vector::{Flat, Line, Vec3};
+use super::transform::Placement;
+use super::vector::{Flat, Point3, RayLine};
 
 /// A record with the fields given.
 fn record(fields: Vec<Val>) -> Val {
@@ -16,7 +16,7 @@ fn record(fields: Vec<Val>) -> Val {
 }
 
 /// A `vec3` as a value.
-pub(crate) fn vec3_val(vector: Vec3) -> Val {
+pub(crate) fn vec3_val(vector: Point3) -> Val {
     record(vec![
         Val::Double(vector.x),
         Val::Double(vector.y),
@@ -26,7 +26,7 @@ pub(crate) fn vec3_val(vector: Vec3) -> Val {
 
 /// A list of three numbers as a `vec3` value.
 pub(crate) fn triple_val(parts: [f64; 3]) -> Val {
-    vec3_val(Vec3::new(parts[0], parts[1], parts[2]))
+    vec3_val(Point3::new(parts[0], parts[1], parts[2]))
 }
 
 /// A field of a record, or `default` where it was left out.
@@ -38,9 +38,9 @@ fn field(fields: &[Val], index: usize, default: f64) -> Res<f64> {
 }
 
 /// The `vec3` a value holds.
-pub(crate) fn vec3_of(value: &Val) -> Res<Vec3> {
+pub(crate) fn vec3_of(value: &Val) -> Res<Point3> {
     let fields = value.record()?;
-    Ok(Vec3::new(
+    Ok(Point3::new(
         field(fields, 0, 0.0)?,
         field(fields, 1, 0.0)?,
         field(fields, 2, 0.0)?,
@@ -48,7 +48,7 @@ pub(crate) fn vec3_of(value: &Val) -> Res<Vec3> {
 }
 
 /// The `vec3` a value holds, or none where it is left out.
-fn optional_vec3(value: Option<&Val>) -> Res<Option<Vec3>> {
+fn optional_vec3(value: Option<&Val>) -> Res<Option<Point3>> {
     match value {
         None | Some(Val::None) => Ok(None),
         Some(value) => vec3_of(value).map(Some),
@@ -67,7 +67,7 @@ fn quaternion_of(value: &Val) -> Res<[f64; 4]> {
 }
 
 /// A `pose` as a value.
-pub(crate) fn pose_val(pose: &Pose) -> Val {
+pub(crate) fn pose_val(pose: &Placement) -> Val {
     record(vec![
         vec3_val(pose.position),
         triple_val(pose.rotation()),
@@ -76,16 +76,16 @@ pub(crate) fn pose_val(pose: &Pose) -> Val {
 }
 
 /// The pose a value holds.
-pub(crate) fn pose_of(value: &Val) -> Res<Pose> {
+pub(crate) fn pose_of(value: &Val) -> Res<Placement> {
     let fields = value.record()?;
     let position = optional_vec3(fields.first())?.unwrap_or_default();
     let rotation = optional_vec3(fields.get(1))?.unwrap_or_default();
-    Ok(Pose::new(position, rotation.array(), field(fields, 2, 1.0)?))
+    Ok(Placement::new(position, rotation.array(), field(fields, 2, 1.0)?))
 }
 
-fn line_of(value: &Val) -> Res<Line> {
+fn line_of(value: &Val) -> Res<RayLine> {
     let fields = value.record()?;
-    Ok(Line {
+    Ok(RayLine {
         origin: optional_vec3(fields.first())?.unwrap_or_default(),
         direction: optional_vec3(fields.get(1))?.unwrap_or_default(),
     })
@@ -120,7 +120,7 @@ pub(crate) fn given_of(value: &Val) -> Res<Given> {
 }
 
 /// What `transform_from` answers: a `transform_parts` with the parts that were given, each as angles or an amount per axis.
-pub(crate) fn parsed_val(parsed: &spatial::Parsed) -> Val {
+pub(crate) fn parsed_val(parsed: &spatial::ParsedTransform) -> Val {
     let part = |value: Option<[f64; 3]>| value.map_or(Val::None, triple_val);
     record(vec![
         part(parsed.position),
@@ -164,7 +164,7 @@ pub(crate) fn register(builder: &mut Builder) {
         .function("distance", |_cx, args| {
             Ok(Val::Double(vec3_of(&args[0])?.distance(vec3_of(&args[1])?)))
         })
-        .function("vec3_of", |_cx, args| Ok(vec3_val(Vec3::of(&numbers(&args[0])?))))
+        .function("vec3_of", |_cx, args| Ok(vec3_val(Point3::of(&numbers(&args[0])?))))
         .function("ray_at", |_cx, args| {
             Ok(vec3_val(line_of(&args[0])?.at(args[1].double()?)))
         })
@@ -176,10 +176,10 @@ pub(crate) fn register(builder: &mut Builder) {
                 None => record(vec![Val::Bool(false), Val::Double(0.0), Val::None]),
             })
         })
-        .function("pose_identity", |_cx, _args| Ok(pose_val(&Pose::identity())))
+        .function("pose_identity", |_cx, _args| Ok(pose_val(&Placement::identity())))
         .function("pose_translation", |_cx, args| {
-            let position = Vec3::new(args[0].double()?, args[1].double()?, args[2].double()?);
-            Ok(pose_val(&Pose::new(position, [0.0; 3], 1.0)))
+            let position = Point3::new(args[0].double()?, args[1].double()?, args[2].double()?);
+            Ok(pose_val(&Placement::new(position, [0.0; 3], 1.0)))
         })
         .function("pose_multiply", |_cx, args| {
             Ok(pose_val(&pose_of(&args[0])?.multiply(&pose_of(&args[1])?)))

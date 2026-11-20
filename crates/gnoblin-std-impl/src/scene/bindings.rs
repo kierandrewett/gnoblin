@@ -17,7 +17,7 @@ use gnoblin_object::client::Api;
 use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Callable, ClassId, Fail, MemberId, Obj, Res, Val};
 
-use super::registry::{NodeHandle, World, world_of};
+use super::registry::{NodeHandle, SceneWorld, world_of};
 use crate::math::triple_val;
 use crate::object::{core_api, with_lib};
 
@@ -43,7 +43,7 @@ struct Read {
     seen: Val,
 }
 
-struct Binding {
+struct NodeBindingState {
     id: u64,
     owner: Obj,
     node: u64,
@@ -60,12 +60,12 @@ struct Binding {
 
 /// The bindings of a generation.
 #[derive(Default)]
-pub(crate) struct Engine {
-    list: Vec<Binding>,
+pub(crate) struct BindingEngine {
+    list: Vec<NodeBindingState>,
     next: u64,
 }
 
-impl Engine {
+impl BindingEngine {
     /// Whether any binding is live.
     pub(crate) fn active(&self) -> bool {
         self.list.iter().any(|binding| !binding.disposed)
@@ -112,7 +112,7 @@ thread_local! {
     static THEIRS: RefCell<Vec<(Obj, ClassId, MemberId)>> = const { RefCell::new(Vec::new()) };
 }
 
-impl World {
+impl SceneWorld {
     /// What a read gives now.
     fn read_now(&self, core: Option<&Api>, read: &Read) -> Option<Val> {
         if read.ours {
@@ -393,7 +393,7 @@ impl World {
             }
             engine.next += 1;
             let id = engine.next;
-            engine.list.push(Binding {
+            engine.list.push(NodeBindingState {
                 id,
                 owner,
                 node,
@@ -414,14 +414,14 @@ impl World {
 
 /// The bindings of one node: `node.properties`.
 pub(crate) struct BindingsHandle {
-    pub(crate) world: Rc<World>,
+    pub(crate) world: Rc<SceneWorld>,
     pub(crate) owner: Obj,
     pub(crate) node: u64,
 }
 
 /// One binding: the way to end it.
 struct BindingHandle {
-    world: Rc<World>,
+    world: Rc<SceneWorld>,
     id: u64,
     property: String,
 }
