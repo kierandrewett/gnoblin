@@ -1,8 +1,7 @@
 //! Which backend a started session drives: the `compositor.backend` setting, the `GNOBLIN_BACKEND` variable and
 //! what the machine offers.
 //!
-//! The shipped binary used to run headless whatever the machine was, so a session could neither take a display nor
-//! sit in a window. This module is the one place the choice is made, as a pure function of three inputs (the
+//! The backend is chosen by the machine: a session can take a display or sit in a window. This module is the one place the choice is made, as a pure function of three inputs (the
 //! settings, the requested override and a description of the host), so every rule below is a test that runs on any
 //! machine.
 //!

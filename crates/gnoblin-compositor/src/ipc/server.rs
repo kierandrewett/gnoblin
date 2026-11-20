@@ -3197,8 +3197,7 @@ mod tests {
 
     #[test]
     fn slots_and_the_request_exchange_are_gated_on_the_owner_connection() {
-        // Failure mode: the capability set that used to gate `slot.claim` was deleted and the gate
-        // went with it, so a connection that is not the owner's could claim `portal.ui` or
+        // Failure mode: with no gate on `slot.claim`, a connection that is not the owner's could claim `portal.ui` or
         // `prompt.secret` and answer every consent and passphrase prompt. A member missing from
         // this table is served to any connection.
         for member in [

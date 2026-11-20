@@ -1,8 +1,7 @@
 //! The plus form of a chord (`Super+Return`) claimed by a Rust, a Python and a TypeScript shell in a real session
 //! (`design/modular-framework.md`, section 31.2).
 //!
-//! The compositor's chord parser reads `Super+Return` as it reads `<Super>Return`, and no SDK rewrites the text on the way (the Rust
-//! SDK used to; that code is gone). So each shell below claims the chord as written, in a session that is the shipped binary on a
+//! The compositor's chord parser reads `Super+Return` as it reads `<Super>Return`, and no SDK rewrites the text on the way. So each shell below claims the chord as written, in a session that is the shipped binary on a
 //! headless backend, and the proof is what a user would see: the chord typed on a virtual keyboard reaches the shell, which starts
 //! the stand-in terminal that leaves a file behind. A claim the compositor refused would leave no file.
 

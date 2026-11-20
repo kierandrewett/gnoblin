@@ -2,8 +2,7 @@
 #
 # A request is how the compositor asks a provider to decide something (polkit
 # authentication, a secret prompt, a portal consent dialog, a location request),
-# and the request layer's four frames used to be hand-written beside the schema
-# because an envelope "cannot carry the layer itself". That left a hole: an answer
+# and the request layer's four frames are schema members, because an answer
 # can carry a password, and only a schema member is flagged sensitive, so a request
 # answer travelled as a plain frame and a log or the parity recorder would have kept
 # the bytes. Declaring the four frames here closes it — `answer` is a member with a

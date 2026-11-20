@@ -1399,7 +1399,7 @@ fn a_window_source_follows_its_window_and_ends_with_it() {
         frame.destroy();
 
         // Move the window across the output. A copy that remembered the rectangle from
-        // when the session opened would now return the background it used to cover.
+        // when the session opened would now return the background the window covered before.
         let moved = gnoblin_types::Rect::new(geometry.x + 100, geometry.y + 60, geometry.width, geometry.height);
         session.control.move_window(gnoblin_types::WindowId::new(1), moved);
         session.wait_for(|observation| {

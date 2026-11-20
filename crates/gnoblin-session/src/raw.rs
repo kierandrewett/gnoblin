@@ -343,8 +343,8 @@ mod tests {
 
     #[test]
     fn a_child_log_line_is_passed_on_and_never_wrapped_as_a_guardian_warning() {
-        // An INFO line a child printed on stderr used to be wrapped as `WARN guardian/raw INFO ...`, so a healthy start
-        // read as a page of warnings. Only what the child did not format itself reaches the sink, and that is logged at
+        // An INFO line a child printed on stderr is not wrapped as `WARN guardian/raw INFO ...`, so a healthy start
+        // does not read as a page of warnings. Only what the child did not format itself reaches the sink, and that is logged at
         // the level of its stream.
         let mut text = CHILD_LOG_LINES.join("\n");
         text.push_str("\na library printed this\n");

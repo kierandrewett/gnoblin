@@ -1,4 +1,4 @@
-//! `gnoblinctl output call <id> apply`, which the compositor used to refuse with "does not serve that method".
+//! `gnoblinctl output call <id> apply`.
 //!
 //! The call goes through the real `gnoblinctl` library entry, the real IPC server and the real session on a virtual
 //! output, and it runs the same engine as a shell's `screen.apply` and a `zwlr_output_configuration_v1`: the layout

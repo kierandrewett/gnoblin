@@ -6225,8 +6225,7 @@ fn a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happe
 
 #[test]
 fn a_quiet_turn_over_the_real_links_does_not_wait_for_bytes() {
-    // Each link used to wait up to a millisecond for bytes on every turn, so a turn that found everything quiet took
-    // two: the tree link's and the slot link's. A link is read now only when the kernel says it has bytes, so a quiet
+    // A link is read only when the kernel says it has bytes, so a quiet
     // turn is a few system calls. The proof is the fastest of many turns and not their mean: a wait that is built in
     // makes every turn at least two milliseconds, however loaded the machine is, while a machine busy with other work
     // slows some turns and leaves the quickest alone.

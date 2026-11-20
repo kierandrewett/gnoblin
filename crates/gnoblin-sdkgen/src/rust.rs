@@ -1,7 +1,7 @@
 //! The Rust target: what `gnoblin-core` would otherwise spell by hand, twice.
 //!
 //! The Rust SDK is the thinnest of the SDKs: it calls the ABI table directly, so there is no binding layer to generate. What
-//! it does carry, and what used to be written out by hand, is every name and shape the schema and the ABI already say:
+//! it does carry is every name and shape the schema and the ABI already say:
 //!
 //! - `schema.rs`: the catalog hash and, for every class, its name, its properties, methods and signals as `&str` constants,
 //!   so a shell names a member by a constant the compiler checks and not by a string that drifts;

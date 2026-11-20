@@ -2,7 +2,7 @@
 //! wires them.
 //!
 //! The `gnoblin` binary is dispatch and nothing else (`crates/gnoblin/src/main.rs`). The wiring
-//! it used to carry lives here, so the binary names this crate and no adapter. Only this crate
+//! lives here, so the binary names this crate and no adapter. Only this crate
 //! and the tests link the adapter crates; `xtask/src/deps.rs` enforces that.
 //!
 //! The crate has two modules, one per process that serves adapters:

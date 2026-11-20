@@ -1,7 +1,7 @@
 //! The surface tree on the screen: a real client's popups and subsurfaces, drawn by the real compositor.
 //!
 //! A client's menus, tooltips and combo boxes are `xdg_popup`s, and its video and GL widgets are `wl_subsurface`s.
-//! The compositor used to draw one buffer per window, so none of them reached an output. Every test here maps a
+//! Each is drawn into the output with its window. Every test here maps a
 //! window, adds such a surface, and reads the pixels the output shows through [`ControlHandle::screenshot`]: the
 //! same readback `tests/render.rs` uses, so a probe is the colour an output has at a point and not a proxy for it.
 //!
