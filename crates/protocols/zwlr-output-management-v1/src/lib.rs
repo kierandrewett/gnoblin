@@ -1,3 +1,5 @@
+//! XML protocol `wlr_output_management_unstable_v1` (`<protocol name="wlr_output_management_unstable_v1">`); interfaces served: `zwlr_output_manager_v1`.
+//!
 //! `zwlr_output_manager_v1` (version 4): a client reads the outputs and asks for a new layout.
 //!
 //! A manager announces one head per output, each with its modes, and a `done` event
@@ -5,7 +7,7 @@
 //! against that serial: it enables or disables heads and sets a mode, position, transform,
 //! scale or adaptive sync on each. `test` asks whether the host would accept the layout
 //! and changes nothing; `apply` asks the compositor to make it so, through the same engine a shell's
-//! `screen.apply` uses ([`State::apply_head_requests`](crate::State)).
+//! `screen.apply` uses. The crate queues the configuration ([`PendingConfig`]); the compositor answers it.
 //!
 //! ## Failure modes first
 //!
@@ -25,17 +27,13 @@
 //!    because its objects are no longer alive.
 //! 10. **No host support.** The global is not offered.
 //!
-//! Heads are republished from the host's [`HeadInfo`](crate::output_config::HeadInfo)
-//! snapshot each time [`State::publish_output_heads`](crate::State) runs, which bumps the
-//! serial and retires the previous head objects with `finished`.
+//! Heads are republished from the host's [`HeadInfo`] snapshot each time
+//! [`ZwlrOutputManagementV1State::publish`] runs, which bumps the serial and retires the previous head objects with
+//! `finished`.
 
 use std::sync::{Arc, Mutex};
 
-use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
-use smithay::reexports::wayland_server::protocol::wl_output;
-use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource, WEnum};
-use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use wayland_protocols_wlr::output_management::v1::server::{
+use smithay::reexports::wayland_protocols_wlr::output_management::v1::server::{
     zwlr_output_configuration_head_v1::{
         self as config_head, ZwlrOutputConfigurationHeadV1 as ZwlrOutputManagementV1ConfigurationHead,
     },
@@ -44,78 +42,104 @@ use wayland_protocols_wlr::output_management::v1::server::{
     zwlr_output_manager_v1::{self as manager, ZwlrOutputManagerV1 as ZwlrOutputManagementV1},
     zwlr_output_mode_v1::{self as mode, ZwlrOutputModeV1 as ZwlrOutputManagementV1Mode},
 };
+use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
+use smithay::reexports::wayland_server::protocol::wl_output;
+use smithay::reexports::wayland_server::{
+    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource, WEnum,
+};
+use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
-use crate::State;
-use crate::output_config::{HeadInfo, HeadRequest, ModeRequest};
-use gnoblin_wayland_api::access::{Access, Global};
+use gnoblin_types::OutputId;
+use gnoblin_wayland_api::access::{Access, AccessPolicy, Global};
+use gnoblin_wayland_api::host::CoreHost;
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
+use gnoblin_wayland_types::output::{HeadInfo, HeadRequest, ModeRequest};
 
-use crate::log;
+gnoblin_log::logger!(log = "wayland");
 
 /// The version of `zwlr_output_manager_v1` this session serves.
 pub const MANAGER_VERSION: u32 = 4;
 
+/// What this protocol advertises.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "zwlr-output-management-v1",
+    interfaces: &[ServedInterface::new("zwlr_output_manager_v1", MANAGER_VERSION)],
+    privilege: Privilege::Roster(Global::OutputManagement),
+};
+
+/// What the protocol needs of the compositor.
+pub trait Host: CoreHost + Sized + 'static {
+    /// The manager's bookkeeping.
+    fn output_manager(&mut self) -> &mut ZwlrOutputManagementV1State;
+}
+
 /// Creates the `zwlr_output_manager_v1` global.
-pub(crate) fn global(display_handle: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
-    display_handle.create_global::<State, ZwlrOutputManagementV1, ManagerGlobalData>(
-        MANAGER_VERSION,
-        ManagerGlobalData {
-            access: Arc::clone(access),
-        },
-    )
+pub fn register<D>(registrar: &Registrar<'_>) -> GlobalId
+where
+    D: GlobalDispatch<ZwlrOutputManagementV1, ZwlrOutputManagementV1ManagerGlobalData> + 'static,
+{
+    registrar
+        .display()
+        .create_global::<D, ZwlrOutputManagementV1, ZwlrOutputManagementV1ManagerGlobalData>(
+            MANAGER_VERSION,
+            ZwlrOutputManagementV1ManagerGlobalData {
+                access: Arc::clone(registrar.access()),
+            },
+        )
 }
 
 /// The global data of the manager: who may bind it.
-pub(crate) struct ManagerGlobalData {
+pub struct ZwlrOutputManagementV1ManagerGlobalData {
     access: Arc<Access>,
 }
 
 /// The user data of a bound manager object.
-pub(crate) struct ManagerUserData;
+pub struct ZwlrOutputManagementV1ManagerUserData;
 
 /// The user data of a head object: the output it describes.
-pub(crate) struct HeadUserData {
-    id: gnoblin_types::OutputId,
+pub struct ZwlrOutputManagementV1HeadUserData {
+    id: OutputId,
 }
 
 /// The user data of a mode object: the head it belongs to and its timing.
-pub(crate) struct ModeUserData {
-    head: gnoblin_types::OutputId,
+pub struct ZwlrOutputManagementV1ModeUserData {
+    head: OutputId,
     mode: ModeRequest,
 }
 
 /// The shared state of one configuration and its configuration-head objects.
 #[derive(Default)]
-pub(crate) struct ConfigInner {
+struct ConfigInner {
     /// The serial the client built the configuration on.
     serial: u32,
     /// Whether `apply` or `test` has been sent, after which the object is spent.
     used: bool,
     /// One entry per head the configuration names, in the order the client named them.
-    heads: Vec<(gnoblin_types::OutputId, HeadRequest)>,
+    heads: Vec<(OutputId, HeadRequest)>,
 }
 
 /// The user data of a configuration object.
-pub(crate) struct ConfigUserData {
+pub struct ZwlrOutputManagementV1ConfigUserData {
     inner: Arc<Mutex<ConfigInner>>,
 }
 
 /// The user data of a configuration-head object: its slot in the configuration.
-pub(crate) struct ConfigHeadUserData {
+pub struct ZwlrOutputManagementV1ConfigHeadUserData {
     inner: Arc<Mutex<ConfigInner>>,
     index: usize,
 }
 
 /// A configuration the client asked to apply or test, waiting for the host.
-pub(crate) struct PendingConfig {
+pub struct PendingConfig {
     /// The configuration object that receives `succeeded`, `failed` or `cancelled`.
-    pub(crate) object: ZwlrOutputManagementV1Configuration,
-    pub(crate) serial: u32,
-    pub(crate) requests: Vec<HeadRequest>,
-    pub(crate) test_only: bool,
+    pub object: ZwlrOutputManagementV1Configuration,
+    pub serial: u32,
+    pub requests: Vec<HeadRequest>,
+    pub test_only: bool,
 }
 
 /// The output manager's bookkeeping inside the compositor state.
-pub(crate) struct ZwlrOutputManagementV1State {
+pub struct ZwlrOutputManagementV1State {
     /// Creates the head and mode objects each announcement sends.
     display: DisplayHandle,
     /// The configuration serial; bumped by every change a client can observe.
@@ -131,7 +155,7 @@ pub(crate) struct ZwlrOutputManagementV1State {
 }
 
 impl ZwlrOutputManagementV1State {
-    pub(crate) fn new(display: DisplayHandle) -> Self {
+    pub fn new(display: DisplayHandle) -> Self {
         Self {
             display,
             serial: 0,
@@ -143,88 +167,55 @@ impl ZwlrOutputManagementV1State {
     }
 
     /// Takes the configurations waiting for the host, leaving none behind.
-    pub(crate) fn take_pending(&mut self) -> Vec<PendingConfig> {
+    pub fn take_pending(&mut self) -> Vec<PendingConfig> {
         std::mem::take(&mut self.pending)
     }
-}
 
-impl State {
+    /// The configuration serial: the one a configuration must have been built on to be answered.
+    #[must_use]
+    pub const fn serial(&self) -> u32 {
+        self.serial
+    }
+
+    /// The heads as the host last reported them.
+    #[must_use]
+    pub fn heads(&self) -> &[HeadInfo] {
+        &self.heads
+    }
+
     /// Replaces the advertised heads with the host's snapshot and announces the change.
     ///
     /// Every bound manager retires its old head objects with `finished`, receives the new
     /// ones, and is sent `done` with a new serial. A client holding a configuration on the
     /// old serial is cancelled the next time it applies or tests.
-    pub(crate) fn publish_output_heads(&mut self, heads: Vec<HeadInfo>) {
-        let manager = &mut self.output_manager;
-        manager.heads = heads;
-        manager.serial = manager.serial.wrapping_add(1);
-        let serial = manager.serial;
-        let managers = manager.managers.clone();
+    pub fn publish<D>(&mut self, heads: Vec<HeadInfo>)
+    where
+        D: Dispatch<ZwlrOutputManagementV1Head, ZwlrOutputManagementV1HeadUserData>
+            + Dispatch<ZwlrOutputManagementV1Mode, ZwlrOutputManagementV1ModeUserData>
+            + 'static,
+    {
+        self.heads = heads;
+        self.serial = self.serial.wrapping_add(1);
+        let serial = self.serial;
+        let managers = self.managers.clone();
         for bound in &managers {
-            announce(
-                bound,
-                &mut manager.head_objects,
-                &manager.heads,
-                serial,
-                &manager.display,
-            );
+            announce::<D>(bound, &mut self.head_objects, &self.heads, serial, &self.display);
         }
-    }
-
-    /// Answers the configurations the client asked for, in the order they were made.
-    ///
-    /// The loop runs each one after the dispatch that queued it, through the engine a shell's `screen.apply` uses
-    /// ([`State::apply_head_requests`]). A configuration whose serial is stale is `cancelled`; a head that vanished is
-    /// `failed`; otherwise the answer is `succeeded` or `failed`. A configuration that changed the outputs publishes the
-    /// new heads at once, which bumps the serial, so a configuration queued behind it that was built on the old layout
-    /// is `cancelled` and not applied over a layout it never saw. Returns whether heads were published.
-    pub(crate) fn apply_output_configs(&mut self, backend: &mut dyn gnoblin_backend::Backend<State>) -> bool {
-        let mut published = false;
-        for pending in self.output_manager.take_pending() {
-            if !pending.object.is_alive() {
-                continue;
-            }
-            if pending.serial != self.output_manager.serial {
-                pending.object.cancelled();
-                log::debug!(
-                    area = "output-manager",
-                    "a configuration on a stale serial was cancelled"
-                );
-                continue;
-            }
-            let known = self.output_manager.heads.iter().map(|head| head.id).collect::<Vec<_>>();
-            if pending.requests.iter().any(|request| !known.contains(&request.head)) {
-                pending.object.failed();
-                log::debug!(area = "output-manager", "a configuration named a head that is gone");
-                continue;
-            }
-            match self.apply_head_requests(backend, &pending.requests, pending.test_only) {
-                Ok(()) => {
-                    if !pending.test_only {
-                        let heads = self.output_heads(backend);
-                        self.publish_output_heads(heads);
-                        published = true;
-                    }
-                    pending.object.succeeded();
-                }
-                Err(error) => {
-                    log::debug!(area = "output-manager", %error, "the configuration was refused");
-                    pending.object.failed();
-                }
-            }
-        }
-        published
     }
 }
 
 /// Sends a manager its heads and `done` for `serial`, retiring the head objects it had.
-fn announce(
+fn announce<D>(
     manager: &ZwlrOutputManagementV1,
     head_objects: &mut Vec<(ZwlrOutputManagementV1, Vec<ZwlrOutputManagementV1Head>)>,
     heads: &[HeadInfo],
     serial: u32,
     display: &DisplayHandle,
-) {
+) where
+    D: Dispatch<ZwlrOutputManagementV1Head, ZwlrOutputManagementV1HeadUserData>
+        + Dispatch<ZwlrOutputManagementV1Mode, ZwlrOutputManagementV1ModeUserData>
+        + 'static,
+{
     let slot = head_objects.iter().position(|(bound, _)| bound == manager);
     if let Some(index) = slot {
         for old in head_objects[index].1.drain(..) {
@@ -240,11 +231,13 @@ fn announce(
         return;
     };
     for info in heads {
-        let Ok(head_object) = client.create_resource::<ZwlrOutputManagementV1Head, HeadUserData, State>(
-            display,
-            manager.version(),
-            HeadUserData { id: info.id },
-        ) else {
+        let Ok(head_object) = client
+            .create_resource::<ZwlrOutputManagementV1Head, ZwlrOutputManagementV1HeadUserData, D>(
+                display,
+                manager.version(),
+                ZwlrOutputManagementV1HeadUserData { id: info.id },
+            )
+        else {
             continue;
         };
         manager.head(&head_object);
@@ -252,18 +245,20 @@ fn announce(
         head_object.description(info.description.clone());
         head_object.physical_size(info.physical_mm.0, info.physical_mm.1);
         for (index, mode_info) in info.modes.iter().enumerate() {
-            let Ok(mode_object) = client.create_resource::<ZwlrOutputManagementV1Mode, ModeUserData, State>(
-                display,
-                head_object.version(),
-                ModeUserData {
-                    head: info.id,
-                    mode: ModeRequest {
-                        width: mode_info.width,
-                        height: mode_info.height,
-                        refresh_mhz: mode_info.refresh_mhz,
+            let Ok(mode_object) = client
+                .create_resource::<ZwlrOutputManagementV1Mode, ZwlrOutputManagementV1ModeUserData, D>(
+                    display,
+                    head_object.version(),
+                    ZwlrOutputManagementV1ModeUserData {
+                        head: info.id,
+                        mode: ModeRequest {
+                            width: mode_info.width,
+                            height: mode_info.height,
+                            refresh_mhz: mode_info.refresh_mhz,
+                        },
                     },
-                },
-            ) else {
+                )
+            else {
                 continue;
             };
             head_object.mode(&mode_object);
@@ -294,43 +289,53 @@ fn announce(
     manager.done(serial);
 }
 
-impl GlobalDispatch2<ZwlrOutputManagementV1, State> for ManagerGlobalData {
+impl<D> GlobalDispatch2<ZwlrOutputManagementV1, D> for ZwlrOutputManagementV1ManagerGlobalData
+where
+    D: Host
+        + Dispatch<ZwlrOutputManagementV1, ZwlrOutputManagementV1ManagerUserData>
+        + Dispatch<ZwlrOutputManagementV1Head, ZwlrOutputManagementV1HeadUserData>
+        + Dispatch<ZwlrOutputManagementV1Mode, ZwlrOutputManagementV1ModeUserData>,
+{
     fn bind(
         &self,
-        state: &mut State,
+        state: &mut D,
         _dh: &DisplayHandle,
         client: &Client,
         resource: New<ZwlrOutputManagementV1>,
-        data_init: &mut DataInit<'_, State>,
+        data_init: &mut DataInit<'_, D>,
     ) {
-        let manager = data_init.init(resource, ManagerUserData);
-        state.output_manager.managers.push(manager.clone());
-        let serial = state.output_manager.serial;
-        let heads = state.output_manager.heads.clone();
-        announce(
+        let manager = data_init.init(resource, ZwlrOutputManagementV1ManagerUserData);
+        let manager_state = state.output_manager();
+        manager_state.managers.push(manager.clone());
+        let serial = manager_state.serial;
+        let heads = manager_state.heads.clone();
+        announce::<D>(
             &manager,
-            &mut state.output_manager.head_objects,
+            &mut manager_state.head_objects,
             &heads,
             serial,
-            &state.output_manager.display,
+            &manager_state.display,
         );
         log::debug!(area = "output-manager", client = ?client.id(), "a client bound the output manager");
     }
 
     fn can_view(&self, client: &Client) -> bool {
-        self.access.allows(&client.id(), Global::OutputManagement)
+        AccessPolicy::allows(&*self.access, &client.id(), Global::OutputManagement)
     }
 }
 
-impl Dispatch2<ZwlrOutputManagementV1, State> for ManagerUserData {
+impl<D> Dispatch2<ZwlrOutputManagementV1, D> for ZwlrOutputManagementV1ManagerUserData
+where
+    D: Host + Dispatch<ZwlrOutputManagementV1Configuration, ZwlrOutputManagementV1ConfigUserData>,
+{
     fn request(
         &self,
-        state: &mut State,
+        state: &mut D,
         _client: &Client,
         manager: &ZwlrOutputManagementV1,
         request: manager::Request,
         _dh: &DisplayHandle,
-        data_init: &mut DataInit<'_, State>,
+        data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             manager::Request::CreateConfiguration { id, serial } => {
@@ -338,31 +343,34 @@ impl Dispatch2<ZwlrOutputManagementV1, State> for ManagerUserData {
                     serial,
                     ..ConfigInner::default()
                 }));
-                data_init.init(id, ConfigUserData { inner });
+                data_init.init(id, ZwlrOutputManagementV1ConfigUserData { inner });
             }
             manager::Request::Stop => {
                 manager.finished();
-                state.output_manager.managers.retain(|bound| bound != manager);
+                state.output_manager().managers.retain(|bound| bound != manager);
             }
             _ => log::trace!(area = "output-manager", "an unknown manager request"),
         }
     }
 
-    fn destroyed(&self, state: &mut State, _client: ClientKey, manager: &ZwlrOutputManagementV1) {
-        state.output_manager.managers.retain(|bound| bound != manager);
-        state.output_manager.head_objects.retain(|(bound, _)| bound != manager);
+    fn destroyed(&self, state: &mut D, _client: ClientKey, manager: &ZwlrOutputManagementV1) {
+        state.output_manager().managers.retain(|bound| bound != manager);
+        state
+            .output_manager()
+            .head_objects
+            .retain(|(bound, _)| bound != manager);
     }
 }
 
-impl Dispatch2<ZwlrOutputManagementV1Head, State> for HeadUserData {
+impl<D> Dispatch2<ZwlrOutputManagementV1Head, D> for ZwlrOutputManagementV1HeadUserData {
     fn request(
         &self,
-        _state: &mut State,
+        _state: &mut D,
         _client: &Client,
         _head: &ZwlrOutputManagementV1Head,
         request: head::Request,
         _dh: &DisplayHandle,
-        _data_init: &mut DataInit<'_, State>,
+        _data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             head::Request::Release => {}
@@ -371,15 +379,15 @@ impl Dispatch2<ZwlrOutputManagementV1Head, State> for HeadUserData {
     }
 }
 
-impl Dispatch2<ZwlrOutputManagementV1Mode, State> for ModeUserData {
+impl<D> Dispatch2<ZwlrOutputManagementV1Mode, D> for ZwlrOutputManagementV1ModeUserData {
     fn request(
         &self,
-        _state: &mut State,
+        _state: &mut D,
         _client: &Client,
         _mode: &ZwlrOutputManagementV1Mode,
         request: mode::Request,
         _dh: &DisplayHandle,
-        _data_init: &mut DataInit<'_, State>,
+        _data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             mode::Request::Release => {}
@@ -388,15 +396,18 @@ impl Dispatch2<ZwlrOutputManagementV1Mode, State> for ModeUserData {
     }
 }
 
-impl Dispatch2<ZwlrOutputManagementV1Configuration, State> for ConfigUserData {
+impl<D> Dispatch2<ZwlrOutputManagementV1Configuration, D> for ZwlrOutputManagementV1ConfigUserData
+where
+    D: Host + Dispatch<ZwlrOutputManagementV1ConfigurationHead, ZwlrOutputManagementV1ConfigHeadUserData>,
+{
     fn request(
         &self,
-        state: &mut State,
+        state: &mut D,
         _client: &Client,
         object: &ZwlrOutputManagementV1Configuration,
         request: config::Request,
         _dh: &DisplayHandle,
-        data_init: &mut DataInit<'_, State>,
+        data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             config::Request::EnableHead { id, head } => {
@@ -433,7 +444,7 @@ impl Dispatch2<ZwlrOutputManagementV1Configuration, State> for ConfigUserData {
                 ));
                 data_init.init(
                     id,
-                    ConfigHeadUserData {
+                    ZwlrOutputManagementV1ConfigHeadUserData {
                         inner: Arc::clone(&self.inner),
                         index,
                     },
@@ -481,8 +492,8 @@ impl Dispatch2<ZwlrOutputManagementV1Configuration, State> for ConfigUserData {
 
 /// Marks the configuration spent and queues it for the host, or cancels it at once when its
 /// serial is stale.
-fn queue(
-    state: &mut State,
+fn queue<D: Host>(
+    state: &mut D,
     object: &ZwlrOutputManagementV1Configuration,
     inner: &Arc<Mutex<ConfigInner>>,
     test_only: bool,
@@ -499,11 +510,11 @@ fn queue(
     let requests: Vec<HeadRequest> = guard.heads.iter().map(|(_, request)| request.clone()).collect();
     let serial = guard.serial;
     drop(guard);
-    if serial != state.output_manager.serial {
+    if serial != state.output_manager().serial {
         object.cancelled();
         return;
     }
-    state.output_manager.pending.push(PendingConfig {
+    state.output_manager().pending.push(PendingConfig {
         object: object.clone(),
         serial,
         requests,
@@ -512,19 +523,19 @@ fn queue(
 }
 
 /// The output a head object describes, or [`None`] for a head the compositor did not create.
-fn head_id(head: &ZwlrOutputManagementV1Head) -> Option<gnoblin_types::OutputId> {
-    head.data::<HeadUserData>().map(|data| data.id)
+fn head_id(head: &ZwlrOutputManagementV1Head) -> Option<OutputId> {
+    head.data::<ZwlrOutputManagementV1HeadUserData>().map(|data| data.id)
 }
 
-impl Dispatch2<ZwlrOutputManagementV1ConfigurationHead, State> for ConfigHeadUserData {
+impl<D> Dispatch2<ZwlrOutputManagementV1ConfigurationHead, D> for ZwlrOutputManagementV1ConfigHeadUserData {
     fn request(
         &self,
-        _state: &mut State,
+        _state: &mut D,
         _client: &Client,
         object: &ZwlrOutputManagementV1ConfigurationHead,
         request: config_head::Request,
         _dh: &DisplayHandle,
-        _data_init: &mut DataInit<'_, State>,
+        _data_init: &mut DataInit<'_, D>,
     ) {
         let mut inner = self.inner.lock().expect("configuration lock");
         if inner.used {
@@ -541,7 +552,7 @@ impl Dispatch2<ZwlrOutputManagementV1ConfigurationHead, State> for ConfigHeadUse
                     object.post_error(config_head::Error::AlreadySet, "the mode was already set");
                     return;
                 }
-                let Some(mode_data) = mode.data::<ModeUserData>() else {
+                let Some(mode_data) = mode.data::<ZwlrOutputManagementV1ModeUserData>() else {
                     return;
                 };
                 if mode_data.head != entry.head {

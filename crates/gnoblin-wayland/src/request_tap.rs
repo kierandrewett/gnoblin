@@ -32,7 +32,7 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::{se
 use smithay::reexports::wayland_server::{DataInit, DisplayHandle, Resource};
 
 use crate::State;
-use crate::protocols::{zwp_tablet_v2 as tablet, zxdg_decoration_v1 as decoration};
+use crate::protocols::zwp_tablet_v2 as tablet;
 use gnoblin_wayland_protocols::zwp_text_input_v3 as text_input;
 
 /// Moves a value between two names for one type. The tap picks the request type from the resource's, so the two are
@@ -71,13 +71,13 @@ where
             seen.downcast_ref::<xdg_toplevel::Request>(),
             Some(xdg_toplevel::Request::Destroy)
         ) {
-            decoration::toplevel_destroying(state, toplevel);
+            state.decoration_links.toplevel_destroying(toplevel);
         }
     } else if let Some(manager) = resource.downcast_ref::<ZxdgDecorationManagerV1>() {
         if let Some(zxdg_decoration_manager_v1::Request::GetToplevelDecoration { toplevel, .. }) =
             seen.downcast_ref::<zxdg_decoration_manager_v1::Request>()
         {
-            decoration::decoration_requested(state, manager, toplevel);
+            state.decoration_links.requested(manager, toplevel);
         }
     } else if let Some(manager) = resource.downcast_ref::<ZwpTabletManagerV2>() {
         // Smithay makes the tablet seat inside its own handler and keeps it out of reach; the number the client chose
@@ -97,7 +97,7 @@ where
             Some(zxdg_toplevel_decoration_v1::Request::Destroy)
         )
     {
-        decoration::decoration_destroyed(state, object);
+        state.decoration_links.destroyed(object);
     }
     Some(request)
 }

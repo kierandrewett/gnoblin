@@ -2501,6 +2501,18 @@ kind = "same-name"
 reason = "a portal refusal is the negotiation's own value in `gnoblin-portal-core`; the other crate's type of the same name refuses something else"
 
 [[allow]]
+left = "gnoblin-sdkgen::Library"
+right = "xtask::Library"
+kind = "same-name"
+reason = "the SDK generator's `Library` is one ABI (core or std) as the generators read it; the other two are a native library probed in an image and an installed library checked by `dist-check`"
+
+[[allow]]
+left = "gnoblin-sdkgen::LockReport"
+right = "xtask::AbiReport"
+kind = "same-shape"
+reason = "the surface lock's comparison report and the ABI lock's have the same two lists because the surface lock is deliberately checked the way `abi-check` checks the ABI; the generator is a library the build links and xtask is not, so neither can use the other's"
+
+[[allow]]
 left = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-gamma-control-v1::ZwlrGammaControlV1ManagerGlobalData"
 kind = "same-shape"
@@ -2520,12 +2532,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
-right = "gnoblin-wayland::ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
 right = "gnoblin-wayland::ViewSourceGlobal"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2550,7 +2556,7 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -2580,12 +2586,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-zwlr-gamma-control-v1::ZwlrGammaControlV1ManagerGlobalData"
-right = "gnoblin-wayland::ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-zwlr-gamma-control-v1::ZwlrGammaControlV1ManagerGlobalData"
 right = "gnoblin-wayland::ViewSourceGlobal"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2610,7 +2610,7 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-zwlr-gamma-control-v1::ZwlrGammaControlV1ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -2634,12 +2634,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-zwlr-output-power-management-v1::ZwlrOutputPowerManagementV1ManagerGlobalData"
-right = "gnoblin-wayland::ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-zwlr-output-power-management-v1::ZwlrOutputPowerManagementV1ManagerGlobalData"
 right = "gnoblin-wayland::ViewSourceGlobal"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2664,7 +2658,7 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-zwlr-output-power-management-v1::ZwlrOutputPowerManagementV1ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -2677,12 +2671,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 [[allow]]
 left = "gnoblin-wayland-zwlr-output-power-management-v1::ZwlrOutputPowerManagementV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-ext-idle-notify-v1::ExtIdleNotifyV1NotifierUserData"
-right = "gnoblin-wayland::ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -2712,7 +2700,7 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-ext-idle-notify-v1::ExtIdleNotifyV1NotifierUserData"
-right = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -2724,48 +2712,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-ext-idle-notify-v1::ExtIdleNotifyV1NotifierUserData"
-right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ManagerGlobalData"
-right = "gnoblin-wayland::ViewSourceGlobal"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ManagerGlobalData"
-right = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ManagerGlobalData"
-right = "gnoblin-wayland::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ManagerGlobalData"
-right = "gnoblin-wayland-zwp-virtual-keyboard-v1::ZwpVirtualKeyboardV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2790,7 +2736,7 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland::ViewSourceGlobal"
-right = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -2820,7 +2766,7 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -2844,7 +2790,7 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland::ZwlrScreencopyV1Global"
-right = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -2862,7 +2808,7 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -2879,13 +2825,13 @@ kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
 [[allow]]
-left = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+left = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 right = "gnoblin-wayland-zwp-virtual-keyboard-v1::ZwpVirtualKeyboardV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
 [[allow]]
-left = "gnoblin-wayland-zwlr-output-management-v1::ManagerGlobalData"
+left = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2895,15 +2841,3 @@ left = "gnoblin-wayland-zwp-virtual-keyboard-v1::ZwpVirtualKeyboardV1ManagerGlob
 right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-sdkgen::Library"
-right = "xtask::Library"
-kind = "same-name"
-reason = "the SDK generator's `Library` is one ABI (core or std) as the generators read it; the other two are a native library probed in an image and an installed library checked by `dist-check`"
-
-[[allow]]
-left = "gnoblin-sdkgen::LockReport"
-right = "xtask::AbiReport"
-kind = "same-shape"
-reason = "the surface lock's comparison report and the ABI lock's have the same two lists because the surface lock is deliberately checked the way `abi-check` checks the ABI; the generator is a library the build links and xtask is not, so neither can use the other's"

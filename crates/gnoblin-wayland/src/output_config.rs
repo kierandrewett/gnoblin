@@ -10,143 +10,64 @@
 use gnoblin_backend::Backend;
 use gnoblin_output::{DisplayMode, ProfileChange};
 use gnoblin_types::{OutputId, Scale};
+use gnoblin_wayland_types::output::{HeadInfo, HeadRequest, ModeInfo};
+use smithay::reexports::wayland_server::Resource;
 
 use crate::State;
 
-/// One mode a head can be driven in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ModeInfo {
-    /// Width in pixels.
-    pub width: i32,
-    /// Height in pixels.
-    pub height: i32,
-    /// Refresh rate in millihertz, as the protocol reports it.
-    pub refresh_mhz: i32,
-    /// Whether the protocol marks this mode as preferred. The backend reports its one mode as preferred.
-    pub preferred: bool,
-}
-
-/// What the host reports for one output.
-#[derive(Debug, Clone, PartialEq)]
-pub struct HeadInfo {
-    /// The stable identity the host uses for this output.
-    pub id: OutputId,
-    /// The connector name the backend knows this output by.
-    pub name: String,
-    /// The description the protocol reports. The backend sets it to the connector name.
-    pub description: String,
-    /// The manufacturer string. The backend reports `Gnoblin`.
-    pub make: String,
-    /// The model string. The backend reports the connector name.
-    pub model: String,
-    /// The serial number. The backend reports none, so this is empty.
-    pub serial: String,
-    /// Physical size in millimetres.
-    pub physical_mm: (i32, i32),
-    /// Every mode the head can be driven in. [`HeadInfo::current`] indexes into this list.
-    pub modes: Vec<ModeInfo>,
-    /// Index into `modes` of the mode in use, if any.
-    pub current: Option<usize>,
-    /// Whether the output is on. The backend reports every output as enabled.
-    pub enabled: bool,
-    /// Top-left corner in the layout. `(0, 0)` when the layout has no position for the output.
-    pub position: (i32, i32),
-    /// `wl_output` transform value.
-    pub transform: i32,
-    /// Scale factor reported to clients, read from the backend's current scale.
-    pub scale: f64,
-    /// Whether adaptive sync is on. The backend always reports `false`.
-    pub adaptive_sync: bool,
-}
-
-/// A mode a client asked for, either one the head lists or a custom one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ModeRequest {
-    /// Requested width in pixels.
-    pub width: i32,
-    /// Requested height in pixels.
-    pub height: i32,
-    /// Requested refresh rate in millihertz.
-    pub refresh_mhz: i32,
-}
-
-/// What a configuration asks for one head. A `None` field keeps the head's current value.
+/// The change to the output's profile `request` makes against `head`, the head as it is now.
 ///
-/// A request is read against the head as it is now and laid over the output's profile, so a request that names what
-/// the head already has changes nothing. A transform other than `0` and adaptive sync are refused.
-#[derive(Debug, Clone, PartialEq)]
-pub struct HeadRequest {
-    /// The head this request configures.
-    pub head: OutputId,
-    /// Whether the head should be on. A configuration must leave at least one head on.
-    pub enabled: bool,
-    /// The mode to drive the head in, or `None` to keep the current one. A mode the backend does not list is refused.
-    pub mode: Option<ModeRequest>,
-    /// The position to move the head to, or `None` to keep it.
-    pub position: Option<(i32, i32)>,
-    /// The `wl_output` transform to apply, or `None` to keep it. Any value but `0` is refused.
-    pub transform: Option<i32>,
-    /// The scale to apply, or `None` to keep it.
-    pub scale: Option<f64>,
-    /// Whether adaptive sync should be on, or `None` to keep it. `true` is refused.
-    pub adaptive_sync: Option<bool>,
-}
-
-impl HeadRequest {
-    /// The change to the output's profile this request makes against `head`, the head as it is now.
-    ///
-    /// A field that names what the head already has changes nothing, so a client that sends its whole configuration
-    /// back does not turn every output's automatic placement into a stored one. A transform other than normal and
-    /// adaptive sync are refused as the shell's `apply` refuses them: nothing draws a rotation and nothing drives
-    /// variable refresh.
-    ///
-    /// # Errors
-    ///
-    /// Why the request cannot be made, naming the head.
-    fn to_change(&self, head: &HeadInfo) -> Result<ProfileChange, String> {
-        let mut change = ProfileChange::default();
-        if self.enabled != head.enabled {
-            change.enabled = Some(self.enabled);
-        }
-        if let Some(mode) = self.mode {
-            let (Ok(width), Ok(height), Ok(refresh)) = (
-                u32::try_from(mode.width),
-                u32::try_from(mode.height),
-                u32::try_from(mode.refresh_mhz),
-            ) else {
-                return Err(format!("{}: the requested mode is not a mode", head.name));
-            };
-            let requested = DisplayMode::new(width, height, refresh);
-            let current = head.current.and_then(|index| head.modes.get(index));
-            let is_current = current.is_some_and(|current| {
-                current.width == mode.width && current.height == mode.height && current.refresh_mhz == mode.refresh_mhz
-            });
-            if !is_current {
-                change.mode = Some(Some(requested));
-            }
-        }
-        if let Some(position) = self.position
-            && position != head.position
-        {
-            change.position = Some(Some(position));
-        }
-        if self.transform.is_some_and(|transform| transform != 0) {
-            return Err(format!("{}: transforms are not supported", head.name));
-        }
-        if self.adaptive_sync == Some(true) {
-            return Err(format!("{}: adaptive sync is not supported", head.name));
-        }
-        if let Some(scale) = self.scale {
-            if !scale.is_finite() || !(0.5..=4.0).contains(&scale) {
-                return Err(format!("{}: scale {scale} is out of range", head.name));
-            }
-            let target = Scale::from_percent((scale * 100.0).round() as u32);
-            if (target.as_f64() - head.scale).abs() > f64::EPSILON {
-                change.scale = Some(Some(target));
-            }
-        }
-        Ok(change)
+/// A field that names what the head already has changes nothing, so a client that sends its whole configuration
+/// back does not turn every output's automatic placement into a stored one. A transform other than normal and
+/// adaptive sync are refused as the shell's `apply` refuses them: nothing draws a rotation and nothing drives
+/// variable refresh.
+///
+/// # Errors
+///
+/// Why the request cannot be made, naming the head.
+fn request_change(request: &HeadRequest, head: &HeadInfo) -> Result<ProfileChange, String> {
+    let mut change = ProfileChange::default();
+    if request.enabled != head.enabled {
+        change.enabled = Some(request.enabled);
     }
+    if let Some(mode) = request.mode {
+        let (Ok(width), Ok(height), Ok(refresh)) = (
+            u32::try_from(mode.width),
+            u32::try_from(mode.height),
+            u32::try_from(mode.refresh_mhz),
+        ) else {
+            return Err(format!("{}: the requested mode is not a mode", head.name));
+        };
+        let requested = DisplayMode::new(width, height, refresh);
+        let current = head.current.and_then(|index| head.modes.get(index));
+        let is_current = current.is_some_and(|current| {
+            current.width == mode.width && current.height == mode.height && current.refresh_mhz == mode.refresh_mhz
+        });
+        if !is_current {
+            change.mode = Some(Some(requested));
+        }
+    }
+    if let Some(position) = request.position
+        && position != head.position
+    {
+        change.position = Some(Some(position));
+    }
+    if request.transform.is_some_and(|transform| transform != 0) {
+        return Err(format!("{}: transforms are not supported", head.name));
+    }
+    if request.adaptive_sync == Some(true) {
+        return Err(format!("{}: adaptive sync is not supported", head.name));
+    }
+    if let Some(scale) = request.scale {
+        if !scale.is_finite() || !(0.5..=4.0).contains(&scale) {
+            return Err(format!("{}: scale {scale} is out of range", head.name));
+        }
+        let target = Scale::from_percent((scale * 100.0).round() as u32);
+        if (target.as_f64() - head.scale).abs() > f64::EPSILON {
+            change.scale = Some(Some(target));
+        }
+    }
+    Ok(change)
 }
 
 impl State {
@@ -229,9 +150,64 @@ impl State {
             let Some(head) = heads.iter().find(|head| head.id == request.head) else {
                 return Err("the configuration names a head this host does not drive".to_owned());
             };
-            changes.push((request.head, request.to_change(head)?));
+            changes.push((request.head, request_change(request, head)?));
         }
         self.apply_output_changes(backend, &changes, test_only)
+    }
+
+    /// Replaces the advertised heads with the host's snapshot and announces the change to every bound manager.
+    pub(crate) fn publish_output_heads(&mut self, heads: Vec<HeadInfo>) {
+        self.output_manager.publish::<State>(heads);
+    }
+
+    /// Answers the configurations the client asked for, in the order they were made.
+    ///
+    /// The loop runs each one after the dispatch that queued it, through the engine a shell's `screen.apply` uses
+    /// ([`State::apply_head_requests`]). A configuration whose serial is stale is `cancelled`; a head that vanished is
+    /// `failed`; otherwise the answer is `succeeded` or `failed`. A configuration that changed the outputs publishes the
+    /// new heads at once, which bumps the serial, so a configuration queued behind it that was built on the old layout
+    /// is `cancelled` and not applied over a layout it never saw. Returns whether heads were published.
+    pub(crate) fn apply_output_configs(&mut self, backend: &mut dyn Backend<State>) -> bool {
+        let mut published = false;
+        for pending in self.output_manager.take_pending() {
+            if !pending.object.is_alive() {
+                continue;
+            }
+            if pending.serial != self.output_manager.serial() {
+                pending.object.cancelled();
+                crate::log::debug!(
+                    area = "output-manager",
+                    "a configuration on a stale serial was cancelled"
+                );
+                continue;
+            }
+            let known = self
+                .output_manager
+                .heads()
+                .iter()
+                .map(|head| head.id)
+                .collect::<Vec<_>>();
+            if pending.requests.iter().any(|request| !known.contains(&request.head)) {
+                pending.object.failed();
+                crate::log::debug!(area = "output-manager", "a configuration named a head that is gone");
+                continue;
+            }
+            match self.apply_head_requests(backend, &pending.requests, pending.test_only) {
+                Ok(()) => {
+                    if !pending.test_only {
+                        let heads = self.output_heads(backend);
+                        self.publish_output_heads(heads);
+                        published = true;
+                    }
+                    pending.object.succeeded();
+                }
+                Err(error) => {
+                    crate::log::debug!(area = "output-manager", %error, "the configuration was refused");
+                    pending.object.failed();
+                }
+            }
+        }
+        published
     }
 }
 

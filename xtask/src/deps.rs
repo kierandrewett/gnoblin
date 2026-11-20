@@ -1201,6 +1201,10 @@ const WAYLAND_API: &str = "gnoblin-wayland-api";
 /// depends on it.
 const WAYLAND_AGGREGATE: &str = "gnoblin-wayland-protocols";
 
+/// The plain data the compositor and the protocol crates both name (`design/protocol-crates.md`). It sits beside the api crate at
+/// the bottom of the tier: it names the foundation crates and nothing above them.
+const WAYLAND_TYPES: &str = "gnoblin-wayland-types";
+
 /// The real-client session harness the protocol crates' tests share. A development dependency of the crates it tests, and the
 /// only crate of the tier that may name the engine.
 const WAYLAND_TESTKIT: &str = "gnoblin-wayland-testkit";
@@ -1210,7 +1214,8 @@ const WAYLAND_ENGINE: &str = "gnoblin-wayland";
 
 /// A crate that serves one Wayland protocol, or holds code that two of them share.
 fn is_protocol_crate(name: &str) -> bool {
-    name.starts_with(WAYLAND_PREFIX) && !matches!(name, WAYLAND_API | WAYLAND_AGGREGATE | WAYLAND_TESTKIT)
+    name.starts_with(WAYLAND_PREFIX)
+        && !matches!(name, WAYLAND_API | WAYLAND_TYPES | WAYLAND_AGGREGATE | WAYLAND_TESTKIT)
 }
 
 /// A protocol crate that holds shared code. `cargo xtask protocol-crates` requires the suffix of every row of that kind, so the
@@ -1226,18 +1231,18 @@ fn is_wayland_tier(name: &str) -> bool {
 
 /// A protocol crate is written against the api crate and nothing of the compositor, so it builds and tests without it.
 ///
-/// It may name the api crate, the shared crates, the foundation crates, the three engine hubs and external crates. It may not
+/// It may name the api crate, the types crate, the shared crates, the foundation crates, the three engine hubs and external crates. It may not
 /// name the compositor engine, the composition root, another engine crate, or another protocol crate that is not a shared
-/// one. The api crate names no crate of the tier. A development edge is not this rule's business: a protocol crate's real-client
+/// one. The api and types crates name no crate of the tier. A development edge is not this rule's business: a protocol crate's real-client
 /// tests run a `gnoblin-wayland` session, and a development dependency is not compiled for a dependent.
 fn protocol_layering(package: &Package, dep: &Dep) -> Option<String> {
     if dep.kind == DepKind::Dev {
         return None;
     }
-    if package.name == WAYLAND_API {
+    if package.name == WAYLAND_API || package.name == WAYLAND_TYPES {
         if is_wayland_tier(&dep.name) || dep.name == WAYLAND_ENGINE || is_engine(&dep.name) {
             return Some(format!(
-                "the api crate is the bottom of the protocol tier and names no crate above it; `{}` is one",
+                "the api and types crates are the bottom of the protocol tier and name no crate above them; `{}` is one",
                 dep.name
             ));
         }
@@ -1246,12 +1251,12 @@ fn protocol_layering(package: &Package, dep: &Dep) -> Option<String> {
     if !is_protocol_crate(&package.name) {
         return None;
     }
-    if dep.name == WAYLAND_API || is_shared_protocol_crate(&dep.name) {
+    if dep.name == WAYLAND_API || dep.name == WAYLAND_TYPES || is_shared_protocol_crate(&dep.name) {
         return None;
     }
     if is_wayland_tier(&dep.name) {
         return Some(format!(
-            "a protocol crate depends on the api crate and on shared crates only; `{}` is another crate of the tier",
+            "a protocol crate depends on the api crate, the types crate and shared crates only; `{}` is another crate of the tier",
             dep.name
         ));
     }

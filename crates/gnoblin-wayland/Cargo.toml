@@ -107,6 +107,8 @@ gnoblin-pipewire-export = { path = "../gnoblin-pipewire-export" }
 # crate implements on its state, in its glue module.
 gnoblin-wayland-protocols = { path = "../protocols/all" }
 gnoblin-wayland-api = { path = "../protocols/api" }
+# The plain data the compositor and the protocol crates both name: what an output reports, what a configuration asks for.
+gnoblin-wayland-types = { path = "../protocols/types" }
 
 [dev-dependencies]
 # The stock window manager the test sessions run. A development edge only: this crate holds and links no stock provider

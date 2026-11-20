@@ -35,13 +35,9 @@ pub mod xdg_activation_v1;
 pub mod xdg_shell;
 /// `zwlr_layer_shell_v1`: layer surfaces for bars and docks.
 pub mod zwlr_layer_shell_v1;
-/// `zwlr_output_manager_v1`: the outputs and layout a configuration tool sees.
-pub mod zwlr_output_management_v1;
 /// `zwlr_screencopy_manager_v1`: one-shot screencopy of an output or region.
 pub mod zwlr_screencopy_v1;
 /// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.
 pub mod zwp_linux_dmabuf_v1;
 /// `zwp_tablet_manager_v2`: drawing tablets, their tools and pads.
 pub mod zwp_tablet_v2;
-/// `zxdg_decoration_manager_v1`: the client's server-side decoration preference.
-pub mod zxdg_decoration_v1;

@@ -1136,6 +1136,7 @@ dependencies = [
  "gnoblin-render-software",
  "gnoblin-render-vulkan",
  "gnoblin-types",
+ "gnoblin-wayland-types",
  "rustix 1.1.6",
  "smithay",
  "wayland-client",
@@ -2331,6 +2332,7 @@ dependencies = [
  "gnoblin-types",
  "gnoblin-wayland-api",
  "gnoblin-wayland-protocols",
+ "gnoblin-wayland-types",
  "gnoblin-wm-api",
  "png",
  "rustix 1.1.6",
@@ -2431,6 +2433,7 @@ dependencies = [
  "gnoblin-wayland-zwlr-data-control-v1",
  "gnoblin-wayland-zwlr-foreign-toplevel-management-v1",
  "gnoblin-wayland-zwlr-gamma-control-v1",
+ "gnoblin-wayland-zwlr-output-management-v1",
  "gnoblin-wayland-zwlr-output-power-management-v1",
  "gnoblin-wayland-zwp-idle-inhibit-v1",
  "gnoblin-wayland-zwp-input-method-v2",
@@ -2441,7 +2444,15 @@ dependencies = [
  "gnoblin-wayland-zwp-relative-pointer-v1",
  "gnoblin-wayland-zwp-text-input-v3",
  "gnoblin-wayland-zwp-virtual-keyboard-v1",
+ "gnoblin-wayland-zxdg-decoration-v1",
  "gnoblin-wayland-zxdg-output-v1",
+]
+
+[[package]]
+name = "gnoblin-wayland-types"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
 ]
 
 [[package]]
@@ -2619,6 +2630,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-wayland-zwlr-output-management-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "gnoblin-wayland-types",
+ "smithay",
+]
+
+[[package]]
 name = "gnoblin-wayland-zwlr-output-power-management-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -2703,6 +2725,15 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-types",
  "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zxdg-decoration-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "gnoblin-wayland-types",
  "smithay",
 ]
 

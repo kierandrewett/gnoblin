@@ -65,9 +65,7 @@ use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
-use gnoblin_backend::render::compose::{
-    BellFlash, Composer, Content, DecorationWanted, MainSeatPolicy, ScreenInfo, Setting, TreeOwner,
-};
+use gnoblin_backend::render::compose::{BellFlash, Composer, Content, MainSeatPolicy, ScreenInfo, Setting, TreeOwner};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocol, Protocols, TitlebarAction};
 use gnoblin_input::Activity;
@@ -76,6 +74,7 @@ use gnoblin_render::Mat4;
 use gnoblin_render::transaction::PointerInput;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
 use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
+use gnoblin_wayland_types::decoration::DecorationWanted;
 use gnoblin_wm_api::{Open, Standing, WindowKind, WindowManager, WindowState, WmEffect, WmOptions, WmRefusal};
 
 use crate::frame_policy::{CallbackPacer, Pacing};
@@ -93,7 +92,6 @@ use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
 use crate::protocols::xdg_activation_v1::XdgActivationV1;
 use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
-use crate::protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
 use crate::window_request::{Decider, WindowRequest, X11Flags};
@@ -103,6 +101,7 @@ use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
 use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
 use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
 use gnoblin_wayland_protocols::zwlr_foreign_toplevel_management_v1::ForeignToplevels;
+use gnoblin_wayland_protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::ShortcutInhibitExt as _;
 use gnoblin_wayland_protocols::zwp_pointer_constraints_v1::{
     PointerConstraintsExt as _, ZwpPointerConstraintsV1Tables,
@@ -291,17 +290,17 @@ pub struct State {
     pub(crate) xdg_outputs: gnoblin_wayland_protocols::zxdg_output_v1::XdgOutputs,
     /// The surfaces that have a `wp_fractional_scale_v1` object, so an output's new scale can be sent to them.
     pub(crate) fractional_surfaces: Vec<WlSurface>,
-    /// Kept alive so the `zxdg_decoration_manager_v1` global stays registered; the
-    /// handler in [`crate::protocols::zxdg_decoration_v1`] answers its requests.
+    /// Kept alive so the `zxdg_decoration_manager_v1` global stays registered, while the configuration offers it; the
+    /// handler in [`crate::decoration`] answers its requests.
     #[allow(dead_code)]
-    pub(crate) decoration_state: XdgDecorationState,
+    pub(crate) decoration_state: Option<XdgDecorationState>,
     /// Whether the shell's decorations were available when the windows last heard what the compositor answers
     /// `xdg-decoration`. A change re-sends the answer to every window.
     pub(crate) decorations_seen: bool,
     /// The decoration objects that are alive and the managers that made them, so a toplevel destroyed before its
     /// decoration can be answered with the protocol's `orphaned` error: Smithay keeps the object where nothing else
     /// can read it.
-    pub(crate) decoration_links: Vec<crate::protocols::zxdg_decoration_v1::DecorationLink>,
+    pub(crate) decoration_links: gnoblin_wayland_protocols::zxdg_decoration_v1::DecorationLinks,
     /// Kept alive so the `ext_session_lock_manager_v1` global stays registered; the
     /// handler in [`crate::protocols::ext_session_lock_v1`] answers its requests.
     pub(crate) session_lock_state: SessionLockManagerState,
@@ -682,7 +681,7 @@ impl State {
         // no `xdg-decoration` and draws its own frame.
         let decoration_offered = protocols.toggles.get(&Protocol::XdgDecoration).copied().unwrap_or(true);
         let decoration_state =
-            XdgDecorationState::new_with_filter::<Self, _>(&display_handle, move |_| decoration_offered);
+            decoration_offered.then(|| gnoblin_wayland_protocols::zxdg_decoration_v1::register::<Self>(&registrar));
         // The lock global is advertised to every client: the standard protocol makes
         // the socket the admission boundary, and `docs/session-lock.md` states that
         // the first request owns the lock.
@@ -727,7 +726,7 @@ impl State {
             .is_advertised(protocols)
             .then(|| gnoblin_wayland_protocols::zwlr_output_power_management_v1::register::<Self>(&registrar));
         if Global::OutputManagement.is_advertised(protocols) {
-            crate::protocols::zwlr_output_management_v1::global(&display_handle, &access);
+            gnoblin_wayland_protocols::zwlr_output_management_v1::register::<Self>(&registrar);
         }
 
         // A global the configuration turned off is removed rather than skipped, so
@@ -806,7 +805,7 @@ impl State {
             fractional_surfaces: Vec::new(),
             decoration_state,
             decorations_seen: false,
-            decoration_links: Vec::new(),
+            decoration_links: gnoblin_wayland_protocols::zxdg_decoration_v1::DecorationLinks::default(),
             session_lock_state,
             xwayland_shell_state,
             keyboard_grab_state,

@@ -32,6 +32,8 @@ vulkan = ["dep:gnoblin-render-vulkan"]
 smithay.workspace = true
 # Outputs, events and targets are stated in the shared primitives.
 gnoblin-types.workspace = true
+# What a window's frame negotiation says is plain data the protocol crates and the composer both name.
+gnoblin-wayland-types = { path = "../protocols/types" }
 # A backend produces output descriptors and their modes; the layout engine owns
 # where they sit.
 gnoblin-output = { path = "../gnoblin-output" }

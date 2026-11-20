@@ -30,6 +30,7 @@ pub use gnoblin_wayland_xdg_toplevel_tag_v1 as xdg_toplevel_tag_v1;
 pub use gnoblin_wayland_zwlr_data_control_v1 as zwlr_data_control_v1;
 pub use gnoblin_wayland_zwlr_foreign_toplevel_management_v1 as zwlr_foreign_toplevel_management_v1;
 pub use gnoblin_wayland_zwlr_gamma_control_v1 as zwlr_gamma_control_v1;
+pub use gnoblin_wayland_zwlr_output_management_v1 as zwlr_output_management_v1;
 pub use gnoblin_wayland_zwlr_output_power_management_v1 as zwlr_output_power_management_v1;
 pub use gnoblin_wayland_zwp_idle_inhibit_v1 as zwp_idle_inhibit_v1;
 pub use gnoblin_wayland_zwp_input_method_v2 as zwp_input_method_v2;
@@ -40,6 +41,7 @@ pub use gnoblin_wayland_zwp_primary_selection_v1 as zwp_primary_selection_v1;
 pub use gnoblin_wayland_zwp_relative_pointer_v1 as zwp_relative_pointer_v1;
 pub use gnoblin_wayland_zwp_text_input_v3 as zwp_text_input_v3;
 pub use gnoblin_wayland_zwp_virtual_keyboard_v1 as zwp_virtual_keyboard_v1;
+pub use gnoblin_wayland_zxdg_decoration_v1 as zxdg_decoration_v1;
 pub use gnoblin_wayland_zxdg_output_v1 as zxdg_output_v1;
 
 /// What every protocol crate advertises, in the order the table lists them. The advertised-globals test compares it with a live registry.
@@ -78,5 +80,7 @@ pub const ALL: &[&ProtocolInfo] = &[
     &zwp_text_input_v3::PROTOCOL,
     &ext_foreign_toplevel_list_v1::PROTOCOL,
     &zwlr_foreign_toplevel_management_v1::PROTOCOL,
+    &zxdg_decoration_v1::PROTOCOL,
+    &zwlr_output_management_v1::PROTOCOL,
     &zwp_virtual_keyboard_v1::PROTOCOL,
 ];

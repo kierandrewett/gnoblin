@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-wayland-types"
+description = "The plain-data types that the Wayland protocol crates and the compositor both name: what an output reports, what a configuration asks for, and the like. Data only."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Outputs and windows are named by the identities the layout already uses.
+gnoblin-types.workspace = true

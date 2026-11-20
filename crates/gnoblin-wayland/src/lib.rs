@@ -207,6 +207,7 @@
 
 mod clock;
 mod cursor;
+mod decoration;
 mod devices;
 mod dispatch;
 mod foreign_toplevels;
@@ -256,6 +257,8 @@ pub use frame::{FrameStats, SCREENSHOT_TIMEOUT, ShotRefusal};
 /// [`ControlHandle::setting_set`].
 pub use gnoblin_backend::render::compose::{BellFlash, MotionPolicy, Setting};
 pub use gnoblin_lock::State as LockState;
+/// Output configuration types the output management protocol reports and asks for.
+pub use gnoblin_wayland_types::output::{HeadInfo, HeadRequest, ModeInfo, ModeRequest};
 /// The window management options a configuration carries, and the choices in them, which `gnoblin-wm-api` defines.
 pub use gnoblin_wm_api::{DragConstraint, FocusMode, NewWindowFocus, WindowManagerFactory, WmOptions};
 /// The memory budget: the bounds, the ledger that enforces them and what a reader sees of it.
@@ -274,8 +277,6 @@ pub use observation::{
     ObservedWindow, ObservedWorkspace, Observer, SessionSnapshot,
 };
 pub use observation::{PresentAnswer, WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal};
-/// Output configuration types the output management protocol reports and asks for.
-pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest};
 /// Output control: the trait a backend implements and the no-op default.
 pub use output_control::{NoOutputControl, OutputControl};
 /// Server configuration, control handle, input sink, startup and loop errors.

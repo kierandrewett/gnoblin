@@ -11,17 +11,17 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `OutputHost`), the aggregate `gnoblin-wayland-protocols` (the `ALL` table), `xtask/protocols.toml`,
   `cargo xtask protocol-crates [--check]`, and the deps rules `protocol-layering` and `protocol-root`;
 - `access` moved into the api crate, and `Registrar` carries the roster (`Registrar::filter`);
-- 35 protocol crates and the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
+- the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 37 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
   `zwp-relative-pointer-v1`, `zwp-idle-inhibit-v1`, `xdg-system-bell-v1`, `xdg-toplevel-icon-v1`,
   `xdg-toplevel-tag-v1`, `xdg-dialog-v1`, `wl-output`, `wl-shm`, `zwp-primary-selection-v1`, `wp-content-type-v1`,
   `wp-fifo-v1`, `wp-fractional-scale-v1`, `wp-tearing-control-v1`, `wp-presentation-time`,
-  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`. Their forwarding
+  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`. Their forwarding
   impls are in `crates/gnoblin-wayland/src/glue/`, one file per crate.
 
 Not yet done, in the order of [Migration order and gates](#migration-order-and-gates): every crate that needs the
 access roster (ProtoRetire has removed session host from `access.rs`; view source is on hold by the owner, so the move can start), the capture family (waits for ProtoRetire's decision on
 `capture_views`), the large protocols (`xdg-shell`, layer shell, tablet, session lock), `wl-compositor`, `wl-seat`,
-`wl-data-device-manager`, `xdg-activation-v1`, `xdg-decoration`, `zwp-linux-dmabuf-v1`,
+`wl-data-device-manager`, `xdg-activation-v1`, `zwp-linux-dmabuf-v1`,
 ProtoMissing's five protocols, the
 real-client test move and `gnoblin-wayland-testkit`, and the advertised-globals test.
 
@@ -34,13 +34,29 @@ Shared crates must end in `-shared`, so `image_copy_session` will be `gnoblin-wa
 The protocols still in `gnoblin-wayland` name types that live in the compositor, so their crates cannot depend only on the api crate. The blockers, by module:
 
 - `zwlr_layer_shell_v1`: `LayerBand`, `LayerNodeInfo`, `LayerOverride` and `TreeOwner` from `gnoblin-backend`'s compose module, which protocol crates may not name.
-- `zwlr_output_management_v1`: `HeadInfo`, `HeadRequest` and `ModeRequest` of `output_config`.
-- `zxdg_decoration_v1`: `DecorationWanted` and `WindowDecoration` from the backend.
 - `xdg_activation_v1`, `xdg_shell`, `wl_compositor`, `wl_seat`: `WindowRequest`, `ActivationDenial`, `TreeRequest` and the seat's own tables.
 - `zwp_linux_dmabuf_v1`: the backend's `Backend` and the GPU ledger.
 - the capture family: the frame pixel path, the lock embargo and `gnoblin_pipewire_export`.
 
-Each needs its shared types moved down first, into the api crate or a small types crate the protocol tier may name.
+Each needs its shared types moved down first, into the types crate below. `zwlr_output_management_v1` was the first: its
+`HeadInfo`, `HeadRequest` and `ModeRequest` now live there. `zxdg_decoration_v1` was the second: `DecorationWanted` and
+`WindowDecoration` moved from `gnoblin-backend`'s compose module, which now names them from the types crate.
+
+### The types crate
+
+Decision (Main, reversible): a second hand-written crate, `gnoblin-wayland-types` (`crates/protocols/types`), holds the
+plain-data compositor types that the blocked protocols name. It sits beside the api crate at the bottom of the tier.
+
+- **Data only.** Structs, enums and trivial helpers. Anything that decides something about the compositor stays in
+  `gnoblin-wayland`: for example `HeadRequest`'s change to an output profile is `output_config::request_change`, because it
+  names `gnoblin-output`.
+- **Who depends on it.** `gnoblin-wayland` and the protocol crates that list `needs = ["types"]` in their row. A crate that
+  names the type elsewhere in the workspace (`gnoblin-backend` for a compose type) depends on it directly. There is no
+  second definition and no re-export shim: a caller names the type from the types crate, or `gnoblin-wayland` re-exports
+  it at its public root where it was already public (`HeadInfo`, `HeadRequest`, `ModeInfo`, `ModeRequest`).
+- **The rule.** `xtask deps` (`protocol-layering`) lets a protocol crate name the api crate, the types crate and shared
+  crates, and nothing else of the workspace beyond the foundation crates and the three hubs. The types crate names only
+  foundation crates; it names no crate of the tier and no engine crate.
 
 ## Decision
 
@@ -55,7 +71,7 @@ The owner chose this granularity over one crate per family. The consequences are
 The dependency direction is fixed:
 
 ```text
-gnoblin-wayland -> gnoblin-wayland-protocols -> gnoblin-wayland-<protocol> -> gnoblin-wayland-<shared> -> gnoblin-wayland-api
+gnoblin-wayland -> gnoblin-wayland-protocols -> gnoblin-wayland-<protocol> -> gnoblin-wayland-<shared> -> gnoblin-wayland-api, gnoblin-wayland-types
 ```
 
 Every protocol crate may also name the foundation crates, as `gnoblin-wayland` does today. No protocol crate names

@@ -157,7 +157,7 @@ their own" show another output's picture, not a node (`gnoblin-wayland/src/outpu
 kind of output rendered from a scene node. Then every consumer of outputs has to learn it or exclude it: every output must
 present a frame for a lock to be proven (`report_outputs`, `ext_session_lock_v1.rs:563`, `output_ids`, `state.rs:1072`);
 `wl_output` is not privileged, so every application would list an extra monitor and the shell would lay windows out on it;
-`zwlr_output_management_v1` (`Global::OutputManagement`, `zwlr_output_management_v1.rs:320`) would list it and let a user
+`zwlr_output_management_v1` (`Global::OutputManagement`, `crates/protocols/zwlr-output-management-v1`) would list it and let a user
 disable or move it. Hiding it from them is per-client output visibility, the special case the nested-session rule forbids, and
 the `view` role would need `wl_output`, which `VIEW_INTERFACES` hides today. A View also has a camera, a stereo rig and a size
 with no mode or scale, so the mapping is by analogy only. D is worse than A on every point above and removes nothing.

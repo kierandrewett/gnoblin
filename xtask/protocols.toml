@@ -266,6 +266,22 @@ needs = ["foreign-toplevel-shared"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
 
 [[crate]]
+name = "zxdg-decoration-v1"
+description = "The zxdg_decoration_manager_v1 Wayland protocol of gnoblin-wayland: who draws a window's frame."
+kind = "protocol"
+interfaces = [["zxdg_decoration_manager_v1", 1]]
+needs = ["types"]
+deps = ["smithay"]
+
+[[crate]]
+name = "zwlr-output-management-v1"
+description = "The zwlr_output_manager_v1 Wayland protocol of gnoblin-wayland: the outputs a client reads and the layout it asks for."
+kind = "protocol"
+interfaces = [["zwlr_output_manager_v1", 4]]
+needs = ["types"]
+deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+
+[[crate]]
 name = "zwp-virtual-keyboard-v1"
 description = "The zwp_virtual_keyboard_manager_v1 Wayland protocol of gnoblin-wayland: a client that types into whatever has focus."
 kind = "protocol"
