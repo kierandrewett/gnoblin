@@ -301,6 +301,7 @@ returns = "list<object:process>"
 name = "by_id"
 since = "0.2.0"
 returns = "object:process"
+optional = true
 
 [[object.method.param]]
 name = "id"

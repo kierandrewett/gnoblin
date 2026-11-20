@@ -22,7 +22,7 @@ enum | projection | values orthographic perspective stereo | 0.2.0
 member | camera2d.add | method (child:object:scene_node, index?:int) -> object:scene_node | 0.2.0
 member | camera2d.alive | property bool ro | 0.2.0
 member | camera2d.children | property list<object:scene_node> ro | 0.2.0
-member | camera2d.find | method (name:string) -> object:scene_node | 0.2.0
+member | camera2d.find | method (name:string) -> object:scene_node? | 0.2.0
 member | camera2d.id | property string rw | 0.2.0
 member | camera2d.identity | property bool ro | 0.2.0
 member | camera2d.input | property enum:input_mode rw | 0.2.0
@@ -49,7 +49,7 @@ member | camera3d.add | method (child:object:scene_node, index?:int) -> object:s
 member | camera3d.alive | property bool ro | 0.2.0
 member | camera3d.children | property list<object:scene_node> ro | 0.2.0
 member | camera3d.far | property double rw | 0.2.0
-member | camera3d.find | method (name:string) -> object:scene_node | 0.2.0
+member | camera3d.find | method (name:string) -> object:scene_node? | 0.2.0
 member | camera3d.fov | property double rw | 0.2.0
 member | camera3d.id | property string rw | 0.2.0
 member | camera3d.input | property enum:input_mode rw | 0.2.0
@@ -87,13 +87,13 @@ member | node_bindings.dispose | method () | 0.2.0
 member | node_bindings.unbind | method (name:string) -> bool | 0.2.0
 member | scene.add | method (node:object:scene_node) -> object:scene_node | 0.2.0
 member | scene.cameras | property list<object:camera3d> ro | 0.2.0
-member | scene.find | method (name:string) -> object:scene_node | 0.2.0
+member | scene.find | method (name:string) -> object:scene_node? | 0.2.0
 member | scene.metres_per_unit | property double rw | 0.2.0
 member | scene.root | property object:scene_node ro | 0.2.0
 member | scene_node.add | method (child:object:scene_node, index?:int) -> object:scene_node | 0.2.0
 member | scene_node.alive | property bool ro | 0.2.0
 member | scene_node.children | property list<object:scene_node> ro | 0.2.0
-member | scene_node.find | method (name:string) -> object:scene_node | 0.2.0
+member | scene_node.find | method (name:string) -> object:scene_node? | 0.2.0
 member | scene_node.id | property string rw | 0.2.0
 member | scene_node.input | property enum:input_mode rw | 0.2.0
 member | scene_node.metres_per_unit | property double rw | 0.2.0
@@ -124,7 +124,7 @@ member | view.alive | property bool ro | 0.2.0
 member | view.camera | property object:camera3d rw | 0.2.0
 member | view.children | property list<object:scene_node> ro | 0.2.0
 member | view.clear_camera | method () | 0.2.0
-member | view.find | method (name:string) -> object:scene_node | 0.2.0
+member | view.find | method (name:string) -> object:scene_node? | 0.2.0
 member | view.fit | property enum:content_fit rw | 0.2.0
 member | view.fps | property uint rw | 0.2.0
 member | view.height | property double rw | 0.2.0

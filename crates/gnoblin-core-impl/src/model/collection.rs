@@ -96,10 +96,7 @@ fn register_collection(builder: &mut Builder, class: &'static str, kind: CollKin
             let at = if index < 0 { items.len() as i64 + index } else { index };
             match usize::try_from(at).ok().and_then(|at| items.get(at)) {
                 Some(member) => handout(cx, *member),
-                None => Err(Fail::new(
-                    abi::E_NO_SUCH_NODE,
-                    format!("the collection has no member at {index}"),
-                )),
+                None => Ok(Val::None),
             }
         })
         .method("get", move |state, cx, args| {
@@ -110,10 +107,7 @@ fn register_collection(builder: &mut Builder, class: &'static str, kind: CollKin
                 .find(|member| id_of(cx, kind, *member).as_deref() == Some(id))
             {
                 Some(member) => handout(cx, member),
-                None => Err(Fail::new(
-                    abi::E_NO_SUCH_NODE,
-                    format!("the collection has no member `{id}`"),
-                )),
+                None => Ok(Val::None),
             }
         })
         .method("contains", |state, cx, args| {

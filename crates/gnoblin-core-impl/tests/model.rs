@@ -547,6 +547,34 @@ fn a_listener_of_created_is_told_of_the_windows_there() {
     rig.finish();
 }
 
+/// `at` and `get` answer none for a member that is not there (the catalog marks both `optional`), and the member itself, unchanged, for one
+/// that is: the generated SDKs read none as `None`, `undefined` and `Option::None`.
+#[test]
+fn a_lookup_that_finds_nothing_answers_none_and_one_that_finds_answers_the_member() {
+    let rig = Rig::new("model_ready_at_boot", &[]);
+    rig.settle();
+    for (owner, count) in [(rig.clients(), 2), (rig.outputs(), 1)] {
+        for index in [count, 99, -count - 1, i64::MIN] {
+            let answer = rig
+                .call(owner, "at", &[Val::Int(index)])
+                .expect("a lookup is not an error");
+            assert!(answer.is_none(), "at({index}) found nothing: {answer:?}");
+        }
+        let first = rig.call(owner, "at", &[Val::Int(0)]).expect("at(0)");
+        assert!(first.object().is_ok(), "the first member is an object: {first:?}");
+        let last = rig.call(owner, "at", &[Val::Int(-1)]).expect("at(-1)");
+        assert!(last.object().is_ok(), "the last member is an object: {last:?}");
+    }
+    let absent = rig
+        .call(rig.clients(), "get", &[Val::Text("no-such".into())])
+        .expect("a lookup is not an error");
+    assert!(absent.is_none(), "{absent:?}");
+    let found = rig
+        .call(rig.clients(), "get", &[Val::Text("3".into())])
+        .expect("get(3)");
+    assert_eq!(rig.client(3), found.object().expect("the window"));
+}
+
 #[test]
 fn ready_is_told_for_the_windows_there_at_the_start() {
     let rig = Rig::new("model_ready_at_boot", &[]);
@@ -913,9 +941,15 @@ fn collections_follow_their_members() {
         json!([members(clients), members(foot), members(either), members(titled)]),
     );
     let one = rig.client(3);
-    let missing = rig.call(clients, "get", &[Val::Text("99".into())]).is_err();
+    let missing = rig
+        .call(clients, "get", &[Val::Text("99".into())])
+        .expect("a lookup that finds nothing")
+        .is_none();
     let last = text_of(api, &rig.call(clients, "at", &[Val::Int(-1)]).expect("the last"), "id");
-    let beyond = rig.call(clients, "at", &[Val::Int(5)]).is_err();
+    let beyond = rig
+        .call(clients, "at", &[Val::Int(5)])
+        .expect("a lookup that finds nothing")
+        .is_none();
     rig.rec(
         "lookup",
         json!([
@@ -1222,7 +1256,9 @@ fn an_object_that_is_gone_keeps_its_last_values_and_refuses_a_write() {
             rig.prop(c, "title").text().unwrap(),
             number(rig.prop(c, "width").double().unwrap()),
             number(rig.prop(clients, "length").uint().unwrap() as f64),
-            rig.call(clients, "get", &[Val::Text("3".into())]).is_err(),
+            rig.call(clients, "get", &[Val::Text("3".into())])
+                .expect("a lookup that finds nothing")
+                .is_none(),
         ]),
     );
     let refused = rig

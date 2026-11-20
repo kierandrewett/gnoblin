@@ -14,7 +14,7 @@ member | client_collection.add_listener | method (listener:object:client_collect
 member | client_collection.added | signal (client:object:client, collection:object:client_collection) | 0.2.0
 member | client_collection.alive | property bool ro | 0.2.0
 member | client_collection.app_id_changed | signal (client:object:client, app_id:string) | 0.2.0
-member | client_collection.at | method (index:int) -> object:client | 0.2.0
+member | client_collection.at | method (index:int) -> object:client? | 0.2.0
 member | client_collection.clear | method () | 0.2.0
 member | client_collection.closed | signal (client:object:client) | 0.2.0
 member | client_collection.contains | method (member:object:client) -> bool | 0.2.0
@@ -22,7 +22,7 @@ member | client_collection.decoration_changed | signal (client:object:client, de
 member | client_collection.focus_changed | signal (client:object:client, focused:bool) | 0.2.0
 member | client_collection.focused | property object:client ro | 0.2.0
 member | client_collection.geometry_changed | signal (client:object:client, geometry:object:rect) | 0.2.0
-member | client_collection.get | method (id:string) -> object:client | 0.2.0
+member | client_collection.get | method (id:string) -> object:client? | 0.2.0
 member | client_collection.kind | property string ro | 0.2.0
 member | client_collection.length | property uint ro | 0.2.0
 member | client_collection.mutable | property bool ro | 0.2.0
@@ -83,12 +83,12 @@ member | output_collection.add_listener | method (listener:object:output_collect
 member | output_collection.added | signal (output:object:output, collection:object:output_collection) | 0.2.0
 member | output_collection.alive | property bool ro | 0.2.0
 member | output_collection.applied | signal (output:object:output, error:string) | 0.2.0
-member | output_collection.at | method (index:int) -> object:output | 0.2.0
+member | output_collection.at | method (index:int) -> object:output? | 0.2.0
 member | output_collection.connected | signal (output:object:output) | 0.2.0
 member | output_collection.contains | method (member:object:output) -> bool | 0.2.0
 member | output_collection.disconnected | signal (output:object:output) | 0.2.0
 member | output_collection.geometry_changed | signal (output:object:output, geometry:object:rect) | 0.2.0
-member | output_collection.get | method (id:string) -> object:output | 0.2.0
+member | output_collection.get | method (id:string) -> object:output? | 0.2.0
 member | output_collection.kind | property string ro | 0.2.0
 member | output_collection.length | property uint ro | 0.2.0
 member | output_collection.mode_changed | signal (output:object:output, mode:string) | 0.2.0

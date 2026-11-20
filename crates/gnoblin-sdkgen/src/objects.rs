@@ -309,6 +309,9 @@ fn member_source(types: &mut Types<'_>, member: &Member<'_>) -> String {
             if method.extras.inert.is_some() {
                 flags.push("abi::MEMBER_INERT");
             }
+            if method.optional {
+                flags.push("abi::MEMBER_OPTIONAL");
+            }
             let args = args_source(types, &method.params);
             format!(
                 "MemberDef {{ name: {:?}, kind: abi::MEMBER_METHOD, flags: {}, ty: &T{ty}, {args}, default: DefaultDef::None, abi: {:?} }}",

@@ -450,6 +450,8 @@ pub struct Method {
     pub params: Vec<Field>,
     /// What the method answers, when it does (local namespaces; a method of the compositor's schema answers with an operation).
     pub returns: Option<Type>,
+    /// The result may be none (`returns` is an object): `undefined`, `None` or `Option::None` in the generated SDKs.
+    pub optional: bool,
     /// For an interface: the shell must implement the method.
     pub required: bool,
     /// For an interface: the library runs its own default when the shell does not implement the method.
@@ -944,7 +946,7 @@ impl Catalog {
             for method in &object.methods {
                 let _ = write!(
                     text,
-                    "m {} fn={} secret={} returns={} required={} native={} dunder={:?} extras={:?}",
+                    "m {} fn={} secret={} returns={} optional={} required={} native={} dunder={:?} extras={:?}",
                     method.name,
                     method.function,
                     method.secret,
@@ -952,6 +954,7 @@ impl Catalog {
                         .returns
                         .as_ref()
                         .map_or_else(|| "-".to_owned(), ToString::to_string),
+                    method.optional,
                     method.required,
                     method.native_default,
                     method.dunder,

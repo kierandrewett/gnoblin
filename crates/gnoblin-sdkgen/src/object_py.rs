@@ -955,6 +955,7 @@ impl<'a> Py<'a> {
         let (params, args) = self.params(&method.params)?;
         let at = Self::at(lookups, 'm', &method.name);
         let returns = match &method.returns {
+            Some(ty) if method.optional => self.ty_read(ty)?,
             Some(ty) => self.ty(ty, false)?,
             None => "None".to_owned(),
         };
@@ -964,7 +965,7 @@ impl<'a> Py<'a> {
             format!("self._h.call(i[{at}], [{}])", args.join(", "))
         };
         let result = match &method.returns {
-            Some(ty) => format!("return {}", self.dec(ty, &call, false)?),
+            Some(ty) => format!("return {}", self.dec(ty, &call, method.optional)?),
             None => call,
         };
         let doc = format!(

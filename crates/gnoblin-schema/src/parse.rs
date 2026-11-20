@@ -61,6 +61,8 @@
 //! - `[[enum]]` with `values = [..]`, and `[[callback]]` with `[[callback.param]]` and `returns`: the types `enum:<name>` and
 //!   `callback:<name>`.
 //! - `returns = "<type>"` on a method, `required = true` and `default = "native"` on a method of an interface.
+//! - `optional = true` on a method: its result (an `object:` type) may be none, as `undefined` in TypeScript, `None` in Python and
+//!   `Option::None` in Rust. The library answers a nothing value; without the key a missing member is an error.
 //! - `python = { dunder = "__len__" }` on a method: the Python special method the member is.
 //! - `optional = true` on a property: a record may leave the field out (the same key a method parameter has). A field with neither a
 //!   default nor this is always there.
@@ -188,6 +190,9 @@ struct RawMethod {
     params: Vec<RawField>,
     #[serde(default)]
     returns: Option<String>,
+    /// The result may be none: `undefined`, `None`, `Option::None`.
+    #[serde(default)]
+    optional: bool,
     #[serde(default)]
     required: bool,
     #[serde(default)]
@@ -647,6 +652,7 @@ fn parse_methods(
             raw_method.export.as_ref(),
         );
         local_only(scope, problems, &owner, "returns", raw_method.returns.is_some());
+        local_only(scope, problems, &owner, "optional", raw_method.optional);
         local_only(scope, problems, &owner, "required", raw_method.required);
         local_only(scope, problems, &owner, "default", raw_method.default.is_some());
         local_only(scope, problems, &owner, "python", raw_method.python.is_some());
@@ -677,6 +683,14 @@ fn parse_methods(
             .returns
             .as_deref()
             .and_then(|text| type_of(problems, Some(text), &format!("{owner}: `returns`")));
+        if raw_method.optional && !matches!(returns, Some(Type::ObjectRef(_))) {
+            problems.push(format!("{owner}: `optional` needs `returns` to be an `object:` type"));
+        }
+        if raw_method.optional && kind == ObjectKind::Interface {
+            problems.push(format!(
+                "{owner}: `optional` belongs to a method a library serves, not to an interface"
+            ));
+        }
         methods.push(Method {
             name: raw_method.name.clone(),
             since,
@@ -684,6 +698,7 @@ fn parse_methods(
             function: raw_method.function,
             params,
             returns,
+            optional: raw_method.optional,
             required: raw_method.required,
             native_default: raw_method.default.is_some(),
             dunder: raw_method.python.as_ref().and_then(|python| python.dunder.clone()),
@@ -1140,6 +1155,54 @@ mod tests {
         );
 
         let found = problems(&format!("{property}optional = true\n"));
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("`optional`") && problem.contains("local = true")),
+            "the compositor's own files do not use it: {found:?}"
+        );
+    }
+
+    /// A handle of a local namespace with one method `find` that declares `extra` after its `returns`.
+    fn local_find(returns: &str, extra: &str, kind: &str) -> String {
+        format!(
+            "namespace = \"test\"\nversion = \"0.2.0\"\nlocal = true\n\n[[object]]\nname = \"thing\"\nsince = \"0.2.0\"\nkind = \"{kind}\"\n\
+             \n[[object.method]]\nname = \"find\"\nsince = \"0.2.0\"\nreturns = \"{returns}\"\n{extra}"
+        )
+    }
+
+    fn refused(text: &str) -> Vec<String> {
+        match parse_schema("test.toml", text) {
+            Ok(schema) => panic!("expected a rejection, parsed {schema:?}"),
+            Err(crate::SchemaError::Invalid { problems, .. }) => problems,
+            Err(other) => panic!("expected validation problems, got {other}"),
+        }
+    }
+
+    #[test]
+    fn an_optional_result_is_read_only_for_a_method_that_answers_an_object() {
+        let schema =
+            parse_schema("test.toml", &local_find("object:thing", "optional = true\n", "handle")).expect("schema");
+        assert!(schema.objects[0].methods[0].optional);
+        let schema = parse_schema("test.toml", &local_find("object:thing", "", "handle")).expect("schema");
+        assert!(
+            !schema.objects[0].methods[0].optional,
+            "a result is always there unless it says otherwise"
+        );
+
+        let found = refused(&local_find("int", "optional = true\n", "handle"));
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("`optional` needs `returns`")),
+            "{found:?}"
+        );
+        let found = refused(&local_find("object:thing", "optional = true\n", "interface"));
+        assert!(
+            found.iter().any(|problem| problem.contains("not to an interface")),
+            "{found:?}"
+        );
+        let found = problems("\n[[object.method]]\nname = \"find\"\nsince = \"0.2.0\"\noptional = true\n");
         assert!(
             found
                 .iter()

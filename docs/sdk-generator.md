@@ -1,8 +1,10 @@
 # The SDK generator
 
 Every language SDK of Gnoblin is written by one library, `gnoblin-sdkgen`, from three sources of truth, so the SDKs cannot drift from
-the compositor and adding a language is one file. **Nothing it writes is committed.** A build renders what it embeds, an install
-renders what an editor reads, and a person who wants to read a generated file asks for a copy.
+the compositor and adding a language is one file.
+
+**Nothing it writes is committed.** A build renders what it embeds, an install renders what an editor reads, and a person who wants to
+read a generated file asks for a copy.
 
 ```sh
 cargo xtask gen-sdks                    # a readable copy of every generated file, in target/sdk
@@ -20,12 +22,14 @@ cargo xtask gen-sdks --update           # record an additive change of the catal
 | `build.rs` of `gnoblin-std-dyn`        | every build | `OUT_DIR/rust-std-dyn/generated.rs`, which the crate's `lib.rs` includes                                   |
 | `build.rs` of `gnoblin-js`             | every build | `OUT_DIR/js/**`, and `stock_embedded.rs`, the table the crate's `stock.rs` serves the modules from         |
 | `build.rs` of `gnoblin-runtime-python` | every build | `OUT_DIR/python/**`, and `python_embedded.rs`, the table the crate's `embedded.rs` serves the modules from |
-| `cargo xtask dist install`             | install     | the TypeScript and Python files, and the declarations and stubs of the object classes, for editors        |
+| `cargo xtask dist install`             | install     | the TypeScript and Python files, and the declarations and stubs of the object classes, for editors         |
 | `cargo xtask gen-sdks [--out DIR]`     | by hand     | a copy of everything, with the Rust passed through the pinned `rustfmt`                                    |
 
 A `build.rs` runs again when the schema directory, an ABI crate or the generator changes (`cargo:rerun-if-changed` and the
-build-dependency edge), and only then. It renders only its own target and rewrites a file only when the text changed, so a build
-that did not touch the catalogue touches no file. `gnoblin-sdkgen` is a build dependency of those four crates and of nothing else
+build-dependency edge), and only then.
+
+It renders only its own target and rewrites a file only when the text changed, so a build that did not touch the catalogue touches no
+file. `gnoblin-sdkgen` is a build dependency of those four crates and of nothing else
 (`cargo xtask deps` enforces it, and that the generator names only the schema and the two ABI crates).
 
 Generated Rust is not formatted in a build: the compiler does not care, and `gen-sdks` formats the copy a person reads.
@@ -36,9 +40,12 @@ Generated Rust is not formatted in a build: the compiler does not care, and `gen
   it always was.
 - **JavaScript and TypeScript.** `gnoblin-js` embeds `gnoblin-core/generated/*` and `gnoblin-std/generated/*` and serves them under
   those paths beside the files of a package that is installed. A generated module wins over a file of the same path in the library
-  directory, so what runs is always what this runtime was built with. `stock_sources_in` and `editor_library_in` list both, which is why
-  `gnoblinctl types init` and `gnoblinctl config check --types` give an editor the same modules the shell runs. A prefix that has no
-  std package serves no std module, generated or not, so example 17 keeps its error.
+  directory, so what runs is always what this runtime was built with.
+
+    `stock_sources_in` and `editor_library_in` list both, which is why
+    `gnoblinctl types init` and `gnoblinctl config check --types` give an editor the same modules the shell runs. A prefix that has no
+    std package serves no std module, generated or not, so example 17 keeps its error.
+
 - **Python.** `gnoblin-runtime-python` embeds `gnoblin._generated.*` and `gnoblin.std` and puts a finder first on `sys.meta_path` of
   its own interpreter. The hand-written package on disk finds them through it, so an older file of the same name in a prefix is never
   imported. The object classes (`gnoblin.objects.std`, `gnoblin.objects.model`) come the same way.
@@ -68,23 +75,30 @@ A generated file starts with a banner that names the generator, the target and t
 
 ## The namespaces a library serves
 
-`gnoblin.model` (the core) and `gnoblin.std` (the std library) are not the compositor's: a library serves their classes through the object
-protocol (`GnoblinObjectApi`, [the ABI page](abi-compatibility.md)). Their catalogs are schema files beside the ABI crates,
-`crates/gnoblin-core-abi/schema/` and `crates/gnoblin-std-abi/schema/`, one file per module, each with `local = true`. A local file may use
-the keys a compositor file may not: `kind` (`handle`, `record`, `interface`, `service`), `ctor`, `retained`, `[[enum]]`, `[[callback]]`,
-`returns`, `required` and `default = "native"` on a method of an interface, `optional` on a property (a record may leave the field out),
-`python = { dunder = ".." }`, `inert`, `abi = "fn:<name>"`,
-`export = { js, py, rust }`, and a `base` of another namespace's class. The wire never carries such a namespace and the `gnoblin`
-catalog hash (`gnoblin_catalog_hash`) does not include it; the namespace has a hash of its own (`Catalog::namespace_fingerprint`), which
-its object table reports.
+`gnoblin.model` (the core) and `gnoblin.std` (the std library) are not the compositor's: a library serves their classes through the
+object protocol (`GnoblinObjectApi`, [the ABI page](abi-compatibility.md)). Their catalogs are schema files beside the ABI crates,
+the two ABI crates' `schema/` directories, one file per module, each with `local = true`.
 
-| Target       | Writes                                                                                               | Consumed by                                    |
-| ------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `objects`    | `rust-objects/{model,std}_catalog.rs`: the static `CATALOG` of each namespace and its `CATALOG_HASH` | `build.rs` of `gnoblin-core-impl`, `-std-impl` |
-| `object-api` | `rust-objects/{model,std}_api.rs`: the typed Rust API of each namespace, over the protocol's client  | `build.rs` of `gnoblin-core`, `gnoblin-std`    |
-| `object-js`  | `js/<package>/generated/objects.js` for each namespace, and `js/gnoblin-core/generated/object_base.js` | `build.rs` of `gnoblin-js`                     |
-| `object-py`  | `python/gnoblin/objects/{model,std}.py`, with `__init__.py` and `_base.py`                           | `build.rs` of `gnoblin-runtime-python`         |
-| `object-types` | `js/<package>/generated/objects.d.ts` and `object_base.d.ts`; `python/gnoblin/objects/*.pyi`       | `build.rs` of `gnoblin-js` (the editor library), `cargo xtask dist` |
+A local file may use keys a compositor file may not:
+
+- `kind` (`handle`, `record`, `interface`, `service`), `ctor`, `retained`, `[[enum]]` and `[[callback]]`.
+- `returns`, `required` and `default = "native"` on a method of an interface.
+- `optional` on a property: a record may leave the field out.
+- `optional` on a method: its `object:` result may be none, as `Option<T>` in Rust, `T | undefined` in TypeScript and `T | None` in
+  Python. The library flags the method `MEMBER_OPTIONAL` and refuses a none answer from a method that is not marked.
+- `python = { dunder = ".." }`, `inert`, `abi = "fn:<name>"` and `export = { js, py, rust }`.
+- A `base` of another namespace's class.
+
+The wire never carries such a namespace and the `gnoblin` catalog hash (`gnoblin_catalog_hash`) does not include it. The namespace has
+a hash of its own (`Catalog::namespace_fingerprint`), which its object table reports.
+
+| Target         | Writes                                                                                                 | Consumed by                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `objects`      | `rust-objects/{model,std}_catalog.rs`: the static `CATALOG` of each namespace and its `CATALOG_HASH`   | `build.rs` of `gnoblin-core-impl`, `-std-impl`                      |
+| `object-api`   | `rust-objects/{model,std}_api.rs`: the typed Rust API of each namespace, over the protocol's client    | `build.rs` of `gnoblin-core`, `gnoblin-std`                         |
+| `object-js`    | `js/<package>/generated/objects.js` for each namespace, and `js/gnoblin-core/generated/object_base.js` | `build.rs` of `gnoblin-js`                                          |
+| `object-py`    | `python/gnoblin/objects/{model,std}.py`, with `__init__.py` and `_base.py`                             | `build.rs` of `gnoblin-runtime-python`                              |
+| `object-types` | `js/<package>/generated/objects.d.ts` and `object_base.d.ts`; `python/gnoblin/objects/*.pyi`           | `build.rs` of `gnoblin-js` (the editor library), `cargo xtask dist` |
 
 The typed Rust API (`gnoblin_core::objects`, `gnoblin_std::objects`; a shell gets the handle from `g.objects()` and `std.objects()`) is one
 Rust type for each catalog type:
@@ -93,50 +107,68 @@ Rust type for each catalog type:
 - a **record** is a struct of its properties in catalog order. A field with a schema default starts at it, an `optional` field is an
   `Option` that starts as `None`, and any other field is always there: a record that has some is made with `new`, and one that has none
   has `Default`;
-- a **handle** or a **service** is a struct that holds a reference and releases it when dropped: a constructor (`new`, or `get` for a
-  service), a getter and a setter for each property (an object or a record reads as an `Option`), a method for each method, an associated
-  function that takes the `Objects` for each `function`, and `on_<signal>` and `on_<property>_changed` listeners that end when the
-  returned guard is dropped (`keep` lets one last until the generation ends);
-- an **interface** is a struct of handlers, one boxed closure per method (an `Option` of one for a method the library has a native
-  default for), and `implement` makes the object the library calls them through;
+- a **handle** or a **service** is a struct that holds a reference and releases it when dropped. It has a constructor (`new`, or `get`
+  for a service), a getter and a setter for each property, a method for each method, and an associated function for each `function`.
+  An object or a record reads as an `Option`, and so does the result of a method marked `optional`. A listener ends when the returned
+  guard is dropped; `keep` lets it last until the generation ends;
+- an **interface** is a struct of handlers, one boxed closure per method. A method the library has a native default for is an
+  `Option` of one, and `implement` makes the object the library calls them through;
 - a **callback** type is a Rust closure wherever a property, a constructor or a method takes one.
 
-The ids of a class are looked up by name the first time a call needs them, so a shell built against an older catalog runs against a newer
-library and fails only on a name the library lacks. A member whose type names a class of another namespace is refused at build time with a
+The ids of a class are looked up by name the first time a call needs them. A shell built against an older catalog runs against a newer
+library and fails only on a name the library lacks.
+
+A member whose type names a class of another namespace is refused at build time with a
 message that says so: a typed reference across two libraries needs both libraries' `Objects`, which no catalog needs yet.
 
 ### The classes in JavaScript, TypeScript and Python
 
 `object-js`, `object-py` and `object-types` write the same surface for the script languages, from the same catalog, over the object
-protocol that `gnoblin-runtime-js` (`__gnoblinObjects`) and `gnoblin-runtime-python` (the built-in module `_gnoblin_objects`) expose. A
-class, a property, a method, a signal and the conversion of every value are rendered; nothing is written by hand per class, and a class
-added to a catalog is a class in all three languages with no change to a runtime. The names follow the language: `camelCase` members
-and `PascalCase` classes in TypeScript, `snake_case` members in Python, and an `export = { js, py }` attribute where the mechanical
-conversion is not wanted (a Python keyword gets a trailing underscore: `raise_`).
+protocol that `gnoblin-runtime-js` (`__gnoblinObjects`) and `gnoblin-runtime-python` (the built-in module `_gnoblin_objects`) expose.
 
-| Catalog type | TypeScript (`gnoblin-std/generated/objects`)                     | Python (`gnoblin.objects.std`)                          |
-| ------------ | ---------------------------------------------------------------- | ------------------------------------------------------- |
-| enum         | a string-literal union (`"click" \| "sloppy"`)                   | an `IntEnum`; a name is accepted where one is read      |
-| record       | an interface, and an `Init` one when a field has a default       | a `dataclass`                                           |
-| handle       | a class: accessors, methods, `on(event, handler)`, `destroy()`   | a class: properties, methods, `on(event[, handler])`    |
-| service      | a class of static functions (and `get()` when it has members)    | the same                                                |
-| interface    | an abstract class a shell extends, optional methods optional     | a base class a shell subclasses                         |
-| callback     | a function                                                       | a callable                                              |
+A class, a property, a method, a signal and the conversion of every value are rendered. Nothing is written by hand per class, and a
+class added to a catalog is a class in all three languages with no change to a runtime.
+
+The names follow the language: `camelCase` members and `PascalCase` classes in TypeScript, `snake_case` members in Python. An
+`export = { js, py }` attribute covers a name the mechanical conversion does not give (a Python keyword gets a trailing underscore:
+`raise_`).
+
+| Catalog type | TypeScript (`gnoblin-std/generated/objects`)                   | Python (`gnoblin.objects.std`)                       |
+| ------------ | -------------------------------------------------------------- | ---------------------------------------------------- |
+| enum         | a string-literal union (`"click" \| "sloppy"`)                 | an `IntEnum`; a name is accepted where one is read   |
+| record       | an interface, and an `Init` one when a field has a default     | a `dataclass`                                        |
+| handle       | a class: accessors, methods, `on(event, handler)`, `destroy()` | a class: properties, methods, `on(event[, handler])` |
+| service      | a class of static functions (and `get()` when it has members)  | the same                                             |
+| interface    | an abstract class a shell extends, optional methods optional   | a base class a shell subclasses                      |
+| callback     | a function                                                     | a callable                                           |
 
 An object is held by a reference that ends when the script's last reference goes (a `FinalizationRegistry` in JavaScript, the dealloc of
 the handle in Python, queued to the shell thread): the library's object lives on until `destroy()`, its parent's end or the generation's.
+
 An event is a signal, or `<property>Changed` (`<property>_changed` in Python) for each property, and a listener lasts until it is stopped
-or the generation ends, not until it is collected. An interface is implemented by giving the library an instance of the script's class:
-the methods it defines are the ones the library calls, and the rest run natively. A class that extends another namespace's class is
+or the generation ends, not until it is collected.
+
+An interface is implemented by giving the library an instance of the script's class:
+the methods it defines are the ones the library calls, and the rest run natively.
+
+A class that extends another namespace's class is
 rendered flat, as in Rust, with the members of its base; a member whose type names a class of the other namespace is refused with the
 same message the Rust target gives.
 
-The JavaScript is embedded in `libgnoblin-runtime-js.so` (`gnoblin-std/generated/objects`, `gnoblin-core/generated/objects`, and
-`gnoblin-core/generated/object_base` which both import) and the Python in `libgnoblin-runtime-python.so` (`gnoblin.objects.std`,
-`gnoblin.objects.model`). The declarations are what an editor and `gnoblinctl check --types` read: `gnoblin-js` embeds them with the
-library sources (`editor_library_in`, which leaves the JavaScript out), `cargo xtask dist install` writes them to `share/gnoblin/js` and
-`share/gnoblin/python`. Importing `gnoblin-std/generated/objects` opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed
-(looked in: ...)` without it, as `gnoblin-std` does; `gnoblin.objects.std` raises `ImportError` the same way. The catalog carries no
+The JavaScript is embedded in `libgnoblin-runtime-js.so` and the Python in `libgnoblin-runtime-python.so`:
+
+- the JavaScript modules are `gnoblin-std/generated/objects`, `gnoblin-core/generated/objects` and `gnoblin-core/generated/object_base`,
+  which both import;
+- the Python modules are `gnoblin.objects.std` and `gnoblin.objects.model`.
+
+The declarations are what an editor and `gnoblinctl check --types` read. `gnoblin-js` embeds them with the library sources
+(`editor_library_in`, which leaves the JavaScript out), and `cargo xtask dist install` writes them to `share/gnoblin/js` and
+`share/gnoblin/python`.
+
+Importing `gnoblin-std/generated/objects` opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed (looked in: ...)`
+without it, as `gnoblin-std` does; `gnoblin.objects.std` raises `ImportError` the same way.
+
+The catalog carries no
 documentation strings yet, so a member's doc comment says what it is and not what it does.
 
 A crate that serves a catalog of its own, as a test fixture, renders the same two files with `gnoblin_sdkgen::emit_catalog_for_build`
@@ -145,7 +177,9 @@ and run by its tests).
 
 A library implements the classes of its catalog with a `gnoblin_object::server::Builder` (`crates/gnoblin-std-impl/src/object/`), and the
 two-way completeness test of the library (`Library::problems`) fails when a class or a member of the catalog has no implementation, or an
-implementation names a member the catalog lacks. Class ids are positions in the catalog (ordered by name), and a member's id is its
+implementation names a member the catalog lacks.
+
+Class ids are positions in the catalog (ordered by name), and a member's id is its
 position in its class's list, a base class's members first, so a base member has the same id in every derived class.
 
 The surface lock of a local namespace is one file per catalog file: `crates/gnoblin-{core,std}-abi/schema/lock/<module>.lock`. A lane that
@@ -169,17 +203,21 @@ No file is committed, so there is no committed file to be stale. What `cargo xta
     ```
 
     The comparison is the one `abi-check` makes for the C ABI. A recorded entry that is gone or changed fails when the lock's
-    `released` line covers its `since`, with no way to bless it inside the major, and is only a stale lock before the release. A new
-    entry is additive: `cargo xtask gen-sdks --update` records it. A hand edit of a lock is caught the same way. The SDKs of every
+    `released` line covers its `since`, with no way to bless it inside the major, and is only a stale lock before the release.
+
+    A new entry is additive: `cargo xtask gen-sdks --update` records it. A hand edit of a lock is caught the same way. The SDKs of every
     language follow the catalogue, so a lock that holds proves they keep every released member.
 
 4. **The C ABI is the one on record.** The same command runs what `cargo xtask abi-check` runs: `abi.lock` of both libraries, and the
    golden shells of example 12.
 
 The unit tests of the crate (`cargo test -p gnoblin-sdkgen`) cover the same ground from inside: two renders are equal, every file
-carries the banner and the hash, no two targets write one path, and a surface lock round-trips. They also render the `probe` catalog (one
-class of every kind) and the two libraries' own as the script targets do, check that the Python parses and the JavaScript parses as a
-module, and, when a `tsc` is found (`GNOBLIN_TSC`), that the declarations type-check a script that uses an enum, a record with defaults,
+carries the banner and the hash, no two targets write one path, and a surface lock round-trips.
+
+They also render the `probe` catalog (one class of every kind) and the two libraries' own as the script targets do, and check that the
+Python parses and the JavaScript parses as a module.
+
+When a `tsc` is found (`GNOBLIN_TSC`), they check that the declarations type-check a script that uses an enum, a record with defaults,
 a closure property, a signal and an interface, and refuse one that gets them wrong.
 
 ## Adding a language
@@ -188,10 +226,9 @@ a closure property, a signal and an interface, and refuse one that gets them wro
    A file's path is logical (`python/gnoblin/std.py`): it is relative to whatever directory the caller writes the files under.
 2. Add one line to `targets()` in `crates/gnoblin-sdkgen/src/lib.rs`.
 3. Read the specification, not source text. `SdkSpec` holds the catalog (`node_classes`, objects, members, types) and, per library
-   (`core`, `std`): constant groups (`ConstGroup::type_name` gives `EventKind` or `PlacementFlags`), handle typedefs, callbacks, records
-   with each field classified as a scalar, handle, text, nested record, or an unrepresentable pointer, and the function table with every
-   argument classified (`Arg::Text`, `Arg::Records`, `Arg::Out`, `Arg::Callback`, ...), its return, its object and its receiver.
-   `text.rs` has the casing helpers and an indenting writer.
+   (`core`, `std`): constant groups, handle typedefs, callbacks, records with each field classified as a scalar, handle, text, nested
+   record, or an unrepresentable pointer, and the function table with every argument classified, its return, its object and its
+   receiver. `text.rs` has the casing helpers and an indenting writer.
 4. Call `gnoblin_sdkgen::emit_for_build(&["<language>"])` from the `build.rs` of the crate that embeds the output, and add the crate
    to `SDKGEN_USERS` in `xtask/src/deps.rs`.
 

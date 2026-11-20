@@ -464,6 +464,7 @@ impl Library {
             guarded(method.name, || run(&mut **guard, &mut cx, &args))?
         };
         args.iter().for_each(Val::adopt_closures);
+        check_answer(def.name, method, &answer)?;
         Ok(answer)
     }
 
@@ -489,6 +490,7 @@ impl Library {
         let mut cx = Cx::new(self, &st, 0, class);
         let answer = guarded(method.name, || run(&mut cx, &args))?;
         args.iter().for_each(Val::adopt_closures);
+        check_answer(def.name, method, &answer)?;
         Ok(answer)
     }
 
@@ -801,6 +803,19 @@ impl Library {
             _ => {}
         }
     }
+}
+
+/// Refuses a none answer from a method that is not `optional` and promises an object or a record: the generated SDKs decode such a
+/// result as present, so none would be a fault in the library, not a lookup that found nothing.
+fn check_answer(class: &str, method: &MemberDef, answer: &Val) -> Res<()> {
+    let promises = matches!(method.ty.kind, abi::VALUE_OBJECT | abi::VALUE_RECORD);
+    if promises && method.flags & abi::MEMBER_OPTIONAL == 0 && answer.is_none() {
+        return Err(Fail::err(format!(
+            "`{class}.{}` answered nothing, and the catalog does not mark its result `optional`",
+            method.name
+        )));
+    }
+    Ok(())
 }
 
 /// Runs `body` and turns a panic into a failure that names `what`.

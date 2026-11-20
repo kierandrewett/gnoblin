@@ -723,6 +723,7 @@ impl go::typed::FromVal<Objects> for @Name@ {
         claim(&ident)?;
         let (params, args) = self.params_source(&method.params)?;
         let returns = match &method.returns {
+            Some(ty) if method.optional => format!("Option<{}>", self.owned(ty)?),
             Some(ty) => self.owned(ty)?,
             None => "()".to_owned(),
         };

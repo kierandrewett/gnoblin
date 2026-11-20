@@ -34,7 +34,7 @@ member | process_exit.stdout_truncated | property bool rw | 0.2.0
 member | process_exit.timed_out | property bool rw | 0.2.0
 member | process_listener.on_exited | method (process:object:process) | 0.2.0
 member | processes.add_listener | method (listener:object:process_listener) | 0.2.0
-member | processes.by_id | method (id:uint) -> object:process | 0.2.0
+member | processes.by_id | method (id:uint) -> object:process? | 0.2.0
 member | processes.exited | signal (process:object:process) | 0.2.0
 member | processes.list | method () -> list<object:process> | 0.2.0
 member | processes.remove_listener | method (listener:object:process_listener) | 0.2.0

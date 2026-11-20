@@ -509,4 +509,51 @@ const number: number = entry.text;
         let py = object_py::render(&view, false).expect("the derived class renders in Python");
         assert!(py.contains("def count(self)") && py.contains("def bump(self)"), "{py}");
     }
+
+    /// A method marked `optional` answers none in each language, and one that is not marked does not: `Option<T>` in Rust, `T | undefined`
+    /// in the declarations and `T | None` in Python, with the decoder that passes a none answer through, and the flag in the tables.
+    #[test]
+    fn an_optional_result_is_none_able_in_every_language_and_flagged_for_the_library() {
+        let root = tempfile::tempdir().expect("a directory");
+        fs::write(
+            root.path().join("thing.toml"),
+            "namespace = \"lib.a\"\nversion = \"0.1.0\"\nlocal = true\n\n[[object]]\nname = \"thing\"\nsince = \"0.1.0\"\nkind = \"handle\"\n\n\
+             [[object.method]]\nname = \"find\"\nsince = \"0.1.0\"\nreturns = \"object:thing\"\noptional = true\n\n\
+             [[object.method.param]]\nname = \"id\"\ntype = \"string\"\n\n\
+             [[object.method]]\nname = \"first\"\nsince = \"0.1.0\"\nreturns = \"object:thing\"\n",
+        )
+        .expect("a schema");
+        let catalog = Catalog::load_dirs(&[root.path()], &[]).expect("a catalog");
+        let namespaces = catalog.namespaces();
+        let view = ScriptView::new(&catalog, &namespaces[0]);
+
+        let rust = crate::object_api::render(&catalog, &namespaces[0]).expect("the typed API renders");
+        assert!(
+            rust.contains("pub fn find(&self, id: &str) -> go::Res<Option<Thing>>"),
+            "{rust}"
+        );
+        assert!(
+            rust.contains("pub fn first(&self) -> go::Res<Thing>"),
+            "a present result is unchanged: {rust}"
+        );
+
+        let dts = object_js::render_dts(&view).expect("declarations render");
+        assert!(dts.contains("find(id: string): Thing | undefined;"), "{dts}");
+        assert!(dts.contains("first(): Thing;"), "{dts}");
+        let js = object_js::render_js(&view).expect("the JavaScript renders");
+        assert!(js.contains("B.opt(N.call("), "a none answer is undefined: {js}");
+
+        let stub = object_py::render(&view, true).expect("the stub renders");
+        assert!(stub.contains("def find(self, id: str) -> Thing | None"), "{stub}");
+        assert!(stub.contains("def first(self) -> Thing"), "{stub}");
+        let py = object_py::render(&view, false).expect("the Python renders");
+        assert!(py.contains("_B.opt(self._h.call("), "a none answer is None: {py}");
+
+        let tables = crate::objects::render(&catalog, &namespaces[0]).expect("the tables render");
+        assert_eq!(
+            tables.matches("abi::MEMBER_OPTIONAL").count(),
+            1,
+            "only the marked method: {tables}"
+        );
+    }
 }

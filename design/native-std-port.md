@@ -924,16 +924,16 @@ optimised build on a 2-CPU Agent37 box (`what_a_call_from_a_script_costs` in `cr
 debug assertions). Each figure is nanoseconds per call over 200 000 calls, the script's own loop (11 ns in JavaScript, 10 ns in Python)
 taken off. One run each, not repeated, so read the figures to about 10 per cent:
 
-| What is timed                                                         | JavaScript (QuickJS) | Python |
-| --------------------------------------------------------------------- | -------------------- | ------ |
-| `get` of a number                                                     | 307                  | 235    |
-| `get` of text (28 characters)                                         | 427                  | 324    |
-| `get` of a record that is absent                                      | 379                  | 273    |
-| `set` of text                                                         | 832                  | 779    |
-| A method with no arguments that changes nothing (`home`)              | 936                  | 664    |
-| Two calls that each change the entry (`insert`, `backspace`)          | 1 775                | 1 616  |
-| A static function with a record and a boolean (`opens_focused`)       | 4 120                | 3 780  |
-| A static function with two records, answering a record (`focus_decision`) | 8 130            | 6 908  |
+| What is timed                                                             | JavaScript (QuickJS) | Python |
+| ------------------------------------------------------------------------- | -------------------- | ------ |
+| `get` of a number                                                         | 307                  | 235    |
+| `get` of text (28 characters)                                             | 427                  | 324    |
+| `get` of a record that is absent                                          | 379                  | 273    |
+| `set` of text                                                             | 832                  | 779    |
+| A method with no arguments that changes nothing (`home`)                  | 936                  | 664    |
+| Two calls that each change the entry (`insert`, `backspace`)              | 1 775                | 1 616  |
+| A static function with a record and a boolean (`opens_focused`)           | 4 120                | 3 780  |
+| A static function with two records, answering a record (`focus_decision`) | 8 130                | 6 908  |
 
 What the figures say:
 
@@ -1540,24 +1540,52 @@ there, from the next turn), and native listeners (`Cx::listen`) that `add_listen
 
 **Deviations from the table of 4.4, and whether each is acceptable for the flip.**
 
-| Deviation                                                                                                                                              | How the generated SDKs present it                                                                                             | For the flip                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `at(i)` and `get(id)` fail with `E_NO_SUCH_NODE` instead of answering "none"                                                                           | Rust `Err`; Python `IndexError`/`KeyError` through the dunder; TypeScript throws. The TypeScript library answered `undefined` | Not acceptable as it stands: the schema needs an optional result (`returns` that may be none) before NpFlip, or the TypeScript shells that test `get(id) === undefined` break |
-| `find(kind, filter)` is `find_clients` and `find_outputs` with a typed query record                                                                    | Typed methods; a predicate is `to_list()` and a filter in the shell's language, as 5.6 says                                   | Acceptable. `find("Workspace")` belongs to std                                                                                                                                |
-| `where` takes a record (`client_query`), with `any_*` fields for "one of"                                                                              | Typed record in every language                                                                                                | Acceptable                                                                                                                                                                    |
-| The `connected` property of an output is `alive`; `connected` is the signal                                                                            | One name for the state                                                                                                        | Acceptable; the generated TypeScript can add a getter                                                                                                                         |
-| `client.focus()`, not `activate`                                                                                                                       | As the TypeScript has it                                                                                                      | Acceptable                                                                                                                                                                    |
-| `position` is a list of three numbers; `transform` (a `Transform3D`) is not served                                                                     | `position` as a list; `transform` arrives with the scene math lane                                                            | Acceptable once NpStdScene serves the math                                                                                                                                    |
-| `request` is not a signal of `client`                                                                                                                  | The std's classes extend `client` with it (a class of `gnoblin.std` may extend a core class)                                  | Acceptable                                                                                                                                                                    |
-| A property binding's first run is the next turn, not inside `bind`; compute results are typed (`bind_double`, `bind_bool`, `bind_string`, `bind_list`) | Typed methods; the callback is a closure                                                                                      | Acceptable; the std lane's scene fixtures decide if a synchronous first run is needed                                                                                         |
-| Rust names: the service is `ModelRoot`, `get` of a collection is `get_by_id`, and five signals carry a `client_` or `output_` prefix                   | Python and TypeScript keep the catalog names; NpObjectAbiB reports a clash if it meets one                                    | Acceptable                                                                                                                                                                    |
-| The focus filters `workspace_id` and `monitor_id` match nothing in the core alone                                                                      | A window of the core has no workspace and no output; std's class extending `client` answers for both                          | Acceptable                                                                                                                                                                    |
+| Deviation                                                                                                                                              | How the generated SDKs present it                                                                    | For the flip                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `at(i)` and `get(id)` answer none when the member is absent                                                                                            | Rust `Option::None`; Python `None`; TypeScript `undefined`, as the TypeScript library answered       | Resolved: the catalog key `optional = true` on a method (see "Optional results" below) |
+| `find(kind, filter)` is `find_clients` and `find_outputs` with a typed query record                                                                    | Typed methods; a predicate is `to_list()` and a filter in the shell's language, as 5.6 says          | Acceptable. `find("Workspace")` belongs to std                                         |
+| `where` takes a record (`client_query`), with `any_*` fields for "one of"                                                                              | Typed record in every language                                                                       | Acceptable                                                                             |
+| The `connected` property of an output is `alive`; `connected` is the signal                                                                            | One name for the state                                                                               | Acceptable; the generated TypeScript can add a getter                                  |
+| `client.focus()`, not `activate`                                                                                                                       | As the TypeScript has it                                                                             | Acceptable                                                                             |
+| `position` is a list of three numbers; `transform` (a `Transform3D`) is not served                                                                     | `position` as a list; `transform` arrives with the scene math lane                                   | Acceptable once NpStdScene serves the math                                             |
+| `request` is not a signal of `client`                                                                                                                  | The std's classes extend `client` with it (a class of `gnoblin.std` may extend a core class)         | Acceptable                                                                             |
+| A property binding's first run is the next turn, not inside `bind`; compute results are typed (`bind_double`, `bind_bool`, `bind_string`, `bind_list`) | Typed methods; the callback is a closure                                                             | Acceptable; the std lane's scene fixtures decide if a synchronous first run is needed  |
+| Rust names: the service is `ModelRoot`, `get` of a collection is `get_by_id`, and five signals carry a `client_` or `output_` prefix                   | Python and TypeScript keep the catalog names; NpObjectAbiB reports a clash if it meets one           | Acceptable                                                                             |
+| The focus filters `workspace_id` and `monitor_id` match nothing in the core alone                                                                      | A window of the core has no workspace and no output; std's class extending `client` answers for both | Acceptable                                                                             |
 
-**Acceptance.** `modular::native_model` runs example 21 in a real session from Rust (`examples/21-native-model`) and from Python
-(`examples/21-native-model-py`, through `gnoblin.objects.model`): a window of the selected application joins a `where` selection, and the
+**Acceptance.** `modular::native_model` runs example 21 in a real session from Rust (`examples/21-native-model`), Python
+(`examples/21-native-model-py`, through `gnoblin.objects.model`) and TypeScript (`examples/21-native-model-ts`): a lookup of a window that
+is not there (`at(1000)`, `get("no-such-window")`) answers `None`, `None` and `undefined`, a lookup of the terminal by its id finds it, a window of
+the selected application joins a `where` selection, and the
 close of a window is heard through the `gnoblin` object with its last title still readable. A retitle is not asserted in a real
 session: the compositor publishes a title at the window's commit, and the order of the title listeners is proved by
-`crates/gnoblin-core-impl/tests/model.rs`. The TypeScript half waits for NpFlip, as the lane says.
+`crates/gnoblin-core-impl/tests/model.rs`.
+
+**Optional results.** A lookup that finds nothing answers none instead of failing with `E_NO_SUCH_NODE`. The catalog says so with
+`optional = true` on a method of a local catalog:
+
+- The result must be an `object:` type; the key is refused on an interface method and on any other result.
+- The generators write `Option<T>` in Rust, `T | undefined` in TypeScript and `T | None` in Python, and decode a none answer to
+  `Option::None`, `undefined` and `None`. A property that holds an object has always read that way.
+- The library enforces the other half. `MEMBER_OPTIONAL` is a flag of the method in the catalog it serves, and a method that is not
+  marked, whose result is an object or a record, and that answers none is a library fault (`check_answer` in `gnoblin-object`).
+- The surface locks record the mark as `-> object:client?`.
+
+The members marked, and what the TypeScript library answered for each:
+
+| Member                                                          | Old TypeScript                                                                                         |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `client_collection.at`, `client_collection.get`                 | `Collection.at` and `Collection.get` (`data/js/gnoblin-core/host/collections.ts`) answered `undefined` |
+| `output_collection.at`, `output_collection.get`                 | The same class, for outputs                                                                            |
+| `processes.by_id`                                               | `byId` (`data/js/gnoblin-core/process.ts`) answered `null`; the generated SDK answers `undefined`      |
+| `scene_node.find` (and its derived classes), `scene.find` (std) | New in std, whose comment already said "or none"; marked so that none is not a fault                   |
+
+`Collection.find(predicate)` is not a catalog member: it is a filter over `to_list()` in the shell's language. NpFlip deletes the
+TypeScript modules; the ones that import `Collection` today are these:
+
+- `gnoblin-core`: `host/collection_state.ts`, `host/console.ts`, `host/gnoblin.ts`, `host/listeners.ts`, `host/roots.ts` and
+  `host/session_bridge.ts`.
+- `gnoblin-std`: `host/displays.ts` and `host/members.ts`.
 
 #### NpCoreServices (9 days)
 

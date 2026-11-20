@@ -5,6 +5,7 @@
 //!
 //! - reads the windows that are there and logs how many;
 //! - makes a selection of the windows of one application (`where`) that follows its members, and logs each one that joins it;
+//! - looks up a window that is not there, which answers none, and one that is, which answers the window;
 //! - listens to the titles of every window through the collection, and to the closing of every window through the `gnoblin` object.
 //!
 //! Every line it logs starts with `model:`. A listener is told from the library's turn, after the call or the change that caused it, and
@@ -24,6 +25,15 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         return Ok(());
     };
     g.log(&format!("model: {} windows at the start", clients.length()?));
+    // A lookup that finds nothing answers none, not an error.
+    g.log(&format!(
+        "model: absent lookups: at {:?}, get {:?}",
+        clients.at(1000)?.map(|client| client.id()).transpose()?,
+        clients
+            .get_by_id("no-such-window")?
+            .map(|client| client.id())
+            .transpose()?
+    ));
 
     // A selection follows its members: a window joins it when its application id matches, and leaves when it stops matching.
     let terminals = clients.where_(
@@ -33,12 +43,16 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
         },
         None,
     )?;
+    let root = clients.clone();
     terminals
         .on_added(move |client, _| {
             g.log(&format!(
                 "model: a terminal joined: {}",
                 client.title().unwrap_or_default()
             ));
+            let id = client.id().unwrap_or_default();
+            let found = root.get_by_id(&id).ok().flatten().is_some();
+            g.log(&format!("model: the terminal is found by its id: {found}"));
         })?
         .keep();
     // A selection nobody holds is freed with its listeners: this shell keeps it for as long as it runs.

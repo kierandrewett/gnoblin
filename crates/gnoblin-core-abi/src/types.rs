@@ -198,6 +198,9 @@ abi_consts! {
     pub const MEMBER_INERT: u32 = 64;
     /// `GnoblinCatalogEntry.flags`: the property holds a closure.
     pub const MEMBER_CALLBACK: u32 = 128;
+    /// `GnoblinCatalogEntry.flags`: the method's result may be none (a lookup that finds nothing answers none; any other method that
+    /// answers an object and returns none is a library fault).
+    pub const MEMBER_OPTIONAL: u32 = 256;
 
     /// `GnoblinCatalogEntry.kind` of a class: an object with an identity, made by `create`.
     pub const CLASS_HANDLE: u32 = 1;

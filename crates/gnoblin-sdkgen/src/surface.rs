@@ -106,7 +106,7 @@ fn method_detail(method: &Method) -> String {
         params.join(", ")
     );
     if let Some(returns) = &method.returns {
-        let _ = write!(text, " -> {returns}");
+        let _ = write!(text, " -> {returns}{}", if method.optional { "?" } else { "" });
     }
     if method.required {
         text.push_str(" required");

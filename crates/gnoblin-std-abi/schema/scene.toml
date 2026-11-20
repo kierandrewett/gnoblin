@@ -372,6 +372,7 @@ optional = true
 name = "find"
 since = "0.2.0"
 returns = "object:scene_node"
+optional = true
 
 [[object.method.param]]
 name = "name"
@@ -603,6 +604,7 @@ type = "object:scene_node"
 name = "find"
 since = "0.2.0"
 returns = "object:scene_node"
+optional = true
 
 [[object.method.param]]
 name = "name"

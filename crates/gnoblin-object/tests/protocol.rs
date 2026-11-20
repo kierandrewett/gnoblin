@@ -151,6 +151,8 @@ fn probe_class() -> ClassDef {
             member("add", m, 0, int, vec![("a", int), ("b", int)]),
             member("fire", m, 0, none, vec![("x", int)]),
             member("paint", m, 0, none, vec![]),
+            member("find", m, abi::MEMBER_OPTIONAL, ty(abi::VALUE_OBJECT, "kept"), vec![]),
+            member("lost", m, 0, ty(abi::VALUE_OBJECT, "kept"), vec![]),
             member("ticked", s, 0, none, vec![("x", int)]),
         ],
     )
@@ -325,6 +327,8 @@ fn build_probe() -> Library {
             }
             Ok(Val::None)
         })
+        .method("find", |_, _, _| Ok(Val::None))
+        .method("lost", |_, _, _| Ok(Val::None))
         .method("paint", |s, cx, _| {
             let Some(painter) = s.painter else { return Ok(Val::None) };
             let paint = cx.class_named("paint")?;
@@ -717,4 +721,23 @@ fn a_retained_object_ends_once_it_is_unpinned_and_nobody_holds_it() {
     assert!(api.class_of(held).is_ok());
     api.release(held).unwrap();
     assert!(api.class_of(held).is_err());
+}
+
+#[test]
+fn a_method_may_answer_none_for_an_object_only_when_the_catalog_says_optional() {
+    let api = probe();
+    let class = api.class("probe").unwrap();
+    let find = api.member(class, abi::MEMBER_METHOD, "find").unwrap();
+    let lost = api.member(class, abi::MEMBER_METHOD, "lost").unwrap();
+    let obj = api.create(class, &[]).unwrap();
+    assert!(
+        api.call(obj, find, &[]).unwrap().is_none(),
+        "an `optional` result may be none"
+    );
+    let fault = api.call(obj, lost, &[]).unwrap_err();
+    assert!(
+        fault.message.contains("probe.lost") && fault.message.contains("optional"),
+        "a result that is not marked and answers none names the method: {}",
+        fault.message
+    );
 }

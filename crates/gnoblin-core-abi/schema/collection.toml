@@ -860,6 +860,7 @@ readonly = true
 name = "at"
 since = "0.2.0"
 returns = "object:client"
+optional = true
 
 [[object.method.param]]
 name = "index"
@@ -871,6 +872,7 @@ name = "get"
 since = "0.2.0"
 export = { rust = "get_by_id" }
 returns = "object:client"
+optional = true
 
 [[object.method.param]]
 name = "id"
@@ -1187,6 +1189,7 @@ readonly = true
 name = "at"
 since = "0.2.0"
 returns = "object:output"
+optional = true
 
 [[object.method.param]]
 name = "index"
@@ -1198,6 +1201,7 @@ name = "get"
 since = "0.2.0"
 export = { rust = "get_by_id" }
 returns = "object:output"
+optional = true
 
 [[object.method.param]]
 name = "id"

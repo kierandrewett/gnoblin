@@ -725,7 +725,7 @@ impl<'a> Js<'a> {
             format!("N.call(this[B.HANDLE], i[{at}], [{}])", args.join(", "))
         };
         let body = match &method.returns {
-            Some(ty) => format!("return {};", self.dec(ty, &call, false)?),
+            Some(ty) => format!("return {};", self.dec(ty, &call, method.optional)?),
             None => format!("{call};"),
         };
         c.line(format!(
@@ -1051,6 +1051,7 @@ impl Js<'_> {
                 Member::Method(method) => {
                     let ident = member_name(&method.name, &method.extras.export.js);
                     let returns = match &method.returns {
+                        Some(ty) if method.optional => self.ts_read(ty)?,
                         Some(ty) => self.ts(ty, false)?,
                         None => "void".to_owned(),
                     };
