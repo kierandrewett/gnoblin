@@ -34,7 +34,7 @@ use crate::table::{CoreTable, remembered};
 const CORE_NAMESPACES: &[&str] = &["gnoblin.model"];
 
 /// One opened namespace of a generation.
-struct Namespace {
+struct OpenedNamespace {
     name: String,
     api: Api,
     /// The name of each class, read from the catalog the first time one is asked for.
@@ -43,7 +43,7 @@ struct Namespace {
 
 /// What a slot stands for: a reference to a library object.
 #[derive(Clone, Copy)]
-struct Slot {
+struct ObjectSlot {
     namespace: usize,
     class: ClassId,
     obj: Obj,
@@ -51,13 +51,13 @@ struct Slot {
 
 /// The state the native functions of one generation share.
 #[derive(Default)]
-struct Table {
-    namespaces: RefCell<Vec<Namespace>>,
-    slots: RefCell<Vec<Option<Slot>>>,
+struct ObjectTable {
+    namespaces: RefCell<Vec<OpenedNamespace>>,
+    slots: RefCell<Vec<Option<ObjectSlot>>>,
     free: RefCell<Vec<usize>>,
 }
 
-impl Table {
+impl ObjectTable {
     fn api(&self, namespace: usize) -> Res<Api> {
         self.namespaces
             .borrow()
@@ -68,7 +68,7 @@ impl Table {
 
     /// A slot for a reference to `obj`, which the caller owns and the slot now holds.
     fn adopt(&self, namespace: usize, class: ClassId, obj: Obj) -> f64 {
-        let slot = Slot { namespace, class, obj };
+        let slot = ObjectSlot { namespace, class, obj };
         let mut slots = self.slots.borrow_mut();
         let index = match self.free.borrow_mut().pop() {
             Some(index) => {
@@ -83,7 +83,7 @@ impl Table {
         (index + 1) as f64
     }
 
-    fn slot(&self, number: f64) -> Res<Slot> {
+    fn slot(&self, number: f64) -> Res<ObjectSlot> {
         let index = number as usize;
         index
             .checked_sub(1)
@@ -92,7 +92,7 @@ impl Table {
     }
 
     /// Takes the slot out of the table: the reference is the caller's to release.
-    fn take(&self, number: f64) -> Option<Slot> {
+    fn take(&self, number: f64) -> Option<ObjectSlot> {
         let index = (number as usize).checked_sub(1)?;
         let taken = self.slots.borrow_mut().get_mut(index)?.take();
         if taken.is_some() {
@@ -129,13 +129,13 @@ impl Table {
 /// What a script's function is to the library: a closure that runs it from the core's dispatch, in the generation that made it.
 struct JsClosure {
     callback: ScriptCallback,
-    table: Rc<Table>,
+    table: Rc<ObjectTable>,
     ids: ScriptIds,
     namespace: usize,
 }
 
 /// How a call of a script function ended.
-enum Ended {
+enum CallEnded {
     /// The function belongs to a generation that was replaced: it was not run.
     Replaced,
     Answered(Val),
@@ -146,7 +146,7 @@ enum Ended {
 impl Callable for JsClosure {
     fn call(&self, member: MemberId, args: &[Val]) -> Res<Val> {
         let ended = entered(|enter| {
-            let mut ended = Ended::Replaced;
+            let mut ended = CallEnded::Replaced;
             enter.enter(&mut |ctx| {
                 let support: Object<'_> = ctx.globals().get("__gnoblinStdSupport")?;
                 if token_of(&support)? != self.callback.token {
@@ -165,8 +165,8 @@ impl Callable for JsClosure {
                     to_val(ctx, &self.table, &self.ids, self.namespace, answer)
                 };
                 ended = match run() {
-                    Ok(answer) => Ended::Answered(answer),
-                    Err(rquickjs::Error::Exception) => Ended::Raised(describe(ctx)),
+                    Ok(answer) => CallEnded::Answered(answer),
+                    Err(rquickjs::Error::Exception) => CallEnded::Raised(describe(ctx)),
                     Err(other) => return Err(other),
                 };
                 Ok(())
@@ -175,12 +175,12 @@ impl Callable for JsClosure {
         })
         .map_err(|message| Fail::new(abi::E_PANIC, message))?;
         match ended {
-            Ended::Answered(answer) => Ok(answer),
-            Ended::Replaced => Err(Fail::new(
+            CallEnded::Answered(answer) => Ok(answer),
+            CallEnded::Replaced => Err(Fail::new(
                 abi::E_RETIRED,
                 "the function belongs to a generation that was replaced",
             )),
-            Ended::Raised(message) => {
+            CallEnded::Raised(message) => {
                 if let Some(core) = remembered() {
                     core.log(
                         context(),
@@ -216,7 +216,7 @@ fn describe(ctx: &Ctx<'_>) -> String {
 /// values of that namespace.
 fn to_val<'js>(
     ctx: &Ctx<'js>,
-    table: &Rc<Table>,
+    table: &Rc<ObjectTable>,
     ids: &ScriptIds,
     namespace: usize,
     value: Value<'js>,
@@ -226,7 +226,7 @@ fn to_val<'js>(
 
 fn to_val_in<'js>(
     ctx: &Ctx<'js>,
-    table: &Rc<Table>,
+    table: &Rc<ObjectTable>,
     ids: &ScriptIds,
     namespace: usize,
     value: Value<'js>,
@@ -334,7 +334,7 @@ fn to_val_in<'js>(
 /// handed out.
 fn from_val<'js>(
     ctx: &Ctx<'js>,
-    table: &Rc<Table>,
+    table: &Rc<ObjectTable>,
     ids: &ScriptIds,
     namespace: usize,
     value: &Val,
@@ -427,7 +427,7 @@ fn api_for(namespace: &str) -> Result<Api, String> {
 /// The pairs `[member, value]` of an array a script gave, as the inits of a call.
 fn inits_of<'js>(
     ctx: &Ctx<'js>,
-    table: &Rc<Table>,
+    table: &Rc<ObjectTable>,
     ids: &ScriptIds,
     namespace: usize,
     pairs: &Array<'js>,
@@ -444,7 +444,7 @@ fn inits_of<'js>(
 
 fn args_of<'js>(
     ctx: &Ctx<'js>,
-    table: &Rc<Table>,
+    table: &Rc<ObjectTable>,
     ids: &ScriptIds,
     namespace: usize,
     args: &Array<'js>,
@@ -462,7 +462,7 @@ pub(crate) fn native() -> JsNative {
 }
 
 fn install<'js>(ctx: &Ctx<'js>, ids: &ScriptIds) -> rquickjs::Result<()> {
-    let table = Rc::new(Table::default());
+    let table = Rc::new(ObjectTable::default());
     let native = Object::new(ctx.clone())?;
 
     // The functions hold no script value: a closure that kept one would be a root the engine cannot see through, and the runtime could
@@ -478,7 +478,7 @@ fn install<'js>(ctx: &Ctx<'js>, ids: &ScriptIds) -> rquickjs::Result<()> {
                 }
                 let api = api_for(&name).map_err(|message| Exception::throw_message(&ctx, &message))?;
                 let mut namespaces = state.namespaces.borrow_mut();
-                namespaces.push(Namespace {
+                namespaces.push(OpenedNamespace {
                     name,
                     api,
                     classes: RefCell::new(None),

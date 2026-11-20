@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
-use super::object_script::{View, quote};
+use super::object_script::{ScriptView, quote};
 use super::objects::{ClassMember, Member, check_foreign, slots_of};
 use super::text::{CodeWriter, camel, pascal, snake, ts_ident};
 
@@ -197,11 +197,11 @@ fn param_name(field: &Field) -> String {
 
 /// The renderer of one namespace.
 struct Js<'a> {
-    view: &'a View<'a>,
+    view: &'a ScriptView<'a>,
 }
 
 /// One entry of a class's id list: what the runtime is asked to look up.
-struct Lookup {
+struct MemberLookup {
     kind: char,
     name: String,
 }
@@ -386,19 +386,19 @@ impl<'a> Js<'a> {
     }
 
     /// The names a class asks the library for, in the order `ids()` answers (the class first).
-    fn lookups(slots: &[ClassMember<'_>]) -> Vec<Lookup> {
+    fn lookups(slots: &[ClassMember<'_>]) -> Vec<MemberLookup> {
         slots
             .iter()
             .map(|slot| match &slot.member {
-                Member::Property(property) => Lookup {
+                Member::Property(property) => MemberLookup {
                     kind: 'p',
                     name: property.name.clone(),
                 },
-                Member::Method(method) => Lookup {
+                Member::Method(method) => MemberLookup {
                     kind: 'm',
                     name: method.name.clone(),
                 },
-                Member::Signal(signal) => Lookup {
+                Member::Signal(signal) => MemberLookup {
                     kind: 's',
                     name: signal.name.clone(),
                 },
@@ -407,14 +407,14 @@ impl<'a> Js<'a> {
     }
 
     /// The place of the member `name` of kind `kind` in a class's `ids()` (the class is 0).
-    fn at(lookups: &[Lookup], kind: char, name: &str) -> usize {
+    fn at(lookups: &[MemberLookup], kind: char, name: &str) -> usize {
         lookups
             .iter()
             .position(|lookup| lookup.kind == kind && lookup.name == name)
             .map_or(0, |index| index + 1)
     }
 
-    fn ids_source(&self, c: &mut CodeWriter, object: &ObjectType, lookups: &[Lookup]) {
+    fn ids_source(&self, c: &mut CodeWriter, object: &ObjectType, lookups: &[MemberLookup]) {
         let names: Vec<String> = lookups
             .iter()
             .map(|lookup| quote(&format!("{}:{}", lookup.kind, lookup.name)))
@@ -428,13 +428,13 @@ impl<'a> Js<'a> {
     }
 
     /// The events of a class: its signals, and `<property>Changed` for each property.
-    fn events(slots: &[ClassMember<'_>]) -> Vec<(String, Lookup, Vec<Field>, Option<Property>)> {
+    fn events(slots: &[ClassMember<'_>]) -> Vec<(String, MemberLookup, Vec<Field>, Option<Property>)> {
         let mut events = Vec::new();
         for slot in slots {
             match &slot.member {
                 Member::Signal(signal) => events.push((
                     member_name(&signal.name, &signal.extras.export.js),
-                    Lookup {
+                    MemberLookup {
                         kind: 's',
                         name: signal.name.clone(),
                     },
@@ -443,7 +443,7 @@ impl<'a> Js<'a> {
                 )),
                 Member::Property(property) if !matches!(property.ty, Type::Callback(_)) => events.push((
                     format!("{}Changed", member_name(&property.name, &property.extras.export.js)),
-                    Lookup {
+                    MemberLookup {
                         kind: 'p',
                         name: property.name.clone(),
                     },
@@ -576,7 +576,7 @@ impl<'a> Js<'a> {
         c: &mut CodeWriter,
         object: &ObjectType,
         slots: &[ClassMember<'_>],
-        lookups: &[Lookup],
+        lookups: &[MemberLookup],
     ) -> Result<(), String> {
         let snake_name = snake(&object.name);
         if object.kind == ObjectKind::Service {
@@ -671,7 +671,7 @@ impl<'a> Js<'a> {
         &self,
         c: &mut CodeWriter,
         snake_name: &str,
-        lookups: &[Lookup],
+        lookups: &[MemberLookup],
         property: &Property,
         claim: &mut impl FnMut(&str, bool) -> Result<(), String>,
     ) -> Result<(), String> {
@@ -711,7 +711,7 @@ impl<'a> Js<'a> {
         &self,
         c: &mut CodeWriter,
         snake_name: &str,
-        lookups: &[Lookup],
+        lookups: &[MemberLookup],
         method: &Method,
         claim: &mut impl FnMut(&str, bool) -> Result<(), String>,
     ) -> Result<(), String> {
@@ -753,10 +753,10 @@ impl<'a> Js<'a> {
         }
         let name = class_name(object);
         let snake_name = snake(&object.name);
-        let lookups: Vec<Lookup> = object
+        let lookups: Vec<MemberLookup> = object
             .methods
             .iter()
-            .map(|method| Lookup {
+            .map(|method| MemberLookup {
                 kind: 'm',
                 name: method.name.clone(),
             })
@@ -807,7 +807,7 @@ impl<'a> Js<'a> {
 }
 
 /// The classes of `view`'s namespace as a JavaScript module.
-pub(super) fn render_js(view: &View<'_>) -> Result<String, String> {
+pub(super) fn render_js(view: &ScriptView<'_>) -> Result<String, String> {
     let js = Js { view };
     let mut c = CodeWriter::new("  ");
     c.line(format!(
@@ -1143,7 +1143,7 @@ fn has_init(object: &ObjectType) -> bool {
 }
 
 /// The declarations of `view`'s namespace.
-pub(super) fn render_dts(view: &View<'_>) -> Result<String, String> {
+pub(super) fn render_dts(view: &ScriptView<'_>) -> Result<String, String> {
     let js = Js { view };
     let mut c = CodeWriter::new("  ");
     c.line(format!(

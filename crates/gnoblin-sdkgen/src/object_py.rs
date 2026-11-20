@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 
 use gnoblin_schema::{CallbackDecl, DefaultValue, EnumDecl, Field, Method, ObjectKind, ObjectType, Property, Type};
 
-use super::object_script::{View, quote};
+use super::object_script::{ScriptView, quote};
 use super::objects::{ClassMember, Member, check_foreign, slots_of};
 use super::text::{CodeWriter, pascal, python_ident, snake};
 
@@ -269,7 +269,7 @@ fn keyword_only(object: &ObjectType) -> bool {
 }
 
 /// An event of a class: a signal, or a property's change.
-struct Event {
+struct ScriptEvent {
     /// Whether the catalog declares it as a signal (the change of a property is the other kind).
     signal: bool,
     name: String,
@@ -279,13 +279,13 @@ struct Event {
 }
 
 /// A member of a class's lookup list, as the runtime is asked for it.
-struct Lookup {
+struct MemberLookup {
     kind: char,
     name: String,
 }
 
 struct Py<'a> {
-    view: &'a View<'a>,
+    view: &'a ScriptView<'a>,
     stub: bool,
 }
 
@@ -580,19 +580,19 @@ impl<'a> Py<'a> {
         Ok(())
     }
 
-    fn lookups(slots: &[ClassMember<'_>]) -> Vec<Lookup> {
+    fn lookups(slots: &[ClassMember<'_>]) -> Vec<MemberLookup> {
         slots
             .iter()
             .map(|slot| match &slot.member {
-                Member::Property(property) => Lookup {
+                Member::Property(property) => MemberLookup {
                     kind: 'p',
                     name: property.name.clone(),
                 },
-                Member::Method(method) => Lookup {
+                Member::Method(method) => MemberLookup {
                     kind: 'm',
                     name: method.name.clone(),
                 },
-                Member::Signal(signal) => Lookup {
+                Member::Signal(signal) => MemberLookup {
                     kind: 's',
                     name: signal.name.clone(),
                 },
@@ -600,14 +600,14 @@ impl<'a> Py<'a> {
             .collect()
     }
 
-    fn at(lookups: &[Lookup], kind: char, name: &str) -> usize {
+    fn at(lookups: &[MemberLookup], kind: char, name: &str) -> usize {
         lookups
             .iter()
             .position(|lookup| lookup.kind == kind && lookup.name == name)
             .map_or(0, |index| index + 1)
     }
 
-    fn ids_source(&self, c: &mut CodeWriter, object: &ObjectType, lookups: &[Lookup]) {
+    fn ids_source(&self, c: &mut CodeWriter, object: &ObjectType, lookups: &[MemberLookup]) {
         let names: Vec<String> = lookups
             .iter()
             .map(|lookup| quote(&format!("{}:{}", lookup.kind, lookup.name)))
@@ -651,7 +651,7 @@ impl<'a> Py<'a> {
         if !self.stub {
             self.ids_source(c, object, &lookups);
         }
-        let mut events: Vec<Event> = Vec::new();
+        let mut events: Vec<ScriptEvent> = Vec::new();
         for slot in &slots {
             match &slot.member {
                 Member::Signal(signal) => {
@@ -661,7 +661,7 @@ impl<'a> Py<'a> {
                         decoders.push(self.decoder(&field.ty, false)?);
                         params.push((param_name(field), self.ty(&field.ty, false)?));
                     }
-                    events.push(Event {
+                    events.push(ScriptEvent {
                         signal: true,
                         name: member_name(&signal.name, &signal.extras.export.py),
                         at: Self::at(&lookups, 's', &signal.name),
@@ -669,7 +669,7 @@ impl<'a> Py<'a> {
                         params,
                     });
                 }
-                Member::Property(property) if !matches!(property.ty, Type::Callback(_)) => events.push(Event {
+                Member::Property(property) if !matches!(property.ty, Type::Callback(_)) => events.push(ScriptEvent {
                     signal: false,
                     name: format!("{}_changed", member_name(&property.name, &property.extras.export.py)),
                     at: Self::at(&lookups, 'p', &property.name),
@@ -767,7 +767,7 @@ impl<'a> Py<'a> {
     }
 
     /// The overloads of `on` in a stub: a handler for each event, and the decorator form.
-    fn on_stubs(&self, c: &mut CodeWriter, events: &[Event]) {
+    fn on_stubs(&self, c: &mut CodeWriter, events: &[ScriptEvent]) {
         for event in events {
             let (name, params) = (&event.name, &event.params);
             let types: Vec<&str> = params.iter().map(|(_, ty)| ty.as_str()).collect();
@@ -795,7 +795,7 @@ impl<'a> Py<'a> {
         c: &mut CodeWriter,
         object: &ObjectType,
         slots: &[ClassMember<'_>],
-        lookups: &[Lookup],
+        lookups: &[MemberLookup],
     ) -> Result<(), String> {
         let snake_name = snake(&object.name);
         if object.kind == ObjectKind::Service {
@@ -885,7 +885,7 @@ impl<'a> Py<'a> {
         &self,
         c: &mut CodeWriter,
         snake_name: &str,
-        lookups: &[Lookup],
+        lookups: &[MemberLookup],
         property: &Property,
         claim: &mut impl FnMut(&str) -> Result<(), String>,
     ) -> Result<(), String> {
@@ -946,7 +946,7 @@ impl<'a> Py<'a> {
         &self,
         c: &mut CodeWriter,
         snake_name: &str,
-        lookups: &[Lookup],
+        lookups: &[MemberLookup],
         method: &Method,
         claim: &mut impl FnMut(&str) -> Result<(), String>,
     ) -> Result<(), String> {
@@ -996,10 +996,10 @@ impl<'a> Py<'a> {
         }
         let name = class_name(object);
         let snake_name = snake(&object.name);
-        let lookups: Vec<Lookup> = object
+        let lookups: Vec<MemberLookup> = object
             .methods
             .iter()
-            .map(|method| Lookup {
+            .map(|method| MemberLookup {
                 kind: 'm',
                 name: method.name.clone(),
             })
@@ -1083,7 +1083,7 @@ impl<'a> Py<'a> {
 }
 
 /// The classes of `view`'s namespace as a Python module, or as its stub.
-pub(super) fn render(view: &View<'_>, stub: bool) -> Result<String, String> {
+pub(super) fn render(view: &ScriptView<'_>, stub: bool) -> Result<String, String> {
     let py = Py { view, stub };
     let mut c = CodeWriter::new("    ");
     c.line(format!(

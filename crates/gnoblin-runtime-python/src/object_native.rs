@@ -5,13 +5,13 @@
 //! `FocusPolicy`) are generated from the catalog into the package and call these functions with the ids the catalog gave, so a class added to
 //! a catalog changes no line here.
 //!
-//! [`Namespace`] is a library's table for one namespace and [`Handle`] a script's reference to one object of it. A reference ends when the
+//! [`ObjectNamespace`] is a library's table for one namespace and [`ObjectHandle`] a script's reference to one object of it. A reference ends when the
 //! script's last one goes: the release is queued and made on the shell thread at the next call, because a handle may be dropped by any
 //! thread of the script and the library may be called from the shell thread only.
 //!
 //! Values cross as Python's own. A script gives a `dict` for a record (its values, in the catalog's order), an `enum.Enum` member for an
-//! enum value, a [`Handle`] for an object, `bytes` for bytes, a list or tuple for a list and a callable for a closure. A record comes back as
-//! a `tuple` of its fields, an enum value as its `int`, an object as a [`Handle`] and a list as a `list`; the generated class that asked
+//! enum value, a [`ObjectHandle`] for an object, `bytes` for bytes, a list or tuple for a list and a callable for a closure. A record comes back as
+//! a `tuple` of its fields, an enum value as its `int`, an object as a [`ObjectHandle`] and a list as a `list`; the generated class that asked
 //! for the value knows which it is from the member's type. A closure is called from the core's dispatch, which the runtime runs every
 //! turn, with the member's id and a list of arguments.
 #![allow(unsafe_code)]
@@ -65,8 +65,8 @@ fn enter() -> PyResult<abi::GnoblinCtx> {
 }
 
 /// A library's table for one namespace.
-#[pyclass(frozen, module = "_gnoblin_objects")]
-struct Namespace {
+#[pyclass(frozen, name = "Namespace", module = "_gnoblin_objects")]
+struct ObjectNamespace {
     name: String,
     raw: &'static GnoblinObjectApi,
     last_error: fn() -> String,
@@ -74,7 +74,7 @@ struct Namespace {
     classes: Mutex<Option<HashMap<ClassId, String>>>,
 }
 
-impl Namespace {
+impl ObjectNamespace {
     /// The protocol of this namespace for the generation the script runs in.
     fn api(&self) -> PyResult<Api> {
         Ok(Api::new(self.raw, enter()?, self.last_error))
@@ -99,15 +99,15 @@ impl Namespace {
 }
 
 /// What a conversion needs: the namespace a value belongs to, and the generation's protocol, to make a handle of an object that arrives.
-struct Cx {
-    namespace: Py<Namespace>,
+struct ConvertCx {
+    namespace: Py<ObjectNamespace>,
     api: Api,
 }
 
-impl Cx {
+impl ConvertCx {
     /// Another conversion context for the same namespace and generation.
-    fn dup(&self, py: Python<'_>) -> Cx {
-        Cx {
+    fn dup(&self, py: Python<'_>) -> ConvertCx {
+        ConvertCx {
             namespace: self.namespace.clone_ref(py),
             api: self.api,
         }
@@ -115,14 +115,14 @@ impl Cx {
 }
 
 /// A script's reference to one object of a library.
-#[pyclass(frozen, module = "_gnoblin_objects")]
-struct Handle {
-    cx: Cx,
+#[pyclass(frozen, name = "Handle", module = "_gnoblin_objects")]
+struct ObjectHandle {
+    cx: ConvertCx,
     class: ClassId,
     obj: Obj,
 }
 
-impl Drop for Handle {
+impl Drop for ObjectHandle {
     fn drop(&mut self) {
         PENDING
             .lock()
@@ -132,13 +132,13 @@ impl Drop for Handle {
 }
 
 /// The script's `value` as a [`Val`].
-fn to_val(value: &Bound<'_, PyAny>, cx: &Cx) -> PyResult<Val> {
+fn to_val(value: &Bound<'_, PyAny>, cx: &ConvertCx) -> PyResult<Val> {
     static ENUM: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
     let py = value.py();
     if value.is_none() {
         return Ok(Val::None);
     }
-    if let Ok(handle) = value.cast::<Handle>() {
+    if let Ok(handle) = value.cast::<ObjectHandle>() {
         let handle = handle.get();
         return Ok(Val::Object {
             class: handle.class,
@@ -199,8 +199,8 @@ fn to_val(value: &Bound<'_, PyAny>, cx: &Cx) -> PyResult<Val> {
     )))
 }
 
-/// A [`Val`] the library sent, as the script's value. An object in it becomes a [`Handle`] that holds the reference the library handed out.
-fn from_val<'py>(py: Python<'py>, value: &Val, cx: &Cx) -> PyResult<Bound<'py, PyAny>> {
+/// A [`Val`] the library sent, as the script's value. An object in it becomes a [`ObjectHandle`] that holds the reference the library handed out.
+fn from_val<'py>(py: Python<'py>, value: &Val, cx: &ConvertCx) -> PyResult<Bound<'py, PyAny>> {
     match value {
         Val::None | Val::Closure(_) => Ok(py.None().into_bound(py)),
         Val::Bool(flag) => flag.into_bound_py_any(py),
@@ -232,7 +232,7 @@ fn from_val<'py>(py: Python<'py>, value: &Val, cx: &Cx) -> PyResult<Bound<'py, P
             };
             Py::new(
                 py,
-                Handle {
+                ObjectHandle {
                     cx: cx.dup(py),
                     class,
                     obj: *obj,
@@ -246,7 +246,7 @@ fn from_val<'py>(py: Python<'py>, value: &Val, cx: &Cx) -> PyResult<Bound<'py, P
 /// What the library calls when a script gave it a function or an object that implements an interface.
 struct PyClosure {
     function: Py<PyAny>,
-    cx: Cx,
+    cx: ConvertCx,
 }
 
 impl Callable for PyClosure {
@@ -268,7 +268,7 @@ impl Callable for PyClosure {
     }
 }
 
-fn inits_of(pairs: &Bound<'_, PyAny>, cx: &Cx) -> PyResult<Vec<(MemberId, Val)>> {
+fn inits_of(pairs: &Bound<'_, PyAny>, cx: &ConvertCx) -> PyResult<Vec<(MemberId, Val)>> {
     let mut inits = Vec::new();
     for pair in pairs.try_iter()? {
         let (member, value): (MemberId, Bound<'_, PyAny>) = pair?.extract()?;
@@ -277,7 +277,7 @@ fn inits_of(pairs: &Bound<'_, PyAny>, cx: &Cx) -> PyResult<Vec<(MemberId, Val)>>
     Ok(inits)
 }
 
-fn args_of(args: &Bound<'_, PyAny>, cx: &Cx) -> PyResult<Vec<Val>> {
+fn args_of(args: &Bound<'_, PyAny>, cx: &ConvertCx) -> PyResult<Vec<Val>> {
     let mut values = Vec::new();
     for arg in args.try_iter()? {
         values.push(to_val(&arg?, cx)?);
@@ -286,7 +286,7 @@ fn args_of(args: &Bound<'_, PyAny>, cx: &Cx) -> PyResult<Vec<Val>> {
 }
 
 #[pymethods]
-impl Namespace {
+impl ObjectNamespace {
     /// `[class, *members]`: the id of the class `class_name` and of each of `names` (`p:text`, `m:insert`, `s:changed`).
     fn ids(&self, class_name: &str, names: Vec<String>) -> PyResult<Vec<u32>> {
         let api = self.api()?;
@@ -311,14 +311,14 @@ impl Namespace {
     }
 
     /// Makes an object of the class `class` with the properties `inits` (`(member, value)` pairs) set.
-    fn create(slf: &Bound<'_, Self>, class: ClassId, inits: &Bound<'_, PyAny>) -> PyResult<Handle> {
-        let cx = Cx {
+    fn create(slf: &Bound<'_, Self>, class: ClassId, inits: &Bound<'_, PyAny>) -> PyResult<ObjectHandle> {
+        let cx = ConvertCx {
             namespace: slf.clone().unbind(),
             api: slf.get().api()?,
         };
         let inits = inits_of(inits, &cx)?;
         let obj = cx.api.create(class, &inits).map_err(|fail| failure(&fail))?;
-        Ok(Handle { cx, class, obj })
+        Ok(ObjectHandle { cx, class, obj })
     }
 
     /// Calls a function of the class `class`.
@@ -328,7 +328,7 @@ impl Namespace {
         member: MemberId,
         args: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let cx = Cx {
+        let cx = ConvertCx {
             namespace: slf.clone().unbind(),
             api: slf.get().api()?,
         };
@@ -346,11 +346,11 @@ impl Namespace {
         class: ClassId,
         members: Vec<MemberId>,
         function: &Bound<'_, PyAny>,
-    ) -> PyResult<Handle> {
+    ) -> PyResult<ObjectHandle> {
         if !function.is_callable() {
             return Err(PyTypeError::new_err("an implementation needs a function to call"));
         }
-        let cx = Cx {
+        let cx = ConvertCx {
             namespace: slf.clone().unbind(),
             api: slf.get().api()?,
         };
@@ -362,7 +362,7 @@ impl Namespace {
             .api
             .implement(class, &members, move |member, args| closure.call(member, args))
             .map_err(|fail| failure(&fail))?;
-        Ok(Handle { cx, class, obj })
+        Ok(ObjectHandle { cx, class, obj })
     }
 
     /// Ends a listener `handle.listen` returned.
@@ -372,7 +372,7 @@ impl Namespace {
 }
 
 #[pymethods]
-impl Handle {
+impl ObjectHandle {
     /// The name of the object's class in the catalog.
     #[getter]
     fn class_name(&self) -> PyResult<String> {
@@ -450,7 +450,7 @@ impl Handle {
     }
 
     fn __repr__(&self) -> String {
-        format!("<Handle class {} object {:#x}>", self.class, self.obj)
+        format!("<ObjectHandle class {} object {:#x}>", self.class, self.obj)
     }
 }
 
@@ -485,9 +485,9 @@ fn raw_for(namespace: &str) -> PyResult<Served> {
 /// Opens the namespace `namespace` (`gnoblin.std`), which asks the library that serves it. Raises `ImportError` when the std library is
 /// not installed.
 #[pyfunction]
-fn open(namespace: &str) -> PyResult<Namespace> {
+fn open(namespace: &str) -> PyResult<ObjectNamespace> {
     let (raw, last_error) = raw_for(namespace)?;
-    Ok(Namespace {
+    Ok(ObjectNamespace {
         name: namespace.to_owned(),
         raw,
         last_error,
@@ -499,7 +499,7 @@ fn open(namespace: &str) -> PyResult<Namespace> {
 #[pymodule]
 pub(crate) fn _gnoblin_objects(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(open, module)?)?;
-    module.add_class::<Namespace>()?;
-    module.add_class::<Handle>()?;
+    module.add_class::<ObjectNamespace>()?;
+    module.add_class::<ObjectHandle>()?;
     Ok(())
 }

@@ -316,7 +316,7 @@ fn emit_catalog(dirs: &[&str], stem: &str) -> Result<(), String> {
         ),
     ];
     // The classes of the same catalog for the script languages, so the fixture's tests can run a script against the library it serves.
-    let view = object_script::View::new(&catalog, namespace);
+    let view = object_script::ScriptView::new(&catalog, namespace);
     let mut files = files;
     files.extend([
         (format!("script-objects/{stem}.js"), object_js::render_js(&view)?),

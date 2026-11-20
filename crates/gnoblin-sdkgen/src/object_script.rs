@@ -27,7 +27,7 @@ use super::objects::stem_of;
 use super::{Comment, File, SdkSpec, Target, object_js, object_py};
 
 /// What a namespace is, for the script languages: the classes by name, and the enums and callbacks.
-pub(super) struct View<'a> {
+pub(super) struct ScriptView<'a> {
     pub(super) catalog: &'a Catalog,
     pub(super) namespace: &'a Namespace,
     pub(super) objects: BTreeMap<&'a str, &'a ObjectType>,
@@ -35,9 +35,9 @@ pub(super) struct View<'a> {
     pub(super) callbacks: BTreeMap<&'a str, &'a CallbackDecl>,
 }
 
-impl<'a> View<'a> {
-    pub(super) fn new(catalog: &'a Catalog, namespace: &'a Namespace) -> View<'a> {
-        View {
+impl<'a> ScriptView<'a> {
+    pub(super) fn new(catalog: &'a Catalog, namespace: &'a Namespace) -> ScriptView<'a> {
+        ScriptView {
             catalog,
             namespace,
             objects: catalog
@@ -139,7 +139,7 @@ impl Target for ObjectJsTarget {
             files.push(File {
                 path: format!("js/{}/generated/objects.js", package_of(&namespace)?),
                 comment: Some(Comment::Slashes),
-                text: object_js::render_js(&View::new(&spec.objects, &namespace))?,
+                text: object_js::render_js(&ScriptView::new(&spec.objects, &namespace))?,
             });
         }
         Ok(files)
@@ -171,7 +171,7 @@ impl Target for ObjectPyTarget {
             files.push(File {
                 path: format!("python/gnoblin/objects/{}.py", module_of(&namespace)?),
                 comment: Some(Comment::Hash),
-                text: object_py::render(&View::new(&spec.objects, &namespace), false)?,
+                text: object_py::render(&ScriptView::new(&spec.objects, &namespace), false)?,
             });
         }
         Ok(files)
@@ -200,7 +200,7 @@ impl Target for ObjectTypesTarget {
             },
         ];
         for namespace in spec.objects.namespaces() {
-            let view = View::new(&spec.objects, &namespace);
+            let view = ScriptView::new(&spec.objects, &namespace);
             files.push(File {
                 path: format!("js/{}/generated/objects.d.ts", package_of(&namespace)?),
                 comment: Some(Comment::Slashes),
@@ -224,7 +224,7 @@ mod tests {
 
     use gnoblin_schema::Catalog;
 
-    use super::{ObjectJsTarget, ObjectPyTarget, ObjectTypesTarget, View};
+    use super::{ObjectJsTarget, ObjectPyTarget, ObjectTypesTarget, ScriptView};
     use crate::{SdkSpec, Target, object_js, object_py, workspace_root};
 
     /// A tool on `PATH`, or the one the environment names.
@@ -262,7 +262,7 @@ mod tests {
         let probe = workspace_root().join("crates/gnoblin-object/fixtures/probe/schema");
         let catalog = Catalog::load_dirs(&[probe.as_path()], &[]).expect("the probe catalog loads");
         let namespace = catalog.namespaces().remove(0);
-        let view = View::new(&catalog, &namespace);
+        let view = ScriptView::new(&catalog, &namespace);
         files.push((
             "probe/objects.js".to_owned(),
             object_js::render_js(&view).expect("probe renders as JavaScript"),
@@ -449,7 +449,7 @@ const number: number = entry.text;
         let probe = workspace_root().join("crates/gnoblin-object/fixtures/probe/schema");
         let catalog = Catalog::load_dirs(&[probe.as_path()], &[]).expect("the probe catalog loads");
         let namespace = catalog.namespaces().remove(0);
-        let module = object_py::render(&View::new(&catalog, &namespace), false).expect("probe renders as Python");
+        let module = object_py::render(&ScriptView::new(&catalog, &namespace), false).expect("probe renders as Python");
         let package = dir.path().join("python/gnoblin");
         fs::write(package.join("__init__.py"), "").expect("the package");
         fs::write(package.join("objects/probe.py"), module).expect("the probe module");
@@ -496,7 +496,7 @@ const number: number = entry.text;
         .expect("a schema");
         let catalog = Catalog::load_dirs(&[a.as_path(), b.as_path()], &[]).expect("the catalogs load together");
         let namespaces = catalog.namespaces();
-        let view = View::new(&catalog, &namespaces[1]);
+        let view = ScriptView::new(&catalog, &namespaces[1]);
         let js = object_js::render_js(&view).expect("the derived class renders");
         assert!(
             js.contains(r#"["p:count", "m:bump", "p:label"]"#),
