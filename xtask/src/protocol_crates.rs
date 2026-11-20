@@ -54,6 +54,10 @@ struct ProtocolRow {
     /// Each advertised interface and the highest version served. Empty for a shared crate.
     #[serde(default)]
     interfaces: Vec<(String, u32)>,
+    /// Whether only some sessions advertise the global (a session with no GPU renderer has no dmabuf), so the advertised-globals
+    /// test checks it only when a registry lists it. Such a row is in `CONDITIONAL`, not in `ALL`.
+    #[serde(default)]
+    conditional: bool,
     /// Other protocol crates this one depends on, by row name. Only shared crates may be named.
     #[serde(default)]
     needs: Vec<String>,
@@ -290,10 +294,34 @@ use gnoblin_wayland_api::ProtocolInfo;\n\n",
     text.push_str(
         "\n/// What every protocol crate advertises, in the order the table lists them. The advertised-globals test compares it with a live registry.\npub const ALL: &[&ProtocolInfo] = &[\n",
     );
-    for row in table.crates.iter().filter(|row| row.kind == Kind::Protocol) {
+    for row in table
+        .crates
+        .iter()
+        .filter(|row| row.kind == Kind::Protocol && !row.conditional)
+    {
         let _ = writeln!(text, "    &{}::PROTOCOL,", ident(&row.name));
     }
     text.push_str("];\n");
+    let conditional: Vec<String> = table
+        .crates
+        .iter()
+        .filter(|row| row.kind == Kind::Protocol && row.conditional)
+        .map(|row| format!("&{}::PROTOCOL", ident(&row.name)))
+        .collect();
+    text.push_str(
+        "\n/// What only some sessions advertise. A registry that lists one must list it at no higher version than it declares.\npub const CONDITIONAL: &[&ProtocolInfo] = &",
+    );
+    // rustfmt keeps an array on one line while its items take at most `array_width` (60) columns, so the file is written that way.
+    let joined = conditional.join(", ");
+    if joined.len() <= 60 {
+        let _ = writeln!(text, "[{joined}];");
+    } else {
+        text.push_str("[\n");
+        for item in &conditional {
+            let _ = writeln!(text, "    {item},");
+        }
+        text.push_str("];\n");
+    }
     text
 }
 

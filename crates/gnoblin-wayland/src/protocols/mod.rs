@@ -25,5 +25,3 @@ mod wire;
 pub mod wl_data_device_manager;
 /// `zwlr_screencopy_manager_v1`: one-shot screencopy of an output or region.
 pub mod zwlr_screencopy_v1;
-/// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.
-pub mod zwp_linux_dmabuf_v1;

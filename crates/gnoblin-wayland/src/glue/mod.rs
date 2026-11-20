@@ -43,6 +43,7 @@ mod zwlr_virtual_pointer_v1;
 mod zwp_idle_inhibit_v1;
 mod zwp_input_method_v2;
 mod zwp_keyboard_shortcuts_inhibit_v1;
+mod zwp_linux_dmabuf_v1;
 mod zwp_pointer_constraints_v1;
 mod zwp_primary_selection_v1;
 mod zwp_tablet_v2;

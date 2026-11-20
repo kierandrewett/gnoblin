@@ -44,6 +44,7 @@ pub use gnoblin_wayland_zwlr_virtual_pointer_v1 as zwlr_virtual_pointer_v1;
 pub use gnoblin_wayland_zwp_idle_inhibit_v1 as zwp_idle_inhibit_v1;
 pub use gnoblin_wayland_zwp_input_method_v2 as zwp_input_method_v2;
 pub use gnoblin_wayland_zwp_keyboard_shortcuts_inhibit_v1 as zwp_keyboard_shortcuts_inhibit_v1;
+pub use gnoblin_wayland_zwp_linux_dmabuf_v1 as zwp_linux_dmabuf_v1;
 pub use gnoblin_wayland_zwp_pointer_constraints_v1 as zwp_pointer_constraints_v1;
 pub use gnoblin_wayland_zwp_pointer_gestures_v1 as zwp_pointer_gestures_v1;
 pub use gnoblin_wayland_zwp_primary_selection_v1 as zwp_primary_selection_v1;
@@ -104,3 +105,6 @@ pub const ALL: &[&ProtocolInfo] = &[
     &org_kde_kwin_appmenu::PROTOCOL,
     &ext_workspace_v1::PROTOCOL,
 ];
+
+/// What only some sessions advertise. A registry that lists one must list it at no higher version than it declares.
+pub const CONDITIONAL: &[&ProtocolInfo] = &[&zwp_linux_dmabuf_v1::PROTOCOL];

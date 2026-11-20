@@ -2489,6 +2489,7 @@ dependencies = [
  "gnoblin-wayland-zwp-idle-inhibit-v1",
  "gnoblin-wayland-zwp-input-method-v2",
  "gnoblin-wayland-zwp-keyboard-shortcuts-inhibit-v1",
+ "gnoblin-wayland-zwp-linux-dmabuf-v1",
  "gnoblin-wayland-zwp-pointer-constraints-v1",
  "gnoblin-wayland-zwp-pointer-gestures-v1",
  "gnoblin-wayland-zwp-primary-selection-v1",
@@ -2782,6 +2783,15 @@ dependencies = [
 name = "gnoblin-wayland-zwp-keyboard-shortcuts-inhibit-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwp-linux-dmabuf-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
  "gnoblin-wayland-api",
  "smithay",
 ]

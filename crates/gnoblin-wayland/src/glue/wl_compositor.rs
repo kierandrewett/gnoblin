@@ -34,7 +34,7 @@ impl CompositorHandler for State {
 
     fn new_surface(&mut self, surface: &WlSurface) {
         // A commit that attaches a dmabuf waits for the buffer's fences: see the protocol module.
-        crate::protocols::zwp_linux_dmabuf_v1::hold_commit_until_ready(surface);
+        gnoblin_wayland_protocols::zwp_linux_dmabuf_v1::hold_commit_until_ready::<State>(surface);
     }
 
     fn destroyed(&mut self, surface: &WlSurface) {

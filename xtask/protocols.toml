@@ -269,6 +269,14 @@ needs = ["foreign-toplevel-shared", "types"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
 
 [[crate]]
+name = "zwp-linux-dmabuf-v1"
+description = "The zwp_linux_dmabuf_v1 Wayland protocol of gnoblin-wayland: GPU buffers a client shares instead of copying pixels."
+kind = "protocol"
+interfaces = [["zwp_linux_dmabuf_v1", 4]]
+conditional = true
+deps = ["smithay", "gnoblin-log"]
+
+[[crate]]
 name = "zwp-tablet-v2"
 description = "The zwp_tablet_manager_v2 Wayland protocol of gnoblin-wayland: drawing tablets, their tools and pads."
 kind = "protocol"

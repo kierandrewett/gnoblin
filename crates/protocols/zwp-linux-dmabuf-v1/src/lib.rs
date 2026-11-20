@@ -26,7 +26,7 @@
 //!
 //! Smithay checks the parameters (a known format code, positive size, planes inside their file,
 //! consecutive plane indices). `dmabuf_imported` then queues the buffer, and the loop answers it
-//! once per turn ([`State::apply_dmabuf_imports`]) with the backend's renderer in hand, because a
+//! once per turn (`State::apply_dmabuf_imports`, in the compositor) with the backend's renderer in hand, because a
 //! protocol handler holds the state and not the backend:
 //!
 //! 1. the format *and modifier* must be among those offered (Smithay checks the code alone);
@@ -70,25 +70,52 @@
 //! [`Backend::dmabuf`]: gnoblin_backend::Backend::dmabuf
 //! [`SurfaceSource::Dmabuf`]: gnoblin_render_frame::frame::SurfaceSource::Dmabuf
 
-use gnoblin_backend::{Backend, DmabufSupport};
-use smithay::backend::allocator::Buffer;
 use smithay::backend::allocator::dmabuf::Dmabuf;
-use smithay::reexports::calloop::Interest;
+use smithay::backend::allocator::{Buffer, Format};
+use smithay::reexports::calloop::{Interest, LoopHandle};
+use smithay::reexports::wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{DisplayHandle, Resource};
+use smithay::reexports::wayland_server::{DisplayHandle, GlobalDispatch, Resource};
+use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     BufferAssignment, CompositorHandler, SurfaceAttributes, add_blocker, add_pre_commit_hook, with_states,
 };
 use smithay::wayland::dmabuf::{
-    DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier, get_dmabuf,
+    DmabufFeedbackBuilder, DmabufGlobal, DmabufGlobalData, DmabufHandler, DmabufState, ImportNotifier, get_dmabuf,
 };
 
-use crate::State;
-use crate::gpu_memory::MemoryAdmission;
-use crate::log;
+use gnoblin_wayland_api::host::CoreHost;
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, ServedInterface};
+
+gnoblin_log::logger!(log = "wayland");
+
+/// What this protocol advertises. The global exists only when the backend reports a renderer that imports GPU buffers, so the
+/// table lists it as conditional, and version 4 needs a render node: a session without one serves version 3.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "zwp-linux-dmabuf-v1",
+    interfaces: &[ServedInterface::new("zwp_linux_dmabuf_v1", 4)],
+    privilege: Privilege::Core,
+};
+
+/// What the protocol needs of the compositor.
+pub trait Host:
+    CoreHost
+    + CompositorHandler
+    + DmabufHandler
+    + BufferHandler
+    + GlobalDispatch<ZwpLinuxDmabufV1, DmabufGlobalData>
+    + Sized
+    + 'static
+{
+    /// The global and the buffers waiting for the loop's answer.
+    fn dmabuf(&mut self) -> &mut DmabufServing;
+
+    /// The loop a buffer's fences are watched on, once the session has one.
+    fn loop_handle(&self) -> Option<LoopHandle<'static, Self>>;
+}
 
 /// The dmabuf global and the buffers waiting for the loop's answer.
-pub(crate) struct DmabufServing {
+pub struct DmabufServing {
     state: DmabufState,
     /// The global, once the backend reported support; `None` for a session that does not serve it.
     global: Option<DmabufGlobal>,
@@ -96,8 +123,16 @@ pub(crate) struct DmabufServing {
     pending: Vec<(Dmabuf, ImportNotifier)>,
 }
 
+impl Default for DmabufServing {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DmabufServing {
-    pub(crate) fn new() -> Self {
+    /// A table with no global.
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             state: DmabufState::new(),
             global: None,
@@ -106,35 +141,31 @@ impl DmabufServing {
     }
 
     /// Whether the session serves `zwp_linux_dmabuf_v1`.
-    pub(crate) fn served(&self) -> bool {
+    #[must_use]
+    pub const fn served(&self) -> bool {
         self.global.is_some()
     }
-}
 
-impl DmabufHandler for State {
-    fn dmabuf_state(&mut self) -> &mut DmabufState {
-        &mut self.dmabuf.state
+    /// Smithay's state, for the compositor's `DmabufHandler`.
+    pub fn state(&mut self) -> &mut DmabufState {
+        &mut self.state
     }
 
-    fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf, notifier: ImportNotifier) {
-        self.dmabuf.pending.push((dmabuf, notifier));
+    /// Queues a buffer a client sent, with the notifier that answers it.
+    pub fn queue(&mut self, dmabuf: Dmabuf, notifier: ImportNotifier) {
+        self.pending.push((dmabuf, notifier));
     }
-}
 
-impl State {
-    /// Creates the global when the backend reports a renderer that can import a dmabuf.
+    /// Takes the buffers waiting for an answer, leaving none.
+    pub fn take_pending(&mut self) -> Vec<(Dmabuf, ImportNotifier)> {
+        std::mem::take(&mut self.pending)
+    }
+
+    /// Creates the global when the renderer can import a dmabuf: version 4 with a feedback when it names a render node
+    /// (`main_device`), version 3 without. A renderer that offers no format serves nothing.
     ///
-    /// Called once, before any client connects, so a session that cannot draw a dmabuf never
-    /// advertises the protocol.
-    pub(crate) fn start_dmabuf(&mut self, support: Option<&DmabufSupport>, display: &DisplayHandle) {
-        let Some(support) = support else {
-            log::info!(
-                area = "dmabuf",
-                "the backend has no renderer that imports GPU buffers: zwp_linux_dmabuf_v1 is not served"
-            );
-            return;
-        };
-        let formats: Vec<_> = support.formats.iter().copied().collect();
+    /// Called once, before any client connects, so a session that cannot draw a dmabuf never advertises the protocol.
+    pub fn start<D: Host>(&mut self, display: &DisplayHandle, main_device: Option<u64>, formats: &[Format]) {
         if formats.is_empty() {
             log::info!(
                 area = "dmabuf",
@@ -142,92 +173,34 @@ impl State {
             );
             return;
         }
-        let global = match support.main_device {
+        let global = match main_device {
             Some(device) => match DmabufFeedbackBuilder::new(device, formats.iter().copied()).build() {
-                Ok(feedback) => self
-                    .dmabuf
-                    .state
-                    .create_global_with_default_feedback::<State>(display, &feedback),
+                Ok(feedback) => self.state.create_global_with_default_feedback::<D>(display, &feedback),
                 Err(error) => {
                     log::warn!(
                         area = "dmabuf",
                         %error,
                         "the format table could not be built; serving version 3 without feedback"
                     );
-                    self.dmabuf
-                        .state
-                        .create_global::<State>(display, formats.iter().copied())
+                    self.state.create_global::<D>(display, formats.iter().copied())
                 }
             },
-            None => self
-                .dmabuf
-                .state
-                .create_global::<State>(display, formats.iter().copied()),
+            None => self.state.create_global::<D>(display, formats.iter().copied()),
         };
         log::info!(
             area = "dmabuf",
             formats = formats.len(),
-            device = ?support.main_device,
+            device = ?main_device,
             "zwp_linux_dmabuf_v1 is served"
         );
-        self.dmabuf.global = Some(global);
-    }
-
-    /// Whether the session serves `zwp_linux_dmabuf_v1`.
-    #[must_use]
-    pub fn serves_dmabuf(&self) -> bool {
-        self.dmabuf.served()
-    }
-
-    /// Answers every buffer a client sent since the last turn, with the backend's renderer.
-    ///
-    /// A buffer that imports is accepted; one that does not is failed, which the notifier turns
-    /// into `failed` for `create` and a protocol error for `create_immed`. A client that went
-    /// away meanwhile is not an error: its notifier answers nothing.
-    pub(crate) fn apply_dmabuf_imports(&mut self, backend: &mut dyn Backend<State>) {
-        for (dmabuf, notifier) in std::mem::take(&mut self.dmabuf.pending) {
-            // The import is where a GPU buffer first costs the compositor anything, and where the backend is held, so
-            // it is where the memory budget is asked: the client's own limit and the session's, with the caches given
-            // back first when the buffer fits only that way. A client that is gone is not asked.
-            let client = notifier.client();
-            let bytes = dmabuf_bytes(&dmabuf);
-            if let Some(client) = &client {
-                match self.gpu_ledger.admit_buffer(&client.id(), bytes) {
-                    Ok(MemoryAdmission::Fits) => {}
-                    Ok(MemoryAdmission::Evict { .. }) => self.settle_gpu_memory(backend),
-                    Err(refusal) => {
-                        self.refuse_client(client, refusal);
-                        notifier.failed();
-                        continue;
-                    }
-                }
-            }
-            match backend.import_dmabuf(&dmabuf) {
-                Ok(()) => {
-                    // A client that disconnected has no buffer to hand the answer to.
-                    if let Ok(buffer) = notifier.successful::<State>()
-                        && let Some(client) = client
-                        // A client that destroyed the buffer in the same turn it created it has nothing to count; its
-                        // destruction was already seen, so recording now would never be given back.
-                        && buffer.is_alive()
-                    {
-                        self.gpu_ledger
-                            .record_buffer(&client.id(), buffer.id().protocol_id(), bytes);
-                    }
-                }
-                Err(error) => {
-                    log::warn!(area = "dmabuf", %error, "a client's GPU buffer is refused");
-                    notifier.failed();
-                }
-            }
-        }
+        self.global = Some(global);
     }
 }
 
 /// What a GPU buffer is counted as holding: its width times height times the bytes per pixel of its format, which is
 /// an estimate (a tiled or padded buffer holds more, a multi-planar one reports its average), and four bytes a pixel
 /// for a format the table does not know.
-fn dmabuf_bytes(dmabuf: &Dmabuf) -> u64 {
+pub fn dmabuf_bytes(dmabuf: &Dmabuf) -> u64 {
     let size = dmabuf.size();
     let pixels = u64::try_from(size.w)
         .unwrap_or(0)
@@ -243,8 +216,8 @@ fn dmabuf_bytes(dmabuf: &Dmabuf) -> u64 {
 /// clears when the buffer's fences signal, and the compositor keeps showing the previous frame
 /// until then. A buffer that is already ready adds nothing, and so does a surface whose client
 /// is gone or a session with no loop to wait on.
-pub(crate) fn hold_commit_until_ready(surface: &WlSurface) {
-    add_pre_commit_hook::<State, _>(surface, |state, _display, surface| {
+pub fn hold_commit_until_ready<D: Host>(surface: &WlSurface) {
+    add_pre_commit_hook::<D, _>(surface, |state, _display, surface| {
         let attached = with_states(surface, |states| {
             let mut attributes = states.cached_state.get::<SurfaceAttributes>();
             match &attributes.pending().buffer {
@@ -259,11 +232,11 @@ pub(crate) fn hold_commit_until_ready(surface: &WlSurface) {
         let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ) else {
             return;
         };
-        let (Some(client), Some(handle)) = (surface.client(), state.loop_handle.clone()) else {
+        let (Some(client), Some(handle)) = (surface.client(), state.loop_handle()) else {
             return;
         };
-        let inserted = handle.insert_source(source, move |_, _, state: &mut State| {
-            let display = state.display_handle.clone();
+        let inserted = handle.insert_source(source, move |_, _, state: &mut D| {
+            let display = state.display_handle().clone();
             state.client_compositor_state(&client).blocker_cleared(state, &display);
             Ok(())
         });

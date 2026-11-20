@@ -376,8 +376,8 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) single_pixel_buffer_state: SinglePixelBufferState,
     /// `zwp_linux_dmabuf_v1`: the global, once the backend reports a renderer that imports GPU
-    /// buffers, and the buffers waiting for its answer. See [`crate::protocols::zwp_linux_dmabuf_v1`].
-    pub(crate) dmabuf: crate::protocols::zwp_linux_dmabuf_v1::DmabufServing,
+    /// buffers, and the buffers waiting for its answer. See `gnoblin-wayland-zwp-linux-dmabuf-v1`.
+    pub(crate) dmabuf: gnoblin_wayland_protocols::zwp_linux_dmabuf_v1::DmabufServing,
     /// The event loop's handle, for a hook that must wait on a file descriptor from inside a
     /// protocol handler (a dmabuf's fences). Set by [`crate::Server`] right after the state exists.
     pub(crate) loop_handle: Option<smithay::reexports::calloop::LoopHandle<'static, State>>,
@@ -846,7 +846,7 @@ impl State {
             presentation_state,
             content_type_state,
             single_pixel_buffer_state,
-            dmabuf: crate::protocols::zwp_linux_dmabuf_v1::DmabufServing::new(),
+            dmabuf: gnoblin_wayland_protocols::zwp_linux_dmabuf_v1::DmabufServing::new(),
             loop_handle: None,
             tearing_control_global,
             idle_notify_global,

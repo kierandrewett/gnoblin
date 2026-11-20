@@ -48,6 +48,7 @@ gnoblin-wayland-zwp-text-input-v3 = { path = "../zwp-text-input-v3" }
 gnoblin-wayland-foreign-toplevel-shared = { path = "../foreign-toplevel-shared" }
 gnoblin-wayland-ext-foreign-toplevel-list-v1 = { path = "../ext-foreign-toplevel-list-v1" }
 gnoblin-wayland-zwlr-foreign-toplevel-management-v1 = { path = "../zwlr-foreign-toplevel-management-v1" }
+gnoblin-wayland-zwp-linux-dmabuf-v1 = { path = "../zwp-linux-dmabuf-v1" }
 gnoblin-wayland-zwp-tablet-v2 = { path = "../zwp-tablet-v2" }
 gnoblin-wayland-wl-compositor = { path = "../wl-compositor" }
 gnoblin-wayland-wl-seat = { path = "../wl-seat" }

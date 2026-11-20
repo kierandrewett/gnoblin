@@ -198,3 +198,26 @@ fn every_protocol_crate_global_is_advertised_at_the_version_it_declares() {
         wrong.join("; ")
     );
 }
+
+#[test]
+fn a_conditional_protocol_crate_global_is_never_advertised_above_its_declared_version() {
+    let (privileged, _) = registries();
+    let mut wrong = Vec::new();
+    for protocol in gnoblin_wayland_protocols::CONDITIONAL {
+        for interface in protocol.interfaces {
+            if let Some(version) = privileged.get(interface.name)
+                && *version > interface.version
+            {
+                wrong.push(format!(
+                    "{} ({}): declares {}, advertises {version}",
+                    interface.name, protocol.name, interface.version
+                ));
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "a protocol crate and the registry disagree: {}",
+        wrong.join("; ")
+    );
+}
