@@ -52,15 +52,16 @@ use smithay::reexports::wayland_protocols_misc::zwp_virtual_keyboard_v1::server:
     zwp_virtual_keyboard_v1::{self as keyboard, Error as KeyboardError, ZwpVirtualKeyboardV1},
 };
 use smithay::reexports::wayland_server::backend::{ClientId, GlobalId};
-use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
-use smithay::utils::SERIAL_COUNTER;
+use smithay::reexports::wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
+use smithay::utils::{SERIAL_COUNTER, Serial};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
 use gnoblin_types::KeyState;
 
-use crate::State;
-use crate::log;
 use gnoblin_wayland_api::access::{Access, Global};
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
+
+gnoblin_log::logger!(log = "wayland");
 
 /// The version of `zwp_virtual_keyboard_manager_v1` this session serves.
 pub const MANAGER_VERSION: u32 = 1;
@@ -72,30 +73,63 @@ const XKB_V1_FORMAT: u32 = 1;
 const KEY_RELEASED: u32 = 0;
 const KEY_PRESSED: u32 = 1;
 
+/// What this protocol advertises.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "zwp-virtual-keyboard-v1",
+    interfaces: &[ServedInterface::new("zwp_virtual_keyboard_manager_v1", MANAGER_VERSION)],
+    privilege: Privilege::Roster(Global::VirtualKeyboard),
+};
+
+/// What the protocol needs of the compositor: the seat's keymap table and the keyboard's delivery path.
+pub trait Host {
+    /// A new virtual keyboard's identity in the seat's keymap table.
+    fn new_virtual_keyboard(&mut self) -> u64;
+
+    /// Records the keymap `id` sent, and makes it the seat's when no other keyboard owns the keymap.
+    fn set_virtual_keymap(&mut self, id: u64, text: String);
+
+    /// Forgets the keymap `id` sent, and gives the seat's keymap back when it was `id`'s.
+    fn release_virtual_keymap(&mut self, id: u64);
+
+    /// Makes `id`'s keymap the seat's. Whether there was one.
+    fn use_virtual_keymap(&mut self, id: u64) -> bool;
+
+    /// Sets the modifier masks of the seat's keyboard.
+    fn set_modifier_state(&mut self, depressed: u32, latched: u32, locked: u32, group: u32);
+
+    /// Delivers one key event as if a physical keyboard had sent it.
+    fn deliver_virtual_key(&mut self, keycode: u32, state: KeyState, serial: Serial, time: InputTime);
+}
+
 /// Creates the `zwp_virtual_keyboard_manager_v1` global.
 ///
 /// The access roster is captured in the global's data, so the answer to "may this
 /// connection bind it" is the same answer the other privileged globals give.
-pub(crate) fn virtual_keyboard_global(display_handle: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
-    display_handle.create_global::<State, ZwpVirtualKeyboardManagerV1, ManagerGlobalData>(
-        MANAGER_VERSION,
-        ManagerGlobalData {
-            access: Arc::clone(access),
-        },
-    )
+pub fn register<D>(registrar: &Registrar<'_>) -> GlobalId
+where
+    D: GlobalDispatch<ZwpVirtualKeyboardManagerV1, ZwpVirtualKeyboardV1ManagerGlobalData> + 'static,
+{
+    registrar
+        .display()
+        .create_global::<D, ZwpVirtualKeyboardManagerV1, ZwpVirtualKeyboardV1ManagerGlobalData>(
+            MANAGER_VERSION,
+            ZwpVirtualKeyboardV1ManagerGlobalData {
+                access: Arc::clone(registrar.access()),
+            },
+        )
 }
 
 /// The global data of the manager: who may bind it.
-pub(crate) struct ManagerGlobalData {
+pub struct ZwpVirtualKeyboardV1ManagerGlobalData {
     /// The roster that answers which connection may.
     access: Arc<Access>,
 }
 
 /// The user data of a bound manager object.
-pub(crate) struct ManagerUserData;
+pub struct ZwpVirtualKeyboardV1ManagerUserData;
 
 /// The user data of one virtual keyboard.
-pub(crate) struct KeyboardUserData {
+pub struct KeyboardUserData {
     /// The keyboard's identity in the seat's keymap table.
     id: u64,
     /// The keys it holds down, so that a destroyed keyboard can release them.
@@ -111,16 +145,19 @@ struct HeldKeys {
     last_time: u32,
 }
 
-impl GlobalDispatch2<ZwpVirtualKeyboardManagerV1, State> for ManagerGlobalData {
+impl<D> GlobalDispatch2<ZwpVirtualKeyboardManagerV1, D> for ZwpVirtualKeyboardV1ManagerGlobalData
+where
+    D: Dispatch<ZwpVirtualKeyboardManagerV1, ZwpVirtualKeyboardV1ManagerUserData> + 'static,
+{
     fn bind(
         &self,
-        _state: &mut State,
+        _state: &mut D,
         _dh: &DisplayHandle,
         client: &Client,
         resource: New<ZwpVirtualKeyboardManagerV1>,
-        data_init: &mut DataInit<'_, State>,
+        data_init: &mut DataInit<'_, D>,
     ) {
-        data_init.init(resource, ManagerUserData);
+        data_init.init(resource, ZwpVirtualKeyboardV1ManagerUserData);
         log::debug!(area = "virtual-keyboard", client = ?client.id(), "a client bound the virtual keyboard manager");
     }
 
@@ -129,15 +166,18 @@ impl GlobalDispatch2<ZwpVirtualKeyboardManagerV1, State> for ManagerGlobalData {
     }
 }
 
-impl Dispatch2<ZwpVirtualKeyboardManagerV1, State> for ManagerUserData {
+impl<D> Dispatch2<ZwpVirtualKeyboardManagerV1, D> for ZwpVirtualKeyboardV1ManagerUserData
+where
+    D: Host + Dispatch<ZwpVirtualKeyboardV1, KeyboardUserData> + 'static,
+{
     fn request(
         &self,
-        state: &mut State,
+        state: &mut D,
         _client: &Client,
         _manager: &ZwpVirtualKeyboardManagerV1,
         request: manager::Request,
         _dh: &DisplayHandle,
-        data_init: &mut DataInit<'_, State>,
+        data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             // The compositor has one seat, so the seat the client names is that seat.
@@ -164,15 +204,15 @@ impl Dispatch2<ZwpVirtualKeyboardManagerV1, State> for ManagerUserData {
     }
 }
 
-impl Dispatch2<ZwpVirtualKeyboardV1, State> for KeyboardUserData {
+impl<D: Host> Dispatch2<ZwpVirtualKeyboardV1, D> for KeyboardUserData {
     fn request(
         &self,
-        state: &mut State,
+        state: &mut D,
         _client: &Client,
         keyboard_object: &ZwpVirtualKeyboardV1,
         request: keyboard::Request,
         _dh: &DisplayHandle,
-        _data_init: &mut DataInit<'_, State>,
+        _data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             keyboard::Request::Keymap { format, fd, size } => match keymap_text(format, fd, size) {
@@ -227,7 +267,7 @@ impl Dispatch2<ZwpVirtualKeyboardV1, State> for KeyboardUserData {
         }
     }
 
-    fn destroyed(&self, state: &mut State, _client: ClientId, _resource: &ZwpVirtualKeyboardV1) {
+    fn destroyed(&self, state: &mut D, _client: ClientId, _resource: &ZwpVirtualKeyboardV1) {
         let (keys, time) = {
             let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
             (std::mem::take(&mut held.keys), held.last_time)

@@ -264,3 +264,10 @@ kind = "protocol"
 interfaces = [["zwlr_foreign_toplevel_manager_v1", 3]]
 needs = ["foreign-toplevel-shared"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+
+[[crate]]
+name = "zwp-virtual-keyboard-v1"
+description = "The zwp_virtual_keyboard_manager_v1 Wayland protocol of gnoblin-wayland: a client that types into whatever has focus."
+kind = "protocol"
+interfaces = [["zwp_virtual_keyboard_manager_v1", 1]]
+deps = ["smithay", "gnoblin-types", "gnoblin-log"]

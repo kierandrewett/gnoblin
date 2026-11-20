@@ -43,7 +43,5 @@ pub mod zwlr_screencopy_v1;
 pub mod zwp_linux_dmabuf_v1;
 /// `zwp_tablet_manager_v2`: drawing tablets, their tools and pads.
 pub mod zwp_tablet_v2;
-/// `zwp_virtual_keyboard_manager_v1`: the privileged virtual keyboard.
-pub mod zwp_virtual_keyboard_v1;
 /// `zxdg_decoration_manager_v1`: the client's server-side decoration preference.
 pub mod zxdg_decoration_v1;

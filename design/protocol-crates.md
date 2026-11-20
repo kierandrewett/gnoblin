@@ -11,11 +11,11 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `OutputHost`), the aggregate `gnoblin-wayland-protocols` (the `ALL` table), `xtask/protocols.toml`,
   `cargo xtask protocol-crates [--check]`, and the deps rules `protocol-layering` and `protocol-root`;
 - `access` moved into the api crate, and `Registrar` carries the roster (`Registrar::filter`);
-- 34 protocol crates and the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
+- 35 protocol crates and the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
   `zwp-relative-pointer-v1`, `zwp-idle-inhibit-v1`, `xdg-system-bell-v1`, `xdg-toplevel-icon-v1`,
   `xdg-toplevel-tag-v1`, `xdg-dialog-v1`, `wl-output`, `wl-shm`, `zwp-primary-selection-v1`, `wp-content-type-v1`,
   `wp-fifo-v1`, `wp-fractional-scale-v1`, `wp-tearing-control-v1`, `wp-presentation-time`,
-  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`. Their forwarding
+  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`. Their forwarding
   impls are in `crates/gnoblin-wayland/src/glue/`, one file per crate.
 
 Not yet done, in the order of [Migration order and gates](#migration-order-and-gates): every crate that needs the
@@ -28,6 +28,19 @@ real-client test move and `gnoblin-wayland-testkit`, and the advertised-globals 
 Two decisions made while doing the work differ from the text below. The table lives in `xtask/protocols.toml`, not in
 `crates/protocols/`, and a row carries no module name or access column, because each crate states its own `PROTOCOL`.
 Shared crates must end in `-shared`, so `image_copy_session` will be `gnoblin-wayland-image-copy-shared`.
+
+## What blocks the rest
+
+The protocols still in `gnoblin-wayland` name types that live in the compositor, so their crates cannot depend only on the api crate. The blockers, by module:
+
+- `zwlr_layer_shell_v1`: `LayerBand`, `LayerNodeInfo`, `LayerOverride` and `TreeOwner` from `gnoblin-backend`'s compose module, which protocol crates may not name.
+- `zwlr_output_management_v1`: `HeadInfo`, `HeadRequest` and `ModeRequest` of `output_config`.
+- `zxdg_decoration_v1`: `DecorationWanted` and `WindowDecoration` from the backend.
+- `xdg_activation_v1`, `xdg_shell`, `wl_compositor`, `wl_seat`: `WindowRequest`, `ActivationDenial`, `TreeRequest` and the seat's own tables.
+- `zwp_linux_dmabuf_v1`: the backend's `Backend` and the GPU ledger.
+- the capture family: the frame pixel path, the lock embargo and `gnoblin_pipewire_export`.
+
+Each needs its shared types moved down first, into the api crate or a small types crate the protocol tier may name.
 
 ## Decision
 

@@ -433,7 +433,7 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) input_method_state: InputMethodManagerState,
     /// Kept alive so `zwp_virtual_keyboard_manager_v1` stays registered; the bind is gated by
-    /// the access roster in [`crate::protocols::zwp_virtual_keyboard_v1`].
+    /// the access roster in `gnoblin-wayland-zwp-virtual-keyboard-v1`.
     #[allow(dead_code)]
     pub(crate) virtual_keyboard_global: GlobalId,
 
@@ -777,8 +777,7 @@ impl State {
         let alpha_modifier_state = gnoblin_wayland_protocols::wp_alpha_modifier_v1::register::<Self>(&registrar);
         let text_input_state = gnoblin_wayland_protocols::zwp_text_input_v3::register::<Self>(&registrar);
         let input_method_state = gnoblin_wayland_protocols::zwp_input_method_v2::register::<Self>(&registrar);
-        let virtual_keyboard_global =
-            crate::protocols::zwp_virtual_keyboard_v1::virtual_keyboard_global(&display_handle, &access);
+        let virtual_keyboard_global = gnoblin_wayland_protocols::zwp_virtual_keyboard_v1::register::<Self>(&registrar);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&display_handle, seat_name);
