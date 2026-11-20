@@ -27,6 +27,7 @@
 
 use std::fmt;
 use std::num::NonZeroU32;
+use std::time::Duration;
 
 use glow::HasContext;
 
@@ -43,6 +44,7 @@ use gnoblin_render_frame::shader::Stage;
 use gnoblin_render_frame::shader::uniforms::{BLOCK_BYTES, Uniforms};
 
 use crate::log;
+use crate::timing::{Gpu, QueryState};
 
 /// A driver failure, before it is known which line of a source it came from.
 pub(crate) struct CompileFailure {
@@ -186,6 +188,10 @@ pub(crate) struct GlContext {
     scratch: Option<glow::Framebuffer>,
     /// The targets a frame leased and gave back, for the next frame that needs one of the same size.
     spare: Vec<Framebuffer>,
+    /// How many times a call blocked on the GPU: `blocking_waits`.
+    waits: u64,
+    /// Whether the context offers `GL_EXT_disjoint_timer_query`.
+    timer_queries: bool,
 }
 
 impl GlContext {
@@ -229,6 +235,9 @@ impl GlContext {
                 Ok::<_, RenderError>((one_pixel()?, one_pixel()?))
             })
             .map_err(context_lost)??;
+        let timer_queries = renderer
+            .with_context(|gl| gl.supported_extensions().contains("GL_EXT_disjoint_timer_query"))
+            .unwrap_or(false);
         Ok(Self {
             renderer,
             white,
@@ -236,13 +245,15 @@ impl GlContext {
             viewport: (0, 0),
             scratch: None,
             spare: Vec::new(),
+            waits: 0,
+            timer_queries,
         })
     }
 
     /// The one-pixel texture holding `rgba` (premultiplied), for a user shader to read a solid layer's colour from.
     pub(crate) fn swatch(&mut self, rgba: [u8; 4]) -> Result<Texture, RenderError> {
         let swatch = self.swatch;
-        self.upload_into(swatch, Rect::new(0, 0, 1, 1), &rgba)?;
+        self.write_texture(swatch, Rect::new(0, 0, 1, 1), &rgba)?;
         Ok(swatch)
     }
 
@@ -640,14 +651,26 @@ impl GlContext {
         }
     }
 
-    /// Waits for every command issued so far, so the time since a draw began is what the draw cost. A user shader's
-    /// draw is timed this way for the watchdog, because the GPU runs behind the CPU and a draw's own call returns at
-    /// once.
-    pub(crate) fn finish(&mut self) {
+    /// Waits for every command issued so far, and counts the wait: `blocking_waits`. Only a path that has to
+    /// hand pixels to another process, or read them back, waits; a frame's own passes never do.
+    pub(crate) fn wait(&mut self) {
+        self.waits += 1;
         let _ = self.renderer.with_context(|gl| unsafe {
             // SAFETY: `finish` blocks until the commands issued are complete and changes no state.
             gl.finish();
         });
+    }
+
+    /// How many times this context has blocked on the GPU: a `glFinish`, a readback. A test reads it before and after a
+    /// frame to prove the frame did not wait.
+    #[cfg(test)]
+    pub(crate) fn blocking_waits(&self) -> u64 {
+        self.waits
+    }
+
+    /// Whether the context offers timer queries, which decides how a shader draw is measured ([`crate::timing`]).
+    pub(crate) fn has_timer_queries(&self) -> bool {
+        self.timer_queries
     }
 
     /// Deletes the GL names of every texture the frame imported and has now let go of.
@@ -915,23 +938,7 @@ impl GlContext {
                 let framebuffer = scratch_over(gl, scratch, to)?;
                 gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(from.framebuffer));
                 gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(framebuffer));
-                gl.disable(glow::SCISSOR_TEST);
-                let source_top = source_height - src.y;
-                let source_bottom = source_top - src.height as i32;
-                let (first, last) = (dst.y, dst.y + dst.height as i32);
-                let (destination_start, destination_end) = if reverse { (last, first) } else { (first, last) };
-                gl.blit_framebuffer(
-                    src.x,
-                    source_bottom,
-                    src.x + src.width as i32,
-                    source_top,
-                    dst.x,
-                    destination_start,
-                    dst.x + dst.width as i32,
-                    destination_end,
-                    glow::COLOR_BUFFER_BIT,
-                    glow::NEAREST,
-                );
+                blit_rows(gl, source_height, src, dst, reverse);
                 gl.framebuffer_texture_2d(
                     glow::DRAW_FRAMEBUFFER,
                     glow::COLOR_ATTACHMENT0,
@@ -940,17 +947,53 @@ impl GlContext {
                     0,
                 );
                 gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-                // The consumer of a client's buffer may read it as soon as it hears `ready`.
-                gl.finish();
                 Ok(())
             })
-            .map_err(context_lost)?
+            .map_err(context_lost)??;
+        // The consumer of a client's buffer may read it as soon as it hears `ready`.
+        self.wait();
+        Ok(())
+    }
+
+    /// Copies `src` of `from` into `dst` of the target `to`, like [`Self::blit_into`] but into a target of this
+    /// renderer's own and without waiting: the next pass that samples `to` is ordered after the copy by the driver.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Failed`] when the context is lost.
+    pub(crate) fn blit_between(
+        &mut self,
+        from: &Framebuffer,
+        to: &Framebuffer,
+        src: Rect,
+        dst: Rect,
+        reverse: bool,
+    ) -> Result<(), RenderError> {
+        let (_, source_height) = from.texture.size;
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: both framebuffers belong to this context and outlive the call; the bindings are restored
+                // before returning.
+                gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(from.framebuffer));
+                gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(to.framebuffer));
+                blit_rows(gl, source_height, src, dst, reverse);
+                gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+            })
+            .map_err(context_lost)
     }
 
     /// Writes `bytes`, `rect.height` rows of `rect.width` RGBA pixels, into `rect` of `to`, and waits for the write.
     ///
     /// `rect` is in the rows of `to` as GL counts them, and the first row of `bytes` is written to `rect.y`.
     pub(crate) fn upload_into(&mut self, to: Texture, rect: Rect, bytes: &[u8]) -> Result<(), RenderError> {
+        self.write_texture(to, rect, bytes)?;
+        self.wait();
+        Ok(())
+    }
+
+    /// [`Self::upload_into`] without the wait: the write is queued behind the commands before it and ahead of the ones
+    /// after, which is all a pass that samples the texture next needs.
+    pub(crate) fn write_texture(&mut self, to: Texture, rect: Rect, bytes: &[u8]) -> Result<(), RenderError> {
         let wanted = rect.width as usize * rect.height as usize * 4;
         if bytes.len() < wanted {
             return Err(RenderError::Failed);
@@ -973,7 +1016,6 @@ impl GlContext {
                     glow::PixelUnpackData::Slice(Some(&bytes[..wanted])),
                 );
                 gl.bind_texture(glow::TEXTURE_2D, None);
-                gl.finish();
             })
             .map_err(context_lost)
     }
@@ -985,6 +1027,7 @@ impl GlContext {
     /// [`RenderError::Unavailable`] when `from` cannot be a framebuffer's colour attachment, and
     /// [`RenderError::Failed`] when the context is lost.
     pub(crate) fn read_texture(&mut self, from: Texture) -> Result<Vec<u8>, RenderError> {
+        self.waits += 1;
         let (width, height) = from.size;
         let mut bytes = vec![0u8; width.max(0) as usize * 4 * height.max(0) as usize];
         let Self { renderer, scratch, .. } = self;
@@ -1205,6 +1248,7 @@ impl GlContext {
 
     /// Reads a whole target back, bottom row first, as RGBA8.
     pub(crate) fn read(&mut self, target: &Framebuffer) -> Result<Vec<u8>, RenderError> {
+        self.waits += 1;
         let (width, height) = target.texture.size;
         let mut bytes = vec![0u8; width as usize * 4 * height as usize];
         self.renderer
@@ -1307,6 +1351,124 @@ unsafe fn scratch_over(
         return Err(RenderError::Unavailable);
     }
     Ok(framebuffer)
+}
+
+/// The blit of [`GlContext::blit_into`] and [`GlContext::blit_between`], between the framebuffers already bound: `src` of
+/// the source, whose rows count from the bottom, into `dst` of the destination, in GL's row order, flipped when `reverse`.
+///
+/// # Safety
+///
+/// The read and draw framebuffers must be bound and belong to the current context.
+unsafe fn blit_rows(gl: &glow::Context, source_height: i32, src: Rect, dst: Rect, reverse: bool) {
+    // SAFETY: the caller's contract; the scissor test is disabled because it limits a blit as it limits a draw.
+    unsafe {
+        gl.disable(glow::SCISSOR_TEST);
+        let source_top = source_height - src.y;
+        let source_bottom = source_top - src.height as i32;
+        let (first, last) = (dst.y, dst.y + dst.height as i32);
+        let (destination_start, destination_end) = if reverse { (last, first) } else { (first, last) };
+        gl.blit_framebuffer(
+            src.x,
+            source_bottom,
+            src.x + src.width as i32,
+            source_top,
+            dst.x,
+            destination_start,
+            dst.x + dst.width as i32,
+            destination_end,
+            glow::COLOR_BUFFER_BIT,
+            glow::NEAREST,
+        );
+    }
+}
+
+/// `GL_TIME_ELAPSED_EXT`.
+const TIME_ELAPSED: u32 = 0x88BF;
+/// `GL_GPU_DISJOINT_EXT`.
+const GPU_DISJOINT: u32 = 0x8FBB;
+
+impl Gpu for GlContext {
+    type Query = glow::Query;
+    type Fence = glow::Fence;
+
+    fn begin_query(&mut self) -> Option<glow::Query> {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: the query is made and started on this context, and ended by `end_query` before any other
+                // query starts: shader draws do not nest.
+                let query = gl.create_query().ok()?;
+                gl.begin_query(TIME_ELAPSED, query);
+                Some(query)
+            })
+            .ok()
+            .flatten()
+    }
+
+    fn end_query(&mut self) {
+        let _ = self.renderer.with_context(|gl| unsafe {
+            // SAFETY: ends the query `begin_query` started on this context.
+            gl.end_query(TIME_ELAPSED);
+        });
+    }
+
+    fn query_state(&mut self, query: glow::Query) -> QueryState {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: the query belongs to this context. `QUERY_RESULT_AVAILABLE` never blocks, and the result is
+                // only read when it says the result is there.
+                if gl.get_query_parameter_u32(query, glow::QUERY_RESULT_AVAILABLE) == 0 {
+                    return QueryState::Pending;
+                }
+                let nanoseconds = gl.get_query_parameter_u32(query, glow::QUERY_RESULT);
+                QueryState::Done(Duration::from_nanos(u64::from(nanoseconds)))
+            })
+            .unwrap_or(QueryState::Pending)
+    }
+
+    fn take_disjoint(&mut self) -> bool {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: reading an integer parameter needs only a current context; the driver clears the flag.
+                gl.get_parameter_i32(GPU_DISJOINT) != 0
+            })
+            .unwrap_or(true)
+    }
+
+    fn delete_query(&mut self, query: glow::Query) {
+        let _ = self.renderer.with_context(|gl| unsafe {
+            // SAFETY: the query belongs to this context and is not used again.
+            gl.delete_query(query);
+        });
+    }
+
+    fn fence(&mut self) -> Option<glow::Fence> {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: a fence after the commands issued so far, on this context. The flush sends them to the driver so
+                // the fence can signal without another call, and does not wait.
+                let fence = gl.fence_sync(glow::SYNC_GPU_COMMANDS_COMPLETE, 0).ok()?;
+                gl.flush();
+                Some(fence)
+            })
+            .ok()
+            .flatten()
+    }
+
+    fn fence_signalled(&mut self, fence: glow::Fence) -> bool {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: the fence belongs to this context; `glGetSynciv` reads its status and never blocks.
+                gl.get_sync_status(fence) == glow::SIGNALED
+            })
+            .unwrap_or(true)
+    }
+
+    fn delete_fence(&mut self, fence: glow::Fence) {
+        let _ = self.renderer.with_context(|gl| unsafe {
+            // SAFETY: the fence belongs to this context and is not used again.
+            gl.delete_sync(fence);
+        });
+    }
 }
 
 /// One GLSL stage, compiled.

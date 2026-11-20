@@ -110,6 +110,9 @@
 //! 12. **A shader that was compiled by a lost context is used.** A failed frame drops every compiled program
 //!     ([`Gles::drain_shaders`]), and the next frame that needs one compiles it again:
 //!     `shader_tests::a_lost_device_drops_every_compiled_shader_and_the_next_frame_compiles_again`.
+//! 13. **A shader's cost is measured by stalling the compositor.** A draw is measured by a timer query or a polled fence
+//!     ([`timing`]) and a frame with shaders makes no `glFinish` and no readback:
+//!     `shader_tests::a_frame_with_shaders_never_waits_for_the_gpu`.
 //!
 //! # The shell's shader pass
 //!
@@ -152,6 +155,7 @@ use gnoblin_render_frame::image::READBACK_FORMAT;
 use gnoblin_render_frame::shader::uniforms::{Uniforms, UserBlock};
 use gnoblin_render_frame::shader::{ShaderCache, ShaderError, ShaderTimings};
 use std::time::Instant;
+use timing::{ShaderClock, TimerMode};
 
 /// The largest corner radius or blur radius a pass draws, in physical pixels.
 ///
@@ -234,6 +238,8 @@ struct UserShaders {
     cache: ShaderCache<Result<Program, ShaderError>>,
     /// When this renderer was made: a shader's `t` is the seconds since.
     started: Instant,
+    /// The measurements of the shader draws in flight.
+    clock: ShaderClock<GlContext>,
 }
 
 /// One scan-out buffer of an output: the dmabuf imported as a GL texture and the framebuffer
@@ -275,6 +281,11 @@ impl Gles {
         Self::check_limit(&mut device, physical)?;
         let target = device.target(physical)?;
         let passes = Passes::new(&mut device)?;
+        let timer_mode = if device.has_timer_queries() {
+            TimerMode::Queries
+        } else {
+            TimerMode::Fences
+        };
         Ok(Self {
             device,
             target,
@@ -292,6 +303,7 @@ impl Gles {
             shaders: UserShaders {
                 cache: ShaderCache::new(),
                 started: Instant::now(),
+                clock: ShaderClock::new(timer_mode),
             },
             backdrop_depth: 0,
         })
@@ -362,6 +374,16 @@ impl Gles {
             if let Ok(program) = entry {
                 device.delete_program(program);
             }
+        }
+        shaders.clock.clear(device);
+    }
+
+    /// Hands the watchdog what the shader draws measured so far, to the frame's `shader_timings()`: a measurement is read
+    /// without waiting, so a draw's cost is reported by the frame after it, or the one after that. Nothing here blocks.
+    fn report_shader_costs(&mut self, frame: &OutputFrame) {
+        let Self { device, shaders, .. } = self;
+        for (key, elapsed) in shaders.clock.poll(device, Instant::now()) {
+            frame.shader_timings().record(key, elapsed);
         }
     }
 
@@ -689,10 +711,13 @@ impl Gles {
         damage: &[Rect],
         glass: Option<&LayerParts<'_>>,
     ) -> Result<(), RenderError> {
+        self.report_shader_costs(frame);
+        self.shaders.clock.next_frame();
         let painted = self.paint_layers(frame, scale, damage, glass);
         // Every texture the frame imported was dropped when `paint_layers` returned, on every path out of it, so their
         // names are given back here, once per frame.
         self.device.collect_textures();
+        self.report_shader_costs(frame);
         if matches!(painted, Err(RenderError::Failed | RenderError::Lost)) {
             // A frame that failed may have lost the context, and a program of a lost context draws nothing.
             self.drain_shaders();
@@ -820,7 +845,7 @@ impl Gles {
         std::mem::swap(&mut self.target, below);
         painted?;
         let within = Rect::new(visible.x - quad.x, visible.y - quad.y, visible.width, visible.height);
-        self.device.blit_into(below, texture.texture(), visible, within, true)
+        self.device.blit_between(below, texture, visible, within, true)
     }
 
     /// [`Gles::paint_layers`] with the backdrops its layers read already built.
@@ -1324,8 +1349,11 @@ impl Painter<'_> {
                         "a user shader does not compile; the layer is drawn without it"
                     );
                 }
-                if let Some((_, Ok(evicted))) = shaders.cache.insert(key, program) {
-                    device.delete_program(evicted);
+                if let Some((evicted_key, evicted)) = shaders.cache.insert(key, program) {
+                    shaders.clock.forget(evicted_key);
+                    if let Ok(evicted) = evicted {
+                        device.delete_program(evicted);
+                    }
                 }
             }
             match shaders.cache.get(key) {
@@ -1408,10 +1436,10 @@ impl Painter<'_> {
         Ok(())
     }
 
-    /// One shader draw: the pass's program over `quad`, reading `input` as the node's colour, and its cost reported.
+    /// One shader draw: the pass's program over `quad`, reading `input` as the node's colour.
     ///
-    /// The cost is the wall time from the draw to the end of the GPU's work on it, which is why the draw waits: the GPU
-    /// runs behind the CPU, so a call that returns at once says nothing about a runaway shader.
+    /// The draw is measured without waiting for it ([`timing`]): a query or a fence is started around it, and the result
+    /// is reported by a later [`Gles::report_shader_costs`], when the driver has it.
     fn shader_draw(
         &mut self,
         pass: &ShaderPass,
@@ -1425,28 +1453,25 @@ impl Painter<'_> {
             shaders,
             bytes,
             user_bytes,
-            timings,
             ..
         } = self;
         let Some(shaders) = shaders.as_deref_mut() else {
             return Ok(());
         };
         let time = shaders.started.elapsed().as_secs_f32();
-        let Some(Ok(program)) = shaders.cache.get(pass.key()) else {
+        let key = pass.key();
+        let Some(Ok(program)) = shaders.cache.get(key) else {
             return Ok(());
         };
         program.pack(uniforms, bytes);
         UserBlock::new(pass.params_padded(), time).pack(user_bytes);
-        let began = Instant::now();
         let user = UserInputs {
             block: &user_bytes[..],
             backdrop: backdrop.filter(|_| pass.backdrop()),
         };
+        let started = shaders.clock.begin(device, key);
         let drawn = device.draw_with(program, bytes, Some(user), quad, Some(input), QuadPlacement::FLAT);
-        device.finish();
-        if let Some(timings) = timings.as_ref() {
-            timings.record(pass.key(), began.elapsed());
-        }
+        shaders.clock.end(device, started, key, Instant::now());
         drawn
     }
 
@@ -1999,6 +2024,7 @@ mod capture;
 mod dmabuf;
 mod downsample;
 mod subtree;
+mod timing;
 mod view;
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ use super::*;
 use gnoblin_render::{Effects, ShaderKey};
 use gnoblin_render_frame::frame::{Overlay, Solid};
 use gnoblin_render_frame::shader::user::validate;
+use std::time::Duration;
 
 /// How far a channel may be from what a probe expects, in levels of 255.
 const TOLERANCE: u8 = 4;
@@ -498,20 +499,264 @@ fn a_backdrop_that_reads_a_backdrop_is_built_in_turn() {
     assert_pixel(&image, 48, 40, GREEN, "and the lower glass shows the stripes");
 }
 
+/// Draws `frames` frames of `layers` (each damaging the whole output), reading the output back after every one so the GPU
+/// has finished with it, and returns every cost the frames reported, in order, with one more frame drawn at the end to
+/// collect the last measurement.
+fn costs_over(
+    renderer: &mut Gles,
+    size: Size,
+    frames: usize,
+    layers: &dyn Fn() -> Vec<Layer>,
+) -> Vec<(ShaderKey, Duration)> {
+    let mut costs = Vec::new();
+    for _ in 0..=frames {
+        let frame = frame_of(size, Color::BLACK, layers());
+        renderer.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let reported = frame.shader_timings().take();
+        costs.extend(reported.costs.into_iter().map(|cost| (cost.key, cost.elapsed)));
+        renderer.screenshot().expect("a readback");
+    }
+    costs
+}
+
+fn orange_layer() -> Vec<Layer> {
+    vec![Layer::Solid(solid(
+        Rect::new(8, 8, 16, 16),
+        Color::WHITE,
+        vec![pass(ORANGE, &[])],
+    ))]
+}
+
 #[test]
-fn a_shader_draw_reports_its_cost() {
+fn without_timer_queries_the_first_draws_of_a_source_are_measured_and_reported() {
     let size = Size::new(32, 32);
     let Some(mut renderer) = gles(size) else {
         return;
     };
-    let layer = Layer::Solid(solid(Rect::new(8, 8, 16, 16), Color::WHITE, vec![pass(ORANGE, &[])]));
-    let frame = frame_of(size, Color::BLACK, vec![layer]);
-    renderer.draw(&frame, Scale::IDENTITY).expect("drawn");
-    let report = frame.shader_timings().take();
-    assert_eq!(report.costs.len(), 1, "one source, one cost");
-    assert_eq!(report.costs[0].key, ShaderKey::of(ORANGE));
-    assert!(report.refused.is_empty());
-    assert!(!report.lost);
+    renderer.shaders.clock.set_mode(&mut renderer.device, TimerMode::Fences);
+    let costs = costs_over(&mut renderer, size, 9, &orange_layer);
+    assert_eq!(
+        renderer.shaders.clock.issued(),
+        timing::SAMPLE_FIRST,
+        "ten draws, of which the first {} are sampled and the next one in {} is not reached",
+        timing::SAMPLE_FIRST,
+        timing::SAMPLE_EVERY
+    );
+    assert!(!costs.is_empty(), "the sampled draws were reported");
+    assert!(costs.iter().all(|(key, _)| *key == ShaderKey::of(ORANGE)));
+    assert!(
+        costs.iter().all(|(_, elapsed)| *elapsed < Duration::from_secs(2)),
+        "a draw this small is not reported as a runaway: {costs:?}"
+    );
+}
+
+#[test]
+fn without_timer_queries_a_steady_source_is_sampled_one_frame_in_n() {
+    let size = Size::new(32, 32);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    renderer.shaders.clock.set_mode(&mut renderer.device, TimerMode::Fences);
+    let costs = costs_over(&mut renderer, size, 2 * timing::SAMPLE_EVERY as usize, &orange_layer);
+    // Draws 1 to 3, then 30 and 60.
+    assert_eq!(renderer.shaders.clock.issued(), timing::SAMPLE_FIRST + 2);
+    assert!(!costs.is_empty(), "and they were reported");
+    assert_eq!(
+        renderer.shaders.clock.pending(),
+        0,
+        "none is left waiting after the readbacks"
+    );
+}
+
+#[test]
+fn with_timer_queries_every_draw_is_timed_by_the_gpu() {
+    let size = Size::new(32, 32);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    if !renderer.device.has_timer_queries() {
+        println!(
+            "skipping the timer query test: {} has no GL_EXT_disjoint_timer_query, so the fake GPU in timing::tests covers the branch",
+            renderer.driver()
+        );
+        return;
+    }
+    renderer
+        .shaders
+        .clock
+        .set_mode(&mut renderer.device, TimerMode::Queries);
+    let costs = costs_over(&mut renderer, size, 5, &orange_layer);
+    assert_eq!(renderer.shaders.clock.issued(), 6, "every draw is timed");
+    assert!(!costs.is_empty(), "the driver answered the queries");
+    assert!(costs.iter().all(|(key, _)| *key == ShaderKey::of(ORANGE)));
+}
+
+#[test]
+fn a_context_picks_timer_queries_only_when_it_has_them() {
+    let Some(renderer) = gles(Size::new(8, 8)) else {
+        return;
+    };
+    let want = if renderer.device.has_timer_queries() {
+        TimerMode::Queries
+    } else {
+        TimerMode::Fences
+    };
+    assert_eq!(renderer.shaders.clock.mode(), want);
+}
+
+/// A frame with every kind of shader draw: a solid's colour, a chain of two passes, and a backdrop that is built and
+/// copied.
+fn every_kind_of_shader_frame() -> Vec<Layer> {
+    let mut layers = striped();
+    layers.push(Layer::Solid(solid(
+        Rect::new(0, 0, 32, 32),
+        Color::WHITE,
+        vec![pass(ORANGE, &[]), pass(ORANGE, &[])],
+    )));
+    layers.push(Layer::Solid(solid(
+        Rect::new(16, 32, 32, 32),
+        Color::WHITE,
+        vec![pass(GLASS, &[])],
+    )));
+    layers
+}
+
+#[test]
+fn a_frame_with_shaders_never_waits_for_the_gpu() {
+    let size = Size::new(64, 64);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    let mut modes = vec![TimerMode::Fences];
+    if renderer.device.has_timer_queries() {
+        modes.push(TimerMode::Queries);
+    }
+    for mode in modes {
+        renderer.shaders.clock.set_mode(&mut renderer.device, mode);
+        // The first frame compiles the programs and makes the targets; the frames after it are the steady state. Both
+        // are frames a shell can cause, and neither blocks.
+        for frame_number in 0..4 {
+            let frame = frame_of(size, Color::BLACK, every_kind_of_shader_frame());
+            let before = renderer.device.blocking_waits();
+            renderer.draw(&frame, Scale::IDENTITY).expect("drawn");
+            assert_eq!(
+                renderer.device.blocking_waits(),
+                before,
+                "{mode:?}, frame {frame_number}: a frame with shaders blocked on the GPU"
+            );
+        }
+        let image = renderer.screenshot().expect("a readback");
+        assert_pixel(
+            &image,
+            8,
+            8,
+            [255, 64, 0, 255],
+            "the frame is still drawn (two orange passes multiply)",
+        );
+        assert_pixel(&image, 20, 60, RED, "and its backdrop is still read");
+    }
+    let before = renderer.device.blocking_waits();
+    renderer.screenshot().expect("a readback");
+    assert!(
+        renderer.device.blocking_waits() > before,
+        "the counter counts a readback, so the zero above is a measurement and not a counter that does not move"
+    );
+}
+
+/// Times `frames` draws of `layers`: the milliseconds per frame the compositor's thread spends in `draw`, and the
+/// milliseconds per frame including the wait for the GPU to finish all of them. With `finish_each`, the renderer waits
+/// after every frame, which is what a `glFinish` after each shader draw cost.
+fn time_frames(
+    renderer: &mut Gles,
+    size: Size,
+    frames: u32,
+    finish_each: bool,
+    layers: &dyn Fn() -> Vec<Layer>,
+) -> (f64, f64) {
+    let prepared: Vec<OutputFrame> = (0..frames + 5)
+        .map(|_| frame_of(size, Color::BLACK, layers()))
+        .collect();
+    for frame in &prepared[..5] {
+        renderer.draw(frame, Scale::IDENTITY).expect("a warm-up frame");
+    }
+    renderer.screenshot().expect("a readback");
+    let began = Instant::now();
+    for frame in &prepared[5..] {
+        renderer.draw(frame, Scale::IDENTITY).expect("drawn");
+        if finish_each {
+            renderer.device.wait();
+        }
+    }
+    let drawing = began.elapsed();
+    renderer.device.wait();
+    let finished = began.elapsed();
+    let per_frame = |total: Duration| total.as_secs_f64() * 1000.0 / f64::from(frames);
+    (per_frame(drawing), per_frame(finished))
+}
+
+/// Prints what a frame costs with and without a shader. It measures this machine's driver (llvmpipe, a software
+/// rasteriser, where the "GPU" is the same CPU), not a real GPU, so the numbers say what the code does and not what a
+/// device would. Run it with `cargo test -p gnoblin-render-gles --release measure_ -- --ignored --nocapture`.
+#[test]
+#[ignore = "a measurement, not a check"]
+fn measure_what_a_frame_costs_with_and_without_a_shader() {
+    let size = Size::new(1280, 720);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    println!("driver: {}", renderer.driver());
+    let background = || {
+        vec![
+            plain(Rect::new(0, 0, 1280, 720), WHITE),
+            plain(Rect::new(100, 100, 600, 400), RED),
+        ]
+    };
+    let tinted = || {
+        let mut layers = background();
+        layers.push(Layer::Solid(solid(
+            Rect::new(300, 200, 640, 360),
+            Color::WHITE,
+            vec![pass(ORANGE, &[])],
+        )));
+        layers
+    };
+    let glass = || {
+        let mut layers = background();
+        layers.push(Layer::Solid(solid(
+            Rect::new(300, 200, 640, 360),
+            Color::WHITE,
+            vec![pass(GLASS, &[])],
+        )));
+        layers
+    };
+    let plain_layer = || {
+        let mut layers = background();
+        layers.push(plain(Rect::new(300, 200, 640, 360), WHITE));
+        layers
+    };
+    let frames = 100;
+    for mode in [TimerMode::Fences, TimerMode::Queries] {
+        if mode == TimerMode::Queries && !renderer.device.has_timer_queries() {
+            println!("{mode:?}: not offered by this driver");
+            continue;
+        }
+        renderer.shaders.clock.set_mode(&mut renderer.device, mode);
+        println!("mode {mode:?}, ms per frame as (in draw, with the GPU finished):");
+        for (name, layers, finish_each) in [
+            ("no shader", &plain_layer as &dyn Fn() -> Vec<Layer>, false),
+            ("tint shader", &tinted, false),
+            ("backdrop shader", &glass, false),
+            ("tint shader, glFinish after every frame (the old way)", &tinted, true),
+            (
+                "backdrop shader, glFinish after every frame (the old way)",
+                &glass,
+                true,
+            ),
+        ] {
+            let (drawing, finished) = time_frames(&mut renderer, size, frames, finish_each, layers);
+            println!("  {name:<58} {drawing:>8.3} {finished:>8.3}");
+        }
+    }
 }
 
 #[test]
