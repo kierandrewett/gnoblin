@@ -84,6 +84,21 @@ impl Library {
         Ok(self.target(&st, obj)?.class)
     }
 
+    /// Runs `work` as a call about `obj` of generation `ctx`, without the call: the way library code that runs from a turn of its own
+    /// (the toolkit's frame, a signal of the compositor) announces a signal or a property change, makes an object to hand out, or reads
+    /// the state of another object, as an implementation does inside a call. Nothing is borrowed while `work` runs, so it may call back
+    /// into the library.
+    ///
+    /// # Errors
+    ///
+    /// The generation holds no objects, or `obj` is gone.
+    pub fn with_cx<R>(&self, ctx: GnoblinCtx, obj: Obj, work: impl FnOnce(&mut Cx<'_>) -> R) -> Res<R> {
+        let st = self.state(ctx, false)?;
+        let class = self.target(&st, obj)?.class;
+        let mut cx = Cx::new(self, &st, obj, class);
+        Ok(work(&mut cx))
+    }
+
     // ---- making and ending objects ---------------------------------------------------------------------------------------
 
     /// Makes an object of `class` with `inits` set, and returns one reference to it. A service class gives its one object.

@@ -292,6 +292,23 @@ impl<'a> Cx<'a> {
         self.st.objects.borrow().get(obj).and_then(|entry| entry.parent)
     }
 
+    /// Lets an object of a retained class end like any other: when the shell holds no reference and no parent holds it. An object
+    /// nobody holds ends now. For a canvas the compositor ended: nothing keeps it on screen any more, and a shell may still read what
+    /// it was until it lets go.
+    pub fn unpin(&self, obj: Obj) {
+        let ends = {
+            let mut objects = self.st.objects.borrow_mut();
+            let Some(entry) = objects.get_mut(obj) else {
+                return;
+            };
+            entry.pinned = false;
+            entry.refs == 0 && entry.parent.is_none()
+        };
+        if ends {
+            self.lib.drop_object(self.st, obj);
+        }
+    }
+
     /// Takes a reference to `obj` for native state that keeps it (a layout a workspace uses): it is not freed while held.
     ///
     /// # Errors

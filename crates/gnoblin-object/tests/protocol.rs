@@ -182,6 +182,14 @@ fn probe_catalog() -> &'static CatalogDef {
             ],
         ),
         probe_class(),
+        ClassDef {
+            name: "kept",
+            kind: abi::CLASS_HANDLE,
+            flags: abi::CLASS_FLAG_RETAINED,
+            base: "",
+            foreign_members: 0,
+            members: &[],
+        },
         class(
             "shade",
             abi::CLASS_ENUM,
@@ -246,6 +254,7 @@ struct ProbeState {
 fn build_probe() -> Library {
     let catalog = probe_catalog();
     let mut builder = Builder::new(catalog);
+    let _ = builder.class::<()>("kept").ctor(|_cx, _inits| Ok(()));
     let _ = builder
         .class::<ProbeState>("probe")
         .ctor(|_cx, inits| {
@@ -661,4 +670,51 @@ fn a_tracker_is_told_every_property_read_until_it_is_dropped() {
     drop(tracking);
     api.get(obj, count).unwrap();
     assert_eq!(reads.borrow().len(), 2, "a dropped guard clears the tracker");
+}
+
+#[test]
+fn a_turn_of_the_library_announces_through_with_cx() {
+    let api = probe();
+    let class = api.class("probe").unwrap();
+    let ticked = api.member(class, abi::MEMBER_SIGNAL, "ticked").unwrap();
+    let obj = api.create(class, &[]).unwrap();
+    let heard = Rc::new(RefCell::new(Vec::new()));
+    let log = Rc::clone(&heard);
+    api.listen(obj, ticked, move |_, args| {
+        log.borrow_mut().push(args[0].int().unwrap());
+        Ok(Val::None)
+    })
+    .unwrap();
+    // Outside any call of the object's own: what a library's turn does when the compositor said something.
+    PROBE
+        .with(|lib| lib.with_cx(CTX, obj, |cx| cx.emit("ticked", vec![Val::Int(5)])))
+        .unwrap();
+    assert!(heard.borrow().is_empty(), "told from the next turn, not by the call");
+    flush_probe();
+    assert_eq!(*heard.borrow(), [5]);
+    api.destroy(obj).unwrap();
+    assert!(
+        PROBE.with(|lib| lib.with_cx(CTX, obj, |_| ())).is_err(),
+        "an object that is gone has no context"
+    );
+}
+
+#[test]
+fn a_retained_object_ends_once_it_is_unpinned_and_nobody_holds_it() {
+    let api = probe();
+    let class = api.class("kept").unwrap();
+    let unpin = |obj| PROBE.with(|lib| lib.with_cx(CTX, obj, |cx| cx.unpin(obj))).unwrap();
+    // Let go of, it stays: it is retained.
+    let alone = api.create(class, &[]).unwrap();
+    api.release(alone).unwrap();
+    assert!(api.class_of(alone).is_ok());
+    // Unpinned, nobody holds it: it ends at once.
+    unpin(alone);
+    assert!(api.class_of(alone).is_err());
+    // Unpinned while the shell still holds it: it ends when the shell lets go.
+    let held = api.create(class, &[]).unwrap();
+    unpin(held);
+    assert!(api.class_of(held).is_ok());
+    api.release(held).unwrap();
+    assert!(api.class_of(held).is_err());
 }
