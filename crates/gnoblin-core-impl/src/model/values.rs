@@ -21,9 +21,11 @@ pub(super) fn class_name(node: u64) -> Option<String> {
     session::with(|session| session.tree_ref().ok().and_then(|tree| tree.class_of(node)))
 }
 
-/// Whether the shell has attached to the tree.
-pub(super) fn attached() -> bool {
+/// Whether the generation is attached to the tree. A model that reads the tree attaches first, as every read of the SDK does, so a shell
+/// that only uses the model never has to.
+pub(super) fn attached(cx: &Cx<'_>) -> bool {
     session::with(|session| session.tree_ref().is_ok())
+        || crate::tree::attach(cx.ctx(), gnoblin_core_abi::ATTACH_HOLDER) == gnoblin_core_abi::E_OK
 }
 
 /// The nodes of `class` the compositor has published, ordered by id.

@@ -473,7 +473,7 @@ impl World {
 
     /// Wraps what the compositor already had: its outputs first, then its windows. Nothing is announced.
     pub(super) fn boot(&mut self, cx: &Cx<'_>) -> Res<()> {
-        if self.booted || !values::attached() {
+        if self.booted || !values::attached(cx) {
             return Ok(());
         }
         for node in nodes_of("screen") {

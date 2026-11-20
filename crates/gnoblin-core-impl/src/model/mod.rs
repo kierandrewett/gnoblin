@@ -78,7 +78,7 @@ fn with_world<R>(cx: &Cx<'_>, work: impl FnOnce(&mut World) -> R) -> Res<R> {
 /// Boots the model once the tree is there, so a call that reads it finds the windows the compositor already had.
 fn world_booted(cx: &Cx<'_>, ctx: GnoblinCtx) {
     let booted = WORLDS.with(|worlds| worlds.borrow().get(&ctx).is_none_or(|world| world.booted));
-    if booted || !values::attached() {
+    if booted || !values::attached(cx) {
         return;
     }
     let Some(mut world) = WORLDS.with(|worlds| worlds.borrow_mut().remove(&ctx)) else {

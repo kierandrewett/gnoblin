@@ -41,6 +41,8 @@ fn main(g: &Gnoblin) -> gnoblin::Result<()> {
             ));
         })?
         .keep();
+    // A selection nobody holds is freed with its listeners: this shell keeps it for as long as it runs.
+    std::mem::forget(terminals);
     clients
         .on_title_changed(move |client, title| {
             g.log(&format!(
