@@ -134,8 +134,8 @@ mod tests {
     #[test]
     fn an_unknown_extension_is_named_for_the_loader() {
         assert_eq!(
-            Language::of_path(Path::new("/x/shell.lua")),
-            Language::Other("lua".to_owned())
+            Language::of_path(Path::new("/x/shell.rb")),
+            Language::Other("rb".to_owned())
         );
         assert_eq!(Language::of_path(Path::new("/x/shell")), Language::Other(String::new()));
         assert_eq!(
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn names_round_trip() {
-        for name in ["native", "python", "js", "ts", "lua"] {
+        for name in ["native", "python", "js", "ts", "rb"] {
             assert_eq!(Language::from_name(name).as_str(), name);
         }
         assert_eq!(Language::of_path(Path::new("x")).as_str(), "unknown");

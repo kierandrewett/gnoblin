@@ -1,5 +1,4 @@
-//! Contract tests for the scene tree the node API relies on (design/node-api-refactor.md
-//! §5 and §8.2).
+//! Contract tests for the scene tree the node API relies on.
 //!
 //! Failure modes come first, then happy paths. A case whose behaviour the tree does not
 //! expose yet is `#[ignore]`d with the reason: it is a finding for the node API, not a

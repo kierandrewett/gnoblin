@@ -3,8 +3,7 @@
 //! A `shell.ts` or a `shell.py` with a syntax error leaves the session on the compositor's own window management. The
 //! failure is not silent and not final: the guardian's log carries the error text at its file and line, `gnoblinctl shell
 //! status` shows `failed` with the same text, and the file that is fixed afterwards is loaded by `gnoblinctl shell reload`
-//! (or by the file watcher) in the same process, without restarting the session. The last test is the other notice a user
-//! is owed: an `init.lua` that nothing reads says so, and names `gnoblinctl config migrate`.
+//! (or by the file watcher) in the same process, without restarting the session.
 
 use std::ffi::OsString;
 use std::fs;
@@ -204,34 +203,4 @@ fn a_typescript_shell_that_failed_to_start_loads_when_the_file_is_saved() {
 #[test]
 fn a_python_shell_that_failed_to_start_loads_when_the_file_is_saved() {
     failed_start_is_fixed_by_saving_the_file(&PYTHON);
-}
-
-#[test]
-fn an_init_lua_nothing_reads_is_noticed_and_names_the_migration() {
-    // A fresh install with an old Lua config and no shell.ts: the packaged default runs, and the user is told once.
-    let prefix = Prefix::new();
-    prefix.install(&shells().minimal, &prefix.default_shell_dir(), "shell.so");
-    let home = Home::new();
-    let lua = home.write("config/gnoblin/init.lua", "gnoblin.configure({})\n");
-    let mut session = Gnoblin::launch(home, Launch::guardian(&[]).with_binary(prefix.binary()));
-    session.wait_serving();
-    let notice = session
-        .wait_log("the Lua notice", |line| line.contains("gnoblinctl config migrate"))
-        .text;
-    assert!(
-        notice.contains(&lua.display().to_string()),
-        "the notice names the file: {notice}"
-    );
-    assert!(notice.contains("Gnoblin no longer runs Lua"), "{notice}");
-    assert!(notice.contains("the stock desktop runs instead"), "{notice}");
-    session.wait_log("the packaged default runs", |line| {
-        line.contains("chosen by tier 7 (packaged)")
-    });
-    session.wait_log("the session is ready", |line| line.contains("[guardian] session ready"));
-    assert_eq!(
-        session.log_text().matches("gnoblinctl config migrate").count(),
-        1,
-        "the user is told once:\n{}",
-        session.log_text()
-    );
 }

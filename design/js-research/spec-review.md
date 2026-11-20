@@ -1,6 +1,6 @@
 # Review of the Gnoblin JS specification (implementer's view)
 
-Sources read in full: `/home/kieran/dev/lanes/js-spec/SPECIFICATION.md` (2663 lines) and `init.js`. `L123` = spec line 123. Repo facts come from a read-only look at `/home/kieran/dev/gnoblin-rust-wt` (crate list, `crates/gnoblin-lua/src/lib.rs`, `tree_link.rs`, `process.rs`, `crates/gnoblin-wayland/src/fallback.rs`, `layout-owns-placement.md (removed)`, `design/xr-extension.md`). Effort numbers are my estimates, marked [INFERENCE].
+Sources read in full: `/home/kieran/dev/lanes/js-spec/SPECIFICATION.md` (2663 lines) and `init.js`. `L123` = spec line 123. Repo facts come from a read-only look at `/home/kieran/dev/gnoblin-rust-wt`. Effort numbers are my estimates, marked [INFERENCE].
 
 ## 0. Repo facts that change the review
 
@@ -140,8 +140,7 @@ Estimated size: ~12-15 units [INFERENCE], mostly items 10, 11, 6 (small), 8 and 
 This review proposed a plain-data front over the object API (a typed identity function with a runtime registration, whose keys
 desugared to `gap`, `clients.where(query).style`, `input.primary.bind` and the rest), so that a user who only wants a key
 bound or a gap set needs no `new Workspace(...)`. It was built, and the owner never asked for it: the public API is exactly
-the owner's specification and an `init.ts` is a program run against live objects (design/js-runtime.md, J4 (revised);
-js-spec-native.md (removed)). Two of its requirements outlived it: `LayoutContext.gap` supplied by `Workspace.gaps`, so one
+the owner's specification and an `init.ts` is a program run against live objects. Two of its requirements outlived it: `LayoutContext.gap` supplied by `Workspace.gaps`, so one
 setting reaches every stock layout, and the zero-config baseline spelled out in code (`data/js/starter/init.ts`: four floating
 workspaces and the stock bindings of the Lua shell).
 

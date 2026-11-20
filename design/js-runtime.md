@@ -2,7 +2,6 @@
 
 The JavaScript shell runs on QuickJS in the `gnoblin-js` process. The owner's API spec is
 `design/js-research/owner-spec.md` and wins on API shape. This file records the engineering decisions around it.
-The per-lane history of the work is in `js-runtime-changelog.md (removed)`.
 
 Inputs (all in `design/js-research/`):
 
@@ -42,8 +41,7 @@ Inputs (all in `design/js-research/`):
 - **J4 (revised).** The public API is the owner's spec. There is no declarative config layer: an `init.ts` runs top to
   bottom against live objects. The first design's plain-data tier was removed.
 
-    Why: The owner never asked for a second tier. A setting with no spec object gets no invented home
-    (js-spec-native.md (removed), 3.11).
+    Why: The owner never asked for a second tier. A setting with no spec object gets no invented home.
 
 - **J5.** Hot reload swaps a whole generation. New Runtime and Context per generation, stage, validate, commit at one
   compositor boundary, then drop the old one. A failed reload keeps the old generation and reports file, line and column

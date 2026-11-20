@@ -215,9 +215,9 @@ fn trim_output(text: &str) -> &str {
 pub struct RunEnvironment {
     /// The program that starts headless Mutter 51 (`GNOBLIN_PARITY_MUTTER51`). Absent means the reference cannot run.
     pub mutter51_launcher: Option<OsString>,
-    /// The program that starts the legacy Gnoblin on its patched Mutter (`GNOBLIN_PARITY_MUTTER_GNOBLIN`).
+    /// The program that starts the reference Gnoblin on its patched Mutter (`GNOBLIN_PARITY_MUTTER_GNOBLIN`).
     pub mutter_gnoblin_launcher: Option<OsString>,
-    /// The program that runs the legacy `gnoblinctl` against that session (`GNOBLIN_PARITY_MUTTER_GNOBLIN_CTL`).
+    /// The program that runs the reference `gnoblinctl` against that session (`GNOBLIN_PARITY_MUTTER_GNOBLIN_CTL`).
     pub mutter_gnoblin_ctl: Option<OsString>,
     /// Where the Mutter targets' private runtime directory is made (`GNOBLIN_PARITY_RUNTIME_BASE`).
     pub runtime_base: Option<PathBuf>,

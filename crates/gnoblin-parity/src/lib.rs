@@ -10,7 +10,7 @@
 //!   output; `candidate` runs the Rust compositor headless and drives it over IPC
 //!   and Wayland. `mutter51` runs stock Mutter 51 headless through a launcher the
 //!   environment names and is skipped, with the reason, where none is configured;
-//!   `mutter-gnoblin` does the same for the legacy C Gnoblin on its patched Mutter,
+//!   `mutter-gnoblin` does the same for the reference Gnoblin on its patched Mutter,
 //!   with a second program for its control socket. No target is a stand-in: one
 //!   that cannot start is a skip with its reason or a failure with the
 //!   compositor's log.

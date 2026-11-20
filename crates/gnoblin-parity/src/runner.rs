@@ -328,7 +328,7 @@ id = "windows.list"
     fn gnoblin_on_mutter_without_a_launcher_is_a_skip_that_names_the_variable() {
         let scenario = Scenario::parse(
             r#"
-name = "legacy"
+name = "reference"
 target = { mutter-gnoblin = {} }
 
 [[steps]]

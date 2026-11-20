@@ -27,9 +27,6 @@ pub const DEFAULT_SHELL_DIRECTORY: &str = "default-shell";
 /// The file stem of a conventional user shell and of the shell inside a shell directory: `shell.ts`.
 pub const SHELL_STEM: &str = "shell";
 
-/// The file a Lua configuration was written in. Nothing reads it; discovery only notices it, so the user is told to convert it.
-pub const LUA_CONFIG_FILE: &str = "init.lua";
-
 /// What the XDG specification says `XDG_DATA_DIRS` is when it is unset or empty.
 const DEFAULT_DATA_DIRS: &str = "/usr/local/share:/usr/share";
 

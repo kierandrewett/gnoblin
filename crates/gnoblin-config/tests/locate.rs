@@ -1,8 +1,8 @@
 //! Config discovery: one order, one file name, and no dependence on who asked.
 //!
 //! The configuration file is the shell that discovery selects, so the tiers themselves are tested in
-//! `gnoblin-shell-discovery`; what these tests pin is what this crate adds on top: the first-login path, the Lua
-//! notice, and which selected shells are configuration sources at all. The environment is supplied, not read, so a
+//! `gnoblin-shell-discovery`; what these tests pin is what this crate adds on top: the first-login path
+//! and which selected shells are configuration sources at all. The environment is supplied, not read, so a
 //! test proves each branch without touching the test runner's environment. The temporary directory is the test
 //! kit's, so a failed run leaves nothing behind.
 
@@ -160,65 +160,6 @@ fn an_old_init_file_is_not_read() {
 }
 
 #[test]
-fn init_lua_alone_is_not_the_config_and_is_reported_for_conversion() {
-    let root = RuntimeDir::new("locate-lua").expect("temp dir");
-    let found = locate(&home_with(&root, &["init.lua"])).expect("a path");
-    assert!(!found.exists(), "a Lua file is never the config");
-    assert_eq!(
-        found.path(),
-        config_dir(&root).join("shell.ts"),
-        "the file a new user creates"
-    );
-    assert_eq!(found.lua(), Some(config_dir(&root).join("init.lua").as_path()));
-}
-
-#[test]
-fn a_shell_beside_an_init_lua_is_not_a_lua_only_config() {
-    let root = RuntimeDir::new("locate-lua-beside").expect("temp dir");
-    let found = locate(&home_with(&root, &["shell.ts", "init.lua"])).expect("a path");
-    assert_eq!(found.lua(), None, "the stock config does not run: shell.ts does");
-}
-
-#[test]
-fn an_init_lua_still_gets_its_notice_when_an_installed_shell_is_chosen() {
-    let root = RuntimeDir::new("locate-lua-installed").expect("temp dir");
-    let environment = home_with(&root, &["init.lua"]);
-    let shells = root.join("share").join("gnoblin").join("shells");
-    fs::create_dir_all(&shells).expect("the shells directory");
-    fs::write(shells.join("tiler.ts"), "// a shell\n").expect("an installed shell");
-    let found = locate(&environment).expect("a path");
-    assert_eq!(found.path(), shells.join("tiler.ts"));
-    assert_eq!(found.tier(), Tier::SystemShells);
-    assert_eq!(found.lua(), Some(config_dir(&root).join("init.lua").as_path()));
-}
-
-#[test]
-fn an_explicit_shell_is_not_second_guessed_by_an_init_lua() {
-    let root = RuntimeDir::new("locate-lua-explicit").expect("temp dir");
-    let chosen = root.join("mine.ts");
-    fs::write(&chosen, "// a config\n").expect("write the config");
-    let environment = Environment {
-        gnoblin_shell: Some(chosen.into_os_string()),
-        ..home_with(&root, &["init.lua"])
-    };
-    assert_eq!(locate(&environment).expect("a path").lua(), None);
-}
-
-#[test]
-fn a_lua_shell_is_refused_with_the_command_that_converts_it() {
-    let root = RuntimeDir::new("locate-lua-override").expect("temp dir");
-    let lua = root.join("mine.lua");
-    fs::write(&lua, "-- a config\n").expect("write the config");
-    let environment = Environment {
-        gnoblin_shell: Some(lua.clone().into_os_string()),
-        ..home_under(&root)
-    };
-    let error = locate(&environment).expect_err("a Lua file is not a configuration");
-    assert_eq!(error, LocateError::LuaFile { path: lua });
-    assert!(error.to_string().contains("gnoblinctl config migrate"), "{error}");
-}
-
-#[test]
 fn a_shell_in_another_language_is_not_a_configuration_source() {
     let root = RuntimeDir::new("locate-python").expect("temp dir");
     let python = root.join("mine.py");
@@ -244,7 +185,7 @@ fn a_typescript_shell_named_by_the_variable_is_accepted_and_names_one_file() {
     fs::write(&chosen, "// a config\n").expect("write the config");
     let environment = Environment {
         gnoblin_shell: Some(chosen.clone().into_os_string()),
-        ..home_with(&root, &["init.lua"])
+        ..home_with(&root, &[])
     };
     let found = locate(&environment).expect("a path");
     assert_eq!(found.path(), chosen.as_path());

@@ -2,8 +2,6 @@
 
 This is internal release engineering material. It records what the CI and release
 pipeline does today, what is wrong with it, and the order in which to fix it.
-It replaces no document yet. `release-packaging.md (removed)` still holds the
-history of past release runs.
 
 Measured on 2026-10-08 from the GitHub run history and the checked-out tree. Updated on 2026-10-21 after the
 stage split; the problems below describe the pipeline as measured on the first date.
@@ -109,8 +107,6 @@ list missing from one place:
 
 ### 7. Stale documents
 
-- `release-packaging.md (removed)` describes the Debian build and the APT repository
-  as live. `apt-repository.yml` was removed in `1f53b8c6`.
 - The openSUSE RPM adapter workflow was already failing on `main` before this
   branch.
 
@@ -236,7 +232,6 @@ Each item lands as its own commit, and the tree stays working.
       across distros was not added: the same library has a different package name on each one.
 - [ ] Keep the other hand-written lists in step with their recipes: `nix/package.nix`,
       `packaging/opensuse/gnoblin.spec`, and the small installs in `lua-runtime.yml`.
-- [x] Mark `release-packaging.md (removed)` as a historical log, with a pointer to this file.
 - [x] Dry run a release from a branch. `gh workflow run release.yml --ref BRANCH -f dry_run=true`
       builds the source bundle and the Fedora source RPMs, builds the Arch package and runs its
       clean-install gate, and builds the Tumbleweed RPMs and runs their install and GNOME

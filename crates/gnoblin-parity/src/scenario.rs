@@ -132,9 +132,9 @@ pub enum TargetSpec {
     /// protocol behaviour. Started by the launcher `GNOBLIN_PARITY_MUTTER51`
     /// names; without one the scenario is skipped with that reason.
     Mutter51(LiveOptions),
-    /// The legacy C Gnoblin on its patched Mutter, headless: the reference for
+    /// The reference Gnoblin on its patched Mutter, headless: the reference for
     /// Gnoblin's own API. Started by the launcher `GNOBLIN_PARITY_MUTTER_GNOBLIN`
-    /// names, read through the legacy `gnoblinctl`; without a launcher the
+    /// names, read through the reference `gnoblinctl`; without a launcher the
     /// scenario is skipped with that reason.
     MutterGnoblin(LiveOptions),
     /// The Rust candidate with `gnoblin-backend` headless.

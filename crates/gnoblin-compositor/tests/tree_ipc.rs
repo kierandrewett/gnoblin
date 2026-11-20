@@ -1981,7 +1981,7 @@ fn a_value_set_after_the_snapshot_is_published_once_and_not_repeated_in_it() {
 
 // The shell tells a client how big it is and how it is placed by writing its window node: `width` and `height` are
 // the configure size, and `tiled` is the four tiled edge states with the work area as the bounds
-// (design/node-api-refactor.md, the `Window` members table). These tests read what the client receives.
+// (the `Window` members). These tests read what the client receives.
 
 /// Sends a transaction of `ops` and returns the serial it was applied at, waiting for the compositor's reply.
 fn apply(wire: &mut Wire, request_id: u64, base_serial: u64, ops: Vec<op::Properties>) -> u64 {

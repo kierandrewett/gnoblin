@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     fn any_other_extension_names_a_runtime_for_it() {
-        assert_eq!(kind("/x/init.lua", b"--", None), Ok(script("lua", "lua")));
+        assert_eq!(kind("/x/init.rb", b"--", None), Ok(script("rb", "rb")));
     }
 
     #[test]
@@ -387,7 +387,7 @@ mod tests {
         assert_eq!(language_constant("js", "ts"), abi::LANG_TS);
         assert_eq!(language_constant("js", "mts"), abi::LANG_TS);
         assert_eq!(language_constant("python", "py"), abi::LANG_PYTHON);
-        assert_eq!(language_constant("lua", "lua"), abi::LANG_OTHER);
+        assert_eq!(language_constant("rb", "rb"), abi::LANG_OTHER);
     }
 
     #[test]

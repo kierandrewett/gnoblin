@@ -10,12 +10,10 @@
 //!    names, which this runtime does not read), then the installed shells and the packaged default.
 //!
 //! This module adds the two things that are about the configuration and not about shells. A selected shell that is
-//! not TypeScript or JavaScript is not a configuration source here, and a `.lua` file is refused with the command
-//! that converts it. When discovery finds no shell at all (a first login before the packaged default is
+//! not TypeScript or JavaScript is not a configuration source here. When discovery finds no shell at all (a first login before the packaged default is
 //! installed), the answer is the file a new user is told to create, `$XDG_CONFIG_HOME/gnoblin/shell.ts`, and
 //! [`ConfigPath::exists`] is false: the session starts from the built-in configuration and `gnoblinctl config init`
-//! can write a copy there. An `init.lua` beside it is never read; [`ConfigPath::lua`] says when it is there and
-//! nothing named a shell, so the caller can tell the user to convert it.
+//! can write a copy there.
 //!
 //! The environment is passed in rather than read from the process: `set_var` is unsafe in edition 2024 and this
 //! workspace forbids unsafe, so a test supplies an [`Environment`] instead of mutating the test runner's environment.
@@ -25,7 +23,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gnoblin_shell_discovery::{DiscoveryError, LUA_CONFIG_FILE, Language as ShellLanguage, Request, discover};
+use gnoblin_shell_discovery::{DiscoveryError, Language as ShellLanguage, Request, discover};
 /// The environment a lookup reads, and the tier of the lookup that chose the file.
 pub use gnoblin_shell_discovery::{Environment, Tier};
 
@@ -58,7 +56,6 @@ pub struct ConfigPath {
     tier: Tier,
     exists: bool,
     language: Language,
-    lua: Option<PathBuf>,
     warnings: Vec<String>,
 }
 
@@ -88,12 +85,6 @@ impl ConfigPath {
         self.language
     }
 
-    /// The `init.lua` of the config directory when nothing named a shell: the session runs the stock configuration
-    /// and the caller tells the user to convert the Lua file.
-    pub fn lua(&self) -> Option<&Path> {
-        self.lua.as_deref()
-    }
-
     /// What did not stop the lookup but is worth a log line: a `config.toml` key that is not known, a
     /// `config.toml` that was set aside because a higher tier chose the shell.
     pub fn warnings(&self) -> &[String] {
@@ -115,8 +106,6 @@ pub enum LocateError {
     /// Discovery refused: an explicit request that cannot be met, several equally preferred shells, a bad
     /// `config.toml`.
     Discovery(DiscoveryError),
-    /// The selected shell is Lua, which nothing reads any more. It is converted with `gnoblinctl config migrate`.
-    LuaFile { path: PathBuf },
     /// The selected shell is in a language this runtime does not read.
     UnsupportedLanguage { path: PathBuf, language: String },
 }
@@ -128,11 +117,6 @@ impl std::fmt::Display for LocateError {
                 formatter.write_str("neither XDG_CONFIG_HOME nor HOME is set, so there is no config path")
             }
             LocateError::Discovery(error) => write!(formatter, "{error}"),
-            LocateError::LuaFile { path } => write!(
-                formatter,
-                "{}: Gnoblin no longer runs Lua; convert it with `gnoblinctl config migrate` (see docs/migrating-from-lua.md)",
-                path.display()
-            ),
             LocateError::UnsupportedLanguage { path, language } => write!(
                 formatter,
                 "{}: this is a {language} shell, and the configuration runtime reads only TypeScript and JavaScript shells",
@@ -159,9 +143,6 @@ pub fn locate(environment: &Environment) -> Result<ConfigPath, LocateError> {
             let language = match &selection.language {
                 ShellLanguage::TypeScript => Language::TypeScript,
                 ShellLanguage::JavaScript => Language::JavaScript,
-                ShellLanguage::Other(name) if name == "lua" => {
-                    return Err(LocateError::LuaFile { path: selection.path });
-                }
                 other => {
                     return Err(LocateError::UnsupportedLanguage {
                         path: selection.path,
@@ -169,14 +150,11 @@ pub fn locate(environment: &Environment) -> Result<ConfigPath, LocateError> {
                     });
                 }
             };
-            // Discovery says when a Lua file is left unread: nothing the user named chose the shell.
-            let lua = selection.lua_config.clone();
             Ok(ConfigPath {
                 tier: selection.chosen_by,
                 path: selection.path,
                 exists: true,
                 language,
-                lua,
                 warnings: selection.warnings.iter().map(ToString::to_string).collect(),
             })
         }
@@ -184,16 +162,11 @@ pub fn locate(environment: &Environment) -> Result<ConfigPath, LocateError> {
             let path = environment
                 .user_shell_file(NEW_FILE_EXTENSION)
                 .ok_or(LocateError::NoHome)?;
-            let lua = environment
-                .config_dir()
-                .map(|dir| dir.join(LUA_CONFIG_FILE))
-                .filter(|file| file.is_file());
             Ok(ConfigPath {
                 path,
                 tier: Tier::UserConfig,
                 exists: false,
                 language: Language::TypeScript,
-                lua,
                 warnings: Vec::new(),
             })
         }

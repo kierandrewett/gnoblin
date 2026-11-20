@@ -356,7 +356,6 @@ fn the_default_session_runs_shell_ts_in_the_compositor_and_commits_its_document(
     assert_eq!(delay_of(&document), &serde_json::json!(32), "{document}");
     let log = session.log();
     assert!(log.contains("serves in process"), "{log}");
-    assert!(!log.contains("gnoblinctl config migrate"), "{log}");
 }
 
 #[test]
@@ -416,37 +415,4 @@ fn saving_init_ts_reloads_it_with_the_watcher_on_and_commits_a_new_revision() {
     write_init(&session.config_dir(), &init_with_delay(40));
     let document = wait_for_revision(&session, 2);
     assert_eq!(delay_of(&document), &serde_json::json!(40), "{document}");
-}
-
-#[test]
-fn a_shell_ts_beside_an_init_lua_wins_and_the_lua_file_is_not_read() {
-    let session = Session::start_with(
-        &[
-            ("shell.ts", &init_with_delay(32)),
-            ("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n"),
-        ],
-        &[("GNOBLIN_JS_WATCH", "0")],
-    );
-    let document = wait_for_revision(&session, 1);
-    assert_eq!(delay_of(&document), &serde_json::json!(32), "shell.ts won: {document}");
-    let log = session.log();
-    assert!(log.contains("serves in process"), "{log}");
-    assert!(
-        !log.contains("init.lua is a Lua config"),
-        "no Lua notice when a shell runs:\n{log}"
-    );
-    assert!(!log.contains("gnoblinctl config migrate"), "{log}");
-}
-
-#[test]
-fn gnoblin_shell_vm_selects_nothing_any_more() {
-    // The variable that used to pick the Lua role is not read: a session that still sets it runs the JavaScript shell.
-    let session = Session::start_with(
-        &[("shell.ts", &init_with_delay(32))],
-        &[("GNOBLIN_SHELL_VM", "lua"), ("GNOBLIN_JS_WATCH", "0")],
-    );
-    let document = wait_for_revision(&session, 1);
-    assert_eq!(delay_of(&document), &serde_json::json!(32), "{document}");
-    let log = session.log();
-    assert!(log.contains("serves in process"), "{log}");
 }

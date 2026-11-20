@@ -210,11 +210,11 @@ fn a_launcher_language_overrides_detection() {
 #[test]
 fn a_launcher_for_another_language_is_passed_through_for_the_loader() {
     let sandbox = Sandbox::new();
-    let script = sandbox.touch("opt/tiler/shell.lua");
+    let script = sandbox.touch("opt/tiler/shell.rb");
     install_launcher(&sandbox, "tiler", &format!("path = \"{}\"\n", script.display()));
     assert_eq!(
         by_name(&sandbox, "tiler").expect("found").language,
-        Language::Other("lua".to_owned())
+        Language::Other("rb".to_owned())
     );
 }
 
@@ -372,11 +372,11 @@ fn a_file_that_starts_with_the_elf_magic_is_native_whatever_it_is_called() {
 #[test]
 fn an_unknown_extension_is_named_for_the_loader_to_decide() {
     let sandbox = Sandbox::new();
-    sandbox.touch("work/shell.lua");
+    sandbox.touch("work/shell.rb");
     sandbox.touch("work/plain");
     assert_eq!(
-        by_path(&sandbox, "./shell.lua").expect("found").language,
-        Language::Other("lua".to_owned())
+        by_path(&sandbox, "./shell.rb").expect("found").language,
+        Language::Other("rb".to_owned())
     );
     assert_eq!(
         by_path(&sandbox, "./plain").expect("found").language,

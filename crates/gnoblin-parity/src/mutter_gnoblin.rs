@@ -1,24 +1,24 @@
-//! The `mutter-gnoblin` target: the legacy C Gnoblin on its patched Mutter, headless, the reference for Gnoblin's own API.
+//! The `mutter-gnoblin` target: the reference session, Gnoblin's control API on a patched Mutter, headless.
 //!
-//! The target is two launchers the environment names, because the legacy session is a Mutter build plus a Lua runtime
-//! this crate neither builds nor ships:
+//! The target is two launchers the environment names, because the reference session is a Mutter build with a scripting
+//! runtime that this crate neither builds nor ships:
 //!
 //! | Variable                            | Meaning                                                                          |
 //! | ----------------------------------- | -------------------------------------------------------------------------------- |
 //! | `GNOBLIN_PARITY_MUTTER_GNOBLIN`     | The session launcher: `<launcher> <runtime-dir> <display>`, as for `mutter51`.   |
 //! | `GNOBLIN_PARITY_MUTTER_GNOBLIN_CTL` | The control client: `<ctl> <runtime-dir> <gnoblinctl arguments...>`. Default: `parity-gnoblinctl` beside the session launcher. |
 //!
-//! `scripts/parity-mutter-gnoblin` starts the legacy guardian (`gnoblin --devkit --wayland-display <display>`), which
-//! starts the patched Mutter on its headless backend with one virtual monitor, the Lua runtime and the control socket
-//! `<runtime-dir>/compositor-v1.sock`. `scripts/parity-gnoblinctl` runs the legacy `gnoblinctl` against that socket.
+//! `scripts/parity-mutter-gnoblin` starts the reference guardian (`gnoblin --devkit --wayland-display <display>`), which
+//! starts the patched Mutter on its headless backend with one virtual monitor, the scripting runtime and the control socket
+//! `<runtime-dir>/compositor-v1.sock`. `scripts/parity-gnoblinctl` runs the reference `gnoblinctl` against that socket.
 //! Both can run inside a root file system (`GNOBLIN_PARITY_MUTTER_ROOT`), because the build needs a distribution new
 //! enough for Mutter 51.
 //!
 //! The target answers every probe the other live targets answer (the Wayland client is the same code and the EIS door
-//! is the same `org.gnome.Mutter.RemoteDesktop`) and the probes that read Gnoblin's own API through the legacy
-//! `gnoblinctl`. Those observations are what the legacy command prints, reduced to the same keys the candidate's
-//! observation has where the two mean the same thing, and the legacy command's own JSON where they do not (the
-//! candidate's workspace list is an object model; the legacy one is an array). A scenario records that as a divergence.
+//! is the same `org.gnome.Mutter.RemoteDesktop`) and the probes that read Gnoblin's own API through the reference
+//! `gnoblinctl`. Those observations are what the reference command prints, reduced to the same keys the candidate's
+//! observation has where the two mean the same thing, and the reference command's own JSON where they do not (the
+//! candidate's workspace list is an object model; the reference one is an array). A scenario records that as a divergence.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -47,7 +47,7 @@ const NAMES: Names = Names {
 };
 /// How long a step waits for the session to reach the state it asks for.
 const TIMEOUT: Duration = Duration::from_secs(10);
-/// How long the control socket has to answer after the Wayland socket is up: the Lua runtime starts after it.
+/// How long the control socket has to answer after the Wayland socket is up: the scripting runtime starts after it.
 const CONTROL_START: Duration = Duration::from_secs(60);
 const POLL: Duration = Duration::from_millis(50);
 /// The app id and title of the toplevel the window steps create, as the candidate's steps use.
@@ -64,7 +64,7 @@ const API_STEPS: &[&str] = &["workspace.list", "window.open", "window.close", "w
 pub struct MutterGnoblinLaunch {
     /// Starts the session.
     pub launcher: OsString,
-    /// Runs the legacy `gnoblinctl` against it.
+    /// Runs the reference `gnoblinctl` against it.
     pub ctl: OsString,
 }
 
@@ -198,7 +198,7 @@ impl Ctl {
         })
     }
 
-    /// Waits until the control socket answers `ping`, which is after the Lua runtime has started.
+    /// Waits until the control socket answers `ping`, which is after the scripting runtime has started.
     fn wait_until_answering(&self) -> Result<(), TargetError> {
         let deadline = Instant::now() + CONTROL_START;
         loop {

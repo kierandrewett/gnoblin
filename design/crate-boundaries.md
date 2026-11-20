@@ -26,7 +26,7 @@ New crate `pam-gnoblin-keyring` (phase 3 of `design/keyring.md`) is the PAM modu
 
 New crate `gnoblin-lock-auth` is the password check behind the session lock: the `Authenticator` trait, the PAM implementation (`PamAuthenticator`, service `gnoblin-lock`) and the failed-attempt `RateLimiter`. It names no workspace crate, and its only dependencies are `libloading` and `zeroize`. libpam is loaded at run time with `dlopen`, as the lock must not stop building or starting on a host without it. The PAM stack is `data/pam.d/gnoblin-lock`.
 
-New crate `gnoblin-service-sessionidle` (`org.gnoblin.SessionIdle`, decision 7 of `runtime-surface-plan.md (removed)` section 6) is a services-role agent served on the ScreenSaver connection. It names only `gnoblin-model`, `gnoblin-service-core`, `gnoblin-log` and the test kit among workspace crates. `xtask/src/deps.rs` rule `service-sessionidle-isolation` enforces this. It is new behaviour, not a split, so it is not in the table below.
+New crate `gnoblin-service-sessionidle` is a services-role agent served on the ScreenSaver connection. It names only `gnoblin-model`, `gnoblin-service-core`, `gnoblin-log` and the test kit among workspace crates. `xtask/src/deps.rs` rule `service-sessionidle-isolation` enforces this. It is new behaviour, not a split, so it is not in the table below.
 
 ## Flagged splits
 
