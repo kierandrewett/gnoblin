@@ -1,0 +1,149 @@
+# The public surface of the `collection` module of the `gnoblin.model` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-core-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+member | client_collection.add | method (member:object:client) | 0.2.0
+member | client_collection.add_listener | method (listener:object:client_collection_listener) | 0.2.0
+member | client_collection.added | signal (client:object:client, collection:object:client_collection) | 0.2.0
+member | client_collection.alive | property bool ro | 0.2.0
+member | client_collection.app_id_changed | signal (client:object:client, app_id:string) | 0.2.0
+member | client_collection.at | method (index:int) -> object:client | 0.2.0
+member | client_collection.clear | method () | 0.2.0
+member | client_collection.closed | signal (client:object:client) | 0.2.0
+member | client_collection.contains | method (member:object:client) -> bool | 0.2.0
+member | client_collection.decoration_changed | signal (client:object:client, decoration:string) | 0.2.0
+member | client_collection.focus_changed | signal (client:object:client, focused:bool) | 0.2.0
+member | client_collection.focused | property object:client ro | 0.2.0
+member | client_collection.geometry_changed | signal (client:object:client, geometry:object:rect) | 0.2.0
+member | client_collection.get | method (id:string) -> object:client | 0.2.0
+member | client_collection.kind | property string ro | 0.2.0
+member | client_collection.length | property uint ro | 0.2.0
+member | client_collection.mutable | property bool ro | 0.2.0
+member | client_collection.pointer_enter | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection.pointer_leave | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection.pointer_motion | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection.pointer_press | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection.pointer_release | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection.priority | property double ro | 0.2.0
+member | client_collection.ready | signal (client:object:client) | 0.2.0
+member | client_collection.remove | method (member:object:client) -> bool | 0.2.0
+member | client_collection.remove_listener | method (listener:object:client_collection_listener) | 0.2.0
+member | client_collection.removed | signal (client:object:client, collection:object:client_collection) | 0.2.0
+member | client_collection.swap | method (a:object:client, b:object:client) | 0.2.0
+member | client_collection.title_changed | signal (client:object:client, title:string) | 0.2.0
+member | client_collection.to_list | method () -> list<object:client> | 0.2.0
+member | client_collection.where | method (query:object:client_query, priority?:double) -> object:client_collection | 0.2.0
+member | client_collection_listener.on_added | method (client:object:client, collection:object:client_collection) | 0.2.0
+member | client_collection_listener.on_app_id_changed | method (client:object:client, app_id:string) | 0.2.0
+member | client_collection_listener.on_closed | method (client:object:client) | 0.2.0
+member | client_collection_listener.on_decoration_changed | method (client:object:client, decoration:string) | 0.2.0
+member | client_collection_listener.on_focus_changed | method (client:object:client, focused:bool) | 0.2.0
+member | client_collection_listener.on_geometry_changed | method (client:object:client, geometry:object:rect) | 0.2.0
+member | client_collection_listener.on_pointer_enter | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection_listener.on_pointer_leave | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection_listener.on_pointer_motion | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection_listener.on_pointer_press | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection_listener.on_pointer_release | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_collection_listener.on_ready | method (client:object:client) | 0.2.0
+member | client_collection_listener.on_removed | method (client:object:client, collection:object:client_collection) | 0.2.0
+member | client_collection_listener.on_title_changed | method (client:object:client, title:string) | 0.2.0
+member | client_listener.on_app_id_changed | method (client:object:client, app_id:string) | 0.2.0
+member | client_listener.on_closed | method (client:object:client) | 0.2.0
+member | client_listener.on_decoration_changed | method (client:object:client, decoration:string) | 0.2.0
+member | client_listener.on_focus_changed | method (client:object:client, focused:bool) | 0.2.0
+member | client_listener.on_geometry_changed | method (client:object:client, geometry:object:rect) | 0.2.0
+member | client_listener.on_pointer_enter | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_listener.on_pointer_leave | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_listener.on_pointer_motion | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_listener.on_pointer_press | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_listener.on_pointer_release | method (client:object:client, event:object:pointer_event) | 0.2.0
+member | client_listener.on_ready | method (client:object:client) | 0.2.0
+member | client_listener.on_title_changed | method (client:object:client, title:string) | 0.2.0
+member | client_query.any_app_id | property list<string> rw,optional | 0.2.0
+member | client_query.any_id | property list<string> rw,optional | 0.2.0
+member | client_query.any_title | property list<string> rw,optional | 0.2.0
+member | client_query.app_id | property string rw,optional | 0.2.0
+member | client_query.focused | property bool rw,optional | 0.2.0
+member | client_query.fullscreen | property bool rw,optional | 0.2.0
+member | client_query.height | property double rw,optional | 0.2.0
+member | client_query.id | property string rw,optional | 0.2.0
+member | client_query.title | property string rw,optional | 0.2.0
+member | client_query.width | property double rw,optional | 0.2.0
+member | client_query.x | property double rw,optional | 0.2.0
+member | client_query.y | property double rw,optional | 0.2.0
+member | output_collection.add_listener | method (listener:object:output_collection_listener) | 0.2.0
+member | output_collection.added | signal (output:object:output, collection:object:output_collection) | 0.2.0
+member | output_collection.alive | property bool ro | 0.2.0
+member | output_collection.applied | signal (output:object:output, error:string) | 0.2.0
+member | output_collection.at | method (index:int) -> object:output | 0.2.0
+member | output_collection.connected | signal (output:object:output) | 0.2.0
+member | output_collection.contains | method (member:object:output) -> bool | 0.2.0
+member | output_collection.disconnected | signal (output:object:output) | 0.2.0
+member | output_collection.geometry_changed | signal (output:object:output, geometry:object:rect) | 0.2.0
+member | output_collection.get | method (id:string) -> object:output | 0.2.0
+member | output_collection.kind | property string ro | 0.2.0
+member | output_collection.length | property uint ro | 0.2.0
+member | output_collection.mode_changed | signal (output:object:output, mode:string) | 0.2.0
+member | output_collection.mutable | property bool ro | 0.2.0
+member | output_collection.priority | property double ro | 0.2.0
+member | output_collection.remove_listener | method (listener:object:output_collection_listener) | 0.2.0
+member | output_collection.removed | signal (output:object:output, collection:object:output_collection) | 0.2.0
+member | output_collection.scale_changed | signal (output:object:output, scale:double) | 0.2.0
+member | output_collection.to_list | method () -> list<object:output> | 0.2.0
+member | output_collection.where | method (query:object:output_query, priority?:double) -> object:output_collection | 0.2.0
+member | output_collection_listener.on_added | method (output:object:output, collection:object:output_collection) | 0.2.0
+member | output_collection_listener.on_applied | method (output:object:output, error:string) | 0.2.0
+member | output_collection_listener.on_connected | method (output:object:output) | 0.2.0
+member | output_collection_listener.on_disconnected | method (output:object:output) | 0.2.0
+member | output_collection_listener.on_geometry_changed | method (output:object:output, geometry:object:rect) | 0.2.0
+member | output_collection_listener.on_mode_changed | method (output:object:output, mode:string) | 0.2.0
+member | output_collection_listener.on_removed | method (output:object:output, collection:object:output_collection) | 0.2.0
+member | output_collection_listener.on_scale_changed | method (output:object:output, scale:double) | 0.2.0
+member | output_listener.on_applied | method (output:object:output, error:string) | 0.2.0
+member | output_listener.on_connected | method (output:object:output) | 0.2.0
+member | output_listener.on_disconnected | method (output:object:output) | 0.2.0
+member | output_listener.on_geometry_changed | method (output:object:output, geometry:object:rect) | 0.2.0
+member | output_listener.on_mode_changed | method (output:object:output, mode:string) | 0.2.0
+member | output_listener.on_scale_changed | method (output:object:output, scale:double) | 0.2.0
+member | output_query.any_id | property list<string> rw,optional | 0.2.0
+member | output_query.any_name | property list<string> rw,optional | 0.2.0
+member | output_query.enabled | property bool rw,optional | 0.2.0
+member | output_query.height | property double rw,optional | 0.2.0
+member | output_query.id | property string rw,optional | 0.2.0
+member | output_query.make | property string rw,optional | 0.2.0
+member | output_query.mode | property string rw,optional | 0.2.0
+member | output_query.model | property string rw,optional | 0.2.0
+member | output_query.name | property string rw,optional | 0.2.0
+member | output_query.primary | property bool rw,optional | 0.2.0
+member | output_query.scale | property double rw,optional | 0.2.0
+member | output_query.width | property double rw,optional | 0.2.0
+member | output_query.x | property double rw,optional | 0.2.0
+member | output_query.y | property double rw,optional | 0.2.0
+member | pointer_event.button | property uint rw | 0.2.0
+member | pointer_event.x | property double rw | 0.2.0
+member | pointer_event.y | property double rw | 0.2.0
+member | rect.height | property double rw | 0.2.0
+member | rect.width | property double rw | 0.2.0
+member | rect.x | property double rw | 0.2.0
+member | rect.y | property double rw | 0.2.0
+member | size.height | property double rw | 0.2.0
+member | size.width | property double rw | 0.2.0
+
+object | client_collection | base none | 0.2.0
+object | client_collection_listener | base none interface | 0.2.0
+object | client_listener | base none interface | 0.2.0
+object | client_query | base none record | 0.2.0
+object | output_collection | base none | 0.2.0
+object | output_collection_listener | base none interface | 0.2.0
+object | output_listener | base none interface | 0.2.0
+object | output_query | base none record | 0.2.0
+object | pointer_event | base none record | 0.2.0
+object | rect | base none record | 0.2.0
+object | size | base none record | 0.2.0

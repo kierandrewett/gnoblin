@@ -526,6 +526,11 @@ impl Session {
             .min()
     }
 
+    /// The monotonic clock in milliseconds: what `gnoblin.now` reads.
+    pub(crate) fn now_ms(&self) -> f64 {
+        self.clock.now().as_secs_f64() * 1000.0
+    }
+
     // ---- input claims ------------------------------------------------------------------------------------------------
 
     /// Allocates the id of a claim. Ids are the shell instance's, never reused, and shared by every kind of claim.

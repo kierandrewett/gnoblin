@@ -1,0 +1,136 @@
+# The `properties` module of `gnoblin.model`: bindings that keep a property in step with the properties and collections a function reads.
+#
+# `bind_double(name, compute)` sets the property now, and runs `compute` again whenever a property it read changed, writing the result
+# again. The library records the reads of `compute` (a `get` through the object protocol of the core, and of std's library when its
+# classes are read) and compares them after every turn. A binding runs at most eight times in one turn: one still changing after that
+# is left as it is and reported once.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# Gives a number.
+[[callback]]
+name = "compute_double"
+since = "0.2.0"
+returns = "double"
+
+# Gives true or false.
+[[callback]]
+name = "compute_bool"
+since = "0.2.0"
+returns = "bool"
+
+# Gives text.
+[[callback]]
+name = "compute_string"
+since = "0.2.0"
+returns = "string"
+
+# Gives a list of numbers (a rotation, a scale, a position).
+[[callback]]
+name = "compute_list"
+since = "0.2.0"
+returns = "list<double>"
+
+# One binding: the way to end it.
+[[object]]
+name = "property_binding"
+since = "0.2.0"
+kind = "handle"
+
+# The property the binding writes.
+[[object.property]]
+name = "property"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the binding still runs: its owner and the binding itself end it.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Ends the binding. The property keeps the last value written.
+[[object.method]]
+name = "dispose"
+since = "0.2.0"
+
+# The bindings of one object: `object.properties`. A property has one binding; binding it again replaces the first.
+[[object]]
+name = "property_bindings"
+since = "0.2.0"
+kind = "handle"
+
+# Binds the number property `name` to what `compute` gives.
+[[object.method]]
+name = "bind_double"
+since = "0.2.0"
+returns = "object:property_binding"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "compute"
+type = "callback:compute_double"
+
+# Binds the flag property `name` to what `compute` gives.
+[[object.method]]
+name = "bind_bool"
+since = "0.2.0"
+returns = "object:property_binding"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "compute"
+type = "callback:compute_bool"
+
+# Binds the text property `name` to what `compute` gives.
+[[object.method]]
+name = "bind_string"
+since = "0.2.0"
+returns = "object:property_binding"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "compute"
+type = "callback:compute_string"
+
+# Binds the list of numbers property `name` to what `compute` gives.
+[[object.method]]
+name = "bind_list"
+since = "0.2.0"
+returns = "object:property_binding"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+[[object.method.param]]
+name = "compute"
+type = "callback:compute_list"
+
+# Ends the binding of `name` and returns whether there was one.
+[[object.method]]
+name = "unbind"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+
+# Ends every binding of the object.
+[[object.method]]
+name = "dispose"
+since = "0.2.0"
+

@@ -1,0 +1,150 @@
+# The public surface of the `client` module of the `gnoblin.model` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-core-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+enum | frame_policy | values auto hold throttle | 0.2.0
+enum | output_transform | values normal rotate-90 rotate-180 rotate-270 flipped flipped-90 flipped-180 flipped-270 | 0.2.0
+
+member | client.add_listener | method (listener:object:client_listener) | 0.2.0
+member | client.alive | property bool ro | 0.2.0
+member | client.app_id | property string ro | 0.2.0
+member | client.app_id_changed | signal (client:object:client, app_id:string) | 0.2.0
+member | client.bounds | property object:rect rw | 0.2.0
+member | client.close | method () | 0.2.0
+member | client.closed | signal (client:object:client) | 0.2.0
+member | client.committed_size | property object:size ro | 0.2.0
+member | client.decoration | property string ro | 0.2.0
+member | client.decoration_changed | signal (client:object:client, decoration:string) | 0.2.0
+member | client.decoration_wanted | property string ro | 0.2.0
+member | client.focus | method () | 0.2.0
+member | client.focus_changed | signal (client:object:client, focused:bool) | 0.2.0
+member | client.focused | property bool ro | 0.2.0
+member | client.frame_policy | property enum:frame_policy rw | 0.2.0
+member | client.frame_rate | property double rw | 0.2.0
+member | client.from_launcher | property bool ro | 0.2.0
+member | client.fullscreen | property bool rw | 0.2.0
+member | client.geometry_changed | signal (client:object:client, geometry:object:rect) | 0.2.0
+member | client.height | property double rw | 0.2.0
+member | client.id | property string ro | 0.2.0
+member | client.kill | method () | 0.2.0
+member | client.lower | method () | 0.2.0
+member | client.maximised | property bool rw | 0.2.0
+member | client.minimised | property bool rw | 0.2.0
+member | client.opacity | property double rw | 0.2.0
+member | client.parent_window | property object:client ro | 0.2.0
+member | client.pointer_enter | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client.pointer_leave | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client.pointer_motion | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client.pointer_press | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client.pointer_release | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | client.position | property list<double> rw | 0.2.0
+member | client.presented | property uint ro | 0.2.0
+member | client.properties | property object:property_bindings ro | 0.2.0
+member | client.raise | method () | 0.2.0
+member | client.ready | signal (client:object:client) | 0.2.0
+member | client.remove_listener | method (listener:object:client_listener) | 0.2.0
+member | client.report_presented | property bool rw | 0.2.0
+member | client.rotation | property list<double> rw | 0.2.0
+member | client.scale | property list<double> rw | 0.2.0
+member | client.secure | property bool rw | 0.2.0
+member | client.tiled | property bool rw | 0.2.0
+member | client.title | property string ro | 0.2.0
+member | client.title_changed | signal (client:object:client, title:string) | 0.2.0
+member | client.unresponsive | property bool ro | 0.2.0
+member | client.visible | property bool rw | 0.2.0
+member | client.width | property double rw | 0.2.0
+member | client.x | property double rw | 0.2.0
+member | client.y | property double rw | 0.2.0
+member | client.z | property double rw | 0.2.0
+member | gnoblin.client_app_id_changed | signal (client:object:client, app_id:string) | 0.2.0
+member | gnoblin.client_closed | signal (client:object:client) | 0.2.0
+member | gnoblin.client_created | signal (client:object:client, collection:object:client_collection) | 0.2.0
+member | gnoblin.client_decoration_changed | signal (client:object:client, decoration:string) | 0.2.0
+member | gnoblin.client_focus_changed | signal (client:object:client, focused:bool) | 0.2.0
+member | gnoblin.client_geometry_changed | signal (client:object:client, geometry:object:rect) | 0.2.0
+member | gnoblin.client_pointer_enter | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | gnoblin.client_pointer_leave | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | gnoblin.client_pointer_motion | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | gnoblin.client_pointer_press | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | gnoblin.client_pointer_release | signal (client:object:client, event:object:pointer_event) | 0.2.0
+member | gnoblin.client_ready | signal (client:object:client) | 0.2.0
+member | gnoblin.client_title_changed | signal (client:object:client, title:string) | 0.2.0
+member | gnoblin.clients | property object:client_collection ro | 0.2.0
+member | gnoblin.find_clients | method (query?:object:client_query) -> list<object:client> | 0.2.0
+member | gnoblin.find_outputs | method (query?:object:output_query) -> list<object:output> | 0.2.0
+member | gnoblin.focus | property object:focus_history ro | 0.2.0
+member | gnoblin.now | method () -> double | 0.2.0
+member | gnoblin.output_added | signal (output:object:output, collection:object:output_collection) | 0.2.0
+member | gnoblin.output_applied | signal (output:object:output, error:string) | 0.2.0
+member | gnoblin.output_connected | signal (output:object:output) | 0.2.0
+member | gnoblin.output_disconnected | signal (output:object:output) | 0.2.0
+member | gnoblin.output_geometry_changed | signal (output:object:output, geometry:object:rect) | 0.2.0
+member | gnoblin.output_mode_changed | signal (output:object:output, mode:string) | 0.2.0
+member | gnoblin.output_removed | signal (output:object:output, collection:object:output_collection) | 0.2.0
+member | gnoblin.output_scale_changed | signal (output:object:output, scale:double) | 0.2.0
+member | gnoblin.outputs | property object:output_collection ro | 0.2.0
+member | gnoblin.timer | method (ms:double, run:callback:timer_fn) -> object:timer | 0.2.0
+member | gpu_memory.budget | property double rw | 0.2.0
+member | gpu_memory.capture | property double rw | 0.2.0
+member | gpu_memory.clients | property double rw | 0.2.0
+member | gpu_memory.evicted | property double rw | 0.2.0
+member | gpu_memory.refused | property double rw | 0.2.0
+member | gpu_memory.scratch | property double rw | 0.2.0
+member | gpu_memory.staging | property double rw | 0.2.0
+member | gpu_memory.target | property double rw | 0.2.0
+member | gpu_memory.total | property double rw | 0.2.0
+member | gpu_memory.views | property double rw | 0.2.0
+member | output.add_listener | method (listener:object:output_listener) | 0.2.0
+member | output.alive | property bool ro | 0.2.0
+member | output.applied | signal (output:object:output, error:string) | 0.2.0
+member | output.apply | method (config:object:output_config) -> object:output_operation | 0.2.0
+member | output.bounds | property object:rect ro | 0.2.0
+member | output.connected | signal (output:object:output) | 0.2.0
+member | output.connector | property string ro | 0.2.0
+member | output.disconnected | signal (output:object:output) | 0.2.0
+member | output.effective_scale | property double ro | 0.2.0
+member | output.enabled | property bool ro | 0.2.0
+member | output.geometry_changed | signal (output:object:output, geometry:object:rect) | 0.2.0
+member | output.gpu_memory | property object:gpu_memory ro | 0.2.0
+member | output.height | property double ro | 0.2.0
+member | output.id | property string ro | 0.2.0
+member | output.identity | property string ro | 0.2.0
+member | output.make | property string ro | 0.2.0
+member | output.mirror | method (source?:object:output) -> object:output_operation | 0.2.0
+member | output.mirror_of | property object:output ro | 0.2.0
+member | output.mode | property string ro | 0.2.0
+member | output.mode_changed | signal (output:object:output, mode:string) | 0.2.0
+member | output.model | property string ro | 0.2.0
+member | output.name | property string ro | 0.2.0
+member | output.primary | property bool ro | 0.2.0
+member | output.properties | property object:property_bindings ro | 0.2.0
+member | output.remove_listener | method (listener:object:output_listener) | 0.2.0
+member | output.scale | property double ro | 0.2.0
+member | output.scale_changed | signal (output:object:output, scale:double) | 0.2.0
+member | output.supersample | property double ro | 0.2.0
+member | output.transform | property string ro | 0.2.0
+member | output.virtual_size | property object:size ro | 0.2.0
+member | output.width | property double ro | 0.2.0
+member | output.x | property double ro | 0.2.0
+member | output.y | property double ro | 0.2.0
+member | output_config.enabled | property bool rw,optional | 0.2.0
+member | output_config.mirror_of | property string rw,optional | 0.2.0
+member | output_config.mode | property string rw,optional | 0.2.0
+member | output_config.position_x | property int rw,optional | 0.2.0
+member | output_config.position_y | property int rw,optional | 0.2.0
+member | output_config.scale | property double rw,optional | 0.2.0
+member | output_config.supersample | property double rw,optional | 0.2.0
+member | output_config.transform | property enum:output_transform rw,optional | 0.2.0
+
+object | client | base none | 0.2.0
+object | gnoblin | base none service | 0.2.0
+object | gpu_memory | base none record | 0.2.0
+object | output | base none | 0.2.0
+object | output_config | base none record | 0.2.0

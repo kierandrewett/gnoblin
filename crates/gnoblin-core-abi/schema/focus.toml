@@ -1,0 +1,51 @@
+# The `focus` module of `gnoblin.model`: the windows in the order they were last focused.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# What `focus_history.history` is narrowed by: a field left out does not narrow.
+[[object]]
+name = "focus_filter"
+since = "0.2.0"
+kind = "record"
+
+# Only the windows on this workspace.
+[[object.property]]
+name = "workspace_id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Only the windows on this output; windows without an output match none.
+[[object.property]]
+name = "monitor_id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The most windows to return, 1 to 256; 50 when it is left out.
+[[object.property]]
+name = "limit"
+type = "int"
+since = "0.2.0"
+optional = true
+
+# The windows in the order they were last focused. The library notes who has the first seat's focus once a turn. A window that
+# closed leaves the history.
+[[object]]
+name = "focus_history"
+since = "0.2.0"
+kind = "service"
+
+# The live windows most recently focused first, then the ones never seen focused in list order. It includes minimised windows and
+# omits closed ones. At startup only the focused window seeds the order. A `limit` outside 1 to 256 is refused.
+[[object.method]]
+name = "history"
+since = "0.2.0"
+returns = "list<object:client>"
+
+[[object.method.param]]
+name = "filter"
+type = "object:focus_filter"
+optional = true
+

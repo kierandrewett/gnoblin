@@ -1,0 +1,1352 @@
+# The `collection` module of `gnoblin.model`: live views of the compositor's windows and outputs.
+#
+# `client_collection` holds windows, `output_collection` outputs. The root of each is `gnoblin.clients` and `gnoblin.outputs`: made by the
+# library, in the order the compositor made the objects. `where` narrows one to a live selection that follows its members, and a
+# standalone `client_collection` (made with `create`) is a list a shell keeps by hand: `add`, `remove`, `clear` and `swap` change it.
+#
+# A listener hears what happens to a member as the member's own listeners do, and after them: the member's listeners first, then the
+# collections that hold it (the root, then its selections in the order they were made, then the lists a shell keeps). Every call a
+# listener makes comes from a later turn than the change that caused it, in this order. A listener that is added to `added` is told of
+# the members that are already there, from the next turn, as if each had just been added.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# A rectangle in logical pixels.
+[[object]]
+name = "rect"
+since = "0.2.0"
+kind = "record"
+
+# The left edge.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The top edge.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The width.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The height.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# A width and a height in logical pixels.
+[[object]]
+name = "size"
+since = "0.2.0"
+kind = "record"
+
+# The width.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The height.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# A pointer edge on a window: where, in the window's own coordinates, and which button (0 for the others).
+[[object]]
+name = "pointer_event"
+since = "0.2.0"
+kind = "record"
+
+# Horizontal pointer position in window coordinates.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Vertical pointer position in window coordinates.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Button number, or 0 when the event is not for a button.
+[[object.property]]
+name = "button"
+type = "uint"
+since = "0.2.0"
+default = 0
+
+# What `where` and `find_clients` select windows by: every field that is given must hold. A `any_` field holds when the window's
+# value is one of those listed. A field left out matches every window.
+[[object]]
+name = "client_query"
+since = "0.2.0"
+kind = "record"
+
+# The window's id.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The application id.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The title.
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# Whether the window has the keyboard focus.
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Whether the window is fullscreen.
+[[object.property]]
+name = "fullscreen"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# The left edge.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The top edge.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The width.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The height.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# One of these ids.
+[[object.property]]
+name = "any_id"
+type = "list<string>"
+since = "0.2.0"
+optional = true
+
+# One of these application ids.
+[[object.property]]
+name = "any_app_id"
+type = "list<string>"
+since = "0.2.0"
+optional = true
+
+# One of these titles.
+[[object.property]]
+name = "any_title"
+type = "list<string>"
+since = "0.2.0"
+optional = true
+
+# What `where` and `find_outputs` select outputs by: every field that is given must hold. A field left out matches every output.
+[[object]]
+name = "output_query"
+since = "0.2.0"
+kind = "record"
+
+# The output's id.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The name the compositor gives the output.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The manufacturer.
+[[object.property]]
+name = "make"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The model.
+[[object.property]]
+name = "model"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The mode, `WxH@Hz`.
+[[object.property]]
+name = "mode"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The scale.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# Whether the output is the primary one.
+[[object.property]]
+name = "primary"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# Whether the output is switched on.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# The left edge.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The top edge.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The width.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# The height.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# One of these ids.
+[[object.property]]
+name = "any_id"
+type = "list<string>"
+since = "0.2.0"
+optional = true
+
+# One of these names.
+[[object.property]]
+name = "any_name"
+type = "list<string>"
+since = "0.2.0"
+optional = true
+
+# Observes the events of a window: add it to one client, or to a collection for every member. Each method is optional.
+[[object]]
+name = "client_listener"
+since = "0.2.0"
+kind = "interface"
+
+# The window title changed.
+[[object.method]]
+name = "on_title_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "title"
+type = "string"
+
+# The application id changed.
+[[object.method]]
+name = "on_app_id_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+
+# The compositor changed who draws the window's frame: `client`, `server` or `none` (see `client.decoration`).
+[[object.method]]
+name = "on_decoration_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "decoration"
+type = "string"
+
+# The pointer crossed into the window. `event` is in the window's own coordinates.
+[[object.method]]
+name = "on_pointer_enter"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# The pointer moved over the window.
+[[object.method]]
+name = "on_pointer_motion"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# The pointer left the window.
+[[object.method]]
+name = "on_pointer_leave"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# A button went down on the window. The window's client hears it too.
+[[object.method]]
+name = "on_pointer_press"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# A button was released over the window.
+[[object.method]]
+name = "on_pointer_release"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# Keyboard focus entered or left the window.
+[[object.method]]
+name = "on_focus_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "focused"
+type = "bool"
+
+# The window's geometry changed.
+[[object.method]]
+name = "on_geometry_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "geometry"
+type = "object:rect"
+
+# The window closed. Its last values stay readable.
+[[object.method]]
+name = "on_closed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+# The window completed its initial setup: told for a window that was there at the start of the shell, and for each one that
+# arrives.
+[[object.method]]
+name = "on_ready"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+# Observes the events of an output: add it to one output, or to `gnoblin.outputs` for all of them. A listener of the collection
+# hears `connected` for an output that is plugged in while the shell runs, not for the ones there when it started. Each method is
+# optional.
+[[object]]
+name = "output_listener"
+since = "0.2.0"
+kind = "interface"
+
+# An `apply` asked of this output was answered: `error` is empty when it took effect, else why it did not.
+[[object.method]]
+name = "on_applied"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "error"
+type = "string"
+
+# The output appeared: it was plugged in while the shell ran, or made by the compositor.
+[[object.method]]
+name = "on_connected"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+# The output is gone. Its last values stay readable and `connected` is false.
+[[object.method]]
+name = "on_disconnected"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+# The output's mode (`WxH@Hz`) changed.
+[[object.method]]
+name = "on_mode_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "mode"
+type = "string"
+
+# The output scale changed.
+[[object.method]]
+name = "on_scale_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "scale"
+type = "double"
+
+# The output's place or size in the compositor's coordinates changed.
+[[object.method]]
+name = "on_geometry_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "geometry"
+type = "object:rect"
+
+# Observes a collection of windows: membership (`on_added`, `on_removed`) and every event of its members. A listener is told of
+# every member now, as if each had just been added. Each method is optional.
+[[object]]
+name = "client_collection_listener"
+since = "0.2.0"
+kind = "interface"
+
+# A member joined the collection.
+[[object.method]]
+name = "on_added"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "collection"
+type = "object:client_collection"
+
+# A member left the collection.
+[[object.method]]
+name = "on_removed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "collection"
+type = "object:client_collection"
+
+# The window title changed.
+[[object.method]]
+name = "on_title_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "title"
+type = "string"
+
+# The application id changed.
+[[object.method]]
+name = "on_app_id_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+
+# The compositor changed who draws the window's frame: `client`, `server` or `none` (see `client.decoration`).
+[[object.method]]
+name = "on_decoration_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "decoration"
+type = "string"
+
+# The pointer crossed into the window. `event` is in the window's own coordinates.
+[[object.method]]
+name = "on_pointer_enter"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# The pointer moved over the window.
+[[object.method]]
+name = "on_pointer_motion"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# The pointer left the window.
+[[object.method]]
+name = "on_pointer_leave"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# A button went down on the window. The window's client hears it too.
+[[object.method]]
+name = "on_pointer_press"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# A button was released over the window.
+[[object.method]]
+name = "on_pointer_release"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "event"
+type = "object:pointer_event"
+
+# Keyboard focus entered or left the window.
+[[object.method]]
+name = "on_focus_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "focused"
+type = "bool"
+
+# The window's geometry changed.
+[[object.method]]
+name = "on_geometry_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+[[object.method.param]]
+name = "geometry"
+type = "object:rect"
+
+# The window closed. Its last values stay readable.
+[[object.method]]
+name = "on_closed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+# The window completed its initial setup: told for a window that was there at the start of the shell, and for each one that
+# arrives.
+[[object.method]]
+name = "on_ready"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "object:client"
+
+# Observes a collection of outputs: membership (`on_added`, `on_removed`) and every event of its members. Each method is optional.
+[[object]]
+name = "output_collection_listener"
+since = "0.2.0"
+kind = "interface"
+
+# A member joined the collection.
+[[object.method]]
+name = "on_added"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "collection"
+type = "object:output_collection"
+
+# A member left the collection.
+[[object.method]]
+name = "on_removed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "collection"
+type = "object:output_collection"
+
+# An `apply` asked of this output was answered: `error` is empty when it took effect, else why it did not.
+[[object.method]]
+name = "on_applied"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "error"
+type = "string"
+
+# The output appeared: it was plugged in while the shell ran, or made by the compositor.
+[[object.method]]
+name = "on_connected"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+# The output is gone. Its last values stay readable and `connected` is false.
+[[object.method]]
+name = "on_disconnected"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+# The output's mode (`WxH@Hz`) changed.
+[[object.method]]
+name = "on_mode_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "mode"
+type = "string"
+
+# The output scale changed.
+[[object.method]]
+name = "on_scale_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "scale"
+type = "double"
+
+# The output's place or size in the compositor's coordinates changed.
+[[object.method]]
+name = "on_geometry_changed"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "output"
+type = "object:output"
+
+[[object.method.param]]
+name = "geometry"
+type = "object:rect"
+
+# A live, ordered collection of windows. `gnoblin.clients` is the root: every window the compositor manages, in the order it made
+# them. `create` makes a list of your own; `where` makes a selection.
+[[object]]
+name = "client_collection"
+since = "0.2.0"
+kind = "handle"
+
+# The number of members.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# What the collection holds: `Client`.
+[[object.property]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the collection still exists. A root collection always does.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether a shell may change the membership with `add`, `remove`, `clear` and `swap`. The roots and the selections made by `where`
+# are not.
+[[object.property]]
+name = "mutable"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The member with keyboard focus, or none: the first seat's focus, or the member whose `focused` is set when there is no seat.
+[[object.property]]
+name = "focused"
+type = "object:client"
+since = "0.2.0"
+readonly = true
+
+# What a selection ranks by among the selections that style a window: higher wins. Zero for a collection that is not a selection.
+[[object.property]]
+name = "priority"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The member at `index`, counted from the end when negative.
+[[object.method]]
+name = "at"
+since = "0.2.0"
+returns = "object:client"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+# The first member with this id.
+[[object.method]]
+name = "get"
+since = "0.2.0"
+export = { rust = "get_by_id" }
+returns = "object:client"
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# Whether `member` is in the collection.
+[[object.method]]
+name = "contains"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "member"
+type = "object:client"
+
+# A snapshot of the members, in order: it does not follow later changes.
+[[object.method]]
+name = "to_list"
+since = "0.2.0"
+returns = "list<object:client>"
+
+# A live selection that tracks the members matching `query`. Each field that is given must equal the member's, or for an `any_`
+# field be one of its values. `priority` ranks the selection's style among others (a finite number, 0 by default).
+[[object.method]]
+name = "where"
+since = "0.2.0"
+returns = "object:client_collection"
+
+[[object.method.param]]
+name = "query"
+type = "object:client_query"
+
+[[object.method.param]]
+name = "priority"
+type = "double"
+optional = true
+
+# Adds a listener. It is told of the members at once as `client_collection_listener` says (from the next turn), and of every later
+# change; adding one that is added already has no effect. A method the listener does not define is never called.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:client_collection_listener"
+
+# Removes a listener added with `add_listener`. One that is not added is ignored.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:client_collection_listener"
+
+# Adds a member to a collection a shell keeps by hand. Refused on a root and on a selection.
+[[object.method]]
+name = "add"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "member"
+type = "object:client"
+
+# Removes a member and returns whether it was there. Refused on a root and on a selection.
+[[object.method]]
+name = "remove"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "member"
+type = "object:client"
+
+# Removes every member. Refused on a root and on a selection.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# Swaps two members in the order. Both must be in the collection. Refused on a root and on a selection.
+[[object.method]]
+name = "swap"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "a"
+type = "object:client"
+
+[[object.method.param]]
+name = "b"
+type = "object:client"
+
+# A member joined the collection.
+[[object.signal]]
+name = "added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "collection"
+type = "object:client_collection"
+
+# A member left the collection.
+[[object.signal]]
+name = "removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "collection"
+type = "object:client_collection"
+
+# The window title changed.
+[[object.signal]]
+name = "title_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "title"
+type = "string"
+
+# The application id changed.
+[[object.signal]]
+name = "app_id_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "app_id"
+type = "string"
+
+# The compositor changed who draws the window's frame: `client`, `server` or `none` (see `client.decoration`).
+[[object.signal]]
+name = "decoration_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "decoration"
+type = "string"
+
+# The pointer crossed into the window. `event` is in the window's own coordinates.
+[[object.signal]]
+name = "pointer_enter"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# The pointer moved over the window.
+[[object.signal]]
+name = "pointer_motion"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# The pointer left the window.
+[[object.signal]]
+name = "pointer_leave"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# A button went down on the window. The window's client hears it too.
+[[object.signal]]
+name = "pointer_press"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# A button was released over the window.
+[[object.signal]]
+name = "pointer_release"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# Keyboard focus entered or left the window.
+[[object.signal]]
+name = "focus_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "focused"
+type = "bool"
+
+# The window's geometry changed.
+[[object.signal]]
+name = "geometry_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "geometry"
+type = "object:rect"
+
+# The window closed. Its last values stay readable.
+[[object.signal]]
+name = "closed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+# The window completed its initial setup: told for a window that was there at the start of the shell, and for each one that
+# arrives.
+[[object.signal]]
+name = "ready"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+# A live, ordered collection of outputs. `gnoblin.outputs` is the root: every connected output, in the order the compositor made
+# them.
+[[object]]
+name = "output_collection"
+since = "0.2.0"
+kind = "handle"
+
+# The number of members.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# What the collection holds: `Output`.
+[[object.property]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the collection still exists. A root collection always does.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether a shell may change the membership with `add`, `remove`, `clear` and `swap`. The roots and the selections made by `where`
+# are not.
+[[object.property]]
+name = "mutable"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# What a selection ranks by among the selections that style a window: higher wins. Zero for a collection that is not a selection.
+[[object.property]]
+name = "priority"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The member at `index`, counted from the end when negative.
+[[object.method]]
+name = "at"
+since = "0.2.0"
+returns = "object:output"
+
+[[object.method.param]]
+name = "index"
+type = "int"
+
+# The first member with this id.
+[[object.method]]
+name = "get"
+since = "0.2.0"
+export = { rust = "get_by_id" }
+returns = "object:output"
+
+[[object.method.param]]
+name = "id"
+type = "string"
+
+# Whether `member` is in the collection.
+[[object.method]]
+name = "contains"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "member"
+type = "object:output"
+
+# A snapshot of the members, in order: it does not follow later changes.
+[[object.method]]
+name = "to_list"
+since = "0.2.0"
+returns = "list<object:output>"
+
+# A live selection that tracks the members matching `query`. Each field that is given must equal the member's, or for an `any_`
+# field be one of its values. `priority` ranks the selection's style among others (a finite number, 0 by default).
+[[object.method]]
+name = "where"
+since = "0.2.0"
+returns = "object:output_collection"
+
+[[object.method.param]]
+name = "query"
+type = "object:output_query"
+
+[[object.method.param]]
+name = "priority"
+type = "double"
+optional = true
+
+# Adds a listener. It is told of the members at once as `output_collection_listener` says (from the next turn), and of every later
+# change; adding one that is added already has no effect. A method the listener does not define is never called.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:output_collection_listener"
+
+# Removes a listener added with `add_listener`. One that is not added is ignored.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:output_collection_listener"
+
+# A member joined the collection.
+[[object.signal]]
+name = "added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "collection"
+type = "object:output_collection"
+
+# A member left the collection.
+[[object.signal]]
+name = "removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "collection"
+type = "object:output_collection"
+
+# An `apply` asked of this output was answered: `error` is empty when it took effect, else why it did not.
+[[object.signal]]
+name = "applied"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "error"
+type = "string"
+
+# The output appeared: it was plugged in while the shell ran, or made by the compositor.
+[[object.signal]]
+name = "connected"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+# The output is gone. Its last values stay readable and `connected` is false.
+[[object.signal]]
+name = "disconnected"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+# The output's mode (`WxH@Hz`) changed.
+[[object.signal]]
+name = "mode_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "mode"
+type = "string"
+
+# The output scale changed.
+[[object.signal]]
+name = "scale_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "scale"
+type = "double"
+
+# The output's place or size in the compositor's coordinates changed.
+[[object.signal]]
+name = "geometry_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "geometry"
+type = "object:rect"
+

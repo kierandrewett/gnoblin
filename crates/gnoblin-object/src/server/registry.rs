@@ -10,7 +10,7 @@ use super::cx::Cx;
 use super::{Hooks, Library};
 use crate::catalog::{CatalogDef, ClassDef};
 use crate::error::{Fail, Res};
-use crate::value::{MemberId, Val};
+use crate::value::{MemberId, Obj, Val};
 
 /// Reads a property: the object's native state and the context.
 pub(crate) type GetFn = Rc<dyn Fn(&mut dyn Any, &mut Cx<'_>) -> Res<Val>>;
@@ -22,6 +22,11 @@ pub(crate) type MethodFn = Rc<dyn Fn(&mut dyn Any, &mut Cx<'_>, &[Val]) -> Res<V
 pub(crate) type StaticFn = Rc<dyn Fn(&mut Cx<'_>, &[Val]) -> Res<Val>>;
 /// Makes an object's native state from the properties it was created with.
 pub(crate) type CtorFn = Rc<dyn Fn(&mut Cx<'_>, &mut Inits) -> Res<Box<dyn Any>>>;
+/// Where a listener of a signal really listens: another object, and its signal (a facade that forwards to a collection).
+pub(crate) type RedirectFn = Rc<dyn Fn(&mut Cx<'_>) -> Res<(Obj, &'static str)>>;
+/// What a new listener of a signal is told at once: the payloads of the calls it missed, taken when it was added and delivered from the
+/// next turn.
+pub(crate) type ReplayFn = Rc<dyn Fn(&mut Cx<'_>) -> Vec<Vec<Val>>>;
 
 /// The implementation of one class: a table per kind of member, indexed by member id minus one.
 pub(crate) struct ClassImpl {
@@ -30,6 +35,8 @@ pub(crate) struct ClassImpl {
     pub(crate) set: Vec<Option<SetFn>>,
     pub(crate) call: Vec<Option<MethodFn>>,
     pub(crate) stat: Vec<Option<StaticFn>>,
+    pub(crate) redirect: Vec<Option<RedirectFn>>,
+    pub(crate) replay: Vec<Option<ReplayFn>>,
 }
 
 impl ClassImpl {
@@ -40,6 +47,8 @@ impl ClassImpl {
             set: vec![None; members],
             call: vec![None; members],
             stat: vec![None; members],
+            redirect: vec![None; members],
+            replay: vec![None; members],
         }
     }
 }
@@ -201,6 +210,31 @@ impl<T: Any> ClassBuilder<'_, T> {
             && let Some(slot) = self.slot.as_deref_mut()
         {
             slot.stat[index] = Some(Rc::new(run));
+        }
+        self
+    }
+
+    /// Makes a listener of the signal `name` listen to `target` instead: the signal of another object, found when the listener is
+    /// added. A facade that forwards to a collection uses it, so its listeners stand in the collection's own list, in the order they
+    /// were added.
+    #[must_use]
+    pub fn redirect(mut self, name: &str, target: impl Fn(&mut Cx<'_>) -> Res<(Obj, &'static str)> + 'static) -> Self {
+        if let Some(index) = self.find(abi::MEMBER_SIGNAL, name, "signal")
+            && let Some(slot) = self.slot.as_deref_mut()
+        {
+            slot.redirect[index] = Some(Rc::new(target));
+        }
+        self
+    }
+
+    /// Tells a new listener of the signal `name` what is already there: `run` answers the payloads of the calls it missed, when the
+    /// listener is added, and the listener is called with each from the next turn.
+    #[must_use]
+    pub fn replay(mut self, name: &str, run: impl Fn(&mut Cx<'_>) -> Vec<Vec<Val>> + 'static) -> Self {
+        if let Some(index) = self.find(abi::MEMBER_SIGNAL, name, "signal")
+            && let Some(slot) = self.slot.as_deref_mut()
+        {
+            slot.replay[index] = Some(Rc::new(run));
         }
         self
     }

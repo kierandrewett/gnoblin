@@ -1,0 +1,1203 @@
+# The `client` module of `gnoblin.model`: windows and outputs as objects, and the `gnoblin` service that holds the roots.
+#
+# A `client` is a toplevel window the compositor manages and an `output` a connected display. Both are made and ended by the compositor:
+# a shell never creates one. An object that is gone keeps its last values readable (`alive` is false) and refuses a write.
+# `design/native-std-port.md` section 4.4 is the table this file implements.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# How the compositor answers a window's client when it asks to be told it may draw its next frame: `auto` after every frame that
+# shows the window, `hold` never, `throttle` at most `frame_rate` times a second.
+[[enum]]
+name = "frame_policy"
+since = "0.2.0"
+values = ["auto", "hold", "throttle"]
+
+# The transforms an output takes. `rotate-90`, `rotate-180` and `rotate-270` are the compositor's `90`, `180` and `270`.
+[[enum]]
+name = "output_transform"
+since = "0.2.0"
+values = ["normal", "rotate-90", "rotate-180", "rotate-270", "flipped", "flipped-90", "flipped-180", "flipped-270"]
+
+# The compositor's requested GPU memory of an output, in bytes; client-owned buffers are not counted. The last four are the memory
+# budget's numbers for the whole session, the same on every output.
+[[object]]
+name = "gpu_memory"
+since = "0.2.0"
+kind = "record"
+
+# The output-sized target, and the copy a supersampled output averages down into.
+[[object.property]]
+name = "target"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The effect scratch targets.
+[[object.property]]
+name = "scratch"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The host-visible buffers a renderer keeps between frames.
+[[object.property]]
+name = "staging"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The pictures of the views drawn on the GPU.
+[[object.property]]
+name = "views"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The last presented frame the capture protocols copy from.
+[[object.property]]
+name = "capture"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The sum of the five before.
+[[object.property]]
+name = "total"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The bytes of every client's live buffers.
+[[object.property]]
+name = "clients"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The budget the compositor holds the clients, the renderers and capture to; zero when it is off.
+[[object.property]]
+name = "budget"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The requests refused for passing a bound since the session began.
+[[object.property]]
+name = "refused"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# The bytes given back from caches to make room for a client's buffer.
+[[object.property]]
+name = "evicted"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# What an output is told to do, as the argument of `output.apply`: a field left out keeps the output's value. The compositor
+# applies it through its transactional engine and keeps it as the output's profile, so the same monitor on the same port gets it
+# back after an unplug. `primary` is not a setting: the layout derives the primary output.
+[[object]]
+name = "output_config"
+since = "0.2.0"
+kind = "record"
+
+# `WxH@Hz` such as `3440x1440@144`, or `preferred` to keep what the backend drives.
+[[object.property]]
+name = "mode"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# From 0.5 to 4.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# Composes the output at this multiple of its mode and shows it at its mode, so the desktop keeps its logical size while
+# screenshots have higher resolution. From 1 to 16; 1, 2 and 4 are recommended, and other values are accepted when `mode *
+# supersample` is a whole size, with a notice.
+[[object.property]]
+name = "supersample"
+type = "double"
+since = "0.2.0"
+optional = true
+
+# Rotation and optional reflection.
+[[object.property]]
+name = "transform"
+type = "enum:output_transform"
+since = "0.2.0"
+optional = true
+
+# The output's top-left corner in the one desktop coordinate space, `x`. Left out, it follows the row. It needs `position_y` as
+# well, and both are whole numbers.
+[[object.property]]
+name = "position_x"
+type = "int"
+since = "0.2.0"
+optional = true
+
+# The output's top-left corner in the one desktop coordinate space, `y`.
+[[object.property]]
+name = "position_y"
+type = "int"
+since = "0.2.0"
+optional = true
+
+# `false` switches the output off: it shows black and has no place in the desktop.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+optional = true
+
+# The connector this output shows an exact copy of, letterboxed to fit its own panel. An empty name stops mirroring.
+[[object.property]]
+name = "mirror_of"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# A toplevel window the compositor manages. It is made and ended by the compositor; after it ends its last values stay readable
+# and a write is refused.
+[[object]]
+name = "client"
+since = "0.2.0"
+kind = "handle"
+
+# The window's stable id: the compositor's node number.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the compositor still manages this window.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The application identifier the window reports.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The current window title.
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether this window has keyboard focus.
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the window covers its output. Writing asks the compositor to make it fullscreen or restore it.
+[[object.property]]
+name = "fullscreen"
+type = "bool"
+since = "0.2.0"
+
+# Whether the window is kept out of screen captures.
+[[object.property]]
+name = "secure"
+type = "bool"
+since = "0.2.0"
+
+# Whether the client has left a liveness ping unanswered too long. The compositor writes it and clears it on an answer.
+[[object.property]]
+name = "unresponsive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Who draws the window's frame, as the compositor negotiated it: `server` when the shell's titlebar does, `client` when the client
+# draws its own, `none` for a window nobody frames.
+[[object.property]]
+name = "decoration"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# What the client asked of `xdg-decoration`: `client`, `server`, or `unset`.
+[[object.property]]
+name = "decoration_wanted"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# How the compositor answers this window's client when it asks to draw its next frame. It takes effect only while a shell holds
+# the tree, and the compositor sets every window back to `auto` when the shell lets go.
+[[object.property]]
+name = "frame_policy"
+type = "enum:frame_policy"
+since = "0.2.0"
+default = "auto"
+
+# The most frame callbacks a second a `throttle` window's client is answered, in hertz: above 0 and at most 1000. Read only while
+# `frame_policy` is `throttle`.
+[[object.property]]
+name = "frame_rate"
+type = "double"
+since = "0.2.0"
+default = 30.0
+
+# Whether the compositor tells the shell when the window's pixels reach the screen: while it is true each frame that draws the
+# window writes `presented`. False by default, because a window written every frame is a change in every batch.
+[[object.property]]
+name = "report_presented"
+type = "bool"
+since = "0.2.0"
+
+# When the last frame that showed the window reached the screen, in milliseconds on the compositor's monotonic clock, or 0 until a
+# frame was presented with `report_presented` true.
+[[object.property]]
+name = "presented"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Horizontal position in logical pixels.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+# Vertical position in logical pixels.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+# Width in logical pixels.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+# Height in logical pixels.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+
+# The layout geometry. Assigning writes all four values.
+[[object.property]]
+name = "bounds"
+type = "object:rect"
+since = "0.2.0"
+
+# The size the compositor last published for the window: what the client committed, as against `width` and `height`, which are
+# what the shell asked for.
+[[object.property]]
+name = "committed_size"
+type = "object:size"
+since = "0.2.0"
+readonly = true
+
+# Whether the window is maximised. Writing asks the compositor to maximise or restore it.
+[[object.property]]
+name = "maximised"
+type = "bool"
+since = "0.2.0"
+
+# Whether the window is minimised. Writing asks the compositor to minimise or restore it.
+[[object.property]]
+name = "minimised"
+type = "bool"
+since = "0.2.0"
+
+# Whether the window sits in a tiled layout, so its client drops the border and rounding it draws itself.
+[[object.property]]
+name = "tiled"
+type = "bool"
+since = "0.2.0"
+
+# Whether the window is drawn and hit. A workspace that is not shown hides its windows.
+[[object.property]]
+name = "visible"
+type = "bool"
+since = "0.2.0"
+
+# How opaque the window is drawn, from 0 to 1 (the compositor clamps it).
+[[object.property]]
+name = "opacity"
+type = "double"
+since = "0.2.0"
+
+# The window's place in depth; negative is in front of the camera.
+[[object.property]]
+name = "z"
+type = "double"
+since = "0.2.0"
+
+# Rotation about the x, y and z axes in radians.
+[[object.property]]
+name = "rotation"
+type = "list<double>"
+since = "0.2.0"
+
+# Scale along the x, y and z axes. Assigning one number is not accepted here: give three.
+[[object.property]]
+name = "scale"
+type = "list<double>"
+since = "0.2.0"
+
+# Where the window is: `x`, `y` and its depth `z`. Assigning writes the three.
+[[object.property]]
+name = "position"
+type = "list<double>"
+since = "0.2.0"
+
+# The window this one is a dialog of (`xdg_toplevel.set_parent`), or none. A dialog is centred in its parent when it opens, moves
+# with it, stays on its workspace and output, and is left out of the layout's tiling.
+[[object.property]]
+name = "parent_window"
+type = "object:client"
+since = "0.2.0"
+readonly = true
+
+# Whether the window opened on an activation token the session's launcher minted, so `focus.new_windows` treats it as launched.
+[[object.property]]
+name = "from_launcher"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The reactive properties of the window: `client.properties.bind_double('opacity', compute)` sets `opacity` now and again whenever
+# a property the function read changes.
+[[object.property]]
+name = "properties"
+type = "object:property_bindings"
+since = "0.2.0"
+readonly = true
+
+# Asks the client to close. The client is `alive` until the compositor destroys the window.
+[[object.method]]
+name = "close"
+since = "0.2.0"
+
+# Gives the window the keyboard focus: a write of the seat's `focus`, which is how a shell hands it out.
+[[object.method]]
+name = "focus"
+since = "0.2.0"
+
+# Puts the window on top of every other window. A fullscreen sibling keeps the top.
+[[object.method]]
+name = "raise"
+since = "0.2.0"
+
+# Puts the window under every other window.
+[[object.method]]
+name = "lower"
+since = "0.2.0"
+
+# Kills the process that owns the window with SIGKILL: the not-responding alert's Force quit. The compositor refuses, and does
+# nothing, when the owner is unknown, has gone, changed since the window mapped, or is the compositor itself or init.
+[[object.method]]
+name = "kill"
+since = "0.2.0"
+
+# Adds a listener of this window. It is told of each event as `client_listener` says; adding one that is added already has no
+# effect.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:client_listener"
+
+# Removes a listener added with `add_listener`. One that is not added is ignored.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:client_listener"
+
+# The window title changed.
+[[object.signal]]
+name = "title_changed"
+since = "0.2.0"
+export = { rust = "client_title_changed" }
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "title"
+type = "string"
+
+# The application id changed.
+[[object.signal]]
+name = "app_id_changed"
+since = "0.2.0"
+export = { rust = "client_app_id_changed" }
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "app_id"
+type = "string"
+
+# The compositor changed who draws the window's frame: `client`, `server` or `none` (see `client.decoration`).
+[[object.signal]]
+name = "decoration_changed"
+since = "0.2.0"
+export = { rust = "client_decoration_changed" }
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "decoration"
+type = "string"
+
+# The pointer crossed into the window. `event` is in the window's own coordinates.
+[[object.signal]]
+name = "pointer_enter"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# The pointer moved over the window.
+[[object.signal]]
+name = "pointer_motion"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# The pointer left the window.
+[[object.signal]]
+name = "pointer_leave"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# A button went down on the window. The window's client hears it too.
+[[object.signal]]
+name = "pointer_press"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# A button was released over the window.
+[[object.signal]]
+name = "pointer_release"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# Keyboard focus entered or left the window.
+[[object.signal]]
+name = "focus_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "focused"
+type = "bool"
+
+# The window's geometry changed.
+[[object.signal]]
+name = "geometry_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "geometry"
+type = "object:rect"
+
+# The window closed. Its last values stay readable.
+[[object.signal]]
+name = "closed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+# The window completed its initial setup: told for a window that was there at the start of the shell, and for each one that
+# arrives.
+[[object.signal]]
+name = "ready"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+# A connected output, the compositor's `screen` node: a physical or virtual display with its place in the layout. It is made and
+# destroyed by the compositor as displays come and go; a destroyed one keeps its last values and reads `alive` false.
+[[object]]
+name = "output"
+since = "0.2.0"
+kind = "handle"
+
+# The compositor's label for this output: its node number.
+[[object.property]]
+name = "id"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the output is still connected.
+[[object.property]]
+name = "alive"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The name the compositor gives the output, which a workspace set's entry and `gnoblin.outputs.where` use.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The monitor's manufacturer, as it reports it.
+[[object.property]]
+name = "make"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The monitor's model name, as it reports it.
+[[object.property]]
+name = "model"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The connector the display is plugged into (`DP-1`): what an output profile matches and `mirror_of` names.
+[[object.property]]
+name = "connector"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The monitor's EDID identity (`MAN:product:serial`), empty for a display that reports none.
+[[object.property]]
+name = "identity"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The output this one shows an exact copy of, or none when it shows its own picture.
+[[object.property]]
+name = "mirror_of"
+type = "object:output"
+since = "0.2.0"
+readonly = true
+
+# The mode being driven, `WxH@Hz`.
+[[object.property]]
+name = "mode"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The factor the output composes at: 2 is a HiDPI panel.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The output is composed at this multiple of its mode and shown at the mode. 1 is none.
+[[object.property]]
+name = "supersample"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The size the output is composed at, `mode * supersample`, in pixels: the size of its screenshots.
+[[object.property]]
+name = "virtual_size"
+type = "object:size"
+since = "0.2.0"
+readonly = true
+
+# The scale clients are told: `scale * supersample`.
+[[object.property]]
+name = "effective_scale"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The compositor's requested GPU memory for this output.
+[[object.property]]
+name = "gpu_memory"
+type = "object:gpu_memory"
+since = "0.2.0"
+readonly = true
+
+# The output's rotation and flip, in the compositor's names: `normal`, `90`, `180`, `270` or a `flipped` form.
+[[object.property]]
+name = "transform"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether this is the primary output, the one the stock shell's bars are on.
+[[object.property]]
+name = "primary"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the output is switched on.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The output's left edge in the compositor's coordinates, in logical pixels.
+[[object.property]]
+name = "x"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The output's top edge in the compositor's coordinates, in logical pixels.
+[[object.property]]
+name = "y"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The output's width in logical pixels.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The output's height in logical pixels.
+[[object.property]]
+name = "height"
+type = "double"
+since = "0.2.0"
+readonly = true
+
+# The whole output in the compositor's coordinates.
+[[object.property]]
+name = "bounds"
+type = "object:rect"
+since = "0.2.0"
+readonly = true
+
+# The reactive properties of the output.
+[[object.property]]
+name = "properties"
+type = "object:property_bindings"
+since = "0.2.0"
+readonly = true
+
+# Configures the display through the compositor's transactional output engine and keeps the result as this monitor's profile. A
+# key left out keeps its value. The whole arrangement is checked before hardware is touched; if the backend then refuses a mode,
+# the earlier changes are put back. A bad value is refused here, naming the key. The compositor answers a frame later and the
+# returned operation settles with it: it succeeds, or fails with the compositor's own words and the code `denied`, `unsupported`
+# or `not_found`.
+[[object.method]]
+name = "apply"
+since = "0.2.0"
+returns = "object:output_operation"
+
+[[object.method.param]]
+name = "config"
+type = "object:output_config"
+
+# Shows an exact copy of `source` (scaled to fit, letterboxed) on this display, or stops mirroring when none is given.
+[[object.method]]
+name = "mirror"
+since = "0.2.0"
+returns = "object:output_operation"
+
+[[object.method.param]]
+name = "source"
+type = "object:output"
+optional = true
+
+# Adds a listener of this output. It is told of each event as `output_listener` says; adding one that is added already has no
+# effect.
+[[object.method]]
+name = "add_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:output_listener"
+
+# Removes a listener added with `add_listener`. One that is not added is ignored.
+[[object.method]]
+name = "remove_listener"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "listener"
+type = "object:output_listener"
+
+# An `apply` asked of this output was answered: `error` is empty when it took effect, else why it did not.
+[[object.signal]]
+name = "applied"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "error"
+type = "string"
+
+# The output appeared: it was plugged in while the shell ran, or made by the compositor.
+[[object.signal]]
+name = "connected"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+# The output is gone. Its last values stay readable and `connected` is false.
+[[object.signal]]
+name = "disconnected"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+# The output's mode (`WxH@Hz`) changed.
+[[object.signal]]
+name = "mode_changed"
+since = "0.2.0"
+export = { rust = "output_mode_changed" }
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "mode"
+type = "string"
+
+# The output scale changed.
+[[object.signal]]
+name = "scale_changed"
+since = "0.2.0"
+export = { rust = "output_scale_changed" }
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "scale"
+type = "double"
+
+# The output's place or size in the compositor's coordinates changed.
+[[object.signal]]
+name = "geometry_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "geometry"
+type = "object:rect"
+
+# The desktop's object model: the roots every shell starts from. One exists for each generation. The library's other services (the
+# session, the input manager, dialogs, idle, launches) are added to it by the modules that serve them.
+[[object]]
+name = "gnoblin"
+since = "0.2.0"
+kind = "service"
+export = { rust = "ModelRoot" }
+
+# The windows the compositor manages, in the order it made them.
+[[object.property]]
+name = "clients"
+type = "object:client_collection"
+since = "0.2.0"
+readonly = true
+
+# The connected outputs, live across hotplug: one is added when it is plugged in and removed when it goes.
+[[object.property]]
+name = "outputs"
+type = "object:output_collection"
+since = "0.2.0"
+readonly = true
+
+# The windows in the order they were last focused.
+[[object.property]]
+name = "focus"
+type = "object:focus_history"
+since = "0.2.0"
+readonly = true
+
+# The live windows that match `query`, in list order; every window when it is left out. For a test a table cannot say, take
+# `clients.to_list()` and filter it in the shell's own language.
+[[object.method]]
+name = "find_clients"
+since = "0.2.0"
+returns = "list<object:client>"
+
+[[object.method.param]]
+name = "query"
+type = "object:client_query"
+optional = true
+
+# The live outputs that match `query`, in list order; every output when it is left out.
+[[object.method]]
+name = "find_outputs"
+since = "0.2.0"
+returns = "list<object:output>"
+
+[[object.method.param]]
+name = "query"
+type = "object:output_query"
+optional = true
+
+# Runs `run` once, `ms` milliseconds from now (0 to a day), from the first turn at or after its time. The timer can be cancelled.
+# A throw is reported and never stops another timer.
+[[object.method]]
+name = "timer"
+since = "0.2.0"
+returns = "object:timer"
+
+[[object.method.param]]
+name = "ms"
+type = "double"
+
+[[object.method.param]]
+name = "run"
+type = "callback:timer_fn"
+
+# The monotonic clock in milliseconds: only the difference between two readings is meaningful.
+[[object.method]]
+name = "now"
+since = "0.2.0"
+returns = "double"
+
+# A window appeared: told for every window that joins `clients`, and from the next turn for each one there already when a listener
+# is added. The same as `clients.added`.
+[[object.signal]]
+name = "client_created"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "collection"
+type = "object:client_collection"
+
+# The same as `clients.title_changed`: the window title changed.
+[[object.signal]]
+name = "client_title_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "title"
+type = "string"
+
+# The same as `clients.app_id_changed`: the application id changed.
+[[object.signal]]
+name = "client_app_id_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "app_id"
+type = "string"
+
+# The same as `clients.decoration_changed`: the compositor changed who draws the window's frame: `client`, `server` or `none` (see
+# `client.decoration`).
+[[object.signal]]
+name = "client_decoration_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "decoration"
+type = "string"
+
+# The same as `clients.pointer_enter`: the pointer crossed into the window. `event` is in the window's own coordinates.
+[[object.signal]]
+name = "client_pointer_enter"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# The same as `clients.pointer_motion`: the pointer moved over the window.
+[[object.signal]]
+name = "client_pointer_motion"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# The same as `clients.pointer_leave`: the pointer left the window.
+[[object.signal]]
+name = "client_pointer_leave"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# The same as `clients.pointer_press`: a button went down on the window. The window's client hears it too.
+[[object.signal]]
+name = "client_pointer_press"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# The same as `clients.pointer_release`: a button was released over the window.
+[[object.signal]]
+name = "client_pointer_release"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "event"
+type = "object:pointer_event"
+
+# The same as `clients.focus_changed`: keyboard focus entered or left the window.
+[[object.signal]]
+name = "client_focus_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "focused"
+type = "bool"
+
+# The same as `clients.geometry_changed`: the window's geometry changed.
+[[object.signal]]
+name = "client_geometry_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+[[object.signal.field]]
+name = "geometry"
+type = "object:rect"
+
+# The same as `clients.closed`: the window closed. Its last values stay readable.
+[[object.signal]]
+name = "client_closed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+# The same as `clients.ready`: the window completed its initial setup: told for a window that was there at the start of the shell,
+# and for each one that arrives.
+[[object.signal]]
+name = "client_ready"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "object:client"
+
+# An output joined `outputs`. The same as `outputs.added`.
+[[object.signal]]
+name = "output_added"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "collection"
+type = "object:output_collection"
+
+# An output left `outputs`. The same as `outputs.removed`.
+[[object.signal]]
+name = "output_removed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "collection"
+type = "object:output_collection"
+
+# The same as `outputs.applied`: an `apply` asked of this output was answered: `error` is empty when it took effect, else why it
+# did not.
+[[object.signal]]
+name = "output_applied"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "error"
+type = "string"
+
+# The same as `outputs.connected`: the output appeared: it was plugged in while the shell ran, or made by the compositor.
+[[object.signal]]
+name = "output_connected"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+# The same as `outputs.disconnected`: the output is gone. Its last values stay readable and `connected` is false.
+[[object.signal]]
+name = "output_disconnected"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+# The same as `outputs.mode_changed`: the output's mode (`WxH@Hz`) changed.
+[[object.signal]]
+name = "output_mode_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "mode"
+type = "string"
+
+# The same as `outputs.scale_changed`: the output scale changed.
+[[object.signal]]
+name = "output_scale_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "scale"
+type = "double"
+
+# The same as `outputs.geometry_changed`: the output's place or size in the compositor's coordinates changed.
+[[object.signal]]
+name = "output_geometry_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "output"
+type = "object:output"
+
+[[object.signal.field]]
+name = "geometry"
+type = "object:rect"
+

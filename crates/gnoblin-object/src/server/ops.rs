@@ -218,7 +218,7 @@ impl Library {
     }
 
     /// Adds a reference for every object a value hands to a receiver.
-    fn hand_out_all(&self, st: &CtxState, value: &Val) {
+    pub(crate) fn hand_out_all(&self, st: &CtxState, value: &Val) {
         match value {
             Val::Object { obj, .. } => {
                 let _ = self.add_ref(st, *obj);
@@ -516,19 +516,79 @@ impl Library {
             st.forwarded.borrow_mut().insert(reg, (home, foreign_reg));
             return Ok(reg);
         }
+        // A facade's signal listens to another object's: the redirect names it.
+        let (obj, member) = self.redirected(&st, obj, target.class, member)?;
         // Nothing can fail from here: the closure takes `user`.
         let closure: Rc<dyn Callable> = Rc::new(RawClosure::owned(invoke, user, drop_user));
+        Ok(self.attach(&st, obj, member, closure, true))
+    }
+
+    /// Where a listener of `member` of `obj` goes: the object and signal a redirect names, or the ones given.
+    fn redirected(&self, st: &Rc<CtxState>, obj: Obj, class: ClassId, member: MemberId) -> Res<(Obj, MemberId)> {
+        let imp = &self.classes[class as usize - 1];
+        let Some(redirect) = imp.redirect.get(member as usize - 1).and_then(Option::as_ref) else {
+            return Ok((obj, member));
+        };
+        let mut cx = Cx::new(self, st, obj, class);
+        let (other, signal) = guarded("a redirected signal", || redirect(&mut cx))?;
+        let other_class = self.target(st, other)?.class;
+        let other_member = self.member_id(other_class, abi::MEMBER_SIGNAL, signal)?;
+        Ok((other, other_member))
+    }
+
+    /// Adds a listener whose closure is already the library's. With `replay`, what the signal tells a new listener is taken now and
+    /// told from the next turn.
+    pub(crate) fn attach(
+        &self,
+        st: &Rc<CtxState>,
+        obj: Obj,
+        member: MemberId,
+        closure: Rc<dyn Callable>,
+        replay: bool,
+    ) -> u64 {
         let reg = self.next_reg();
+        let class = st.objects.borrow().get(obj).map(|entry| entry.class);
         st.listeners.borrow_mut().add(
             reg,
             Listener {
                 reg,
                 obj,
                 member,
-                closure,
+                closure: Rc::clone(&closure),
             },
         );
-        Ok(reg)
+        let replay = class.filter(|_| replay).and_then(|class| {
+            self.classes[class as usize - 1]
+                .replay
+                .get(member as usize - 1)
+                .and_then(Option::as_ref)
+                .cloned()
+                .map(|replay| (class, replay))
+        });
+        if let Some((class, replay)) = replay {
+            let mut cx = Cx::new(self, st, obj, class);
+            let calls = catch_unwind(AssertUnwindSafe(|| replay(&mut cx))).unwrap_or_default();
+            if !calls.is_empty() {
+                let state = Rc::clone(st);
+                self.queue_task(
+                    st,
+                    obj,
+                    Box::new(move |cx| {
+                        // A listener removed before the turn is told nothing.
+                        if !state.listeners.borrow().by_reg.contains_key(&reg) {
+                            return;
+                        }
+                        for args in calls {
+                            args.iter().for_each(|arg| cx.hand_out(arg));
+                            if let Err(fail) = closure.call(member, &args) {
+                                cx.log(abi::LOG_WARN, &format!("a listener failed: {fail}"));
+                            }
+                        }
+                    }),
+                );
+            }
+        }
+        reg
     }
 
     /// Ends a listener.
@@ -596,6 +656,19 @@ impl Library {
             base: None,
         });
         Ok(obj)
+    }
+
+    /// Runs `work` now as a call about `obj` of a generation, for a library that has work of its own to do between calls (the core
+    /// telling its model what the compositor sent). It is never run inside a call of the protocol, so nothing it queues is told here.
+    ///
+    /// # Errors
+    ///
+    /// The generation holds no objects of this library, or `obj` is gone.
+    pub fn run_in<R>(&self, ctx: GnoblinCtx, obj: Obj, work: impl FnOnce(&mut Cx<'_>) -> R) -> Res<R> {
+        let st = self.state(ctx, false)?;
+        let class = self.target(&st, obj)?.class;
+        let mut cx = Cx::new(self, &st, obj, class);
+        Ok(work(&mut cx))
     }
 
     // ---- turns -----------------------------------------------------------------------------------------------------------

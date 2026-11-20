@@ -1,0 +1,28 @@
+# The public surface of the `properties` module of the `gnoblin.model` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-core-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | compute_bool | () -> bool | 0.2.0
+callback | compute_double | () -> double | 0.2.0
+callback | compute_list | () -> list<double> | 0.2.0
+callback | compute_string | () -> string | 0.2.0
+
+member | property_binding.alive | property bool ro | 0.2.0
+member | property_binding.dispose | method () | 0.2.0
+member | property_binding.property | property string ro | 0.2.0
+member | property_bindings.bind_bool | method (name:string, compute:callback:compute_bool) -> object:property_binding | 0.2.0
+member | property_bindings.bind_double | method (name:string, compute:callback:compute_double) -> object:property_binding | 0.2.0
+member | property_bindings.bind_list | method (name:string, compute:callback:compute_list) -> object:property_binding | 0.2.0
+member | property_bindings.bind_string | method (name:string, compute:callback:compute_string) -> object:property_binding | 0.2.0
+member | property_bindings.dispose | method () | 0.2.0
+member | property_bindings.unbind | method (name:string) -> bool | 0.2.0
+
+object | property_binding | base none | 0.2.0
+object | property_bindings | base none | 0.2.0

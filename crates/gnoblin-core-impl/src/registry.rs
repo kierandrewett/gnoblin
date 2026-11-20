@@ -461,8 +461,10 @@ pub(crate) fn queued_events() -> usize {
 /// # Errors
 ///
 /// The tree link failed or a change batch was missed. The tree is dropped (the shell must attach again).
-fn pump_into_host() -> Result<(), String> {
+fn pump_into_host(ctx: GnoblinCtx) -> Result<(), String> {
     let events = session::with(session::Session::pump)?;
+    // The model of the generation reads the batch first, so what it queues stands before what a registration of the shell does.
+    crate::model::pumped(ctx, &events);
     for event in events {
         HOST.publish(event);
     }
@@ -489,7 +491,7 @@ pub(crate) fn dispatch(ctx: GnoblinCtx, timeout_ms: u32) -> i32 {
     loop {
         // Before the mailbox is taken, so a post that lands while this turn runs signals again and is not lost.
         wake::drain();
-        if let Err(text) = pump_into_host() {
+        if let Err(text) = pump_into_host(ctx) {
             log::error!(generation = owner, "the tree link failed: {text}");
             failure = Some(text);
         }

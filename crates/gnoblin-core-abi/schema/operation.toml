@@ -1,0 +1,123 @@
+# The `operation` module of `gnoblin.model`: a request the compositor answers later, and a call that waits for its time.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true
+
+# Where an operation stands.
+[[enum]]
+name = "operation_status"
+since = "0.2.0"
+values = ["pending", "succeeded", "failed"]
+
+# Runs when an operation succeeded.
+[[callback]]
+name = "operation_done"
+since = "0.2.0"
+
+# Runs when an operation failed: the compositor's words and a code.
+[[callback]]
+name = "operation_failed"
+since = "0.2.0"
+
+[[callback.param]]
+name = "error"
+type = "string"
+
+[[callback.param]]
+name = "code"
+type = "string"
+
+# What a timer runs.
+[[callback]]
+name = "timer_fn"
+since = "0.2.0"
+
+# A request the compositor answers later. It settles once: it succeeds, or fails with the compositor's own words and a code
+# (`denied`, `unsupported` or `not_found`). A shell hears it with `then`, `catch` or the `settled` signal; each is told from the
+# turn after it settled.
+[[object]]
+name = "operation"
+since = "0.2.0"
+kind = "handle"
+
+# Where the operation stands.
+[[object.property]]
+name = "status"
+type = "enum:operation_status"
+since = "0.2.0"
+readonly = true
+
+# Why it failed, in the compositor's words; empty until it fails.
+[[object.property]]
+name = "error"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The failure's code: `denied`, `unsupported` or `not_found`; empty until it fails.
+[[object.property]]
+name = "error_code"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Runs `run` from the turn after the operation succeeded, or at once from the next turn when it has. One that failed never runs
+# it.
+[[object.method]]
+name = "then"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "run"
+type = "callback:operation_done"
+
+# Runs `run` from the turn after the operation failed, or at once from the next turn when it has.
+[[object.method]]
+name = "catch"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "run"
+type = "callback:operation_failed"
+
+# The operation settled: it succeeded or failed.
+[[object.signal]]
+name = "settled"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "operation"
+type = "object:operation"
+
+# The operation of `output.apply` and `output.mirror`: it succeeds with the output.
+[[object]]
+name = "output_operation"
+since = "0.2.0"
+kind = "handle"
+base = "operation"
+
+# The output the request was for.
+[[object.property]]
+name = "output"
+type = "object:output"
+since = "0.2.0"
+readonly = true
+
+# A call that runs later. It runs once, from the first turn at or after its time, and is then spent.
+[[object]]
+name = "timer"
+since = "0.2.0"
+kind = "handle"
+
+# Whether it still waits to run.
+[[object.property]]
+name = "pending"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Stops it. It never runs after this; a timer that ran already is ignored.
+[[object.method]]
+name = "cancel"
+since = "0.2.0"
+

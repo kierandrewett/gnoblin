@@ -23,7 +23,28 @@ use catalog::{CATALOG, CATALOG_HASH};
 
 thread_local! {
     /// The model's objects: one per thread, and a shell has one thread.
-    static LIB: Library = Builder::new(&CATALOG).finish(HOOKS);
+    static LIB: Library = build();
+}
+
+fn build() -> Library {
+    let mut builder = Builder::new(&CATALOG);
+    crate::model::register(&mut builder);
+    builder.finish(HOOKS)
+}
+
+/// Runs `work` on the library of the model.
+pub(crate) fn with_lib<R>(work: impl FnOnce(&Library) -> R) -> R {
+    LIB.with(work)
+}
+
+/// Runs `work` as a call about `obj` of the generation `ctx`, between the calls of the shell: the model telling its objects what the
+/// compositor sent.
+pub(crate) fn run_in<R>(
+    ctx: GnoblinCtx,
+    obj: gnoblin_object::Obj,
+    work: impl FnOnce(&mut gnoblin_object::server::Cx<'_>) -> R,
+) -> Res<R> {
+    LIB.with(|lib| lib.run_in(ctx, obj, work))
 }
 
 struct Model;
@@ -60,6 +81,7 @@ fn user_of(ctx: GnoblinCtx) -> *mut c_void {
 unsafe extern "C" fn retire(user: *mut c_void) {
     let ctx = user as usize as GnoblinCtx;
     LIB.with(|lib| lib.retire(ctx));
+    crate::model::forget(ctx);
 }
 
 unsafe extern "C" fn flush(user: *mut c_void) {

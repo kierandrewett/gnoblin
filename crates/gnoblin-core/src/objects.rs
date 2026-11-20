@@ -15,7 +15,7 @@ use gnoblin_object::client::Api;
 use crate::error::{CoreError, ErrorKind, Result};
 use crate::gnoblin::Gnoblin;
 
-#[allow(dead_code, missing_docs, clippy::all)]
+#[allow(dead_code, missing_docs, unused_variables, clippy::all)]
 mod generated_api {
     include!(concat!(env!("OUT_DIR"), "/rust-objects/model_api.rs"));
 }

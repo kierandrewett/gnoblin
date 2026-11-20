@@ -1,0 +1,36 @@
+# The public surface of the `operation` module of the `gnoblin.model` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-core-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | operation_done | () | 0.2.0
+callback | operation_failed | (error:string, code:string) | 0.2.0
+callback | timer_fn | () | 0.2.0
+
+enum | operation_status | values pending succeeded failed | 0.2.0
+
+member | operation.catch | method (run:callback:operation_failed) | 0.2.0
+member | operation.error | property string ro | 0.2.0
+member | operation.error_code | property string ro | 0.2.0
+member | operation.settled | signal (operation:object:operation) | 0.2.0
+member | operation.status | property enum:operation_status ro | 0.2.0
+member | operation.then | method (run:callback:operation_done) | 0.2.0
+member | output_operation.catch | method (run:callback:operation_failed) | 0.2.0
+member | output_operation.error | property string ro | 0.2.0
+member | output_operation.error_code | property string ro | 0.2.0
+member | output_operation.output | property object:output ro | 0.2.0
+member | output_operation.settled | signal (operation:object:operation) | 0.2.0
+member | output_operation.status | property enum:operation_status ro | 0.2.0
+member | output_operation.then | method (run:callback:operation_done) | 0.2.0
+member | timer.cancel | method () | 0.2.0
+member | timer.pending | property bool ro | 0.2.0
+
+object | operation | base none | 0.2.0
+object | output_operation | base operation | 0.2.0
+object | timer | base none | 0.2.0

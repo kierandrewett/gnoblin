@@ -97,6 +97,36 @@ impl<'a> Cx<'a> {
             .ok_or_else(|| Fail::no_such(format!("the catalog has no class `{name}`")))
     }
 
+    /// The definition of a class of the catalog.
+    pub fn class_def_of(&self, class: ClassId) -> Option<&'static ClassDef> {
+        self.lib.catalog.class(class)
+    }
+
+    /// The names of the fields of the record class `name`, in the order a record value holds them.
+    ///
+    /// # Errors
+    ///
+    /// The catalog has no such class.
+    pub fn record_fields(&self, name: &str) -> Res<Vec<&'static str>> {
+        let class = self.class_named(name)?;
+        Ok(self
+            .class_def(class)?
+            .properties()
+            .map(|property| property.name)
+            .collect())
+    }
+
+    /// A member of the enum `name` as a value.
+    ///
+    /// # Errors
+    ///
+    /// The catalog has no such enum or value.
+    pub fn enum_val(&self, name: &str, value: &str) -> Res<Val> {
+        let class = self.class_named(name)?;
+        let value = self.member_of(class, abi::MEMBER_VALUE, value)?;
+        Ok(Val::Enum { class, value })
+    }
+
     /// The class of an object of this generation.
     ///
     /// # Errors
@@ -157,6 +187,34 @@ impl<'a> Cx<'a> {
     /// gave, which the library never does inside a call.
     pub fn later(&self, work: impl FnOnce(&mut Cx<'_>) + 'static) {
         self.lib.queue_task(self.st, self.me, Box::new(work));
+    }
+
+    /// Runs `work` from the next turn, as a call about `obj`.
+    pub fn later_on(&self, obj: Obj, work: impl FnOnce(&mut Cx<'_>) + 'static) {
+        self.lib.queue_task(self.st, obj, Box::new(work));
+    }
+
+    /// Adds a listener of the signal `signal` of `obj` that the library itself runs (what an interface's methods become when a shell
+    /// gives one to `add_listener`). It is told from the turn, in the order listeners were added, with the shell's.
+    ///
+    /// # Errors
+    ///
+    /// The object is gone, or its class has no such signal.
+    pub fn listen(&self, obj: Obj, signal: &str, closure: Rc<dyn crate::value::Callable>) -> Res<u64> {
+        let class = self.class_of(obj)?;
+        let member = self.member_of(class, abi::MEMBER_SIGNAL, signal)?;
+        Ok(self.lib.attach(self.st, obj, member, closure, false))
+    }
+
+    /// Takes a reference for every object in `value`, as a listener is given its own: a value the library keeps to hand over later.
+    pub fn hand_out(&self, value: &Val) {
+        self.lib.hand_out_all(self.st, value);
+    }
+
+    /// Ends a listener made with [`Cx::listen`]. A listener that is gone already is ignored.
+    pub fn unlisten(&self, reg: u64) {
+        let removed = self.st.listeners.borrow_mut().remove(reg);
+        drop(removed);
     }
 
     /// Makes an object of `class` that holds `state`, with no reference held by anyone yet: hand it to the shell with

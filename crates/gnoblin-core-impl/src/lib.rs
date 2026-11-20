@@ -41,6 +41,7 @@ mod hub;
 mod link;
 mod listen;
 mod memory;
+mod model;
 mod native_shell;
 mod object;
 mod procs;
