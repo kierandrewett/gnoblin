@@ -53,6 +53,8 @@ pub struct Shells {
     pub verbs: PathBuf,
     /// Claims `Super+Return` in the plus form and starts a terminal on it.
     pub plus: PathBuf,
+    /// Example 21: follows the windows through the object model of the core and logs what it is told.
+    pub model: PathBuf,
 }
 
 /// Builds the shells into a target directory of their own, so this does not wait for the lock of the one the test run holds.
@@ -89,6 +91,8 @@ fn build_shells() -> Result<Shells, String> {
             "gnoblin-fixture-shell-verbs",
             "-p",
             "gnoblin-fixture-shell-plus",
+            "-p",
+            "gnoblin-example-native-model",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -107,6 +111,7 @@ fn build_shells() -> Result<Shells, String> {
         idle: debug.join("libshell_min.so"),
         verbs: debug.join("libshell_verbs.so"),
         plus: debug.join("libshell_plus.so"),
+        model: debug.join("libnative_model.so"),
     })
 }
 

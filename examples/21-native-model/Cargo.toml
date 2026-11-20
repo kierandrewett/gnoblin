@@ -1,0 +1,20 @@
+[package]
+name = "gnoblin-example-native-model"
+description = "Example 21: a native shell that uses the typed object model of libgnoblin-core: the windows as a live collection, a selection that follows a query, and listeners told in order."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "native_model"
+crate-type = ["cdylib"]
+
+# The shell depends on the core SDK and nothing else. The classes it uses (`gnoblin_core::objects`) are written at build time from the
+# library's catalog and call the library through its object table.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+
+[lints]
+workspace = true

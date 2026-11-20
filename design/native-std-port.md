@@ -142,21 +142,21 @@ Out of scope: `data/default-config`, `data/init.lua.example` and the C Lua runti
 The assignment mentions embedding through `include_dir` and `stock.rs`. The tree does not embed the library. Lane
 JsCutover (M6.3) removed that. What exists is a run-time lookup, and these are the places to change:
 
-| Place                                                         | What it does today                                                                    | End state                                        |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `.cargo/config.toml` (`GNOBLIN_JS_STOCK_DIR`)                 | Points every cargo-run process and test at `data/js`                                  | Deleted: modules are embedded                    |
-| `crates/gnoblin-js/src/stock.rs` (506 lines)                  | Reads `<dir>/gnoblin-core`, `gnoblin-std` and `starter`; builds the search path       | Deleted; a generated `embedded.rs` replaces it   |
-| `crates/gnoblin-js/build.rs`                                  | Records the engine and oxc versions only                                              | Also embeds the generated modules                |
-| `crates/gnoblin-runtime-python/src/interp.rs`                 | Finds `gnoblin/__init__.py` in `GNOBLIN_PYTHON_DIR`, the core prefix or `data/python` | A `sys.meta_path` finder over embedded modules   |
-| `xtask/src/dist.rs:281-325`                                   | Installs `data/js/*` and `data/python` as trees, and the starter as the default shell | Installs `share/gnoblin/types/**` and the shell  |
-| `xtask/src/dist.rs:760,1610,1632`                             | Reads `data/js/<pkg>/index.ts` for the types index; tests assert the trees            | Types come from `gnoblin-sdkgen`                 |
-| `xtask/src/sdk/*.rs` (7,830 lines)                            | Writes generated files into `data/` and two crates                                    | Moves to `gnoblin-sdkgen`; writes only `OUT_DIR` |
-| `xtask/src/docs_parity.rs:22`                                 | Reads the TypeScript surface from `data/js`                                           | Reads the generated declarations                 |
-| `scripts/js-typecheck.sh`, `js-types-check.sh`                | `tsc` over `data/js/**` and the starter                                               | `tsc` over declarations, starter and examples    |
-| `scripts/js-shell-screenshots.sh:109`                         | `cat data/js/starter/shell.ts`                                                        | `shells/default/shell.ts`                        |
+| Place                                                         | What it does today                                                                    | End state                                         |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `.cargo/config.toml` (`GNOBLIN_JS_STOCK_DIR`)                 | Points every cargo-run process and test at `data/js`                                  | Deleted: modules are embedded                     |
+| `crates/gnoblin-js/src/stock.rs` (506 lines)                  | Reads `<dir>/gnoblin-core`, `gnoblin-std` and `starter`; builds the search path       | Deleted; a generated `embedded.rs` replaces it    |
+| `crates/gnoblin-js/build.rs`                                  | Records the engine and oxc versions only                                              | Also embeds the generated modules                 |
+| `crates/gnoblin-runtime-python/src/interp.rs`                 | Finds `gnoblin/__init__.py` in `GNOBLIN_PYTHON_DIR`, the core prefix or `data/python` | A `sys.meta_path` finder over embedded modules    |
+| `xtask/src/dist.rs:281-325`                                   | Installs `data/js/*` and `data/python` as trees, and the starter as the default shell | Installs `share/gnoblin/types/**` and the shell   |
+| `xtask/src/dist.rs:760,1610,1632`                             | Reads `data/js/<pkg>/index.ts` for the types index; tests assert the trees            | Types come from `gnoblin-sdkgen`                  |
+| `xtask/src/sdk/*.rs` (7,830 lines)                            | Writes generated files into `data/` and two crates                                    | Moves to `gnoblin-sdkgen`; writes only `OUT_DIR`  |
+| `xtask/src/docs_parity.rs:22`                                 | Reads the TypeScript surface from `data/js`                                           | Reads the generated declarations                  |
+| `scripts/js-typecheck.sh`, `js-types-check.sh`                | `tsc` over `data/js/**` and the starter                                               | `tsc` over declarations, starter and examples     |
+| `scripts/js-shell-screenshots.sh:109`                         | `cat data/js/starter/shell.ts`                                                        | `shells/default/shell.ts`                         |
 | `eslint.config.mjs` (7 refs), `.prettierignore`, `.ruff.toml` | Lint rules and ignores for `data/js` and generated Python                             | Removed; the starter and examples keep their lint |
-| `justfile` (`gen-sdks`, `gen-sdks-check`, `js-check`)         | Wrappers                                                                              | `gen-sdks-check` becomes the check of 3.6        |
-| `.github/workflows/rust.yml:255-274`                          | Job `gen-sdks`                                                                        | Same job, new meaning                            |
+| `justfile` (`gen-sdks`, `gen-sdks-check`, `js-check`)         | Wrappers                                                                              | `gen-sdks-check` becomes the check of 3.6         |
+| `.github/workflows/rust.yml:255-274`                          | Job `gen-sdks`                                                                        | Same job, new meaning                             |
 
 Packaging outside `xtask` does not name these trees: a grep of `nix/`, `pkgsmith/`, `flake.nix`, `infra/`, `deny.toml`, `Makefile`
 and the workflows other than `rust.yml` finds no reference to `data/js`, `data/python` or `data/lua`.
@@ -175,14 +175,14 @@ The grep finds 117 files:
 
 They fall into six kinds, and a lane owns each kind.
 
-| Kind                                                    | Files                                                                                         | Lane                       |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------- |
-| Doc comments that cite a TypeScript source              | 20 files in `gnoblin-std-impl/src/**`, 6 in `gnoblin-std/src/**`, `gnoblin-runtime-*/src/*`   | The lane that deletes the cited file |
-| Loader, stock lookup, starter lookup                    | `gnoblin-js/src/{stock,lib,shell/mod,shell/gate}.rs`, `gnoblin-runtime-js/src/instance.rs`, `gnoblin-runtime-python/src/{interp,lib}.rs`, `gnoblinctl/src/js.rs` | NpJsFinal, NpPyRuntime, NpTypesCtl |
-| Natives that serve the TypeScript library               | `gnoblin-js/src/{ui,dialogs,lock,workspaces,transition,xr,host_*,input,bindings,role}`        | The lane that ports the served module |
-| Generators and packaging                                | `xtask/src/{dist,docs_parity,sdk/*}.rs`, `docs/sdk-generator.md`                              | NpGenOut                   |
-| Tests that read the tree or run the TypeScript reference | `gnoblin-std-impl/tests/{tiling,examples,anim_style,reference/mod}.rs`, `gnoblin/tests/support/*`, `gnoblin/tests/modular/no_std.rs`, `gnoblin-runtime-*/tests/shells.rs`, `gnoblinctl/tests/*` | NpOracle, then each lane |
-| Docs and scripts                                        | `docs/{typescript-shell,python-shell,xr,session-lock,gnoblinctl,sdk-generator}.md`, `scripts/*` | NpTypesCtl                 |
+| Kind                                                     | Files                                                                                                                                                                                           | Lane                                  |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| Doc comments that cite a TypeScript source               | 20 files in `gnoblin-std-impl/src/**`, 6 in `gnoblin-std/src/**`, `gnoblin-runtime-*/src/*`                                                                                                     | The lane that deletes the cited file  |
+| Loader, stock lookup, starter lookup                     | `gnoblin-js/src/{stock,lib,shell/mod,shell/gate}.rs`, `gnoblin-runtime-js/src/instance.rs`, `gnoblin-runtime-python/src/{interp,lib}.rs`, `gnoblinctl/src/js.rs`                                | NpJsFinal, NpPyRuntime, NpTypesCtl    |
+| Natives that serve the TypeScript library                | `gnoblin-js/src/{ui,dialogs,lock,workspaces,transition,xr,host_*,input,bindings,role}`                                                                                                          | The lane that ports the served module |
+| Generators and packaging                                 | `xtask/src/{dist,docs_parity,sdk/*}.rs`, `docs/sdk-generator.md`                                                                                                                                | NpGenOut                              |
+| Tests that read the tree or run the TypeScript reference | `gnoblin-std-impl/tests/{tiling,examples,anim_style,reference/mod}.rs`, `gnoblin/tests/support/*`, `gnoblin/tests/modular/no_std.rs`, `gnoblin-runtime-*/tests/shells.rs`, `gnoblinctl/tests/*` | NpOracle, then each lane              |
+| Docs and scripts                                         | `docs/{typescript-shell,python-shell,xr,session-lock,gnoblinctl,sdk-generator}.md`, `scripts/*`                                                                                                 | NpTypesCtl                            |
 
 The doc-comment rows are mechanical. The lane that deletes `data/js/gnoblin-std/style/values.ts` rewrites the comment in
 `gnoblin-std-impl/src/style/values.rs` that cites it. `grep -rn 'data/js' crates` is zero at the end (acceptance of NpGate).
@@ -582,18 +582,18 @@ When the model and the desktop are native, most of it has nothing to serve.
 The table is the work list of lane NpJsFinal. Each deleting lane removes its own row in the same change, and each row is
 confirmed by grep before it goes.
 
-| Module (lines)                                               | End state                                                                | Lane                              |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------ | --------------------------------- |
-| `bindings/{mod,props,stage,host/*}` (1,911)                  | Deleted. Generic `__gnoblinCore` and `__gnoblinStd` natives replace them | NpJsFinal                         |
-| `host.rs`, `host_api.rs`, `host_idle.rs`, `host_session.rs`, `output_apply.rs`, `generation/*` | Deleted with the core services they serve | NpCoreServices        |
-| `input/*` (1,209)                                            | Deleted with the input matcher                                           | NpCoreInput                       |
-| `dialogs.rs`, `lock.rs`                                      | Deleted with dialogs, authentication and the lock screen                 | NpCoreServices, NpStdShellUi      |
-| `ui/*` (947), `workspaces.rs`, `transition.rs`               | Deleted with the toolkit, workspaces and transitions                     | NpStdUi, NpStdObjects, NpStdStyle |
-| `xr.rs` (331)                                                | Deleted with the XR module                                               | NpStdXr                           |
-| `shell/{frame,gate,links,txgate}.rs` and the mirror          | Deleted: the runtime uses node functions, not its own tree mirror        | NpJsFinal                         |
-| `stock.rs` (506)                                             | Deleted; the embedded table is generated                                 | NpJsFinal                         |
-| `loader.rs`, `loader/files.rs`, `ts.rs`, `bytecode.rs`       | Kept: user modules still go through oxc and the bytecode cache           | -                                 |
-| `console/*`, `script_console.rs`, `diagnostics.rs`, `error.rs`, `budget.rs`, `reload/*`, `config.rs`, `role.rs`, `natives.rs` | Kept, trimmed of the rows above | NpJsFinal            |
+| Module (lines)                                                                                                                | End state                                                                | Lane                              |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------- |
+| `bindings/{mod,props,stage,host/*}` (1,911)                                                                                   | Deleted. Generic `__gnoblinCore` and `__gnoblinStd` natives replace them | NpJsFinal                         |
+| `host.rs`, `host_api.rs`, `host_idle.rs`, `host_session.rs`, `output_apply.rs`, `generation/*`                                | Deleted with the core services they serve                                | NpCoreServices                    |
+| `input/*` (1,209)                                                                                                             | Deleted with the input matcher                                           | NpCoreInput                       |
+| `dialogs.rs`, `lock.rs`                                                                                                       | Deleted with dialogs, authentication and the lock screen                 | NpCoreServices, NpStdShellUi      |
+| `ui/*` (947), `workspaces.rs`, `transition.rs`                                                                                | Deleted with the toolkit, workspaces and transitions                     | NpStdUi, NpStdObjects, NpStdStyle |
+| `xr.rs` (331)                                                                                                                 | Deleted with the XR module                                               | NpStdXr                           |
+| `shell/{frame,gate,links,txgate}.rs` and the mirror                                                                           | Deleted: the runtime uses node functions, not its own tree mirror        | NpJsFinal                         |
+| `stock.rs` (506)                                                                                                              | Deleted; the embedded table is generated                                 | NpJsFinal                         |
+| `loader.rs`, `loader/files.rs`, `ts.rs`, `bytecode.rs`                                                                        | Kept: user modules still go through oxc and the bytecode cache           | -                                 |
+| `console/*`, `script_console.rs`, `diagnostics.rs`, `error.rs`, `budget.rs`, `reload/*`, `config.rs`, `role.rs`, `natives.rs` | Kept, trimmed of the rows above                                          | NpJsFinal                         |
 
 Removing the mirror is option (a) of blocker B2 in section 25.3: the runtime moves onto the node functions, as Python did.
 It also removes `gnoblin-core-impl/src/hub.rs` and the `tree_link_*` table functions (lane NpAbiClean).
@@ -603,13 +603,13 @@ It also removes `gnoblin-core-impl/src/hub.rs` and the `tree_link_*` table funct
 The oracle problem is the main risk (section 7). `gnoblin-js/tests` is 51 files and 31,249 lines of TypeScript shells run
 over the fake compositor, with the core and std libraries linked into the test process.
 
-| Class                          | Files                                                                          | Treatment                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Shell-level behaviour (41)     | Listed below the table                                                         | Assertions unchanged. Nine import deep specifiers and are re-pointed       |
-| Costs and budgets (3)          | `boot_cost` `budgets` `frame_cost`                                             | Thresholds unchanged. A native path meets them, it does not renegotiate them |
-| Frame gating (2)               | `frame_gating` `frame_gating_window_frame`                                     | Rows unchanged; the wake sources they cover are native                     |
-| Rewritten around internals (4) | `bytecode_cache` `error_codes` `inert_surface` `wake_sources`                  | Same property, new subject (below)                                         |
-| Deleted, with a replacement (1) | `stock_source_maps`                                                            | No stock TypeScript remains. A source-line test of callbacks replaces it   |
+| Class                           | Files                                                         | Treatment                                                                    |
+| ------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Shell-level behaviour (41)      | Listed below the table                                        | Assertions unchanged. Nine import deep specifiers and are re-pointed         |
+| Costs and budgets (3)           | `boot_cost` `budgets` `frame_cost`                            | Thresholds unchanged. A native path meets them, it does not renegotiate them |
+| Frame gating (2)                | `frame_gating` `frame_gating_window_frame`                    | Rows unchanged; the wake sources they cover are native                       |
+| Rewritten around internals (4)  | `bytecode_cache` `error_codes` `inert_surface` `wake_sources` | Same property, new subject (below)                                           |
+| Deleted, with a replacement (1) | `stock_source_maps`                                           | No stock TypeScript remains. A source-line test of callbacks replaces it     |
 
 The 41 shell-level files are `client_requests` `config_slots` `core_only` `displays` `dwindle_hyprland` `frame_order`
 `host_api` `host_global` `host_idle` `host_launches` `input` `input_devices` `link_failures` `lock` `native_bindings`
@@ -636,15 +636,15 @@ How the four rewritten tests keep their property:
 
 Other test crates:
 
-| Test                                                                         | Today                                                              | Migration                                                                    |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| `gnoblin-std-impl/tests/{tiling,examples,anim_style}.rs`, `reference/mod.rs` | Run the TypeScript reference beside native code and compare writes | NpOracle records the reference's writes as JSON fixtures. The native code is compared with them. The reference goes with the last TypeScript it runs |
-| `gnoblin/tests/modular/*` (15 files)                                         | Real binary, headless backend, test client                         | Kept. `no_std.rs` copies `data/js/gnoblin-core` and changes (6.4)            |
-| `gnoblin-runtime-{js,python}/tests/shells.rs`                                | Scenarios over the loader and a fake compositor                    | Kept; the stock directory variables are deleted from them                    |
-| `gnoblin-runtime-python/tests/check_stubs.py`                                | Reads `data/python` with `ast` and compares stubs with the package | Replaced by a stub-versus-runtime reflection check (3.6)                     |
-| `gnoblinctl/tests/{js_check,config_migrate}.rs`                              | Read `data/js` and the starter                                     | Read the embedded declarations and `shells/default`                          |
-| `xtask` dist and sdk unit tests                                              | Assert the trees are planned for install                           | Assert the types and the default shell, and the determinism of the generator |
-| `gnoblin/tests/{js_shell,js_lock*,js_guardian,reload_scripts,abi_upgrade}.rs` | Boot real shells                                                  | Kept. `abi_upgrade` keeps its three golden binaries                          |
+| Test                                                                          | Today                                                              | Migration                                                                                                                                            |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gnoblin-std-impl/tests/{tiling,examples,anim_style}.rs`, `reference/mod.rs`  | Run the TypeScript reference beside native code and compare writes | NpOracle records the reference's writes as JSON fixtures. The native code is compared with them. The reference goes with the last TypeScript it runs |
+| `gnoblin/tests/modular/*` (15 files)                                          | Real binary, headless backend, test client                         | Kept. `no_std.rs` copies `data/js/gnoblin-core` and changes (6.4)                                                                                    |
+| `gnoblin-runtime-{js,python}/tests/shells.rs`                                 | Scenarios over the loader and a fake compositor                    | Kept; the stock directory variables are deleted from them                                                                                            |
+| `gnoblin-runtime-python/tests/check_stubs.py`                                 | Reads `data/python` with `ast` and compares stubs with the package | Replaced by a stub-versus-runtime reflection check (3.6)                                                                                             |
+| `gnoblinctl/tests/{js_check,config_migrate}.rs`                               | Read `data/js` and the starter                                     | Read the embedded declarations and `shells/default`                                                                                                  |
+| `xtask` dist and sdk unit tests                                               | Assert the trees are planned for install                           | Assert the types and the default shell, and the determinism of the generator                                                                         |
+| `gnoblin/tests/{js_shell,js_lock*,js_guardian,reload_scripts,abi_upgrade}.rs` | Boot real shells                                                   | Kept. `abi_upgrade` keeps its three golden binaries                                                                                                  |
 
 ### 2.10 The Rust SDK crates
 
@@ -653,11 +653,11 @@ Other test crates:
 typed API of both crates is generated too. What stays hand-written is the support layer. It holds no desktop behaviour: it
 is the FFI plumbing that every generated class calls.
 
-| Crate             | Support layer that stays                                                               | Typed wrappers that become generated, and their lane                                   |
-| ----------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `gnoblin-core`    | `sys`, `value`, `callback`, `owned`, `private`, `timed`, `error` conversion, the `gnoblin` handle | `tree`, `events`, `input`, `process`, `verbs`: NpCoreModel, NpCoreInput, NpCoreServices |
-| `gnoblin-std`     | `sys`, `api` (`Std::open`), `emitter`, `subscription`, `error`, `lib`, `query` (about 880 lines) | `client`, `client_state`, `collection`, `workspace`, `desktop`, `output`, `layout`, `layouts`, `split`: NpStdObjects. `style`, `animation`: NpStdStyle. `scene`: NpStdScene. `bindings`, `gesture`, `builtin`: NpStdPolicy |
-| `gnoblin-std-dyn` | `arena`, `convert`, `library`                                                          | `generated.rs` is replaced by the generic object-protocol call layer (NpObjectAbiA)    |
+| Crate             | Support layer that stays                                                                          | Typed wrappers that become generated, and their lane                                                                                                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gnoblin-core`    | `sys`, `value`, `callback`, `owned`, `private`, `timed`, `error` conversion, the `gnoblin` handle | `tree`, `events`, `input`, `process`, `verbs`: NpCoreModel, NpCoreInput, NpCoreServices                                                                                                                                    |
+| `gnoblin-std`     | `sys`, `api` (`Std::open`), `emitter`, `subscription`, `error`, `lib`, `query` (about 880 lines)  | `client`, `client_state`, `collection`, `workspace`, `desktop`, `output`, `layout`, `layouts`, `split`: NpStdObjects. `style`, `animation`: NpStdStyle. `scene`: NpStdScene. `bindings`, `gesture`, `builtin`: NpStdPolicy |
+| `gnoblin-std-dyn` | `arena`, `convert`, `library`                                                                     | `generated.rs` is replaced by the generic object-protocol call layer (NpObjectAbiA)                                                                                                                                        |
 
 Rust names do not change: `gnoblin_std::prelude::*` and every example under `examples/` keep compiling. The catalog
 carries an `export` attribute for each name that differs from the mechanical conversion.
@@ -680,22 +680,22 @@ A new library crate `crates/gnoblin-sdkgen` takes over `xtask/src/sdk/` (7,830 l
 
 The three call sites:
 
-| Call site                                    | When            | What it does                                                       |
-| -------------------------------------------- | --------------- | ------------------------------------------------------------------ |
-| `build.rs` of an SDK or runtime crate        | Every build     | Renders that crate's targets into `OUT_DIR` and writes `embedded.rs` |
-| `cargo xtask dist install`                   | Install         | Renders the `types` and `c` targets into the prefix                |
-| `cargo xtask gen-sdks [--out DIR] [--check]` | By hand, in CI | Renders everything to `target/sdk` for reading, or checks          |
+| Call site                                    | When           | What it does                                                         |
+| -------------------------------------------- | -------------- | -------------------------------------------------------------------- |
+| `build.rs` of an SDK or runtime crate        | Every build    | Renders that crate's targets into `OUT_DIR` and writes `embedded.rs` |
+| `cargo xtask dist install`                   | Install        | Renders the `types` and `c` targets into the prefix                  |
+| `cargo xtask gen-sdks [--out DIR] [--check]` | By hand, in CI | Renders everything to `target/sdk` for reading, or checks            |
 
 ### 3.2 What is emitted, and where
 
-| Target      | Emitted                                                                                    | Written by                             | Consumed as                                            |
-| ----------- | ------------------------------------------------------------------------------------------ | -------------------------------------- | ------------------------------------------------------ |
-| `rust-core` | Names, typed node classes, model classes, error kinds                                      | `build.rs` of `gnoblin-core`           | `include!` of `OUT_DIR/generated.rs`                   |
-| `rust-std`  | Constants, records, typed handles, interface traits, layout and binding classes, wrappers  | `build.rs` of `gnoblin-std`            | The same way                                           |
-| `js`        | The modules `gnoblin-core`, `gnoblin-std`, `gnoblin-std/xr`: classes over the object protocol | `build.rs` of `gnoblin-js`          | Embedded in `libgnoblin-runtime-js.so`, run on import  |
-| `py`        | The package `gnoblin`, with `gnoblin.std` and the typed classes                            | `build.rs` of `gnoblin-runtime-python` | Embedded in `libgnoblin-runtime-python.so`             |
-| `types`     | `.d.ts` per module, `globals.d.ts`, `tsconfig.json`, the `.pyi` stubs                      | `build.rs` of `gnoblinctl`; `dist`     | Installed to `share/gnoblin/types/`; embedded in `gnoblinctl` |
-| `c`         | `include/gnoblin/{core,std}.h` (exists today in `abi_c.rs`)                                | `cargo xtask dist`                     | Installed                                              |
+| Target      | Emitted                                                                                       | Written by                             | Consumed as                                                   |
+| ----------- | --------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------- |
+| `rust-core` | Names, typed node classes, model classes, error kinds                                         | `build.rs` of `gnoblin-core`           | `include!` of `OUT_DIR/generated.rs`                          |
+| `rust-std`  | Constants, records, typed handles, interface traits, layout and binding classes, wrappers     | `build.rs` of `gnoblin-std`            | The same way                                                  |
+| `js`        | The modules `gnoblin-core`, `gnoblin-std`, `gnoblin-std/xr`: classes over the object protocol | `build.rs` of `gnoblin-js`             | Embedded in `libgnoblin-runtime-js.so`, run on import         |
+| `py`        | The package `gnoblin`, with `gnoblin.std` and the typed classes                               | `build.rs` of `gnoblin-runtime-python` | Embedded in `libgnoblin-runtime-python.so`                    |
+| `types`     | `.d.ts` per module, `globals.d.ts`, `tsconfig.json`, the `.pyi` stubs                         | `build.rs` of `gnoblinctl`; `dist`     | Installed to `share/gnoblin/types/`; embedded in `gnoblinctl` |
+| `c`         | `include/gnoblin/{core,std}.h` (exists today in `abi_c.rs`)                                   | `cargo xtask dist`                     | Installed                                                     |
 
 Nothing is committed. NpGenOut deletes what is committed today: `crates/gnoblin-core/src/generated/`,
 `crates/gnoblin-std-dyn/src/generated.rs`, the ten generated JavaScript files and the seven generated Python files.
@@ -728,17 +728,17 @@ modules cannot be patched on an installed system (decision O2).
 
 ### 3.4 How an import resolves
 
-| Language       | Spelling                                            | Resolves to                                                                       |
-| -------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- |
-| JS or TS       | `from "gnoblin-core"`                               | The embedded module, always available                                             |
-| JS or TS       | `from "gnoblin-std"`                                | The embedded module. Evaluating it opens `libgnoblin-std.so.1`, or throws `gnoblin-std is not installed (looked in: …)` as today |
-| JS or TS       | `from "gnoblin-std/xr"`                             | The embedded optional XR module. The only subpath                                 |
-| JS or TS       | any other `gnoblin-std/<path>` or `gnoblin/…`       | An error naming the three valid specifiers (decision O3)                          |
-| Python         | `from gnoblin import gnoblin`                       | The embedded package over the core object API                                     |
-| Python         | `from gnoblin.std import …`                         | The embedded module. Without the library: `ImportError: gnoblin-std is not installed (looked for libgnoblin-std.so.1 in …)` |
-| Rust           | `use gnoblin_core::…`, `use gnoblin_std::prelude::*` | The SDK crates, generated files in `OUT_DIR`                                     |
-| TS editors     | the TypeScript spellings                            | `tsconfig.json` `paths` map to `share/gnoblin/types/*.d.ts`                       |
-| Python editors | `gnoblin`, `gnoblin.std`                            | `share/gnoblin/types/python/`, a stub-only package with `py.typed`                |
+| Language       | Spelling                                             | Resolves to                                                                                                                      |
+| -------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| JS or TS       | `from "gnoblin-core"`                                | The embedded module, always available                                                                                            |
+| JS or TS       | `from "gnoblin-std"`                                 | The embedded module. Evaluating it opens `libgnoblin-std.so.1`, or throws `gnoblin-std is not installed (looked in: …)` as today |
+| JS or TS       | `from "gnoblin-std/xr"`                              | The embedded optional XR module. The only subpath                                                                                |
+| JS or TS       | any other `gnoblin-std/<path>` or `gnoblin/…`        | An error naming the three valid specifiers (decision O3)                                                                         |
+| Python         | `from gnoblin import gnoblin`                        | The embedded package over the core object API                                                                                    |
+| Python         | `from gnoblin.std import …`                          | The embedded module. Without the library: `ImportError: gnoblin-std is not installed (looked for libgnoblin-std.so.1 in …)`      |
+| Rust           | `use gnoblin_core::…`, `use gnoblin_std::prelude::*` | The SDK crates, generated files in `OUT_DIR`                                                                                     |
+| TS editors     | the TypeScript spellings                             | `tsconfig.json` `paths` map to `share/gnoblin/types/*.d.ts`                                                                      |
+| Python editors | `gnoblin`, `gnoblin.std`                             | `share/gnoblin/types/python/`, a stub-only package with `py.typed`                                                               |
 
 Example 17 (std absent) keeps its behaviour. A core-only shell never evaluates `gnoblin-std`, and a shell that imports it
 without the library fails with the same text.
@@ -767,15 +767,16 @@ stability instead:
    one shared struct, once (section 6.1).
 2. **`surface.lock`, new.** The generator renders the public surface of every catalog class as sorted lines, one per member:
 
-   ```text
-   member | gnoblin.std | box.padding | property insets rw | 0.2.0
-   member | gnoblin.std | menu_item.run | property callback rw | 0.2.0
-   ```
+    ```text
+    member | gnoblin.std | box.padding | property insets rw | 0.2.0
+    member | gnoblin.std | menu_item.run | property callback rw | 0.2.0
+    ```
 
-   `cargo xtask gen-sdks --check` compares them with the lock files the way `abi-check` does. A removed or changed entry
-   that a release covers fails. An addition is recorded with `--update`. The lock is one file per catalog module
-   (`crates/gnoblin-std-abi/schema/lock/<module>.lock`), so two lanes that add classes to different modules edit different
-   files and never conflict.
+    `cargo xtask gen-sdks --check` compares them with the lock files the way `abi-check` does. A removed or changed entry
+    that a release covers fails. An addition is recorded with `--update`. The lock is one file per catalog module
+    (`crates/gnoblin-std-abi/schema/lock/<module>.lock`), so two lanes that add classes to different modules edit different
+    files and never conflict.
+
 3. **Determinism.** `--check` renders twice and compares the bytes.
 4. **Validity.** `--check` runs `python3 -m py_compile` over the Python modules, `tsc --noEmit` over the declarations and a
    Node parse of the JavaScript when `node` is present. Cargo checks the Rust output.
@@ -822,19 +823,19 @@ The catalog format is the one `gnoblin-schema` already parses:
 
 Lane NpObjectAbiA adds the rows below. Everything else in the format is unchanged.
 
-| Addition                          | Meaning                                                                                              |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `[schema] local = true`           | The namespace is served by a library, not the compositor. It is skipped by the wire and by the `gnoblin` catalog hash |
-| `kind` on an object               | `handle` (default), `record`, `interface`, `service`. `record = true` stays as an alias                |
-| `enum:<name>` type and `[[enum]]` | A closed set of named values. Generators write string unions, `IntEnum` and Rust enums                |
-| `callback:<name>` type, `[[callback]]` | A closure a shell passes in: named parameters and a result. Used for handlers and `compute` functions |
-| `interface` objects               | Methods marked `required` or optional, with `default = "native"` when the library has a default body  |
-| Cross-namespace `base`            | `base = "gnoblin.model.client"` lets std extend a core class                                          |
-| `ctor = [..]` on an object        | The constructor takes these properties (default: every writable property, by name, as an options record) |
-| `export = { js, py, rust }`       | A name that differs from the mechanical conversion (`snake_case` to `camelCase` and back)              |
-| `python = { dunder = "__len__" }` | Maps a member to a Python special method, replacing `_std_sugar.py`                                    |
-| `inert = "reason"`                | A member accepted and not applied. `inert_surface` reads these instead of two hand-kept lists          |
-| `abi = "fn:<table function>"`     | The member is served by an existing typed table function, until NpAbiClean folds it                    |
+| Addition                               | Meaning                                                                                                               |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `[schema] local = true`                | The namespace is served by a library, not the compositor. It is skipped by the wire and by the `gnoblin` catalog hash |
+| `kind` on an object                    | `handle` (default), `record`, `interface`, `service`. `record = true` stays as an alias                               |
+| `enum:<name>` type and `[[enum]]`      | A closed set of named values. Generators write string unions, `IntEnum` and Rust enums                                |
+| `callback:<name>` type, `[[callback]]` | A closure a shell passes in: named parameters and a result. Used for handlers and `compute` functions                 |
+| `interface` objects                    | Methods marked `required` or optional, with `default = "native"` when the library has a default body                  |
+| Cross-namespace `base`                 | `base = "gnoblin.model.client"` lets std extend a core class                                                          |
+| `ctor = [..]` on an object             | The constructor takes these properties (default: every writable property, by name, as an options record)              |
+| `export = { js, py, rust }`            | A name that differs from the mechanical conversion (`snake_case` to `camelCase` and back)                             |
+| `python = { dunder = "__len__" }`      | Maps a member to a Python special method, replacing `_std_sugar.py`                                                   |
+| `inert = "reason"`                     | A member accepted and not applied. `inert_surface` reads these instead of two hand-kept lists                         |
+| `abi = "fn:<table function>"`          | The member is served by an existing typed table function, until NpAbiClean folds it                                   |
 
 ### 4.2 The object protocol (one ABI change, batch B1)
 
@@ -885,19 +886,19 @@ Rules that carry over from section 5:
 times against an `entry_model` made through the C table, over a real core generation, in a release build on a 2-CPU Agent37 box. Two
 runs agreed within about 10 per cent; each figure is nanoseconds per call, the range of the two runs:
 
-| What is timed                                                                                  | ns            |
-| ---------------------------------------------------------------------------------------------- | ------------- |
-| An existing typed table function (the core's `stats`, which fills a struct)                    | 38            |
-| `get` of a number                                                                              | 64 to 72      |
-| `get` of text (21 characters)                                                                  | 100 to 127    |
-| `set` of text                                                                                  | 320 to 370    |
-| A method with no arguments that changes nothing (`home`)                                       | 200 to 220    |
-| Two calls that each change the model, `insert` with a text and `backspace`, no listener        | 770 to 810    |
-| `class_id` or `member_id` by name                                                              | 16 to 24      |
-| `listen` then `unlisten`                                                                       | 220 to 260    |
-| The turn when nothing is queued (`dispatch`)                                                   | 220           |
-| Two changing calls, two signals told into a closure, and a turn for those two alone            | 12 100 to 12 900 |
-| The same with one turn for every hundred changes, per change                                   | 790 to 855    |
+| What is timed                                                                           | ns               |
+| --------------------------------------------------------------------------------------- | ---------------- |
+| An existing typed table function (the core's `stats`, which fills a struct)             | 38               |
+| `get` of a number                                                                       | 64 to 72         |
+| `get` of text (21 characters)                                                           | 100 to 127       |
+| `set` of text                                                                           | 320 to 370       |
+| A method with no arguments that changes nothing (`home`)                                | 200 to 220       |
+| Two calls that each change the model, `insert` with a text and `backspace`, no listener | 770 to 810       |
+| `class_id` or `member_id` by name                                                       | 16 to 24         |
+| `listen` then `unlisten`                                                                | 220 to 260       |
+| The turn when nothing is queued (`dispatch`)                                            | 220              |
+| Two changing calls, two signals told into a closure, and a turn for those two alone     | 12 100 to 12 900 |
+| The same with one turn for every hundred changes, per change                            | 790 to 855       |
 
 What the numbers say:
 
@@ -947,11 +948,11 @@ any other lane has started.
 
 ### 4.3 Namespaces, files and who serves them
 
-| Namespace       | Served by          | Catalog directory                              | Lock directory                    |
-| --------------- | ------------------ | ---------------------------------------------- | --------------------------------- |
-| `gnoblin`       | The compositor     | `crates/gnoblin-schema/schema/` (unchanged)    | the existing golden tests         |
-| `gnoblin.model` | `libgnoblin-core`  | `crates/gnoblin-core-abi/schema/`              | `crates/gnoblin-core-abi/schema/lock/` |
-| `gnoblin.std`   | `libgnoblin-std`   | `crates/gnoblin-std-abi/schema/`               | `crates/gnoblin-std-abi/schema/lock/`  |
+| Namespace       | Served by         | Catalog directory                           | Lock directory                         |
+| --------------- | ----------------- | ------------------------------------------- | -------------------------------------- |
+| `gnoblin`       | The compositor    | `crates/gnoblin-schema/schema/` (unchanged) | the existing golden tests              |
+| `gnoblin.model` | `libgnoblin-core` | `crates/gnoblin-core-abi/schema/`           | `crates/gnoblin-core-abi/schema/lock/` |
+| `gnoblin.std`   | `libgnoblin-std`  | `crates/gnoblin-std-abi/schema/`            | `crates/gnoblin-std-abi/schema/lock/`  |
 
 One file per module, one lock file per module, so lanes that own different modules never edit the same file. The
 `gnoblin` namespace fingerprint does not change when a std or model file does, so `gnoblin_catalog_hash` and the golden
@@ -968,87 +969,87 @@ Types in the tables: `colour` is a string in the forms `#rgb`, `#rgba`, `#rrggbb
 
 #### Core model, namespace `gnoblin.model`
 
-| Module file    | Class (kind)                                                            | Properties                                                                | Methods                                                              | Signals                                           |
-| -------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------- |
-| `collection`   | `collection` (handle)                                                   | `length` ro, `kind` ro, `alive` ro                                        | `at`, `find`, `where(query)`, `contains`, `to_list`, `listen(listener)` | `added`, `removed`, `changed(member, fields)`  |
-| `collection`   | `collection_listener` (interface)                                       | none                                                                      | optional `on_added`, `on_removed`, `on_changed`                      | none                                              |
-| `client`       | `client` (handle over a window node)                                    | One per `window` tree property, plus `alive`                              | `close`, `kill`, `activate`, `raise`, `lower`, `move`, `resize`, `set_bounds` | `title_changed`, `app_id_changed`, `focus_changed`, `geometry_changed`, `closed`, `request` |
-| `client`       | `output` (handle over a screen node)                                    | One per `screen` property, plus `alive`                                   | `apply(config) -> operation`                                         | `mode_changed`, `removed`                         |
-| `client`       | `client_listener`, `output_listener` (interface)                        | none                                                                      | One optional `on_<signal>` each                                      | none                                              |
-| `client`       | `gnoblin` (service)                                                     | `clients`, `outputs`, `input`, `session`, `runtime`, `idle`, `launches`, `dialogs`, `authentication`, `focus` | `find(query)`, `spawn(argv, options)`, `timer(ms, fn)`, `on_<signal>(fn)` for every signal | one per named subscription          |
-| `operation`    | `operation`, `timer`, `subscription` (handle)                           | `status`, `value`, `error`                                                | `then`, `catch`, `cancel`, `unsubscribe`                             | `settled`                                         |
-| `process`      | `process` (handle), `process_listener` (interface)                      | `pid`, `status`, `exit`                                                   | `kill(signal)`, `write`, `wait`                                      | `stdout`, `stderr`, `exit`                        |
-| `session`      | `session`, `runtime` (service)                                          | `status`, `lock_state`, `version`                                         | `logout`, `suspend`, `poweroff`, `reboot`, `lock`, `reload_config`, `authenticate(secret)`; each returns an `operation` | `bell`, `lock_changed`, `config_reloaded`, `config_failed` |
-| `idle`         | `idle` (service), `idle_watch`, `inhibitor` (handle)                    | `idle_ms`, `inhibitors`                                                   | `watch(ms, on_idle, on_resume)`, `inhibit(reason)`, `dispose`        | none                                              |
-| `launches`     | `launches` (service), `launch` (handle)                                 | `pending`                                                                 | `begin(app)`, `mark_started`, `cancel`                               | `started`, `timed_out`                            |
-| `dialogs`      | `dialogs` (service), `dialog_policy` (interface), `authentication` (service) | `requests`                                                           | `add_policy`, `answer`, `refuse`                                     | `requested`, `finished`                           |
-| `virtual_output` | `virtual_output` (handle), `output_request` (record)                 | `placement`, `viewer`                                                     | `create(options)`, `destroy`                                         | none                                              |
-| `focus`        | `focus_history` (service)                                               | none                                                                      | `history(filter) -> list<client>`                                    | none                                              |
-| `properties`   | `property_bindings` (handle, `.properties` of an object)                | none                                                                      | `bind(name, compute: callback)`, `unbind`, `dispose`                 | none                                              |
-| `input`        | `input_manager`, `input_context` (handle)                               | `primary`, `contexts`, `devices`, `active_display`, `focused_client`       | `bind(trigger, binding or fn, options)`, `unbind`, `claims`          | `device_added`, `device_removed`                  |
-| `input`        | `device`, `keyboard`, `mouse`, `touchpad`, `touchscreen`, `tablet`      | `id`, `name`, `caps`, `settings` (typed per class)                        | `bind(trigger, ...)`                                                 | `changed`                                         |
-| `input`        | `trigger` (record), `binding_collection` (handle)                       | `owner`, `length`                                                         | static `parse`, `check`, `canonical`; `add`, `remove`                | `added`, `removed`                                |
-| `input`        | `binding`, `key_binding`, `pointer_binding`, `pointer_drag_binding`, `gesture_binding` (interface) | `trigger`, `priority`, `tier`, `scope`                       | `on_press`, `on_release`, `on_start -> bool`, `on_update`, `on_end`, `on_cancel`, `on_begin -> bool`, `decline` | none |
+| Module file      | Class (kind)                                                                                       | Properties                                                                                                    | Methods                                                                                                                 | Signals                                                                                     |
+| ---------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `collection`     | `collection` (handle)                                                                              | `length` ro, `kind` ro, `alive` ro                                                                            | `at`, `find`, `where(query)`, `contains`, `to_list`, `listen(listener)`                                                 | `added`, `removed`, `changed(member, fields)`                                               |
+| `collection`     | `collection_listener` (interface)                                                                  | none                                                                                                          | optional `on_added`, `on_removed`, `on_changed`                                                                         | none                                                                                        |
+| `client`         | `client` (handle over a window node)                                                               | One per `window` tree property, plus `alive`                                                                  | `close`, `kill`, `activate`, `raise`, `lower`, `move`, `resize`, `set_bounds`                                           | `title_changed`, `app_id_changed`, `focus_changed`, `geometry_changed`, `closed`, `request` |
+| `client`         | `output` (handle over a screen node)                                                               | One per `screen` property, plus `alive`                                                                       | `apply(config) -> operation`                                                                                            | `mode_changed`, `removed`                                                                   |
+| `client`         | `client_listener`, `output_listener` (interface)                                                   | none                                                                                                          | One optional `on_<signal>` each                                                                                         | none                                                                                        |
+| `client`         | `gnoblin` (service)                                                                                | `clients`, `outputs`, `input`, `session`, `runtime`, `idle`, `launches`, `dialogs`, `authentication`, `focus` | `find(query)`, `spawn(argv, options)`, `timer(ms, fn)`, `on_<signal>(fn)` for every signal                              | one per named subscription                                                                  |
+| `operation`      | `operation`, `timer`, `subscription` (handle)                                                      | `status`, `value`, `error`                                                                                    | `then`, `catch`, `cancel`, `unsubscribe`                                                                                | `settled`                                                                                   |
+| `process`        | `process` (handle), `process_listener` (interface)                                                 | `pid`, `status`, `exit`                                                                                       | `kill(signal)`, `write`, `wait`                                                                                         | `stdout`, `stderr`, `exit`                                                                  |
+| `session`        | `session`, `runtime` (service)                                                                     | `status`, `lock_state`, `version`                                                                             | `logout`, `suspend`, `poweroff`, `reboot`, `lock`, `reload_config`, `authenticate(secret)`; each returns an `operation` | `bell`, `lock_changed`, `config_reloaded`, `config_failed`                                  |
+| `idle`           | `idle` (service), `idle_watch`, `inhibitor` (handle)                                               | `idle_ms`, `inhibitors`                                                                                       | `watch(ms, on_idle, on_resume)`, `inhibit(reason)`, `dispose`                                                           | none                                                                                        |
+| `launches`       | `launches` (service), `launch` (handle)                                                            | `pending`                                                                                                     | `begin(app)`, `mark_started`, `cancel`                                                                                  | `started`, `timed_out`                                                                      |
+| `dialogs`        | `dialogs` (service), `dialog_policy` (interface), `authentication` (service)                       | `requests`                                                                                                    | `add_policy`, `answer`, `refuse`                                                                                        | `requested`, `finished`                                                                     |
+| `virtual_output` | `virtual_output` (handle), `output_request` (record)                                               | `placement`, `viewer`                                                                                         | `create(options)`, `destroy`                                                                                            | none                                                                                        |
+| `focus`          | `focus_history` (service)                                                                          | none                                                                                                          | `history(filter) -> list<client>`                                                                                       | none                                                                                        |
+| `properties`     | `property_bindings` (handle, `.properties` of an object)                                           | none                                                                                                          | `bind(name, compute: callback)`, `unbind`, `dispose`                                                                    | none                                                                                        |
+| `input`          | `input_manager`, `input_context` (handle)                                                          | `primary`, `contexts`, `devices`, `active_display`, `focused_client`                                          | `bind(trigger, binding or fn, options)`, `unbind`, `claims`                                                             | `device_added`, `device_removed`                                                            |
+| `input`          | `device`, `keyboard`, `mouse`, `touchpad`, `touchscreen`, `tablet`                                 | `id`, `name`, `caps`, `settings` (typed per class)                                                            | `bind(trigger, ...)`                                                                                                    | `changed`                                                                                   |
+| `input`          | `trigger` (record), `binding_collection` (handle)                                                  | `owner`, `length`                                                                                             | static `parse`, `check`, `canonical`; `add`, `remove`                                                                   | `added`, `removed`                                                                          |
+| `input`          | `binding`, `key_binding`, `pointer_binding`, `pointer_drag_binding`, `gesture_binding` (interface) | `trigger`, `priority`, `tier`, `scope`                                                                        | `on_press`, `on_release`, `on_start -> bool`, `on_update`, `on_end`, `on_cancel`, `on_begin -> bool`, `decline`         | none                                                                                        |
 
 #### Std objects (existing, now declared in the catalog)
 
-| Module file  | Class (kind)                                                    | Properties                                                                | Methods                                                              | Signals                                    |
-| ------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------ |
-| `workspace`  | `workspace` (handle, `ctor`)                                    | `id`, `name`, `layout`, `gaps`, `clients` ro, `active` ro, `index` ro      | `show(options)`, `invalidate`, `add(client)`, `remove(client)`, `walk` | `shown`, `hidden`, `client_added`, `client_removed` |
-| `workspace`  | `layout` (interface, `abi = vtable`)                            | `options`                                                                 | required `compute`; optional `client_added`, `client_removed`, `area_changed`, `clients_swapped`, `revision`, `find_split`, `set_split`, `reset_split` | none |
-| `workspace`  | built-in layouts, `policy`, `desks`                             | Generated from `LAYOUT_KINDS` and the policy table                        | Generated actions (`preselect`, `focus_left`, ...)                   | none                                       |
-| `transition` | `transition` (handle)                                           | `state`, `progress`                                                       | `set`, `commit`, `abort`, `control`, `finished() -> operation`       | `finished`                                 |
+| Module file  | Class (kind)                         | Properties                                                            | Methods                                                                                                                                                | Signals                                             |
+| ------------ | ------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `workspace`  | `workspace` (handle, `ctor`)         | `id`, `name`, `layout`, `gaps`, `clients` ro, `active` ro, `index` ro | `show(options)`, `invalidate`, `add(client)`, `remove(client)`, `walk`                                                                                 | `shown`, `hidden`, `client_added`, `client_removed` |
+| `workspace`  | `layout` (interface, `abi = vtable`) | `options`                                                             | required `compute`; optional `client_added`, `client_removed`, `area_changed`, `clients_swapped`, `revision`, `find_split`, `set_split`, `reset_split` | none                                                |
+| `workspace`  | built-in layouts, `policy`, `desks`  | Generated from `LAYOUT_KINDS` and the policy table                    | Generated actions (`preselect`, `focus_left`, ...)                                                                                                     | none                                                |
+| `transition` | `transition` (handle)                | `state`, `progress`                                                   | `set`, `commit`, `abort`, `control`, `finished() -> operation`                                                                                         | `finished`                                          |
 
 #### UI toolkit, namespace `gnoblin.std`
 
-| Module file | Class (kind)                                         | Properties                                                                                      | Methods                                                              | Signals                                                  |
-| ----------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
-| `ui`        | `canvas` (handle, base of all widgets)               | `parent` ro, `children` ro, `x`, `y`, `width`, `height`, `visible`, `opacity`, `placement` (enum `frame`, `over`, `under`), `clip`, `focusable`, `secure`, `content` (`list<paint_op>`) | `add`, `remove`, `raise`, `lower`, `focus`, `invalidate`, `destroy`, `to_global(x, y)` | `pointer(event)`, `key(event)`, `focus_changed`, `gone` |
-| `ui`        | `widget` (interface, implemented by `canvas`)        | none                                                                                            | optional `paint -> list<paint_op>`, `measure -> size`, `arrange`, `on_pointer -> bool`, `on_key -> bool` | none                                   |
-| `ui`        | `box`, `grid`, `text`, `icon` (handle, base `canvas`)| `direction` (enum), `gap`, `padding` (insets), `background`, `radius`, `border`, `align`; `text`: `text`, `font`, `size`, `colour`, `metrics` ro; `icon`: `icon`, `size`, `colour` | none beyond `canvas`; `text.measure()` is synchronous | none |
-| `ui`        | `paint_op` (record, `kind` tags: `rect`, `line`, `text`, `icon`, `clip`, `group`) | Fields per kind as `data/js/gnoblin-std/ui/paint.ts` | none                                       | none                                                     |
-| `ui`        | `ui_pointer_event`, `ui_key_event`, `text_metrics` (record) | `kind`, `x`, `y`, `button`, `dx`, `dy`, `modifiers`; `key`, `text`, `pressed`; `width`, `height`, `ascent` | none (a handler's boolean result is the old `stop()`)          | none |
-| `ui`        | `ui` (service, static functions)                     | none                                                                                            | `now`, `focused`, `focus(canvas)`, `locked`, `pointer`, `screen`, `on_frame(fn)` | none                                       |
-| `widgets`   | `entry_model` (handle)                               | `text`, `cursor`, `selection`                                                                   | `insert`, `delete`, `move`, `select_all`, `clear`, `handle_key(event) -> bool` | `changed`                                |
-| `widgets`   | `entry` (base `box`), `clock` (base `text`), `bar` (base `box`) | `placeholder`, `mask`; `format`, `interval`; `edge` (enum `top`, `bottom`), `output`, `thickness` | `entry`: `submit`, `cancel`; `bar`: reserves insets natively | `entry`: `submit`, `cancel`, `changed`      |
-| `widgets`   | static functions                                     | none                                                                                            | `format_time`, `bar_insets`, `bars_give_way_to(fn)`, `bars_on_outputs(fn)` | none                                      |
+| Module file | Class (kind)                                                                      | Properties                                                                                                                                                                              | Methods                                                                                                  | Signals                                                 |
+| ----------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `ui`        | `canvas` (handle, base of all widgets)                                            | `parent` ro, `children` ro, `x`, `y`, `width`, `height`, `visible`, `opacity`, `placement` (enum `frame`, `over`, `under`), `clip`, `focusable`, `secure`, `content` (`list<paint_op>`) | `add`, `remove`, `raise`, `lower`, `focus`, `invalidate`, `destroy`, `to_global(x, y)`                   | `pointer(event)`, `key(event)`, `focus_changed`, `gone` |
+| `ui`        | `widget` (interface, implemented by `canvas`)                                     | none                                                                                                                                                                                    | optional `paint -> list<paint_op>`, `measure -> size`, `arrange`, `on_pointer -> bool`, `on_key -> bool` | none                                                    |
+| `ui`        | `box`, `grid`, `text`, `icon` (handle, base `canvas`)                             | `direction` (enum), `gap`, `padding` (insets), `background`, `radius`, `border`, `align`; `text`: `text`, `font`, `size`, `colour`, `metrics` ro; `icon`: `icon`, `size`, `colour`      | none beyond `canvas`; `text.measure()` is synchronous                                                    | none                                                    |
+| `ui`        | `paint_op` (record, `kind` tags: `rect`, `line`, `text`, `icon`, `clip`, `group`) | Fields per kind as `data/js/gnoblin-std/ui/paint.ts`                                                                                                                                    | none                                                                                                     | none                                                    |
+| `ui`        | `ui_pointer_event`, `ui_key_event`, `text_metrics` (record)                       | `kind`, `x`, `y`, `button`, `dx`, `dy`, `modifiers`; `key`, `text`, `pressed`; `width`, `height`, `ascent`                                                                              | none (a handler's boolean result is the old `stop()`)                                                    | none                                                    |
+| `ui`        | `ui` (service, static functions)                                                  | none                                                                                                                                                                                    | `now`, `focused`, `focus(canvas)`, `locked`, `pointer`, `screen`, `on_frame(fn)`                         | none                                                    |
+| `widgets`   | `entry_model` (handle)                                                            | `text`, `cursor`, `selection`                                                                                                                                                           | `insert`, `delete`, `move`, `select_all`, `clear`, `handle_key(event) -> bool`                           | `changed`                                               |
+| `widgets`   | `entry` (base `box`), `clock` (base `text`), `bar` (base `box`)                   | `placeholder`, `mask`; `format`, `interval`; `edge` (enum `top`, `bottom`), `output`, `thickness`                                                                                       | `entry`: `submit`, `cancel`; `bar`: reserves insets natively                                             | `entry`: `submit`, `cancel`, `changed`                  |
+| `widgets`   | static functions                                                                  | none                                                                                                                                                                                    | `format_time`, `bar_insets`, `bars_give_way_to(fn)`, `bars_on_outputs(fn)`                               | none                                                    |
 
 #### Window frame, menus and shell parts
 
-| Module file | Class (kind)                                                            | Properties                                                                | Methods                                                              | Signals                                    |
-| ----------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------ |
-| `frame`     | `window_frame` (handle, one per client)                                 | `client`, `kind` (enum), `inset` ro, `geometry` ro                        | `fill(outlet, widget)`, `clear(outlet)`, `outlet(name)`              | `inset_changed`                            |
-| `frame`     | `outlet`, `edge_outlet`, `corner_outlet`, `layer_outlet` (handle)       | `owner`, `side` or `corner` or `layer`, `zones`                           | `add`, `remove`, `clear`                                             | none                                       |
-| `frame`     | `app_icon`, `drag_area`, `frame_backdrop`, `frame_border`, `frame_glow`, `resize_handles`, `resize_handle`, `title_text`, `window_buttons`, `window_button` (base `box`) | Options as the TypeScript option interfaces (`colour`, `radius`, `side`, `buttons`, `icons`) | none | `window_button`: `pressed` |
-| `frame`     | `decorations` (service), `titlebar` (base `drag_area`), `window_actions`, `window_drag` | `style` (`titlebar_style` record), `rules`                         | `start(options)`, `stop`, `rule(match, fill)`, `close`, `minimise`, `toggle_maximise`, `fullscreen`, `menu` | none  |
-| `menus`     | `menu_item`, `menu_panel`, `window_menu` (base `box`)                   | `label`, `icon`, `shortcut`, `disabled`, `checked`, `submenu`, `run` (callback), `separator`; `items`, `anchor`, `secure` | `window_menu`: `open(at)`, `close`                          | `window_menu`: `closed`                    |
-| `menus`     | `menu_navigator` (handle), `window_menus` (service), `menu_provider` (interface) | `rows`, `selected`                                               | `key(event) -> menu_key_action`, `default_items(client)`, `open(client, at)`, `start`; static `menu_height`, `place_card` | none |
-| `shell`     | `toast` (base `box`), `launcher` (base `entry`), `overview` (service)   | `text`, `duration`; `command`; `enabled`, `dimmed_opacity`                | static `toast(text, options)`, `open_launcher(options)`              | none                                       |
-| `shell`     | `not_responding_alerts` (service), `alert_tracker`, `not_responding_dialog` | `arm_ms`, `timeout`, `answer` (enum `wait`, `force`, `recovered`)     | `start(options)`, `stop`                                             | `answered`                                 |
-| `lock`      | `lock_screen` (handle), `password_entry` (base `box`), `lock_style` (record) | `style`, `state` ro                                                  | `show`, `hide`; static `format_clock`, `default_lock_style`          | `submitted`                                |
+| Module file | Class (kind)                                                                                                                                                             | Properties                                                                                                                | Methods                                                                                                                   | Signals                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `frame`     | `window_frame` (handle, one per client)                                                                                                                                  | `client`, `kind` (enum), `inset` ro, `geometry` ro                                                                        | `fill(outlet, widget)`, `clear(outlet)`, `outlet(name)`                                                                   | `inset_changed`            |
+| `frame`     | `outlet`, `edge_outlet`, `corner_outlet`, `layer_outlet` (handle)                                                                                                        | `owner`, `side` or `corner` or `layer`, `zones`                                                                           | `add`, `remove`, `clear`                                                                                                  | none                       |
+| `frame`     | `app_icon`, `drag_area`, `frame_backdrop`, `frame_border`, `frame_glow`, `resize_handles`, `resize_handle`, `title_text`, `window_buttons`, `window_button` (base `box`) | Options as the TypeScript option interfaces (`colour`, `radius`, `side`, `buttons`, `icons`)                              | none                                                                                                                      | `window_button`: `pressed` |
+| `frame`     | `decorations` (service), `titlebar` (base `drag_area`), `window_actions`, `window_drag`                                                                                  | `style` (`titlebar_style` record), `rules`                                                                                | `start(options)`, `stop`, `rule(match, fill)`, `close`, `minimise`, `toggle_maximise`, `fullscreen`, `menu`               | none                       |
+| `menus`     | `menu_item`, `menu_panel`, `window_menu` (base `box`)                                                                                                                    | `label`, `icon`, `shortcut`, `disabled`, `checked`, `submenu`, `run` (callback), `separator`; `items`, `anchor`, `secure` | `window_menu`: `open(at)`, `close`                                                                                        | `window_menu`: `closed`    |
+| `menus`     | `menu_navigator` (handle), `window_menus` (service), `menu_provider` (interface)                                                                                         | `rows`, `selected`                                                                                                        | `key(event) -> menu_key_action`, `default_items(client)`, `open(client, at)`, `start`; static `menu_height`, `place_card` | none                       |
+| `shell`     | `toast` (base `box`), `launcher` (base `entry`), `overview` (service)                                                                                                    | `text`, `duration`; `command`; `enabled`, `dimmed_opacity`                                                                | static `toast(text, options)`, `open_launcher(options)`                                                                   | none                       |
+| `shell`     | `not_responding_alerts` (service), `alert_tracker`, `not_responding_dialog`                                                                                              | `arm_ms`, `timeout`, `answer` (enum `wait`, `force`, `recovered`)                                                         | `start(options)`, `stop`                                                                                                  | `answered`                 |
+| `lock`      | `lock_screen` (handle), `password_entry` (base `box`), `lock_style` (record)                                                                                             | `style`, `state` ro                                                                                                       | `show`, `hide`; static `format_clock`, `default_lock_style`                                                               | `submitted`                |
 
 #### Policy, gestures and snap
 
-| Module file | Class (kind)                                                            | Properties                                                                | Methods                                                              | Signals                                    |
-| ----------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------ |
-| `policy`    | `focus_policy` (handle), `focus_settings` (record)                      | `mode` (enum `click`, `sloppy`, `follow-mouse`), `new_window` (enum `allow`, `prevent`), `raise_on_click`, `auto_raise`, `auto_raise_delay`, `rest_delay` | `attach(collection)`, `detach`; static `focus_decision(settings, event)`, `opens_focused`, `hover_focus`, `rest_focus`, `leave_clears`, `seat_focus_settings` | none |
-| `policy`    | `client_request` (handle), `window_state` (service), `request_listener` (interface) | `kind` (enum of 13 request kinds), `client`, `handled`                | `handle`, `deny`, `begin_move`, `begin_resize`; `window_state.attach(world)` | `request(request)`                  |
-| `policy`    | `repositioning` (service), `reposition_grab` (base `box`)               | `mode` (enum `move`, `resize`), `step`                                    | `begin(client, mode)`, `end(keep)`                                   | `ended`                                    |
-| `policy`    | `snap` (static), `snap_record` (record)                                 | `zone` (enum `left`, `right`, `top`), `margin`                            | `edge_zone`, `tile_rect`, `zone_named`; client: `snap(zone)`, `unsnap`, `snapped_zone` | none                          |
-| `policy`    | `workspace_slide_binding`, `swipe_action_binding`, `pinch_action_binding` (base `gesture_binding`) | `commit`, `travel`, `threshold`, `map`                    | static `on_swipe(map, threshold, options)`, `on_pinch`, `gesture_direction` | none                              |
+| Module file | Class (kind)                                                                                       | Properties                                                                                                                                                | Methods                                                                                                                                                       | Signals            |
+| ----------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `policy`    | `focus_policy` (handle), `focus_settings` (record)                                                 | `mode` (enum `click`, `sloppy`, `follow-mouse`), `new_window` (enum `allow`, `prevent`), `raise_on_click`, `auto_raise`, `auto_raise_delay`, `rest_delay` | `attach(collection)`, `detach`; static `focus_decision(settings, event)`, `opens_focused`, `hover_focus`, `rest_focus`, `leave_clears`, `seat_focus_settings` | none               |
+| `policy`    | `client_request` (handle), `window_state` (service), `request_listener` (interface)                | `kind` (enum of 13 request kinds), `client`, `handled`                                                                                                    | `handle`, `deny`, `begin_move`, `begin_resize`; `window_state.attach(world)`                                                                                  | `request(request)` |
+| `policy`    | `repositioning` (service), `reposition_grab` (base `box`)                                          | `mode` (enum `move`, `resize`), `step`                                                                                                                    | `begin(client, mode)`, `end(keep)`                                                                                                                            | `ended`            |
+| `policy`    | `snap` (static), `snap_record` (record)                                                            | `zone` (enum `left`, `right`, `top`), `margin`                                                                                                            | `edge_zone`, `tile_rect`, `zone_named`; client: `snap(zone)`, `unsnap`, `snapped_zone`                                                                        | none               |
+| `policy`    | `workspace_slide_binding`, `swipe_action_binding`, `pinch_action_binding` (base `gesture_binding`) | `commit`, `travel`, `threshold`, `map`                                                                                                                    | static `on_swipe(map, threshold, options)`, `on_pinch`, `gesture_direction`                                                                                   | none               |
 
 #### Style, transition, scene, displays and XR
 
-| Module file | Class (kind)                                                            | Properties                                                                | Methods                                                              | Signals                                    |
-| ----------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------ |
-| `style`     | `style` (handle, one per scope)                                         | One per entry of the style table (`corner_radius`, `opacity`, `blur`, ...), `shadows`, `borders`, `filters`, `shaders` | `unset(name)`, `reset`, `computed(client)`, `origin(name)`, `where(query)` | `changed`                       |
-| `style`     | `style_list` (handle), `shadow`, `border`, `filter`, `shader_effect` (record) | Per-kind fields as `style/lists.ts`, `style/filters.ts`, `border_shadow.ts` | `push`, `insert`, `remove`, `replace`, `clear`; copy-on-write        | none                                       |
-| `scene`     | `scene_node`, `view`, `camera3d`, `camera2d` (handle)                   | `position`, `rotation`, `scale` (`vec3`), `visible`, `opacity`, `input` (enum), `parent`, `children`; `view`: `source`, `size`, `fit`, `fps`; cameras: `fov`, `zoom`, `centre` | `add`, `remove`, `destroy`, `capture(path)`, `ray`, `transform_to`     | `pointer(event)`                           |
-| `scene`     | `scene` (handle)                                                        | `root`, `cameras`                                                         | `add`, `find`                                                        | none                                       |
-| `math`      | `vec3`, `euler`, `pose`, `mat3`, `ray`, `plane` (record)                | `x`, `y`, `z` and the fields of each                                      | Static `add`, `sub`, `dot`, `cross`, `compose`, `rotate`, `intersect` | none                                      |
-| `display`   | `display`, `viewport`, `output_profile` (handle), `display_manager` (service) | `mode` (enum `single`, `mirror`, `span`), `outputs`, `viewport`, `content`, `camera`, `match`, `settings` | `add`, `remove`, `assign`, `reflow`, `snapshot`, `restore`           | `changed`                                  |
-| `xr`        | `xr_runtime` (service), `xr_session`, `xr_room`, `xr_viewport`, `xr_camera`, `xr_controller` (handle) | `available`, `state` (enum), `session`, `ring`, `views`, `head` (`pose`), `hand`, `buttons` | `start`, `stop`, `add_client`, `remove_client`, `arrange`, `ray`    | `available_changed`, `session_started`, `session_ended`, `pressed`, `released`, `moved` |
-| `xr`        | `xr_ring` (record, static)                                              | Radius, height, panel size                                                | static `arrange(views, focus) -> list<pose>`                         | none                                       |
+| Module file | Class (kind)                                                                                          | Properties                                                                                                                                                                     | Methods                                                                    | Signals                                                                                 |
+| ----------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `style`     | `style` (handle, one per scope)                                                                       | One per entry of the style table (`corner_radius`, `opacity`, `blur`, ...), `shadows`, `borders`, `filters`, `shaders`                                                         | `unset(name)`, `reset`, `computed(client)`, `origin(name)`, `where(query)` | `changed`                                                                               |
+| `style`     | `style_list` (handle), `shadow`, `border`, `filter`, `shader_effect` (record)                         | Per-kind fields as `style/lists.ts`, `style/filters.ts`, `border_shadow.ts`                                                                                                    | `push`, `insert`, `remove`, `replace`, `clear`; copy-on-write              | none                                                                                    |
+| `scene`     | `scene_node`, `view`, `camera3d`, `camera2d` (handle)                                                 | `position`, `rotation`, `scale` (`vec3`), `visible`, `opacity`, `input` (enum), `parent`, `children`; `view`: `source`, `size`, `fit`, `fps`; cameras: `fov`, `zoom`, `centre` | `add`, `remove`, `destroy`, `capture(path)`, `ray`, `transform_to`         | `pointer(event)`                                                                        |
+| `scene`     | `scene` (handle)                                                                                      | `root`, `cameras`                                                                                                                                                              | `add`, `find`                                                              | none                                                                                    |
+| `math`      | `vec3`, `euler`, `pose`, `mat3`, `ray`, `plane` (record)                                              | `x`, `y`, `z` and the fields of each                                                                                                                                           | Static `add`, `sub`, `dot`, `cross`, `compose`, `rotate`, `intersect`      | none                                                                                    |
+| `display`   | `display`, `viewport`, `output_profile` (handle), `display_manager` (service)                         | `mode` (enum `single`, `mirror`, `span`), `outputs`, `viewport`, `content`, `camera`, `match`, `settings`                                                                      | `add`, `remove`, `assign`, `reflow`, `snapshot`, `restore`                 | `changed`                                                                               |
+| `xr`        | `xr_runtime` (service), `xr_session`, `xr_room`, `xr_viewport`, `xr_camera`, `xr_controller` (handle) | `available`, `state` (enum), `session`, `ring`, `views`, `head` (`pose`), `hand`, `buttons`                                                                                    | `start`, `stop`, `add_client`, `remove_client`, `arrange`, `ray`           | `available_changed`, `session_started`, `session_ended`, `pressed`, `released`, `moved` |
+| `xr`        | `xr_ring` (record, static)                                                                            | Radius, height, panel size                                                                                                                                                     | static `arrange(views, focus) -> list<pose>`                               | none                                                                                    |
 
 D21 stands: the session itself is the out-of-process `extensions/gnoblin-xr` program, which publishes the `xr` seat node.
 The `xr` module reads that node and builds the room, exactly as `extensions/xr/runtime.ts` does now.
@@ -1096,7 +1097,9 @@ The path is the callback ABI that exists today, and for every new interface the 
 ```ts
 class Spiral extends Layout {
     turns = 2;
-    compute(cx: LayoutContext): Placement[] { /* rectangles from cx.area, cx.clients */ }
+    compute(cx: LayoutContext): Placement[] {
+        /* rectangles from cx.area, cx.clients */
+    }
 }
 workspace.layout = new Spiral();
 ```
@@ -1152,7 +1155,10 @@ workspace.layout = new Spiral();
 
 ```ts
 const button = new Box({ padding: 8, background: "#334" });
-button.onPointer = (event) => { if (event.kind === "press") run(); return true; };
+button.onPointer = (event) => {
+    if (event.kind === "press") run();
+    return true;
+};
 ```
 
 - A handler is a `callback` property or a signal listener on `canvas`. The native toolkit hit-tests, bubbles from the target
@@ -1175,16 +1181,16 @@ button.onPointer = (event) => { if (event.kind === "press") run(); return true; 
 
 ### 5.7 Who implements what
 
-| Feature                    | Matching and defaults | Hook that runs shell code               | Generated per language                   |
-| -------------------------- | --------------------- | --------------------------------------- | ---------------------------------------- |
-| Custom layout              | std driver            | `compute` and the optional hooks        | `Layout` base class, `LayoutContext`     |
-| Drag binding               | core matcher, std rules | `on_start`, `on_update`, `on_end`, `on_cancel` | Stock binding classes, `PointerDragBinding` |
-| Gesture                    | core matcher          | `on_begin`, `on_update`, `on_end`, `on_cancel`, or a map of functions | `GestureBinding`, action bindings |
-| Widget handler             | std toolkit           | `on_pointer`, `on_key`, or a closure property | `Canvas`, `Box` and the rest        |
-| Custom widget              | std toolkit           | `paint`, `measure`, `arrange`           | The same classes                         |
-| Property binding           | core                  | `compute`                               | `property_bindings`                      |
-| Listener on a collection   | core                  | `on_added`, `on_removed`, `on_changed`  | `collection_listener`                    |
-| Window menu entries        | std menus             | `run`, or a `menu_provider`             | `MenuItem`, `menu_provider`              |
+| Feature                  | Matching and defaults   | Hook that runs shell code                                             | Generated per language                      |
+| ------------------------ | ----------------------- | --------------------------------------------------------------------- | ------------------------------------------- |
+| Custom layout            | std driver              | `compute` and the optional hooks                                      | `Layout` base class, `LayoutContext`        |
+| Drag binding             | core matcher, std rules | `on_start`, `on_update`, `on_end`, `on_cancel`                        | Stock binding classes, `PointerDragBinding` |
+| Gesture                  | core matcher            | `on_begin`, `on_update`, `on_end`, `on_cancel`, or a map of functions | `GestureBinding`, action bindings           |
+| Widget handler           | std toolkit             | `on_pointer`, `on_key`, or a closure property                         | `Canvas`, `Box` and the rest                |
+| Custom widget            | std toolkit             | `paint`, `measure`, `arrange`                                         | The same classes                            |
+| Property binding         | core                    | `compute`                                                             | `property_bindings`                         |
+| Listener on a collection | core                    | `on_added`, `on_removed`, `on_changed`                                | `collection_listener`                       |
+| Window menu entries      | std menus               | `run`, or a `menu_provider`                                           | `MenuItem`, `menu_provider`                 |
 
 ## 6. Lanes
 
@@ -1229,11 +1235,11 @@ The import graph of `data/js` (computed over every `from "gnoblin-…"` edge bet
 rest of the library imports. A module that nothing outside its own group imports can go in its lane. A module that the
 engine's host glue imports goes at the flip.
 
-| Deleted in the lane that replaces it                                                         | Deleted at NpFlip (hand-written TypeScript still imports it)                         |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| JS11 UI, JS12 frame, JS13 menus, JS14 shell parts, JS16 XR, JS9 scene, JC7 math              | JC2, JC4, JC5, JS2 to JS8, JS10, JS15 at NpFlip; JC3 and JC6 at NpJsFinal, with the natives they serve |
-| PY1 to PY3 (Python has no TypeScript importer)                                               | -                                                                                    |
-| LUA, JST                                                                                     | -                                                                                    |
+| Deleted in the lane that replaces it                                            | Deleted at NpFlip (hand-written TypeScript still imports it)                                           |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| JS11 UI, JS12 frame, JS13 menus, JS14 shell parts, JS16 XR, JS9 scene, JC7 math | JC2, JC4, JC5, JS2 to JS8, JS10, JS15 at NpFlip; JC3 and JC6 at NpJsFinal, with the natives they serve |
+| PY1 to PY3 (Python has no TypeScript importer)                                  | -                                                                                                      |
+| LUA, JST                                                                        | -                                                                                                      |
 
 Import counts behind the right column, as edges from other groups:
 
@@ -1251,7 +1257,7 @@ them is a new public API.
   look the object up in the engine (`gnoblin.clients`, the TypeScript `Workspace`). After it they are the identity.
 - **S2, interim re-export files.** When a lane deletes an implementation that hand-written TypeScript still imports, it leaves
   a file of one line (`export { Box } from "gnoblin-std/generated";`) whose first line is `// interim (NpStdUi): deleted by
-  NpFlip`. `grep -rl 'interim (Np' data/js` lists them.
+NpFlip`. `grep -rl 'interim (Np' data/js` lists them.
 - **S3, embedded generated modules under the old paths.** NpGenOut serves the generated modules from the binary under
   `gnoblin-core/generated/*` and `gnoblin-std/generated/*`. The rest still comes from `GNOBLIN_JS_STOCK_DIR`, which
   NpJsFinal deletes together with the directory.
@@ -1264,33 +1270,33 @@ moves to the right-hand column and is named in the lane's commit message.
 Days are working days of one lane agent, including a37 gate runs, with a spread of about 40 per cent. "Needs" lists lanes
 that must have merged.
 
-| Lane            | Needs                         | Wave | Days | What it ends                                                                 |
-| --------------- | ----------------------------- | ---- | ---- | ---------------------------------------------------------------------------- |
-| NpLuaDelete     | none                          | S0   | 1    | `data/lua`, its cmake install                                                |
-| NpStarterMove   | none                          | S0   | 1    | `data/js/starter`                                                            |
-| NpOracle        | none                          | S0   | 4    | Nothing deleted: records the old behaviour                                   |
-| NpGenOut        | none                          | S0   | 7    | Every committed generated file, `.cargo` stock variable                       |
-| NpObjectAbiA    | NpGenOut                      | S1   | 10   | `gnoblin-std-dyn/generated.rs`; the first slice (`entry_model`, `focus_decision`) |
-| NpObjectAbiB    | NpObjectAbiA                  | S1   | 8    | JS and Python bridges for the protocol                                        |
-| NpStdUi         | NpObjectAbiA                  | C    | 14   | JS11                                                                         |
-| NpStdScene      | NpObjectAbiA                  | C    | 8    | JS9, JC7                                                                     |
-| NpStdStyle      | NpObjectAbiA                  | C    | 6    | Native only (TypeScript goes at NpFlip)                                      |
-| NpCoreModel     | NpObjectAbiA                  | C    | 14   | Native only                                                                  |
-| NpCoreServices  | NpObjectAbiA                  | C    | 9    | Native only                                                                  |
-| NpCoreInput     | NpObjectAbiA                  | C    | 14   | Native only                                                                  |
-| NpPyRuntime     | NpObjectAbiB                  | C    | 8    | PY1 to PY3, `data/python`                                                    |
-| NpStdFrame      | NpStdUi                       | D    | 9    | JS12                                                                         |
-| NpStdMenus      | NpStdUi                       | D    | 6    | JS13                                                                         |
-| NpStdShellUi    | NpStdUi, NpCoreServices       | D    | 8    | JS14                                                                         |
-| NpStdXr         | NpStdScene, NpStdUi           | D    | 10   | JS16                                                                         |
-| NpStdPolicy     | NpStdUi, NpCoreInput          | D    | 9    | Native only                                                                  |
-| NpStdObjects    | NpCoreModel                   | D    | 12   | Native only                                                                  |
-| NpStdDisplay    | NpStdScene, NpStdObjects      | D    | 4    | Native only                                                                  |
-| NpFlip          | every lane of C and D         | S4   | 12   | JC2, JC4, JC5, JS2 to JS8, JS10, JS15                                        |
-| NpJsFinal       | NpFlip                        | S5   | 8    | `data/js`, `stock.rs`, the engine mirror, JC3, JC6                           |
-| NpTypesCtl      | NpFlip                        | S5   | 5    | Declarations, `gnoblinctl`, docs, scripts                                    |
-| NpAbiClean      | NpJsFinal                     | S5   | 3    | Unused table functions, `tree_link_*`, `hub.rs`                              |
-| NpGate          | all                           | S5   | 5    | Final gate, the transitional `ts-compat` files                               |
+| Lane           | Needs                    | Wave | Days | What it ends                                                                      |
+| -------------- | ------------------------ | ---- | ---- | --------------------------------------------------------------------------------- |
+| NpLuaDelete    | none                     | S0   | 1    | `data/lua`, its cmake install                                                     |
+| NpStarterMove  | none                     | S0   | 1    | `data/js/starter`                                                                 |
+| NpOracle       | none                     | S0   | 4    | Nothing deleted: records the old behaviour                                        |
+| NpGenOut       | none                     | S0   | 7    | Every committed generated file, `.cargo` stock variable                           |
+| NpObjectAbiA   | NpGenOut                 | S1   | 10   | `gnoblin-std-dyn/generated.rs`; the first slice (`entry_model`, `focus_decision`) |
+| NpObjectAbiB   | NpObjectAbiA             | S1   | 8    | JS and Python bridges for the protocol                                            |
+| NpStdUi        | NpObjectAbiA             | C    | 14   | JS11                                                                              |
+| NpStdScene     | NpObjectAbiA             | C    | 8    | JS9, JC7                                                                          |
+| NpStdStyle     | NpObjectAbiA             | C    | 6    | Native only (TypeScript goes at NpFlip)                                           |
+| NpCoreModel    | NpObjectAbiA             | C    | 14   | Native only                                                                       |
+| NpCoreServices | NpObjectAbiA             | C    | 9    | Native only                                                                       |
+| NpCoreInput    | NpObjectAbiA             | C    | 14   | Native only                                                                       |
+| NpPyRuntime    | NpObjectAbiB             | C    | 8    | PY1 to PY3, `data/python`                                                         |
+| NpStdFrame     | NpStdUi                  | D    | 9    | JS12                                                                              |
+| NpStdMenus     | NpStdUi                  | D    | 6    | JS13                                                                              |
+| NpStdShellUi   | NpStdUi, NpCoreServices  | D    | 8    | JS14                                                                              |
+| NpStdXr        | NpStdScene, NpStdUi      | D    | 10   | JS16                                                                              |
+| NpStdPolicy    | NpStdUi, NpCoreInput     | D    | 9    | Native only                                                                       |
+| NpStdObjects   | NpCoreModel              | D    | 12   | Native only                                                                       |
+| NpStdDisplay   | NpStdScene, NpStdObjects | D    | 4    | Native only                                                                       |
+| NpFlip         | every lane of C and D    | S4   | 12   | JC2, JC4, JC5, JS2 to JS8, JS10, JS15                                             |
+| NpJsFinal      | NpFlip                   | S5   | 8    | `data/js`, `stock.rs`, the engine mirror, JC3, JC6                                |
+| NpTypesCtl     | NpFlip                   | S5   | 5    | Declarations, `gnoblinctl`, docs, scripts                                         |
+| NpAbiClean     | NpJsFinal                | S5   | 3    | Unused table functions, `tree_link_*`, `hub.rs`                                   |
+| NpGate         | all                      | S5   | 5    | Final gate, the transitional `ts-compat` files                                    |
 
 Total: 195 lane-days, which is 13 in S0, 18 in S1, 131 in waves C and D and 33 from the flip on. With four lanes at once the
 wall clock is about 86 working days:
@@ -1317,7 +1323,7 @@ shell where the feature has a Rust SDK. It also asserts that the files the lane 
 - **Owns:** `data/lua/**`, `cmake/install-lua-data.cmake`, the include at `cmake/install-session.cmake:179`, `data/README.md`.
 - **Does:** removes them, with the proof of 2.4, and a `CHANGELOG.md` line that retires decision D9 for `data/lua`.
 - **Acceptance:** no real-session test applies, since nothing ran. The gates are the greps of 2.4, `cargo test -p
-  gnoblin-config-migrate`, `just workspace-ci` and the `lua-runtime.yml` job on the push.
+gnoblin-config-migrate`, `just workspace-ci` and the `lua-runtime.yml` job on the push.
 
 #### NpStarterMove (1 day)
 
@@ -1417,6 +1423,33 @@ shell where the feature has a Rust SDK. It also asserts that the files the lane 
   queued dispatch, `find`, focus history, property bindings with dependency tracking, named subscriptions.
 - **Acceptance:** `modular::native_model` from Python and Rust: windows open, move, retitle and close, and the listener calls
   match the NpOracle trace order. TypeScript proof and the deletion of JC2 come at NpFlip.
+
+**What exists.** The classes of `gnoblin.model` are served by `libgnoblin-core` from five schema files (`collection`, `client`,
+`focus`, `operation`, `properties`) and `gnoblin-core-impl/src/model/`. The model of a generation is made on first use and is told
+what the compositor sent by the dispatch loop, once for each pump of the tree link. Every event is queued and told from the turn
+after the change, in the order the TypeScript library queued it: a window's own listeners first, then the collections that hold
+it (the root, its selections in the order they were made, then the lists a shell keeps). `crates/gnoblin-core-impl/tests/model.rs`
+replays the 13 object-model fixtures step by step. The protocol gained `redirect` (a facade signal such as
+`client_title_changed` listens in the collection's own list), `replay` (a listener of `added` is told of the members that are
+there, from the next turn), and native listeners (`Cx::listen`) that `add_listener` uses for an interface a shell implements.
+
+**Deviations from the table of 4.4, and whether each is acceptable for the flip.**
+
+| Deviation                                                                                                                                              | How the generated SDKs present it                                                                                             | For the flip                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `at(i)` and `get(id)` fail with `E_NO_SUCH_NODE` instead of answering "none"                                                                           | Rust `Err`; Python `IndexError`/`KeyError` through the dunder; TypeScript throws. The TypeScript library answered `undefined` | Not acceptable as it stands: the schema needs an optional result (`returns` that may be none) before NpFlip, or the TypeScript shells that test `get(id) === undefined` break |
+| `find(kind, filter)` is `find_clients` and `find_outputs` with a typed query record                                                                    | Typed methods; a predicate is `to_list()` and a filter in the shell's language, as 5.6 says                                   | Acceptable. `find("Workspace")` belongs to std                                                                                                                                |
+| `where` takes a record (`client_query`), with `any_*` fields for "one of"                                                                              | Typed record in every language                                                                                                | Acceptable                                                                                                                                                                    |
+| The `connected` property of an output is `alive`; `connected` is the signal                                                                            | One name for the state                                                                                                        | Acceptable; the generated TypeScript can add a getter                                                                                                                         |
+| `client.focus()`, not `activate`                                                                                                                       | As the TypeScript has it                                                                                                      | Acceptable                                                                                                                                                                    |
+| `position` is a list of three numbers; `transform` (a `Transform3D`) is not served                                                                     | `position` as a list; `transform` arrives with the scene math lane                                                            | Acceptable once NpStdScene serves the math                                                                                                                                    |
+| `request` is not a signal of `client`                                                                                                                  | The std's classes extend `client` with it (a class of `gnoblin.std` may extend a core class)                                  | Acceptable                                                                                                                                                                    |
+| A property binding's first run is the next turn, not inside `bind`; compute results are typed (`bind_double`, `bind_bool`, `bind_string`, `bind_list`) | Typed methods; the callback is a closure                                                                                      | Acceptable; the std lane's scene fixtures decide if a synchronous first run is needed                                                                                         |
+| Rust names: the service is `ModelRoot`, `get` of a collection is `get_by_id`, and five signals carry a `client_` or `output_` prefix                   | Python and TypeScript keep the catalog names; NpObjectAbiB reports a clash if it meets one                                    | Acceptable                                                                                                                                                                    |
+| The focus filters `workspace_id` and `monitor_id` match nothing in the core alone                                                                      | A window of the core has no workspace and no output; std's class extending `client` answers for both                          | Acceptable                                                                                                                                                                    |
+
+**Pending.** The Python half of `modular::native_model` waits for the Python generator of NpObjectAbiB (`object_native.rs`), which
+is not on `rust-compositor` yet. The Rust half is `examples/21-native-model` and `crates/gnoblin/tests/modular/native_model.rs`.
 
 #### NpCoreServices (9 days)
 
@@ -1561,20 +1594,20 @@ Rules that every lane follows:
 4. Every TypeScript acceptance test has a Python twin, and a Rust twin where the SDK has the API.
 5. A threshold (`boot_cost`, `budgets`, `frame_cost`) is not changed.
 
-| Gate                                                              | Proves                                                          | Migration                                                              |
-| ----------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `starter_parity`                                                  | The default shell equals the starter run twice                  | Reads `shells/default`; digest unchanged                               |
-| `stock_ui`, `stock_focus`, `stock_layouts`, `stock_layouts2`      | Each stock feature, by its public behaviour                     | Unchanged until a lane makes the feature native; then run over it     |
-| `stock_source_maps`                                               | A throw in stock code names the `.ts` line                      | Deleted, replaced by the callback source-line test                    |
-| `spec_conformance`                                                | The owner's spec: 128 fences and the reference `init.js`        | `expected.toml` unchanged; progress only                              |
-| `scene_spec`                                                      | Scene sections 8, 14, 15, 16 of the spec                        | Unchanged                                                              |
-| The 51 `gnoblin-js` tests                                         | Shell-level behaviour over the fake compositor                  | 2.9                                                                    |
-| `gnoblin-runtime-python/tests`                                    | Python scenarios and stub agreement                             | `check_stubs.py` becomes the reflection check                          |
-| `gnoblin/tests/modular/*` (15)                                    | Real-session examples                                           | `no_std.rs` removes the std library from the library directory and keeps its assertions |
-| `gnoblin-std-impl/tests/{tiling,examples,anim_style}`             | Native rules equal the old rules                                | Compared with the NpOracle JSON, not the TypeScript reference           |
-| `abi_upgrade`, `abi-check`                                        | The C ABI                                                       | Unchanged                                                              |
-| `gen-sdks --check`, golden scripts, `ts-compat`                   | The generated surface                                           | 3.6                                                                    |
-| `dist-check`, `deps`, `layout`, `dupes`, `docs-parity`, `deny`   | Packaging and structure                                         | `deps` gains `gnoblin-sdkgen` and `gnoblin-paint` for std; `docs-parity` reads the declarations |
+| Gate                                                           | Proves                                                   | Migration                                                                                       |
+| -------------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `starter_parity`                                               | The default shell equals the starter run twice           | Reads `shells/default`; digest unchanged                                                        |
+| `stock_ui`, `stock_focus`, `stock_layouts`, `stock_layouts2`   | Each stock feature, by its public behaviour              | Unchanged until a lane makes the feature native; then run over it                               |
+| `stock_source_maps`                                            | A throw in stock code names the `.ts` line               | Deleted, replaced by the callback source-line test                                              |
+| `spec_conformance`                                             | The owner's spec: 128 fences and the reference `init.js` | `expected.toml` unchanged; progress only                                                        |
+| `scene_spec`                                                   | Scene sections 8, 14, 15, 16 of the spec                 | Unchanged                                                                                       |
+| The 51 `gnoblin-js` tests                                      | Shell-level behaviour over the fake compositor           | 2.9                                                                                             |
+| `gnoblin-runtime-python/tests`                                 | Python scenarios and stub agreement                      | `check_stubs.py` becomes the reflection check                                                   |
+| `gnoblin/tests/modular/*` (15)                                 | Real-session examples                                    | `no_std.rs` removes the std library from the library directory and keeps its assertions         |
+| `gnoblin-std-impl/tests/{tiling,examples,anim_style}`          | Native rules equal the old rules                         | Compared with the NpOracle JSON, not the TypeScript reference                                   |
+| `abi_upgrade`, `abi-check`                                     | The C ABI                                                | Unchanged                                                                                       |
+| `gen-sdks --check`, golden scripts, `ts-compat`                | The generated surface                                    | 3.6                                                                                             |
+| `dist-check`, `deps`, `layout`, `dupes`, `docs-parity`, `deny` | Packaging and structure                                  | `deps` gains `gnoblin-sdkgen` and `gnoblin-paint` for std; `docs-parity` reads the declarations |
 
 `modular/no_std.rs` today copies `data/js/gnoblin-core` into a scratch directory and runs a core-only shell with no std
 package. After NpFlip the same assertions run with `libgnoblin-std.so.1` absent from the library directory.
@@ -1590,18 +1623,19 @@ package. After NpFlip the same assertions run with `libgnoblin-std.so.1` absent 
 2. **Parity with an oracle that disappears.** The TypeScript library is the only specification of the UI, frame, menu and
    style behaviour, down to paint-list bytes and the order of listener calls. NpOracle records it.
 
-   The 51 `gnoblin-js` tests meet the native code together only at NpFlip, and a flip with many red tests would stall the
-   critical path. Mitigations:
+    The 51 `gnoblin-js` tests meet the native code together only at NpFlip, and a flip with many red tests would stall the
+    critical path. Mitigations:
 
-   - Python twins and fixtures in every lane, and the seams of 6.2.
-   - A rehearsal branch that rebases the flip onto the tip every few days in wave D, so the failure list is known before
-     NpFlip starts.
+    - Python twins and fixtures in every lane, and the seams of 6.2.
+    - A rehearsal branch that rebases the flip onto the tip every few days in wave D, so the failure list is known before
+      NpFlip starts.
+
 3. **The two biggest rewrites sit on the critical path with thin evidence.** Moving the JavaScript runtime onto node functions
    (removing the engine mirror) and porting the input matcher are both estimated from line counts. The matcher is about 3.5k
    lines with tiers, scopes, click versus drag and cancel on close.
 
-   The closure drag path was already seen not to reach TypeScript in one rig (section 34). The Python loader port is not
-   prototyped. If any of these doubles, the schedule moves by weeks.
+    The closure drag path was already seen not to reach TypeScript in one rig (section 34). The Python loader port is not
+    prototyped. If any of these doubles, the schedule moves by weeks.
 
 Smaller risks, each with an owner lane:
 
@@ -1618,24 +1652,24 @@ Smaller risks, each with an owner lane:
 
 Each decision has a recommendation. The owner may overrule any of them.
 
-| #   | Decision                                                                       | Recommendation                                            | If overruled                                                        |
-| --- | ------------------------------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------- |
-| O1  | The object model every shell needs lives in `gnoblin-core-impl`, one copy      | Yes. Python and Rust gain tiers and collections too       | A JS-only model in `gnoblin-js` Rust is 5 days cheaper and leaves Python and Rust thin |
-| O2  | Generated JS and Python modules are embedded in the runtime libraries          | Yes. They cannot drift from the catalog hash              | Install under `share/gnoblin/{js,python}`, keep both env overrides  |
-| O3  | Only `gnoblin-core`, `gnoblin-std` and `gnoblin-std/xr` resolve                | Yes, as D13 did for the old names                         | Generate an alias module per catalog module                          |
-| O4  | The Rust SDK keeps a hand-written support layer (about 2.8k lines in both crates) | Yes. It holds no behaviour                             | Generate it too; it needs templates inside the generator            |
-| O5  | Style objects are native handles with generated accessors                      | Yes, with a `style.set(record)` form for bulk writes       | Keep a script-side proxy over a record, which brings a script layer back |
-| O6  | Native widgets belong to the generation and are rebuilt on reload              | Yes, as today. State kept per widget id is a later option | Keyed retention with `state_put` and `state_get`                    |
-| O7  | The starter lives in `shells/default/`, not `examples/`                        | Yes. It ships as the default shell                        | `examples/00-default-shell`                                          |
-| O8  | `data/lua` is deleted although D9 froze it                                     | Yes. Nothing reads it                                     | Keep it and exclude it from the goal                                 |
-| O9  | Text is measured in the std process through `gnoblin-paint`                    | Yes. Synchronous, and the same crate as the painter       | Keep the asynchronous `measure` call and a pending state              |
-| O10 | `cargo xtask publish-prep` is how SDK crates stay publishable                  | Yes                                                       | Drop publishable crates                                              |
-| O11 | A Python shim that cannot be Rust becomes a text constant in the runtime       | Only if the lane proves a piece cannot be written in PyO3 | A file under `data/python` stays, against the owner's rule           |
-| O12 | Dual-language acceptance: every lane proves its feature from Python            | Yes. It is the proof that no TypeScript is left behind    | TypeScript and Rust only                                             |
-| O13 | QuickJS bytecode of the embedded modules is produced at build time             | Not yet. Measure `boot_cost` first                        | Opt in with a build step in `gnoblin-js/build.rs`                    |
-| O14 | One serial flip (NpFlip) instead of module-by-module flips                      | Yes. A dual object world is more work and more risk       | Per-module flips with a longer seam                                  |
-| O15 | ABI functions may be removed while `abi.lock` says `released none`             | Yes (D18). NpAbiClean does it once                        | Keep them until 0.2.0 ships                                          |
-| O16 | The three seams of 6.2 are allowed during waves C and D                        | Yes. They are listed, greppable and removed once          | Port everything coupled before any deletion, which serialises the lanes |
+| #   | Decision                                                                          | Recommendation                                            | If overruled                                                                           |
+| --- | --------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| O1  | The object model every shell needs lives in `gnoblin-core-impl`, one copy         | Yes. Python and Rust gain tiers and collections too       | A JS-only model in `gnoblin-js` Rust is 5 days cheaper and leaves Python and Rust thin |
+| O2  | Generated JS and Python modules are embedded in the runtime libraries             | Yes. They cannot drift from the catalog hash              | Install under `share/gnoblin/{js,python}`, keep both env overrides                     |
+| O3  | Only `gnoblin-core`, `gnoblin-std` and `gnoblin-std/xr` resolve                   | Yes, as D13 did for the old names                         | Generate an alias module per catalog module                                            |
+| O4  | The Rust SDK keeps a hand-written support layer (about 2.8k lines in both crates) | Yes. It holds no behaviour                                | Generate it too; it needs templates inside the generator                               |
+| O5  | Style objects are native handles with generated accessors                         | Yes, with a `style.set(record)` form for bulk writes      | Keep a script-side proxy over a record, which brings a script layer back               |
+| O6  | Native widgets belong to the generation and are rebuilt on reload                 | Yes, as today. State kept per widget id is a later option | Keyed retention with `state_put` and `state_get`                                       |
+| O7  | The starter lives in `shells/default/`, not `examples/`                           | Yes. It ships as the default shell                        | `examples/00-default-shell`                                                            |
+| O8  | `data/lua` is deleted although D9 froze it                                        | Yes. Nothing reads it                                     | Keep it and exclude it from the goal                                                   |
+| O9  | Text is measured in the std process through `gnoblin-paint`                       | Yes. Synchronous, and the same crate as the painter       | Keep the asynchronous `measure` call and a pending state                               |
+| O10 | `cargo xtask publish-prep` is how SDK crates stay publishable                     | Yes                                                       | Drop publishable crates                                                                |
+| O11 | A Python shim that cannot be Rust becomes a text constant in the runtime          | Only if the lane proves a piece cannot be written in PyO3 | A file under `data/python` stays, against the owner's rule                             |
+| O12 | Dual-language acceptance: every lane proves its feature from Python               | Yes. It is the proof that no TypeScript is left behind    | TypeScript and Rust only                                                               |
+| O13 | QuickJS bytecode of the embedded modules is produced at build time                | Not yet. Measure `boot_cost` first                        | Opt in with a build step in `gnoblin-js/build.rs`                                      |
+| O14 | One serial flip (NpFlip) instead of module-by-module flips                        | Yes. A dual object world is more work and more risk       | Per-module flips with a longer seam                                                    |
+| O15 | ABI functions may be removed while `abi.lock` says `released none`                | Yes (D18). NpAbiClean does it once                        | Keep them until 0.2.0 ships                                                            |
+| O16 | The three seams of 6.2 are allowed during waves C and D                           | Yes. They are listed, greppable and removed once          | Port everything coupled before any deletion, which serialises the lanes                |
 
 ### 7.3 What this design did not verify
 

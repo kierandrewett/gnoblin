@@ -1,4 +1,4 @@
-#![allow(unsafe_code, unused_mut, dead_code)]
+#![allow(unsafe_code)]
 //! The object model of `libgnoblin-core` (`gnoblin.model`) against the fixtures the TypeScript library recorded: the order in which the
 //! listeners of a window, an output, a collection and the `gnoblin` object are told, how a selection follows its members, what `find`
 //! and the focus history answer, the timers, and what an object that is gone still says.
@@ -200,10 +200,6 @@ impl Rig {
             .collect()
     }
 
-    fn texts(&self, ids: Vec<String>) -> Value {
-        json!(ids)
-    }
-
     // ---- listening -----------------------------------------------------------------------------------------------------------
 
     /// Listens to `signal` of `obj` and logs `<place>:<method>:<id of the first argument's object, or its name>`.
@@ -267,37 +263,6 @@ impl Rig {
                 "ending a listener twice is harmless and refused"
             );
         }
-    }
-
-    /// Makes an object of the interface `class` whose methods `names` log `<who>:<method>:<id>`.
-    fn listener(&self, class: &str, names: &[&str], who: &'static str) -> Obj {
-        let interface = self.class(class);
-        let members: Vec<MemberId> = names
-            .iter()
-            .map(|name| self.member(class, abi::MEMBER_METHOD, &format!("on_{name}")))
-            .collect();
-        let api = self.api;
-        let log = Rc::clone(&self.log);
-        let table: Vec<(MemberId, String)> = members
-            .iter()
-            .copied()
-            .zip(names.iter().map(|name| (*name).to_owned()))
-            .collect();
-        self.api
-            .implement(interface, &members, move |member, args| {
-                let name = table
-                    .iter()
-                    .find(|(held, _)| *held == member)
-                    .map(|(_, name)| name.clone())
-                    .unwrap_or_default();
-                log.borrow_mut().push(json!(format!(
-                    "{who}:{}:{}",
-                    method_name(&name),
-                    describe(api, &args[0], "id")
-                )));
-                Ok(Val::None)
-            })
-            .expect("a listener object")
     }
 
     // ---- the compositor's side ---------------------------------------------------------------------------------------------
