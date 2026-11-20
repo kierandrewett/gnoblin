@@ -11,6 +11,7 @@
 mod core;
 mod ext_background_effect_v1;
 mod ext_data_control_v1;
+mod ext_idle_notify_v1;
 mod wl_output;
 mod wl_shm;
 mod wp_fifo_v1;
@@ -31,4 +32,5 @@ mod zwp_input_method_v2;
 mod zwp_keyboard_shortcuts_inhibit_v1;
 mod zwp_pointer_constraints_v1;
 mod zwp_primary_selection_v1;
+mod zwp_text_input_v3;
 mod zxdg_output_v1;

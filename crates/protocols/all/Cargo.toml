@@ -43,3 +43,5 @@ gnoblin-wayland-wp-security-context-v1 = { path = "../wp-security-context-v1" }
 gnoblin-wayland-zwlr-gamma-control-v1 = { path = "../zwlr-gamma-control-v1" }
 gnoblin-wayland-zwlr-output-power-management-v1 = { path = "../zwlr-output-power-management-v1" }
 gnoblin-wayland-xdg-foreign = { path = "../xdg-foreign" }
+gnoblin-wayland-ext-idle-notify-v1 = { path = "../ext-idle-notify-v1" }
+gnoblin-wayland-zwp-text-input-v3 = { path = "../zwp-text-input-v3" }

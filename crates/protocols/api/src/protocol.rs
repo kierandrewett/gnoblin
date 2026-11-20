@@ -28,6 +28,9 @@ impl ServedInterface {
 pub enum Privilege {
     /// Every client that is not sandboxed sees it, and no roster entry gates it.
     Core,
+    /// Every client that is not sandboxed sees it. No roster entry names it, because the protocol is no privilege: the
+    /// answer is only whether the connection is a sandbox.
+    Unsandboxed,
     /// A global the roster gates: it decides which clients see it. A privileged one is hidden from every client that is not
     /// privileged or trusted; an open one only from a sandboxed client.
     Roster(Global),

@@ -67,6 +67,7 @@ use crate::protocols::wl_compositor::WlCompositorClientState;
 use crate::state::State;
 use gnoblin_wayland_api::access::ClientRole;
 use gnoblin_wayland_protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
+use gnoblin_wayland_protocols::ext_idle_notify_v1::IdleNotifyExt as _;
 
 use crate::log;
 

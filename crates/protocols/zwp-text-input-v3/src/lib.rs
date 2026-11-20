@@ -48,23 +48,51 @@
 //!    `a_text_input_enters_a_window_when_it_maps_after_the_window_was_configured` and
 //!    `a_grabbed_popup_takes_the_text_input_with_the_keyboard_before_it_is_configured`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
+use smithay::input::{Seat, SeatHandler};
+use smithay::reexports::wayland_protocols::wp::text_input::zv3::server::zwp_text_input_manager_v3::ZwpTextInputManagerV3;
 use smithay::reexports::wayland_protocols::wp::text_input::zv3::server::zwp_text_input_v3::{
     ContentHint, ContentPurpose, Request, ZwpTextInputV3,
 };
-use smithay::reexports::wayland_server::{DataInit, DisplayHandle, Resource};
+use smithay::reexports::wayland_server::backend::ObjectId;
+use smithay::reexports::wayland_server::{DataInit, Dispatch, DisplayHandle, GlobalDispatch, Resource};
 use smithay::wayland::Dispatch2;
+use smithay::wayland::GlobalData;
 use smithay::wayland::input_method::InputMethodSeat;
 use smithay::wayland::text_input::{TextInputActivation, TextInputManagerState, TextInputUserData};
 
-use crate::State;
+gnoblin_log::logger!(log = "wayland");
 
-use crate::log;
+/// What this protocol advertises.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "zwp-text-input-v3",
+    interfaces: &[ServedInterface::new("zwp_text_input_manager_v3", 1)],
+    privilege: Privilege::Core,
+};
+
+/// What the protocol needs of the compositor: the seat, and where it keeps what it has told and held.
+pub trait Host: SeatHandler + TextInputActivation + Sized + 'static {
+    /// The session's seat.
+    fn seat(&self) -> &Seat<Self>;
+
+    /// The text inputs that have been told they have focus.
+    fn announced_text_inputs(&mut self) -> &mut HashSet<ObjectId>;
+
+    /// The text inputs whose requests are held until an input method binds.
+    fn held_text_inputs(&mut self) -> &mut HashMap<ObjectId, HeldTextInput>;
+}
 
 /// Creates the `zwp_text_input_manager_v3` global.
-pub(crate) fn text_input_global(display: &DisplayHandle) -> TextInputManagerState {
-    TextInputManagerState::new::<State>(display)
+pub fn register<D>(registrar: &Registrar<'_>) -> TextInputManagerState
+where
+    D: GlobalDispatch<ZwpTextInputManagerV3, GlobalData>
+        + Dispatch<ZwpTextInputManagerV3, GlobalData>
+        + Dispatch<ZwpTextInputV3, TextInputUserData>
+        + 'static,
+{
+    TextInputManagerState::new::<D>(registrar.display())
 }
 
 /// Tells a `zwp_text_input_v3` it has focus when it was created on a surface that already
@@ -76,10 +104,10 @@ pub(crate) fn text_input_global(display: &DisplayHandle) -> TextInputManagerStat
 /// for a focus change that never comes and its `enable` would never be answered. This is
 /// run after every dispatch, which is the only place a new text input can appear, and it
 /// remembers what it told so an object hears `enter` once.
-pub(crate) fn announce_new_text_inputs(state: &mut State) {
+pub fn announce_new_text_inputs<H: Host>(state: &mut H) {
     use smithay::wayland::text_input::{TextInputHandle, TextInputSeat};
-    let handle: TextInputHandle = state.seat.text_input().clone();
-    let announced = std::mem::take(&mut state.announced_text_inputs);
+    let handle: TextInputHandle = state.seat().text_input().clone();
+    let announced = std::mem::take(state.announced_text_inputs());
     let mut fresh = Vec::new();
     let mut current = HashSet::new();
     handle.with_focused_text_input(|input, surface| {
@@ -94,7 +122,7 @@ pub(crate) fn announce_new_text_inputs(state: &mut State) {
     for (input, surface) in fresh {
         input.enter(&surface);
     }
-    state.announced_text_inputs = current;
+    *state.announced_text_inputs() = current;
 }
 
 /// Records that the text inputs on the focus have been told it, without telling them.
@@ -102,33 +130,33 @@ pub(crate) fn announce_new_text_inputs(state: &mut State) {
 /// With an input method bound Smithay sends `enter` itself when the keyboard focus moves, so the sweep of
 /// [`announce_new_text_inputs`] has to know they heard it: a text input that is created afterwards is still its to
 /// announce.
-pub(crate) fn record_entered_text_inputs(state: &mut State) {
+pub fn record_entered_text_inputs<H: Host>(state: &mut H) {
     use smithay::wayland::text_input::{TextInputHandle, TextInputSeat};
-    let handle: TextInputHandle = state.seat.text_input().clone();
+    let handle: TextInputHandle = state.seat().text_input().clone();
     let mut entered = HashSet::new();
     handle.with_focused_text_input(|input, _| {
         entered.insert(input.id());
     });
-    state.announced_text_inputs = entered;
+    *state.announced_text_inputs() = entered;
 }
 
-impl TextInputActivation for State {
-    fn activated(&mut self, content_type: Option<(ContentHint, ContentPurpose)>) {
-        log::debug!(area = "text-input", hint = ?content_type.map(|(hint, _)| hint),
-            "a client enabled its text input"
-        );
-        // A client enables a text input only after it was told it has focus, and the sweep
-        // after the dispatch that created it is what told it.
-        announce_new_text_inputs(self);
-    }
+/// A client enabled its text input.
+pub fn activated<H: Host>(host: &mut H, content_type: Option<(ContentHint, ContentPurpose)>) {
+    log::debug!(area = "text-input", hint = ?content_type.map(|(hint, _)| hint),
+        "a client enabled its text input"
+    );
+    // A client enables a text input only after it was told it has focus, and the sweep
+    // after the dispatch that created it is what told it.
+    announce_new_text_inputs(host);
+}
 
-    fn deactivated(&mut self) {
-        log::debug!(area = "text-input", "the active text input was disabled");
-    }
+/// The active text input was disabled.
+pub fn deactivated() {
+    log::debug!(area = "text-input", "the active text input was disabled");
 }
 
 /// What a text input asked while no input method was bound, as far as an input method needs it.
-pub(crate) struct HeldTextInput {
+pub struct HeldTextInput {
     resource: ZwpTextInputV3,
     /// How many commits the client made. Smithay numbers the `done` events it answers a text input with by the
     /// commits it saw, so a replay makes as many.
@@ -181,27 +209,27 @@ impl RequestSlots {
 /// The request comes back when it is not kept, so the caller passes it on to Smithay as before, and `None` means it was
 /// kept for [`replay`]. A request is kept only when Smithay would have discarded it for want of an input method and not
 /// for any other reason: its client has the text-input focus. A `destroy` is never kept, and drops what was.
-pub(crate) fn hold(state: &mut State, input: &ZwpTextInputV3, request: Request) -> Option<Request> {
+pub fn hold<H: Host>(state: &mut H, input: &ZwpTextInputV3, request: Request) -> Option<Request> {
     use smithay::wayland::text_input::TextInputSeat;
     // These are the two conditions under which Smithay discards a text input's request for want of an input method.
-    if state.seat.input_method().has_instance() || state.seat.text_input().compositor_input_method() {
+    if state.seat().input_method().has_instance() || state.seat().text_input().compositor_input_method() {
         return Some(request);
     }
     if matches!(request, Request::Destroy) {
-        state.held_text_inputs.remove(&input.id());
+        state.held_text_inputs().remove(&input.id());
         return Some(request);
     }
     let focused = state
-        .seat
+        .seat()
         .text_input()
         .focus()
         .is_some_and(|focus| focus.id().same_client_as(&input.id()));
     if !focused {
         return Some(request);
     }
-    state.held_text_inputs.retain(|_, held| held.resource.is_alive());
+    state.held_text_inputs().retain(|_, held| held.resource.is_alive());
     let held = state
-        .held_text_inputs
+        .held_text_inputs()
         .entry(input.id())
         .or_insert_with(|| HeldTextInput {
             resource: input.clone(),
@@ -229,16 +257,16 @@ pub(crate) fn hold(state: &mut State, input: &ZwpTextInputV3, request: Request) 
 /// Smithay deactivates the input method when a destroyed text input was the focused client's last, so a client with a
 /// second text input that destroys the enabled one leaves its input method activated for a field that is gone. A
 /// `disable` and a `commit` through Smithay's own path make the same deactivation the client would have asked for.
-pub(crate) fn end_if_active(
-    state: &mut State,
+pub fn end_if_active<H: Host>(
+    state: &mut H,
     input: &ZwpTextInputV3,
     dhandle: &DisplayHandle,
-    data_init: &mut DataInit<'_, State>,
+    data_init: &mut DataInit<'_, H>,
 ) {
     use smithay::wayland::text_input::TextInputSeat;
     let mut active = false;
     state
-        .seat
+        .seat()
         .text_input()
         .with_active_text_input(|held, _| active |= held == input);
     if !active {
@@ -258,11 +286,11 @@ pub(crate) fn end_if_active(
 /// events, then the last carries the state. A text input that was not enabled as of its last commit has nothing to
 /// tell an input method, and only has its serial brought up to its commit count. What was asked since the last
 /// commit follows as pending state.
-pub(crate) fn replay(state: &mut State, dhandle: &DisplayHandle, data_init: &mut DataInit<'_, State>) {
-    if state.held_text_inputs.is_empty() || !state.seat.input_method().has_instance() {
+pub fn replay<H: Host>(state: &mut H, dhandle: &DisplayHandle, data_init: &mut DataInit<'_, H>) {
+    if state.held_text_inputs().is_empty() || !state.seat().input_method().has_instance() {
         return;
     }
-    for (_, held) in std::mem::take(&mut state.held_text_inputs) {
+    for (_, held) in std::mem::take(state.held_text_inputs()) {
         let HeldTextInput {
             resource,
             commits,
@@ -272,7 +300,7 @@ pub(crate) fn replay(state: &mut State, dhandle: &DisplayHandle, data_init: &mut
         let (Some(client), Some(data)) = (resource.client(), resource.data::<TextInputUserData>()) else {
             continue;
         };
-        let mut feed = |state: &mut State, request: Request| {
+        let mut feed = |state: &mut H, request: Request| {
             data.request(state, &client, &resource, request, dhandle, data_init);
         };
         if committed.enabled() {

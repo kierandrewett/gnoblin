@@ -88,7 +88,6 @@ use crate::observation::{
 };
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
-use crate::protocols::ext_idle_notify_v1::ExtIdleNotifyV1Tables;
 use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
 use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::foreign_toplevel_shared::ForeignToplevels;
@@ -100,6 +99,7 @@ use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
 use crate::window_request::{Decider, WindowRequest, X11Flags};
 use gnoblin_wayland_api::access::{Access, AccessPolicy, ClientRole, Global};
+use gnoblin_wayland_protocols::ext_idle_notify_v1::{ExtIdleNotifyV1Tables, IdleNotifyExt as _};
 use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
 use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
 use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
@@ -414,7 +414,7 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
     /// Kept alive so `ext_idle_notifier_v1` stays registered; the handler in
-    /// [`crate::protocols::ext_idle_notify_v1`] answers its notifications.
+    /// `gnoblin-wayland-ext-idle-notify-v1` answers its notifications.
     #[allow(dead_code)]
     pub(crate) idle_notify_global: GlobalId,
     /// Kept alive so `ext_background_effect_manager_v1` stays registered; the bind is
@@ -511,7 +511,7 @@ pub struct State {
     ///
     /// Smithay discards a text input's requests when there is no input method, and an input method that starts after an
     /// application enabled its text field would otherwise never hear of it.
-    pub(crate) held_text_inputs: HashMap<ObjectId, crate::protocols::zwp_text_input_v3::HeldTextInput>,
+    pub(crate) held_text_inputs: HashMap<ObjectId, gnoblin_wayland_protocols::zwp_text_input_v3::HeldTextInput>,
     /// The last cursor image a client set.
     pub(crate) cursor_image: CursorImageStatus,
     /// Set when a client changes the pointer image; the composer is told at the next frame.
@@ -769,7 +769,7 @@ impl State {
         let single_pixel_buffer_state =
             gnoblin_wayland_protocols::wp_single_pixel_buffer_v1::register::<Self>(&registrar);
         let tearing_control_global = gnoblin_wayland_protocols::wp_tearing_control_v1::register::<Self>(&registrar);
-        let idle_notify_global = crate::protocols::ext_idle_notify_v1::global(&display_handle, &access);
+        let idle_notify_global = gnoblin_wayland_protocols::ext_idle_notify_v1::register::<Self>(&registrar);
         let xdg_foreign_globals = gnoblin_wayland_protocols::xdg_foreign::register::<Self>(&registrar);
         let xdg_dialog_state = gnoblin_wayland_protocols::xdg_dialog_v1::register::<Self>(&registrar);
         let xdg_toplevel_icon_manager = gnoblin_wayland_protocols::xdg_toplevel_icon_v1::register::<Self>(&registrar);
@@ -777,7 +777,7 @@ impl State {
         let xdg_system_bell_state = gnoblin_wayland_protocols::xdg_system_bell_v1::register::<Self>(&registrar);
         let fifo_manager_state = gnoblin_wayland_protocols::wp_fifo_v1::register::<Self>(&registrar);
         let alpha_modifier_state = gnoblin_wayland_protocols::wp_alpha_modifier_v1::register::<Self>(&registrar);
-        let text_input_state = crate::protocols::zwp_text_input_v3::text_input_global(&display_handle);
+        let text_input_state = gnoblin_wayland_protocols::zwp_text_input_v3::register::<Self>(&registrar);
         let input_method_state = gnoblin_wayland_protocols::zwp_input_method_v2::register::<Self>(&registrar);
         let virtual_keyboard_global =
             crate::protocols::zwp_virtual_keyboard_v1::virtual_keyboard_global(&display_handle, &access);
@@ -1917,9 +1917,9 @@ impl State {
             // `leave` resets a text input: nothing it asked while the focus was elsewhere is true any more.
             self.held_text_inputs.clear();
             if smithay_sends {
-                crate::protocols::zwp_text_input_v3::record_entered_text_inputs(self);
+                gnoblin_wayland_protocols::zwp_text_input_v3::record_entered_text_inputs(self);
             } else if keyboard.current_focus().is_some() {
-                crate::protocols::zwp_text_input_v3::announce_new_text_inputs(self);
+                gnoblin_wayland_protocols::zwp_text_input_v3::announce_new_text_inputs(self);
             }
         }
     }
@@ -2647,7 +2647,7 @@ impl State {
         self.restore_display(display);
         // A dispatch is the only place a text input can appear, so this is where one that
         // arrived on an already-focused surface is told it has focus.
-        crate::protocols::zwp_text_input_v3::announce_new_text_inputs(self);
+        gnoblin_wayland_protocols::zwp_text_input_v3::announce_new_text_inputs(self);
         result
     }
 

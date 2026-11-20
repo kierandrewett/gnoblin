@@ -50,17 +50,17 @@ use smithay::reexports::wayland_protocols::ext::idle_notify::v1::server::{
     ext_idle_notification_v1::{self, ExtIdleNotificationV1},
     ext_idle_notifier_v1::{self, ExtIdleNotifierV1},
 };
-use smithay::reexports::wayland_server::backend::GlobalId;
-use smithay::reexports::wayland_server::{DataInit, DisplayHandle, Resource};
+use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
+use smithay::reexports::wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
 use gnoblin_input::Activity;
-use gnoblin_types::ClientId;
+use gnoblin_types::{ClientId, Tick};
 
-use crate::State;
 use gnoblin_wayland_api::access::{Access, ClientRole};
+use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
 
-use crate::log;
+gnoblin_log::logger!(log = "wayland");
 
 /// One `ext_idle_notification_v1` a client created.
 #[derive(Debug)]
@@ -77,11 +77,11 @@ struct ExtIdleNotifyV1Notification {
 /// A holder is one ScreenSaver inhibit or one script hold, so this bounds what the
 /// callers can pile up. It is not a per-connection share: the services role carries every
 /// D-Bus caller's inhibit over one connection and must not be capped below the session.
-pub(crate) const IDLE_HOLDER_CAP: usize = 256;
+pub const IDLE_HOLDER_CAP: usize = 256;
 
 /// The idle notifications and inhibitors the session holds.
 #[derive(Default, Debug)]
-pub(crate) struct ExtIdleNotifyV1Tables {
+pub struct ExtIdleNotifyV1Tables {
     /// The notifications, in creation order.
     notifications: Vec<ExtIdleNotifyV1Notification>,
     /// The surfaces whose clients asked that the session never idle.
@@ -99,7 +99,7 @@ pub(crate) struct ExtIdleNotifyV1Tables {
 
 impl ExtIdleNotifyV1Tables {
     /// How many notifications are held, for a test or a diagnostics reader.
-    pub(crate) fn notifications(&self) -> usize {
+    pub fn notifications(&self) -> usize {
         self.notifications.len()
     }
 }
@@ -122,14 +122,17 @@ pub struct ExtIdleNotifyV1NotifierUserData {
 #[derive(Debug)]
 pub struct ExtIdleNotifyV1NotificationUserData;
 
-impl GlobalDispatch2<ExtIdleNotifierV1, State> for ExtIdleNotifyV1NotifierUserData {
+impl<D> GlobalDispatch2<ExtIdleNotifierV1, D> for ExtIdleNotifyV1NotifierUserData
+where
+    D: Dispatch<ExtIdleNotifierV1, ExtIdleNotifyV1NotifierUserData> + 'static,
+{
     fn bind(
         &self,
-        _state: &mut State,
+        _state: &mut D,
         _handle: &DisplayHandle,
-        _client: &smithay::reexports::wayland_server::Client,
-        resource: smithay::reexports::wayland_server::New<ExtIdleNotifierV1>,
-        data_init: &mut DataInit<'_, State>,
+        _client: &Client,
+        resource: New<ExtIdleNotifierV1>,
+        data_init: &mut DataInit<'_, D>,
     ) {
         data_init.init(
             resource,
@@ -139,7 +142,7 @@ impl GlobalDispatch2<ExtIdleNotifierV1, State> for ExtIdleNotifyV1NotifierUserDa
         );
     }
 
-    fn can_view(&self, client: &smithay::reexports::wayland_server::Client) -> bool {
+    fn can_view(&self, client: &Client) -> bool {
         // Idle state is session-wide information about the user, so a sandboxed client
         // is not told when the session is idle or in use. Idle notification is not a
         // privileged global — any application may ask — so the question is "is this
@@ -148,15 +151,18 @@ impl GlobalDispatch2<ExtIdleNotifierV1, State> for ExtIdleNotifyV1NotifierUserDa
     }
 }
 
-impl Dispatch2<ExtIdleNotifierV1, State> for ExtIdleNotifyV1NotifierUserData {
+impl<D> Dispatch2<ExtIdleNotifierV1, D> for ExtIdleNotifyV1NotifierUserData
+where
+    D: Host + Dispatch<ExtIdleNotificationV1, ExtIdleNotifyV1NotificationUserData> + 'static,
+{
     fn request(
         &self,
-        state: &mut State,
-        _client: &smithay::reexports::wayland_server::Client,
+        state: &mut D,
+        _client: &Client,
         _resource: &ExtIdleNotifierV1,
         request: ext_idle_notifier_v1::Request,
         _handle: &DisplayHandle,
-        data_init: &mut DataInit<'_, State>,
+        data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             ext_idle_notifier_v1::Request::GetIdleNotification {
@@ -173,15 +179,15 @@ impl Dispatch2<ExtIdleNotifierV1, State> for ExtIdleNotifyV1NotifierUserData {
     }
 }
 
-impl Dispatch2<ExtIdleNotificationV1, State> for ExtIdleNotifyV1NotificationUserData {
+impl<D: Host> Dispatch2<ExtIdleNotificationV1, D> for ExtIdleNotifyV1NotificationUserData {
     fn request(
         &self,
-        _state: &mut State,
-        _client: &smithay::reexports::wayland_server::Client,
+        _state: &mut D,
+        _client: &Client,
         _resource: &ExtIdleNotificationV1,
         request: ext_idle_notification_v1::Request,
         _handle: &DisplayHandle,
-        _data_init: &mut DataInit<'_, State>,
+        _data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             ext_idle_notification_v1::Request::Destroy => {}
@@ -189,33 +195,55 @@ impl Dispatch2<ExtIdleNotificationV1, State> for ExtIdleNotifyV1NotificationUser
         }
     }
 
-    fn destroyed(
-        &self,
-        state: &mut State,
-        client: smithay::reexports::wayland_server::backend::ClientId,
-        resource: &ExtIdleNotificationV1,
-    ) {
+    fn destroyed(&self, state: &mut D, client: ClientKey, resource: &ExtIdleNotificationV1) {
         log::debug!(area = "idle", ?client, instance = ?resource.id(), "a notification is gone");
         state.forget_idle_notification(resource);
     }
 }
 
+/// What this protocol advertises.
+pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
+    name: "ext-idle-notify-v1",
+    interfaces: &[ServedInterface::new("ext_idle_notifier_v1", 2)],
+    privilege: Privilege::Unsandboxed,
+};
+
+/// What the protocol needs of the compositor: the session clock, the last input, and the place the snapshot is
+/// republished from.
+pub trait Host {
+    /// The notifications, inhibitors and holders the session keeps.
+    fn idle_tables(&mut self) -> &mut ExtIdleNotifyV1Tables;
+
+    /// The session clock, in milliseconds.
+    fn idle_clock(&self) -> Tick;
+
+    /// The input activity the session has seen.
+    fn idle_activity(&self) -> Activity;
+
+    /// Republishes the observation snapshot.
+    fn publish(&mut self);
+}
+
 /// Creates the `ext_idle_notifier_v1` global.
-pub(crate) fn global(display: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
-    display.create_global::<State, ExtIdleNotifierV1, _>(
+pub fn register<D>(registrar: &Registrar<'_>) -> GlobalId
+where
+    D: GlobalDispatch<ExtIdleNotifierV1, ExtIdleNotifyV1NotifierUserData> + 'static,
+{
+    registrar.display().create_global::<D, ExtIdleNotifierV1, _>(
         2,
         ExtIdleNotifyV1NotifierUserData {
-            access: Arc::clone(access),
+            access: Arc::clone(registrar.access()),
         },
     )
 }
 
-impl State {
+/// The session's idle state, read and answered through the host.
+pub trait IdleNotifyExt: Host {
     /// Records a notification a client created and answers it at once if the session is
     /// already idle.
-    pub(crate) fn add_idle_notification(&mut self, resource: ExtIdleNotificationV1, timeout: u64) {
+    fn add_idle_notification(&mut self, resource: ExtIdleNotificationV1, timeout: u64) {
         log::debug!(area = "idle", instance = ?resource.id(), timeout, "a client asked to be told");
-        self.idle_tables.notifications.push(ExtIdleNotifyV1Notification {
+        self.idle_tables().notifications.push(ExtIdleNotifyV1Notification {
             resource,
             timeout,
             idled: false,
@@ -224,23 +252,10 @@ impl State {
     }
 
     /// Forgets a notification whose object is gone.
-    pub(crate) fn forget_idle_notification(&mut self, resource: &ExtIdleNotificationV1) {
-        self.idle_tables
+    fn forget_idle_notification(&mut self, resource: &ExtIdleNotificationV1) {
+        self.idle_tables()
             .notifications
             .retain(|notification| notification.resource != *resource);
-    }
-
-    /// Advances the session clock, in milliseconds, and answers every notification the
-    /// new time changes.
-    pub(crate) fn advance_clock(&mut self, milliseconds: u64) {
-        self.clock = self.clock.saturating_add(milliseconds);
-        self.refresh_idle();
-    }
-
-    /// Records input activity, which is what ends an idle period.
-    pub(crate) fn record_activity(&mut self) {
-        self.activity.record(self.clock);
-        self.refresh_idle();
     }
 
     /// Whether any client's inhibitor currently suppresses idle.
@@ -249,30 +264,30 @@ impl State {
     /// that is killed sends no `destroy`, and an inhibitor that outlives its client
     /// would keep the session awake for ever.
     #[must_use]
-    pub(crate) fn idle_inhibited(&mut self) -> bool {
+    fn idle_inhibited(&mut self) -> bool {
         self.idle_inhibitors() > 0
     }
 
     /// How many inhibitors currently hold idle off: inhibiting surfaces and named holders.
     #[must_use]
-    pub(crate) fn idle_inhibitors(&mut self) -> usize {
-        self.idle_tables.inhibits.retain(|surface| surface.is_alive());
-        self.idle_tables.inhibits.len() + self.idle_tables.holders.len()
+    fn idle_inhibitors(&mut self) -> usize {
+        self.idle_tables().inhibits.retain(|surface| surface.is_alive());
+        self.idle_tables().inhibits.len() + self.idle_tables().holders.len()
     }
 
     /// Adds (`held` true) or removes the named idle holder of one IPC connection. Adding a
     /// name the connection already holds and removing one it does not hold change nothing.
     /// `Ok` carries whether the set changed; `Err` refuses a new hold once
     /// [`IDLE_HOLDER_CAP`] holders are held.
-    pub(crate) fn idle_hold(&mut self, client: ClientId, holder: String, held: bool) -> Result<bool, String> {
+    fn idle_hold(&mut self, client: ClientId, holder: String, held: bool) -> Result<bool, String> {
         let key = (client, holder);
         let changed = if held {
-            if !self.idle_tables.holders.contains(&key) && self.idle_tables.holders.len() >= IDLE_HOLDER_CAP {
+            if !self.idle_tables().holders.contains(&key) && self.idle_tables().holders.len() >= IDLE_HOLDER_CAP {
                 return Err(format!("at most {IDLE_HOLDER_CAP} idle inhibitors may be held at once"));
             }
-            self.idle_tables.holders.insert(key)
+            self.idle_tables().holders.insert(key)
         } else {
-            self.idle_tables.holders.remove(&key)
+            self.idle_tables().holders.remove(&key)
         };
         if changed {
             self.refresh_idle();
@@ -283,36 +298,36 @@ impl State {
     /// Releases every named hold of one IPC connection that has ended, so a connection that
     /// went away without giving its holds back does not keep the session awake. Surface
     /// inhibitors are the Wayland client's and are not touched.
-    pub(crate) fn release_idle_holds_of(&mut self, client: ClientId) {
-        let before = self.idle_tables.holders.len();
-        self.idle_tables.holders.retain(|(holder, _)| *holder != client);
-        if self.idle_tables.holders.len() != before {
+    fn release_idle_holds_of(&mut self, client: ClientId) {
+        let before = self.idle_tables().holders.len();
+        self.idle_tables().holders.retain(|(holder, _)| *holder != client);
+        if self.idle_tables().holders.len() != before {
             self.refresh_idle();
         }
     }
 
     /// Records or drops one inhibitor.
-    pub(crate) fn set_idle_inhibited(
+    fn set_idle_inhibited(
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         inhibited: bool,
     ) {
-        self.idle_tables.inhibits.retain(|held| held != surface);
+        self.idle_tables().inhibits.retain(|held| held != surface);
         if inhibited {
-            self.idle_tables.inhibits.push(surface.clone());
+            self.idle_tables().inhibits.push(surface.clone());
         }
         self.refresh_idle();
     }
 
     /// Sends `idled` and `resumed` for every notification the current idle state
     /// changes.
-    pub(crate) fn refresh_idle(&mut self) {
+    fn refresh_idle(&mut self) {
         let inhibited = self.idle_inhibited();
-        let now = self.clock;
-        let activity: Activity = self.activity;
+        let now = self.idle_clock();
+        let activity: Activity = self.idle_activity();
         let mut dead: Vec<ExtIdleNotificationV1> = Vec::new();
         let mut changes: Vec<(ExtIdleNotificationV1, bool)> = Vec::new();
-        for notification in &mut self.idle_tables.notifications {
+        for notification in &mut self.idle_tables().notifications {
             if !notification.resource.is_alive() {
                 dead.push(notification.resource.clone());
                 continue;
@@ -324,7 +339,7 @@ impl State {
             }
         }
         for resource in dead {
-            self.idle_tables
+            self.idle_tables()
                 .notifications
                 .retain(|notification| notification.resource != resource);
         }
@@ -340,16 +355,21 @@ impl State {
         // The observation snapshot reports idle time and the inhibitor count, so it is
         // republished when either changes. Idle time moves every tick, so it is keyed to
         // whole seconds: a reader sees the count move each second, not every turn.
-        let key = (self.activity.idle_ticks(self.clock) / 1000, self.idle_inhibitors());
-        if self.idle_tables.published != Some(key) {
-            self.idle_tables.published = Some(key);
+        let key = (
+            self.idle_activity().idle_ticks(self.idle_clock()) / 1000,
+            self.idle_inhibitors(),
+        );
+        if self.idle_tables().published != Some(key) {
+            self.idle_tables().published = Some(key);
             self.publish();
         }
     }
 
     /// How many idle notifications the session holds.
     #[must_use]
-    pub fn idle_notifications(&self) -> usize {
-        self.idle_tables.notifications()
+    fn idle_notifications(&mut self) -> usize {
+        self.idle_tables().notifications()
     }
 }
+
+impl<T: Host> IdleNotifyExt for T {}

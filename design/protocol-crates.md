@@ -11,18 +11,18 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `OutputHost`), the aggregate `gnoblin-wayland-protocols` (the `ALL` table), `xtask/protocols.toml`,
   `cargo xtask protocol-crates [--check]`, and the deps rules `protocol-layering` and `protocol-root`;
 - `access` moved into the api crate, and `Registrar` carries the roster (`Registrar::filter`);
-- 30 protocol crates: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
+- 32 protocol crates: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
   `zwp-relative-pointer-v1`, `zwp-idle-inhibit-v1`, `xdg-system-bell-v1`, `xdg-toplevel-icon-v1`,
   `xdg-toplevel-tag-v1`, `xdg-dialog-v1`, `wl-output`, `wl-shm`, `zwp-primary-selection-v1`, `wp-content-type-v1`,
   `wp-fifo-v1`, `wp-fractional-scale-v1`, `wp-tearing-control-v1`, `wp-presentation-time`,
-  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`. Their forwarding
+  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`. Their forwarding
   impls are in `crates/gnoblin-wayland/src/glue/`, one file per crate.
 
 Not yet done, in the order of [Migration order and gates](#migration-order-and-gates): every crate that needs the
 access roster (ProtoRetire has removed session host from `access.rs`; view source is on hold by the owner, so the move can start), the capture family (waits for ProtoRetire's decision on
 `capture_views`), the large protocols (`xdg-shell`, layer shell, tablet, session lock), `wl-compositor`, `wl-seat`,
 `wl-data-device-manager`, `xdg-activation-v1`, `xdg-decoration`, `zwp-linux-dmabuf-v1`,
-`zwp-text-input-v3`, `wp-security-context-v1`, ProtoMissing's five protocols, the
+ProtoMissing's five protocols, the
 real-client test move and `gnoblin-wayland-testkit`, and the advertised-globals test.
 
 Two decisions made while doing the work differ from the text below. The table lives in `xtask/protocols.toml`, not in

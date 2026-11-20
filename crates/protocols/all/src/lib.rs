@@ -7,6 +7,7 @@ use gnoblin_wayland_api::ProtocolInfo;
 
 pub use gnoblin_wayland_ext_background_effect_v1 as ext_background_effect_v1;
 pub use gnoblin_wayland_ext_data_control_v1 as ext_data_control_v1;
+pub use gnoblin_wayland_ext_idle_notify_v1 as ext_idle_notify_v1;
 pub use gnoblin_wayland_wl_output as wl_output;
 pub use gnoblin_wayland_wl_shm as wl_shm;
 pub use gnoblin_wayland_wp_alpha_modifier_v1 as wp_alpha_modifier_v1;
@@ -34,6 +35,7 @@ pub use gnoblin_wayland_zwp_pointer_constraints_v1 as zwp_pointer_constraints_v1
 pub use gnoblin_wayland_zwp_pointer_gestures_v1 as zwp_pointer_gestures_v1;
 pub use gnoblin_wayland_zwp_primary_selection_v1 as zwp_primary_selection_v1;
 pub use gnoblin_wayland_zwp_relative_pointer_v1 as zwp_relative_pointer_v1;
+pub use gnoblin_wayland_zwp_text_input_v3 as zwp_text_input_v3;
 pub use gnoblin_wayland_zxdg_output_v1 as zxdg_output_v1;
 
 /// What every protocol crate advertises, in the order the table lists them. The advertised-globals test compares it with a live registry.
@@ -68,4 +70,6 @@ pub const ALL: &[&ProtocolInfo] = &[
     &zwlr_gamma_control_v1::PROTOCOL,
     &zwlr_output_power_management_v1::PROTOCOL,
     &xdg_foreign::PROTOCOL,
+    &ext_idle_notify_v1::PROTOCOL,
+    &zwp_text_input_v3::PROTOCOL,
 ];

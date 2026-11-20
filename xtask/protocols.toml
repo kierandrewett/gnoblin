@@ -16,6 +16,7 @@ smithay = '{ workspace = true }'
 gnoblin-types = '{ workspace = true }'
 gnoblin-log = '{ path = "../../gnoblin-log" }'
 getrandom = '{ workspace = true }'
+gnoblin-input = '{ path = "../../gnoblin-input" }'
 wayland-protocols-misc = '{ version = "0.3.12", features = ["server"] }'
 
 [[crate]]
@@ -227,3 +228,17 @@ description = "The zxdg_exporter_v2 and zxdg_importer_v2 Wayland protocols of gn
 kind = "protocol"
 interfaces = [["zxdg_exporter_v2", 1], ["zxdg_importer_v2", 1]]
 deps = ["smithay", "gnoblin-log", "getrandom"]
+
+[[crate]]
+name = "ext-idle-notify-v1"
+description = "The ext_idle_notifier_v1 Wayland protocol of gnoblin-wayland: idle and resume notifications."
+kind = "protocol"
+interfaces = [["ext_idle_notifier_v1", 2]]
+deps = ["smithay", "gnoblin-types", "gnoblin-log", "gnoblin-input"]
+
+[[crate]]
+name = "zwp-text-input-v3"
+description = "The zwp_text_input_manager_v3 Wayland protocol of gnoblin-wayland: the text-input conversation."
+kind = "protocol"
+interfaces = [["zwp_text_input_manager_v3", 1]]
+deps = ["smithay", "gnoblin-log"]

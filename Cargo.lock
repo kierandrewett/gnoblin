@@ -2359,12 +2359,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-wayland-ext-idle-notify-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-input",
+ "gnoblin-log",
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
 name = "gnoblin-wayland-protocols"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-wayland-api",
  "gnoblin-wayland-ext-background-effect-v1",
  "gnoblin-wayland-ext-data-control-v1",
+ "gnoblin-wayland-ext-idle-notify-v1",
  "gnoblin-wayland-wl-output",
  "gnoblin-wayland-wl-shm",
  "gnoblin-wayland-wp-alpha-modifier-v1",
@@ -2392,6 +2404,7 @@ dependencies = [
  "gnoblin-wayland-zwp-pointer-gestures-v1",
  "gnoblin-wayland-zwp-primary-selection-v1",
  "gnoblin-wayland-zwp-relative-pointer-v1",
+ "gnoblin-wayland-zwp-text-input-v3",
  "gnoblin-wayland-zxdg-output-v1",
 ]
 
@@ -2623,6 +2636,15 @@ dependencies = [
 name = "gnoblin-wayland-zwp-relative-pointer-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwp-text-input-v3"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
  "gnoblin-wayland-api",
  "smithay",
 ]

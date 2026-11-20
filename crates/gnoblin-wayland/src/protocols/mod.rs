@@ -10,8 +10,6 @@
 pub mod capture_shared;
 /// `ext_foreign_toplevel_list_v1`: the read-only, standardised toplevel list.
 pub mod ext_foreign_toplevel_list_v1;
-/// `ext_idle_notify_v1`: idle and resume notifications driven by the session tick counter.
-pub mod ext_idle_notify_v1;
 /// `ext_image_capture_source_v1`: the output and toplevel sources a capture names.
 pub mod ext_image_capture_source_v1;
 /// `ext_image_copy_capture_v1`: image-copy sessions that stream frames into client buffers.
@@ -51,8 +49,6 @@ pub mod zwlr_screencopy_v1;
 pub mod zwp_linux_dmabuf_v1;
 /// `zwp_tablet_manager_v2`: drawing tablets, their tools and pads.
 pub mod zwp_tablet_v2;
-/// `zwp_text_input_manager_v3`: the text-input conversation.
-pub mod zwp_text_input_v3;
 /// `zwp_virtual_keyboard_manager_v1`: the privileged virtual keyboard.
 pub mod zwp_virtual_keyboard_v1;
 /// `zxdg_decoration_manager_v1`: the client's server-side decoration preference.
