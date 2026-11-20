@@ -990,13 +990,23 @@ impl go::typed::FromVal<Objects> for @Name@ {
         let reads: Vec<String> = (0..declared.params.len())
             .map(|index| format!("go::typed::arg(&objects, args, {index})?"))
             .collect();
-        Ok(fill(
+        // A callback with no parameters reads nothing: it keeps neither the objects nor the arguments.
+        let template = if declared.params.is_empty() {
+            r#"fn make_@Name@(_objects: &Objects, mut run: @Closure@) -> go::Val {
+    go::typed::callback(move |_args| run().map(|answer| go::typed::ToVal::to_val(&answer)))
+}
+
+"#
+        } else {
             r#"fn make_@Name@(objects: &Objects, mut run: @Closure@) -> go::Val {
     let objects = objects.clone();
     go::typed::callback(move |args| run(@Reads@).map(|answer| go::typed::ToVal::to_val(&answer)))
 }
 
-"#,
+"#
+        };
+        Ok(fill(
+            template,
             &[
                 ("Name", &snake(&declared.name)),
                 ("Closure", &closure),

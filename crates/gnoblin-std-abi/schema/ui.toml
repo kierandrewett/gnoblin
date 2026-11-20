@@ -701,7 +701,7 @@ type = "bool"
 name = "gone"
 since = "0.2.0"
 
-# A canvas that fills itself and lays its child boxes out: a `row` or a `column` is a small flexbox, the main axis in order with `gap`
+# A canvas that fills itself and lays its child boxes out (`UiBox` in Rust, where `Box` is the standard library's): a `row` or a `column` is a small flexbox, the main axis in order with `gap`
 # between and `padding` around; a child with `grow` takes its share of what is left; every child is stretched across the other axis.
 # Children that are not boxes stay where they are.
 [[object]]
@@ -709,6 +709,7 @@ name = "box"
 since = "0.2.0"
 base = "canvas"
 retained = true
+export = { rust = "UiBox" }
 
 # How the box arranges its child boxes.
 [[object.property]]
