@@ -238,6 +238,37 @@ carries its `identifier`; both changes are small and neither adds a role-specifi
 cover non-window nodes or stereo Views, so the View source manager stays until XR gives those up. The two paths then
 coexist: windows by the standard route, Views by `gnoblin_view_source_v1`. Nothing was implemented.
 
+## A generic portal client (WayVR) against Gnoblin's ScreenCast backend (findings, nothing implemented)
+
+WayVR captures screens: outputs through `wl_output` and `xdg_output` with wlr-screencopy, or the portal ScreenCast over PipeWire,
+asking for monitors only when `screens_only` is set and `MONITOR | WINDOW | VIRTUAL` with `allow_multiple` otherwise. KDE and GNOME
+serve a window source through private compositor APIs, not a Wayland protocol. What `xdg-desktop-portal-gnoblin` does:
+
+- **(a) It advertises windows and several sources, but a generic client cannot choose a window.** `available_source_types` is
+  `SOURCE_MONITOR | SOURCE_WINDOW | SOURCE_VIRTUAL` (`xdg-desktop-portal-gnoblin/src/iface/capture.rs:452-457`) and `multiple`
+  is honoured for a host app, not for a sandboxed one (`narrow`, `:479-497`). The portal API has no way to name a window, so
+  the backend names it with its own option, `OPTION_WINDOW` (`gnoblin_client::wire::PORTAL_OPTION_WINDOW`, `:82`), a window
+  identity from the compositor. A selection of windows only with no such option is refused at `SelectSources`
+  (`unnamed_source`, tests `a_window_source_that_names_no_window_is_refused_before_anyone_is_asked`, `:774`), and a selection of
+  monitor and window casts the monitor. There is no picker: the user is asked about the one window the caller named
+  (`cast.rs:310-340`). So a client that sends only the standard options gets monitors, and the window route needs Gnoblin-specific code
+  in the client, which is the thing "any shell, no Gnoblin code" excludes. The window stream is the window's rectangle of the output
+  frame, following it (`capture.rs` header, "Sources"); no test in `gnoblin-compositor/tests/cast.rs` asserts that a titlebar outside
+  the rectangle is in it, and by the crop in the section above it is not, and a covering window is.
+- **(b) `types` 4 is `SOURCE_VIRTUAL`, which Gnoblin makes a View.** It needs the backend's own `OPTION_VIEW` (`:78`), a node id, and a
+  selection of `VIRTUAL` without it is refused before the user is asked (`unnamed_source`). It works at the two layers that are
+  tested: the backend's selection and `cast_target` (`capture.rs:562-575` and unit tests at `:690-800`) and the compositor's
+  `cast.grant` and `cast.start` for a View (`ipc/consent.rs:13-14,223-330`; `gnoblin-compositor/tests/cast.rs:165-250` and the
+  private-daemon stream tests in `view_capture_e2e.rs`). Not shown by any test: a real `xdg-desktop-portal` frontend
+  forwarding the option from a real client [INFERENCE]; the survey lists the ScreenCast path as "not wired to the portal"
+  (`design/cutover-survey.md`, row 4). A generic client does not know the option either.
+
+Finding: a portal client such as WayVR gets every Gnoblin monitor today in every shell, which is the "just works" part, and gets a
+window or a View only by sending Gnoblin's private options. For windows to appear without client code, the portal would need to
+offer them in its own picker (a Gnoblin dialog that lists windows, so the user names one and the standard flow returns the stream)
+and the window stream would need the subtree behaviour above. That is a larger change than the toplevel-source route, and it
+keeps the per-stream user prompt, which a headset desktop with many windows would not want.
+
 ## Needs Kieran
 
 1. Secure windows: is a per-window secure flag wanted? Should window stills of secure content be refused, or masked?
