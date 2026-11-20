@@ -534,6 +534,48 @@ fn a_valid_shader_is_accepted_echoed_and_reported_skipped_by_the_software_render
     session.stop().expect("the session stops cleanly");
 }
 
+/// A session whose watchdog has refused `source` for the session, as three strikes would: the list is the one the tree host asks.
+fn session_refusing(source: &str) -> Session {
+    use gnoblin_render_frame::shader::watchdog::{DISABLE_FOR, ShaderRefusals, Watchdog};
+    use gnoblin_render_frame::shader::{
+        FRAMES_OVER_BUDGET, SHADER_FRAME_BUDGET, STRIKES_TO_REFUSE, ShaderCost, ShaderReport,
+    };
+    let refusals = ShaderRefusals::default();
+    let mut watchdog = Watchdog::new(refusals.clone());
+    let key = gnoblin_render::ShaderKey::of(source);
+    let slow = ShaderReport {
+        costs: vec![ShaderCost {
+            key,
+            elapsed: SHADER_FRAME_BUDGET * 2,
+        }],
+        ..ShaderReport::default()
+    };
+    let mut now = Duration::ZERO;
+    for _ in 0..STRIKES_TO_REFUSE {
+        for _ in 0..FRAMES_OVER_BUDGET {
+            watchdog.observe(now, &[key], &slow);
+        }
+        now += DISABLE_FOR;
+    }
+    assert!(refusals.refuses(key));
+    Session::start_configured(None, |config| {
+        config.wayland.user_shaders = true;
+        config.wayland.shader_refusals = refusals;
+    })
+}
+
+#[test]
+fn a_shader_source_the_watchdog_refused_is_answered_bad_value_and_another_still_writes() {
+    let session = session_refusing(TINT_SHADER);
+    let reply = write_effects(&session, vec![shader_effect(TINT_SHADER, &[0.5])]);
+    assert!(!reply.applied, "the source is refused for the session");
+    assert_eq!(reply.code, "bad-value");
+    let other = "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {\n    return c;\n}\n";
+    let reply = write_effects(&session, vec![shader_effect(other, &[])]);
+    assert!(reply.applied, "a source with another hash is not refused: {reply:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
 #[test]
 fn a_shader_the_validator_refuses_refuses_the_whole_effects_set_bad_value() {
     let session = session_with_user_shaders();

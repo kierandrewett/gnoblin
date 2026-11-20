@@ -229,7 +229,12 @@ impl AnyRenderer {
     ///
     /// The installed renderer's [`RenderError`].
     pub fn draw(&mut self, frame: &OutputFrame, scale: Scale) -> Result<(), RenderError> {
-        on_renderer!(self, renderer => renderer.draw(frame, scale))
+        let drawn = on_renderer!(self, renderer => renderer.draw(frame, scale));
+        if drawn == Err(RenderError::Lost) {
+            // The frame that was in flight when the device went held the shaders that may have hung it: the host strikes them.
+            frame.shader_timings().record_loss();
+        }
+        drawn
     }
 
     /// Reads the frame back, with the cursor composed in when `with_cursor` is set.

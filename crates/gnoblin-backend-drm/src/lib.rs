@@ -543,10 +543,12 @@ impl<S: Host + 'static> Backend<S> for Drm {
         match present(&mut self.channels[index].presenter, &mut flip, waiting.frame()) {
             Presented::Idle | Presented::Waiting => Ok(Present::Nothing),
             Presented::Queued { .. } => {
+                host.drawn(output, waiting.frame_mut());
                 waiting.drawn();
                 Ok(Present::Rendered)
             }
             Presented::Refused { slot, first, error } => {
+                host.drawn(output, waiting.frame_mut());
                 if first {
                     log::warn!(area = "drm", output = %output, slot, %error, "a frame was refused; the output retries it");
                 }

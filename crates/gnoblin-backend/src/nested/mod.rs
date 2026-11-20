@@ -1282,7 +1282,10 @@ impl<S: Host + 'static> Backend<S> for Nested {
             return Ok(Present::Nothing);
         }
         if described {
-            target.draw(frame).map_err(BackendError::Render)?;
+            let drawn = target.draw(frame);
+            // Whatever the draw did, the host reads what the renderer recorded about the frame's shader passes.
+            host.drawn(output, frame);
+            drawn.map_err(BackendError::Render)?;
         }
         let damage = if described { frame.damage() } else { &[] };
         let present = target.present(damage);

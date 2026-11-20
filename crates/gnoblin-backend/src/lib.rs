@@ -770,6 +770,13 @@ pub trait Host {
     /// for this output: an idle iteration must not repaint the screen.
     fn frame(&mut self, output: OutputId, frame: &mut gnoblin_render_frame::frame::OutputFrame) -> bool;
 
+    /// The backend has drawn `frame` for `output`, whether the draw succeeded or failed. What the renderer recorded on the frame about its
+    /// user shader passes (`OutputFrame::shader_timings`) is the host's to read now: the frame-cost watchdog counts the frames a shader
+    /// ran over budget and the draws a device was lost in. A source it switches off is left out of `frame` itself, which a backend that
+    /// keeps a frame it could not present draws again without it, and out of every frame [`Host::frame`] describes after. The default
+    /// ignores it, so a host with no shader pass behaves as it did.
+    fn drawn(&mut self, _output: OutputId, _frame: &mut gnoblin_render_frame::frame::OutputFrame) {}
+
     /// Handle one input event the backend delivered.
     fn input(&mut self, event: InputEvent);
 

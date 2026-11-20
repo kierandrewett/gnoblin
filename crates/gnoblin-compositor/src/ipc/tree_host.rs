@@ -37,7 +37,7 @@ use super::tree::{
     AttachMode, TreeAttached, TreeClasses, TreeHolder, TreeReply, TreeSession, TreeSnapshot, observer_ops, snapshot_of,
     tree_listing, writes_controller, writes_head_camera,
 };
-use super::tree_effects::{pass_from_wire, wire_from_pass};
+use super::tree_effects::{ShaderWrites, pass_from_wire, wire_from_pass};
 use crate::log;
 
 /// The namespace the tree answers on.
@@ -114,8 +114,9 @@ pub struct TreeHostHandle {
     serial: Arc<AtomicU64>,
     /// Measures text for `Canvas.measure` and paints canvases: the system fonts, found on first use.
     painter: SharedPainter,
-    /// Whether a `shader` effect is accepted: the `compositor.user-shaders` setting, fixed for the session.
-    user_shaders: bool,
+    /// What a write of a `shader` effect is checked against: the `compositor.user-shaders` setting, fixed for the session, and the
+    /// sources the frame-cost watchdog has refused.
+    shaders: ShaderWrites,
 }
 
 impl std::fmt::Debug for TreeHostHandle {
@@ -143,7 +144,7 @@ impl TreeHostHandle {
             session: Arc::new(Mutex::new(TreeSession::default())),
             serial: Arc::new(AtomicU64::new(0)),
             painter: SharedPainter::system(),
-            user_shaders: false,
+            shaders: ShaderWrites::default(),
         })
     }
 
@@ -151,7 +152,15 @@ impl TreeHostHandle {
     /// startup. A host starts refusing it.
     #[must_use]
     pub fn with_user_shaders(mut self, accepted: bool) -> Self {
-        self.user_shaders = accepted;
+        self.shaders = self.shaders.accepted(accepted);
+        self
+    }
+
+    /// This host with the list of sources the watchdog refused for the session: a write of one answers `bad-value`. The list is the
+    /// composer's, shared, so a source refused while the session runs is refused here at once.
+    #[must_use]
+    pub fn with_shader_refusals(mut self, refusals: gnoblin_render_frame::shader::watchdog::ShaderRefusals) -> Self {
+        self.shaders = self.shaders.refusing(refusals);
         self
     }
 
@@ -315,7 +324,7 @@ impl TreeHostHandle {
         let base_serial = args.base_serial;
         // Moved out, so the ops (and any call text they carry) leave `args` and are wiped by the
         // transaction that takes them, not kept alive by the request.
-        let mut tx = match transaction(std::mem::take(&mut args.ops), self.user_shaders) {
+        let mut tx = match transaction(std::mem::take(&mut args.ops), &self.shaders) {
             Ok(tx) => tx,
             Err(refusal) => return Some(self.refusal(refusal.code, refusal.failed_op)),
         };
@@ -844,12 +853,12 @@ impl TreeDelivery {
 
 /// A transaction from its wire ops. The first op that does not convert refuses the batch,
 /// with its position as `failed_op`.
-fn transaction(ops: Vec<op::Properties>, user_shaders: bool) -> Result<TreeTransaction, TreeRefusal> {
+fn transaction(ops: Vec<op::Properties>, shaders: &ShaderWrites) -> Result<TreeTransaction, TreeRefusal> {
     let converted = ops
         .into_iter()
         .enumerate()
         .map(|(index, op)| {
-            tree_op(op, user_shaders).map_err(|code| TreeRefusal {
+            tree_op(op, shaders).map_err(|code| TreeRefusal {
                 failed_op: i32::try_from(index).unwrap_or(i32::MAX),
                 code,
             })
@@ -860,7 +869,7 @@ fn transaction(ops: Vec<op::Properties>, user_shaders: bool) -> Result<TreeTrans
 
 /// One wire op as a transaction op. A kind this build does not know, or a value it cannot
 /// carry, is `bad-value`.
-fn tree_op(mut op: op::Properties, user_shaders: bool) -> Result<TreeOp, Code> {
+fn tree_op(mut op: op::Properties, shaders: &ShaderWrites) -> Result<TreeOp, Code> {
     let node = NodeId::new(op.node);
     Ok(match op.kind.as_str() {
         "new" => TreeOp::New {
@@ -882,7 +891,7 @@ fn tree_op(mut op: op::Properties, user_shaders: bool) -> Result<TreeOp, Code> {
         "set" => TreeOp::Set {
             node,
             key: op.key.clone(),
-            value: set_value(&op, user_shaders)?,
+            value: set_value(&op, shaders)?,
             timing: timing(&op),
         },
         "call" => {
@@ -906,7 +915,7 @@ fn tree_op(mut op: op::Properties, user_shaders: bool) -> Result<TreeOp, Code> {
 /// kind is `bad-value`. A list of effects refuses the whole set when one entry is not a
 /// pass the renderer can draw, so a partial chain is never written. The reason an entry is refused (a shader's line and
 /// column, the setting being off) goes to the log; the reply carries the code only.
-fn set_value(op: &op::Properties, user_shaders: bool) -> Result<TreeValue, Code> {
+fn set_value(op: &op::Properties, shaders: &ShaderWrites) -> Result<TreeValue, Code> {
     match op.value_kind.as_str() {
         "bool" => Ok(TreeValue::Bool(op.value_bool)),
         "int" => Ok(TreeValue::Int(op.value_int)),
@@ -923,7 +932,7 @@ fn set_value(op: &op::Properties, user_shaders: bool) -> Result<TreeValue, Code>
             .value_effects
             .iter()
             .map(|entry| {
-                pass_from_wire(entry, user_shaders).map_err(|reason| {
+                pass_from_wire(entry, shaders).map_err(|reason| {
                     log::warn!(area = "tree", %reason, "an effect was refused");
                     Code::BadValue
                 })

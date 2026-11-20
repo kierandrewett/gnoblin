@@ -193,6 +193,9 @@ pub struct Config {
     /// Whether the tree accepts a `shader` effect (`compositor.user-shaders`). The seat publishes it as `user_shaders`; the tree
     /// host, which the compositor builds from the same value, does the refusing.
     pub user_shaders: bool,
+    /// The sources the frame-cost watchdog refused for the session (`gnoblin_render_frame::shader::watchdog`). The composer adds to it; the
+    /// tree host, which the compositor builds from a clone of the same list, answers a write of one `bad-value`.
+    pub shader_refusals: gnoblin_render_frame::shader::watchdog::ShaderRefusals,
     /// The source of the session clock. The loop reads it once per turn and advances the
     /// session clock by the time elapsed since the previous turn, so idle and a rest focus
     /// fire without a caller advancing it. A test that must not depend on wall time passes a
@@ -296,6 +299,7 @@ impl Default for Config {
             gpu_memory_period: crate::gpu_memory::DEFAULT_PERIOD,
             gpu_limits: crate::gpu_memory::MemoryLimits::default(),
             user_shaders: false,
+            shader_refusals: gnoblin_render_frame::shader::watchdog::ShaderRefusals::default(),
             clock: Arc::new(SystemClock),
             observer: None,
             tree: crate::tree_frame::TreeHooks::default(),
@@ -487,6 +491,8 @@ impl Server {
         state.composer.set_effect_kinds(backend.effect_kinds());
         // Whether the tree accepts a shader effect: the seat says so, so a shell can adapt before it writes one.
         state.composer.set_user_shaders(config.user_shaders);
+        // The watchdog refuses a source into the list the tree host asks, so a refused source is refused again at the next write.
+        state.composer.set_shader_refusals(config.shader_refusals.clone());
         // A renderer that draws a View's subtree into a texture takes the View's description instead of its pixels.
         state.composer.set_gpu_views(backend.gpu_views());
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);

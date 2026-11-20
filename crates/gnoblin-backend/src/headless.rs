@@ -974,7 +974,10 @@ impl<S: Host + 'static> Backend<S> for Headless {
         let Some(target) = self.targets.get_mut(index) else {
             return Err(BackendError::UnknownOutput(output));
         };
-        target.draw(&self.frame).map_err(BackendError::Render)?;
+        let drawn = target.draw(&self.frame);
+        // Whatever the draw did, the host reads what the renderer recorded about the frame's shader passes.
+        host.drawn(output, &mut self.frame);
+        drawn.map_err(BackendError::Render)?;
         Ok(target.present(self.frame.damage()))
     }
 

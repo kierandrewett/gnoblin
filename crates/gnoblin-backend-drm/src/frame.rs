@@ -60,6 +60,11 @@ impl UndrawnFrame {
         &self.frame
     }
 
+    /// The frame to draw, for the host to leave a switched-off shader pass out of a frame that will be drawn again.
+    pub(crate) fn frame_mut(&mut self) -> &mut OutputFrame {
+        &mut self.frame
+    }
+
     /// The frame was drawn and its flip queued, so it is not needed again and its layers are let go.
     pub(crate) fn drawn(&mut self) {
         self.frame.clear();

@@ -4120,6 +4120,10 @@ impl Host for State {
         changed
     }
 
+    fn drawn(&mut self, _output: OutputId, frame: &mut OutputFrame) {
+        self.composer.shader_drawn(frame);
+    }
+
     fn input(&mut self, event: InputEvent) {
         let time = InputTime::now();
         // Any input counts as activity: it is what ends an idle period and what the idle

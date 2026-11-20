@@ -556,6 +556,20 @@ impl Effects {
         &self.passes
     }
 
+    /// The chain without the shader passes whose key `dropped` accepts, the others in their order. The frame builder uses it to
+    /// leave out a pass the frame-cost watchdog has switched off, so the layer is drawn without it.
+    #[must_use]
+    pub fn without_shaders(&self, mut dropped: impl FnMut(ShaderKey) -> bool) -> Self {
+        Self {
+            passes: self
+                .passes
+                .iter()
+                .filter(|pass| !matches!(pass, Pass::Shader(shader) if dropped(shader.key())))
+                .cloned()
+                .collect(),
+        }
+    }
+
     /// The number of passes.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -986,6 +1000,29 @@ mod tests {
             "params and the backdrop flag are not part of the key"
         );
         assert_eq!(Pass::Shader(pass).padding(), EffectExtent::ZERO);
+    }
+
+    #[test]
+    fn a_chain_without_some_shaders_keeps_every_other_pass_in_order() {
+        let kept = tint_shader();
+        let dropped = ShaderPass::new("fn effect() {}", &[], false);
+        let dropped_key = dropped.key();
+        let mut chain = Effects::new();
+        chain.push(Pass::Border(border(1.0, 0.0, false))).unwrap();
+        chain.push(Pass::Shader(dropped.clone())).unwrap();
+        chain.push(Pass::Shader(kept.clone())).unwrap();
+        chain.push(Pass::Shader(dropped)).unwrap();
+        let without = chain.without_shaders(|key| key == dropped_key);
+        assert_eq!(
+            without.passes().iter().map(Pass::name).collect::<Vec<_>>(),
+            ["border", "shader"]
+        );
+        assert!(matches!(&without.passes()[1], Pass::Shader(shader) if *shader == kept));
+        assert_eq!(
+            chain.without_shaders(|_| false),
+            chain,
+            "nothing dropped, nothing changed"
+        );
     }
 
     #[test]

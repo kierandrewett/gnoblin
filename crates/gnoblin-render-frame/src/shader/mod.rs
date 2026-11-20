@@ -12,6 +12,7 @@
 //! | `user`       | the validator of a shell's own shader and the module it compiles to    |
 //! | `cache`      | [`ShaderCache`], the 64-entry least-recently-used compiled-shader cache |
 //! | `timings`    | [`ShaderTimings`], where a renderer records what each shader pass cost  |
+//! | `watchdog`   | the strikes and refusals the recorded costs lead to                    |
 //!
 //! The *compilers* are not here, because each one ends in an API: the GLES program module
 //! turns the WGSL into GLSL ES 3.10 for a driver, and the Vulkan shader module turns it
@@ -27,6 +28,7 @@ pub mod sources;
 pub mod timings;
 pub mod uniforms;
 pub mod user;
+pub mod watchdog;
 
 pub use cache::{SHADER_CACHE_ENTRIES, ShaderCache};
 pub use error::ShaderError;

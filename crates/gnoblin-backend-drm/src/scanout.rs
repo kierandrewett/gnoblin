@@ -360,7 +360,13 @@ impl Buffers {
         } else {
             gles.draw_scanout(&mut entry.scan, frame, scale)
         }
-        .map_err(|error| format!("the frame cannot be drawn: {error}"))
+        .map_err(|error| {
+            if error == RenderError::Lost {
+                // The frame that was in flight when the device went held the shaders that may have hung it: the host strikes them.
+                frame.shader_timings().record_loss();
+            }
+            format!("the frame cannot be drawn: {error}")
+        })
     }
 
     /// Allocates slot `index` if it does not exist yet.

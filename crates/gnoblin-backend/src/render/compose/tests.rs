@@ -4221,6 +4221,324 @@ fn the_main_seat_publishes_whether_user_shaders_are_accepted() {
     );
 }
 
+// ---- the frame-cost watchdog of the shader pass (design 37.2) ---------------------------------------------------------------
+
+mod shader_watchdog {
+    use std::time::Duration;
+
+    use gnoblin_render::ShaderPass;
+    use gnoblin_render_frame::shader::watchdog::{DISABLE_FOR, ShaderRefusals};
+    use gnoblin_render_frame::shader::{FRAMES_OVER_BUDGET, SHADER_FRAME_BUDGET, STRIKES_TO_REFUSE};
+
+    use super::*;
+
+    const SOURCE: &str = "fn effect() { /* a shader a test says is slow */ }";
+
+    /// What a renderer says about a frame it drew. The fake draws nothing: it reports what the test makes up.
+    #[derive(Clone, Copy)]
+    struct Drew {
+        /// What each shader source of the frame cost, if the renderer measured one.
+        cost: Option<Duration>,
+        /// Whether the device was lost in the draw.
+        lost: bool,
+        /// A source the renderer could not build a program for, with its reason.
+        unbuildable: Option<&'static str>,
+    }
+
+    const SLOW: Drew = Drew {
+        cost: Some(Duration::from_millis(80)),
+        lost: false,
+        unbuildable: None,
+    };
+    const FAST: Drew = Drew {
+        cost: Some(Duration::from_millis(4)),
+        lost: false,
+        unbuildable: None,
+    };
+    const LOST: Drew = Drew {
+        cost: None,
+        lost: true,
+        unbuildable: None,
+    };
+
+    /// A canvas that draws a border and the shader pass, on a composer whose renderer draws every kind.
+    fn shaded() -> (Composer, OutputId, NodeId) {
+        let (mut composer, output) = screen();
+        let canvas = NodeId::new(2);
+        add_canvas(
+            &mut composer,
+            canvas,
+            None,
+            Rect::new(0, 0, 40, 30),
+            Some(fill_list(40.0, 30.0, 77)),
+        );
+        composer.with_scene(|scene| {
+            let mut chain = Effects::new();
+            chain
+                .push(Pass::Border(gnoblin_render::Border {
+                    width: 1.0,
+                    offset: 0.0,
+                    inset: false,
+                    color: Color::BLACK,
+                }))
+                .expect("a border");
+            chain
+                .push(Pass::Shader(ShaderPass::new(SOURCE, &[], false)))
+                .expect("a shader");
+            scene.set_effects(canvas, chain).expect("the effects");
+        });
+        composer.set_effect_kinds(Pass::NAMES);
+        (composer, output, canvas)
+    }
+
+    /// Draws one frame of the output the way a backend does with a renderer that reports `drew`: the pass names of the frame as
+    /// the renderer received it, and then the host told the draw is over.
+    fn draw(composer: &mut Composer, output: OutputId, drew: Drew) -> Vec<&'static str> {
+        composer.damage_output(output);
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        composer.compose(output, &mut frame);
+        composer.end_frame();
+        let names: Vec<&'static str> = frame
+            .layers()
+            .iter()
+            .filter_map(|layer| match layer {
+                Layer::Surface(surface) => Some(surface.effects.passes().iter().map(Pass::name)),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        for key in frame.shader_keys() {
+            if let Some(cost) = drew.cost {
+                frame.shader_timings().record(key, cost);
+            }
+            if let Some(reason) = drew.unbuildable {
+                frame.shader_timings().record_refused(key, reason);
+            }
+        }
+        if drew.lost {
+            frame.shader_timings().record_loss();
+        }
+        composer.shader_drawn(&mut frame);
+        composer.publish_skipped_effects();
+        composer.advance_motion(16);
+        names
+    }
+
+    fn skipped(composer: &mut Composer, node: NodeId) -> Option<Vec<String>> {
+        queued_skipped(composer, node)
+    }
+
+    #[test]
+    fn the_budget_and_the_counts_are_the_constants_of_the_design() {
+        assert_eq!(SHADER_FRAME_BUDGET, Duration::from_millis(50));
+        assert_eq!((FRAMES_OVER_BUDGET, STRIKES_TO_REFUSE), (3, 3));
+    }
+
+    #[test]
+    fn three_frames_over_budget_switch_a_shader_off_and_its_node_draws_without_it() {
+        let (mut composer, output, canvas) = shaded();
+        assert_eq!(draw(&mut composer, output, SLOW), ["border", "shader"]);
+        assert_eq!(draw(&mut composer, output, SLOW), ["border", "shader"]);
+        assert_eq!(skipped(&mut composer, canvas), None, "two slow frames name nothing yet");
+        assert_eq!(
+            draw(&mut composer, output, SLOW),
+            ["border", "shader"],
+            "the third slow frame was drawn with the pass"
+        );
+        assert_eq!(
+            skipped(&mut composer, canvas),
+            Some(vec!["shader: over-budget".to_owned()]),
+            "the strike names the pass with its reason"
+        );
+        assert_eq!(
+            draw(&mut composer, output, FAST),
+            ["border"],
+            "the next frame leaves the pass out and keeps the node's other effects"
+        );
+    }
+
+    #[test]
+    fn a_strike_repaints_the_node_without_the_pass_though_nothing_else_changed() {
+        let (mut composer, output, _canvas) = shaded();
+        for _ in 0..FRAMES_OVER_BUDGET {
+            draw(&mut composer, output, SLOW);
+        }
+        // No `damage_output` here, as `draw` does: only what the strike itself damaged.
+        composer.begin_frame();
+        let mut frame = OutputFrame::new();
+        let changed = composer.compose(output, &mut frame);
+        composer.end_frame();
+        assert!(
+            changed,
+            "the pixels the slow pass drew are replaced without anyone asking"
+        );
+        assert!(
+            frame.shader_keys().is_empty(),
+            "and the frame that replaces them has no shader pass"
+        );
+        assert!(!frame.layers().is_empty());
+    }
+
+    #[test]
+    fn a_frame_within_the_budget_ends_the_run_of_slow_ones() {
+        let (mut composer, output, canvas) = shaded();
+        for drew in [SLOW, SLOW, FAST, SLOW, SLOW, FAST, SLOW, SLOW] {
+            assert_eq!(draw(&mut composer, output, drew), ["border", "shader"]);
+        }
+        assert_eq!(skipped(&mut composer, canvas), None);
+    }
+
+    #[test]
+    fn a_struck_pass_comes_back_when_its_time_is_up_and_the_third_strike_refuses_the_source_for_the_session() {
+        let (mut composer, output, canvas) = shaded();
+        let refusals = ShaderRefusals::default();
+        composer.set_shader_refusals(refusals.clone());
+        let key = gnoblin_render::ShaderKey::of(SOURCE);
+        for strike in 1..=STRIKES_TO_REFUSE {
+            for _ in 0..FRAMES_OVER_BUDGET {
+                assert_eq!(
+                    draw(&mut composer, output, SLOW),
+                    ["border", "shader"],
+                    "strike {strike}"
+                );
+            }
+            let named = skipped(&mut composer, canvas);
+            if strike < STRIKES_TO_REFUSE {
+                assert_eq!(
+                    named,
+                    Some(vec!["shader: over-budget".to_owned()]),
+                    "strike {strike} is named"
+                );
+                assert_eq!(
+                    draw(&mut composer, output, FAST),
+                    ["border"],
+                    "off after strike {strike}"
+                );
+                assert!(!refusals.refuses(key), "strike {strike} does not refuse");
+                composer.advance_motion(u32::try_from(DISABLE_FOR.as_millis()).unwrap());
+                assert_eq!(
+                    draw(&mut composer, output, FAST),
+                    ["border", "shader"],
+                    "back on after {DISABLE_FOR:?}"
+                );
+                assert_eq!(
+                    skipped(&mut composer, canvas),
+                    Some(Vec::new()),
+                    "the name is withdrawn with the pass"
+                );
+            } else {
+                assert_eq!(
+                    named,
+                    Some(vec!["shader: refused-for-session".to_owned()]),
+                    "the third strike refuses the source and says so"
+                );
+            }
+        }
+        assert!(
+            refusals.refuses(key),
+            "the list the tree's write path holds now refuses the source"
+        );
+        assert_eq!(draw(&mut composer, output, FAST), ["border"]);
+        composer.advance_motion(1_000_000);
+        assert_eq!(
+            draw(&mut composer, output, FAST),
+            ["border"],
+            "a refusal does not wear off with time"
+        );
+        assert_eq!(skipped(&mut composer, canvas), None, "and the name stays");
+    }
+
+    #[test]
+    fn a_device_loss_with_a_shader_in_the_frame_strikes_its_source_first() {
+        let (mut composer, output, canvas) = shaded();
+        assert_eq!(draw(&mut composer, output, LOST), ["border", "shader"]);
+        assert_eq!(
+            skipped(&mut composer, canvas),
+            Some(vec!["shader: over-budget".to_owned()]),
+            "one loss is one strike, with no three frames to wait for"
+        );
+        assert_eq!(
+            draw(&mut composer, output, FAST),
+            ["border"],
+            "the pass is out of the frame that follows the loss"
+        );
+        // Two more losses, a strike each, refuse the source.
+        let refusals = composer.shader_refusals();
+        for _ in 1..STRIKES_TO_REFUSE {
+            composer.advance_motion(u32::try_from(DISABLE_FOR.as_millis()).unwrap());
+            assert_eq!(draw(&mut composer, output, LOST), ["border", "shader"]);
+        }
+        assert!(refusals.refuses(gnoblin_render::ShaderKey::of(SOURCE)));
+    }
+
+    #[test]
+    fn a_device_loss_in_a_frame_with_no_shader_strikes_nothing() {
+        let (mut composer, output, canvas) = shaded();
+        composer.with_scene(|scene| scene.set_effects(canvas, Effects::new()).expect("the effects"));
+        assert!(draw(&mut composer, output, LOST).is_empty());
+        assert_eq!(skipped(&mut composer, canvas), None);
+        assert!(
+            !composer
+                .shader_refusals()
+                .refuses(gnoblin_render::ShaderKey::of(SOURCE))
+        );
+    }
+
+    #[test]
+    fn a_source_a_renderer_cannot_build_is_named_with_the_renderers_reason_and_takes_no_strike() {
+        let (mut composer, output, canvas) = shaded();
+        let broken = Drew {
+            cost: None,
+            lost: false,
+            unbuildable: Some("the pipeline could not be created"),
+        };
+        for _ in 0..(FRAMES_OVER_BUDGET * STRIKES_TO_REFUSE + 1) {
+            assert_eq!(draw(&mut composer, output, broken), ["border", "shader"]);
+        }
+        assert_eq!(
+            skipped(&mut composer, canvas),
+            Some(vec!["shader: the pipeline could not be created".to_owned()])
+        );
+        assert!(
+            !composer
+                .shader_refusals()
+                .refuses(gnoblin_render::ShaderKey::of(SOURCE))
+        );
+    }
+
+    #[test]
+    fn a_struck_source_is_struck_on_every_node_that_carries_it() {
+        let (mut composer, output, first) = shaded();
+        let second = NodeId::new(3);
+        add_canvas(
+            &mut composer,
+            second,
+            None,
+            Rect::new(100, 100, 40, 30),
+            Some(fill_list(40.0, 30.0, 12)),
+        );
+        let chain = composer.with_scene(|scene| scene.effects(first).cloned().expect("the first node's chain"));
+        composer.with_scene(|scene| scene.set_effects(second, chain).expect("the effects"));
+        for _ in 0..FRAMES_OVER_BUDGET {
+            assert_eq!(
+                draw(&mut composer, output, SLOW),
+                ["border", "shader", "border", "shader"]
+            );
+        }
+        assert_eq!(draw(&mut composer, output, FAST), ["border", "border"]);
+        let _ = composer.take_tree_changes();
+        composer.publish_skipped_effects();
+        for node in [first, second] {
+            assert_eq!(
+                composer.with_scene(|scene| scene.value(node, "skipped").cloned()),
+                Some(TreeValue::ListText(vec!["shader: over-budget".to_owned()])),
+                "node {node:?}"
+            );
+        }
+    }
+}
+
 // ---- the shell turns the compositor's own window animations off (the seat's `builtin_motion`) ------------------------
 
 /// Makes the main seat, lets a shell hold the tree and has it write the seat's `builtin_motion`: what a shell does to

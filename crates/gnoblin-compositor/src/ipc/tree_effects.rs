@@ -11,9 +11,34 @@
 //! text is the reason.
 
 use gnoblin_proto::tree::effect;
+use gnoblin_render::ShaderKey;
 use gnoblin_render::{BlurParams, Border, MAX_SHADER_PARAMS, Pass, ShaderPass, Shadow};
 use gnoblin_render_frame::shader;
+use gnoblin_render_frame::shader::watchdog::ShaderRefusals;
 use gnoblin_types::{Color, Vec3};
+
+/// What a write of a `shader` entry is checked against besides the source: the `compositor.user-shaders` setting, and the sources the
+/// frame-cost watchdog has refused for the session. The refusals are shared with the composer, so a source it refuses after the
+/// shell wrote it is refused the next time the shell writes it.
+#[derive(Clone, Debug, Default)]
+pub(super) struct ShaderWrites {
+    accepted: bool,
+    refusals: ShaderRefusals,
+}
+
+impl ShaderWrites {
+    /// Whether a `shader` entry is accepted at all: the setting.
+    pub(super) fn accepted(mut self, accepted: bool) -> Self {
+        self.accepted = accepted;
+        self
+    }
+
+    /// The list of refused sources to ask.
+    pub(super) fn refusing(mut self, refusals: ShaderRefusals) -> Self {
+        self.refusals = refusals;
+        self
+    }
+}
 
 /// The blur radius, in logical pixels, every blur effect draws with.
 ///
@@ -23,19 +48,19 @@ const BLUR_RADIUS: f32 = 12.0;
 
 /// The render pass one wire entry draws as.
 ///
-/// `user_shaders` is the `compositor.user-shaders` setting: while it is off a `shader` entry is refused.
+/// `shaders` says whether a `shader` entry is accepted (the `compositor.user-shaders` setting) and which sources the watchdog refused.
 ///
 /// # Errors
 ///
-/// The reason the entry is refused: an unknown kind, a `shader` while user shaders are off or whose source or params the
-/// validator refuses (its reason names the line and column), a colour that is not `#rrggbb` or `#rrggbbaa`, or a value
-/// the renderer's range check rejects.
-pub(super) fn pass_from_wire(entry: &effect::Properties, user_shaders: bool) -> Result<Pass, String> {
+/// The reason the entry is refused: an unknown kind, a `shader` while user shaders are off, whose source the watchdog refused for the
+/// session, or whose source or params the validator refuses (its reason names the line and column), a colour that is not `#rrggbb`
+/// or `#rrggbbaa`, or a value the renderer's range check rejects.
+pub(super) fn pass_from_wire(entry: &effect::Properties, shaders: &ShaderWrites) -> Result<Pass, String> {
     match entry.kind.as_str() {
         "blur" => blur_pass(entry),
         "shadow" => shadow_pass(entry),
         "border" => border_pass(entry),
-        "shader" => shader_pass(entry, user_shaders),
+        "shader" => shader_pass(entry, shaders),
         other => Err(format!("unknown effect kind `{other}`")),
     }
 }
@@ -85,12 +110,20 @@ pub(super) fn wire_from_pass(pass: &Pass) -> effect::Properties {
 
 /// The shader pass an entry asks for: refused while user shaders are off, then its params checked, then its source
 /// validated (`gnoblin_render_frame::shader::user::validate`). The reason of a refused source names its line and column.
-fn shader_pass(entry: &effect::Properties, user_shaders: bool) -> Result<Pass, String> {
-    if !user_shaders {
+fn shader_pass(entry: &effect::Properties, shaders: &ShaderWrites) -> Result<Pass, String> {
+    if !shaders.accepted {
         return Err(
             "user shaders are switched off (`compositor.user-shaders`): use a `blur`, `shadow` or `border` effect, or draw a `Canvas`"
                 .to_owned(),
         );
+    }
+    // Before the source is compiled: a source the watchdog refused costs nothing but this hash.
+    let key = ShaderKey::of(&entry.source);
+    if shaders.refusals.refuses(key) {
+        return Err(format!(
+            "this shader source (hash {:016x}) was switched off after repeated frames over budget and is refused for the rest of the session",
+            key.get()
+        ));
     }
     if entry.params.len() > MAX_SHADER_PARAMS {
         return Err(format!(
@@ -222,7 +255,12 @@ mod tests {
 
     /// The pass of an entry in a session with user shaders off, the default.
     fn pass(entry: &effect::Properties) -> Result<Pass, String> {
-        pass_from_wire(entry, false)
+        pass_from_wire(entry, &ShaderWrites::default())
+    }
+
+    /// A session with user shaders on and nothing refused.
+    fn accepting() -> ShaderWrites {
+        ShaderWrites::default().accepted(true)
     }
 
     const TINT: &str =
@@ -302,7 +340,7 @@ mod tests {
         let reason = pass(&entry("glow")).expect_err("no such kind");
         assert!(reason.contains("glow"), "{reason}");
         assert!(
-            pass_from_wire(&entry("glow"), true).is_err(),
+            pass_from_wire(&entry("glow"), &accepting()).is_err(),
             "the setting does not make a kind up"
         );
     }
@@ -385,7 +423,7 @@ mod tests {
 
     #[test]
     fn a_valid_shader_is_a_pass_with_its_source_params_and_backdrop_flag() {
-        let Ok(Pass::Shader(held)) = pass_from_wire(&shader(TINT, &[0.5, 2.0]), true) else {
+        let Ok(Pass::Shader(held)) = pass_from_wire(&shader(TINT, &[0.5, 2.0]), &accepting()) else {
             panic!("a valid shader maps to a shader pass");
         };
         assert_eq!(held.source(), TINT);
@@ -393,7 +431,7 @@ mod tests {
         assert!(!held.backdrop(), "the tint reads no backdrop");
         let blur =
             "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return backdrop(uv); }";
-        let Ok(Pass::Shader(held)) = pass_from_wire(&shader(blur, &[]), true) else {
+        let Ok(Pass::Shader(held)) = pass_from_wire(&shader(blur, &[]), &accepting()) else {
             panic!("a valid shader maps to a shader pass");
         };
         assert!(held.backdrop(), "the validator found the call");
@@ -402,36 +440,82 @@ mod tests {
     #[test]
     fn a_shader_the_validator_refuses_is_refused_with_its_line_and_column() {
         let source = "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {\n    var a = 0.0;\n    loop {\n        a = a + 1.0;\n        if a > 3.0 { break; }\n    }\n    return c * a;\n}\n";
-        let reason = pass_from_wire(&shader(source, &[]), true).expect_err("a loop is refused");
+        let reason = pass_from_wire(&shader(source, &[]), &accepting()).expect_err("a loop is refused");
         assert!(reason.contains("line 3, column 5"), "{reason}");
     }
 
     #[test]
     fn a_shader_with_too_many_or_unusable_params_is_refused() {
-        let reason = pass_from_wire(&shader(TINT, &[0.0; 9]), true).expect_err("nine params");
+        let reason = pass_from_wire(&shader(TINT, &[0.0; 9]), &accepting()).expect_err("nine params");
         assert!(reason.contains("params"), "{reason}");
-        assert!(pass_from_wire(&shader(TINT, &[f64::NAN]), true).is_err());
+        assert!(pass_from_wire(&shader(TINT, &[f64::NAN]), &accepting()).is_err());
         assert!(
-            pass_from_wire(&shader(TINT, &[1e300]), true).is_err(),
+            pass_from_wire(&shader(TINT, &[1e300]), &accepting()).is_err(),
             "a value a float cannot hold"
         );
         assert!(
-            pass_from_wire(&shader(TINT, &[0.0; 8]), true).is_ok(),
+            pass_from_wire(&shader(TINT, &[0.0; 8]), &accepting()).is_ok(),
             "eight is the cap"
         );
     }
 
     #[test]
     fn a_shader_echoes_as_the_entry_that_makes_it() {
-        let held = pass_from_wire(&shader(TINT, &[0.5, 2.0]), true).expect("a shader");
+        let held = pass_from_wire(&shader(TINT, &[0.5, 2.0]), &accepting()).expect("a shader");
         let echoed = wire_from_pass(&held);
         assert_eq!(echoed.kind, "shader");
         assert_eq!(echoed.source, TINT);
         assert_eq!(echoed.params, [0.5, 2.0]);
         assert_eq!(
-            pass_from_wire(&echoed, true),
+            pass_from_wire(&echoed, &accepting()),
             Ok(held),
             "the echo sets back to the same pass"
         );
+    }
+
+    /// A watchdog that has refused `source` for the session, and the writes that share its list.
+    fn writes_refusing(source: &str) -> ShaderWrites {
+        use gnoblin_render_frame::shader::watchdog::{DISABLE_FOR, Watchdog};
+        use gnoblin_render_frame::shader::{
+            FRAMES_OVER_BUDGET, SHADER_FRAME_BUDGET, STRIKES_TO_REFUSE, ShaderCost, ShaderReport,
+        };
+        let refusals = ShaderRefusals::default();
+        let mut watchdog = Watchdog::new(refusals.clone());
+        let key = ShaderKey::of(source);
+        let slow = ShaderReport {
+            costs: vec![ShaderCost {
+                key,
+                elapsed: SHADER_FRAME_BUDGET * 2,
+            }],
+            ..ShaderReport::default()
+        };
+        let mut now = std::time::Duration::ZERO;
+        for _ in 0..STRIKES_TO_REFUSE {
+            for _ in 0..FRAMES_OVER_BUDGET {
+                watchdog.observe(now, &[key], &slow);
+            }
+            now += DISABLE_FOR;
+        }
+        assert!(refusals.refuses(key), "the watchdog refused the source");
+        ShaderWrites::default().accepted(true).refusing(refusals)
+    }
+
+    #[test]
+    fn a_source_the_watchdog_refused_is_refused_at_write_before_it_is_validated() {
+        let writes = writes_refusing(TINT);
+        let reason = pass_from_wire(&shader(TINT, &[0.5]), &writes).expect_err("the source is refused for the session");
+        assert!(reason.contains("refused for the rest of the session"), "{reason}");
+        // Params do not make another program: the same source with other params is the same refusal.
+        assert!(pass_from_wire(&shader(TINT, &[9.0, 1.0]), &writes).is_err());
+        // Another source is a different hash and still writes.
+        let other =
+            "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {\n    return c;\n}\n";
+        assert!(pass_from_wire(&shader(other, &[]), &writes).is_ok());
+        // A refused source that would not validate is refused for the refusal, so the hash is all that was looked at.
+        let broken =
+            "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> {\n    loop { }\n}\n";
+        let writes = writes_refusing(broken);
+        let reason = pass_from_wire(&shader(broken, &[]), &writes).expect_err("refused");
+        assert!(reason.contains("refused for the rest of the session"), "{reason}");
     }
 }

@@ -395,7 +395,8 @@ impl Compositor {
         // `compositor.user-shaders` is on; the seat publishes the same value.
         let tree = ipc::TreeHostHandle::new(events.clone())
             .map_err(|error| Error::Ipc(ipc::IpcError::Tree(error)))?
-            .with_user_shaders(config.wayland.user_shaders);
+            .with_user_shaders(config.wayland.user_shaders)
+            .with_shader_refusals(config.wayland.shader_refusals.clone());
         // The in-process shell, when the session has one, is served by the same tree host as a socket shell.
         let shell_host = tree.clone();
         let (observer, pending) = ipc::wake(events.clone());

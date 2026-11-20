@@ -54,7 +54,7 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 use smithay::wayland::dmabuf::get_dmabuf;
 
-use gnoblin_render::{Effects, Mat4, Pass};
+use gnoblin_render::{Effects, Mat4, Pass, ShaderKey};
 use gnoblin_types::{Color, Rect, RectF};
 
 use super::image::Image;
@@ -509,6 +509,41 @@ impl OutputFrame {
         }
     }
 
+    /// Every user shader source the frame draws, each once, in layer order.
+    #[must_use]
+    pub fn shader_keys(&self) -> Vec<ShaderKey> {
+        let mut keys = Vec::new();
+        for effects in self.layers.iter().filter_map(Layer::effects) {
+            for pass in effects.passes() {
+                if let Pass::Shader(shader) = pass
+                    && !keys.contains(&shader.key())
+                {
+                    keys.push(shader.key());
+                }
+            }
+        }
+        keys
+    }
+
+    /// Leaves out every shader pass whose source `dropped` accepts, so its layer is drawn without it. The watchdog's switched-off
+    /// sources are dropped here, before any renderer sees the frame.
+    pub fn drop_shader_passes(&mut self, mut dropped: impl FnMut(ShaderKey) -> bool) {
+        for layer in &mut self.layers {
+            let effects = match layer {
+                Layer::Surface(surface) => &mut surface.effects,
+                Layer::Solid(solid) => &mut solid.effects,
+                Layer::Overlay(_) => continue,
+            };
+            if effects
+                .passes()
+                .iter()
+                .any(|pass| matches!(pass, Pass::Shader(shader) if dropped(shader.key())))
+            {
+                *effects = effects.without_shaders(&mut dropped);
+            }
+        }
+    }
+
     /// Where a renderer records what each user shader pass cost this draw (`ShaderTimings::record`), and where the host
     /// that built the frame reads it after the draw.
     #[must_use]
@@ -716,6 +751,8 @@ impl OutputFrame {
         let mut frame = self.clone();
         frame.damage.clear();
         frame.damage.push(bounds);
+        // A redraw for a capture is not the frame's draw: what it costs is not the frame's report.
+        frame.shader_timings = ShaderTimings::default();
         frame
     }
 
@@ -1120,5 +1157,58 @@ mod backdrop_tests {
         assert!(frame.backdrop_input(1).is_none(), "the shader does not read it");
         assert!(frame.backdrop_input(2).is_none(), "the layer has no shader");
         assert!(frame.backdrop_input(9).is_none(), "there is no such layer");
+    }
+
+    #[test]
+    fn a_frame_names_its_shader_sources_once_and_drops_the_ones_it_is_told_to() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(shader_layer(false));
+        frame.push_layer(plain(Rect::new(0, 0, 8, 8), Color::WHITE, false));
+        let mut other = Solid::new(Rect::new(0, 0, 4, 4), Color::WHITE);
+        let slow = ShaderPass::new("fn effect() { /* slow */ }", &[], false);
+        let slow_key = slow.key();
+        other.effects.push(Pass::Shader(slow)).expect("a shader pass");
+        other
+            .effects
+            .push(Pass::Shader(ShaderPass::new("fn effect() {}", &[], false)))
+            .expect("a shader pass");
+        frame.push_layer(Layer::Solid(other));
+        let shared = ShaderKey::of("fn effect() {}");
+        assert_eq!(
+            frame.shader_keys(),
+            [shared, slow_key],
+            "the source two layers share is named once"
+        );
+
+        frame.drop_shader_passes(|key| key == slow_key);
+        assert_eq!(frame.shader_keys(), [shared]);
+        let counts: Vec<usize> = frame
+            .layers()
+            .iter()
+            .filter_map(Layer::effects)
+            .map(Effects::len)
+            .collect();
+        assert_eq!(counts, [1, 0, 1], "only the dropped pass left its layer");
+    }
+
+    #[test]
+    fn a_capture_redraw_does_not_report_to_the_frames_timings_and_a_backdrop_does() {
+        let mut frame = OutputFrame::new();
+        frame.push_layer(plain(Rect::new(0, 0, 64, 64), Color::WHITE, false));
+        frame.push_layer(shader_layer(true));
+        let key = ShaderKey::of("fn effect() {}");
+        frame
+            .backdrop_input(1)
+            .expect("the layer samples the backdrop")
+            .frame
+            .shader_timings()
+            .record(key, std::time::Duration::from_millis(7));
+        frame
+            .redacted(SecureTreatment::Mask, Rect::new(0, 0, 64, 64))
+            .shader_timings()
+            .record(key, std::time::Duration::from_millis(900));
+        let report = frame.shader_timings().take();
+        assert_eq!(report.costs.len(), 1, "{report:?}");
+        assert_eq!(report.costs[0].elapsed, std::time::Duration::from_millis(7));
     }
 }

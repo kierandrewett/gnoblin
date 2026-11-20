@@ -125,6 +125,8 @@ pub use seat_input::ShellCursor;
 mod views;
 use views::{Landing, VIEW_DEPTH, ViewPicture};
 
+mod shader_watch;
+
 mod motion;
 #[cfg(test)]
 use motion::MOTION_MS;
@@ -652,6 +654,8 @@ pub struct Composer {
     /// Whether the tree accepts a `shader` effect (`compositor.user-shaders`), published on the main seat as
     /// `user_shaders`. The compositor sets it once before any frame.
     user_shaders: bool,
+    /// The frame-cost watchdog of the shader pass and the sources a renderer could not build: see [`shader_watch`].
+    shaders: shader_watch::ShaderWatch,
     /// The pictures of the Canvas nodes, each painted from its `content` and kept until that or the node's size
     /// changes.
     canvases: BTreeMap<NodeId, CanvasPicture>,
@@ -735,6 +739,7 @@ impl Composer {
             secure_scope: BTreeSet::new(),
             effect_kinds: Pass::NAMES,
             user_shaders: false,
+            shaders: shader_watch::ShaderWatch::default(),
             canvases: BTreeMap::new(),
             output_scales: BTreeMap::new(),
             painter,
@@ -3194,6 +3199,8 @@ impl Composer {
                 frame.push_layer(Layer::Solid(Solid::new(local(covered, rect), colour)));
             }
         }
+        // A shader source the watchdog has switched off is left out, so its node draws without it.
+        self.drop_switched_shaders(frame);
         !frame.is_empty()
     }
 
@@ -3329,10 +3336,18 @@ impl Composer {
                 let name = pass.name();
                 let mut reasons = Vec::new();
                 if !self.effect_kinds.contains(&name) {
-                    reasons.push(SKIPPED_BY_RENDERER);
+                    reasons.push(SKIPPED_BY_RENDERER.to_owned());
                 }
                 if in_3d {
-                    reasons.push(SKIPPED_ON_3D);
+                    reasons.push(SKIPPED_ON_3D.to_owned());
+                }
+                // A shader the watchdog switched off or a renderer could not build is named with its reason; a renderer
+                // that draws no shaders has already said so above.
+                if let Pass::Shader(shader) = pass
+                    && self.effect_kinds.contains(&name)
+                    && let Some(reason) = self.shader_skip_reason(shader.key())
+                {
+                    reasons.push(reason);
                 }
                 (!reasons.is_empty()).then(|| format!("{name}: {}", reasons.join(", ")))
             })
