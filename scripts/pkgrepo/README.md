@@ -65,7 +65,7 @@ pkgrepo publish --project gnoblin --channel nightly --tree tree --backend rsync 
 A package is described once, in an `nfpm.yaml` next to the code it packages (for example `crates/config/nfpm.yaml`).
 `package` walks the source tree, finds every `nfpm.yaml` and runs [nFPM](https://nfpm.goreleaser.com/) for each one in
 each format. The packages hold the files of a staged prefix, so build and stage first (for Gnoblin,
-`./build.sh --layout system --destdir DIR`).
+`cargo xtask dist install --prefix /usr --destdir DIR`).
 
 ```sh
 python3 scripts/pkgrepo package --list

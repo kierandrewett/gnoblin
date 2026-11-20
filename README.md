@@ -106,5 +106,4 @@ The [source instructions](docs/install-source.md) cover prerequisites, a nested 
 
 [Configuration](docs/config.md) · [Window effects](docs/guides/window_effects.md) · [Event handlers](docs/user-scripts.md) · [All docs](docs/index.md)
 
-Gnoblin is GPL-2.0-or-later. The Mutter-based releases before 0.2.0 are built from the
-[Gnoblin Mutter fork](https://github.com/kierandrewett/gnoblin-mutter) and live on the `main` branch.
+Gnoblin is GPL-2.0-or-later.

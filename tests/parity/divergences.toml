@@ -1,13 +1,13 @@
 # Divergence ledger: where a scenario has no stock-Mutter run, and why.
 #
 # A scenario with `references = [{ mutter51 = {} }, { mutter-gnoblin = {} }]` is compared with stock Mutter 51 and with the
-# legacy Gnoblin on its patched Mutter (tests/parity/README.md, "Run the Mutter reference" and "Run the Gnoblin
+# Mutter-based Gnoblin on its patched Mutter (tests/parity/README.md, "Run the Mutter reference" and "Run the Gnoblin
 # reference"), and a step where the candidate differs records the difference and its reason in the scenario file itself
 # (`[steps.divergence.candidate]`), so the report says `divergent` and a divergence that stops being true fails. This
 # file lists only the scenarios that have no `mutter51` row, with the reference that does run them where there is one.
 #
-# A scenario whose only reference is `mutter-gnoblin` compares the candidate with what the legacy session answered, so the
-# parity claim is as strong as that reference: legacy Gnoblin, not stock Mutter.
+# A scenario whose only reference is `mutter-gnoblin` compares the candidate with what the Mutter-based session answered, so the
+# parity claim is as strong as that reference: Mutter-based Gnoblin, not stock Mutter.
 
 [[entries]]
 scenario = "candidate-workspace-list"

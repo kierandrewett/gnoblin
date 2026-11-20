@@ -4,9 +4,8 @@ name: Package repository
 # built, checks it the way a client would, and uploads it. design/package-repositories.md has the layout, the version
 # rules and the key handling.
 #
-# Nothing calls this workflow yet. The Mutter release pipeline that did (release.yml, packages.yml and nightly.yml) was
-# removed with the Mutter product tree; the Rust release workflow that replaces it is tracked in issue #379. That workflow
-# must upload the packages as artifacts named packages-<release_tag>-<arch> and call this one.
+# It is a reusable workflow. The caller uploads the packages it built as artifacts named packages-<release_tag>-<arch>
+# and passes the inputs below; the release workflow that does this is tracked in issue #379.
 #
 # Without the signing key (a fork, a pull request, a run before the key exists) the tree is built and verified with a
 # throw-away key, kept as a workflow artifact, and not uploaded. Publication needs all of:

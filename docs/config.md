@@ -26,7 +26,6 @@ gnoblin.input.primary.bind("Super+Return", () => {
 - [Shortcuts](/guides/shortcuts): bind keys and gestures.
 - [Files and load order](/guides/files_and_load_order): split a config over several files.
 - [`gnoblinctl`](/gnoblinctl): check, reload and inspect the running configuration.
-- [Migrating from Lua](/migrating-from-lua): convert an `init.lua` with `gnoblinctl config migrate`, and see what each construct became.
 
 ## First config
 

@@ -1,5 +1,5 @@
 # A Wayland client maps an xdg toplevel, the session lists it over IPC, and the client destroying the toplevel removes it
-# from the list again. The reference is the legacy Gnoblin on its patched Mutter (`mutter-gnoblin`), whose
+# from the list again. The reference is the Mutter-based Gnoblin on its patched Mutter (`mutter-gnoblin`), whose
 # `gnoblinctl window list` answers the same two questions; stock Mutter has no such IPC, so there is no `mutter51` row
 # (tests/parity/divergences.toml).
 #

@@ -14,7 +14,6 @@ mod elf;
 mod gen_proto;
 mod gen_sdks;
 mod golden;
-mod layout;
 mod logging;
 mod metadata;
 mod native_libs;
@@ -47,7 +46,6 @@ subcommands:
   compat-report      print every compat adapter's declared support matrix
   dupes              fail on a struct or enum two crates declare twice
   dupes --warn       the same report, printing every hit and exiting zero
-  layout             fail on a reference to the retired src/data tree, or to a root src/ or patches/ path nobody reviewed
   logging            fail on a direct logging-crate dependency or a stock print in library code
   docs-parity        fail on a documented gnoblin name the implemented surface lacks, unless allow-listed
   compat-report --json  the same report as JSON
@@ -85,7 +83,6 @@ fn main() -> ExitCode {
     match (subcommand.as_str(), rest.as_slice()) {
         ("deps", []) => deps_command(),
         ("gen-proto", []) => gen_proto::run(),
-        ("layout", []) => layout::run(),
         ("gen-sdks", _) => gen_sdks::run(&rest),
         ("protocol-crates", _) => protocol_crates::run(&rest),
         ("logging", []) => logging::run(),
@@ -104,10 +101,9 @@ fn main() -> ExitCode {
         ("abi-check", _) => abi_check::run_check(&rest),
         ("abi-header", _) => abi_check::run_header(&rest),
         ("oracle", _) => oracle::run(&rest),
-        (
-            "deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "layout" | "docs-parity" | "native-libs",
-            _,
-        ) => usage_error("unexpected argument"),
+        ("deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "docs-parity" | "native-libs", _) => {
+            usage_error("unexpected argument")
+        }
         (other, _) => usage_error(&format!("unknown subcommand `{other}`")),
     }
 }

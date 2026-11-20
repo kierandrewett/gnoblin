@@ -1,7 +1,7 @@
 # Contract inventory
 
 The parity harness has to hold three implementations to one list of names: Gnoblin on Mutter, stock
-Mutter, and the Rust candidate. This directory is that list, read out of the legacy C sources that own it.
+Mutter, and the Rust candidate. This directory is that list, read out of the Mutter-based C sources that own it.
 Nothing here is hand-written: every entry records the file and line it was read from, so a
 disagreement can be settled by opening the source at that line.
 
@@ -11,13 +11,13 @@ name the compositor emits, the `gnoblinctl` command surface and the top-level ke
 
 ## Files
 
-| File                    | Contents                                                                                                                    |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `operations.json`       | Every row of the wire operation table, one per socket method                                                                |
-| `events.json`           | Every event name the compositor emits                                                                                       |
-| `cli.json`              | Every `gnoblinctl` command and action, with the help summary                                                                |
-| `config-keys.json`      | Every top-level `gnoblin.configure` key, plus the keys that can change at runtime                                           |
-| `recorded-session.json` | What a live legacy session (API 1.93) answered to every operation and which events it sent, by `scripts/contract-record.py` |
+| File                    | Contents                                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `operations.json`       | Every row of the wire operation table, one per socket method                                                                      |
+| `events.json`           | Every event name the compositor emits                                                                                             |
+| `cli.json`              | Every `gnoblinctl` command and action, with the help summary                                                                      |
+| `config-keys.json`      | Every top-level `gnoblin.configure` key, plus the keys that can change at runtime                                                 |
+| `recorded-session.json` | What a live Mutter-based session (API 1.93) answered to every operation and which events it sent, by `scripts/contract-record.py` |
 
 Each file is a JSON object:
 
@@ -37,14 +37,14 @@ regenerated file differs only where the sources differ.
 
 ## Provenance
 
-These files are frozen. They were read out of the legacy `main` branch at `5bb523e9c` (API 1.93) by
+These files are frozen. They were read out of the Mutter-based `main` branch at `5bb523e9c` (API 1.93) by
 `scripts/contract-inventory.py`, which was deleted with the Mutter product tree. To regenerate them, check out that
 commit and run the script there: it reads only the C sources named below, does not build, run or connect to a compositor,
-and needs Python 3.11 or later. Nothing in this branch reads the sources, so the files change only when the legacy
+and needs Python 3.11 or later. Nothing in this branch reads the sources, so the files change only when the Mutter-based
 product's contract is re-read on purpose; `crates/gnoblin-config/tests/contract.rs` holds the Rust configuration to
 `config-keys.json`.
 
-Every `src/` path on this page is a path of the legacy tree.
+Every `src/` path on this page is a path of the Mutter-based tree.
 
 | Source                                 | Read for                                                                                |
 | -------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -79,7 +79,7 @@ A construct the script could not read raised instead of being skipped, so no row
 
 `events.json` entries carry `channels` (`socket`, `runtime`, or both), `subscription_table` (the
 name is in `native_socket_events[]`, so a socket client can subscribe to it) and `source`/`line`.
-`windows` and `monitors` are listed because they are in the same table: they are the legacy
+`windows` and `monitors` are listed because they are in the same table: they are the
 snapshot streams, not `gnoblin.` names.
 
 A `socket` channel is recorded for every name in the subscription table, and for a literal that
@@ -142,7 +142,7 @@ no text extraction can read reliably.
   `mutter.monitor-manager.monitors-changed` and five others. They are the reference
   implementation's names rather than Gnoblin's, so they are out of scope here and belong in the
   divergence ledger when the candidate stops forwarding them.
-- **The Lua API surface itself.** `gnoblin.d.lua` and the annotations of the legacy tree are
+- **The Lua API surface itself.** `gnoblin.d.lua` and the annotations of the Mutter-based tree are
   not repeated here; this inventory links operations to Lua entries.
 - **Wayland protocol globals.** The plan asks for reference `wayland-info` output as well. That has
   to come from a running session, so it cannot be extracted from the sources and is not here.
@@ -156,6 +156,6 @@ a diff here when the files are re-read, rather than as coverage that quietly sto
 ## Recorded session
 
 `recorded-session.json` is the other half of the inventory: it is not read out of the sources but recorded from a running
-legacy session, by `scripts/contract-record.py` (see "Contract recording" in `tests/parity/README.md`). It records, per
+Mutter-based session, by `scripts/contract-record.py` (see "Contract recording" in `tests/parity/README.md`). It records, per
 operation, how the session answered a plain call (`ok`, `error` or `skipped` with the reason), a sample of the answer,
 and the events that arrived. `python3 scripts/contract-record.py --check` verifies it against the inventory offline.

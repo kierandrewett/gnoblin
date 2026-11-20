@@ -2411,12 +2411,6 @@ kind = "same-shape"
 reason = "the SDK's name for which side or corner a resize takes and the library's reading of it; the SDK cannot share a type with the library it links"
 
 [[allow]]
-left = "gnoblin-config-migrate::Needs"
-right = "gnoblin-sdkgen::Needs"
-kind = "same-name"
-reason = "a set of what a generator or a migration has to emit, found by walking its input; two unrelated tools of one name, neither can use the other's crate"
-
-[[allow]]
 left = "gnoblin-core-impl::Arena"
 right = "gnoblin-std-dyn::Arena"
 kind = "same-name"

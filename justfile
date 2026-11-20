@@ -60,11 +60,6 @@ deps:
 logging:
     cargo xtask logging
 
-# Forbid a reference to the retired source-data tree (the runtime assets live under data/) and to the removed C source
-# and patch trees of the Mutter product. `xtask/layout-allow.toml` lists the reviewed exceptions.
-layout:
-    cargo xtask layout
-
 # Write the generated .proto text and sensitive table to target/gen-proto, for
 # reading. The build generates them itself, in OUT_DIR, so this is a convenience:
 # nothing it writes is checked in.
@@ -227,7 +222,7 @@ js-check:
     git ls-files -z '*.ts' '*.d.ts' | xargs -0 npx --yes prettier@3.9.6 --check
 
 # The root workspace's whole gate, in the order that fails fastest.
-workspace-ci: js-check fmt-check build clippy test deps logging layout dupes docs-parity abi-check native-libs gen-sdks-check deny
+workspace-ci: js-check fmt-check build clippy test deps logging dupes docs-parity abi-check native-libs gen-sdks-check deny
 
 # Everything CI runs: the root workspace, the extension workspace and the core build with no std providers.
 ci: workspace-ci ext-ci core-only

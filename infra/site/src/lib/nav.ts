@@ -134,7 +134,6 @@ export const NAV: NavSection[] = [
             { label: "Python shell", slug: "python-shell" },
             { label: "Rust shell", slug: "rust-shell" },
             { label: "SDK generator", slug: "sdk-generator" },
-            { label: "Migrating from Lua", slug: "migrating-from-lua" },
             { label: "Write your own shell", slug: "user-shell" },
             { label: "Event handlers", slug: "user-scripts" },
             { label: "Console and inspector", slug: "js-console" },

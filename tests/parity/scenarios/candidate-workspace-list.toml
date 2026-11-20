@@ -1,9 +1,9 @@
 # A fresh session has a workspace list that a client can read over IPC before any client has connected. The reference is
-# the legacy Gnoblin on its patched Mutter, which answers `gnoblinctl workspace list` from its own control socket
+# the Mutter-based Gnoblin on its patched Mutter, which answers `gnoblinctl workspace list` from its own control socket
 # (`mutter-gnoblin`: tests/parity/README.md, "Run the Gnoblin reference"). Stock Mutter has no such IPC, so there is no
 # `mutter51` row (tests/parity/divergences.toml).
 #
-# `expect` is what the legacy session answered. The candidate answers in the IPC 0.2.0 object model, which is the
+# `expect` is what the Mutter-based session answered. The candidate answers in the IPC 0.2.0 object model, which is the
 # reviewed divergence below.
 name = "candidate-workspace-list"
 description = "A fresh session reports its workspace list over IPC before any client connects."
@@ -22,4 +22,4 @@ expect = { workspaces = [
 
 [steps.divergence.candidate]
 expect = { objects = [{ id = "<id:1>", type = "gnoblin.workspace", properties = { id = "<id:2>" } }] }
-reason = "the candidate answers in the IPC 0.2.0 object model (typed objects with properties) where the legacy socket answers a `workspaces` array, and a fresh candidate declares one workspace where the legacy session starts with four"
+reason = "the candidate answers in the IPC 0.2.0 object model (typed objects with properties) where the Mutter-based socket answers a `workspaces` array, and a fresh candidate declares one workspace where the Mutter-based session starts with four"

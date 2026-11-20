@@ -34,10 +34,7 @@ gnoblin-config = { path = "../gnoblin-config" }
 # file that checks here is one the shell runtime loads; `types init` writes the editor files.
 gnoblin-js = { path = "../gnoblin-js" }
 gnoblin-js-types = { path = "../gnoblin-js-types" }
-# `config migrate` converts an `init.lua` to `shell.ts`. The converter is a pure function of the Lua text and
-# links no script host.
-gnoblin-config-migrate = { path = "../gnoblin-config-migrate" }
-# `config init` and `config migrate` refuse to write a shell file beside another shell of the conventional names, which
+# `config init` refuses to write a shell file beside another shell of the conventional names, which
 # discovery would then call equally preferred.
 gnoblin-shell-discovery = { path = "../gnoblin-shell-discovery" }
 serde_json.workspace = true
@@ -52,12 +49,9 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 gnoblin-testkit = { path = "../gnoblin-testkit" }
 # The console tests listen on a socket in a directory of their own.
 tempfile = "3.23.0"
-# `config_migrate.rs` boots the shell over an inert tree to compare the world a converted config builds with the
-# starter's.
-gnoblin-tree-client.workspace = true
-# ... and over the real libraries, as a session runs it: a config that imports `gnoblin-std` runs the std library, which is a guest of a
-# core generation (`tests/config_migrate.rs` makes one with the rig the launcher's tests share). The implementation crates are loaded
-# by file name in a session and are development dependencies only.
+# `check` runs a config over the real libraries, as a session runs it: a config that imports `gnoblin-std` runs the std library, which
+# is a guest of a core generation. The implementation crates are loaded by file name in a session and are development
+# dependencies only.
 gnoblin-core-impl = { path = "../gnoblin-core-impl" }
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
 gnoblin-std-impl = { path = "../gnoblin-std-impl" }

@@ -69,7 +69,7 @@ default `--no-x11`; set it empty for a build without Xwayland) and `GNOBLIN_PARI
 system, below).
 
 On a Fedora 45 machine or container the whole sequence is `scripts/parity-reference.sh`: `deps` installs the build
-requirements, `mutter` builds the upstream `51.0` tag into `/opt/mutter51`, `gnoblin` builds the legacy Gnoblin into
+requirements, `mutter` builds the upstream `51.0` tag into `/opt/mutter51`, `gnoblin` builds the Mutter-based Gnoblin into
 `/opt/gnoblin` ("Run the Gnoblin reference") and `run REPORT` runs this directory with `--require mutter51
 --require mutter-gnoblin`. The CI job `parity-reference.yml` runs those four steps and keeps the report as an artifact.
 That job has not run on a GitHub runner yet; its steps ran on Agent37 as below.
@@ -96,7 +96,7 @@ is the full run on the candidate, `mutter51` and `mutter-gnoblin` (20 rows: 16 p
 
 ## Run the Gnoblin reference
 
-`target = { mutter-gnoblin = {} }`, or `references = [{ mutter-gnoblin = {} }]`, runs the legacy C Gnoblin on its patched
+`target = { mutter-gnoblin = {} }`, or `references = [{ mutter-gnoblin = {} }]`, runs the Mutter-based Gnoblin on its patched
 Mutter 51.0, headless, for real: the guardian (`gnoblin --devkit --wayland-display <display> --no-xwayland`), the
 patched Mutter on its headless backend with one 1280x720 virtual monitor, the Lua runtime and the control socket
 `<runtime-dir>/compositor-v1.sock`. It is the reference for Gnoblin's own API, which stock Mutter does not have, and it
@@ -112,24 +112,22 @@ compositor's log, when the session does not come up.
 | `GNOBLIN_PARITY_MUTTER_ROOT`        | Run both scripts in this root file system, as for `mutter51`.                                                       |
 | `GNOBLIN_PARITY_PROC_SHIM`          | A path inside that root to a library built from `scripts/parity-proc-shim.c`, preloaded in the session (below).     |
 
-`scripts/parity-gnoblinctl` runs the legacy `gnoblinctl` against the session's socket (`GNOBLIN_COMPOSITOR_SOCKET`) and the
+`scripts/parity-gnoblinctl` runs the Mutter-based `gnoblinctl` against the session's socket (`GNOBLIN_COMPOSITOR_SOCKET`) and the
 runner reads its output; `window kill <id>` and `workspace list` are the commands the API probes use. The launchers share
 `scripts/parity-launcher-lib.sh`, which enters the root file system and starts the private session bus the EIS door uses.
 
-`scripts/parity-reference.sh gnoblin` builds the prefix. The tree it builds must be a legacy one, and the Rust
-compositor's branch is not: it no longer holds the Mutter product, so `GNOBLIN_PARITY_GNOBLIN_SOURCE` is required and names
-a checkout of `main`. The reference is built from `main` (observed on `5bb523e9c`, API 1.93, which is the API of the
-contract inventory); the launchers and the runner are this branch's. The CI job checks `main` out beside the branch for
-that reason.
+`scripts/parity-reference.sh gnoblin` builds the prefix from the Mutter-based source tree that
+`GNOBLIN_PARITY_GNOBLIN_SOURCE` names: a checkout of `main` (observed on `5bb523e9c`, API 1.93, which is the API of the
+contract inventory). The launchers and the runner are this branch's. The CI job checks `main` out beside the branch.
 
 On Agent37 the same Fedora 45 root file system as above builds and runs it, with four differences that are properties of
 that sandbox, not of Gnoblin. None of them changes what the compositor does:
 
-- The legacy tree's `build.sh` runs its `scripts/list-tarball-sources.sh`, which uses bash process substitution (`< <(...)`). That needs
+- The Mutter-based tree's `build.sh` runs its `scripts/list-tarball-sources.sh`, which uses bash process substitution (`< <(...)`). That needs
   `/dev/fd`, which needs `/proc`, which a chroot there does not have, so the step stops with "/dev/fd/63: No such file or
   directory". The throwaway checkout in the root had its three `<(...)` uses replaced by a here-string and a temporary
   file; the repository's script is unchanged.
-- The legacy tree's `scripts/install-fedora-build-deps.sh` printed "Transaction failed: Rpm transaction failed" for a systemd trigger
+- The Mutter-based tree's `scripts/install-fedora-build-deps.sh` printed "Transaction failed: Rpm transaction failed" for a systemd trigger
   (`Failed to import file '/usr/lib/systemd/catalog/dbus-broker-launch.catalog'`), after the packages were installed,
   except `gstreamer1`, which was missing and made the Mutter link fail with undefined `gst_*` references until it was
   installed by hand.
@@ -151,7 +149,7 @@ session outlives it) and warnings about the system bus and colord, which the san
 ## Input
 
 Every live target is given input the way a real client would give it: the runner is the EIS sender (`ei_peer.rs`, the
-`reis` crate). Mutter and the legacy Gnoblin hand out an EIS socket from `org.gnome.Mutter.RemoteDesktop`
+`reis` crate). Mutter and the Mutter-based Gnoblin hand out an EIS socket from `org.gnome.Mutter.RemoteDesktop`
 (`CreateSession`, `ConnectToEIS`, then `Start`, in `remote_desktop.rs`); the candidate serves `eis.sock`. The sender binds
 every capability the seat advertises and waits until the devices that carry the interfaces the probes send through
 (`ei_pointer`, `ei_keyboard`, `ei_scroll`, `ei_button`) have resumed. Two things a Mutter seat taught the harness, both
@@ -165,7 +163,7 @@ fixed:
   client connects before the Wayland client binds the keyboard and waits for the seat to advertise what EIS offered.
 
 The `input-eis` scenario holds the four probes: a key (`a`), three relative motions of (10, 5), a left button press and
-release, and a vertical scroll. Their expectations are what stock Mutter 51.0 produced; the candidate and the legacy
+release, and a vertical scroll. Their expectations are what stock Mutter 51.0 produced; the candidate and the Mutter-based
 session produced the same, so no step records a divergence. The key arrives as evdev code 30 and the button as code 272.
 Motion is compared as the step between two motions (the position depends on where each compositor starts the pointer) and a
 scroll as its axis and direction (a compositor scales a scroll as it likes).
@@ -182,9 +180,9 @@ are not the same thing, and Mutter paces its frame callbacks at 60 Hz where the 
 
 ## Contract recording
 
-`contracts/` holds the contract read out of the legacy C sources. `scripts/contract-record.py` records what the legacy
-session really answered to it:
-it connects to a running legacy session (API 1.93), asks every operation of the inventory once with an empty argument
+`contracts/` holds the contract read out of the Mutter-based C sources. `scripts/contract-record.py` records what the Mutter-based
+session answered to it:
+it connects to a running Mutter-based session (API 1.93), asks every operation of the inventory once with an empty argument
 table, subscribes to every event the session offers and writes `contracts/recorded-session.json`. A subscription takes at
 most 64 names and a later one replaces an earlier one, so the recorder uses one connection per slice of 64; `windows` and
 `monitors` in the hello list are streams started by an operation of that name, not subscribable names. `--drive CMD` runs
@@ -288,10 +286,10 @@ an unknown id fails the run:
 | `popup.map.parent-keeps-focus`, `popup.destroy.parent-keeps-focus`, `popup.grab.without-input`   | `candidate`, `mutter51`, `mutter-gnoblin` | Whether the parent stays activated, and whether the popup is configured or dismissed.   |
 | `input.key.reaches-focused-toplevel`, `input.pointer.relative-motion`, `.button`, `.scroll`      | `candidate`, `mutter51`, `mutter-gnoblin` | The `wl_keyboard` and `wl_pointer` events a fullscreen client receives for EIS input.   |
 
-`mutter-gnoblin` (the legacy Gnoblin on the patched Mutter, "Run the Gnoblin reference" above) answers every probe, and it
+`mutter-gnoblin` (the Mutter-based Gnoblin on the patched Mutter, "Run the Gnoblin reference" above) answers every probe, and it
 is the only target besides the candidate that answers the ones that read Gnoblin's own API. Its observations are what
-the legacy `gnoblinctl` printed, reduced to the keys the candidate's observation has where the two mean the same thing
-(`window.open`, `window.close`) and the legacy command's own JSON where they do not (`workspace.list`, an array against
+the Mutter-based `gnoblinctl` printed, reduced to the keys the candidate's observation has where the two mean the same thing
+(`window.open`, `window.close`) and the Mutter-based command's own JSON where they do not (`workspace.list`, an array against
 the candidate's object model; `window.kill.unknown`, a fixed sentence against an error that names the identity). A
 scenario records each such difference as a divergence of the candidate. There is no stand-in that pretends to drive a
 compositor, so a scenario cannot pass on behaviour nothing exercised. The scenarios with no `mutter51` row are listed in

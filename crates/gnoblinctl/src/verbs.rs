@@ -294,18 +294,8 @@ fn parse_committed(bytes: &[u8]) -> Result<Json, Failure> {
 }
 
 /// `config validate FILE`: check a configuration document the way the runtime would.
-/// Deprecated spellings are reported as warnings; they do not fail it. A Lua file is refused with the command that
-/// converts it.
+/// Deprecated spellings are reported as warnings; they do not fail it.
 pub(crate) fn validate(path: &Path, json: bool, out: &mut dyn Write) -> Result<u8, Failure> {
-    if path.extension().is_some_and(|extension| extension == "lua") {
-        return Err(Failure::Refusal {
-            code: "lua-not-supported".to_owned(),
-            message: format!(
-                "{}: Gnoblin no longer runs Lua; convert it with `gnoblinctl config migrate` (see docs/migrating-from-lua.md)",
-                path.display()
-            ),
-        });
-    }
     let warnings = validate_json(path)?;
     let result = if json {
         writeln!(out, "{}", json!({"valid": true, "warnings": warnings}))
@@ -388,18 +378,6 @@ mod tests {
             panic!("an unparseable document is refused");
         };
         assert_eq!(code, "invalid-config");
-    }
-
-    /// A Lua file is refused with the command that converts it.
-    #[test]
-    fn a_lua_file_is_refused_with_the_migration_command() {
-        let (result, out) = validate_bytes("lua", "lua", br#"gnoblin.configure { cursor = { size = 36 } }"#);
-        let Err(Failure::Refusal { code, message }) = result else {
-            panic!("a Lua file is refused");
-        };
-        assert_eq!(code, "lua-not-supported");
-        assert!(message.contains("gnoblinctl config migrate"), "{message}");
-        assert!(out.is_empty(), "nothing is printed as valid");
     }
 
     /// `validate` names the file the user gave; a missing one is refused, not reported valid.

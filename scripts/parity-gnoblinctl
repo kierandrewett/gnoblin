@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the legacy `gnoblinctl` against the session scripts/parity-mutter-gnoblin started, for the `mutter-gnoblin` target of
+# Run the Mutter-based `gnoblinctl` against the session scripts/parity-mutter-gnoblin started, for the `mutter-gnoblin` target of
 # the parity runner (crates/gnoblin-parity).
 #
 # usage: parity-gnoblinctl RUNTIME_DIR [GNOBLINCTL ARGUMENTS...]

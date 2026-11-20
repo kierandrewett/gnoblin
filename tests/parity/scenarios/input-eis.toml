@@ -4,7 +4,7 @@
 # Wayland client maps a fullscreen window and reports what it receives, so one expectation reads the same on every target.
 #
 # The expectations are what a real Mutter 51.0 session produced (Agent37 run, tests/parity/reports/); the Rust candidate and
-# the legacy Gnoblin on its patched Mutter produced the same, so no step records a divergence.
+# the Mutter-based Gnoblin on its patched Mutter produced the same, so no step records a divergence.
 name = "input-eis"
 description = "Key, relative motion, button and scroll events sent over EIS reach the focused client."
 target = { candidate = {} }

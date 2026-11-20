@@ -20,14 +20,14 @@ expect = { a_activated = false, b_activated = true }
 
 # The candidate's `focus_new_windows` defaults to `prevent` (the schema default, `crates/gnoblin-config/schema/config.toml`,
 # and `NewWindowFocus` in `crates/gnoblin-wayland/src/policy.rs`): a window that maps while another has focus is left
-# unfocused, so it cannot steal focus. Stock Mutter 51 focuses it, and so does the legacy Gnoblin session: its
+# unfocused, so it cannot steal focus. Stock Mutter 51 focuses it, and so does the Mutter-based Gnoblin session: its
 # `focus.policy` answer reads `focus_new_windows: "allow"` with no user configuration
 # (`tests/parity/contracts/recorded-session.json`). The difference is a decision about the default, not a defect in the
 # focus path: the candidate has the `allow` setting too (`NewWindowFocus::Allow`, applied by `wm_options_of` in
 # `gnoblin-compositor`); this runner does not set it, and which default ships is a product decision.
 [steps.divergence.candidate]
 expect = { a_activated = true, b_activated = false }
-reason = "focus_new_windows defaults to prevent in the candidate's schema; stock Mutter 51 and the legacy Gnoblin session (focus.policy: allow) focus a new window"
+reason = "focus_new_windows defaults to prevent in the candidate's schema; stock Mutter 51 and the Mutter-based Gnoblin session (focus.policy: allow) focus a new window"
 
 [[steps]]
 id = "focus.close-focused"

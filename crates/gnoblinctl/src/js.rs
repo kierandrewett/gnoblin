@@ -207,15 +207,6 @@ fn starter_text() -> io::Result<String> {
     std::fs::read_to_string(&path).map_err(|error| io::Error::other(format!("cannot read {}: {error}", path.display())))
 }
 
-/// Loads `source` as a `shell.ts` in the dry-run host before a command writes it, so a file that would not load is said
-/// so and not found at the next login. Returns the first problem as `file:line:column: message`.
-pub(crate) fn validate_config(source: &str) -> Result<(), String> {
-    let scratch = Scratch::new().map_err(|error| format!("cannot make a scratch directory: {error}"))?;
-    let entry = scratch.0.join(INIT_FILE);
-    std::fs::write(&entry, source).map_err(|error| format!("cannot write {}: {error}", entry.display()))?;
-    evaluate(&entry).map_err(|error| describe(&error))
-}
-
 /// A path as the user would type it: relative to the working directory when it is under it.
 fn shown(path: &Path) -> String {
     std::env::current_dir()
@@ -491,7 +482,7 @@ fn type_check(file: &Path, search: &TscSearch) -> TypeCheck {
 const CHECK_TSCONFIG_FILE: &str = "check.tsconfig.json";
 
 /// Write the editor files into `dir`: the library as the shell embeds it, the global declarations and the tsconfigs.
-/// `types init`, `config init`, `migrate` and `check --types` all write the same files through this.
+/// `types init`, `config init` and `check --types` all write the same files through this.
 pub(crate) fn write_editor_files(dir: &Path) -> io::Result<JsWritten> {
     let dirs = stock_dirs();
     let library = editor_library_in(&dirs).map_err(io::Error::other)?;
@@ -718,20 +709,12 @@ pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut
             );
         }
     };
-    let mut next = vec![
+    let next = vec![
         format!("Open {} in your editor.", init.display()),
         format!("Check it with `gnoblinctl check --types {}`.", init.display()),
         "Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request."
             .to_owned(),
     ];
-    // The new `shell.ts` takes precedence over an `init.lua` beside it, so the next session stops reading the Lua file.
-    let lua = dir.join("init.lua");
-    if lua.is_file() {
-        next.push(format!(
-            "{} is still there, and the TypeScript shell does not read it. Move what you need into shell.ts (docs/migrating-from-lua.md).",
-            lua.display()
-        ));
-    }
     let result = if json {
         let mut document = editor_json(&written, &dir);
         document["init"] = json!(init);
@@ -769,7 +752,7 @@ mod tests {
         for name in ["shell.ts", "a/b.mjs", "x.js", "y.mts"] {
             assert!(is_module(Path::new(name)), "{name}");
         }
-        for name in ["init.lua", "config.json", "init", "init.tsx.bak"] {
+        for name in ["config.json", "init", "init.tsx.bak"] {
             assert!(!is_module(Path::new(name)), "{name}");
         }
     }

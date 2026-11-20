@@ -29,7 +29,6 @@ export interface RenderedPage {
 export type LinkResolver = (target: string, fromFile: string) => string | null;
 
 const LANGS = [
-    "lua",
     "sh",
     "json",
     "nix",
@@ -46,7 +45,6 @@ const LANGS = [
     "toml",
 ] as const;
 const LANG_LABELS: Record<string, string> = {
-    lua: "Lua",
     sh: "Shell",
     json: "JSON",
     nix: "Nix",

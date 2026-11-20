@@ -135,12 +135,4 @@ gnoblin.input.primary.bind("Super+Shift+t", () => {
 
 This appends the current time to `~/shortcut.log` when you press Super+Shift+T.
 
-## Not available
-
-The shell has no equivalent for these features of the retired Lua shell:
-
-- A shortcut that acts when the key is released.
-- Overriding a built-in Mutter keybinding by schema group and action name.
-- A popup that captures the keys typed after a bare Super press.
-
 See also [restore-or-minimise bindings](/guides/window_state_shortcuts).

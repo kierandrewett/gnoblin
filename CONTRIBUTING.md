@@ -4,9 +4,6 @@ Gnoblin is a Wayland compositor and session layer written in Rust. It owns windo
 and hardware services, then exposes a small interface for an external shell such as Bingux. Shell widgets belong in the
 Bingux repository.
 
-The Mutter-based product Gnoblin shipped before 0.2.0 (the C tree, the Mutter patch series, CMake, nix and the pkgsmith
-packaging) lives on the `main` branch and in Git history. This tree holds the Rust compositor only.
-
 ## Development
 
 Install the [Rust workspace prerequisites](#rust-workspace-prerequisites), then build, test and check with `just`, which
@@ -175,7 +172,7 @@ is the crate and the binary alike. Library crates take their area prefix, such a
 `cargo xtask dist` installs the session into a prefix and writes `share/gnoblin/install-manifest` (see
 [install layout](docs/install-layout.md)); `just dist-check` checks how it links and what it installs. The release
 workflow that builds distribution packages from that install, and runs them through a clean-install and login check on
-each target, does not exist yet: it is tracked in [issue 379](https://github.com/kierandrewett/gnoblin/issues/379).
+each target, is tracked in [issue 379](https://github.com/kierandrewett/gnoblin/issues/379).
 [Package repositories](design/package-repositories.md) describes the signed repository that `scripts/pkgrepo` builds and
 `.github/workflows/package-repository.yml` publishes.
 

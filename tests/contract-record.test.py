@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the contract recording made from a live legacy session (API 1.93).
+"""Guard the contract recording made from a live Mutter-based session (API 1.93).
 
 scripts/contract-record.py writes tests/parity/contracts/recorded-session.json from a running session, which this test
 never starts. It proves the stored recording still holds together with the inventory: the same API version, every

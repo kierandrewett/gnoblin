@@ -1,11 +1,10 @@
 name: Parity reference
 
 # The parity scenarios (tests/parity/scenarios) against the Rust candidate, against stock Mutter 51 on its headless
-# backend and against the legacy C Gnoblin on its patched Mutter, with one expectation per step. `rust.yml` runs the same
+# backend and against the Mutter-based Gnoblin on its patched Mutter, with one expectation per step. `rust.yml` runs the same
 # scenarios without the reference rows, which it skips for want of a launcher; this job builds both references and
 # requires every `mutter51` and `mutter-gnoblin` row to have run, so a difference between the compositors is a red job
-# and the report is kept as an artifact. The legacy tree is `main` at the commit pinned below (the Rust branch dropped
-# starter files the patched Mutter still installs, so it cannot build the legacy product). The pin keeps a run
+# and the report is kept as an artifact. The Mutter-based tree is `main` at the commit pinned below. The pin keeps a run
 # comparable with the stored reports; move it on purpose and store a new report with the move.
 # design/rust-compositor.md, "The parity harness".
 
@@ -55,7 +54,7 @@ defaults:
 
 jobs:
   parity:
-    name: Scenarios on the candidate, Mutter 51 and the legacy Gnoblin
+    name: Scenarios on the candidate, Mutter 51 and the Mutter-based Gnoblin
     runs-on: ubuntu-latest
     container: fedora:45
     timeout-minutes: 150
@@ -76,24 +75,24 @@ jobs:
           key: mutter51-${{ hashFiles('scripts/parity-reference.sh') }}
       - name: Build Mutter 51
         run: scripts/parity-reference.sh mutter
-      # The legacy product is built from `main` at the pinned commit (the one the stored contract recording and
+      # The Mutter-based product is built from `main` at the pinned commit (the one the stored contract recording and
       # reports were made from), with its pinned Mutter and its patch series, as a release of it is.
-      - name: Check out the legacy Gnoblin
-        id: legacy
+      - name: Check out the Mutter-based Gnoblin
+        id: mutter-based
         uses: actions/checkout@v4
         with:
           ref: 5bb523e9c84c99002306c7f666b5d55316fea7b2
-          path: legacy-src
+          path: mutter-based-src
           submodules: recursive
           fetch-depth: 1
-      - name: Restore the legacy Gnoblin build
+      - name: Restore the Mutter-based Gnoblin build
         uses: actions/cache@v4
         with:
           path: /opt/gnoblin
-          key: gnoblin-legacy-${{ steps.legacy.outputs.commit }}-${{ hashFiles('scripts/parity-reference.sh') }}
-      - name: Build the legacy Gnoblin
+          key: gnoblin-mutter-based-${{ steps.mutter-based.outputs.commit }}-${{ hashFiles('scripts/parity-reference.sh') }}
+      - name: Build the Mutter-based Gnoblin
         env:
-          GNOBLIN_PARITY_GNOBLIN_SOURCE: ${{ github.workspace }}/legacy-src
+          GNOBLIN_PARITY_GNOBLIN_SOURCE: ${{ github.workspace }}/mutter-based-src
         run: scripts/parity-reference.sh gnoblin
       - name: Run the scenarios against all three
         run: scripts/parity-reference.sh run parity-report.txt

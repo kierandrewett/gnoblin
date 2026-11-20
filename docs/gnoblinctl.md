@@ -59,7 +59,7 @@ To diagnose it:
 
 These commands do not connect to a session, and work before Gnoblin is running:
 
-- `gnoblinctl config validate FILE`, `gnoblinctl config init` and `gnoblinctl config migrate`.
+- `gnoblinctl config validate FILE` and `gnoblinctl config init`.
 - `gnoblinctl check FILE` and `gnoblinctl types init`.
 
 `gnoblinctl console` does not use the compositor's socket either: it connects to the JavaScript shell's console (see
@@ -195,8 +195,6 @@ gnoblinctl output call 6 apply supersample=2
   needs no session.
 - `gnoblinctl config init [DIR] [--force]` writes a starter `shell.ts` for the
   [TypeScript shell](typescript-shell.md). It needs no session.
-- `gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]` converts an `init.lua` to a `shell.ts`. It needs
-  no session. See [Convert an init.lua](#convert-an-init-lua).
 
 ```sh
 gnoblinctl config validate FILE
@@ -299,74 +297,6 @@ Add `--force` to write the starter over `shell.ts`. The first line of the output
 
 With `--json` it prints `init`, `replaced`, `next` and the fields of [`types init`](#editor-files).
 
-### Convert an init.lua
-
-`gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]` converts a Lua config to TypeScript. `FILE` is the
-`init.lua` to convert, and the command writes `shell.ts` beside it, or to `OUT`. It reads the Lua as text and
-never runs it, so it needs no session.
-
-The `shell.lua` beside an `init.lua`, and every file a `gnoblin.load` names, are read too and become one `shell.ts`, with
-a comment for each file. The output is statements against the shell's objects, not a config object:
-
-- Workspaces are `gnoblin.workspaces.add(new Workspace(...))` and shortcuts are `input.bind(...)`.
-- A window rule is a style on a selection or a listener.
-- The stock desktop is written out too, because a `shell.ts` replaces the stock default.
-
-See [the converter](migrating-from-lua.md#the-converter) for what it converts, and
-[the settings with no TypeScript home yet](migrating-from-lua.md#settings-with-no-typescript-home-yet) for what it
-leaves out and why.
-
-It runs `gnoblinctl types init` on the directory it wrote to, runs the converted file once in the dry-run shell (the
-evaluation `gnoblinctl check` makes) before it writes, and prints what converted, what was left out and three steps.
-
-```sh
-gnoblinctl config migrate
-```
-
-```text
-ok  shell.ts written: /home/me/.config/gnoblin/shell.ts
-ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib (200 files, the real sources of `gnoblin-core` and `gnoblin-std`)
-ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
-ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
-
-Converted
----------
-workspaces  4
-keys        7
-
-Left out (2)
-------------
-warn  init.lua:31  gnoblin.on("gnoblin.window.created", function(w) ...
-      an event handler runs code: write a `ClientListener` and attach it with `gnoblin.clients.addListener`
-      see docs/migrating-from-lua.md#what-the-converter-cannot-do
-warn  config/10-windows.lua:5  ["focus-mode"] = "click"
-      `window-management.focus-mode` has no TypeScript home yet: the shell has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
-      see docs/migrating-from-lua.md#settings-with-no-typescript-home-yet
-
-Next:
-  1. Review /home/me/.config/gnoblin/shell.ts: each UNMAPPED comment is something to port by hand.
-  2. Check it with `gnoblinctl check --types /home/me/.config/gnoblin/shell.ts`.
-  3. Log out and back in. From the next session the TypeScript shell runs and /home/me/.config/gnoblin/shell.ts takes precedence over /home/me/.config/gnoblin/init.lua.
-```
-
-The exit code says how it went:
-
-- 0: everything converted.
-- 1: the file was written and something was left out, or the converted file did not load. A file with something left out
-  starts with `// INCOMPLETE: N unmapped settings, see comments`, and each setting is an `UNMAPPED` comment.
-- 2: nothing was written. The command line was wrong, a file could not be read, the Lua does not parse, or a file is in
-  the way. The command stops instead of replacing an existing `OUT`, and instead of writing a `shell.ts` beside another
-  `shell.*` file, unless you add `--force`. `--force` replaces that file and nothing else: the Lua files are only read.
-
-Three options change what it does:
-
-- `--dry-run` prints the TypeScript on standard output and the report on standard error, and writes nothing. It does
-  not stop at a file in the way.
-- `-o OUT` writes the TypeScript to `OUT`, and the editor files beside it.
-- With `--json` it prints `sources`, `converted`, `unmapped` (each with `file`, `line`, `summary`, `reason` and
-  `pointer`), `notes`, `load_problem`, `written`, `dry_run`, and, after a write, `init`, `types`, `tsconfig`,
-  `tsconfig_created` and `next`. With `--dry-run` it also prints `typescript`.
-
 ## Check and types
 
 `gnoblinctl check FILE` checks a configuration file without a session. The
@@ -430,12 +360,9 @@ hint:  the module threw while loading, before any handler could run
 
 ### The dry-run shell
 
-`check` runs the file in the dry-run shell: the `gnoblin` launcher's `check`
-role, which loads the file the way a session does, in a core of its own, and
-prints its verdict. It is the shell's own library and objects over a tree with a
-root and one seat, and no windows, outputs or devices. A file that imports
-`gnoblin-std` runs it over the installed `libgnoblin-std.so.1`, so what the
-library refuses in a session it refuses here.
+`check` runs the file in the dry-run shell: the `gnoblin` launcher's `check` role, which loads the file the way a session does, in a core of its own, and prints its verdict.
+
+It is the shell's own library and objects over a tree with a root and one seat, and no windows, outputs or devices. A file that imports `gnoblin-std` runs it over the installed `libgnoblin-std.so.1`, so what the library refuses in a session it refuses here.
 
 The launcher is the `gnoblin` that is installed beside `gnoblinctl` (set
 `GNOBLIN_LAUNCHER` to name another). `check` without it says so and exits 1.

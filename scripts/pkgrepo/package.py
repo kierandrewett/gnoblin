@@ -3,7 +3,7 @@
 A package is a folder with an nfpm.yaml in it. `find_manifests` walks a source tree and returns every one. `build`
 runs nfpm once per package and format, with the manifest's folder as the working directory, so a manifest names its
 scripts relative to itself. The manifest reads its files from ${STAGE}, a staged prefix laid out like the installed
-system (usr/bin/...), for example the DESTDIR of `make install`.
+system (usr/bin/...), for example the DESTDIR of `cargo xtask dist install`.
 
 nfpm does not look at the binaries it packages, so it adds no shared-library dependencies. A manifest lists them in
 `depends`. The line `- "@scan"` in `depends` adds what the packaged binaries need: `scan_dependencies` reads the

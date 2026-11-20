@@ -2,8 +2,7 @@
 
 This page lists the releases that have Gnoblin packages and how far each has been tested.
 
-The Rust compositor has no release packages yet. The packages the install guides name come from the earlier
-Mutter-based releases, so every release is Unsupported until packages of the new compositor pass the gates below.
+Every release is Unsupported until packages for it pass the gates below.
 
 | Status      | What it means                                                                        |
 | ----------- | ------------------------------------------------------------------------------------ |

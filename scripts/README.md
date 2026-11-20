@@ -17,16 +17,16 @@ says what each is for, so you can tell before you run it.
 
 ## Conformance and parity
 
-| Script                                                                                                          | What it does                                                                               | Run by                                   |
-| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `wlcs.sh`, `wlcs-run.py`                                                                                        | Build Canonical's Wayland Conformance Suite and run the core subset against the compositor | `wlcs.yml`                               |
-| `parity-reference.sh`                                                                                           | Build Mutter 51 and the legacy Gnoblin, and run the parity scenarios against all three     | `parity-reference.yml`                   |
-| `parity-mutter51`, `parity-mutter-gnoblin`, `parity-gnoblinctl`, `parity-launcher-lib.sh`, `parity-proc-shim.c` | Launch the reference sessions the parity runner drives                                     | `gnoblin-parity`                         |
-| `reference-session-record.sh`, `reference-session-sessions.py`                                                  | Record what a stock Mutter 51 session puts on the bus and its Wayland socket               | by hand                                  |
-| `reference-session-matrix.py`                                                                                   | Compare the recorded reference session with the adapters' support matrices                 | `tests/reference-session-matrix.test.py` |
-| `contract-record.py`                                                                                            | Record what a live legacy session answers on its control socket                            | by hand                                  |
-| `real-host-conformance.sh`                                                                                      | Run the nested backend against a real host compositor, Sway or Weston                      | by hand                                  |
-| `xr-smoke.sh`                                                                                                   | Whole-stack XR smoke test with a simulated headset                                         | by hand                                  |
+| Script                                                                                                          | What it does                                                                                 | Run by                                   |
+| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `wlcs.sh`, `wlcs-run.py`                                                                                        | Build Canonical's Wayland Conformance Suite and run the core subset against the compositor   | `wlcs.yml`                               |
+| `parity-reference.sh`                                                                                           | Build Mutter 51 and the Mutter-based Gnoblin, and run the parity scenarios against all three | `parity-reference.yml`                   |
+| `parity-mutter51`, `parity-mutter-gnoblin`, `parity-gnoblinctl`, `parity-launcher-lib.sh`, `parity-proc-shim.c` | Launch the reference sessions the parity runner drives                                       | `gnoblin-parity`                         |
+| `reference-session-record.sh`, `reference-session-sessions.py`                                                  | Record what a stock Mutter 51 session puts on the bus and its Wayland socket                 | by hand                                  |
+| `reference-session-matrix.py`                                                                                   | Compare the recorded reference session with the adapters' support matrices                   | `tests/reference-session-matrix.test.py` |
+| `contract-record.py`                                                                                            | Record what a live Mutter-based session answers on its control socket                        | by hand                                  |
+| `real-host-conformance.sh`                                                                                      | Run the nested backend against a real host compositor, Sway or Weston                        | by hand                                  |
+| `xr-smoke.sh`                                                                                                   | Whole-stack XR smoke test with a simulated headset                                           | by hand                                  |
 
 ## Shell checks
 

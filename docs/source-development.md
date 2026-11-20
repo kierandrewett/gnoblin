@@ -62,5 +62,3 @@ login on a real seat; see [hardware verification](real-hardware-verification.md)
 
 Gnoblin-owned behaviour goes in a crate under `crates/`, named for its area (`gnoblin-portal-core`) or, when it builds a
 binary, for the binary. Do not commit build prefixes, generated tarballs or local session configuration.
-`cargo xtask layout` fails on a reference to the retired C source and patch trees of the Mutter product, which lives on
-the `main` branch.

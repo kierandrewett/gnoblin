@@ -2,8 +2,8 @@
  * An LD_PRELOAD shim for a root file system that has no /proc (tests/parity/README.md, "Run the
  * Mutter reference").
  *
- * The legacy Gnoblin guardian starts its supervisor and its Lua worker by running itself again, and
- * finds itself by reading the link /proc/self/exe (session/gnoblin-runtime*.c in the legacy tree). A chroot on an
+ * The Mutter-based Gnoblin guardian starts its supervisor and its Lua worker by running itself again, and
+ * finds itself by reading the link /proc/self/exe (session/gnoblin-runtime*.c in the Mutter-based tree). A chroot on an
  * Agent37 instance cannot mount /proc, so that read fails and the guardian refuses to start. This
  * library answers that one link with the path the process was started with (the kernel's AT_EXECFN,
  * made absolute) and passes every other readlink through, so the compositor, the Lua runtime and
