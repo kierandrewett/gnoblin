@@ -546,7 +546,7 @@ gnoblin/
     gnoblin-testkit/          in-process fixture, test clients, input injection, observation recorder
     gnoblin-parity/           scenario runner, targets (Mutter reference, Rust candidate), normaliser, reports
     xtask/                    code generation: d.lua, API docs, schema dump, compatibility report
-  protocols/                  Gnoblin-owned Wayland XML (window frame, session host) with version history
+  protocols/                  Gnoblin-owned Wayland XML, with version history
   data/                       session entries, systemd units, portal config, default configuration
   tests/
     parity/                   scenarios, contract inventory, divergence ledger, reference recordings
