@@ -1,0 +1,10 @@
+# The catalog of `gnoblin.model`: the object model every shell needs, served by `libgnoblin-core` through the object protocol
+# (`GnoblinObjectApi`, design/native-std-port.md section 4).
+#
+# `local = true` marks a namespace a library serves and the compositor does not: the wire never carries it and the `gnoblin`
+# catalog hash does not include it. Each module of the model is a file of this directory (`collection.toml`, `client.toml`,
+# `input.toml`, ...), and each file has a lock of its own under `lock/`, so two lanes that add classes to different modules edit
+# different files. This file declares the namespace and its version. The classes are added by the lanes that own the modules.
+namespace = "gnoblin.model"
+version = "0.2.0"
+local = true

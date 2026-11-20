@@ -306,6 +306,9 @@ fn proto_type(ty: &Type, records: &BTreeSet<String>) -> (Option<&'static str>, S
             Some(format!("record `{name}`: the properties of one value")),
         ),
         Type::ObjectRef(name) => (None, "string".to_owned(), Some(format!("object id of `{name}`"))),
+        // Enums and callbacks belong to the namespaces a library serves, which the wire never carries.
+        Type::Enum(name) => (None, "uint32".to_owned(), Some(format!("member of enum `{name}`"))),
+        Type::Callback(name) => (None, "string".to_owned(), Some(format!("callback `{name}`"))),
         Type::List(inner) => {
             let (_, proto_type, note) = proto_type(inner, records);
             (

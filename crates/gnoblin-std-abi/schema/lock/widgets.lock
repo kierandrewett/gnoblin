@@ -1,0 +1,34 @@
+# The public surface of the `widgets` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+member | entry_model.anchor | property uint ro | 0.2.0
+member | entry_model.backspace | method () | 0.2.0
+member | entry_model.before | method (at:int) -> string | 0.2.0
+member | entry_model.caret | property uint ro | 0.2.0
+member | entry_model.changed | signal () | 0.2.0
+member | entry_model.clear | method () | 0.2.0
+member | entry_model.delete | method () | 0.2.0
+member | entry_model.end | method (extend?:bool) | 0.2.0
+member | entry_model.home | method (extend?:bool) | 0.2.0
+member | entry_model.insert | method (text:string) | 0.2.0
+member | entry_model.left | method (extend?:bool) | 0.2.0
+member | entry_model.length | property uint ro | 0.2.0
+member | entry_model.move | method (at:int, extend?:bool) | 0.2.0
+member | entry_model.right | method (extend?:bool) | 0.2.0
+member | entry_model.select_all | method () | 0.2.0
+member | entry_model.selected_text | property string ro | 0.2.0
+member | entry_model.selection | property object:text_range ro | 0.2.0
+member | entry_model.text | property string rw | 0.2.0
+member | text_range.end | property uint rw | 0.2.0
+member | text_range.start | property uint rw | 0.2.0
+
+object | entry_model | base none ctor(text) | 0.2.0
+object | text_range | base none record | 0.2.0

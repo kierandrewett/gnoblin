@@ -55,13 +55,31 @@ const | EFFECT_SHADER | u32 = 4 | 1.0
 const | VALUE_BYTES | u32 = 10 | 1.0
 const | VALUE_SECRET | u32 = 11 | 1.0
 const | VALUE_RECORD | u32 = 12 | 1.0
+const | VALUE_OBJECT | u32 = 13 | 1.0
+const | VALUE_CLOSURE | u32 = 14 | 1.0
+const | VALUE_ENUM | u32 = 15 | 1.0
+const | VALUE_NONE | u32 = 16 | 1.0
 const | VALUE_OWNED | u32 = 1 | 1.0
 const | MEMBER_PROPERTY | u32 = 1 | 1.0
 const | MEMBER_METHOD | u32 = 2 | 1.0
 const | MEMBER_SIGNAL | u32 = 3 | 1.0
+const | MEMBER_VALUE | u32 = 4 | 1.0
 const | MEMBER_ANIMATED | u32 = 1 | 1.0
 const | MEMBER_READONLY | u32 = 2 | 1.0
 const | MEMBER_SECRET | u32 = 4 | 1.0
+const | MEMBER_STATIC | u32 = 8 | 1.0
+const | MEMBER_REQUIRED | u32 = 16 | 1.0
+const | MEMBER_NATIVE_DEFAULT | u32 = 32 | 1.0
+const | MEMBER_INERT | u32 = 64 | 1.0
+const | MEMBER_CALLBACK | u32 = 128 | 1.0
+const | CLASS_HANDLE | u32 = 1 | 1.0
+const | CLASS_RECORD | u32 = 2 | 1.0
+const | CLASS_INTERFACE | u32 = 3 | 1.0
+const | CLASS_SERVICE | u32 = 4 | 1.0
+const | CLASS_ENUM | u32 = 5 | 1.0
+const | CLASS_FLAG_RETAINED | u32 = 1 | 1.0
+const | CATALOG_CLASS | u32 = 1 | 1.0
+const | CATALOG_MEMBER | u32 = 2 | 1.0
 const | LANG_NATIVE | u32 = 1 | 1.0
 const | LANG_PYTHON | u32 = 2 | 1.0
 const | LANG_JS | u32 = 3 | 1.0
@@ -126,6 +144,9 @@ alias | GnoblinReg | u64 | 1.0
 alias | GnoblinNode | u64 | 1.0
 alias | GnoblinPending | u64 | 1.0
 alias | GnoblinProc | u64 | 1.0
+alias | GnoblinObj | u64 | 1.0
+alias | GnoblinClassId | u32 | 1.0
+alias | GnoblinMemberId | u32 | 1.0
 
 callback | GnoblinDropFn | unsafe extern "C" fn(user: *mut c_void) | 1.0
 callback | GnoblinShutdownFn | unsafe extern "C" fn(user: *mut c_void) | 1.0
@@ -137,6 +158,8 @@ callback | GnoblinAnswerFn | unsafe extern "C" fn(user: *mut c_void, answer: *co
 callback | GnoblinClaimFn | unsafe extern "C" fn(user: *mut c_void, event: *const GnoblinClaimEvent) -> i32 | 1.0
 callback | GnoblinTimerFn | unsafe extern "C" fn(user: *mut c_void) -> i32 | 1.0
 callback | GnoblinExitFn | unsafe extern "C" fn(user: *mut c_void, exit: *const GnoblinProcessExit) -> i32 | 1.0
+callback | GnoblinInvokeFn | unsafe extern "C" fn(user: *mut c_void, member: GnoblinMemberId, args: *const GnoblinValue, n_args: usize, out: *mut GnoblinValue) -> i32 | 1.0
+callback | GnoblinCatalogFn | unsafe extern "C" fn(user: *mut c_void, entry: *const GnoblinCatalogEntry) -> i32 | 1.0
 
 struct | GnoblinStr | size 16 align 8 fixed | 1.0
 
@@ -480,7 +503,69 @@ field | GnoblinRuntimeEntry.activate | Option<unsafe extern "C" fn(ctx: GnoblinC
 field | GnoblinRuntimeEntry.abandon | Option<unsafe extern "C" fn(ctx: GnoblinCtx)> @88 +8 | 1.0
 field | GnoblinRuntimeEntry.turn | Option<unsafe extern "C" fn(ctx: GnoblinCtx, timeout_ms: u32) -> i32> @96 +8 | 1.0
 
-struct | GnoblinApi | size 464 align 8 extensible | 1.0
+struct | GnoblinClosure | size 32 align 8 extensible | 1.0
+
+field | GnoblinClosure.size | u32 @0 +4 | 1.0
+field | GnoblinClosure.reserved | u32 @4 +4 | 1.0
+field | GnoblinClosure.invoke | Option<GnoblinInvokeFn> @8 +8 | 1.0
+field | GnoblinClosure.user | *mut c_void @16 +8 | 1.0
+field | GnoblinClosure.drop_user | Option<GnoblinDropFn> @24 +8 | 1.0
+
+struct | GnoblinInit | size 48 align 8 fixed | 1.0
+
+field | GnoblinInit.member | GnoblinMemberId @0 +4 | 1.0
+field | GnoblinInit.reserved | u32 @4 +4 | 1.0
+field | GnoblinInit.value | GnoblinValue @8 +40 | 1.0
+
+struct | GnoblinImpl | size 48 align 8 extensible | 1.0
+
+field | GnoblinImpl.size | u32 @0 +4 | 1.0
+field | GnoblinImpl.reserved | u32 @4 +4 | 1.0
+field | GnoblinImpl.implemented | *const u64 @8 +8 | 1.0
+field | GnoblinImpl.n_words | usize @16 +8 | 1.0
+field | GnoblinImpl.invoke | Option<GnoblinInvokeFn> @24 +8 | 1.0
+field | GnoblinImpl.user | *mut c_void @32 +8 | 1.0
+field | GnoblinImpl.drop_user | Option<GnoblinDropFn> @40 +8 | 1.0
+
+struct | GnoblinCatalogEntry | size 80 align 8 extensible | 1.0
+
+field | GnoblinCatalogEntry.size | u32 @0 +4 | 1.0
+field | GnoblinCatalogEntry.entry | u32 @4 +4 | 1.0
+field | GnoblinCatalogEntry.class | GnoblinClassId @8 +4 | 1.0
+field | GnoblinCatalogEntry.member | GnoblinMemberId @12 +4 | 1.0
+field | GnoblinCatalogEntry.kind | u32 @16 +4 | 1.0
+field | GnoblinCatalogEntry.flags | u32 @20 +4 | 1.0
+field | GnoblinCatalogEntry.base | GnoblinClassId @24 +4 | 1.0
+field | GnoblinCatalogEntry.value_kind | u32 @28 +4 | 1.0
+field | GnoblinCatalogEntry.value_class | GnoblinClassId @32 +4 | 1.0
+field | GnoblinCatalogEntry.arg_count | u32 @36 +4 | 1.0
+field | GnoblinCatalogEntry.arg_kinds | *const u32 @40 +8 | 1.0
+field | GnoblinCatalogEntry.arg_names | GnoblinStr @48 +16 | 1.0
+field | GnoblinCatalogEntry.name | GnoblinStr @64 +16 | 1.0
+
+struct | GnoblinObjectApi | size 144 align 8 extensible | 1.0
+
+field | GnoblinObjectApi.size | u32 @0 +4 | 1.0
+field | GnoblinObjectApi.reserved | u32 @4 +4 | 1.0
+field | GnoblinObjectApi.catalog_hash | u64 @8 +8 | 1.0
+field | GnoblinObjectApi.class_id | unsafe extern "C" fn(ctx: GnoblinCtx, name: GnoblinStr, out: *mut GnoblinClassId) -> i32 @16 +8 | 1.0
+field | GnoblinObjectApi.member_id | unsafe extern "C" fn(ctx: GnoblinCtx, class: GnoblinClassId, kind: u32, name: GnoblinStr, out: *mut GnoblinMemberId) -> i32 @24 +8 | 1.0
+field | GnoblinObjectApi.catalog_each | unsafe extern "C" fn(ctx: GnoblinCtx, cb: GnoblinCatalogFn, user: *mut c_void) -> i32 @32 +8 | 1.0
+field | GnoblinObjectApi.create | unsafe extern "C" fn(ctx: GnoblinCtx, class: GnoblinClassId, inits: *const GnoblinInit, n: usize, out: *mut GnoblinObj) -> i32 @40 +8 | 1.0
+field | GnoblinObjectApi.destroy | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj) -> i32 @48 +8 | 1.0
+field | GnoblinObjectApi.release | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj) -> i32 @56 +8 | 1.0
+field | GnoblinObjectApi.get | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, out: *mut GnoblinValue) -> i32 @64 +8 | 1.0
+field | GnoblinObjectApi.set | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, value: *const GnoblinValue) -> i32 @72 +8 | 1.0
+field | GnoblinObjectApi.update | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, inits: *const GnoblinInit, n: usize) -> i32 @80 +8 | 1.0
+field | GnoblinObjectApi.set_timed | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, value: *const GnoblinValue, timing: *const GnoblinTiming) -> i32 @88 +8 | 1.0
+field | GnoblinObjectApi.call | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, args: *const GnoblinValue, n: usize, out: *mut GnoblinValue) -> i32 @96 +8 | 1.0
+field | GnoblinObjectApi.call_static | unsafe extern "C" fn(ctx: GnoblinCtx, class: GnoblinClassId, member: GnoblinMemberId, args: *const GnoblinValue, n: usize, out: *mut GnoblinValue) -> i32 @104 +8 | 1.0
+field | GnoblinObjectApi.listen | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, cb: GnoblinInvokeFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg @112 +8 | 1.0
+field | GnoblinObjectApi.unlisten | unsafe extern "C" fn(ctx: GnoblinCtx, reg: GnoblinReg) -> i32 @120 +8 | 1.0
+field | GnoblinObjectApi.implement | unsafe extern "C" fn(ctx: GnoblinCtx, class: GnoblinClassId, imp: *const GnoblinImpl, out: *mut GnoblinObj) -> i32 @128 +8 | 1.0
+field | GnoblinObjectApi.class_of | unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, out: *mut GnoblinClassId) -> i32 @136 +8 | 1.0
+
+struct | GnoblinApi | size 472 align 8 extensible | 1.0
 
 field | GnoblinApi.size | u32 @0 +4 | 1.0
 field | GnoblinApi.major | u32 @4 +4 | 1.0
@@ -542,3 +627,4 @@ field | GnoblinApi.report_config_rejected | unsafe extern "C" fn(ctx: GnoblinCtx
 field | GnoblinApi.wake_fd | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @440 +8 | 1.0
 field | GnoblinApi.call | unsafe extern "C" fn(ctx: GnoblinCtx, object: u64, class: u32, method: u32, args: *const GnoblinValue, n_args: usize, cb: Option<GnoblinAnswerFn>, user: *mut c_void, drop_user: Option<GnoblinDropFn>, out: *mut GnoblinPending) -> i32 @448 +8 | 1.0
 field | GnoblinApi.subscribe | unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, signal: u32, cb: GnoblinEventFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg @456 +8 | 1.0
+field | GnoblinApi.object_api | unsafe extern "C" fn(ctx: GnoblinCtx, namespace: GnoblinStr, out: *mut *const GnoblinObjectApi) -> i32 @464 +8 | 1.0

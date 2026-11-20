@@ -24,6 +24,8 @@ next-major = ["gnoblin-core-abi/next-major"]
 
 [dependencies]
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
+# The object protocol: the server that gives this library the classes of `gnoblin.model` (its `object` module).
+gnoblin-object = { path = "../gnoblin-object" }
 # The provider ABI's two ends in one place: the core wraps what a library registers (std's window manager, dialogs and
 # configuration observer) as the traits the compositor drives.
 gnoblin-provider-wire = { path = "../gnoblin-provider-wire" }
@@ -65,6 +67,8 @@ gnoblin-wm-api = { path = "../gnoblin-wm-api" }
 # The ABI crate names the SONAME and the value kinds the generated catalog uses; the schema is the catalog's source.
 gnoblin-core-abi = { path = "../gnoblin-core-abi" }
 gnoblin-schema = { path = "../gnoblin-schema" }
+# The catalog of `gnoblin.model` is generated at build time and never committed.
+gnoblin-sdkgen = { path = "../gnoblin-sdkgen" }
 
 # Negative control for the dependency test: a shell that links this crate as a Rust library carries its own copy of the
 # core and defines `gnoblin_*` itself. The test builds it and checks that `dist-check` would catch it.

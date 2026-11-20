@@ -1,0 +1,226 @@
+# The `policy` module of `gnoblin.std`: the focus policy's decisions.
+#
+# The decisions are pure functions of the settings and one event, so they are static functions of `focus_policy` that need no
+# desktop. `focus_decision` is what the TypeScript library's `focusDecision` answers; `opens_focused`, `hover_focus`, `rest_focus`
+# and `leave_clears` are its small predicates. The class's handle (the wiring that listens to a collection of clients and keeps the
+# two timers) is added by the lane that ports the policy.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# The focus modes: `click` focuses on a click, `sloppy` follows the pointer, `follow-mouse` acts on entry only.
+[[enum]]
+name = "focus_mode"
+since = "0.2.0"
+values = ["click", "sloppy", "follow-mouse"]
+
+# Whether a window started from a launcher takes focus (`allow`) or not (`prevent`).
+[[enum]]
+name = "new_window_policy"
+since = "0.2.0"
+values = ["allow", "prevent"]
+
+# What happened to a window.
+[[enum]]
+name = "focus_event_kind"
+since = "0.2.0"
+values = ["added", "enter", "motion", "leave", "press"]
+
+# The focus settings in force.
+[[object]]
+name = "focus_settings"
+since = "0.2.0"
+kind = "record"
+
+# Focus behaviour on pointer entry and click.
+[[object.property]]
+name = "mode"
+type = "enum:focus_mode"
+since = "0.2.0"
+default = "click"
+
+# Whether a newly launched window takes focus.
+[[object.property]]
+name = "new_windows"
+type = "enum:new_window_policy"
+since = "0.2.0"
+default = "prevent"
+
+# Whether a click raises its window.
+[[object.property]]
+name = "raise_on_click"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# Whether pointer rest raises its window.
+[[object.property]]
+name = "auto_raise"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# Milliseconds the pointer must rest before a window is raised.
+[[object.property]]
+name = "auto_raise_delay"
+type = "double"
+since = "0.2.0"
+default = 500.0
+
+# Whether pointer rest changes focus in hover modes.
+[[object.property]]
+name = "change_on_pointer_rest"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# One thing that happened to a window. `held` is whether some window holds a pressed pointer button, which stops hover focus until
+# the release; `held_here` is whether this window holds it; `focused` is whether this window has the keyboard focus. A field an
+# event of another kind does not use is left out.
+[[object]]
+name = "focus_event"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "kind"
+type = "enum:focus_event_kind"
+since = "0.2.0"
+
+# For `added`: the window was started from a launcher.
+[[object.property]]
+name = "from_launcher"
+type = "bool"
+since = "0.2.0"
+
+# For `enter` and `motion`: some window holds a pressed pointer button.
+[[object.property]]
+name = "held"
+type = "bool"
+since = "0.2.0"
+
+# For `leave`: this window holds the pressed button.
+[[object.property]]
+name = "held_here"
+type = "bool"
+since = "0.2.0"
+
+# For `leave`: this window has the keyboard focus.
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+
+# What to do about an event. A `focus_after` or `raise_after` is a delay in milliseconds that a leave or a new rest cancels.
+[[object]]
+name = "focus_action"
+since = "0.2.0"
+kind = "record"
+
+# Focuses the window immediately.
+[[object.property]]
+name = "focus"
+type = "bool"
+since = "0.2.0"
+
+# Clears focus from all windows.
+[[object.property]]
+name = "clear"
+type = "bool"
+since = "0.2.0"
+
+# Raises the window immediately.
+[[object.property]]
+name = "raise"
+type = "bool"
+since = "0.2.0"
+
+# Focus the window after this long, unless the pointer left or a button is held by then. Left out for none.
+[[object.property]]
+name = "focus_after"
+type = "double"
+since = "0.2.0"
+
+# Raise the window after this long, if it has the focus then. Left out for none.
+[[object.property]]
+name = "raise_after"
+type = "double"
+since = "0.2.0"
+
+# The focus policy. Its functions need no desktop.
+[[object]]
+name = "focus_policy"
+since = "0.2.0"
+kind = "service"
+
+# What to do about `event` under `settings`.
+[[object.method]]
+name = "focus_decision"
+since = "0.2.0"
+function = true
+returns = "object:focus_action"
+
+[[object.method.param]]
+name = "settings"
+type = "object:focus_settings"
+
+[[object.method.param]]
+name = "event"
+type = "object:focus_event"
+
+# Whether a new window takes focus. A window started from a launcher takes it only under `allow`.
+[[object.method]]
+name = "opens_focused"
+since = "0.2.0"
+function = true
+returns = "bool"
+
+[[object.method.param]]
+name = "settings"
+type = "object:focus_settings"
+
+[[object.method.param]]
+name = "from_launcher"
+type = "bool"
+
+# Whether the window under the pointer takes focus under the focus mode. `hovering` is false over the desktop; `entered` is true
+# when the pointer crossed into the window from outside it, and follow-mouse acts only on entry.
+[[object.method]]
+name = "hover_focus"
+since = "0.2.0"
+function = true
+returns = "bool"
+
+[[object.method.param]]
+name = "settings"
+type = "object:focus_settings"
+
+[[object.method.param]]
+name = "hovering"
+type = "bool"
+
+[[object.method.param]]
+name = "entered"
+type = "bool"
+
+# Whether a pointer rest focuses the window: a hover mode with `change_on_pointer_rest` on.
+[[object.method]]
+name = "rest_focus"
+since = "0.2.0"
+function = true
+returns = "bool"
+
+[[object.method.param]]
+name = "settings"
+type = "object:focus_settings"
+
+# Whether the pointer leaving the focused window clears focus (follow-mouse only).
+[[object.method]]
+name = "leave_clears"
+since = "0.2.0"
+function = true
+returns = "bool"
+
+[[object.method.param]]
+name = "settings"
+type = "object:focus_settings"

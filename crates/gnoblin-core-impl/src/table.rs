@@ -86,6 +86,7 @@ pub(crate) static API: GnoblinApi = GnoblinApi {
     wake_fd: api_wake_fd,
     call: api_call,
     subscribe: api_subscribe,
+    object_api: api_object_api,
     #[cfg(feature = "next-minor")]
     uptime_ms: api_uptime_ms,
 };
@@ -756,6 +757,35 @@ unsafe extern "C" fn api_call(
     // SAFETY: the table's contract passes `args` as `n_args` values and `out` as a writable handle, both valid for the call.
     guard(abi::E_PANIC, "call", || unsafe {
         verbs_abi::call(ctx, object, class, method, args, n_args, cb, user, drop_user, out)
+    })
+}
+
+unsafe extern "C" fn api_object_api(
+    _ctx: GnoblinCtx,
+    namespace: GnoblinStr,
+    out: *mut *const gnoblin_core_abi::GnoblinObjectApi,
+) -> i32 {
+    guard(abi::E_PANIC, "object_api", || {
+        // SAFETY: the table's contract passes `namespace` as readable text.
+        let namespace = match unsafe { text(namespace.ptr, namespace.len, "object_api") } {
+            Ok(namespace) => namespace,
+            Err(code) => return code,
+        };
+        // SAFETY: the table's contract passes `out` as writable.
+        let Some(out) = (unsafe { out.as_mut() }) else {
+            set_code_error(abi::E_ERR, "object_api: a null output pointer");
+            return abi::E_ERR;
+        };
+        match crate::object::api_of(namespace) {
+            Ok(api) => {
+                *out = api;
+                abi::E_OK
+            }
+            Err(reason) => {
+                set_code_error(abi::E_NO_SUCH_MEMBER, reason);
+                abi::E_NO_SUCH_MEMBER
+            }
+        }
     })
 }
 

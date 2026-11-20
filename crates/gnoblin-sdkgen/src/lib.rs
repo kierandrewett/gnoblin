@@ -27,6 +27,7 @@
 pub mod abi_c;
 mod layouts;
 mod model;
+mod objects;
 mod python;
 mod python_std;
 mod rust;
@@ -82,6 +83,7 @@ pub fn targets() -> Vec<Box<dyn Target>> {
         Box::new(std_dyn::StdDynTarget),
         Box::new(python::PythonTarget),
         Box::new(typescript::TypeScriptTarget),
+        Box::new(objects::ObjectsTarget),
     ]
 }
 
@@ -246,7 +248,9 @@ pub fn write_files(dir: &Path, files: &[(String, String)]) -> Result<Vec<String>
 /// The paths a build script has to watch besides the crates it links: the schema directory, whose files the ABI crates do not
 /// carry. Relative to the workspace root.
 pub fn data_inputs() -> Vec<&'static str> {
-    vec![model::SCHEMA_DIR]
+    let mut inputs = vec![model::SCHEMA_DIR];
+    inputs.extend(model::MODEL_DIRS);
+    inputs
 }
 
 /// What a `build.rs` calls: renders the targets named in `wanted` (names of [`targets`]) for the workspace the crate sits in
@@ -341,7 +345,7 @@ mod tests {
         let spec = SdkSpec::load(&root()).expect("the specification loads");
         for (path, _) in files_of(&render(&spec, None).expect("every target renders")) {
             assert!(
-                ["rust-core/", "rust-std-dyn/", "python/", "js/"]
+                ["rust-core/", "rust-std-dyn/", "rust-objects/", "python/", "js/"]
                     .iter()
                     .any(|prefix| path.starts_with(prefix)),
                 "{path}"

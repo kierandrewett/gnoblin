@@ -27,6 +27,17 @@ abi_aliases! {
     pub type GnoblinPending = u64;
     /// A process a shell started.
     pub type GnoblinProc = u64;
+    /// An object of the object protocol (`GnoblinObjectApi`): a class instance one library holds for a shell. Made by `create`,
+    /// `implement`, or handed back by a call; the low 32 bits name a slot and the high 32 bits the slot's generation, so a
+    /// handle of an object that is gone is `E_STALE`, never another object. Zero is nil. A handle means something only to the
+    /// library and the generation that issued it.
+    pub type GnoblinObj = u64;
+    /// A class of an object-protocol catalog (a handle class, a record, an interface, a service or an enum), by the id its library
+    /// issues for the name. Stable for the life of the process and meaningful only against the library that issued it. Zero is nil.
+    pub type GnoblinClassId = u32;
+    /// A member of a class (a property, method, signal or enum value), by id within its class: the position in the class's member
+    /// list, base class members first. Zero is nil. Ids of a base class's members are the same in every class derived from it.
+    pub type GnoblinMemberId = u32;
 }
 
 abi_callbacks! {
@@ -53,6 +64,16 @@ abi_callbacks! {
     pub type GnoblinTimerFn = unsafe extern "C" fn(user: *mut c_void) -> i32;
     /// A program the shell started has ended. `exit` is valid until the callback returns.
     pub type GnoblinExitFn = unsafe extern "C" fn(user: *mut c_void, exit: *const GnoblinProcessExit) -> i32;
+    /// A closure, an interface method or a signal listener of the object protocol. `member` is zero for a closure value, the
+    /// member id of the method (or property read) for an object the shell implements, and the signal or property id for a listener.
+    /// `args` are borrowed for the call. The callee writes its answer to `out`, which the caller has set to `VALUE_NONE`; the answer's
+    /// memory belongs to the callee and the caller copies it before it makes another call into the callee. Returns `E_OK`, or an
+    /// error code (`E_PANIC` when a trampoline caught a panic); on an error `out` is not read. It runs on the shell thread, from the
+    /// turn of the dispatch, never inside a call of the library that serves the object.
+    pub type GnoblinInvokeFn = unsafe extern "C" fn(user: *mut c_void, member: GnoblinMemberId, args: *const GnoblinValue, n_args: usize, out: *mut GnoblinValue) -> i32;
+    /// One entry of an object-protocol catalog, from `catalog_each`: a class, then its members, class by class in id order.
+    /// `entry` is valid until the callback returns. A nonzero return stops the walk and is returned by `catalog_each`.
+    pub type GnoblinCatalogFn = unsafe extern "C" fn(user: *mut c_void, entry: *const GnoblinCatalogEntry) -> i32;
 }
 
 abi_consts! {
@@ -129,10 +150,24 @@ abi_consts! {
     /// `GnoblinValue.kind`: secret text in `ptr` and `len`. Never logged; the receiver copies it out.
     pub const VALUE_SECRET: u32 = 11;
     /// `GnoblinValue.kind`: a record value (a struct-like object reference); `ptr` points at `len` `GnoblinValue`s,
-    /// the record's properties in schema order.
+    /// the record's properties in schema order. In the object protocol `bits` is the record class's id (`GnoblinClassId`),
+    /// and a field a record leaves out is `VALUE_NONE`.
     pub const VALUE_RECORD: u32 = 12;
+    /// `GnoblinValue.kind`: an object of the object protocol: `bits` is the `GnoblinObj` and `len` the id of its class (zero when
+    /// the sender does not say). Passing one hands over no ownership: a handle a call returns is a reference the receiver
+    /// `release`s when it is done with it.
+    pub const VALUE_OBJECT: u32 = 13;
+    /// `GnoblinValue.kind`: a closure: `ptr` points at a `GnoblinClosure`. A library that keeps it adopts `user` and calls its
+    /// `drop_user` exactly once, when it lets go; a call that fails has adopted none.
+    pub const VALUE_CLOSURE: u32 = 14;
+    /// `GnoblinValue.kind`: a member of an enum: `bits` is the member's id within the enum class (the first value is 1) and `len`
+    /// the enum's `GnoblinClassId` when the sender says.
+    pub const VALUE_ENUM: u32 = 15;
+    /// `GnoblinValue.kind`: nothing: an optional value that is absent, or the result of a call that answers nothing.
+    pub const VALUE_NONE: u32 = 16;
 
-    /// `GnoblinValue.flags`: `ptr` was allocated by the core and is freed with `value_free`.
+    /// `GnoblinValue.flags`: `ptr` was allocated by the core and is freed with `value_free`. The object protocol never sets it:
+    /// a value its library returns is lent until the next call into that library on the thread.
     pub const VALUE_OWNED: u32 = 1;
 
     /// A catalog member kind: a property.
@@ -141,6 +176,8 @@ abi_consts! {
     pub const MEMBER_METHOD: u32 = 2;
     /// A catalog member kind: a signal.
     pub const MEMBER_SIGNAL: u32 = 3;
+    /// A catalog member kind: a value of an enum (the member id is the value, the first is 1).
+    pub const MEMBER_VALUE: u32 = 4;
 
     /// `GnoblinMember.flags`: a `write_set` may carry `seconds` to animate the property.
     pub const MEMBER_ANIMATED: u32 = 1;
@@ -148,6 +185,34 @@ abi_consts! {
     pub const MEMBER_READONLY: u32 = 2;
     /// `GnoblinMember.flags`: the member's values are secret.
     pub const MEMBER_SECRET: u32 = 4;
+    /// `GnoblinMember.flags` and `GnoblinCatalogEntry.flags`: the method is a function of the class (no receiver).
+    pub const MEMBER_STATIC: u32 = 8;
+    /// `GnoblinCatalogEntry.flags`: the method of an interface must be implemented.
+    pub const MEMBER_REQUIRED: u32 = 16;
+    /// `GnoblinCatalogEntry.flags`: the method of an interface has a default the library runs when the object does not implement it.
+    pub const MEMBER_NATIVE_DEFAULT: u32 = 32;
+    /// `GnoblinCatalogEntry.flags`: the member is accepted and not applied (the catalog says why).
+    pub const MEMBER_INERT: u32 = 64;
+    /// `GnoblinCatalogEntry.flags`: the property holds a closure.
+    pub const MEMBER_CALLBACK: u32 = 128;
+
+    /// `GnoblinCatalogEntry.kind` of a class: an object with an identity, made by `create`.
+    pub const CLASS_HANDLE: u32 = 1;
+    /// `GnoblinCatalogEntry.kind` of a class: a value, crossing as `VALUE_RECORD`.
+    pub const CLASS_RECORD: u32 = 2;
+    /// `GnoblinCatalogEntry.kind` of a class: members the shell implements (`implement`) and the library calls.
+    pub const CLASS_INTERFACE: u32 = 3;
+    /// `GnoblinCatalogEntry.kind` of a class: one object per generation, made by the first `create`, and functions.
+    pub const CLASS_SERVICE: u32 = 4;
+    /// `GnoblinCatalogEntry.kind` of a class: a closed set of named values, crossing as `VALUE_ENUM`.
+    pub const CLASS_ENUM: u32 = 5;
+    /// `GnoblinCatalogEntry.flags` of a class: an object of it stays until `destroy` (or its parent's) even when the shell
+    /// `release`s every reference, as a widget on screen does.
+    pub const CLASS_FLAG_RETAINED: u32 = 1;
+    /// `GnoblinCatalogEntry.entry`: the entry describes a class.
+    pub const CATALOG_CLASS: u32 = 1;
+    /// `GnoblinCatalogEntry.entry`: the entry describes a member of the class that the last class entry named.
+    pub const CATALOG_MEMBER: u32 = 2;
 
     /// `GnoblinCtxInfo.language`: a native shell module.
     pub const LANG_NATIVE: u32 = 1;
@@ -951,6 +1016,146 @@ abi_structs! {
         pub turn: Option<unsafe extern "C" fn(ctx: GnoblinCtx, timeout_ms: u32) -> i32>,
     }
 
+    /// A closure the shell gives the library: the payload of a `VALUE_CLOSURE`. Borrowed for the call; the library copies the three
+    /// fields when it keeps the closure. A struct that starts with `size` may grow.
+    pub struct GnoblinClosure {
+        /// Size of this struct, set by the shell.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// Runs the closure: `member` is zero, `args` are what the library passes, `out` takes the answer.
+        pub invoke: Option<GnoblinInvokeFn>,
+        /// The shell's pointer, handed back to `invoke`. Adopted by the library when the call that carried the closure succeeds.
+        pub user: *mut c_void,
+        /// Frees `user`: called exactly once, on the shell thread, when the library lets go of the closure, while the generation's
+        /// code is still mapped.
+        pub drop_user: Option<GnoblinDropFn>,
+    }
+
+    /// One property of a new object, for `create` and `update`: the member (a property id of the object's class) and its value.
+    pub struct GnoblinInit {
+        /// The property's `GnoblinMemberId`.
+        pub member: GnoblinMemberId,
+        /// Zero.
+        pub reserved: u32,
+        /// The value, borrowed for the call.
+        pub value: GnoblinValue,
+    }
+
+    /// What a shell implements of an interface class: the argument of `implement`. A struct that starts with `size` may grow.
+    pub struct GnoblinImpl {
+        /// Size of this struct, set by the shell.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// A bit mask of the members the shell defined, `n_words` words long, least significant bit first: member id `m` is bit
+        /// `m % 64` of word `m / 64` (bit 0 is unused). A member whose bit is clear is never called across the ABI: an optional method
+        /// runs the library's default when it has one. A required method whose bit is clear refuses `implement` with `E_TYPE`.
+        pub implemented: *const u64,
+        /// Number of words at `implemented`.
+        pub n_words: usize,
+        /// Runs a member: `member` is the method (or the property to read) the library wants.
+        pub invoke: Option<GnoblinInvokeFn>,
+        /// The shell's pointer, handed back to `invoke`. Adopted when `implement` succeeds.
+        pub user: *mut c_void,
+        /// Frees `user`, once, when the library lets go of the object.
+        pub drop_user: Option<GnoblinDropFn>,
+    }
+
+    /// One entry of an object-protocol catalog, from `catalog_each`: a class (`CATALOG_CLASS`) or one of its members
+    /// (`CATALOG_MEMBER`). A struct the library fills in starts with `size`, so entries may grow.
+    pub struct GnoblinCatalogEntry {
+        /// Size of this struct, set by the library.
+        pub size: u32,
+        /// `CATALOG_CLASS` or `CATALOG_MEMBER`.
+        pub entry: u32,
+        /// The class: the class an entry describes, or the class that owns the member.
+        pub class: GnoblinClassId,
+        /// The member's id within its class; zero for a class entry.
+        pub member: GnoblinMemberId,
+        /// A class's `CLASS_*` kind, or a member's `MEMBER_PROPERTY`, `MEMBER_METHOD`, `MEMBER_SIGNAL` or `MEMBER_VALUE`.
+        pub kind: u32,
+        /// A class's `CLASS_FLAG_*` flags, or a member's `MEMBER_*` flags.
+        pub flags: u32,
+        /// A class entry's base class (the same namespace), zero for none.
+        pub base: GnoblinClassId,
+        /// A property's value kind (`VALUE_*`), a method's result kind (`VALUE_NONE` for none), zero for a signal.
+        pub value_kind: u32,
+        /// The class of a `VALUE_OBJECT`, `VALUE_RECORD` or `VALUE_ENUM` that `value_kind` names, else zero.
+        pub value_class: GnoblinClassId,
+        /// Number of arguments: a method's parameters, a signal's fields.
+        pub arg_count: u32,
+        /// `arg_count` value kinds. Static storage owned by the library.
+        pub arg_kinds: *const u32,
+        /// The argument names, separated by single spaces. Static storage owned by the library.
+        pub arg_names: GnoblinStr,
+        /// The class's or member's name, as the catalog spells it. Static storage owned by the library.
+        pub name: GnoblinStr,
+    }
+
+    /// The object protocol of one namespace: classes, properties, methods and signals served from a catalog through a few
+    /// functions, so a class added to the catalog needs no function in `GnoblinApi` or `GnoblinStdApi`. Got from `object_api`.
+    ///
+    /// Every function runs on the shell thread and returns `E_OK` or a negative error code with the reason in the serving
+    /// library's last-error text. Inputs are borrowed for the call and the library copies what it keeps. A `GnoblinValue` the
+    /// library writes is lent: it stays valid until the next call into this table on the calling thread, and is never
+    /// `VALUE_OWNED`. A handle the library hands out (a result, a payload, a callback argument) is one reference its receiver
+    /// `release`s. The library never runs a closure or an implemented method inside `create`, `update`, `set`, `call` or `destroy`:
+    /// a change announces itself from the next turn of the shell's dispatch, so a handler cannot re-enter the call that caused it.
+    /// A closure inside a value that a call carries is adopted only if the call returns `E_OK`; after any other result the shell
+    /// still owns its `user`.
+    pub struct GnoblinObjectApi {
+        /// Byte size of this table.
+        pub size: u32,
+        /// Zero.
+        pub reserved: u32,
+        /// The catalog's hash (`gnoblin_sdkgen`'s `Catalog::namespace_fingerprint`): a generated SDK compares it with its own to learn
+        /// whether it matches the library it runs on.
+        pub catalog_hash: u64,
+        /// Writes the id of the class `name` to `out`. `E_NO_SUCH_MEMBER` for a name the catalog lacks.
+        pub class_id: unsafe extern "C" fn(ctx: GnoblinCtx, name: GnoblinStr, out: *mut GnoblinClassId) -> i32,
+        /// Writes the id of the member `name` of `class`, of `kind` (`MEMBER_*`), to `out`. A member of a base class has the id it has
+        /// in the base. `E_NO_SUCH_MEMBER` for a name the class lacks.
+        pub member_id: unsafe extern "C" fn(ctx: GnoblinCtx, class: GnoblinClassId, kind: u32, name: GnoblinStr, out: *mut GnoblinMemberId) -> i32,
+        /// Calls `cb` for every class of the namespace and each of its members, in id order. A nonzero return of `cb` ends the walk
+        /// and is returned.
+        pub catalog_each: unsafe extern "C" fn(ctx: GnoblinCtx, cb: GnoblinCatalogFn, user: *mut c_void) -> i32,
+        /// Makes an object of `class` with the `n` properties of `inits` set, and writes its handle to `out`. A service class gives its
+        /// one object. `E_TYPE` for a record, an enum, an interface (those are made by `implement`), a value the property does not take,
+        /// or a property that cannot be set.
+        pub create: unsafe extern "C" fn(ctx: GnoblinCtx, class: GnoblinClassId, inits: *const GnoblinInit, n: usize, out: *mut GnoblinObj) -> i32,
+        /// Ends an object and every object that is its child: its listeners go, `drop_user` of each closure it held runs, and every
+        /// handle to it is `E_STALE`.
+        pub destroy: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj) -> i32,
+        /// Drops one reference the shell holds to an object. An object that nothing else holds ends when the last reference goes,
+        /// unless its class is retained (`CLASS_FLAG_RETAINED`) or it has a parent: those stay until `destroy`.
+        pub release: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj) -> i32,
+        /// Reads a property into `out`. A property never set reads as its catalog default, or the empty value of its type.
+        pub get: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, out: *mut GnoblinValue) -> i32,
+        /// Sets a property. `E_TYPE` for a value of the wrong kind or a read-only property.
+        pub set: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, value: *const GnoblinValue) -> i32,
+        /// Sets the `n` properties of `inits`, in order, stopping at the first that fails.
+        pub update: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, inits: *const GnoblinInit, n: usize) -> i32,
+        /// Sets an `MEMBER_ANIMATED` property as a timed write: it plays over `timing.seconds` along the curve of `timing.samples`.
+        pub set_timed: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, value: *const GnoblinValue, timing: *const GnoblinTiming) -> i32,
+        /// Calls a method with `n` arguments and writes its answer to `out` (`VALUE_NONE` when it answers nothing). The arguments are
+        /// checked against the catalog: a missing optional one reads as `VALUE_NONE`, a surplus or mistyped one is `E_TYPE`.
+        pub call: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, args: *const GnoblinValue, n: usize, out: *mut GnoblinValue) -> i32,
+        /// Calls a function of a class (`MEMBER_STATIC`).
+        pub call_static: unsafe extern "C" fn(ctx: GnoblinCtx, class: GnoblinClassId, member: GnoblinMemberId, args: *const GnoblinValue, n: usize, out: *mut GnoblinValue) -> i32,
+        /// Calls `cb` from the next turn of the dispatch each time `member` of `obj` happens: a signal (the payload is its fields) or
+        /// a property (the payload is the new value; changes of one turn are told once). Zero on failure, with `user` not adopted.
+        pub listen: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, member: GnoblinMemberId, cb: GnoblinInvokeFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg,
+        /// Ends a listener: `drop_user` runs now, or after the delivery that is running returns.
+        pub unlisten: unsafe extern "C" fn(ctx: GnoblinCtx, reg: GnoblinReg) -> i32,
+        /// Makes an object of the interface class `class` that the shell implements, and writes its handle to `out`. The library
+        /// adopts `imp.user` when this succeeds and calls its `drop_user` once, when the last holder (the shell's reference and the
+        /// native objects that took it) lets go.
+        pub implement: unsafe extern "C" fn(ctx: GnoblinCtx, class: GnoblinClassId, imp: *const GnoblinImpl, out: *mut GnoblinObj) -> i32,
+        /// Writes the class of an object to `out`: the most derived one.
+        pub class_of: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, out: *mut GnoblinClassId) -> i32,
+    }
+
     /// The versioned function table. `size` is the byte size of the table the core filled in; a field is present when
     /// `offset_of(field) + size_of(field) <= size`. Fields are appended in later minors, never moved, retyped or
     /// removed within a major.
@@ -1184,6 +1389,13 @@ abi_structs! {
         /// `bell`, `lock_state_changed`, `reload_requested`), over the shell's owner connection, with the payload in the
         /// signal's schema order. Zero on failure (no owner connection), with `user` not adopted. Shell thread.
         pub subscribe: unsafe extern "C" fn(ctx: GnoblinCtx, class: u32, signal: u32, cb: GnoblinEventFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> GnoblinReg,
+
+        // ---- the object protocol ---------------------------------------------------------------------------------------
+
+        /// The object protocol (`GnoblinObjectApi`) of `namespace`: the classes this library serves, `gnoblin.model` for the core. The
+        /// table is static, the same for every context, and valid for the life of the process. `E_NO_SUCH_MEMBER` for a namespace
+        /// this library does not serve. Shell thread.
+        pub object_api: unsafe extern "C" fn(ctx: GnoblinCtx, namespace: GnoblinStr, out: *mut *const GnoblinObjectApi) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the core started.
         #[cfg(feature = "next-minor")]

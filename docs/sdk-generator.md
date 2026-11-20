@@ -66,6 +66,29 @@ and every generated file names it in its banner.
 
 A generated file starts with a banner that names the generator, the target and the catalogue hash.
 
+## The namespaces a library serves
+
+`gnoblin.model` (the core) and `gnoblin.std` (the std library) are not the compositor's: a library serves their classes through the object
+protocol (`GnoblinObjectApi`, [the ABI page](abi-compatibility.md)). Their catalogs are schema files beside the ABI crates,
+`crates/gnoblin-core-abi/schema/` and `crates/gnoblin-std-abi/schema/`, one file per module, each with `local = true`. A local file may use
+the keys a compositor file may not: `kind` (`handle`, `record`, `interface`, `service`), `ctor`, `retained`, `[[enum]]`, `[[callback]]`,
+`returns`, `required` and `default = "native"` on a method of an interface, `python = { dunder = ".." }`, `inert`, `abi = "fn:<name>"`,
+`export = { js, py, rust }`, and a `base` of another namespace's class. The wire never carries such a namespace and the `gnoblin`
+catalog hash (`gnoblin_catalog_hash`) does not include it; the namespace has a hash of its own (`Catalog::namespace_fingerprint`), which
+its object table reports.
+
+| Target    | Writes                                                                                               | Consumed by                                    |
+| --------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `objects` | `rust-objects/{model,std}_catalog.rs`: the static `CATALOG` of each namespace and its `CATALOG_HASH` | `build.rs` of `gnoblin-core-impl`, `-std-impl` |
+
+A library implements the classes of its catalog with a `gnoblin_object::server::Builder` (`crates/gnoblin-std-impl/src/object/`), and the
+two-way completeness test of the library (`Library::problems`) fails when a class or a member of the catalog has no implementation, or an
+implementation names a member the catalog lacks. Class ids are positions in the catalog (ordered by name), and a member's id is its
+position in its class's list, a base class's members first, so a base member has the same id in every derived class.
+
+The surface lock of a local namespace is one file per catalog file: `crates/gnoblin-{core,std}-abi/schema/lock/<module>.lock`. A lane that
+adds classes to its module edits that module's file and that module's lock, and never `abi.lock`. `--update` records an additive change.
+
 ## What `--check` proves
 
 No file is committed, so there is no committed file to be stale. What `cargo xtask gen-sdks --check` (and `just gen-sdks-check`, part of

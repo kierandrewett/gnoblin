@@ -203,6 +203,7 @@ const STD_PORTAL_ALLOWED: &[&str] = &[
 /// is a reviewed change.
 const LINT_OPT_OUT: &[&str] = &[
     "gnoblin-client",
+    "gnoblin-object",
     "gnoblin-compat-wayland-gtk-shell1",
     "gnoblin-compat-wayland-mutter-x11-interop",
     "gnoblin-core",
@@ -1343,6 +1344,8 @@ const SDKGEN_USERS: &[&str] = &[
     "gnoblin-std-dyn",
     "gnoblin-js",
     "gnoblin-runtime-python",
+    "gnoblin-core-impl",
+    "gnoblin-std-impl",
     "xtask",
 ];
 

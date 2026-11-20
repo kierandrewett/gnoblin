@@ -41,6 +41,7 @@ pub(crate) fn parse(ty: &Type, text: &str) -> Result<Value, String> {
             .parse::<u64>()
             .map(|raw| Value::Object(ObjectId::new(raw)))
             .map_err(|_| format!("`{text}` is not an object identity")),
+        Type::Enum(_) | Type::Callback(_) => Err(format!("`{ty}` is not a type of the compositor's schema")),
         Type::List(inner) => {
             let items: Vec<serde_json::Value> = serde_json::from_str(text)
                 .map_err(|error| format!("`{text}` is not a JSON array of {inner}: {error}"))?;

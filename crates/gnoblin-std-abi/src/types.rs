@@ -14,7 +14,7 @@
 
 use core::ffi::c_void;
 
-use gnoblin_core_abi::{GnoblinCtx, GnoblinDropFn, GnoblinNode, GnoblinStr};
+use gnoblin_core_abi::{GnoblinCtx, GnoblinDropFn, GnoblinNode, GnoblinObjectApi, GnoblinStr};
 use gnoblin_core_abi::{abi_aliases, abi_callbacks, abi_consts, abi_exports, abi_structs};
 
 abi_aliases! {
@@ -1674,6 +1674,13 @@ abi_structs! {
         /// applies them, an empty style included, so a window an earlier script generation styled is taken back to what the style says.
         /// A script generation calls it first when it may start over a library state an earlier one left.
         pub style_reset: unsafe extern "C" fn(ctx: GnoblinCtx) -> i32,
+
+        // ---- the object protocol ---------------------------------------------------------------------------------------
+
+        /// The object protocol (`gnoblin_core_abi::GnoblinObjectApi`) of `namespace`: the classes this library serves, `gnoblin.std` for
+        /// the desktop. The table is static, the same for every context, and valid for the life of the process. `E_NO_SUCH_MEMBER` for a
+        /// namespace this library does not serve. It needs no `open`: a class of the protocol starts the desktop only when it says so.
+        pub object_api: unsafe extern "C" fn(ctx: GnoblinCtx, namespace: GnoblinStr, out: *mut *const GnoblinObjectApi) -> i32,
 
         /// ABI 1.1 (test builds only): milliseconds since the library was first asked for its table.
         #[cfg(feature = "next-minor")]

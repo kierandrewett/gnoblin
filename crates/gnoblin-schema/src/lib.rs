@@ -39,7 +39,7 @@ pub mod proto;
 pub use error::SchemaError;
 pub use gnoblin_types::{InvalidVersion, Version};
 pub use model::{
-    Catalog, DefaultValue, ErrorDecl, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type,
-    is_error_code, is_lower_name,
+    CallbackDecl, Catalog, DefaultValue, EnumDecl, ErrorDecl, Export, Extras, Field, Method, Namespace, ObjectKind,
+    ObjectType, Property, Schema, Signal, Type, is_class_ref, is_error_code, is_lower_name,
 };
 pub use parse::parse_schema;

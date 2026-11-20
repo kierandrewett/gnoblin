@@ -655,7 +655,7 @@ struct | GnoblinStdStyleEntries | size 16 align 8 fixed | 1.0
 field | GnoblinStdStyleEntries.ptr | *const GnoblinStdStyleEntry @0 +8 | 1.0
 field | GnoblinStdStyleEntries.len | usize @8 +8 | 1.0
 
-struct | GnoblinStdApi | size 1000 align 8 extensible | 1.0
+struct | GnoblinStdApi | size 1008 align 8 extensible | 1.0
 
 field | GnoblinStdApi.size | u32 @0 +4 | 1.0
 field | GnoblinStdApi.major | u32 @4 +4 | 1.0
@@ -784,3 +784,4 @@ field | GnoblinStdApi.display_snapshot | unsafe extern "C" fn(ctx: GnoblinCtx, o
 field | GnoblinStdApi.display_restore | unsafe extern "C" fn(ctx: GnoblinCtx, token: u64) -> i32 @976 +8 | 1.0
 field | GnoblinStdApi.display_reflow | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @984 +8 | 1.0
 field | GnoblinStdApi.style_reset | unsafe extern "C" fn(ctx: GnoblinCtx) -> i32 @992 +8 | 1.0
+field | GnoblinStdApi.object_api | unsafe extern "C" fn(ctx: GnoblinCtx, namespace: GnoblinStr, out: *mut *const GnoblinObjectApi) -> i32 @1000 +8 | 1.0

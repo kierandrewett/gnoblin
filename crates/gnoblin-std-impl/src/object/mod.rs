@@ -1,0 +1,128 @@
+//! `gnoblin.std` through the object protocol: the classes of the catalog (`crates/gnoblin-std-abi/schema`) and how they are served.
+//!
+//! `gnoblin-object` does the protocol; this module gives it the catalog (written by `gnoblin-sdkgen` at build time), the hooks that tie
+//! it to the core (arrange for the end of a generation, post the turn that tells listeners, record an error) and the classes. A class
+//! is added by a catalog file and an implementation here, and needs no function in `GnoblinStdApi`.
+#![allow(unsafe_code)]
+
+mod entry_model;
+mod focus;
+
+use gnoblin_core::LogLevel;
+use gnoblin_core_abi::{self as abi, GnoblinCtx, GnoblinObjectApi};
+use gnoblin_object::server::{Builder, Hooks, Library, Provider, api_table};
+use gnoblin_object::{Fail, Res};
+
+#[allow(dead_code, clippy::all)]
+mod catalog {
+    include!(concat!(env!("OUT_DIR"), "/rust-objects/std_catalog.rs"));
+}
+
+use catalog::{CATALOG, CATALOG_HASH};
+
+thread_local! {
+    /// The library's objects: one per thread, and a shell has one thread.
+    static LIB: Library = build();
+}
+
+struct Std;
+
+impl Provider for Std {
+    fn with<R>(work: impl FnOnce(&Library) -> R) -> R {
+        LIB.with(work)
+    }
+}
+
+/// The object protocol of `gnoblin.std`, behind `GnoblinStdApi::object_api`.
+pub(crate) static API: GnoblinObjectApi = api_table::<Std>(CATALOG_HASH);
+
+fn build() -> Library {
+    let mut builder = Builder::new(&CATALOG);
+    entry_model::register(&mut builder);
+    focus::register(&mut builder);
+    builder.finish(HOOKS)
+}
+
+const HOOKS: Hooks = Hooks {
+    first_use,
+    schedule,
+    set_last,
+    log,
+};
+
+fn core_fail(error: gnoblin_core::CoreError) -> Fail {
+    Fail::new(error.kind().code(), error.to_string())
+}
+
+/// A generation made its first object: its end takes every object, listener and closure with it.
+fn first_use(ctx: GnoblinCtx) -> Res<()> {
+    let g = gnoblin_core::private::gnoblin_for(ctx).map_err(core_fail)?;
+    g.on_shutdown(move || LIB.with(|lib| lib.retire(ctx)))
+        .map(drop)
+        .map_err(core_fail)
+}
+
+/// Posts the turn that tells the listeners what the library queued.
+fn schedule(ctx: GnoblinCtx) {
+    let Ok(g) = gnoblin_core::private::gnoblin_for(ctx) else {
+        return;
+    };
+    let _ = g.poster().post(move |_g| LIB.with(|lib| lib.flush(ctx)));
+}
+
+fn set_last(fail: &Fail) {
+    crate::error::set_last(format!("{}: {}", crate::error::code_name(fail.code), fail.message));
+}
+
+fn log(ctx: GnoblinCtx, level: u32, message: &str) {
+    if let Ok(g) = gnoblin_core::private::gnoblin_for(ctx) {
+        let level = if level <= abi::LOG_ERROR {
+            LogLevel::CoreError
+        } else {
+            LogLevel::Warn
+        };
+        g.log_at(level, &format!("gnoblin-std: {message}"));
+    }
+}
+
+/// `object_api(ctx, namespace, out)`: the table of `gnoblin.std`.
+pub(crate) unsafe extern "C" fn object_api(
+    _ctx: GnoblinCtx,
+    namespace: abi::GnoblinStr,
+    out: *mut *const GnoblinObjectApi,
+) -> i32 {
+    crate::table::call("object_api", || {
+        // SAFETY: the table's contract passes `namespace` as readable text.
+        let namespace = unsafe { crate::table::owned(&namespace) }?;
+        if namespace != CATALOG.namespace {
+            return Err(crate::error::Fail::no_such(format!(
+                "libgnoblin-std serves `{}`, not `{namespace}`",
+                CATALOG.namespace
+            )));
+        }
+        // SAFETY: the table's contract passes `out` as writable.
+        let out =
+            unsafe { out.as_mut() }.ok_or_else(|| crate::error::Fail::err("object_api: a null output pointer"))?;
+        *out = &raw const API;
+        Ok(abi::E_OK)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two-way completeness: every class and member of the catalog has an implementation, and every implementation names a member of
+    /// the catalog.
+    #[test]
+    fn the_catalog_and_the_implementation_cover_each_other() {
+        let problems = LIB.with(Library::problems);
+        assert!(problems.is_empty(), "{problems:#?}");
+    }
+
+    #[test]
+    fn the_table_carries_the_catalog_hash() {
+        assert_eq!(API.catalog_hash, CATALOG_HASH);
+        assert_ne!(CATALOG_HASH, 0);
+    }
+}

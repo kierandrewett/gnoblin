@@ -26,12 +26,19 @@ use super::text::doc_lines;
 /// Schema files, relative to the workspace root.
 pub const SCHEMA_DIR: &str = gnoblin_schema::proto::SCHEMA_DIR;
 
+/// The catalogs of the namespaces the libraries serve, relative to the workspace root: `gnoblin.model` beside the core's ABI,
+/// `gnoblin.std` beside the std library's. One file per module, one lock per file.
+pub const MODEL_DIRS: [&str; 2] = ["crates/gnoblin-core-abi/schema", "crates/gnoblin-std-abi/schema"];
+
 /// Everything a target may read.
 pub struct SdkSpec {
     /// The schema catalog: the object model of the compositor.
     pub catalog: Catalog,
     /// [`Catalog::fingerprint`]: what `gnoblin_catalog_hash` reports and every generated header records.
     pub catalog_hash: u64,
+    /// The catalogs of the namespaces the libraries serve through the object protocol (`gnoblin.model`, `gnoblin.std`), loaded
+    /// together so a class of one can name a class of the other.
+    pub objects: Catalog,
     /// The libraries' ABIs, core first.
     pub libraries: Vec<Library>,
     /// The workspace root the specification was loaded from: the tools a target runs find their configuration there.
@@ -44,6 +51,10 @@ impl SdkSpec {
         let catalog = Catalog::load_dir(&root.join(SCHEMA_DIR))
             .map_err(|error| format!("the schema catalog does not load: {error}"))?;
         let catalog_hash = catalog.fingerprint();
+        let model_dirs: Vec<std::path::PathBuf> = MODEL_DIRS.iter().map(|dir| root.join(dir)).collect();
+        let model_dirs: Vec<&Path> = model_dirs.iter().map(std::path::PathBuf::as_path).collect();
+        let objects = Catalog::load_dirs(&model_dirs, &[])
+            .map_err(|error| format!("the catalogs of the libraries do not load: {error}"))?;
         let mut libraries: Vec<Library> = Vec::new();
         for (name, reflection) in [
             ("core", gnoblin_core_abi::reflect::reflection as fn() -> Reflection),
@@ -55,6 +66,7 @@ impl SdkSpec {
         Ok(SdkSpec {
             catalog,
             catalog_hash,
+            objects,
             libraries,
             root: root.to_path_buf(),
         })
@@ -1422,7 +1434,8 @@ mod tests {
         let unreachable: Vec<&str> = std
             .functions
             .iter()
-            .filter(|function| !function.scriptable)
+            // `object_api` hands out the object protocol's own table: a runtime reads that table itself, not through the call layer.
+            .filter(|function| !function.scriptable && function.name != "object_api")
             .map(|function| function.name.as_str())
             .collect();
         assert!(unreachable.is_empty(), "native only: {unreachable:?}");

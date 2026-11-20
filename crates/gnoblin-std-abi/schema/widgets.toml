@@ -1,0 +1,170 @@
+# The `widgets` module of `gnoblin.std`: the text-entry model of the UI toolkit.
+#
+# `entry_model` keeps text editing apart from drawing, so the behaviour is one native implementation for every language. Positions
+# are counted in Unicode code points. Its members are the public members of `EntryModel` in the TypeScript library it replaces,
+# with the same meanings; `clear` is the one addition.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# A range of the text: `start` is before `end`.
+[[object]]
+name = "text_range"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "start"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "end"
+type = "uint"
+since = "0.2.0"
+
+# The text, the caret and the selection of an entry. `caret` marks where typing goes; the selection spans `anchor` and `caret` and
+# is empty when they match. Every change that alters any of them tells the `changed` signal.
+[[object]]
+name = "entry_model"
+since = "0.2.0"
+ctor = ["text"]
+
+# The entry's text. Setting it moves the caret to the end and clears the selection.
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+
+# The number of Unicode code points in the text.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The insertion point, counted in code points from the start of the text.
+[[object.property]]
+name = "caret"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The fixed end of an extended selection, in code points from the start.
+[[object.property]]
+name = "anchor"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The selected range, or none while nothing is selected.
+[[object.property]]
+name = "selection"
+type = "object:text_range"
+since = "0.2.0"
+readonly = true
+
+# The text in the selection, empty when nothing is selected.
+[[object.property]]
+name = "selected_text"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Types `text` over the selection, or at the caret. Control characters are left out.
+[[object.method]]
+name = "insert"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "text"
+type = "string"
+
+# Deletes the selection, or the character before the caret.
+[[object.method]]
+name = "backspace"
+since = "0.2.0"
+
+# Deletes the selection, or the character after the caret.
+[[object.method]]
+name = "delete"
+since = "0.2.0"
+
+# Moves the caret to `at`, clamped to the text. With `extend` the anchor stays, so the selection grows.
+[[object.method]]
+name = "move"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "at"
+type = "int"
+
+[[object.method.param]]
+name = "extend"
+type = "bool"
+optional = true
+
+# One character left. A selection that is not extended collapses to its left edge instead of moving on.
+[[object.method]]
+name = "left"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "extend"
+type = "bool"
+optional = true
+
+# One character right. A selection that is not extended collapses to its right edge.
+[[object.method]]
+name = "right"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "extend"
+type = "bool"
+optional = true
+
+# Moves the caret to the start of the text. With `extend`, keeps the selection anchor.
+[[object.method]]
+name = "home"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "extend"
+type = "bool"
+optional = true
+
+# Moves the caret to the end of the text. With `extend`, keeps the selection anchor.
+[[object.method]]
+name = "end"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "extend"
+type = "bool"
+optional = true
+
+# Selects all the text.
+[[object.method]]
+name = "select_all"
+since = "0.2.0"
+
+# Deletes all the text.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# The characters of the text before position `at`, as text.
+[[object.method]]
+name = "before"
+since = "0.2.0"
+returns = "string"
+
+[[object.method.param]]
+name = "at"
+type = "int"
+
+# The text, the caret or the selection changed. Told once for each call that changed them, from the next turn.
+[[object.signal]]
+name = "changed"
+since = "0.2.0"

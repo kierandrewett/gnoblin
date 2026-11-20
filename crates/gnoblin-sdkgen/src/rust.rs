@@ -205,6 +205,8 @@ fn type_phrase(ty: &Type) -> String {
         Type::Text => "text".to_owned(),
         Type::Bytes => "bytes".to_owned(),
         Type::ObjectRef(name) => format!("a `{name}`"),
+        Type::Enum(name) => format!("a value of `{name}`"),
+        Type::Callback(name) => format!("a `{name}` closure"),
         Type::List(inner) => format!("a list of {}", type_phrase(inner)),
     }
 }
@@ -277,7 +279,7 @@ fn rust_type(ty: &Type) -> Option<RustType> {
             },
             _ => return None,
         },
-        Type::Bytes => return None,
+        Type::Bytes | Type::Enum(_) | Type::Callback(_) => return None,
     })
 }
 

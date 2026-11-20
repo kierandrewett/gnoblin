@@ -1504,9 +1504,11 @@ dependencies = [
  "gnoblin-core-abi",
  "gnoblin-log",
  "gnoblin-model",
+ "gnoblin-object",
  "gnoblin-proto",
  "gnoblin-provider-wire",
  "gnoblin-schema",
+ "gnoblin-sdkgen",
  "gnoblin-services",
  "gnoblin-shell-host",
  "gnoblin-testkit",
@@ -1792,6 +1794,13 @@ dependencies = [
  "gnoblin-testkit",
  "gnoblin-types",
  "zeroize",
+]
+
+[[package]]
+name = "gnoblin-object"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core-abi",
 ]
 
 [[package]]
@@ -2249,8 +2258,10 @@ dependencies = [
  "gnoblin-core-abi",
  "gnoblin-core-impl",
  "gnoblin-js",
+ "gnoblin-object",
  "gnoblin-provider-wire",
  "gnoblin-runtime-js",
+ "gnoblin-sdkgen",
  "gnoblin-shell-host",
  "gnoblin-std-abi",
  "gnoblin-std-dyn",

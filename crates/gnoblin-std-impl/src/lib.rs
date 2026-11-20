@@ -51,6 +51,7 @@ mod floating;
 mod floating_api;
 mod layout;
 mod nodes;
+mod object;
 mod objects;
 mod providers;
 mod scene;

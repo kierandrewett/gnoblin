@@ -24,6 +24,8 @@ fn main() {
     // shell's run path; this run path serves the library's own dependency only.
     println!("cargo:rustc-cdylib-link-arg=-Wl,-rpath,$ORIGIN");
     println!("cargo:rerun-if-changed=build.rs");
+    // The catalog of `gnoblin.std` the object protocol serves, written into `OUT_DIR` (nothing of it is committed).
+    gnoblin_sdkgen::emit_for_build(&["objects"]);
     stage_soname_link();
 }
 

@@ -20,6 +20,8 @@ next-minor = ["gnoblin-std-abi/next-minor"]
 next-major = ["gnoblin-std-abi/next-major"]
 
 [dependencies]
+# The object protocol: the server that gives this library its classes (its `object` module).
+gnoblin-object = { path = "../gnoblin-object" }
 # The std library acts on the compositor only through the installed core: it is a shell's guest, and holds the same handle on the
 # generation that the shell does (`gnoblin_core::private::gnoblin_for`). It names the core SDK and the two ABI crates, never the
 # core's implementation or its internals, so the same library runs on any ABI-compatible core.
@@ -49,6 +51,8 @@ tempfile = "3.23.0"
 
 [build-dependencies]
 gnoblin-std-abi = { path = "../gnoblin-std-abi" }
+# The static catalog of `gnoblin.std` is generated at build time and never committed.
+gnoblin-sdkgen = { path = "../gnoblin-sdkgen" }
 
 # The workspace table forbids unsafe code; a library that exports a C ABI needs it. Only the modules that open with
 # `#![allow(unsafe_code)]` and a SAFETY note use it.

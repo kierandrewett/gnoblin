@@ -48,6 +48,22 @@
 //!
 //! `readonly`, `animated` and `optional` are booleans and default to `false`. Every key a
 //! schema file has not declared is refused, so a misspelt key cannot pass silently.
+//!
+//! ## Keys of a local namespace
+//!
+//! A file that says `local = true` declares a namespace a library serves through the object protocol, and may use the keys below.
+//! A file that does not is the compositor's schema, and using one is refused, so the wire never grows a type it cannot carry.
+//!
+//! - `kind = "handle" | "record" | "interface" | "service"` on an object (`record = true` stays as an alias of `"record"`).
+//! - `ctor = ["name", ..]` on an object: the properties its constructor takes; every other writable property is set after.
+//! - `retained = true` on an object: an instance stays until it is destroyed, whatever the shell releases.
+//! - `export = { js = "..", py = "..", rust = ".." }` on an object or a member: a name that differs from the mechanical conversion.
+//! - `[[enum]]` with `values = [..]`, and `[[callback]]` with `[[callback.param]]` and `returns`: the types `enum:<name>` and
+//!   `callback:<name>`.
+//! - `returns = "<type>"` on a method, `required = true` and `default = "native"` on a method of an interface.
+//! - `python = { dunder = "__len__" }` on a method: the Python special method the member is.
+//! - `inert = "reason"` on a member: accepted and not applied. `abi = "fn:<name>"`: served by an existing typed table function.
+//! - `base = "<namespace>.<class>"`: a class of another namespace's catalog; the members are not copied into the derived class.
 
 use std::collections::BTreeSet;
 
@@ -55,10 +71,17 @@ use serde::Deserialize;
 
 use crate::error::SchemaError;
 use crate::model::{
-    DefaultValue, ErrorDecl, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type, is_error_code,
-    is_lower_name,
+    CallbackDecl, DefaultValue, EnumDecl, ErrorDecl, Export, Extras, Field, Method, Namespace, ObjectKind, ObjectType,
+    Property, Schema, Signal, Type, is_class_ref, is_error_code, is_lower_name,
 };
 use gnoblin_types::Version;
+
+/// What every check of a file needs: the schema's version and whether a library serves the namespace.
+#[derive(Clone, Copy)]
+struct Scope {
+    version: Option<Version>,
+    local: bool,
+}
 
 /// Shape of one schema file, exactly as `toml` deserializes it.
 ///
@@ -70,11 +93,17 @@ use gnoblin_types::Version;
 struct RawSchema {
     namespace: String,
     version: String,
+    #[serde(default)]
+    local: bool,
     // Schema files name these arrays in the singular, like the other tables.
     #[serde(default, rename = "object")]
     objects: Vec<RawObject>,
     #[serde(default, rename = "error")]
     errors: Vec<RawError>,
+    #[serde(default, rename = "enum")]
+    enums: Vec<RawEnum>,
+    #[serde(default, rename = "callback")]
+    callbacks: Vec<RawCallback>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,12 +117,34 @@ struct RawObject {
     record: bool,
     #[serde(default)]
     base: Option<String>,
+    #[serde(default)]
+    kind: Option<String>,
+    #[serde(default)]
+    ctor: Option<Vec<String>>,
+    #[serde(default)]
+    retained: bool,
+    #[serde(default)]
+    export: Option<RawExport>,
     #[serde(default, rename = "property")]
     properties: Vec<RawProperty>,
     #[serde(default, rename = "method")]
     methods: Vec<RawMethod>,
     #[serde(default, rename = "signal")]
     signals: Vec<RawSignal>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawExport {
+    js: Option<String>,
+    py: Option<String>,
+    rust: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPython {
+    dunder: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,6 +161,12 @@ struct RawProperty {
     #[serde(default)]
     animated: bool,
     default: Option<toml::Value>,
+    #[serde(default)]
+    inert: Option<String>,
+    #[serde(default)]
+    abi: Option<String>,
+    #[serde(default)]
+    export: Option<RawExport>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,6 +182,20 @@ struct RawMethod {
     function: bool,
     #[serde(default, rename = "param")]
     params: Vec<RawField>,
+    #[serde(default)]
+    returns: Option<String>,
+    #[serde(default)]
+    required: bool,
+    #[serde(default)]
+    default: Option<String>,
+    #[serde(default)]
+    python: Option<RawPython>,
+    #[serde(default)]
+    inert: Option<String>,
+    #[serde(default)]
+    abi: Option<String>,
+    #[serde(default)]
+    export: Option<RawExport>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,6 +207,12 @@ struct RawSignal {
     secret: bool,
     #[serde(default, rename = "field")]
     fields: Vec<RawField>,
+    #[serde(default)]
+    inert: Option<String>,
+    #[serde(default)]
+    abi: Option<String>,
+    #[serde(default)]
+    export: Option<RawExport>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -156,6 +233,26 @@ struct RawField {
 struct RawError {
     name: String,
     since: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawEnum {
+    name: String,
+    since: Option<String>,
+    #[serde(default)]
+    values: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCallback {
+    name: String,
+    since: Option<String>,
+    #[serde(default, rename = "param")]
+    params: Vec<RawField>,
+    #[serde(default)]
+    returns: Option<String>,
 }
 
 /// Parse and validate one schema file.
@@ -182,9 +279,15 @@ pub fn parse_schema(origin: &str, text: &str) -> Result<Schema, SchemaError> {
             None
         }
     };
+    let scope = Scope {
+        version,
+        local: raw.local,
+    };
 
     let errors = parse_errors(&raw.errors, version, &mut problems);
-    let objects = parse_objects(&raw.objects, version, &mut problems);
+    let objects = parse_objects(&raw.objects, scope, &mut problems);
+    let enums = parse_enums(&raw.enums, scope, &mut problems);
+    let callbacks = parse_callbacks(&raw.callbacks, scope, &mut problems);
 
     if !problems.is_empty() {
         return Err(SchemaError::Invalid {
@@ -197,8 +300,11 @@ pub fn parse_schema(origin: &str, text: &str) -> Result<Schema, SchemaError> {
             origin: origin.to_owned(),
             namespace,
             version,
+            local: raw.local,
             objects,
             errors,
+            enums,
+            callbacks,
         }),
         // Unreachable in practice: a bad namespace or version already pushed a
         // problem, so the branch above returned. Reported rather than panicked so
@@ -207,6 +313,47 @@ pub fn parse_schema(origin: &str, text: &str) -> Result<Schema, SchemaError> {
             source: origin.to_owned(),
             problems: vec!["a schema needs a namespace and a version".to_owned()],
         }),
+    }
+}
+
+/// Refuses a key that only a local namespace may use.
+fn local_only(scope: Scope, problems: &mut Vec<String>, owner: &str, key: &str, present: bool) {
+    if present && !scope.local {
+        problems.push(format!(
+            "{owner}: `{key}` is a key of a namespace a library serves: the file needs `local = true`"
+        ));
+    }
+}
+
+fn export_of(raw: Option<&RawExport>) -> Export {
+    raw.map_or_else(Export::default, |raw| Export {
+        js: raw.js.clone(),
+        py: raw.py.clone(),
+        rust: raw.rust.clone(),
+    })
+}
+
+/// The keys every kind of member shares.
+fn extras_of(
+    scope: Scope,
+    problems: &mut Vec<String>,
+    owner: &str,
+    inert: Option<&String>,
+    abi: Option<&String>,
+    export: Option<&RawExport>,
+) -> Extras {
+    local_only(scope, problems, owner, "inert", inert.is_some());
+    local_only(scope, problems, owner, "abi", abi.is_some());
+    local_only(scope, problems, owner, "export", export.is_some());
+    if let Some(abi) = abi
+        && !abi.strip_prefix("fn:").is_some_and(is_lower_name)
+    {
+        problems.push(format!("{owner}: `abi` must be `fn:<table function>`, got `{abi}`"));
+    }
+    Extras {
+        inert: inert.cloned(),
+        abi: abi.cloned(),
+        export: export_of(export),
     }
 }
 
@@ -232,7 +379,72 @@ fn parse_errors(raw_errors: &[RawError], version: Option<Version>, problems: &mu
     errors
 }
 
-fn parse_objects(raw_objects: &[RawObject], version: Option<Version>, problems: &mut Vec<String>) -> Vec<ObjectType> {
+fn parse_enums(raw_enums: &[RawEnum], scope: Scope, problems: &mut Vec<String>) -> Vec<EnumDecl> {
+    let mut enums = Vec::new();
+    for raw_enum in raw_enums {
+        let owner = format!("enum `{}`", raw_enum.name);
+        local_only(scope, problems, &owner, "[[enum]]", true);
+        if !is_lower_name(&raw_enum.name) {
+            problems.push(format!("{owner}: name must match [a-z][a-z0-9_]*"));
+        }
+        let mut seen = BTreeSet::new();
+        for value in &raw_enum.values {
+            if !is_enum_value(value) {
+                problems.push(format!("{owner}: value `{value}` must match [a-z][a-z0-9_-]*"));
+            }
+            if !seen.insert(value.as_str()) {
+                problems.push(format!("{owner}: duplicate value `{value}`"));
+            }
+        }
+        if raw_enum.values.is_empty() {
+            problems.push(format!("{owner}: an enum needs at least one value"));
+        }
+        let Some(since) = since_of(problems, raw_enum.since.as_deref(), &owner, scope.version) else {
+            continue;
+        };
+        enums.push(EnumDecl {
+            name: raw_enum.name.clone(),
+            since,
+            values: raw_enum.values.clone(),
+        });
+    }
+    enums
+}
+
+fn parse_callbacks(raw_callbacks: &[RawCallback], scope: Scope, problems: &mut Vec<String>) -> Vec<CallbackDecl> {
+    let mut callbacks = Vec::new();
+    for raw_callback in raw_callbacks {
+        let owner = format!("callback `{}`", raw_callback.name);
+        local_only(scope, problems, &owner, "[[callback]]", true);
+        if !is_lower_name(&raw_callback.name) {
+            problems.push(format!("{owner}: name must match [a-z][a-z0-9_]*"));
+        }
+        let Some(since) = since_of(problems, raw_callback.since.as_deref(), &owner, scope.version) else {
+            continue;
+        };
+        let params = parse_fields(
+            &raw_callback.params,
+            "parameter",
+            &owner,
+            since,
+            scope.version,
+            problems,
+        );
+        let returns = raw_callback
+            .returns
+            .as_deref()
+            .and_then(|text| type_of(problems, Some(text), &format!("{owner}: `returns`")));
+        callbacks.push(CallbackDecl {
+            name: raw_callback.name.clone(),
+            since,
+            params,
+            returns,
+        });
+    }
+    callbacks
+}
+
+fn parse_objects(raw_objects: &[RawObject], scope: Scope, problems: &mut Vec<String>) -> Vec<ObjectType> {
     let mut objects = Vec::new();
     let mut seen_objects = BTreeSet::new();
     for raw_object in raw_objects {
@@ -243,30 +455,63 @@ fn parse_objects(raw_objects: &[RawObject], version: Option<Version>, problems: 
         if !seen_objects.insert(raw_object.name.as_str()) {
             problems.push(format!("duplicate {owner}"));
         }
-        let Some(since) = since_of(problems, raw_object.since.as_deref(), &owner, version) else {
+        let Some(since) = since_of(problems, raw_object.since.as_deref(), &owner, scope.version) else {
             continue;
         };
+
+        local_only(scope, problems, &owner, "kind", raw_object.kind.is_some());
+        local_only(scope, problems, &owner, "ctor", raw_object.ctor.is_some());
+        local_only(scope, problems, &owner, "retained", raw_object.retained);
+        local_only(scope, problems, &owner, "export", raw_object.export.is_some());
+        let kind = match raw_object.kind.as_deref() {
+            None if raw_object.record => ObjectKind::Record,
+            None | Some("handle") => ObjectKind::Handle,
+            Some("record") => ObjectKind::Record,
+            Some("interface") => ObjectKind::Interface,
+            Some("service") => ObjectKind::Service,
+            Some(other) => {
+                problems.push(format!(
+                    "{owner}: `kind` must be handle, record, interface or service, got `{other}`"
+                ));
+                ObjectKind::Handle
+            }
+        };
+        if raw_object.record && kind != ObjectKind::Record {
+            problems.push(format!(
+                "{owner}: `record = true` and `kind = \"{}\"` disagree",
+                kind.as_str()
+            ));
+        }
 
         // One namespace of member names inside an object: a dump, a generated
         // binding and a subscriber all address `object.member`, so a property and
         // a method may not share a name.
         let mut members = BTreeSet::new();
-        let properties = parse_properties(&raw_object.properties, &owner, since, version, &mut members, problems);
-        let methods = parse_methods(&raw_object.methods, &owner, since, version, &mut members, problems);
-        let signals = parse_signals(&raw_object.signals, &owner, since, version, &mut members, problems);
+        let properties = parse_properties(&raw_object.properties, &owner, since, scope, &mut members, problems);
+        let methods = parse_methods(&raw_object.methods, &owner, since, kind, scope, &mut members, problems);
+        let signals = parse_signals(&raw_object.signals, &owner, since, scope, &mut members, problems);
 
-        if let Some(base) = raw_object.base.as_deref().filter(|base| !is_lower_name(base)) {
-            problems.push(format!("{owner}: base `{base}` must match [a-z][a-z0-9_]*"));
+        if let Some(base) = raw_object.base.as_deref().filter(|base| !is_class_ref(base)) {
+            problems.push(format!(
+                "{owner}: base `{base}` must match [a-z][a-z0-9_]* (dotted for another namespace's class)"
+            ));
         }
-        if raw_object.record && (!raw_object.methods.is_empty() || !raw_object.signals.is_empty()) {
+        if kind == ObjectKind::Record && (!raw_object.methods.is_empty() || !raw_object.signals.is_empty()) {
             problems.push(format!("{owner}: a record declares no methods or signals"));
+        }
+        if kind == ObjectKind::Interface && !raw_object.signals.is_empty() {
+            problems.push(format!("{owner}: an interface declares no signals"));
         }
         objects.push(ObjectType {
             name: raw_object.name.clone(),
             base: raw_object.base.clone(),
             since,
             secret: raw_object.secret,
-            record: raw_object.record,
+            record: kind == ObjectKind::Record,
+            kind,
+            ctor: raw_object.ctor.clone(),
+            retained: raw_object.retained,
+            export: export_of(raw_object.export.as_ref()),
             properties,
             methods,
             signals,
@@ -276,7 +521,7 @@ fn parse_objects(raw_objects: &[RawObject], version: Option<Version>, problems: 
 }
 
 /// Read a property's `default` as its declared type. TOML has no literal for an
-/// object reference or for bytes, so those refuse a default rather than invent one.
+/// object reference or for bytes, so those types take no default.
 fn default_value(ty: &Type, value: &toml::Value) -> Result<DefaultValue, String> {
     match (ty, value) {
         (Type::Bool, toml::Value::Boolean(flag)) => Ok(DefaultValue::Bool(*flag)),
@@ -287,12 +532,16 @@ fn default_value(ty: &Type, value: &toml::Value) -> Result<DefaultValue, String>
         (Type::Double, toml::Value::Float(number)) => Ok(DefaultValue::Double(*number)),
         (Type::Double, toml::Value::Integer(number)) => Ok(DefaultValue::Double(*number as f64)),
         (Type::Text, toml::Value::String(text)) => Ok(DefaultValue::Text(text.clone())),
+        // An enum's default is the name of one of its values; the catalog checks the name.
+        (Type::Enum(_), toml::Value::String(name)) => Ok(DefaultValue::Text(name.clone())),
         (Type::List(inner), toml::Value::Array(items)) => items
             .iter()
             .map(|item| default_value(inner, item))
             .collect::<Result<Vec<_>, _>>()
             .map(DefaultValue::List),
-        (Type::Bytes | Type::ObjectRef(_), _) => Err(format!("default is refused: `{ty}` has no TOML literal")),
+        (Type::Bytes | Type::ObjectRef(_) | Type::Callback(_), _) => {
+            Err(format!("default is refused: `{ty}` has no TOML literal"))
+        }
         _ => Err(format!("default `{value}` is not a `{ty}`")),
     }
 }
@@ -301,7 +550,7 @@ fn parse_properties(
     raw_properties: &[RawProperty],
     object: &str,
     object_since: Version,
-    version: Option<Version>,
+    scope: Scope,
     members: &mut BTreeSet<String>,
     problems: &mut Vec<String>,
 ) -> Vec<Property> {
@@ -314,10 +563,24 @@ fn parse_properties(
         if !is_lower_name(&raw_property.name) {
             problems.push(format!("{owner}: name must match [a-z][a-z0-9_]*"));
         }
+        let extras = extras_of(
+            scope,
+            problems,
+            &owner,
+            raw_property.inert.as_ref(),
+            raw_property.abi.as_ref(),
+            raw_property.export.as_ref(),
+        );
         let Some(ty) = type_of(problems, raw_property.ty.as_deref(), &owner) else {
             continue;
         };
-        let Some(since) = member_since(problems, raw_property.since.as_deref(), &owner, object_since, version) else {
+        let Some(since) = member_since(
+            problems,
+            raw_property.since.as_deref(),
+            &owner,
+            object_since,
+            scope.version,
+        ) else {
             continue;
         };
         let default = match raw_property
@@ -340,6 +603,7 @@ fn parse_properties(
             default,
             readonly: raw_property.readonly,
             animated: raw_property.animated,
+            extras,
         });
     }
     properties
@@ -349,7 +613,8 @@ fn parse_methods(
     raw_methods: &[RawMethod],
     object: &str,
     object_since: Version,
-    version: Option<Version>,
+    kind: ObjectKind,
+    scope: Scope,
     members: &mut BTreeSet<String>,
     problems: &mut Vec<String>,
 ) -> Vec<Method> {
@@ -362,16 +627,56 @@ fn parse_methods(
         if !is_lower_name(&raw_method.name) {
             problems.push(format!("{owner}: name must match [a-z][a-z0-9_]*"));
         }
-        let Some(since) = member_since(problems, raw_method.since.as_deref(), &owner, object_since, version) else {
+        let extras = extras_of(
+            scope,
+            problems,
+            &owner,
+            raw_method.inert.as_ref(),
+            raw_method.abi.as_ref(),
+            raw_method.export.as_ref(),
+        );
+        local_only(scope, problems, &owner, "returns", raw_method.returns.is_some());
+        local_only(scope, problems, &owner, "required", raw_method.required);
+        local_only(scope, problems, &owner, "default", raw_method.default.is_some());
+        local_only(scope, problems, &owner, "python", raw_method.python.is_some());
+        if (raw_method.required || raw_method.default.is_some()) && kind != ObjectKind::Interface {
+            problems.push(format!(
+                "{owner}: `required` and `default` belong to a method of an interface"
+            ));
+        }
+        if raw_method.required && raw_method.default.is_some() {
+            problems.push(format!("{owner}: a required method has no default to run"));
+        }
+        if let Some(default) = raw_method.default.as_deref()
+            && default != "native"
+        {
+            problems.push(format!("{owner}: `default` can only be \"native\", got `{default}`"));
+        }
+        let Some(since) = member_since(
+            problems,
+            raw_method.since.as_deref(),
+            &owner,
+            object_since,
+            scope.version,
+        ) else {
             continue;
         };
-        let params = parse_fields(&raw_method.params, "parameter", &owner, since, version, problems);
+        let params = parse_fields(&raw_method.params, "parameter", &owner, since, scope.version, problems);
+        let returns = raw_method
+            .returns
+            .as_deref()
+            .and_then(|text| type_of(problems, Some(text), &format!("{owner}: `returns`")));
         methods.push(Method {
             name: raw_method.name.clone(),
             since,
             secret: raw_method.secret,
             function: raw_method.function,
             params,
+            returns,
+            required: raw_method.required,
+            native_default: raw_method.default.is_some(),
+            dunder: raw_method.python.as_ref().and_then(|python| python.dunder.clone()),
+            extras,
         });
     }
     methods
@@ -381,7 +686,7 @@ fn parse_signals(
     raw_signals: &[RawSignal],
     object: &str,
     object_since: Version,
-    version: Option<Version>,
+    scope: Scope,
     members: &mut BTreeSet<String>,
     problems: &mut Vec<String>,
 ) -> Vec<Signal> {
@@ -394,15 +699,30 @@ fn parse_signals(
         if !is_lower_name(&raw_signal.name) {
             problems.push(format!("{owner}: name must match [a-z][a-z0-9_]*"));
         }
-        let Some(since) = member_since(problems, raw_signal.since.as_deref(), &owner, object_since, version) else {
+        let extras = extras_of(
+            scope,
+            problems,
+            &owner,
+            raw_signal.inert.as_ref(),
+            raw_signal.abi.as_ref(),
+            raw_signal.export.as_ref(),
+        );
+        let Some(since) = member_since(
+            problems,
+            raw_signal.since.as_deref(),
+            &owner,
+            object_since,
+            scope.version,
+        ) else {
             continue;
         };
-        let fields = parse_fields(&raw_signal.fields, "field", &owner, since, version, problems);
+        let fields = parse_fields(&raw_signal.fields, "field", &owner, since, scope.version, problems);
         signals.push(Signal {
             name: raw_signal.name.clone(),
             since,
             secret: raw_signal.secret,
             fields,
+            extras,
         });
     }
     signals
@@ -513,6 +833,13 @@ fn member_since(
         return None;
     }
     Some(since)
+}
+
+/// True for the name of an enum value: a member name that may also contain hyphens, as a value spelt `follow-mouse` does.
+fn is_enum_value(text: &str) -> bool {
+    let mut bytes = text.bytes();
+    matches!(bytes.next(), Some(first) if first.is_ascii_lowercase())
+        && bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-')
 }
 
 #[cfg(test)]

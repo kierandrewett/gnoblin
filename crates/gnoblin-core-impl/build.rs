@@ -28,6 +28,8 @@ fn main() {
     println!("cargo:rustc-cdylib-link-arg=-Wl,-z,defs");
 
     stage_soname_link();
+    // The catalog of `gnoblin.model` the object protocol serves, written into `OUT_DIR` (nothing of it is committed).
+    gnoblin_sdkgen::emit_for_build(&["objects"]);
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"));
     let schema_dir = manifest.join("../gnoblin-schema/schema");
     println!("cargo:rerun-if-changed={}", schema_dir.display());
@@ -211,5 +213,8 @@ fn value_kind(catalog: &Catalog, namespace: &Namespace, ty: &Type, secret: bool)
             Type::ObjectRef(name) if name == "effect" => abi::VALUE_EFFECTS,
             _ => abi::VALUE_LIST,
         },
+        // The compositor's catalog never holds them: they belong to the namespaces a library serves.
+        Type::Enum(_) => abi::VALUE_ENUM,
+        Type::Callback(_) => abi::VALUE_CLOSURE,
     }
 }

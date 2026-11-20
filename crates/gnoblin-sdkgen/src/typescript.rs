@@ -70,6 +70,7 @@ pub fn ts_type(ty: &Type, nodes: &BTreeSet<String>) -> String {
         Type::Bytes => "Uint8Array".to_owned(),
         Type::ObjectRef(name) if nodes.contains(name) => "NodeHandle | null".to_owned(),
         Type::ObjectRef(_) => "Record<string, unknown>".to_owned(),
+        Type::Enum(_) | Type::Callback(_) => "unknown".to_owned(),
         Type::List(inner) => match inner.as_ref() {
             Type::ObjectRef(name) if nodes.contains(name) => "NodeHandle[]".to_owned(),
             Type::ObjectRef(_) => "Record<string, unknown>[]".to_owned(),

@@ -68,10 +68,15 @@ pub enum Type {
     Text,
     /// Opaque octets.
     Bytes,
-    /// The identity of another object type in the same namespace.
+    /// The identity of another object type: one of the same namespace (`window`), or of another namespace's catalog, named in full
+    /// (`gnoblin.model.client`).
     ObjectRef(String),
     /// A homogeneous sequence of the inner type.
     List(Box<Type>),
+    /// A member of a closed set of named values the namespace declares (`[[enum]]`). Local namespaces only.
+    Enum(String),
+    /// A closure a shell passes in, declared by `[[callback]]`: named parameters and a result. Local namespaces only.
+    Callback(String),
 }
 
 impl Type {
@@ -88,28 +93,73 @@ impl Type {
             "double" => Ok(Type::Double),
             "string" => Ok(Type::Text),
             "bytes" => Ok(Type::Bytes),
-            other => match other.strip_prefix("object:") {
-                Some(name) if is_lower_name(name) => Ok(Type::ObjectRef(name.to_owned())),
-                Some(_) => Err(format!(
-                    "`{other}` is not an object type; expected [a-z][a-z0-9_]* after `object:`"
-                )),
-                None => Err(format!("unknown type `{other}`")),
-            },
+            other => {
+                if let Some(name) = other.strip_prefix("object:") {
+                    return if is_class_ref(name) {
+                        Ok(Type::ObjectRef(name.to_owned()))
+                    } else {
+                        Err(format!(
+                            "`{other}` is not an object type; expected [a-z][a-z0-9_]* (dotted for another namespace) after `object:`"
+                        ))
+                    };
+                }
+                if let Some(name) = other.strip_prefix("enum:") {
+                    return if is_class_ref(name) {
+                        Ok(Type::Enum(name.to_owned()))
+                    } else {
+                        Err(format!("`{other}` is not an enum type; expected a name after `enum:`"))
+                    };
+                }
+                if let Some(name) = other.strip_prefix("callback:") {
+                    return if is_lower_name(name) {
+                        Ok(Type::Callback(name.to_owned()))
+                    } else {
+                        Err(format!(
+                            "`{other}` is not a callback type; expected a name after `callback:`"
+                        ))
+                    };
+                }
+                Err(format!("unknown type `{other}`"))
+            }
         }
     }
 
     /// Every object type this type refers to, at any depth.
     pub fn referenced_objects(&self) -> Vec<&str> {
         let mut references = Vec::new();
-        self.collect_references(&mut references);
+        self.collect_references(&mut references, |ty| match ty {
+            Type::ObjectRef(name) => Some(name),
+            _ => None,
+        });
         references
     }
 
-    fn collect_references<'a>(&'a self, references: &mut Vec<&'a str>) {
-        match self {
-            Type::ObjectRef(name) => references.push(name),
-            Type::List(inner) => inner.collect_references(references),
-            _ => {}
+    /// Every enum this type refers to, at any depth.
+    pub fn referenced_enums(&self) -> Vec<&str> {
+        let mut references = Vec::new();
+        self.collect_references(&mut references, |ty| match ty {
+            Type::Enum(name) => Some(name),
+            _ => None,
+        });
+        references
+    }
+
+    /// Every callback this type refers to, at any depth.
+    pub fn referenced_callbacks(&self) -> Vec<&str> {
+        let mut references = Vec::new();
+        self.collect_references(&mut references, |ty| match ty {
+            Type::Callback(name) => Some(name),
+            _ => None,
+        });
+        references
+    }
+
+    fn collect_references<'a>(&'a self, references: &mut Vec<&'a str>, pick: fn(&'a Type) -> Option<&'a String>) {
+        if let Some(name) = pick(self) {
+            references.push(name);
+        }
+        if let Type::List(inner) = self {
+            inner.collect_references(references, pick);
         }
     }
 }
@@ -125,8 +175,81 @@ impl fmt::Display for Type {
             Type::Bytes => formatter.write_str("bytes"),
             Type::ObjectRef(name) => write!(formatter, "object:{name}"),
             Type::List(inner) => write!(formatter, "list<{inner}>"),
+            Type::Enum(name) => write!(formatter, "enum:{name}"),
+            Type::Callback(name) => write!(formatter, "callback:{name}"),
         }
     }
+}
+
+/// What an object is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ObjectKind {
+    /// An identity: an instance has a lifetime and is passed by reference.
+    Handle,
+    /// A value: a reference to it is the properties of that value. A record declares no methods or signals.
+    Record,
+    /// Members the shell implements and the library calls.
+    Interface,
+    /// One instance per generation, with functions.
+    Service,
+}
+
+impl ObjectKind {
+    /// The word schema files use.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ObjectKind::Handle => "handle",
+            ObjectKind::Record => "record",
+            ObjectKind::Interface => "interface",
+            ObjectKind::Service => "service",
+        }
+    }
+}
+
+/// The names a member or an object has in a language, where the mechanical conversion of its schema name is not it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Export {
+    /// The name in JavaScript and TypeScript.
+    pub js: Option<String>,
+    /// The name in Python.
+    pub py: Option<String>,
+    /// The name in Rust.
+    pub rust: Option<String>,
+}
+
+/// What only the members of a local namespace carry.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Extras {
+    /// The member is accepted and not applied; the text says why.
+    pub inert: Option<String>,
+    /// The existing typed table function that serves the member, written `fn:<name>`.
+    pub abi: Option<String>,
+    /// The member's name in each language when it differs from the mechanical conversion.
+    pub export: Export,
+}
+
+/// A closed set of named values: `[[enum]]`. The value's id is its place in `values`, counted from 1.
+#[derive(Clone, Debug)]
+pub struct EnumDecl {
+    /// The name as declared.
+    pub name: String,
+    /// The version that added the enum.
+    pub since: Version,
+    /// The value names, in order. A later version only appends.
+    pub values: Vec<String>,
+}
+
+/// A closure a shell passes in: `[[callback]]`.
+#[derive(Clone, Debug)]
+pub struct CallbackDecl {
+    /// The name as declared.
+    pub name: String,
+    /// The version that added the callback.
+    pub since: Version,
+    /// The parameters, in order.
+    pub params: Vec<Field>,
+    /// What the closure answers, when it does.
+    pub returns: Option<Type>,
 }
 
 /// One schema file: a namespace at one version, with its objects and error codes.
@@ -138,10 +261,17 @@ pub struct Schema {
     pub namespace: Namespace,
     /// The schema version, as written in the schema file.
     pub version: Version,
+    /// A library serves the namespace, not the compositor: the wire never carries it and the `gnoblin` catalog hash does not
+    /// include it.
+    pub local: bool,
     /// The object types declared, in file order.
     pub objects: Vec<ObjectType>,
     /// The error codes declared, in file order.
     pub errors: Vec<ErrorDecl>,
+    /// The enums declared, in file order.
+    pub enums: Vec<EnumDecl>,
+    /// The callbacks declared, in file order.
+    pub callbacks: Vec<CallbackDecl>,
 }
 
 /// An object type: an identity with typed properties, methods and signals.
@@ -159,6 +289,15 @@ pub struct ObjectType {
     /// A record is a value, not an identity: a reference to it is the properties of
     /// that value on the wire, not an object id. A record declares no methods or signals.
     pub record: bool,
+    /// What the object is. `record` is true exactly when this is [`ObjectKind::Record`].
+    pub kind: ObjectKind,
+    /// The properties a constructor takes, in order, when the object has constructor arguments of its own; `None` means every
+    /// writable property, by name.
+    pub ctor: Option<Vec<String>>,
+    /// An instance stays until it is destroyed, whatever the shell releases (a widget on screen).
+    pub retained: bool,
+    /// The object's name in each language when it differs from the mechanical conversion.
+    pub export: Export,
     /// Typed properties of the object.
     pub properties: Vec<Property>,
     /// Calls a client can make on the object.
@@ -191,6 +330,10 @@ impl ObjectType {
             since: self.since,
             secret: false,
             record: self.record,
+            kind: self.kind,
+            ctor: self.ctor.clone(),
+            retained: self.retained,
+            export: self.export.clone(),
             properties: self
                 .properties
                 .iter()
@@ -273,6 +416,8 @@ pub struct Property {
     pub readonly: bool,
     /// True when a `set` may carry `seconds` to animate the change; without it the set is refused `not-animated`.
     pub animated: bool,
+    /// What only a local namespace's property carries: `inert`, `abi` and the names in each language.
+    pub extras: Extras,
 }
 
 impl Property {
@@ -300,6 +445,16 @@ pub struct Method {
     pub function: bool,
     /// Request parameters, in declaration order.
     pub params: Vec<Field>,
+    /// What the method answers, when it does (local namespaces; a method of the compositor's schema answers with an operation).
+    pub returns: Option<Type>,
+    /// For an interface: the shell must implement the method.
+    pub required: bool,
+    /// For an interface: the library runs its own default when the shell does not implement the method.
+    pub native_default: bool,
+    /// The Python special method the member is (`__len__`), where a language spells the member that way.
+    pub dunder: Option<String>,
+    /// What only a local namespace's method carries: `inert`, `abi` and the names in each language.
+    pub extras: Extras,
 }
 
 impl Method {
@@ -323,6 +478,8 @@ pub struct Signal {
     pub secret: bool,
     /// Payload fields, in declaration order.
     pub fields: Vec<Field>,
+    /// What only a local namespace's signal carries: `inert`, `abi` and the names in each language.
+    pub extras: Extras,
 }
 
 impl Signal {
@@ -379,6 +536,8 @@ impl Catalog {
         let mut versions: BTreeMap<&str, (Version, &str)> = BTreeMap::new();
         let mut objects: BTreeMap<&str, BTreeMap<&str, &str>> = BTreeMap::new();
         let mut errors: BTreeMap<&str, BTreeMap<&str, &str>> = BTreeMap::new();
+        let mut enums: BTreeMap<&str, BTreeMap<&str, &str>> = BTreeMap::new();
+        let mut callbacks: BTreeMap<&str, BTreeMap<&str, &str>> = BTreeMap::new();
 
         for schema in &schemas {
             let namespace = schema.namespace.as_str();
@@ -416,21 +575,86 @@ impl Catalog {
                     ));
                 }
             }
+            let namespace_enums = enums.entry(namespace).or_default();
+            for declared in &schema.enums {
+                if namespace_enums
+                    .insert(declared.name.as_str(), schema.origin.as_str())
+                    .is_some()
+                {
+                    problems.push(format!(
+                        "enum `{}` is declared more than once in namespace `{namespace}`",
+                        declared.name
+                    ));
+                }
+            }
+            let namespace_callbacks = callbacks.entry(namespace).or_default();
+            for declared in &schema.callbacks {
+                if namespace_callbacks
+                    .insert(declared.name.as_str(), schema.origin.as_str())
+                    .is_some()
+                {
+                    problems.push(format!(
+                        "callback `{}` is declared more than once in namespace `{namespace}`",
+                        declared.name
+                    ));
+                }
+            }
         }
 
         for schema in &schemas {
             let namespace = schema.namespace.as_str();
-            let Some(known) = objects.get(namespace) else {
-                continue;
-            };
+            let mut typed: Vec<(String, &Type)> = Vec::new();
             for object in &schema.objects {
-                for (member, ty) in object.typed_members() {
-                    for reference in ty.referenced_objects() {
-                        if !known.contains_key(reference) {
-                            problems.push(format!(
-                                "{member} refers to object `{reference}`, which namespace `{namespace}` does not declare"
-                            ));
-                        }
+                typed.extend(object.typed_members());
+                for method in &object.methods {
+                    if let Some(returns) = &method.returns {
+                        typed.push((
+                            format!("result of method `{}` of object `{}`", method.name, object.name),
+                            returns,
+                        ));
+                    }
+                }
+            }
+            for callback in &schema.callbacks {
+                for parameter in &callback.params {
+                    typed.push((
+                        format!("parameter `{}` of callback `{}`", parameter.name, callback.name),
+                        &parameter.ty,
+                    ));
+                }
+                if let Some(returns) = &callback.returns {
+                    typed.push((format!("result of callback `{}`", callback.name), returns));
+                }
+            }
+            for (member, ty) in typed {
+                for reference in ty.referenced_objects() {
+                    let (home, name) = split_class_ref(namespace, reference);
+                    if !objects.get(home).is_some_and(|known| known.contains_key(name)) {
+                        problems.push(format!(
+                            "{member} refers to object `{reference}`, which namespace `{home}` does not declare"
+                        ));
+                    }
+                }
+                for reference in ty.referenced_enums() {
+                    let (home, name) = split_class_ref(namespace, reference);
+                    if !schema.local {
+                        problems.push(format!("{member} is an enum: only a local namespace has enums"));
+                    } else if !enums.get(home).is_some_and(|known| known.contains_key(name)) {
+                        problems.push(format!(
+                            "{member} refers to enum `{reference}`, which namespace `{home}` does not declare"
+                        ));
+                    }
+                }
+                for reference in ty.referenced_callbacks() {
+                    if !schema.local {
+                        problems.push(format!("{member} is a callback: only a local namespace has callbacks"));
+                    } else if !callbacks
+                        .get(namespace)
+                        .is_some_and(|known| known.contains_key(reference))
+                    {
+                        problems.push(format!(
+                            "{member} refers to callback `{reference}`, which namespace `{namespace}` does not declare"
+                        ));
                     }
                 }
             }
@@ -462,11 +686,22 @@ impl Catalog {
     /// in file-name order. A skipped subdirectory is a schema the caller must not
     /// expose, such as the owner-socket-only tree (design/node-core.md section 2.3).
     pub fn load_dir_except(dir: &Path, skip: &[&str]) -> Result<Catalog, SchemaError> {
+        Self::load_dirs(&[dir], skip)
+    }
+
+    /// Read the schema files of several directories as one catalog, the files of each in name order and the directories in the
+    /// order given. The catalogs a library serves (`crates/gnoblin-core-abi/schema`, `crates/gnoblin-std-abi/schema`) are loaded
+    /// together so a class of one can name a class of the other; `skip` names subdirectories to leave out of every directory.
+    pub fn load_dirs(dirs: &[&Path], skip: &[&str]) -> Result<Catalog, SchemaError> {
         let mut paths = Vec::new();
-        Self::collect_toml(dir, &mut paths)?;
-        let skipped: Vec<PathBuf> = skip.iter().map(|name| dir.join(name)).collect();
-        paths.retain(|path| !skipped.iter().any(|root| path.starts_with(root)));
-        paths.sort();
+        for dir in dirs {
+            let mut found = Vec::new();
+            Self::collect_toml(dir, &mut found)?;
+            let skipped: Vec<PathBuf> = skip.iter().map(|name| dir.join(name)).collect();
+            found.retain(|path| !skipped.iter().any(|root| path.starts_with(root)));
+            found.sort();
+            paths.extend(found);
+        }
 
         let mut problems = Vec::new();
         let mut schemas = Vec::new();
@@ -495,7 +730,11 @@ impl Catalog {
             }
         }
 
-        let source = dir.display().to_string();
+        let source = dirs
+            .iter()
+            .map(|dir| dir.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
         if paths.is_empty() {
             problems.push("no .toml schema files found".to_owned());
         }
@@ -573,6 +812,29 @@ impl Catalog {
             .map(|schema| schema.origin.as_str())
     }
 
+    /// Every enum in a namespace, in declaration order.
+    pub fn enums<'a>(&'a self, namespace: &'a Namespace) -> impl Iterator<Item = &'a EnumDecl> {
+        self.schemas
+            .iter()
+            .filter(move |schema| &schema.namespace == namespace)
+            .flat_map(|schema| schema.enums.iter())
+    }
+
+    /// Every callback in a namespace, in declaration order.
+    pub fn callbacks<'a>(&'a self, namespace: &'a Namespace) -> impl Iterator<Item = &'a CallbackDecl> {
+        self.schemas
+            .iter()
+            .filter(move |schema| &schema.namespace == namespace)
+            .flat_map(|schema| schema.callbacks.iter())
+    }
+
+    /// True when a library serves the namespace and the compositor does not.
+    pub fn is_local(&self, namespace: &Namespace) -> bool {
+        self.schemas
+            .iter()
+            .any(|schema| &schema.namespace == namespace && schema.local)
+    }
+
     /// A 64-bit fingerprint of everything the generated SDKs read from the catalog: every namespace, class, base, property
     /// (type, default, read-only, animated, secret), method (parameters), signal (fields) and error code.
     ///
@@ -583,7 +845,13 @@ impl Catalog {
     pub fn fingerprint(&self) -> u64 {
         use std::fmt::Write as _;
         let mut text = String::new();
-        for namespace in self.namespaces() {
+        // A namespace a library serves is not the compositor's: its changes never move this hash, which the golden shells and the
+        // wire depend on (`namespace_fingerprint` is the hash of those).
+        for namespace in self
+            .namespaces()
+            .into_iter()
+            .filter(|namespace| !self.is_local(namespace))
+        {
             let _ = writeln!(text, "namespace {}", namespace.as_str());
             for object in self.objects(&namespace) {
                 let _ = writeln!(
@@ -635,6 +903,111 @@ impl Catalog {
             hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         }
         hash
+    }
+
+    /// A 64-bit fingerprint of one namespace's catalog, everything a generated SDK or a library reads from it: kinds, bases,
+    /// constructors, every member with its type, flags and defaults, enums, callbacks and errors. A library reports it through its
+    /// object table, and a generated SDK compares it with its own, so a library upgraded without its runtime is refused with both
+    /// hashes named. Comments, `since` versions and the order of files do not move it.
+    pub fn namespace_fingerprint(&self, namespace: &Namespace) -> u64 {
+        use std::fmt::Write as _;
+        let mut text = format!("namespace {}\n", namespace.as_str());
+        let mut classes: Vec<&ObjectType> = self.objects(namespace).collect();
+        classes.sort_by(|a, b| a.name.cmp(&b.name));
+        for object in classes {
+            let _ = writeln!(
+                text,
+                "class {} kind={} base={} retained={} ctor={:?} export={:?}",
+                object.name,
+                object.kind.as_str(),
+                object.base.as_deref().unwrap_or("-"),
+                object.retained,
+                object.ctor,
+                object.export
+            );
+            for property in &object.properties {
+                let _ = writeln!(
+                    text,
+                    "p {} {} default={:?} ro={} anim={} secret={} extras={:?}",
+                    property.name,
+                    property.ty,
+                    property.default,
+                    property.readonly,
+                    property.animated,
+                    property.secret,
+                    property.extras
+                );
+            }
+            for method in &object.methods {
+                let _ = write!(
+                    text,
+                    "m {} fn={} secret={} returns={} required={} native={} dunder={:?} extras={:?}",
+                    method.name,
+                    method.function,
+                    method.secret,
+                    method
+                        .returns
+                        .as_ref()
+                        .map_or_else(|| "-".to_owned(), ToString::to_string),
+                    method.required,
+                    method.native_default,
+                    method.dunder,
+                    method.extras
+                );
+                for param in &method.params {
+                    let _ = write!(text, " {}:{}:{}", param.name, param.ty, param.optional);
+                }
+                text.push('\n');
+            }
+            for signal in &object.signals {
+                let _ = write!(text, "s {} extras={:?}", signal.name, signal.extras);
+                for field in &signal.fields {
+                    let _ = write!(text, " {}:{}", field.name, field.ty);
+                }
+                text.push('\n');
+            }
+        }
+        let mut enums: Vec<&EnumDecl> = self.enums(namespace).collect();
+        enums.sort_by(|a, b| a.name.cmp(&b.name));
+        for declared in enums {
+            let _ = writeln!(text, "enum {} {}", declared.name, declared.values.join(" "));
+        }
+        let mut callbacks: Vec<&CallbackDecl> = self.callbacks(namespace).collect();
+        callbacks.sort_by(|a, b| a.name.cmp(&b.name));
+        for declared in callbacks {
+            let _ = write!(
+                text,
+                "callback {} returns={}",
+                declared.name,
+                declared
+                    .returns
+                    .as_ref()
+                    .map_or_else(|| "-".to_owned(), ToString::to_string)
+            );
+            for param in &declared.params {
+                let _ = write!(text, " {}:{}", param.name, param.ty);
+            }
+            text.push('\n');
+        }
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+        for byte in text.bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        hash
+    }
+}
+
+/// True for a class reference: `[a-z][a-z0-9_]*` segments, joined by dots for another namespace's class.
+pub fn is_class_ref(text: &str) -> bool {
+    !text.is_empty() && text.split('.').all(is_lower_name)
+}
+
+/// The namespace and name a reference means: a dotted one names another namespace's class, an undotted one is in `namespace`.
+pub(crate) fn split_class_ref<'a>(namespace: &'a str, reference: &'a str) -> (&'a str, &'a str) {
+    match reference.rsplit_once('.') {
+        Some((home, name)) => (home, name),
+        None => (namespace, reference),
     }
 }
 

@@ -42,6 +42,7 @@ mod link;
 mod listen;
 mod memory;
 mod native_shell;
+mod object;
 mod procs;
 pub mod providers;
 mod registry;

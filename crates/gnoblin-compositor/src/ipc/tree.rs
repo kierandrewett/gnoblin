@@ -452,6 +452,8 @@ fn value_type(ty: &SchemaType) -> Option<ValueType> {
         SchemaType::Text => ValueType::Text,
         SchemaType::Bytes => ValueType::Bytes,
         SchemaType::ObjectRef(class) => ValueType::Node(class.clone()),
+        // The tree's namespaces are the compositor's: enums and callbacks belong to the namespaces a library serves.
+        SchemaType::Enum(_) | SchemaType::Callback(_) => return None,
         SchemaType::List(inner) => match inner.as_ref() {
             SchemaType::Double => ValueType::ListDouble,
             SchemaType::Text => ValueType::ListText,

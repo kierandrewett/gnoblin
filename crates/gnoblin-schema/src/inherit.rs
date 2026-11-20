@@ -120,7 +120,18 @@ impl<'a> Resolver<'a> {
             signals: Vec::new(),
         };
         let base = object.base.as_deref().unwrap_or("");
-        if let Some(base) = &object.base {
+        if let Some(base) = &object.base
+            && let Some((home, name)) = base.rsplit_once('.')
+        {
+            // A class of another namespace: it must exist, and its library serves its members. The derived class holds its own.
+            if !self.objects.contains_key(&(home.to_owned(), name.to_owned())) {
+                self.problems.push(format!(
+                    "object `{}` has base `{base}`, which namespace `{home}` does not declare",
+                    object.name
+                ));
+                return None;
+            }
+        } else if let Some(base) = &object.base {
             let base_key = (namespace.to_owned(), base.clone());
             if !self.objects.contains_key(&base_key) {
                 self.problems.push(format!(

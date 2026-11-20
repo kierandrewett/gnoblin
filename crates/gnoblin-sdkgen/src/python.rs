@@ -82,6 +82,8 @@ pub fn annotation(ty: &Type, node_classes: &BTreeSet<String>) -> String {
         Type::Bytes => "bytes".to_owned(),
         Type::ObjectRef(name) if node_classes.contains(name) => format!("{} | None", py_class(name)),
         Type::ObjectRef(_) => "dict[str, Any]".to_owned(),
+        // The tree's schema never holds them: they belong to the namespaces a library serves.
+        Type::Enum(_) | Type::Callback(_) => "Any".to_owned(),
         Type::List(inner) => match inner.as_ref() {
             Type::ObjectRef(name) if node_classes.contains(name) => format!("list[{}]", py_class(name)),
             Type::ObjectRef(_) => "list[dict[str, Any]]".to_owned(),
