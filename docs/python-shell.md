@@ -43,14 +43,20 @@ directory: two equal shells stop the start with a list of both.
   to run a `.py` file, and never otherwise, so a session that runs no Python shell never maps the interpreter. Without it a
   `.py` shell is refused with the library's name and the directories searched. `GNOBLIN_RUNTIME_DIR` names a directory to
   look in first.
-- **The package**, `gnoblin`, installed as data in `<prefix>/share/gnoblin/python/`. The runtime puts it on the `sys.path` of its
-  own interpreter and nowhere else, so it is invisible to the Python you run in a terminal. `GNOBLIN_PYTHON_DIR` names a
-  directory that holds it, to read it from instead (a source tree runs the `data/python` it was built from). Its generated
-  modules (`gnoblin._generated` and `gnoblin.std`) are not read from there: the runtime library carries them, written from the
-  schema and the ABI crates when it was built, and serves them to its interpreter ahead of the path. The copies `dist` installs
-  beside the package, with the stubs, are for editors and checkers.
+- **The package**, `gnoblin`, which needs nothing installed: the runtime library carries it, so the Python you run in a terminal
+  never sees it.
 
 Libraries you installed for your Python (`requests`, `numpy`) import as usual.
+
+### How the package is served
+
+Nothing of the package is installed as source or read from disk, and no directory or variable names it. A finder on the
+`sys.meta_path` of the runtime's own interpreter serves it:
+
+- The typed classes (`gnoblin._generated`, `gnoblin.std`, `gnoblin.objects`) are written from the schema and the ABI crates when the
+  runtime is built, so the package cannot describe a different catalog from the libraries it runs with.
+- The rest is Rust in `gnoblin-runtime-python`: the loader that isolates each generation, the log routing, the descriptors of the
+  typed classes, the `gnoblin` object, the exceptions and the subscriptions.
 
 ## Write a shell
 
@@ -210,13 +216,18 @@ sees an edit.
 
 ## Type declarations
 
-An editor, `mypy` or `pyright` can check a shell without running it. The package ships its declarations with it:
+An editor, `mypy` or `pyright` can check a shell without running it. The package is embedded in the runtime, so what is installed for
+the checker is a stub-only package, `<prefix>/share/gnoblin/types/python/`:
 
-- `py.typed` and the inline annotations of the package;
-- `gnoblin/__init__.pyi`, and the stubs of the generated classes;
+- `gnoblin/py.typed`, which marks it;
+- `gnoblin/__init__.pyi` and the stubs of the parts written in Rust (`_base`, `api`, `errors`, `events`);
+- the stubs of the generated classes and of `gnoblin.std` and `gnoblin.objects`, written by `cargo xtask dist` from the schema and the
+  ABI crates;
 - `_gnoblin_core.pyi`, for the built-in module.
 
-Point the checker at `<prefix>/share/gnoblin/python`, or add it to `extraPaths`.
+Point the checker at `<prefix>/share/gnoblin/types/python`, or add it to `extraPaths`. The hand-written stubs live in
+`crates/gnoblin-runtime-python/stubs/`, and a test (`tests/shells.rs`, `the_stubs_of_the_package_agree_with_what_the_runtime_reflects`)
+holds them to what the runtime reflects of every public name.
 
 ## The desktop library: `gnoblin.std`
 
@@ -228,7 +239,7 @@ transitions, styles and scene nodes. It is **generated** from the function table
 
 - A record is a dataclass, and a constant group an `IntEnum` or `IntFlag`.
 - A handle is a class: `Collection`, `Workspace`, `Client`, `Transition` or `Registration`.
-- Every call goes through one native function, `gnoblin._std.call`.
+- Every call goes through one native function, `_gnoblin_std.call`.
 
 ```python
 from gnoblin import gnoblin
@@ -257,15 +268,19 @@ dwindle.toggle_split()                          # the actions of a kind are meth
 - The library is opened by `import gnoblin.std`. Where it is not installed the import raises `ImportError`: `gnoblin-std is not
 installed (looked for libgnoblin-std.so.1 in ...)`, which is the check a core-only install is meant to give. A shell on
   `gnoblin` alone is complete: example 8 tiles windows with no workspace.
-- The only hand-written parts are `_std_base.py` (the native, handles, argument conversion) and `_std_sugar.py` (`len(collection)`,
-  `client.window`, `Placement.tile`, `Workspace.create`, `Workspace.use`).
+- The only hand-written parts are `gnoblin._std_base` (the native, handles, argument conversion) and `gnoblin._std_sugar`
+  (`len(collection)`, `client.window`, `Placement.tile`, `Workspace.create`, `Workspace.use`). Both are Rust in
+  `gnoblin-runtime-python`, like the rest of the package.
 
 ## The object classes: `gnoblin.objects.std`
 
 The catalog of `libgnoblin-std` (an entry model, the focus policy, and the records and enums they take) is served through the object
-protocol, and `gnoblin.objects.std` has a class for each of its types. They are **generated** from the catalog the library serves
-(`gnoblin-sdkgen`, at build time and never committed; [the generator](sdk-generator.md)) and embedded in the runtime library, so a class added
-to the catalog is a class here with no change to the runtime. `gnoblin.objects.model` is the same for the core's `gnoblin.model`.
+protocol, and `gnoblin.objects.std` has a class for each of its types. `gnoblin.objects.model` is the same for the core's
+`gnoblin.model`.
+
+The classes are **generated** from the catalog the library serves (`gnoblin-sdkgen`, at build time and never committed; [the
+generator](sdk-generator.md)) and embedded in the runtime library. A class added to the catalog is a class here with no change to the
+runtime.
 
 ```python
 from gnoblin import gnoblin

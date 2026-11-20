@@ -336,16 +336,16 @@ const ITEMS: &[InstallItem] = &[
         mode: FileMode::Data,
         template: false,
     },
-    // The Python package a `.py` shell imports (`from gnoblin import gnoblin`), with its type declarations. The runtime puts this
-    // directory on the `sys.path` of its own interpreter, found from the prefix of the core library (`share/gnoblin/python`).
+    // The Python package a `.py` shell imports (`from gnoblin import gnoblin`) is embedded in the runtime and installed as no source. What
+    // is installed is its declarations, for editors and type checkers: `share/gnoblin/types/python/`, a stub package with `py.typed`.
+    // The hand-written stubs are the crate's own (checked against what the runtime reflects), and the generated ones come from the
+    // generator below.
     InstallItem::Tree {
-        from: "data/python",
-        to: "share/gnoblin/python",
+        from: "crates/gnoblin-runtime-python/stubs",
+        to: "share/gnoblin/types/python",
     },
-    // The generated modules of the package (`gnoblin/_generated/*`, `gnoblin/std.py`) and the stub of the std module, for the same
-    // reason: the stubs of the package import them, and the interpreter serves its own embedded copy.
     InstallItem::Sdk {
-        to: "share/gnoblin/python",
+        to: "share/gnoblin/types/python",
         set: SdkSet::Python,
     },
     // The two places a shell package installs into: launcher files under `share`, the modules they name under the core's
@@ -828,7 +828,16 @@ fn plan(repo: &Path, built: &Path, libdir: &str) -> Result<Vec<Planned>, DistErr
                 let spec = gnoblin_sdkgen::SdkSpec::load(repo).map_err(DistError::Generate)?;
                 for target in targets {
                     let rendered = gnoblin_sdkgen::render(&spec, Some(target)).map_err(DistError::Generate)?;
-                    for (path, text) in gnoblin_sdkgen::files_of(&rendered) {
+                    let files = gnoblin_sdkgen::files_of(&rendered);
+                    // A Python module with a stub is read from the stub: its source is embedded in the runtime and is not installed.
+                    let stubbed: BTreeSet<String> = files
+                        .iter()
+                        .filter_map(|(path, _)| path.strip_suffix(".pyi").map(str::to_owned))
+                        .collect();
+                    for (path, text) in files {
+                        if path.strip_suffix(".py").is_some_and(|module| stubbed.contains(module)) {
+                            continue;
+                        }
                         let Some(relative) = path.strip_prefix(prefix) else {
                             continue;
                         };
@@ -1449,22 +1458,29 @@ mod tests {
             .find(|entry| entry.to == "lib64/gnoblin/libgnoblin-runtime-python.so")
             .expect("the runtime is planned");
         assert_eq!(runtime.mode, FileMode::Program);
+        // Nothing of the package is installed as source: the runtime serves it from itself. The declarations an editor reads are the
+        // hand-written stubs of the crate, copied, and the generated ones, which come from the generator.
         for wanted in [
-            "share/gnoblin/python/gnoblin/__init__.py",
-            "share/gnoblin/python/gnoblin/__init__.pyi",
-            "share/gnoblin/python/gnoblin/_loader.py",
-            "share/gnoblin/python/_gnoblin_core.pyi",
+            "share/gnoblin/types/python/gnoblin/__init__.pyi",
+            "share/gnoblin/types/python/gnoblin/_base.pyi",
+            "share/gnoblin/types/python/gnoblin/api.pyi",
+            "share/gnoblin/types/python/gnoblin/errors.pyi",
+            "share/gnoblin/types/python/gnoblin/events.pyi",
+            "share/gnoblin/types/python/gnoblin/py.typed",
+            "share/gnoblin/types/python/_gnoblin_core.pyi",
         ] {
-            assert!(with.iter().any(|entry| entry.to == wanted), "{wanted} is installed");
+            let entry = with
+                .iter()
+                .find(|entry| entry.to == wanted)
+                .unwrap_or_else(|| panic!("{wanted} is installed"));
+            assert!(matches!(entry.content, PlannedContent::File(_)), "{wanted} is copied");
         }
-        // Nothing generated is committed, so the generated modules and the stub of the std module come from the generator.
         for wanted in [
-            "share/gnoblin/python/gnoblin/_generated/classes.py",
-            "share/gnoblin/python/gnoblin/_generated/classes.pyi",
-            "share/gnoblin/python/gnoblin/std.py",
-            "share/gnoblin/python/gnoblin/std.pyi",
-            "share/gnoblin/python/gnoblin/objects/std.pyi",
-            "share/gnoblin/python/gnoblin/objects/__init__.pyi",
+            "share/gnoblin/types/python/gnoblin/_generated/classes.pyi",
+            "share/gnoblin/types/python/gnoblin/_generated/verbs.py",
+            "share/gnoblin/types/python/gnoblin/std.pyi",
+            "share/gnoblin/types/python/gnoblin/objects/std.pyi",
+            "share/gnoblin/types/python/gnoblin/objects/__init__.pyi",
         ] {
             let entry = with
                 .iter()
@@ -1475,6 +1491,19 @@ mod tests {
                 "{wanted} is generated, not copied"
             );
         }
+        // A module with a stub is installed as the stub only, and none of the package is installed as source.
+        for absent in [
+            "share/gnoblin/types/python/gnoblin/std.py",
+            "share/gnoblin/types/python/gnoblin/_generated/classes.py",
+            "share/gnoblin/types/python/gnoblin/__init__.py",
+            "share/gnoblin/types/python/gnoblin/_loader.py",
+        ] {
+            assert!(with.iter().all(|entry| entry.to != absent), "{absent} is not installed");
+        }
+        assert!(
+            with.iter().all(|entry| !entry.to.starts_with("share/gnoblin/python/")),
+            "the package is embedded: no directory of it is installed"
+        );
     }
 
     #[test]

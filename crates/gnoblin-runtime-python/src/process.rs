@@ -23,7 +23,7 @@ fn stream(name: &str) -> PyResult<Stream> {
     }
 }
 
-fn signal(name: &str) -> PyResult<Signal> {
+pub(crate) fn signal(name: &str) -> PyResult<Signal> {
     match name {
         "term" => Ok(Signal::Term),
         "kill" => Ok(Signal::Kill),

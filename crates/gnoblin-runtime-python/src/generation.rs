@@ -39,8 +39,6 @@ pub(crate) struct ShellState {
     pub(crate) watch: FileWatch,
     /// The files of the staged generation, which become the watch when it is activated.
     pub(crate) pending_watch: Option<Vec<(String, i128, u64, u64)>>,
-    /// What builds a `gnoblin.Node` from an id, for a value that is a node.
-    pub(crate) node_factory: Option<Py<PyAny>>,
 }
 
 thread_local! {
@@ -75,7 +73,6 @@ pub(crate) fn init(api: &'static GnoblinApi) {
                 next_token: 1,
                 watch: FileWatch::default(),
                 pending_watch: None,
-                node_factory: None,
             });
         }
     });

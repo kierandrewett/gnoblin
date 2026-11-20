@@ -7,7 +7,6 @@
 //! serves on; the fix then loads.
 
 use std::fs;
-use std::path::Path;
 use std::time::Duration;
 
 mod support;
@@ -48,19 +47,8 @@ const TYPESCRIPT: Script = Script {
 const PYTHON: Script = Script {
     entry: "shell.py",
     module: "origin.py",
-    environment: || {
-        vec![
-            (
-                "GNOBLIN_PYTHON_DIR",
-                Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../data/python")
-                    .display()
-                    .to_string(),
-            ),
-            // The package is the repository's own directory: the interpreter leaves no bytecode in the checkout.
-            ("PYTHONDONTWRITEBYTECODE", "1".to_owned()),
-        ]
-    },
+    // The package is embedded in the runtime: no directory of it is named, and the session reads none.
+    environment: Vec::new,
     entry_text: || {
         "from gnoblin import gnoblin\nfrom origin import ORIGIN\n\n\n@gnoblin.on_client_created\ndef placed(window):\n    \
          window.x, window.y, window.width, window.height = ORIGIN, ORIGIN, 500.0, 300.0\n    \

@@ -169,14 +169,14 @@ fn failure(error: &StdError) -> PyErr {
 /// Opens `libgnoblin-std.so.1`, or raises `ImportError` naming the file and where it was looked for. The package's `gnoblin.std`
 /// calls it at import, so a shell that imports std without the library fails at the import.
 #[pyfunction]
-fn load() -> PyResult<()> {
+pub(crate) fn load() -> PyResult<()> {
     library().map(drop)
 }
 
 /// Calls the table function `name` with `args`, for the generation `_gnoblin_core` acts on.
 #[pyfunction]
 #[pyo3(signature = (name, *args))]
-fn call<'py>(py: Python<'py>, name: &str, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn call<'py>(py: Python<'py>, name: &str, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
     let library = library()?;
     let values = args.iter().map(|arg| to_dyn(&arg)).collect::<PyResult<Vec<_>>>()?;
     let ctx = current_ctx();

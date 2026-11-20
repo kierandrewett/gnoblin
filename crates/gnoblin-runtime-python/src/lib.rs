@@ -3,14 +3,19 @@
 //! The library exports one symbol, `gnoruntime_entry_v1`, which returns a static [`GnoblinRuntimeEntry`]
 //! (`design/modular-framework.md` sections 5.10 and 10.1). The core's loader opens it, once, when a `.py` shell is selected, and
 //! calls `start` for each generation of the script. The interpreter is the system CPython, embedded through PyO3; the shell is an
-//! ordinary script that imports the pure-Python package `gnoblin` (`data/python/gnoblin`), which calls the built-in module
-//! `_gnoblin_core` of this library. That module is a thin layer over the core SDK (`gnoblin-core`): every call goes to the installed
-//! core with the handle the loader made for the generation, and no compositor logic is repeated here.
+//! ordinary script that imports the package `gnoblin`, which this library serves from itself (nothing of it is read from disk) and
+//! which calls the built-in module `_gnoblin_core` of this library. That module is a thin layer over the core SDK (`gnoblin-core`):
+//! every call goes to the installed core with the handle the loader made for the generation, and no compositor logic is repeated here.
 //!
-//! - [`interp`] brings the interpreter up, once, and finds the Python package.
+//! - [`interp`] brings the interpreter up, once, and puts the finder and the log routing in place.
+//! - [`finder`] serves the package: the modules generated from the catalog and embedded, and the ones this crate builds.
+//! - [`descriptors`] (`gnoblin._base`), [`singleton`] (`gnoblin.api`), [`subscription`] and [`values`] (`gnoblin.events`), [`errors`]
+//!   (`gnoblin.errors`), [`std_base`] and [`std_sugar`] are the hand-written half of the package, in Rust; [`methods`] binds a native
+//!   function as a method.
+//! - [`logging`] routes Python's own reporting (an uncaught exception, a warning, a `logging` record) into the core's log.
 //! - [`generation`] is the shell this thread runs: the generations the loader has made, which one the module's functions act on, and
 //!   the handles a script holds (subscriptions, programs).
-//! - [`load`] calls the package's loader (`gnoblin/_loader.py`), which imports the script and the modules it imports into a fresh
+//! - [`load`] stages, commits and ends a generation through [`loader`], which imports the script and the modules it imports into a fresh
 //!   namespace and puts the previous generation's back when the import fails.
 //! - [`watch`] sees an edit of a file a generation imported and asks the host for a reload.
 //! - [`module`] is `_gnoblin_core`: [`tree`], [`events`], [`input`] and [`process`] hold its functions, [`convert`] the values that
@@ -28,19 +33,28 @@
 
 mod callback;
 mod convert;
-mod embedded;
+mod descriptors;
 mod errors;
 mod events;
+mod finder;
 mod generation;
 mod input;
 mod interp;
 mod load;
+mod loader;
+mod logging;
+mod methods;
 mod module;
 mod object_native;
 mod process;
+mod singleton;
+mod std_base;
 mod std_native;
+mod std_sugar;
+mod subscription;
 mod table;
 mod tree;
+mod values;
 mod verbs;
 mod watch;
 

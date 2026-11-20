@@ -101,3 +101,23 @@ pub(crate) fn add_to(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("ThreadError", py.get_type::<ThreadError>())?;
     Ok(())
 }
+
+/// Fills the module `gnoblin.errors`: the same classes, so `except gnoblin.errors.NodeGoneError` catches what `_gnoblin_core` raises.
+pub(crate) fn build(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    add_to(module)?;
+    module.add(
+        "__all__",
+        [
+            "BusyError",
+            "GnoblinError",
+            "MemberError",
+            "NodeGoneError",
+            "RefusedError",
+            "RetiredError",
+            "StaleError",
+            "ThreadError",
+            "UnsupportedError",
+        ],
+    )?;
+    Ok(())
+}

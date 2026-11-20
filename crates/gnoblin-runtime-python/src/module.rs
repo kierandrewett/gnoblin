@@ -1,9 +1,9 @@
 //! The built-in module `_gnoblin_core`: the whole of what Python can reach of the core.
 //!
 //! It is generic on purpose. A class, property, method or signal is named as the schema catalog names it, and the typed classes
-//! a script uses (`gnoblin.Window` and the rest) are generated from that catalog into the pure-Python package, so adding a property
-//! to the schema changes no line here. What is left is the verbs: read, write and call a node, call the compositor's own verbs and hear its signals, listen, claim input, start a program,
-//! keep state across a reload, log and post work to the shell thread.
+//! a script uses (`gnoblin.Window` and the rest) are generated from that catalog, so adding a property to the schema changes no line
+//! here. What is left is the verbs: read, write and call a node, call the compositor's own verbs and hear its signals, listen, claim
+//! input, start a program, keep state across a reload, log and post work to the shell thread.
 //!
 //! The module is registered with the interpreter before it starts ([`crate::interp`]), so `import _gnoblin_core` finds it in any
 //! script and in the package, and nowhere else: outside a shell there is nothing for it to talk to.
@@ -15,12 +15,12 @@ use pyo3::types::{PyBytes, PyDict};
 
 use crate::callback::{callable, fire};
 use crate::errors::{add_to, core_error, to_py};
-use crate::generation::{self, handle, poster, with_state};
+use crate::generation::{self, handle, poster};
 use crate::{events, input, process, tree, verbs};
 
 /// Writes a line to the core's log. `level` is `error`, `warn`, `info`, `debug` or `trace`. Callable from any thread.
 #[pyfunction]
-fn log(level: &str, message: &str) -> PyResult<()> {
+pub(crate) fn log(level: &str, message: &str) -> PyResult<()> {
     let level = match level {
         "error" => LogLevel::CoreError,
         "warn" => LogLevel::Warn,
@@ -39,7 +39,7 @@ fn log(level: &str, message: &str) -> PyResult<()> {
 
 /// What the core says about the generation: its number, language, how many times the shell was reloaded, the module path.
 #[pyfunction]
-fn info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+pub(crate) fn info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     let info = handle()?.info().map_err(|e| core_error(&e))?;
     let dict = PyDict::new(py);
     dict.set_item("generation", info.generation)?;
@@ -52,7 +52,7 @@ fn info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 
 /// The core's counters: live registrations, callbacks run, panics caught, generations retired, stale calls refused.
 #[pyfunction]
-fn stats(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+pub(crate) fn stats(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     let stats = handle()?.stats().map_err(|e| core_error(&e))?;
     let dict = PyDict::new(py);
     dict.set_item("registrations", stats.registrations)?;
@@ -65,19 +65,19 @@ fn stats(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 
 /// Asks the host to reload this shell after the current callback returns.
 #[pyfunction]
-fn request_reload() -> PyResult<()> {
+pub(crate) fn request_reload() -> PyResult<()> {
     handle()?.request_reload().map_err(|e| core_error(&e))
 }
 
 /// Asks the host to exit the compositor with `code`.
 #[pyfunction]
-fn request_exit(code: i32) -> PyResult<()> {
+pub(crate) fn request_exit(code: i32) -> PyResult<()> {
     handle()?.request_exit(code).map_err(|e| core_error(&e))
 }
 
 /// Runs `callback()` on the shell thread at its next turn. Callable from any thread; dropped unrun if the generation retires first.
 #[pyfunction]
-fn post(callback: &Bound<'_, PyAny>) -> PyResult<()> {
+pub(crate) fn post(callback: &Bound<'_, PyAny>) -> PyResult<()> {
     let callback = callable(callback)?;
     let poster = poster().ok_or_else(|| to_py(None, "no Gnoblin shell is running"))?;
     poster
@@ -88,22 +88,15 @@ fn post(callback: &Bound<'_, PyAny>) -> PyResult<()> {
 /// Keeps `data` under `key` for the next generation of this shell.
 #[pyfunction]
 #[pyo3(signature = (key, data, version = 0))]
-fn keep_state(key: &str, data: &[u8], version: u32) -> PyResult<()> {
+pub(crate) fn keep_state(key: &str, data: &[u8], version: u32) -> PyResult<()> {
     handle()?.keep_state(key, data, version).map_err(|e| core_error(&e))
 }
 
 /// What an earlier generation kept under `key`, as `(bytes, version)`; `None` when nothing is kept.
 #[pyfunction]
-fn kept_state<'py>(py: Python<'py>, key: &str) -> PyResult<Option<(Bound<'py, PyBytes>, u32)>> {
+pub(crate) fn kept_state<'py>(py: Python<'py>, key: &str) -> PyResult<Option<(Bound<'py, PyBytes>, u32)>> {
     let kept = handle()?.kept_state(key).map_err(|e| core_error(&e))?;
     Ok(kept.map(|(bytes, version)| (PyBytes::new(py, &bytes), version)))
-}
-
-/// Registers the function `Node(id, class_name_or_None)` builds a node object with, for values that are nodes.
-#[pyfunction]
-fn set_node_factory(factory: &Bound<'_, PyAny>) -> PyResult<()> {
-    let factory = callable(factory)?;
-    with_state(|state| state.node_factory = Some(factory)).ok_or_else(|| to_py(None, generation::WRONG_THREAD))
 }
 
 /// The module.
@@ -118,7 +111,6 @@ pub(crate) fn _gnoblin_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(post, module)?)?;
     module.add_function(wrap_pyfunction!(keep_state, module)?)?;
     module.add_function(wrap_pyfunction!(kept_state, module)?)?;
-    module.add_function(wrap_pyfunction!(set_node_factory, module)?)?;
     // The tree.
     module.add_function(wrap_pyfunction!(tree::root, module)?)?;
     module.add_function(wrap_pyfunction!(tree::windows, module)?)?;

@@ -22,14 +22,14 @@ const INTERVAL: Duration = Duration::from_millis(100);
 
 /// What a file looked like: modification time in nanoseconds, size and inode; all `-1`/`0` for a file that is not there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Stamp {
+pub(crate) struct Stamp {
     mtime_ns: i128,
     size: u64,
     inode: u64,
 }
 
 impl Stamp {
-    fn of(path: &Path) -> Stamp {
+    pub(crate) fn of(path: &Path) -> Stamp {
         match std::fs::metadata(path) {
             Ok(meta) => Stamp {
                 mtime_ns: i128::from(meta.mtime()) * 1_000_000_000 + i128::from(meta.mtime_nsec()),
@@ -42,6 +42,11 @@ impl Stamp {
                 inode: 0,
             },
         }
+    }
+
+    /// The entry the watch is given for the file at `path`.
+    pub(crate) fn entry(self, path: &str) -> (String, i128, u64, u64) {
+        (path.to_owned(), self.mtime_ns, self.size, self.inode)
     }
 }
 

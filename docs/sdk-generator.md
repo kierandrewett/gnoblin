@@ -46,9 +46,12 @@ Generated Rust is not formatted in a build: the compiler does not care, and `gen
     `gnoblinctl types init` and `gnoblinctl config check --types` give an editor the same modules the shell runs. A prefix that has no
     std package serves no std module, generated or not, so example 17 keeps its error.
 
-- **Python.** `gnoblin-runtime-python` embeds `gnoblin._generated.*` and `gnoblin.std` and puts a finder first on `sys.meta_path` of
-  its own interpreter. The hand-written package on disk finds them through it, so an older file of the same name in a prefix is never
-  imported. The object classes (`gnoblin.objects.std`, `gnoblin.objects.model`) come the same way.
+- **Python.** `gnoblin-runtime-python` serves the whole package to its own interpreter, through a finder first on `sys.meta_path`:
+    - It embeds the generated modules: `gnoblin._generated.*`, `gnoblin.std` and the object classes `gnoblin.objects.std` and
+      `gnoblin.objects.model`.
+    - The rest of the package is Rust in the same crate: `gnoblin`, `gnoblin._base`, `gnoblin.api`, `gnoblin.events`, `gnoblin.errors`,
+      `gnoblin._std_base` and `gnoblin._std_sugar`.
+    - Nothing of the package is read from disk, and an older file of the same name in a prefix is never imported.
 
 ## The sources
 
@@ -64,12 +67,12 @@ and every generated file names it in its banner.
 
 ## What is generated, and what is not
 
-| Target       | Generated                                                                                                                                                                                                                           | Written by hand                                                                                                       |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `rust`       | `rust-core/generated.rs`: schema name constants and the catalog hash, a typed wrapper per node class, `ErrorKind` with its code and symbol conversions                                                                              | composites (`Window::geometry`), closures and trampolines, events, macros                                             |
-| `std-dyn`    | `rust-std-dyn/generated.rs`: the dynamic call of every std table function, the record readers and writers, the callback and vtable trampolines                                                                                      | `Dyn`, `StdLib` (`dlopen`), the arena, the conversions (`crates/gnoblin-std-dyn/src`)                                 |
-| `python`     | `python/gnoblin/_generated/`: `classes.py` and `classes.pyi` (a descriptor per member), `abi.py` (constants), `verbs.py` (the `gnoblin` namespace's verbs and signals); `gnoblin/std.py` and `std.pyi`: the std table, typed        | `_base.py` (`Node`, `Property`, `Method`, `Signal`), `_std_base.py`, `_std_sugar.py`, the loader, named subscriptions |
-| `typescript` | `js/gnoblin-core/generated/`: `schema.ts` (property, method and signal interfaces, the `TREE_CLASSES` table), `abi.ts`, `verbs.ts` (the `gnoblin` namespace's verbs and signals); `js/gnoblin-std/generated/`: the std table, typed | `gnoblin-std/native.ts` (the spellings), the class library of `gnoblin-core` and `gnoblin-std`                        |
+| Target       | Generated                                                                                                                                                                                                                           | Written by hand                                                                                                    |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `rust`       | `rust-core/generated.rs`: schema name constants and the catalog hash, a typed wrapper per node class, `ErrorKind` with its code and symbol conversions                                                                              | composites (`Window::geometry`), closures and trampolines, events, macros                                          |
+| `std-dyn`    | `rust-std-dyn/generated.rs`: the dynamic call of every std table function, the record readers and writers, the callback and vtable trampolines                                                                                      | `Dyn`, `StdLib` (`dlopen`), the arena, the conversions (`crates/gnoblin-std-dyn/src`)                              |
+| `python`     | `python/gnoblin/_generated/`: `classes.py` and `classes.pyi` (a descriptor per member), `abi.py` (constants), `verbs.py` (the `gnoblin` namespace's verbs and signals); `gnoblin/std.py` and `std.pyi`: the std table, typed        | Rust in `gnoblin-runtime-python`: `Node` and the descriptors, `_std_base`, `_std_sugar`, the loader, subscriptions |
+| `typescript` | `js/gnoblin-core/generated/`: `schema.ts` (property, method and signal interfaces, the `TREE_CLASSES` table), `abi.ts`, `verbs.ts` (the `gnoblin` namespace's verbs and signals); `js/gnoblin-std/generated/`: the std table, typed | `gnoblin-std/native.ts` (the spellings), the class library of `gnoblin-core` and `gnoblin-std`                     |
 
 A generated file starts with a banner that names the generator, the target and the catalogue hash.
 
@@ -163,7 +166,7 @@ The JavaScript is embedded in `libgnoblin-runtime-js.so` and the Python in `libg
 
 The declarations are what an editor and `gnoblinctl check --types` read. `gnoblin-js` embeds them with the library sources
 (`editor_library_in`, which leaves the JavaScript out), and `cargo xtask dist install` writes them to `share/gnoblin/js` and
-`share/gnoblin/python`.
+`share/gnoblin/types/python`.
 
 Importing `gnoblin-std/generated/objects` opens `libgnoblin-std.so.1` and throws `gnoblin-std is not installed (looked in: ...)`
 without it, as `gnoblin-std` does; `gnoblin.objects.std` raises `ImportError` the same way.
@@ -266,8 +269,11 @@ A record that holds a pointer and its count as a field (`GnoblinStdLayoutQuery.c
 record that is only a list (`GnoblinStdPlacements`) is read as one. `builtin_*` is the built-in layout that belongs to no workspace
 (`Builtin` in TypeScript and Python): the library computes it for a shell that keeps its own workspaces.
 
-A hand-written layer remains, on purpose small: the spellings in `_std_sugar.py` and `gnoblin-std/native.ts` (`len(collection)`,
-`clients()`, the tile rounding of `Placement.tile`, a workspace in one call). Nothing in them is behaviour of the desktop.
+A hand-written layer remains, on purpose small. It holds the spellings of each language (`len(collection)`, `clients()`, the tile
+rounding of `Placement.tile`, a workspace in one call) and no behaviour of the desktop:
+
+- Python: `gnoblin._std_sugar`, Rust in `gnoblin-runtime-python`.
+- TypeScript: `gnoblin-std/native.ts`.
 
 The proof is `crates/gnoblin-runtime-python/tests/shells.rs` and `crates/gnoblin-runtime-js/tests/shells.rs`: example 3 (a workspace with
 a layout of the shell's own, a listener on the clients, a chord) and the built-in layouts run through the real loader over the fake

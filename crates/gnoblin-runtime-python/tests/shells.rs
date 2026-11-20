@@ -163,7 +163,6 @@ fn environment_in(runtimes: &Path, extra: &[(&'static str, PathBuf)]) -> Vec<(&'
     let stage = stage();
     let mut env = vec![
         ("GNOBLIN_RUNTIME_DIR", runtimes.to_owned()),
-        ("GNOBLIN_PYTHON_DIR", repo_root().join("data/python")),
         ("PYTHONDONTWRITEBYTECODE", PathBuf::from("1")),
         (
             "PATH",
@@ -853,26 +852,225 @@ def place(window):
 
 // ---- the package and its stubs ------------------------------------------------------------------------------------------------------
 
+/// A shell that logs, for every public name of the hand-written package and of `_gnoblin_core`, what the interpreter reflects: the members
+/// of a class (an instance's, for `Gnoblin`, whose events are attributes of the object), or that a name is a function or a value.
+const REFLECT_PACKAGE: &str = r#"
+import importlib
+import inspect
+
+import _gnoblin_core
+from gnoblin import gnoblin
+
+skip = set(dir(object)) | set(dir(Exception))
+
+
+def describe(label, value, instance=None):
+    if inspect.isclass(value):
+        names = sorted(n for n in dir(instance if instance is not None else value) if not n.startswith("_") and n not in skip)
+        gnoblin.log("reflect " + label + " " + " ".join(names))
+    elif callable(value):
+        gnoblin.log("reflect " + label + " <function>")
+    else:
+        gnoblin.log("reflect " + label + " <variable>")
+
+
+for module_name in ("gnoblin._base", "gnoblin.api", "gnoblin.errors", "gnoblin.events", "_gnoblin_core"):
+    module = importlib.import_module(module_name)
+    for name, value in sorted(vars(module).items()):
+        if name.startswith("_"):
+            continue
+        describe(module_name + "." + name, value, gnoblin if name == "Gnoblin" else None)
+
+package = importlib.import_module("gnoblin")
+generated = set(importlib.import_module("gnoblin._generated.classes").__all__)
+gnoblin.log("reflect gnoblin " + " ".join(sorted(n for n in package.__all__ if n not in generated)))
+gnoblin.log("reflect done")
+"#;
+
+/// What the stubs declare, in the lines [`REFLECT_PACKAGE`] logs: `NAME.stub LABEL` pairs on the command line.
+const STUB_PACKAGE: &str = r#"
+import ast
+import sys
+
+for path, label in zip(sys.argv[1::2], sys.argv[2::2]):
+    tree = ast.parse(open(path, encoding="utf-8").read())
+    if label == "gnoblin":
+        names = sorted(a.asname for n in tree.body if isinstance(n, ast.ImportFrom) for a in n.names if a.name != "*" and a.asname)
+        print("reflect gnoblin " + " ".join(names))
+        continue
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
+            names = {n.name for n in node.body if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")}
+            names |= {n.target.id for n in node.body if isinstance(n, ast.AnnAssign) and not n.target.id.startswith("_")}
+            print(("reflect " + label + "." + node.name + " " + " ".join(sorted(names))).rstrip())
+        elif isinstance(node, ast.FunctionDef) and not node.name.startswith("_"):
+            print("reflect " + label + "." + node.name + " <function>")
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and not node.target.id.startswith("_"):
+            print("reflect " + label + "." + node.target.id + " <variable>")
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and not target.id.startswith("_"):
+                    print("reflect " + label + "." + target.id + " <variable>")
+"#;
+
+/// The `reflect` lines of a run's log, sorted.
+fn reflected_lines(run: &Run) -> Vec<String> {
+    let mut lines: Vec<String> = run
+        .stderr
+        .lines()
+        .filter_map(|line| {
+            line.find("reflect ").map(|at| {
+                line[at..]
+                    .split("  generation=")
+                    .next()
+                    .unwrap_or_default()
+                    .trim_end()
+                    .to_owned()
+            })
+        })
+        .filter(|line| line != "reflect done")
+        .collect();
+    lines.sort();
+    lines
+}
+
 #[test]
-fn the_stub_file_declares_every_public_name_of_the_package() {
-    let script = repo_root().join("crates/gnoblin-runtime-python/tests/check_stubs.py");
-    // The generated classes are not committed: render the Python target where the script can read it.
-    let generated = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("sdk-stubs");
-    let spec = gnoblin_sdkgen::SdkSpec::load(&repo_root()).expect("the catalog and the ABIs load");
-    let rendered = gnoblin_sdkgen::render(&spec, Some("python")).expect("the Python target renders");
-    gnoblin_sdkgen::write_files(&generated, &gnoblin_sdkgen::files_of(&rendered)).expect("the files are written");
-    let output = std::process::Command::new("python3")
-        .arg(&script)
-        .arg(repo_root().join("data/python"))
-        .arg(&generated)
-        .output()
-        .expect("python3 runs");
+fn the_stubs_of_the_package_agree_with_what_the_runtime_reflects() {
+    let dir = project("package-stub");
+    let shell = dir.join("shell.py");
+    fs::write(&shell, REFLECT_PACKAGE).unwrap();
+    let run = start_in_std_prefix(&shell);
+    assert_eq!(run.code, 0, "{}", run.dump());
+    assert!(!run.stderr.contains("Traceback"), "{}", run.dump());
+    assert!(run.stderr.contains("reflect done"), "{}", run.dump());
+    let reflected = reflected_lines(&run);
+    // The stubs, read with `ast`: nothing of them is imported.
+    let script = dir.join("stub_package.py");
+    fs::write(&script, STUB_PACKAGE).unwrap();
+    let stubs = repo_root().join("crates/gnoblin-runtime-python/stubs");
+    let mut command = std::process::Command::new("python3");
+    command.arg(&script);
+    for (file, label) in [
+        ("gnoblin/__init__.pyi", "gnoblin"),
+        ("gnoblin/_base.pyi", "gnoblin._base"),
+        ("gnoblin/api.pyi", "gnoblin.api"),
+        ("gnoblin/errors.pyi", "gnoblin.errors"),
+        ("gnoblin/events.pyi", "gnoblin.events"),
+        ("_gnoblin_core.pyi", "_gnoblin_core"),
+    ] {
+        command.arg(stubs.join(file)).arg(label);
+    }
+    let output = command.output().expect("python3 runs");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let mut declared: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    declared.sort();
     assert!(
-        output.status.success(),
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        declared
+            .iter()
+            .any(|line| line.starts_with("reflect gnoblin.api.Gnoblin ")),
+        "the stub has the classes: {declared:?}"
     );
+    assert_eq!(
+        reflected,
+        declared,
+        "the stubs and the runtime disagree\n{}",
+        run.dump()
+    );
+    // The marker file the wheel type checkers look for is installed with them.
+    assert!(stubs.join("gnoblin/py.typed").is_file());
+}
+
+/// What a shell that imports the whole package says of where it came from.
+fn served_shell(data: &Path) -> String {
+    format!(
+        r#"
+import sys
+
+from gnoblin import gnoblin
+from gnoblin import _base, api, errors, events, std, verbs, objects
+import importlib
+
+importlib.import_module("gnoblin.objects.std")
+from gnoblin.objects import model
+from gnoblin.std import Collection, Workspace, clients
+
+for name in sorted(sys.modules):
+    if name == "gnoblin" or name.startswith("gnoblin."):
+        module = sys.modules[name]
+        gnoblin.log("served " + name + " file=" + str(getattr(module, "__file__", None)) + " origin=" + str(module.__spec__.origin))
+data = {data:?}
+for name, module in sorted(sys.modules.items()):
+    file = getattr(module, "__file__", None)
+    if file and file.startswith(data):
+        gnoblin.log("served-from-data " + name + " " + file)
+for entry in sys.path:
+    if entry.startswith(data) or entry.endswith("share/gnoblin/python"):
+        gnoblin.log("served-path " + entry)
+gnoblin.log("served done")
+"#,
+        data = data.display().to_string()
+    )
+}
+
+#[test]
+fn the_package_is_served_by_the_runtime_and_no_file_of_it_is_read() {
+    let dir = project("package-embedded");
+    let shell = dir.join("shell.py");
+    fs::write(&shell, served_shell(&repo_root().join("data"))).unwrap();
+    // A directory that holds a `gnoblin` package which raises when it is imported, named where the old runtime looked: nothing may read it.
+    let poisoned = dir.join("poisoned");
+    fs::create_dir_all(poisoned.join("gnoblin")).unwrap();
+    fs::write(
+        poisoned.join("gnoblin/__init__.py"),
+        "raise RuntimeError(\"read from disk\")\n",
+    )
+    .unwrap();
+    let stage = stage();
+    let mut env = environment_in(&stage.with_std_runtimes, &[]);
+    env.push(("GNOBLIN_PYTHON_DIR", poisoned));
+    let extra: Vec<(&str, &Path)> = env.iter().map(|(key, value)| (*key, value.as_path())).collect();
+    let name = PathBuf::from("reload");
+    let run = finish(scenario_with_env(&stage.with_std, &[name.as_path(), &shell], &extra));
+    assert_eq!(run.code, 0, "{}", run.dump());
+    assert!(
+        !run.stderr.contains("Traceback") && !run.stderr.contains("read from disk"),
+        "{}",
+        run.dump()
+    );
+    assert!(run.stderr.contains("served done"), "{}", run.dump());
+    let served: Vec<&str> = run
+        .stderr
+        .lines()
+        .filter(|line| line.contains("served gnoblin"))
+        .collect();
+    for module in [
+        "gnoblin",
+        "gnoblin._base",
+        "gnoblin.api",
+        "gnoblin.errors",
+        "gnoblin.events",
+        "gnoblin._std_base",
+        "gnoblin._std_sugar",
+        "gnoblin.std",
+        "gnoblin._generated.classes",
+        "gnoblin._generated.verbs",
+        "gnoblin.objects.std",
+    ] {
+        let line = served
+            .iter()
+            .find(|line| line.contains(&format!("served {module} ")))
+            .unwrap_or_else(|| panic!("{module} was not imported\n{}", run.dump()));
+        assert!(line.contains("file=None"), "{module} has a file: {line}");
+        assert!(
+            line.contains("origin=<native:") || line.contains("origin=<generated:"),
+            "{module} was not served by the runtime: {line}"
+        );
+    }
+    assert!(!run.stderr.contains("served-from-data"), "{}", run.dump());
+    assert!(!run.stderr.contains("served-path"), "{}", run.dump());
 }
 
 // ---- example 3: a Python shell on gnoblin.std -------------------------------------------------------------------------------

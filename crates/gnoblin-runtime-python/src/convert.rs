@@ -1,8 +1,7 @@
 //! Values across the boundary: a property of the tree as a Python object, and a Python object as a value to write.
 //!
 //! The tree's kinds map to the Python types a reader expects: `bool`, `int`, `float`, `str`, `bytes`, a list of floats or of
-//! strings, and `None` for a node reference to nothing. A reference to a node is built by the package's `Node` class, which the
-//! package registers once (`_gnoblin_core.set_node_factory`), so this layer knows no class of the package.
+//! strings, and `None` for a node reference to nothing. A reference to a node is the package's `Node` of its class (`descriptors`).
 //!
 //! A script writes with the Python type it has: an `int` into a property the schema keeps as a double is a double, and a whole
 //! `float` into an integer property is an integer. Anything else of the wrong kind is the core's `TypeError`.
@@ -13,8 +12,6 @@ use pyo3::IntoPyObjectExt;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyFloat, PyInt, PyList, PyString, PyTuple};
-
-use crate::generation;
 
 /// The attribute a `Node` of the package carries: its id, as an `int`. A value with it is a reference to that node.
 const NODE_ID_ATTRIBUTE: &str = "_gnoblin_node_id";
@@ -41,10 +38,7 @@ pub(crate) fn node<'py>(py: Python<'py>, id: NodeId, class: Option<&str>) -> PyR
     if id == NodeId::NIL {
         return Ok(py.None().into_bound(py));
     }
-    let factory = generation::with_state(|state| state.node_factory.as_ref().map(|factory| factory.clone_ref(py)))
-        .flatten()
-        .ok_or_else(|| PyTypeError::new_err("the gnoblin package has not registered its Node class"))?;
-    factory.bind(py).call1((id.0, class))
+    crate::descriptors::of(py, id.0, class)
 }
 
 /// The value a script wants written. `kind` is the `VALUE_*` kind the schema keeps the property as, when it is known.

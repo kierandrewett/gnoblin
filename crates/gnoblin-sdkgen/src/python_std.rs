@@ -1,10 +1,10 @@
-//! The Python std bindings: `data/python/gnoblin/std.py` and `std.pyi`.
+//! The Python std bindings: `gnoblin/std.py` and `std.pyi`.
 //!
 //! The module is the std table as typed Python. Every function of `GnoblinStdApi` is a method of the class of its object, every
 //! record a dataclass, every constant group an `IntEnum` or `IntFlag`, the vtable of a layout a base class and an adapter. All of
 //! it calls the one native `gnoblin._std.call(name, *args)` (`gnoblin-runtime-python`, over `gnoblin-std-dyn`), which is generic
-//! by table entry. The hand-written layer is `_std_base.py` (the native, `Handle`, argument and result conversion) and
-//! `_std_sugar.py` (the spellings `len(collection)` and `client.window`).
+//! by table entry. The hand-written layer is `gnoblin._std_base` (the native, `Handle`, argument and result conversion) and
+//! `gnoblin._std_sugar` (the spellings `len(collection)` and `client.window`), both written in Rust in `gnoblin-runtime-python`.
 
 use super::model::{
     Arg, Callback, CallbackRet, Elem, Function, Library, Prim, Ret, Scalar, SdkSpec, Shape, StdObject, StructDef,
@@ -1023,7 +1023,7 @@ impl<'a> Renderer<'a> {
     fn footer(&mut self, classes: &Classes) {
         let _ = classes;
         if self.stub {
-            self.code.line("# The functions of `_std_sugar.py`:");
+            self.code.line("# The functions of `gnoblin._std_sugar`:");
             self.code.line("def clients() -> Collection: ...");
             self.code.line("def workspaces() -> Collection: ...");
             self.code.line("def outputs() -> Collection: ...");
@@ -1038,7 +1038,7 @@ impl<'a> Renderer<'a> {
     }
 }
 
-/// The members `_std_sugar.py` adds to a generated class, as a type checker reads them. The module is the one hand-written layer of
+/// The members `gnoblin._std_sugar` adds to a generated class, as a type checker reads them. The module is the one hand-written layer of
 /// `gnoblin.std`; what it adds is these spellings and nothing the table could say.
 fn sugar_stub(class: &str) -> &'static [&'static str] {
     match class {

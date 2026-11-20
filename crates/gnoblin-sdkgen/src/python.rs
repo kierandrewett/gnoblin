@@ -11,7 +11,7 @@
 //! - `verbs.py`: the compositor's `gnoblin` namespace, its verbs and signals (see `verbs`).
 //! - `std.py`: the std library's classes, records and constants, over the native `gnoblin._std` module.
 //!
-//! The generic descriptors (`Node`, `Property`, `Method`, `Signal`) are hand-written in `data/python/gnoblin/_base.py`: they are
+//! The generic descriptors (`Node`, `Property`, `Method`, `Signal`) are written in Rust in `gnoblin-runtime-python` (`descriptors.rs`): they are
 //! the part that talks to the runtime, and they are the same for every class.
 
 use std::collections::BTreeSet;

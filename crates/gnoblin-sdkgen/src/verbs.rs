@@ -8,7 +8,7 @@
 //! both languages the next time `cargo xtask gen-sdks` runs, with its parameters named and typed and the payload of each signal
 //! typed by its fields. Nothing about a verb is written by hand.
 //!
-//! - `data/python/gnoblin/_generated/verbs.py`: one class per object of the namespace, each method and signal a method of it, and
+//! - `gnoblin/_generated/verbs.py`: one class per object of the namespace, each method and signal a method of it, and
 //!   one instance of each class (`verbs.session.logout()`, `verbs.session.on_bell(fn)`).
 //! - `data/js/gnoblin-core/generated/verbs.ts`: the same, camel-cased (`verbs.session.logout()`, `verbs.session.onBell(fn)`).
 
@@ -93,7 +93,7 @@ pub fn python(spec: &SdkSpec) -> String {
     code.line("from collections.abc import Callable");
     code.line("from typing import Any");
     code.blank();
-    code.line("from .._native import core");
+    code.line("import _gnoblin_core as core");
     code.line("from ..events import Subscription");
     code.blank();
     let names: Vec<String> = objects

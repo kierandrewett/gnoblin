@@ -351,14 +351,13 @@ fn build_runtimes() -> Result<PathBuf, String> {
 }
 
 /// The environment a script shell's session needs beyond the harness's own: where the loader finds the runtimes, where the JavaScript
-/// runtime reads the stock library and the Python runtime its package, and no bytecode cache, so a test reads what its own files say.
-/// The repository's trees stand for an installed prefix's `share/gnoblin/`.
+/// runtime reads the stock library, and no bytecode cache, so a test reads what its own files say. The Python runtime needs nothing: its
+/// package is embedded. The repository's trees stand for an installed prefix's `share/gnoblin/`.
 pub fn script_environment() -> Vec<(&'static str, String)> {
     let root = repo_root();
     vec![
         ("GNOBLIN_RUNTIME_DIR", runtimes().display().to_string()),
         ("GNOBLIN_JS_STOCK_DIR", root.join("data/js").display().to_string()),
-        ("GNOBLIN_PYTHON_DIR", root.join("data/python").display().to_string()),
         ("GNOBLIN_JS_CACHE", "0".to_owned()),
     ]
 }

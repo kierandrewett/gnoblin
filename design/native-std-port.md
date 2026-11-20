@@ -1736,6 +1736,37 @@ last watch ends. The `js` field of the build identity is `quickjs-ng` for a Java
   proves isolated reload still purges and restores modules. A shell run with `sys.modules` inspected shows no file read from
   `data/`. pyright over the golden `shell.py` with the installed `.pyi` is clean.
 
+**What exists.** Every shim of 2.3 for Python is Rust in `gnoblin-runtime-python`, and `data/python` is deleted. The fallback of decision
+O11 (a text constant inside the crate) was not needed: nothing was found that PyO3 cannot write.
+
+| Shim of `data/python`              | Rust                                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `_loader.py`                       | `loader.rs`: `FreshFinder` and `FreshLoader` (compile from source, record each file's stamp), stage, activate, abandon, end                |
+| `_runtime.py`                      | `logging.rs`: `sys.excepthook`, `threading.excepthook`, `warnings.showwarning` and a `logging.Handler` subclass built over a native `emit` |
+| `_base.py`                         | `descriptors.rs`: `Node` (subclassable, registers `__class_name__` in `CLASSES`), `Property`, `Method`, `Signal`                           |
+| `api.py`                           | `singleton.rs`: `Event` and `Gnoblin`, and the `gnoblin` object; the named subscriptions are a table                                       |
+| `events.py`                        | `subscription.rs` (`Subscription`, the weak record `gnoblin.off` reads) and `values.rs` (the event records, `Process`)                     |
+| `errors.py`, `_native.py`          | `errors.rs` (`gnoblin.errors` is the same classes); `_native` is gone, the generated verbs import `_gnoblin_core`                          |
+| `_std_base.py`                     | `std_base.rs`: `Handle`, `ident`, `dyn`, `wrap`, `listener`, `kind`, `BuiltinLayout`, `BuiltinBinding`                                     |
+| `_std_sugar.py`                    | `std_sugar.rs`: the spellings, installed by the generated module's `install(globals())`; `methods.rs` binds them                           |
+| `__init__.py`, `py.typed`, `*.pyi` | `finder.rs` builds `gnoblin`; the stubs are `crates/gnoblin-runtime-python/stubs/` (hand-written, held to the runtime)                     |
+
+- **The finder** (`finder.rs`) serves two kinds of module: the generated sources `build.rs` embeds, and the modules above, built by their
+  Rust function when the import system runs them. It is first on `sys.meta_path`, so no directory is searched for the package, the
+  interpreter's `sys.path` holds nothing of it, and `GNOBLIN_PYTHON_DIR` is read by no code.
+- **The loader** keeps the rules of the Python it replaces: a script and the modules beside it are compiled from the source on every import,
+  the previous generation's modules leave `sys.modules` before the next is evaluated and come back when it fails, `__main__` is the script
+  while it runs, and the files each generation read are watched with their modification time, size and inode.
+- **The install** moves: `share/gnoblin/python/` (a source tree) is replaced by the stub package `share/gnoblin/types/python/`, with
+  `py.typed`, the runtime crate's stubs and the generated ones. A module that has a stub is installed as the stub only.
+- **The checks** that replace `check_stubs.py` are two tests in `crates/gnoblin-runtime-python/tests/shells.rs`: the stubs agree with what
+  the runtime reflects of every public name, and the package is served by the runtime with a poisoned `GNOBLIN_PYTHON_DIR` in the
+  environment and no file of it in `sys.modules`.
+- **Importers.** None of PY1 to PY3 has a TypeScript importer (the inventory in section 2), so no TypeScript module is touched or deleted by this lane. The
+  Python importers of the deleted files were the generated `classes.py`, `verbs.py` and `std.py` (`from .._base`, `from .._native`,
+  `from ..events`, `from . import _std_base`, `_std_sugar`), which now import the Rust modules of the same names; `verbs.py` imports
+  `_gnoblin_core` directly.
+
 #### NpStdFrame (9 days)
 
 - **Owns:** `gnoblin-std-impl/src/frame/**`, catalog `frame.toml`, `data/js/gnoblin-std/host/frame.ts` (removed).

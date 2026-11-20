@@ -1,6 +1,6 @@
 //! Staging, committing and ending a generation of the script.
 //!
-//! `start` evaluates the script in a fresh namespace beside the generation that serves (`gnoblin/_loader.py` does the isolation) and
+//! `start` evaluates the script in a fresh namespace beside the generation that serves ([`crate::loader`] does the isolation) and
 //! leaves the generation staged; `activate` makes it the one that serves; `abandon` throws it away. A failed evaluation changes
 //! nothing that was running: the loader puts the previous modules back, this module puts the previous generation back as the one the
 //! module `_gnoblin_core` acts on, and the reason comes back to the host as the text of the failure (`FILE:LINE: Type: message`), with
@@ -13,10 +13,7 @@ use pyo3::prelude::*;
 
 use crate::callback::traceback_text;
 use crate::generation::{self, init, with_state};
-use crate::interp;
-
-/// What the loader returns for a staged generation: whether it evaluated, why not, the traceback, and the files to watch.
-type Staged = (bool, String, String, Vec<(String, i128, u64, u64)>);
+use crate::{interp, loader};
 
 /// The text of an exception of the runtime's own (a bug in the loader, not in the script).
 fn internal(py: Python<'_>, what: &str, error: &PyErr) -> String {
@@ -41,25 +38,19 @@ pub(crate) fn stage(api: &'static GnoblinApi, ctx: GnoblinCtx, script: &Path) ->
     if with_state(|state| state.serving.is_none()).unwrap_or(true) {
         generation::aim_poster(ctx);
     }
-    let outcome = interp::boot(api).and_then(|()| {
-        Python::attach(|py| -> Result<Staged, String> {
-            let loader = py
-                .import("gnoblin._loader")
-                .map_err(|error| internal(py, "import", &error))?;
-            loader
-                .call_method1("load", (script.display().to_string(),))
-                .and_then(|staged| staged.extract())
-                .map_err(|error| internal(py, "load", &error))
+    let outcome = interp::boot().and_then(|()| {
+        Python::attach(|py| {
+            loader::load(py, &script.display().to_string()).map_err(|error| internal(py, "load", &error))
         })
     });
     let (reason, watch) = match outcome {
-        Ok((true, _, _, watch)) => {
-            with_state(|state| state.pending_watch = Some(watch));
+        Ok(loaded) if loaded.ok => {
+            with_state(|state| state.pending_watch = Some(loaded.watch));
             return Ok(());
         }
-        Ok((false, reason, detail, watch)) => {
-            generation::log_error(&format!("python: {} did not load\n{detail}", script.display()));
-            (reason, Some(watch))
+        Ok(loaded) => {
+            generation::log_error(&format!("python: {} did not load\n{}", script.display(), loaded.detail));
+            (loaded.reason, Some(loaded.watch))
         }
         Err(message) => (message, None),
     };
@@ -81,17 +72,12 @@ pub(crate) fn stage(api: &'static GnoblinApi, ctx: GnoblinCtx, script: &Path) ->
 ///
 /// # Errors
 ///
-/// `ctx` is not the staged generation, or the loader failed.
+/// `ctx` is not the staged generation.
 pub(crate) fn activate(ctx: GnoblinCtx) -> Result<(), String> {
     if with_state(|state| state.staged) != Some(Some(ctx)) {
         return Err(format!("generation {ctx:#x} is not the staged one"));
     }
-    Python::attach(|py| -> Result<(), String> {
-        py.import("gnoblin._loader")
-            .and_then(|loader| loader.call_method0("activate"))
-            .map(drop)
-            .map_err(|error| internal(py, "activate", &error))
-    })?;
+    loader::activate();
     with_state(|state| {
         state.staged = None;
         state.serving = Some(ctx);
@@ -106,12 +92,7 @@ pub(crate) fn activate(ctx: GnoblinCtx) -> Result<(), String> {
 /// Throws the staged generation `ctx` away.
 pub(crate) fn abandon(ctx: GnoblinCtx) {
     if with_state(|state| state.staged) == Some(Some(ctx)) {
-        let undone = Python::attach(|py| {
-            py.import("gnoblin._loader")
-                .and_then(|loader| loader.call_method0("abandon"))
-                .map(drop)
-                .map_err(|error| internal(py, "abandon", &error))
-        });
+        let undone = Python::attach(|py| loader::abandon(py).map_err(|error| internal(py, "abandon", &error)));
         if let Err(message) = undone {
             generation::log_error(&message);
         }
@@ -140,12 +121,7 @@ pub(crate) fn end(ctx: GnoblinCtx) {
         }
         return;
     }
-    let ended = Python::attach(|py| {
-        py.import("gnoblin._loader")
-            .and_then(|loader| loader.call_method0("end"))
-            .map(drop)
-            .map_err(|error| internal(py, "end", &error))
-    });
+    let ended = Python::attach(|py| loader::end(py).map_err(|error| internal(py, "end", &error)));
     if let Err(message) = ended {
         generation::log_error(&message);
     }

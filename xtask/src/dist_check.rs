@@ -430,13 +430,27 @@ pub fn check_layout(root: &Path, libdir: &str) -> Vec<String> {
         "share/gnoblin/js/gnoblin-core/generated/schema.ts",
         "share/gnoblin/js/gnoblin-std/generated/classes.ts",
         "share/gnoblin/js/gnoblin-std/generated/objects.d.ts",
-        "share/gnoblin/python/gnoblin/_generated/classes.pyi",
-        "share/gnoblin/python/gnoblin/std.pyi",
-        "share/gnoblin/python/gnoblin/objects/std.pyi",
+        "share/gnoblin/types/python/gnoblin/_generated/classes.pyi",
+        "share/gnoblin/types/python/gnoblin/std.pyi",
+        "share/gnoblin/types/python/gnoblin/objects/std.pyi",
     ] {
         if !root.join(file).is_file() {
             problems.push(format!(
                 "{file} is missing: it is rendered by `cargo xtask dist` from the schema and the ABI crates, and committed nowhere"
+            ));
+        }
+    }
+    // The Python package is embedded in the runtime and installed as no source: what an editor reads is the stub package, whose
+    // hand-written half is the runtime crate's own.
+    for file in [
+        "share/gnoblin/types/python/gnoblin/__init__.pyi",
+        "share/gnoblin/types/python/gnoblin/_base.pyi",
+        "share/gnoblin/types/python/gnoblin/py.typed",
+        "share/gnoblin/types/python/_gnoblin_core.pyi",
+    ] {
+        if !root.join(file).is_file() {
+            problems.push(format!(
+                "{file} is missing: it is the runtime's own stub, installed by `cargo xtask dist`"
             ));
         }
     }
@@ -1661,7 +1675,7 @@ mod tests {
             "share/gnoblin/js/gnoblin-std/index.ts is missing",
             "share/gnoblin/js/gnoblin-core/generated/abi.ts is missing",
             "share/gnoblin/js/gnoblin-std/generated/classes.ts is missing",
-            "share/gnoblin/python/gnoblin/std.pyi is missing",
+            "share/gnoblin/types/python/gnoblin/std.pyi is missing",
             "share/gnoblin/types/gnoblin.d.ts is missing",
             "share/gnoblin/types/tsconfig.json is missing",
             "share/gnoblin/types/gnoblin-core/index.ts is missing",
