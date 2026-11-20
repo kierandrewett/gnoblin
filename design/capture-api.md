@@ -188,6 +188,56 @@ extension the capture-source protocol is built for. The refactor that remains un
 it: keep `create_source(node)`, keep it in `VIEW_INTERFACES`, keep the view role, and move its XML under the protocol crate
 layout. This is waiting on the owner's choice; no Part B code, test or XR change was made.
 
+## XR in any shell: standard window capture (the owner's option E; findings, nothing implemented)
+
+The screen-cast variant judged above is a different route that shares the letter; this one is the standard toplevel path.
+
+The requirement: XR works in any shell by copying what is already rendered, with the window's frame as drawn, and places each
+copy from the tree. The route: list real windows with `ext_foreign_toplevel_list_v1`, copy each with
+`ext_foreign_toplevel_image_capture_source_manager_v1` and `ext_image_copy_capture_v1`, take placement from the tree.
+
+1. **Does a window capture include the shell-built frame? Not as built.** `Target::Window` is a crop of the output frame:
+   `capture_targets` takes the window's origin and size from `geometry_of`/the managed geometry
+   (`capture_shared.rs:919-949`), and `copy` reads that rectangle out of the output's composed frame (`capture_layout`,
+   `:725-731`). Two consequences. Anything drawn over the window (another window, a panel, a popup of another client) is in
+   the picture, so a window that is partly covered on the monitor is partly covered in the headset. And a decoration child outside
+   that rectangle is not in it: `design/node-core.md:601` defines a window's whole frame as its rectangle united with its decoration
+   children (a titlebar), and `:645` says the titlebar is the window node's child, so the rectangle and the frame differ.
+   `node-core.md:135` already promises that a window capture includes the window's popups and subsurfaces, which a crop only does
+   when nothing covers them. The smallest change that makes the standard capture right is to give `Target::Window` the path
+   `Target::View` has: draw the window node's subtree on its own (`draw_view`, `compose/views.rs:376`; `window_node`,
+   `compose.rs:2103`), publish that picture beside the View pictures, and read it in `bounds`, `copy` and `copy_into`
+   (`capture_shared.rs:545`, `:599`). The picture is the union of the node and its decoration children, unoccluded, with the
+   secure mask the View path already applies. The cost is one subtree redraw per captured window and frame; the
+   View path costs 17 ms at 720p on the CPU, and a GLES readback otherwise (`design/cutover-survey.md`, 16.7).
+2. **Identifier to tree node: no mapping exists.** The list publishes `gnoblin-<WindowId, 16 hex digits>`
+   (`ext_foreign_toplevel_list_v1.rs`). The tree's `window` class has `title`, `app_id`, `focused` and the state flags and nothing
+   that names the window (`schema/tree/window.toml`), and a window node's id is a different number from the `WindowId`
+   (`window_node`). XR can only match on `title` and `app_id`, which are not unique. Smallest fix with no special case: one
+   read-only `identifier` text property on the window node, set by the compositor to the string the list publishes. Any
+   observer then maps a handle to its node by equality. Window node ids are never reused in a session
+   (`gnoblin-render/src/scene_ids.rs`, `a_window_node_id_is_never_reused_within_a_session`), so the identifier could instead be
+   derived from the node id, which also meets the list's no-reuse rule by construction.
+3. **Embargo, secure content and the indicator.** Unchanged, because a window source already goes through the one session
+   table: a granted window stream is fed the lock scene and stops at the lock (`gnoblin-capture/src/lib.rs:113`), a window marked
+   secure is masked (`:199`, `a_window_the_shell_marks_secure_is_masked_in_its_capture`), and the privacy indicator follows the
+   open session. One change in access: the `view` role cannot bind the list or the toplevel source manager (`VIEW_INTERFACES`
+   in `access.rs`), so XR would need them added, and then it can read every window, which is the point.
+4. **What it cannot cover.** Layer-shell surfaces, menus, panels and canvases that are shell nodes are not toplevels, so
+   they are not in the list and have no source. Output capture cropped by the tree's geometry gets everything flattened
+   (the wallpaper, the windows above it), so a panel under a window shows the window: occlusion is the problem, and a crop cannot
+   remove it. The occlusion-free routes for a non-window node are a View of it (A or B above) or nothing.
+5. **Does XR need Views today? Yes, as the vehicle for windows, and for stereo.** `docs/xr.md` says each window is a panel
+   and `xr-capture` reads Views only; the stock shell makes a View per window. An observer may only create the `xr` seat, destroy
+   it and send pointer input (`docs/xr.md`, "What the program gets"), so XR cannot make a View of a window itself, and in a shell
+   that makes none it shows nothing. The stereo View through `head` (`design/xr-extension.md:27-37`) is a camera feature of
+   a View and has no window equivalent.
+
+Findings: E works for windows, in any shell, if the toplevel source is made to draw the window subtree and the window node
+carries its `identifier`; both changes are small and neither adds a role-specific list or a private protocol. It does not
+cover non-window nodes or stereo Views, so the View source manager stays until XR gives those up. The two paths then
+coexist: windows by the standard route, Views by `gnoblin_view_source_v1`. Nothing was implemented.
+
 ## Needs Kieran
 
 1. Secure windows: is a per-window secure flag wanted? Should window stills of secure content be refused, or masked?
