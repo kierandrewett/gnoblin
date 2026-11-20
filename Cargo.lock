@@ -2623,20 +2623,8 @@ dependencies = [
 name = "gnoblin-wayland-wp-cursor-shape-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
- "gnoblin-backend",
- "gnoblin-config",
- "gnoblin-cursor",
- "gnoblin-render",
- "gnoblin-secret",
- "gnoblin-types",
- "gnoblin-wayland",
  "gnoblin-wayland-api",
- "gnoblin-wayland-testkit",
  "smithay",
- "tempfile",
- "wayland-client",
- "wayland-protocols",
- "wayland-protocols-wlr",
 ]
 
 [[package]]
