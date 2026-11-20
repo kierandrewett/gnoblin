@@ -24,6 +24,10 @@ const MAX_RADIUS = 100;
 /** The largest `amount` a saturate, brightness or contrast filter takes. */
 export const MAX_GRADE = 2;
 
+/** The renderer's limits on a shader (crates/gnoblin-render/src/effect.rs): the source in bytes and the numbers it reads. */
+export const MAX_SHADER_SOURCE_BYTES = 16 * 1024;
+export const MAX_SHADER_PARAMS = 8;
+
 /** The text form of a colour: 3, 4, 6 or 8 hex digits after the `#`. */
 const COLOUR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
@@ -75,6 +79,32 @@ export const colour: Checker<Color> = (value, path) => {
         return fail(path, "must be a #rgb, #rgba, #rrggbb or #rrggbbaa colour");
     }
     return value;
+};
+
+/** The bytes `text` takes as UTF-8. */
+function utf8Length(text: string): number {
+    let bytes = 0;
+    for (const character of text) {
+        const code = character.codePointAt(0) ?? 0;
+        bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+    }
+    return bytes;
+}
+
+/** A shader's WGSL source: text that is not blank, of at most 16 KiB. Whether it is valid WGSL is the compositor's to say. */
+export const shaderSource: Checker<string> = (value, path) => {
+    if (typeof value !== "string" || value.trim() === "" || utf8Length(value) > MAX_SHADER_SOURCE_BYTES) {
+        return fail(path, `must be WGSL of 1 to ${MAX_SHADER_SOURCE_BYTES} bytes`);
+    }
+    return value;
+};
+
+/** The numbers a shader reads as `p`: at most 8, each finite. Returns a copy. */
+export const shaderParams: Checker<number[]> = (value, path) => {
+    if (!Array.isArray(value) || value.length > MAX_SHADER_PARAMS) {
+        return fail(path, `must be an array of at most ${MAX_SHADER_PARAMS} numbers`);
+    }
+    return value.map((entry, at) => FINITE(entry, `${path}[${at}]`));
 };
 
 /** A boolean. */

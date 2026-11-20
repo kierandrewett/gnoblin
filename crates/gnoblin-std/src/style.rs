@@ -82,7 +82,7 @@ impl Default for Shadow {
 }
 
 /// One filter of a `filter` or `backdrop_filter` chain.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Filter {
     /// A blur of `radius` pixels (0 to 100). Of a backdrop chain it blurs what is behind the window.
     Blur(f64),
@@ -92,6 +92,27 @@ pub enum Filter {
     Brightness(f64),
     /// The contrast gain about mid grey: 1 unchanged, up to 2.
     Contrast(f64),
+    /// A shader of the shell's own: one `shader` effect on the window's node, drawn when the compositor's `compositor.user-shaders`
+    /// setting is on (the seat's `user_shaders`) and otherwise reported by [`Client::style_warnings`]. The same in either filter list.
+    Shader {
+        /// The WGSL source, at most 16 KiB. It defines `fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) ->
+        /// vec4<f32>`: the window's premultiplied colour at `uv` (`(0, 0)` is the top left), the numbers, and the time in seconds.
+        /// It may call `backdrop(uv)`, the colour of what is behind the window, with secure windows black. The compositor checks
+        /// the source before it accepts it, and refuses the window's whole effect list when it does not validate.
+        source: String,
+        /// The numbers the source reads as `p[0]` to `p[7]`: at most 8, each finite.
+        params: Vec<f64>,
+    },
+}
+
+impl Filter {
+    /// A shader filter with `source` and `params`.
+    pub fn shader(source: &str, params: &[f64]) -> Filter {
+        Filter::Shader {
+            source: source.to_owned(),
+            params: params.to_vec(),
+        }
+    }
 }
 
 /// The radius of a window's corners.
@@ -200,6 +221,9 @@ fn entry_of_border(border: &Border) -> GnoblinStdStyleEntry {
         c: 0.0,
         d: 0.0,
         color: core_abi::GnoblinStr::borrowed(&border.color),
+        source: core_abi::GnoblinStr::EMPTY,
+        params: core::ptr::null(),
+        n_params: 0,
     }
 }
 
@@ -214,6 +238,9 @@ fn entry_of_shadow(shadow: &Shadow) -> GnoblinStdStyleEntry {
         c: shadow.blur,
         d: shadow.spread,
         color: core_abi::GnoblinStr::borrowed(&shadow.color),
+        source: core_abi::GnoblinStr::EMPTY,
+        params: core::ptr::null(),
+        n_params: 0,
     }
 }
 
@@ -223,6 +250,11 @@ fn entry_of_filter(filter: &Filter) -> GnoblinStdStyleEntry {
         Filter::Saturate(amount) => (abi::STD_ENTRY_SATURATE, *amount),
         Filter::Brightness(amount) => (abi::STD_ENTRY_BRIGHTNESS, *amount),
         Filter::Contrast(amount) => (abi::STD_ENTRY_CONTRAST, *amount),
+        Filter::Shader { .. } => (abi::STD_ENTRY_SHADER, 0.0),
+    };
+    let (source, params): (&str, &[f64]) = match filter {
+        Filter::Shader { source, params } => (source, params),
+        _ => ("", &[]),
     };
     GnoblinStdStyleEntry {
         size: size_of::<GnoblinStdStyleEntry>() as u32,
@@ -234,6 +266,13 @@ fn entry_of_filter(filter: &Filter) -> GnoblinStdStyleEntry {
         c: 0.0,
         d: 0.0,
         color: core_abi::GnoblinStr::EMPTY,
+        source: core_abi::GnoblinStr::borrowed(source),
+        params: if params.is_empty() {
+            core::ptr::null()
+        } else {
+            params.as_ptr()
+        },
+        n_params: params.len(),
     }
 }
 
@@ -272,6 +311,16 @@ fn filter_of(raw: &GnoblinStdStyleEntry) -> Option<Filter> {
         abi::STD_ENTRY_SATURATE => Filter::Saturate(raw.a),
         abi::STD_ENTRY_BRIGHTNESS => Filter::Brightness(raw.a),
         abi::STD_ENTRY_CONTRAST => Filter::Contrast(raw.a),
+        abi::STD_ENTRY_SHADER => Filter::Shader {
+            source: lent_text(&raw.source),
+            params: if raw.params.is_null() || raw.n_params == 0 {
+                Vec::new()
+            } else {
+                // SAFETY: the library lends `n_params` numbers at `params` until the next call into it on this thread; they are
+                // copied now, as the rest of the entry is.
+                unsafe { std::slice::from_raw_parts(raw.params, raw.n_params) }.to_vec()
+            },
+        },
         _ => return None,
     })
 }

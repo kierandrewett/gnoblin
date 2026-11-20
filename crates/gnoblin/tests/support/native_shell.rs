@@ -121,6 +121,8 @@ pub struct StdShells {
     pub layout: PathBuf,
     /// Example 9: logs the libraries its process maps and the ABIs it was built for and finds installed.
     pub linked: PathBuf,
+    /// Example 19: a custom shader on the style of every window; `<Super>w` logs the style warnings of the windows.
+    pub shader_tint: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -147,6 +149,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-rust-layout",
             "-p",
             "gnoblin-example-native-linked",
+            "-p",
+            "gnoblin-example-shader-tint",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -162,6 +166,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         prelude: debug.join("libstd_prelude.so"),
         layout: debug.join("librust_layout.so"),
         linked: debug.join("libnative_linked.so"),
+        shader_tint: debug.join("libshader_tint.so"),
     })
 }
 

@@ -341,6 +341,8 @@ abi_consts! {
     pub const STD_ENTRY_BRIGHTNESS: u32 = 5;
     /// `GnoblinStdStyleEntry.kind`: a contrast filter (`a` amount).
     pub const STD_ENTRY_CONTRAST: u32 = 6;
+    /// `GnoblinStdStyleEntry.kind`: a shader filter (`source`, `params`).
+    pub const STD_ENTRY_SHADER: u32 = 7;
 
     /// `scene_new` kind: a plain node.
     pub const STD_SCENE_NODE: u32 = 1;
@@ -1290,6 +1292,12 @@ abi_structs! {
         pub d: f64,
         /// The colour as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
         pub color: GnoblinStr,
+        /// Shader: the WGSL source, at most 16 KiB; empty for any other kind.
+        pub source: GnoblinStr,
+        /// Shader: the numbers the source reads as `p[0]` to `p[7]`, `n_params` of them; null when `n_params` is zero.
+        pub params: *const f64,
+        /// Shader: how many numbers `params` points at, at most 8.
+        pub n_params: usize,
     }
 
     /// An array of style entries the library lends for the call: `ptr` points at `len` entries, valid until the next call into the

@@ -132,6 +132,7 @@ const | STD_ENTRY_BLUR | u32 = 3 | 1.0
 const | STD_ENTRY_SATURATE | u32 = 4 | 1.0
 const | STD_ENTRY_BRIGHTNESS | u32 = 5 | 1.0
 const | STD_ENTRY_CONTRAST | u32 = 6 | 1.0
+const | STD_ENTRY_SHADER | u32 = 7 | 1.0
 const | STD_SCENE_NODE | u32 = 1 | 1.0
 const | STD_SCENE_VIEW | u32 = 2 | 1.0
 const | STD_SCENE_CAMERA3D | u32 = 3 | 1.0
@@ -634,7 +635,7 @@ field | GnoblinStdTransitionInfo.progress | f64 @24 +8 | 1.0
 field | GnoblinStdTransitionInfo.paused | u32 @32 +4 | 1.0
 field | GnoblinStdTransitionInfo.reversed | u32 @36 +4 | 1.0
 
-struct | GnoblinStdStyleEntry | size 64 align 8 extensible | 1.0
+struct | GnoblinStdStyleEntry | size 96 align 8 extensible | 1.0
 
 field | GnoblinStdStyleEntry.size | u32 @0 +4 | 1.0
 field | GnoblinStdStyleEntry.kind | u32 @4 +4 | 1.0
@@ -645,6 +646,9 @@ field | GnoblinStdStyleEntry.b | f64 @24 +8 | 1.0
 field | GnoblinStdStyleEntry.c | f64 @32 +8 | 1.0
 field | GnoblinStdStyleEntry.d | f64 @40 +8 | 1.0
 field | GnoblinStdStyleEntry.color | GnoblinStr @48 +16 | 1.0
+field | GnoblinStdStyleEntry.source | GnoblinStr @64 +16 | 1.0
+field | GnoblinStdStyleEntry.params | *const f64 @80 +8 | 1.0
+field | GnoblinStdStyleEntry.n_params | usize @88 +8 | 1.0
 
 struct | GnoblinStdStyleEntries | size 16 align 8 fixed | 1.0
 

@@ -23,6 +23,7 @@ mod no_std;
 mod no_workspaces;
 mod script_binding;
 mod script_reload;
+mod shader_filter;
 mod single_core;
 mod std_layouts;
 mod style_reload;

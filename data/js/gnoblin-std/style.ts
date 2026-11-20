@@ -4,7 +4,7 @@
 
 export { Border, Shadow } from "gnoblin-std/style/border_shadow";
 export { StyleElement } from "gnoblin-std/style/element";
-export { BlurFilter, BrightnessFilter, ContrastFilter, SaturateFilter } from "gnoblin-std/style/filters";
+export { BlurFilter, BrightnessFilter, ContrastFilter, SaturateFilter, ShaderFilter } from "gnoblin-std/style/filters";
 export { ClientStyle, Style } from "gnoblin-std/style/style";
 export { MAX_STYLE_LIST } from "gnoblin-std/style/values";
 export type { BorderInit, BorderLike, ShadowInit, ShadowLike } from "gnoblin-std/style/border_shadow";

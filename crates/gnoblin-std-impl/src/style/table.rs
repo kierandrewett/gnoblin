@@ -15,9 +15,24 @@ use crate::state::{State, next_id};
 // The style functions need no desktop: they open the library's model alone (`state::lookup_quiet`).
 use crate::table::{call, fill_out, lent, mutate_quiet as mutate, put, read_ext, read_quiet as read};
 
+/// The entries a read lent, with the colours, shader sources and shader numbers they point at.
+struct LentEntries {
+    raws: Vec<GnoblinStdStyleEntry>,
+    colours: Vec<String>,
+    sources: Vec<String>,
+    params: Vec<Vec<f64>>,
+}
+
 thread_local! {
-    /// The entries a read lent, with the colours they point at, valid until the next call on this thread.
-    static LENT_ENTRIES: RefCell<(Vec<GnoblinStdStyleEntry>, Vec<String>)> = const { RefCell::new((Vec::new(), Vec::new())) };
+    /// What a read lent, valid until the next call on this thread.
+    static LENT_ENTRIES: RefCell<LentEntries> = const {
+        RefCell::new(LentEntries {
+            raws: Vec::new(),
+            colours: Vec::new(),
+            sources: Vec::new(),
+            params: Vec::new(),
+        })
+    };
     /// The text a read lent.
     static LENT_TEXT: RefCell<String> = const { RefCell::new(String::new()) };
 }
@@ -53,15 +68,25 @@ fn store_mut(st: &mut State, style: GnoblinStdStyle) -> Res<&mut Store> {
 /// Lends `entries` as an array valid until the next call on this thread.
 fn lend_entries(entries: &[Entry]) -> GnoblinStdStyleEntries {
     LENT_ENTRIES.with(|lent_entries| {
-        let mut lent_entries = lent_entries.borrow_mut();
-        let (raws, colours) = &mut *lent_entries;
+        let mut held = lent_entries.borrow_mut();
+        let LentEntries {
+            raws,
+            colours,
+            sources,
+            params,
+        } = &mut *held;
         raws.clear();
         colours.clear();
-        // The colours are filled first and never moved again, so the pointers into them stay put.
+        sources.clear();
+        params.clear();
+        // What the pointers point into is filled first and never moved again, so the pointers stay put.
         for entry in entries {
             colours.push(values::entry_out(entry).3.unwrap_or("").to_owned());
+            let (source, numbers) = values::entry_shader(entry);
+            sources.push(source.to_owned());
+            params.push(numbers.to_vec());
         }
-        for (entry, colour) in entries.iter().zip(colours.iter()) {
+        for (at, entry) in entries.iter().enumerate() {
             let (kind, inset, [a, b, c, d], _) = values::entry_out(entry);
             raws.push(GnoblinStdStyleEntry {
                 size: size_of::<GnoblinStdStyleEntry>() as u32,
@@ -72,7 +97,14 @@ fn lend_entries(entries: &[Entry]) -> GnoblinStdStyleEntries {
                 b,
                 c,
                 d,
-                color: lent(colour),
+                color: lent(&colours[at]),
+                source: lent(&sources[at]),
+                params: if params[at].is_empty() {
+                    core::ptr::null()
+                } else {
+                    params[at].as_ptr()
+                },
+                n_params: params[at].len(),
             });
         }
         GnoblinStdStyleEntries {

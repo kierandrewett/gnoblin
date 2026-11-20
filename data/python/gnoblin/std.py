@@ -233,6 +233,7 @@ class EntryKind(IntEnum):
     SATURATE = 4
     BRIGHTNESS = 5
     CONTRAST = 6
+    SHADER = 7
 
 class SceneKind(IntEnum):
     """The `STD_SCENE_*` constants."""
@@ -1719,6 +1720,8 @@ class StyleEntry:
     c: float = 0.0
     d: float = 0.0
     color: str = ""
+    source: str = ""
+    params: list[float] = field(default_factory=list)
 
     @classmethod
     def of_border(cls, a: float = 0.0, b: float = 0.0, color: str = "", inset: int = 0) -> StyleEntry:
@@ -1750,6 +1753,11 @@ class StyleEntry:
         # `GnoblinStdStyleEntry.kind`: a contrast filter (`a` amount).
         return cls(kind=EntryKind.CONTRAST, a=a)
 
+    @classmethod
+    def of_shader(cls, source: str = "", params: Sequence[float] = ()) -> StyleEntry:
+        # `GnoblinStdStyleEntry.kind`: a shader filter (`source`, `params`).
+        return cls(kind=EntryKind.SHADER, source=source, params=list(params))
+
     def _to_dyn(self) -> dict[str, Any]:
         return {
             "kind": self.kind,
@@ -1759,6 +1767,8 @@ class StyleEntry:
             "c": self.c,
             "d": self.d,
             "color": self.color,
+            "source": self.source,
+            "params": list(self.params),
         }
 
     @classmethod
@@ -1771,6 +1781,8 @@ class StyleEntry:
             c=data["c"],
             d=data["d"],
             color=data["color"],
+            source=data["source"],
+            params=list(data["params"]),
         )
 
 class Layout:

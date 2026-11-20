@@ -91,10 +91,13 @@ The first shadow of the list is on top.
 
 ### Filters
 
-A filter is one of four classes. In a list you can write the shorthand, which becomes the class:
+A filter is one of five classes. In a list you can write the shorthand, which becomes the class:
 
 - `BlurFilter` has a `radius` from 0 to 100. Default 12.
 - `SaturateFilter`, `BrightnessFilter` and `ContrastFilter` have an `amount` from 0 to 2. Default 1.
+- `ShaderFilter` has a WGSL `source` of at most 16 KiB and up to 8 `params`. Its shorthand is
+  `{ shader: { source, params } }`. It is drawn only when the compositor's custom shaders are on: see
+  [custom shaders](/custom-shaders).
 
 ```ts
 client.style.backdropFilter = [{ blur: 18 }, { saturate: 1.25 }];
@@ -150,7 +153,7 @@ is reported when it is applied and the node keeps the effects it had.
 
 ## What is drawn
 
-The tree has three effect kinds (blur, shadow and border), a node `corner_radius` and a node opacity. A style becomes:
+The tree has four effect kinds (blur, shadow, border and shader), a node `corner_radius` and a node opacity. A style becomes:
 
 - `opacity` as the window node's `opacity`.
 - `cornerRadius` as the node's `corner_radius`. It rounds the window's whole frame: the content, the titlebar above it,
@@ -166,6 +169,9 @@ The tree has three effect kinds (blur, shadow and border), a node `corner_radius
   radius of 12, so the radius only switches the blur on. The `SaturateFilter`, `BrightnessFilter` and `ContrastFilter`
   of the chain multiply into the blur's saturation, brightness and contrast, each at most 2. Without a blur in the
   chain they have nothing to draw.
+- A `ShaderFilter` of either filter list as one `shader` effect, after the blur and before the shadows, at most four of
+  them. While the compositor's custom shaders are off it is not written and the style reports it as
+  `not applied: style.filter: ...`. The other `filter` elements have no effect kind and are not applied.
 
 | Kind or property | GLES | Software                         | Vulkan                 |
 | ---------------- | ---- | -------------------------------- | ---------------------- |
@@ -180,6 +186,9 @@ surrounds the whole frame:
 
 ![Two decorated terminals with rounded corners, a violet border over the titlebar and a shadow on the window beneath](images/js-shell/rounded.png)
 
+The `shader` kind is not in this table: the seat's `effect_kinds` lists it when the active renderer draws it. See
+[custom shaders](/custom-shaders).
+
 A node placed in 3D (a rotation about x or y, a `z`, or a perspective camera above it) draws no shadow, border or blur,
 and its `skipped` list says `unsupported-effect-on-3d`; its corner radius is still drawn.
 
@@ -187,7 +196,7 @@ What the active renderer does not draw stays on the node, and the node's `skippe
 (`border: unsupported-by-renderer`). A client reads it as `client.styleWarnings`; `seat.effect_kinds` lists the kinds
 the renderer draws. The style itself reports only what no renderer could draw.
 
-`background`, `filter` and inset shadows have no effect kind and are not applied yet. They stay in `computedStyle`, and
+`background`, the `filter` elements that are not a `ShaderFilter` and inset shadows have no effect kind and are not applied yet. They stay in `computedStyle`, and
 each one a style sets is reported once per reload as `not applied: style.<property>: <reason>`.
 
 A window holds at most 16 effects (at most 8 shadows and 8 borders, and the blur).

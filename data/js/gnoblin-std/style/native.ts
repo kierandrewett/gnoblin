@@ -54,6 +54,8 @@ function entryOf(data: Record<string, unknown>): Init<StyleEntry> {
             return { kind: EntryKind.BRIGHTNESS, a: data.amount as number };
         case "contrast":
             return { kind: EntryKind.CONTRAST, a: data.amount as number };
+        case "shader":
+            return { kind: EntryKind.SHADER, source: data.source as string, params: data.params as number[] };
         default:
             break;
     }
@@ -97,6 +99,8 @@ function dataOf(entry: StyleEntry): Record<string, unknown> {
             return { kind: "saturate", amount: entry.a };
         case EntryKind.BRIGHTNESS:
             return { kind: "brightness", amount: entry.a };
+        case EntryKind.SHADER:
+            return { kind: "shader", source: entry.source, params: entry.params };
         default:
             return { kind: "contrast", amount: entry.a };
     }

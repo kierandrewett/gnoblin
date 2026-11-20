@@ -351,14 +351,33 @@ impl<'a> Renderer<'a> {
                 .iter()
                 .find(|field| &field.name == name)
                 .ok_or_else(|| format!("{} has no field {name}", record.name))?;
-            let annotation = self.field_annotation(&field.shape, None);
-            let default = self.default_of(&field.shape);
+            // A list is taken as any sequence, with an empty tuple for the default (a `field(...)` default belongs to the dataclass's own
+            // fields, not to a method's), and the record gets its own list.
+            let (annotation, default, pass) = match &field.shape {
+                Shape::Array(_) => {
+                    let listed = self.field_annotation(&field.shape, None);
+                    let inner = listed
+                        .strip_prefix("list[")
+                        .and_then(|rest| rest.strip_suffix(']'))
+                        .unwrap_or(&listed);
+                    (
+                        format!("Sequence[{inner}]"),
+                        "()".to_owned(),
+                        format!("list({})", python_ident(name)),
+                    )
+                }
+                shape => (
+                    self.field_annotation(shape, None),
+                    self.default_of(shape),
+                    python_ident(name),
+                ),
+            };
             let ident = python_ident(name);
             params.push(format!(
                 "{ident}: {annotation} = {}",
                 if self.stub { "..." } else { &default }
             ));
-            passes.push(format!("{ident}={ident}"));
+            passes.push(format!("{ident}={pass}"));
         }
         let signature = if params.is_empty() {
             "cls".to_owned()

@@ -1,10 +1,10 @@
 //! A std shell for the animation tests: every chord runs one step of a script, and the test holds the tree writes of each step to the
 //! TypeScript library's for the same step (`examples.rs`' counterpart in `anim_style.rs`).
 //!
-//! The steps, in the order the chords are pressed (`Super+a` to `Super+q`): a transition over two windows; a transition that is staged
+//! The steps, in the order the chords are pressed (`Super+a` to `Super+r`): a transition over two windows; a transition that is staged
 //! held (`autoplay` off) with a delay, then scrubbed, played, paused and reversed, and another that is cancelled; a transition of no
 //! duration; a layout change inside a transition; a global style, a selection's, a client's and an unset; a bad style value; a camera,
-//! a view and a flat camera; and a transition over a flat camera and a field of view. What a step observed (the end of a transition, an
+//! a view and a flat camera; a transition over a flat camera and a field of view; and a shader filter on one window. What a step observed (the end of a transition, an
 //! error) is printed as an `anim-log` line on stderr.
 
 use std::cell::RefCell;
@@ -215,6 +215,12 @@ fn steps() -> Vec<(&'static str, Step)> {
         log(&format!("flat zoom={} fov={}", flat.zoom()?, camera.fov()?));
         Ok(())
     });
+    let style_shader: Step = Box::new(|std, _| {
+        client(std, 42)?.style()?.set_filter(&[Filter::shader(
+            "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }",
+            &[0.5, 2.0],
+        )])
+    });
     vec![
         ("Super+a", basic),
         ("Super+b", staged()),
@@ -233,6 +239,7 @@ fn steps() -> Vec<(&'static str, Step)> {
         ("Super+o", style_bad),
         ("Super+p", scene),
         ("Super+q", scene_transition),
+        ("Super+r", style_shader),
     ]
 }
 

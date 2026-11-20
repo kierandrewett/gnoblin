@@ -3983,6 +3983,16 @@ fn read_gnoblin_std_style_entry(record: &GnoblinStdStyleEntry) -> Dyn {
         ("c".to_owned(), Dyn::Float(record.c)),
         ("d".to_owned(), Dyn::Float(record.d)),
         ("color".to_owned(), Dyn::Text(unsafe { copy_str(record.color) })),
+        ("source".to_owned(), Dyn::Text(unsafe { copy_str(record.source) })),
+        (
+            "params".to_owned(),
+            Dyn::List(
+                unsafe { slice_of(record.params, record.n_params) }
+                    .iter()
+                    .map(|item| Dyn::Float(*item))
+                    .collect(),
+            ),
+        ),
     ])
 }
 
@@ -4534,6 +4544,20 @@ fn write_gnoblin_std_style_entry(arena: &mut Arena, value: &Dyn, what: &str) -> 
     }
     if let Some(item) = reader.take("color") {
         record.color = arena.text(item.to_text(&reader.path("color"))?);
+    }
+    if let Some(item) = reader.take("source") {
+        record.source = arena.text(item.to_text(&reader.path("source"))?);
+    }
+    if let Some(item) = reader.take("params") {
+        let list = item.to_list(&reader.path("params"))?;
+        let mut values = Vec::with_capacity(list.len());
+        for entry in list {
+            values.push(entry.to_f64(&reader.path("params"))?);
+        }
+        let kept = arena.keep(values);
+        // SAFETY: `kept` points at the vector the arena owns for the call.
+        record.params = unsafe { (*kept).as_ptr() };
+        record.n_params = unsafe { (*kept).len() };
     }
     reader.finish()?;
     Ok(record)

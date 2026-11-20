@@ -1314,6 +1314,8 @@ export interface StyleEntry {
   c: number;
   d: number;
   color: string;
+  source: string;
+  params: number[];
 }
 
 export function styleEntryToNative(value: Init<StyleEntry>): Record<string, unknown> {
@@ -1325,6 +1327,8 @@ export function styleEntryToNative(value: Init<StyleEntry>): Record<string, unkn
     c: value.c,
     d: value.d,
     color: value.color,
+    source: value.source,
+    params: value.params === undefined ? undefined : [...value.params],
   };
 }
 
@@ -1337,28 +1341,33 @@ export function styleEntryFromNative(data: any): StyleEntry {
     c: data.c,
     d: data.d,
     color: data.color,
+    source: data.source,
+    params: Array.from(data.params as number[]),
   };
 }
 
 /** The kinds of `StyleEntry`, each with the fields it reads. */
 export const StyleEntry = {
   border(a: number = 0, b: number = 0, color: string = "", inset: number = 0): StyleEntry {
-    return { kind: EntryKind.BORDER, inset, a, b, c: 0, d: 0, color };
+    return { kind: EntryKind.BORDER, inset, a, b, c: 0, d: 0, color, source: "", params: [] };
   },
   shadow(a: number = 0, b: number = 0, c: number = 0, d: number = 0, color: string = "", inset: number = 0): StyleEntry {
-    return { kind: EntryKind.SHADOW, inset, a, b, c, d, color };
+    return { kind: EntryKind.SHADOW, inset, a, b, c, d, color, source: "", params: [] };
   },
   blur(a: number = 0): StyleEntry {
-    return { kind: EntryKind.BLUR, inset: 0, a, b: 0, c: 0, d: 0, color: "" };
+    return { kind: EntryKind.BLUR, inset: 0, a, b: 0, c: 0, d: 0, color: "", source: "", params: [] };
   },
   saturate(a: number = 0): StyleEntry {
-    return { kind: EntryKind.SATURATE, inset: 0, a, b: 0, c: 0, d: 0, color: "" };
+    return { kind: EntryKind.SATURATE, inset: 0, a, b: 0, c: 0, d: 0, color: "", source: "", params: [] };
   },
   brightness(a: number = 0): StyleEntry {
-    return { kind: EntryKind.BRIGHTNESS, inset: 0, a, b: 0, c: 0, d: 0, color: "" };
+    return { kind: EntryKind.BRIGHTNESS, inset: 0, a, b: 0, c: 0, d: 0, color: "", source: "", params: [] };
   },
   contrast(a: number = 0): StyleEntry {
-    return { kind: EntryKind.CONTRAST, inset: 0, a, b: 0, c: 0, d: 0, color: "" };
+    return { kind: EntryKind.CONTRAST, inset: 0, a, b: 0, c: 0, d: 0, color: "", source: "", params: [] };
+  },
+  shader(source: string = "", params: number[] = []): StyleEntry {
+    return { kind: EntryKind.SHADER, inset: 0, a: 0, b: 0, c: 0, d: 0, color: "", source, params };
   },
 };
 

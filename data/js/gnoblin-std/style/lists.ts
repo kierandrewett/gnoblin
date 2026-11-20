@@ -44,21 +44,21 @@ function filterEntry(value: unknown, path: string, target: StyleElement[]): Styl
     }
     if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof StyleElement)) {
         const keys = Object.keys(value);
-        const key = keys[0] as keyof typeof FILTER_SHORTHAND;
+        const key = keys[0] as string;
         if (keys.length === 1 && Object.hasOwn(FILTER_SHORTHAND, key)) {
-            const entry = FILTER_SHORTHAND[key];
-            const amount = entry.check((value as Record<string, unknown>)[key], `${path}.${key}`);
+            const entry = FILTER_SHORTHAND[key] as (typeof FILTER_SHORTHAND)[string];
+            const checked = entry.check((value as Record<string, unknown>)[key], `${path}.${key}`);
             styleState.building += 1;
             try {
-                return entry.make(amount);
+                return (entry.make as (checked: unknown) => StyleElement)(checked);
             } finally {
                 styleState.building -= 1;
             }
         }
     }
     throw new TypeError(
-        `${path}: must be a filter: { blur: 18 }, { saturate: 1.2 }, { brightness: 1.1 }, { contrast: 1.1 } or a ` +
-            "BlurFilter, SaturateFilter, BrightnessFilter or ContrastFilter",
+        `${path}: must be a filter: { blur: 18 }, { saturate: 1.2 }, { brightness: 1.1 }, { contrast: 1.1 }, ` +
+            "{ shader: { source, params } } or a BlurFilter, SaturateFilter, BrightnessFilter, ContrastFilter or ShaderFilter",
     );
 }
 

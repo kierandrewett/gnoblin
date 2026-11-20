@@ -18,7 +18,7 @@ cargo build -p gnoblin-example-minimal-core-shell
 gnoblin ./target/debug/libminimal_core_shell.so
 ```
 
-A std shell (examples 2, 6 and 9) links `libgnoblin-std.so.1`. In a source tree run `cargo xtask stage` first, and put `target/debug` on
+A std shell (examples 2, 6, 9 and 19) links `libgnoblin-std.so.1`. In a source tree run `cargo xtask stage` first, and put `target/debug` on
 `LD_LIBRARY_PATH` for the shell; an installed Gnoblin has the library where the loader looks.
 
 | #   | Directory                                                   | Language           | Layers    | Run                                                                                                                 |
@@ -35,6 +35,12 @@ A std shell (examples 2, 6 and 9) links `libgnoblin-std.so.1`. In a source tree 
 | 8   | [`08-no-workspaces-py`](08-no-workspaces-py/shell.py)       | Python             | Core      | `gnoblin ./examples/08-no-workspaces-py/shell.py`                                                                   |
 | 9   | [`09-native-linked`](09-native-linked/src/lib.rs)           | Rust               | Core, std | `gnoblin ./target/debug/libnative_linked.so`, then read the log: the libraries it maps and the ABI it was built for |
 | 10  | [`10-hot-reload`](10-hot-reload/src/lib.rs)                 | Rust               | Core      | `gnoblin --watch ./target/debug/libhot_reload.so`, then `cargo build -p gnoblin-example-hot-reload` after an edit   |
+| 19  | [`19-shader-tint`](19-shader-tint/src/lib.rs)               | Rust               | Core, std | `gnoblin ./target/debug/libshader_tint.so`, then `<Super>w` logs why a shader is not drawn                          |
+| 19  | [`19-shader-tint-ts`](19-shader-tint-ts/shell.ts)           | TypeScript         | Core, std | `gnoblin ./examples/19-shader-tint-ts/shell.ts`                                                                     |
+| 19  | [`19-shader-tint-py`](19-shader-tint-py/shell.py)           | Python             | Core, std | `gnoblin ./examples/19-shader-tint-py/shell.py`                                                                     |
+
+Example 19 sets a custom shader. A window draws it only when the compositor's `compositor.user-shaders` setting is on; see
+[custom shaders](../docs/custom-shaders.md).
 
 The numbers 11 to 18 are behaviours, not shells, and run on the examples above:
 

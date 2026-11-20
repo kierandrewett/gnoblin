@@ -15,6 +15,11 @@ use common::*;
 /// A shell over a screen of 1000 by 800 and two windows (ids 3 and 4, titled `win1` and `win2`, app id `foot`),
 /// whose `shell.ts` is `body`, settled. The only diagnostics it may have said are the `not applied` notices.
 fn world(body: &str) -> Rig {
+    world_with_seat(body, None)
+}
+
+/// [`world`], with a seat whose `user_shaders` is `user_shaders` when one is given: whether the compositor accepts a shader effect.
+fn world_with_seat(body: &str, user_shaders: Option<bool>) -> Rig {
     let mut rig = rig_setup(LIBRARY_GLOBALS, body, |comp| {
         comp.add_node(
             20,
@@ -26,6 +31,9 @@ fn world(body: &str) -> Rig {
                 ("primary", MirrorValue::Bool(true)),
             ],
         );
+        if let Some(on) = user_shaders {
+            comp.add_node(21, ROOT, "seat", vec![("user_shaders", MirrorValue::Bool(on))]);
+        }
         comp.add_window(3, "win1", "foot");
         comp.add_window(4, "win2", "foot");
     });
@@ -274,7 +282,7 @@ fn st7_an_invalid_value_is_refused_with_its_property_path_and_leaves_the_previou
         "Client#3.style.shadows[1].color: must be a #rgb, #rgba, #rrggbb or #rrggbbaa colour",
         "Client#3.style.shadows: holds at most 8 entries, got 9",
         "Client#3.style.shadows[0]: no field \"sparkle\" (known: x, y, blur, spread, color, inset)",
-        "Client#3.style.backdropFilter[0]: must be a filter: { blur: 18 }, { saturate: 1.2 }, { brightness: 1.1 }, { contrast: 1.1 } or a BlurFilter, SaturateFilter, BrightnessFilter or ContrastFilter",
+        "Client#3.style.backdropFilter[0]: must be a filter: { blur: 18 }, { saturate: 1.2 }, { brightness: 1.1 }, { contrast: 1.1 }, { shader: { source, params } } or a BlurFilter, SaturateFilter, BrightnessFilter, ContrastFilter or ShaderFilter",
         "Client#3.style.cornerRadius.topRight: must be finite and >= 0",
         "gnoblin.clients.style.shadows[0].spread: must be finite and between -100 and 100",
         "[1,2]",
@@ -672,4 +680,109 @@ dim.style.shadows = [{ blur: 3 }];"##,
         "return String(gnoblin.clients.get('9').computedStyle.origin.opacity).startsWith('where(') + '|' + gnoblin.clients.get('10').computedStyle.origin.opacity;",
     );
     assert_eq!(out, "true|global");
+}
+
+/// A tint: the smallest source that does something.
+const TINT: &str = "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }";
+
+#[test]
+fn a_shader_filter_is_a_checked_element_that_becomes_a_shader_effect_when_the_compositor_accepts_shaders() {
+    let mut rig = world_with_seat("", Some(true));
+    let out = js(
+        &mut rig,
+        &format!(
+            "const f = new ShaderFilter({{ source: {TINT:?}, params: [0.5, 2] }}); \
+             gnoblin.clients.style.filter = [f]; \
+             gnoblin.clients.get('4').style.backdropFilter = [{{ blur: 12 }}, {{ shader: {{ source: {TINT:?} }} }}]; \
+             return JSON.stringify([f instanceof StyleElement, f.params, gnoblin.clients.style.filter[0] === f, JSON.stringify(f)]);"
+        ),
+    );
+    assert_eq!(
+        out,
+        json!([
+            true,
+            [0.5, 2],
+            true,
+            format!(r#"{{"kind":"shader","source":{TINT:?},"params":[0.5,2]}}"#)
+        ])
+        .to_string()
+    );
+    assert!(
+        rig.settle().is_empty(),
+        "a shader the compositor accepts raises no notice"
+    );
+    let kinds = |node: u64| -> Vec<String> { effects(&rig, node).into_iter().map(|effect| effect.kind).collect() };
+    assert_eq!(kinds(3), ["shader"], "the content filter is one shader effect");
+    assert_eq!(
+        kinds(4),
+        ["blur", "shader", "shader"],
+        "the backdrop's blur and shader come first and the inherited content shader follows"
+    );
+    let held = &effects(&rig, 3)[0];
+    assert_eq!((held.source.as_str(), held.params.as_slice()), (TINT, &[0.5, 2.0][..]));
+}
+
+#[test]
+fn a_shader_filter_with_a_bad_source_or_numbers_is_refused_with_its_path_and_the_old_list_stays() {
+    let mut rig = world_with_seat("", Some(true));
+    let out = js(
+        &mut rig,
+        &format!(
+            "const f = new ShaderFilter({{ source: {TINT:?} }}); \
+             return JSON.stringify([caught(() => {{ f.source = '  '; }}), caught(() => {{ f.source = 'x'.repeat(16385); }}), \
+             caught(() => {{ f.params = new Array(9).fill(0); }}), caught(() => {{ f.params = [NaN]; }}), \
+             caught(() => {{ gnoblin.clients.style.filter = [{{ shader: 'fn effect() {{}}' }}]; }}), \
+             caught(() => {{ new ShaderFilter({{ sparkle: 1 }}); }}), f.source === {TINT:?}]);"
+        ),
+    );
+    assert_eq!(
+        out,
+        json!([
+            "ShaderFilter.source: must be WGSL of 1 to 16384 bytes",
+            "ShaderFilter.source: must be WGSL of 1 to 16384 bytes",
+            "ShaderFilter.params: must be an array of at most 8 numbers",
+            "ShaderFilter.params[0]: must be a finite number",
+            "gnoblin.clients.style.filter[0].shader: must be an object of { source, params }",
+            "ShaderFilter: no field \"sparkle\" (known: source, params)",
+            true,
+        ])
+        .to_string()
+    );
+}
+
+#[test]
+fn with_the_compositor_refusing_shaders_a_shader_filter_is_not_written_and_the_style_says_why_once() {
+    for seat in [None, Some(false)] {
+        let mut rig = world_with_seat("", seat);
+        js(
+            &mut rig,
+            &format!(
+                "gnoblin.clients.style.shadows = [{{ y: 4 }}]; \
+                 gnoblin.clients.style.filter = [new ShaderFilter({{ source: {TINT:?} }})]; return 'ok';"
+            ),
+        );
+        let notices = rig.settle();
+        assert_eq!(
+            notices.len(),
+            1,
+            "one notice for the list that holds shaders, whichever windows there are: {notices:?}"
+        );
+        assert!(
+            notices[0].starts_with("not applied: style.filter: a ShaderFilter is not drawn")
+                && notices[0].contains("compositor.user-shaders"),
+            "{}",
+            notices[0]
+        );
+        let kinds: Vec<String> = effects(&rig, 3).into_iter().map(|effect| effect.kind).collect();
+        assert_eq!(
+            kinds,
+            ["shadow"],
+            "the shadow is written and the shader is not (seat {seat:?})"
+        );
+        let warnings = js(
+            &mut rig,
+            "return JSON.stringify(gnoblin.clients.get('3').styleWarnings);",
+        );
+        assert!(warnings.contains("a ShaderFilter is not drawn"), "{warnings}");
+    }
 }

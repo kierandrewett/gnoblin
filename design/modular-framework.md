@@ -63,7 +63,7 @@ choice the main agent made on the owner's behalf; the owner may still overrule i
 | D17 | A retired generation's ABI calls return `E_RETIRED` and do nothing. Registrations are owned by a generation context and removed with it.                                                                                                                                            | Makes "no stale call into freed state" a property of the core instead of a convention shells must follow. Spike (5) proves it with a canary.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | D18 | The ABI major is 1 from the first commit, but the ABI is explicitly unstable until 0.2.0 ships. After that, minors are additive only and `abi.lock` in the ABI crate enforces it in CI.                                                                                             | The SONAME says `.1` per the spec, while the product is `0.2.0-alpha.0`. Overrule: SONAME `.0` until release. **Resolved:** SONAME `.1` now.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | D19 | The four SDK crates are structured to be published: `gnoblin-core-abi`, `gnoblin-core`, `gnoblin-macros`, `gnoblin-std`. SDK semver major equals the ABI major; a newer SDK on an older core degrades per function. They keep `publish = false` until the owner approves a release. | Cargo's `gnoblin-core = "1"` then always means "ABI 1, any minor". Cost: four crates leave the "never uploaded" rule in the workspace manifest. Overrule: keep them unpublished and vendor them (worse for authors). **Resolved:** keep `publish = false` for now; publishing a crate is an external action that needs the owner's approval, so the crates are laid out to be publishable and nothing is uploaded.                                                                                                                                                                                                                                                                                             |
-| D20 | The custom shader pass (core gap G8) reverses owner decision O7 ("no user shader pass"). It is scheduled as the last step of Phase 7 (M7.9) and flagged to the owner.                                                                                                               | Needed for "control of rendering"; a WGSL effect kind is the narrow way. Overrule: leave it out; shells then render only through canvas, view and the three effects. **Resolved:** scheduled last, after every other Phase 7 step, so the owner can still veto it before any shader code lands.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| D20 | The custom shader pass (core gap G8) reverses owner decision O7 ("no user shader pass"). It is scheduled as the last step of Phase 7 (M7.9) and flagged to the owner.                                                                                                               | Needed for "control of rendering"; a WGSL effect kind is the narrow way. Overrule: leave it out; shells then render only through canvas, view and the three effects. **Resolved:** scheduled last, after every other Phase 7 step, so the owner can still veto it before any shader code lands. **Owner decision:** approved, with backdrop sampling; built behind `compositor.user-shaders` (section 37).                                                                                                                                                                                                                                                                                                     |
 | D21 | XR stays the out-of-process `extensions/gnoblin-xr` program (J7's first sentence stands; its "no `.so`" clause is reversed for everything else).                                                                                                                                    | An OpenXR runtime loads client code into the calling process and `xrWaitFrame` blocks (`design/xr-extension.md:105-107`). Overrule: an XR std library behind the ABI is possible later and is not planned here.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 **D7, proven end to end.** The JS library is two packages: the stock lock screen lives in `gnoblin-std`, so a shell that imports
@@ -1067,7 +1067,7 @@ Questions for the owner, each a row of section 2 that is a real choice. Main res
 - **D13/D14** clean cutover to the `gnoblin-core` / `gnoblin-std` specifiers and from `init.*` / `GNOBLIN_CONFIG` to `shell.*` / `GNOBLIN_SHELL`, with no aliases.
 - **D18** SONAME `.1` now.
 - **D19** the SDK crates keep `publish = false`; publishing is an external action that needs the owner's approval.
-- **D20** the shader pass is scheduled last in Phase 7 (M7.9) and still flagged to the owner: it reverses O7.
+- **D20** the shader pass is scheduled last in Phase 7 (M7.9) and still flagged to the owner: it reverses O7. (Resolved later: the owner approved it with backdrop sampling, section 37.5.)
 
 ## 16. Implementation notes, M2.1 to M2.3
 
@@ -1512,7 +1512,7 @@ dist-check` passes `--std-shell` for example 2 in all four trees. A tree without
 
 - **Provider registration (9.4)** is done (M2.11, section 28): `open` registers the window manager, the portal dialogs and the settings
   observer through the core's `provider_register`, and example 17 has its "no provider registered, `NullWm` in force" assertion.
-- **Animation, styling, camera (M7.6)**, **Python std (M7.7)**, **JS convergence (M7.8)** and **the shader pass (M7.9)** are not started.
+- **Animation, styling, camera (M7.6)**, **Python std (M7.7)**, **JS convergence (M7.8)** and **the shader pass (M7.9)** are not started. (M7.9 was started after the owner approved it: section 37.)
   The std ABI has no function for them yet; each adds functions at the end of `GnoblinStdApi` (a minor bump) and a family in `exports.txt`
   is not needed (everything goes through `gnoblin_std_get_api`).
 - **Real compositor.** Everything above is proven against the fake compositor. The examples run against the real one when Flip lands the
@@ -1594,7 +1594,7 @@ renamed by creation order; the order within a step is not compared).
 - **Shape, for the generator (SdkGen).** Every function is `(ctx, ids..., value struct) -> code`. Shapes that resist generation: the tagged
   value `GnoblinStdProp` (one struct, a `kind`) and `GnoblinStdStyleEntry` (one struct for borders, shadows and four filters), the
   begin/commit pair with the shell's closure between them (`Std::transition`), and lent arrays and text (`style_list`, `style_origin`).
-- **Not done, and why.** The custom shader pass (M7.9) and XR (assignment). A `View` of a workspace (`WorkspaceMirror`): it needs child
+- **Not done, and why.** The custom shader pass (M7.9, since built: section 37) and XR (assignment). A `View` of a workspace (`WorkspaceMirror`): it needs child
   views per window, not started. Rollback of script state after a failed transition (layout objects, arrays): the native objects have none;
   nothing is written. The workspace slide still plays a straight line (`turn.rs` `play_slide` uses `set_animated`, not the engine): moving it
   onto `transition_animate` would put its writes on the same curve and tween as the TypeScript slide, and belongs with the layouts lane's
@@ -2534,7 +2534,7 @@ checks. The scripts that were to run them are `lanes/Validation-tools/box/gates1
 | D16                | As decided, and now proved in a real session at the bound of 32 (34.3).                                                                               |
 | D17, D18           | As decided: `E_RETIRED`, ABI 1.0 with `abi.lock` and golden shells checked by `cargo xtask abi-check`.                                                |
 | D19                | As decided: laid out to be published, `publish = false`.                                                                                              |
-| D20                | **Not done.** No shader pass (M7.9); it still needs the owner's decision, as it reverses O7.                                                          |
+| D20                | **Not done when written.** No shader pass (M7.9); it needed the owner's decision. The owner approved it with backdrop sampling: section 37.5.         |
 | D21                | As decided: XR stays the out-of-process `extensions/gnoblin-xr`.                                                                                      |
 
 ### 34.7 Deviations and what is not done
@@ -2546,7 +2546,7 @@ checks. The scripts that were to run them are `lanes/Validation-tools/box/gates1
 - Running example 8 for real found a defect in the Python tiler (it read `screen_*`, which the compositor leaves at zero); fixed.
 - Example 3 in TypeScript had no real-session test when this section was written: a previous attempt did not start in the harness
   (section 32.5) and the std migration of lane TsStdNative2 was still in flight. The test exists now (`modular/std_layouts.rs`, section 38).
-- Not done, from the notes above: the shader pass (D20); a reload of an isolated shell from the socket and a watch on a launcher
+- Not done, from the notes above: the shader pass (D20; since approved and built, section 37); a reload of an isolated shell from the socket and a watch on a launcher
   file (27.6); timers and chords for a shell that runs its own loop inside `init` (33.1); verbs that need a power backend (33.5);
   frozen provider vtables (the ABI is unreleased); a golden shell for any language but Rust.
 
@@ -3283,8 +3283,8 @@ files, one test, the changelog and this document); `gnoblin-compositor` and `gno
 
 Status: **phase A is built**, and the GLES pass (37.10) and the Vulkan pass (37.11). The owner approved the pass with backdrop sampling, which reverses O7 (D20, M7.9).
 Built: the validator, the `shader` effect kind and its wire path, the setting and the capability, the frame data, the secure-surface input,
-the software renderer's skipped listing, the catalog, the C ABI and the SDKs (37.6), and the GLES and Vulkan passes. Not built here: the
-frame-cost watchdog, the std element and the real-session tests; 37.8 gives each lane its seam. 37.1 to 37.4 are the analysis the build
+the software renderer's skipped listing, the catalog, the C ABI and the SDKs (37.6), the GLES and Vulkan passes (37.10, 37.11), and the std element,
+the docs page, the examples and the real-session tests (37.12). Not built here: the frame-cost watchdog; 37.8 gives each lane its seam. 37.1 to 37.4 are the analysis the build
 followed, with the corrections noted in 37.3.
 
 ### 37.1 Why O7 refused it
@@ -3387,8 +3387,9 @@ the risk is real and is kept, not removed.
 
 ### 37.5 What the owner decided
 
-Build it with backdrop sampling too (the third option). O7 is reversed and D20 is resolved: the pass exists behind `compositor.user-shaders`,
-default off until the owner confirms. Sections 34 and 36 keep their "not done" text as history; this section is the current state.
+Build it with backdrop sampling too (the third option). O7 is reversed and D20 is resolved: the owner approved the pass **with backdrop
+sampling** (the third option of 37.4's last paragraph). The pass exists behind `compositor.user-shaders`, default off until the owner confirms
+the default. Sections 34 and 36 keep their "not done" text as history, with a pointer here (34.6, 34.7, 38.2); this section is the current state.
 
 ### 37.6 What phase A built (lane ShaderFound)
 
@@ -3527,6 +3528,32 @@ Decisions the owner may overrule:
 5. The timestamps are written at the bottom of the pipe on both sides of a draw, so the number is the draw's own completion time on a
    queue that has finished the draws before it. A draw inside a backdrop's frame is its own source's cost, not the outer source's.
 
+### 37.12 The std element, the docs and the real-session tests (lane ShaderStd)
+
+| Part                       | Where                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The element in the library | `gnoblin-std-impl/src/style/{values,table,cascade}.rs`: `Entry::Shader { source, params }`, checked at the table (source not blank and at most 16 KiB, at most 8 finite numbers; whether it is valid WGSL is the compositor's, since the library links no compiler), lent back with its source and numbers, and mapped by `map_style(computed, user_shaders)`                                             |
+| Where it goes              | A `ShaderFilter` of the `filter` or the `backdropFilter` list is one `shader` effect after the backdrop blur and before the shadows, the `backdropFilter`'s first, at most `MAX_SHADERS` (4); more are dropped with a `not applied` note                                                                                                                                                                  |
+| The capability check       | `apply_client_style` reads the seat's `user_shaders` (a tree with no seat, or a seat without the property, reads as off). While it is off the shader is not written (a write would be refused and would take the shadows and borders of the same list with it) and the note is `<list>: a ShaderFilter is not drawn because the compositor's custom shaders are off (set `compositor.user-shaders`); ...` |
+| The ABI                    | `GnoblinStdStyleEntry` gains `source`, `params`, `n_params` (appended, `abi.lock` moved) and the kind `STD_ENTRY_SHADER` (7)                                                                                                                                                                                                                                                                              |
+| Rust                       | `Filter::Shader { source, params }` and `Filter::shader(source, params)` (`Filter` is no longer `Copy`)                                                                                                                                                                                                                                                                                                   |
+| TypeScript                 | `ShaderFilter` (`style/filters.ts`, checkers in `style/values.ts`), the literal `{ shader: { source, params } }`, the entry kind in `style/native.ts`; the list error text names the new class. Written by hand: the classes of `style/` are the script API over the generated `StyleEntry`, which the generator made (`EntryKind.SHADER`, `StyleEntry.shader`)                                           |
+| Python                     | Generated only: `StyleEntry.of_shader(source, params)` over `Style.set_list(StyleKind.FILTER, ...)`; the generator was fixed to take a list argument of a tagged constructor as a sequence (the default it wrote was a dataclass `field(...)`)                                                                                                                                                            |
+| Docs and examples          | `docs/custom-shaders.md` (in the sidebar), `docs/js-style.md`, `docs/guides/window_effects.md`; `examples/19-shader-tint` (Rust), `19-shader-tint-ts`, `19-shader-tint-py`                                                                                                                                                                                                                                |
+| Tests                      | `gnoblin-std-impl` `style::cascade` (the mapping), `anim_style` (a new step proves the Rust and TypeScript SDKs write the same effect over the same library), `gnoblin-js` `style` (the TypeScript element), and the real session `gnoblin` `modular::shader_filter`                                                                                                                                      |
+
+What the real-session tests prove, with the shipped binary on a headless backend and a Wayland client that stays connected: a Rust, a TypeScript
+and a Python shell each put one `shader` effect with the shell's source and numbers on the window's node while `compositor.user-shaders` is on;
+with it off the node holds the rest of the style and no shader, and the shell is told (the TypeScript log, the Rust style warnings); a source the
+validator refuses is logged by the compositor with its line and column and leaves the node with none of the list's effects, and the corrected
+source written next is accepted. The setting is written to the last accepted configuration document the binary reads at start, because
+`shell.ts` has no object for the `compositor` section (docs/js-settings.md), so there is no line of a user's shell that turns it on yet; a decision
+for the owner when the default is confirmed (37.9).
+
+What they do not prove is a pixel. A headless session draws with the software renderer, which has no shader compiler, so the node's `skipped` lists
+`shader: unsupported-by-renderer` and the test asserts that listing (and asserts that nothing is listed when the seat's `effect_kinds` holds
+`shader`). The drawing is proved by the renderer lanes' own tests (37.8).
+
 ## 38. D11, window motion as std policy, and the stale statements of sections 31 to 34 (lane TsStdObjects)
 
 ### 38.1 D11
@@ -3568,9 +3595,10 @@ where the item went.
 | 31.3, 34.7       | M5.4 was not run against the real binary         | Run by section 33.3 (`reload_session.rs`)                                                                                                                          |
 | 32.5, 34.2, 34.7 | Example 3 in TypeScript has no real-session test | `modular/std_layouts.rs::example_3_the_typescript_layouts_...` runs `gnoblin ./layouts.ts` for real since lane TsStdNative2 (section 25.5); observed passing: 38.3 |
 | 34.6             | D11: mechanism only, 200 ms in every session     | As decided: 38.1                                                                                                                                                   |
+| 34.6, 34.7       | D20: no shader pass, needs the owner's decision  | Approved by the owner with backdrop sampling (37.5); built in phases (37.6, 37.10, 37.11, 37.12), behind `compositor.user-shaders`, default off                    |
 | 35.3             | `share/gnoblin/types/**` is not installed        | Installed by `cargo xtask dist install` (section 25.5)                                                                                                             |
 
-Still true in section 33.5 and 34.7: the verbs that need a power backend were not called against a real session, the shader pass (D20) is not done,
+Still true in section 33.5 and 34.7: the verbs that need a power backend were not called against a real session, the shader pass (D20) was not done there and is now built behind a setting (section 37),
 and a reload of an isolated shell from the socket is not done (27.6).
 
 ### 38.3 Observed

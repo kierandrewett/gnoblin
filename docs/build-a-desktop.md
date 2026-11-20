@@ -187,6 +187,9 @@ stands. Rust ones build with `cargo build -p <package>` from the source tree; sc
 | `08-no-workspaces-py`   | Python             | Core      | The same tiler in Python, with the tiling in an imported module.                              |
 | `09-native-linked`      | Rust               | Core, std | Links the installed libraries and says which ones its process maps and which ABI each has.    |
 | `10-hot-reload`         | Rust               | Core      | A shell built to be rebuilt while it runs: kept state, adopted nodes, no duplicate listeners. |
+| `19-shader-tint`        | Rust               | Core, std | A shader filter that tints every window, and a chord that says why one is not drawn.          |
+| `19-shader-tint-ts`     | TypeScript         | Core, std | The same tint in TypeScript.                                                                  |
+| `19-shader-tint-py`     | Python             | Core, std | The same tint in Python.                                                                      |
 
 The numbers also name behaviours that are not shells of their own:
 

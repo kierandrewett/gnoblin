@@ -16,7 +16,9 @@ use std::path::Path;
 use gnoblin_testkit::compositor::FakeCompositor;
 use gnoblin_tree_client::tree_mirror::TxOp;
 
-use crate::driver_examples::{finish, press, pump, start};
+use gnoblin_tree_client::tree_mirror::MirrorValue;
+
+use crate::driver_examples::{SEAT, finish, press, pump, start};
 use crate::host::Module;
 
 macro_rules! out {
@@ -37,7 +39,7 @@ enum Then {
 }
 
 /// The steps, as the fixture binds them: a name, the chord and what the compositor does after it.
-const STEPS: [(&str, &str, Then); 17] = [
+const STEPS: [(&str, &str, Then); 18] = [
     ("basic", "Super+a", Then::Completed),
     ("staged", "Super+b", Then::Nothing),
     ("seek", "Super+c", Then::Nothing),
@@ -55,6 +57,7 @@ const STEPS: [(&str, &str, Then); 17] = [
     ("style_bad", "Super+o", Then::Nothing),
     ("scene", "Super+p", Then::Nothing),
     ("scene_transition", "Super+q", Then::Completed),
+    ("style_shader", "Super+r", Then::Nothing),
 ];
 
 /// The eased progress of a timed write `t_ms` after the write was sent: the curve's samples, linearly between them, from the end of the
@@ -130,6 +133,8 @@ pub(crate) fn std_anim(shell: &Path) -> i32 {
         Ok(started) => started,
         Err(code) => return code,
     };
+    // The compositor accepts a shader effect (`compositor.user-shaders` is on), as the seat says.
+    comp.external_set(SEAT, "user_shaders", MirrorValue::Bool(true));
     pump(&module);
     comp.create_window(41, "Files", "nautilus");
     pump(&module);

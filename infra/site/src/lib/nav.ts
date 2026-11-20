@@ -204,6 +204,7 @@ export const NAV: NavSection[] = [
             },
             { label: "Wayland protocols", slug: "wayland-protocols" },
             { label: "Background effects", slug: "background-effects" },
+            { label: "Custom shaders", slug: "custom-shaders" },
             { label: "Session locking", slug: "session-lock" },
             { label: "GPU memory", slug: "gpu-memory" },
         ],

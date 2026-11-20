@@ -104,10 +104,12 @@ function nativeCollection(state: CollectionState): NativeCollection {
 /** The elements of an inherited list, as a script gets them: copies, which no list owns. */
 function elementsOf(name: ListName, data: Record<string, unknown>[]): StyleElement[] {
     return data.map((entry) => {
-        const literal =
-            typeof entry.kind === "string"
-                ? { [entry.kind]: entry.kind === "blur" ? entry.radius : entry.amount }
-                : entry;
+        let literal: Record<string, unknown> = entry;
+        if (entry.kind === "shader") {
+            literal = { shader: { source: entry.source, params: entry.params } };
+        } else if (typeof entry.kind === "string") {
+            literal = { [entry.kind]: entry.kind === "blur" ? entry.radius : entry.amount };
+        }
         return LIST_ENTRY[name](literal, "inherited", []);
     });
 }

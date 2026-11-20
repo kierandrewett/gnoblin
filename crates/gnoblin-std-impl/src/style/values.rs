@@ -17,6 +17,12 @@ const MAX_RADIUS: f64 = 100.0;
 /// The largest `amount` a saturate, brightness or contrast filter takes.
 pub(crate) const MAX_GRADE: f64 = 2.0;
 
+/// The renderer's limits on a shader (`gnoblin-render`'s `MAX_SHADER_SOURCE_BYTES`, `MAX_SHADER_PARAMS` and `MAX_SHADERS`): the
+/// source's size in bytes, the numbers it reads as `p`, and the shader passes one window's node carries.
+pub(crate) const MAX_SHADER_SOURCE_BYTES: usize = 16 * 1024;
+pub(crate) const MAX_SHADER_PARAMS: usize = 8;
+pub(crate) const MAX_SHADERS: usize = 4;
+
 /// A colour as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
 pub(crate) type Color = String;
 
@@ -108,6 +114,11 @@ pub(crate) enum Entry {
     Saturate(f64),
     Brightness(f64),
     Contrast(f64),
+    /// A shader the shell wrote: `source` defines `fn effect(c, uv, p, t)` and `params` is what it reads as `p`.
+    Shader {
+        source: String,
+        params: Vec<f64>,
+    },
 }
 
 /// The lists a style has.
@@ -213,12 +224,61 @@ pub(crate) fn entry_in(list: ListProp, raw: &abi::GnoblinStdStyleEntry, path: &s
         (ListProp::Filter | ListProp::BackdropFilter, abi::STD_ENTRY_CONTRAST) => {
             Ok(Entry::Contrast(grade(&field("amount"), raw.a)?))
         }
+        (ListProp::Filter | ListProp::BackdropFilter, abi::STD_ENTRY_SHADER) => shader_in(raw, path),
         (ListProp::Borders, _) => Err(fail(path, "must be a Border")),
         (ListProp::Shadows, _) => Err(fail(path, "must be a Shadow")),
         _ => Err(fail(
             path,
-            "must be a filter: a blur, saturate, brightness or contrast filter",
+            "must be a filter: a blur, saturate, brightness, contrast or shader filter",
         )),
+    }
+}
+
+/// A shader filter: WGSL source of at most [`MAX_SHADER_SOURCE_BYTES`] and at most [`MAX_SHADER_PARAMS`] finite numbers. Whether the
+/// source is valid WGSL is the compositor's to say (it checks the source before it accepts it); the library cannot, for it has no
+/// shader compiler.
+fn shader_in(raw: &abi::GnoblinStdStyleEntry, path: &str) -> Res<Entry> {
+    let source = if raw.source.ptr.is_null() || raw.source.len == 0 {
+        ""
+    } else {
+        // SAFETY: the caller of the table function guarantees the source is `len` readable bytes.
+        std::str::from_utf8(unsafe { std::slice::from_raw_parts(raw.source.ptr, raw.source.len) })
+            .map_err(|_| fail(&format!("{path}.source"), "must be UTF-8 text"))?
+    };
+    if source.trim().is_empty() || source.len() > MAX_SHADER_SOURCE_BYTES {
+        return Err(fail(
+            &format!("{path}.source"),
+            &format!("must be WGSL of 1 to {MAX_SHADER_SOURCE_BYTES} bytes"),
+        ));
+    }
+    if raw.n_params > MAX_SHADER_PARAMS || (raw.n_params > 0 && raw.params.is_null()) {
+        return Err(fail(
+            &format!("{path}.params"),
+            &format!("holds at most {MAX_SHADER_PARAMS} numbers, got {}", raw.n_params),
+        ));
+    }
+    let numbers: &[f64] = if raw.n_params == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller of the table function guarantees `n_params` readable numbers at `params`.
+        unsafe { std::slice::from_raw_parts(raw.params, raw.n_params) }
+    };
+    let params = numbers
+        .iter()
+        .enumerate()
+        .map(|(at, value)| finite(&format!("{path}.params[{at}]"), *value))
+        .collect::<Res<Vec<f64>>>()?;
+    Ok(Entry::Shader {
+        source: source.to_owned(),
+        params,
+    })
+}
+
+/// The source and numbers of a shader entry as the wire carries them; empty for any other kind.
+pub(crate) fn entry_shader(entry: &Entry) -> (&str, &[f64]) {
+    match entry {
+        Entry::Shader { source, params } => (source, params),
+        _ => ("", &[]),
     }
 }
 
@@ -243,6 +303,7 @@ pub(crate) fn entry_out(entry: &Entry) -> (u32, bool, [f64; 4], Option<&str>) {
         Entry::Saturate(amount) => (abi::STD_ENTRY_SATURATE, false, [*amount, 0.0, 0.0, 0.0], None),
         Entry::Brightness(amount) => (abi::STD_ENTRY_BRIGHTNESS, false, [*amount, 0.0, 0.0, 0.0], None),
         Entry::Contrast(amount) => (abi::STD_ENTRY_CONTRAST, false, [*amount, 0.0, 0.0, 0.0], None),
+        Entry::Shader { .. } => (abi::STD_ENTRY_SHADER, false, [0.0; 4], None),
     }
 }
 

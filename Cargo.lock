@@ -1564,6 +1564,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-example-shader-tint"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
 name = "gnoblin-example-std-prelude"
 version = "0.2.0-alpha.0"
 dependencies = [

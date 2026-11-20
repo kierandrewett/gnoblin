@@ -241,6 +241,7 @@ export const EntryKind = {
   SATURATE: 4,
   BRIGHTNESS: 5,
   CONTRAST: 6,
+  SHADER: 7,
 } as const;
 export type EntryKind = (typeof EntryKind)[keyof typeof EntryKind];
 

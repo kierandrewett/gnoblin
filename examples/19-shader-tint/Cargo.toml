@@ -1,0 +1,20 @@
+[package]
+name = "gnoblin-example-shader-tint"
+description = "Example 19: a custom shader in Rust. A ShaderFilter on the style of every window tints it, and a chord reports what the style could not draw."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "shader_tint"
+crate-type = ["cdylib"]
+
+# The std SDK and the core SDK, and nothing else: the shell links the installed libraries and carries no copy of either.
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+gnoblin-std = { path = "../../crates/gnoblin-std" }
+
+[lints]
+workspace = true

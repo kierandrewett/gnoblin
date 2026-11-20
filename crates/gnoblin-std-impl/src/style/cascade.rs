@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use gnoblin_core::{Effect, EffectKind, NodeId};
 
-use super::values::{Entry, ListProp, MAX_GRADE, MAX_STYLE_LIST, Prop, Radii, ScalarProp};
+use super::values::{Entry, ListProp, MAX_GRADE, MAX_SHADERS, MAX_STYLE_LIST, Prop, Radii, ScalarProp};
 use crate::animation::staging;
 use crate::collection::Source;
 use crate::state::{Id, State};
@@ -361,7 +361,10 @@ impl State {
     fn apply_client_style(&mut self, client: NodeId64, computed: Computed) {
         let g = self.g.clone();
         let node = g.node(NodeId(client));
-        let mapping = map_style(&computed);
+        // The seat says whether the compositor accepts a shader effect (`compositor.user-shaders`); a tree with no seat, or a seat
+        // that does not carry the property (a compositor from before the pass), does not.
+        let user_shaders = crate::nodes::seat(&g).is_some_and(|seat| seat.get_bool("user_shaders").unwrap_or(false));
+        let mapping = map_style(&computed, user_shaders);
         let mut notes = mapping.unapplied.clone();
         let mut applied = self.styles.clients.remove(&client).unwrap_or_default();
         if mapping.effects.len() > MAX_STYLE_LIST * 2 {
@@ -470,9 +473,11 @@ fn wire_colour(text: &str) -> String {
 
 /// What a resolved style becomes on the node: a node `corner_radius`, and the `effects` list in paint order. Outer `shadows` are
 /// `shadow` effects that follow the window's whole frame, `borders` are `border` effects and the `backdropFilter` is one backdrop blur
-/// whose saturation, brightness and contrast are the products of the chain's. `background`, `filter` and inset shadows stay in the
-/// computed style; each comes back as an `unapplied` text when the style has a non-default value for it.
-pub(crate) fn map_style(computed: &Computed) -> Mapping {
+/// whose saturation, brightness and contrast are the products of the chain's. A `ShaderFilter` of either filter list is one `shader`
+/// effect (the `backdropFilter`'s first), placed after the blur: it is written only while `user_shaders` (the seat's capability) is
+/// on, and at most [`MAX_SHADERS`] of them. `background`, the other `filter` elements and inset shadows stay in the computed style;
+/// each comes back as an `unapplied` text when the style has a non-default value for it.
+pub(crate) fn map_style(computed: &Computed, user_shaders: bool) -> Mapping {
     let mut effects = Vec::new();
     let mut unapplied = Vec::new();
     let backdrop = computed.list(ListProp::BackdropFilter);
@@ -534,6 +539,39 @@ pub(crate) fn map_style(computed: &Computed) -> Mapping {
                 .to_owned(),
         );
     }
+    let mut shaders = Vec::new();
+    for (list, name) in [
+        (ListProp::BackdropFilter, "backdropFilter"),
+        (ListProp::Filter, "filter"),
+    ] {
+        let held: Vec<&Entry> = computed
+            .list(list)
+            .iter()
+            .filter(|entry| matches!(entry, Entry::Shader { .. }))
+            .collect();
+        if held.is_empty() {
+            continue;
+        }
+        if user_shaders {
+            shaders.extend(held);
+        } else {
+            unapplied.push(format!(
+                "{name}: a ShaderFilter is not drawn because the compositor's custom shaders are off (set `compositor.user-shaders`); the window is drawn without it"
+            ));
+        }
+    }
+    if shaders.len() > MAX_SHADERS {
+        unapplied.push(format!(
+            "filter: a window draws at most {MAX_SHADERS} shaders, so the first {MAX_SHADERS} of the {} ShaderFilters are drawn",
+            shaders.len()
+        ));
+        shaders.truncate(MAX_SHADERS);
+    }
+    for entry in shaders {
+        if let Entry::Shader { source, params } = entry {
+            effects.push(Effect::shader(source, params));
+        }
+    }
     let shadows = computed.list(ListProp::Shadows);
     for entry in shadows.iter().rev() {
         if let Entry::Shadow {
@@ -593,12 +631,139 @@ pub(crate) fn map_style(computed: &Computed) -> Mapping {
     if computed.background.is_some() {
         unapplied.push("background: the tree has no background for a window".to_owned());
     }
-    if !computed.list(ListProp::Filter).is_empty() {
+    if computed
+        .list(ListProp::Filter)
+        .iter()
+        .any(|entry| !matches!(entry, Entry::Shader { .. }))
+    {
         unapplied.push("filter: no effect kind filters a window's own content".to_owned());
     }
     Mapping {
         effects,
         corner_radius,
         unapplied,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shader(source: &str, params: &[f64]) -> Entry {
+        Entry::Shader {
+            source: source.to_owned(),
+            params: params.to_vec(),
+        }
+    }
+
+    fn style_with(lists: &[(ListProp, Vec<Entry>)]) -> Computed {
+        Computed {
+            opacity: 1.0,
+            corner_radius: Radii::All(0.0),
+            background: None,
+            lists: lists.iter().cloned().collect(),
+            origin: BTreeMap::new(),
+        }
+    }
+
+    fn kinds(mapping: &Mapping) -> Vec<(EffectKind, String)> {
+        mapping
+            .effects
+            .iter()
+            .map(|effect| (effect.kind, effect.source.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn a_shader_filter_is_one_shader_effect_after_the_blur_and_before_the_shadows() {
+        let computed = style_with(&[
+            (
+                ListProp::BackdropFilter,
+                vec![Entry::Blur(12.0), shader("back", &[1.0])],
+            ),
+            (ListProp::Filter, vec![shader("content", &[0.5, 2.0])]),
+            (
+                ListProp::Shadows,
+                vec![Entry::Shadow {
+                    x: 0.0,
+                    y: 8.0,
+                    blur: 24.0,
+                    spread: 0.0,
+                    color: "#000".to_owned(),
+                    inset: false,
+                }],
+            ),
+        ]);
+        let mapping = map_style(&computed, true);
+        assert_eq!(
+            kinds(&mapping),
+            [
+                (EffectKind::Blur, String::new()),
+                (EffectKind::Shader, "back".to_owned()),
+                (EffectKind::Shader, "content".to_owned()),
+                (EffectKind::Shadow, String::new()),
+            ],
+            "the backdrop's shaders come first, then the content's, and the style's other effects keep their places"
+        );
+        assert_eq!(mapping.effects[2].params, [0.5, 2.0]);
+        assert!(
+            mapping.unapplied.is_empty(),
+            "a shader filter alone leaves nothing unapplied: {:?}",
+            mapping.unapplied
+        );
+    }
+
+    #[test]
+    fn with_user_shaders_off_a_shader_filter_is_not_written_and_each_list_that_holds_one_says_why() {
+        let computed = style_with(&[
+            (ListProp::BackdropFilter, vec![Entry::Blur(12.0), shader("back", &[])]),
+            (ListProp::Filter, vec![shader("content", &[])]),
+        ]);
+        let mapping = map_style(&computed, false);
+        assert_eq!(
+            kinds(&mapping),
+            [(EffectKind::Blur, String::new())],
+            "the blur is written, the shaders are not"
+        );
+        assert_eq!(mapping.unapplied.len(), 2, "{:?}", mapping.unapplied);
+        for (note, list) in mapping.unapplied.iter().zip(["backdropFilter", "filter"]) {
+            assert!(
+                note.starts_with(&format!("{list}: a ShaderFilter is not drawn"))
+                    && note.contains("compositor.user-shaders"),
+                "{note}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_window_draws_four_shaders_and_the_style_says_when_it_asked_for_more() {
+        let many: Vec<Entry> = (0..6).map(|at| shader(&format!("s{at}"), &[])).collect();
+        let mapping = map_style(&style_with(&[(ListProp::Filter, many)]), true);
+        assert_eq!(
+            kinds(&mapping)
+                .into_iter()
+                .map(|(_, source)| source)
+                .collect::<Vec<_>>(),
+            ["s0", "s1", "s2", "s3"]
+        );
+        assert_eq!(mapping.unapplied.len(), 1, "{:?}", mapping.unapplied);
+        assert!(
+            mapping.unapplied[0].contains("at most 4 shaders") && mapping.unapplied[0].contains("of the 6"),
+            "{}",
+            mapping.unapplied[0]
+        );
+    }
+
+    #[test]
+    fn a_content_filter_that_is_not_a_shader_is_still_reported_unapplied() {
+        let only_a_shader = style_with(&[(ListProp::Filter, vec![shader("content", &[])])]);
+        assert!(map_style(&only_a_shader, true).unapplied.is_empty());
+        let with_a_blur = style_with(&[(ListProp::Filter, vec![shader("content", &[]), Entry::Blur(4.0)])]);
+        let mapping = map_style(&with_a_blur, true);
+        assert_eq!(
+            mapping.unapplied,
+            ["filter: no effect kind filters a window's own content"]
+        );
+        assert_eq!(kinds(&mapping).len(), 1, "the shader is drawn, the blur has no kind");
     }
 }

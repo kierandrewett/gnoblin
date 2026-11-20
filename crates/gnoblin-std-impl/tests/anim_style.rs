@@ -42,13 +42,14 @@ enum Then {
 const SOURCE: &str = "import \"gnoblin-std\";\n\
     import { MasterStackLayout } from \"gnoblin-std\";\n\
     import { Camera3D, View } from \"gnoblin-std/scene\";\n\
+    import { ShaderFilter } from \"gnoblin-std\";\n\
     import { Camera2D } from \"gnoblin-std/display\";\n\
     const g = globalThis as any;\n\
     g.g = g;\n\
     g.log = [];\n\
     g.c = (n: number) => gnoblin.clients.get(String(n));\n\
     g.err = (f: () => void) => { try { f(); return \"accepted\"; } catch (e) { return (e as Error).message; } };\n\
-    Object.assign(g, { MasterStackLayout, Camera3D, View, Camera2D });\n";
+    Object.assign(g, { MasterStackLayout, Camera3D, View, Camera2D, ShaderFilter });\n";
 
 const STAGED: &str = "g.held = gnoblin.requestTransition(() => { g.c(41).x = 100; g.c(41).rotation = [0, 0.5, 0]; }, \
     { duration: 100, delay: 50, easing: \"linear\", autoplay: false });\n\
@@ -135,6 +136,13 @@ fn steps() -> Vec<(&'static str, &'static str, Then)> {
              { duration: 100 });\n\
              g.log.push(\"flat zoom=\" + g.flat.zoom + \" fov=\" + g.cam.fov);",
             Then::Completed,
+        ),
+        (
+            "style_shader",
+            "g.c(42).style.filter = [new g.ShaderFilter({ \
+             source: \"fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }\", \
+             params: [0.5, 2.0] })];",
+            Then::Nothing,
         ),
     ]
 }
@@ -306,7 +314,13 @@ fn reference_world() -> FakeCompositor {
             ("primary", MirrorValue::Bool(true)),
         ],
     );
-    comp.add_node(21, ROOT, "seat", vec![("name", text("seat0"))]);
+    // The compositor accepts a shader effect (`compositor.user-shaders` is on), as the seat says.
+    comp.add_node(
+        21,
+        ROOT,
+        "seat",
+        vec![("name", text("seat0")), ("user_shaders", MirrorValue::Bool(true))],
+    );
     comp.add_window(40, "Terminal", "foot");
     comp
 }
@@ -560,6 +574,13 @@ fn transitions_styles_and_the_scene_write_what_the_typescript_std_writes() {
             .iter()
             .any(|line| line.contains("key=corner_radius value=Double(12.0)")),
         "{style:#?}"
+    );
+    let shader = lines_of(&native, "style_shader");
+    assert!(
+        shader
+            .iter()
+            .any(|line| line.contains("key=effects") && line.contains("kind: \"shader\"")),
+        "a shader filter is written as a shader effect, by both libraries: {shader:#?}"
     );
     let scene = lines_of(&native, "scene");
     assert!(

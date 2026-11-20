@@ -12,6 +12,7 @@ of truth is the code, not this page.
 | Blur behind the window | GLES renderer only | `style.backdropFilter`                              |
 | Rounded corners        | Stored, not drawn  | `style.cornerRadius`                                |
 | Borders, filter, fill  | Stored, not drawn  | `style.borders`, `style.filter`, `style.background` |
+| Your own shader        | See below          | A `ShaderFilter` in `style.filter`                  |
 
 A property that no renderer draws is still stored and reported in the window's `computedStyle`, so a config that sets
 it keeps working when the renderer learns to draw it.
@@ -33,6 +34,12 @@ A frosted window is a blur and a little saturation behind it:
 ```ts
 gnoblin.clients.where({ appId: "foot" }).style.backdropFilter = [{ blur: 24 }, { saturate: 1.35 }];
 ```
+
+## Your own shader
+
+A `ShaderFilter` gives a window a shader you wrote. It is off by default: the compositor draws one only when its
+`compositor.user-shaders` setting is on and the renderer draws shaders. [Custom shaders](/custom-shaders) has the
+contract, the limits and two complete examples.
 
 ## Background blur from applications
 
