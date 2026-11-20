@@ -11,6 +11,7 @@
 mod core;
 mod ext_background_effect_v1;
 mod ext_data_control_v1;
+mod ext_foreign_toplevel_list_v1;
 mod ext_idle_notify_v1;
 mod wl_output;
 mod wl_shm;
@@ -25,6 +26,7 @@ mod xdg_system_bell_v1;
 mod xdg_toplevel_icon_v1;
 mod xdg_toplevel_tag_v1;
 mod zwlr_data_control_v1;
+mod zwlr_foreign_toplevel_management_v1;
 mod zwlr_gamma_control_v1;
 mod zwlr_output_power_management_v1;
 mod zwp_idle_inhibit_v1;

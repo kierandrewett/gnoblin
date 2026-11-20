@@ -45,3 +45,6 @@ gnoblin-wayland-zwlr-output-power-management-v1 = { path = "../zwlr-output-power
 gnoblin-wayland-xdg-foreign = { path = "../xdg-foreign" }
 gnoblin-wayland-ext-idle-notify-v1 = { path = "../ext-idle-notify-v1" }
 gnoblin-wayland-zwp-text-input-v3 = { path = "../zwp-text-input-v3" }
+gnoblin-wayland-foreign-toplevel-shared = { path = "../foreign-toplevel-shared" }
+gnoblin-wayland-ext-foreign-toplevel-list-v1 = { path = "../ext-foreign-toplevel-list-v1" }
+gnoblin-wayland-zwlr-foreign-toplevel-management-v1 = { path = "../zwlr-foreign-toplevel-management-v1" }

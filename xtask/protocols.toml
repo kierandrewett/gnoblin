@@ -242,3 +242,25 @@ description = "The zwp_text_input_manager_v3 Wayland protocol of gnoblin-wayland
 kind = "protocol"
 interfaces = [["zwp_text_input_manager_v3", 1]]
 deps = ["smithay", "gnoblin-log"]
+
+[[crate]]
+name = "foreign-toplevel-shared"
+description = "What the ext and wlr foreign-toplevel lists of gnoblin-wayland publish about a window, and what changed since it was last sent."
+kind = "shared"
+deps = ["gnoblin-types"]
+
+[[crate]]
+name = "ext-foreign-toplevel-list-v1"
+description = "The ext_foreign_toplevel_list_v1 Wayland protocol of gnoblin-wayland: the standardised, read-only window list."
+kind = "protocol"
+interfaces = [["ext_foreign_toplevel_list_v1", 1]]
+needs = ["foreign-toplevel-shared"]
+deps = ["smithay", "gnoblin-types"]
+
+[[crate]]
+name = "zwlr-foreign-toplevel-management-v1"
+description = "The zwlr_foreign_toplevel_manager_v1 Wayland protocol of gnoblin-wayland: the window list a taskbar reads and controls."
+kind = "protocol"
+interfaces = [["zwlr_foreign_toplevel_manager_v1", 3]]
+needs = ["foreign-toplevel-shared"]
+deps = ["smithay", "gnoblin-types", "gnoblin-log"]

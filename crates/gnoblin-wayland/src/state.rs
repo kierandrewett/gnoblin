@@ -90,7 +90,6 @@ use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
 use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
 use crate::protocols::extension::{Extension, TitlebarActions};
-use crate::protocols::foreign_toplevel_shared::ForeignToplevels;
 use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
 use crate::protocols::xdg_activation_v1::XdgActivationV1;
 use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
@@ -103,6 +102,7 @@ use gnoblin_wayland_protocols::ext_idle_notify_v1::{ExtIdleNotifyV1Tables, IdleN
 use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
 use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
 use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
+use gnoblin_wayland_protocols::zwlr_foreign_toplevel_management_v1::ForeignToplevels;
 use gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::ShortcutInhibitExt as _;
 use gnoblin_wayland_protocols::zwp_pointer_constraints_v1::{
     PointerConstraintsExt as _, ZwpPointerConstraintsV1Tables,
@@ -319,7 +319,7 @@ pub struct State {
     /// their exclusive zones to the window manager as reserved insets.
     pub(crate) layer_shell_state: WlrLayerShellState,
     /// The standardised toplevel list, which a shell reads through
-    /// [`crate::protocols::ext_foreign_toplevel_list_v1`].
+    /// `gnoblin-wayland-ext-foreign-toplevel-list-v1`.
     pub(crate) foreign_toplevel_list_state: ForeignToplevelListState,
     /// The activation tokens, decided by `gnoblin-authority`.
     pub(crate) activation_state: XdgActivationState,
@@ -703,10 +703,8 @@ impl State {
             let access = Arc::clone(&access);
             move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::LayerShell)
         });
-        let foreign_toplevel_list_state = ForeignToplevelListState::new_with_filter::<Self>(&display_handle, {
-            let access = Arc::clone(&access);
-            move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::ForeignToplevelList)
-        });
+        let foreign_toplevel_list_state =
+            gnoblin_wayland_protocols::ext_foreign_toplevel_list_v1::register::<Self>(&registrar);
         let activation_state = XdgActivationState::new::<Self>(&display_handle);
         let data_device_state = DataDeviceState::new::<Self>(&display_handle);
         let primary_selection_state = gnoblin_wayland_protocols::zwp_primary_selection_v1::register::<Self>(&registrar);
@@ -717,7 +715,7 @@ impl State {
         let security_context_state = gnoblin_wayland_protocols::wp_security_context_v1::register::<Self>(&registrar);
 
         let foreign_toplevel_global =
-            crate::protocols::zwlr_foreign_toplevel_management_v1::global(&display_handle, &access);
+            gnoblin_wayland_protocols::zwlr_foreign_toplevel_management_v1::register::<Self>(&registrar);
         let background_effect_global =
             gnoblin_wayland_protocols::ext_background_effect_v1::register::<Self>(&registrar);
         // Created when the configuration advertises them; whether the host can honour

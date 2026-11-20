@@ -8,8 +8,6 @@
 
 /// Pixel path shared by the three capture protocols: frames, sources and sessions.
 pub mod capture_shared;
-/// `ext_foreign_toplevel_list_v1`: the read-only, standardised toplevel list.
-pub mod ext_foreign_toplevel_list_v1;
 /// `ext_image_capture_source_v1`: the output and toplevel sources a capture names.
 pub mod ext_image_capture_source_v1;
 /// `ext_image_copy_capture_v1`: image-copy sessions that stream frames into client buffers.
@@ -18,8 +16,6 @@ pub mod ext_image_copy_capture_v1;
 pub mod ext_session_lock_v1;
 /// The seam a compat adapter's Wayland redirect registers through.
 pub mod extension;
-/// The window record both foreign toplevel lists are fed from.
-pub mod foreign_toplevel_shared;
 /// `gnoblin_view_source_v1`: the owner-only capture source of a View node.
 pub mod gnoblin_view_source_v1;
 /// The session and frame objects of `ext_image_copy_capture_v1`, with the device stated as the wire carries it.
@@ -37,8 +33,6 @@ pub mod wl_seat;
 pub mod xdg_activation_v1;
 /// `xdg_shell`: toplevels, popups, configure and ack.
 pub mod xdg_shell;
-/// `zwlr_foreign_toplevel_manager_v1`: the window list a taskbar reads.
-pub mod zwlr_foreign_toplevel_management_v1;
 /// `zwlr_layer_shell_v1`: layer surfaces for bars and docks.
 pub mod zwlr_layer_shell_v1;
 /// `zwlr_output_manager_v1`: the outputs and layout a configuration tool sees.

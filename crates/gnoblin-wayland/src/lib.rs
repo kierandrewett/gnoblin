@@ -209,6 +209,7 @@ mod clock;
 mod cursor;
 mod devices;
 mod dispatch;
+mod foreign_toplevels;
 mod frame;
 mod frame_policy;
 mod glue;

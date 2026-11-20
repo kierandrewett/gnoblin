@@ -2359,6 +2359,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-wayland-ext-foreign-toplevel-list-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "gnoblin-wayland-foreign-toplevel-shared",
+ "smithay",
+]
+
+[[package]]
 name = "gnoblin-wayland-ext-idle-notify-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -2370,13 +2380,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-wayland-foreign-toplevel-shared"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+]
+
+[[package]]
 name = "gnoblin-wayland-protocols"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-wayland-api",
  "gnoblin-wayland-ext-background-effect-v1",
  "gnoblin-wayland-ext-data-control-v1",
+ "gnoblin-wayland-ext-foreign-toplevel-list-v1",
  "gnoblin-wayland-ext-idle-notify-v1",
+ "gnoblin-wayland-foreign-toplevel-shared",
  "gnoblin-wayland-wl-output",
  "gnoblin-wayland-wl-shm",
  "gnoblin-wayland-wp-alpha-modifier-v1",
@@ -2395,6 +2415,7 @@ dependencies = [
  "gnoblin-wayland-xdg-toplevel-icon-v1",
  "gnoblin-wayland-xdg-toplevel-tag-v1",
  "gnoblin-wayland-zwlr-data-control-v1",
+ "gnoblin-wayland-zwlr-foreign-toplevel-management-v1",
  "gnoblin-wayland-zwlr-gamma-control-v1",
  "gnoblin-wayland-zwlr-output-power-management-v1",
  "gnoblin-wayland-zwp-idle-inhibit-v1",
@@ -2558,6 +2579,17 @@ name = "gnoblin-wayland-zwlr-data-control-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "gnoblin-wayland-foreign-toplevel-shared",
  "smithay",
 ]
 

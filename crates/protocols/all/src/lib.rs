@@ -7,7 +7,9 @@ use gnoblin_wayland_api::ProtocolInfo;
 
 pub use gnoblin_wayland_ext_background_effect_v1 as ext_background_effect_v1;
 pub use gnoblin_wayland_ext_data_control_v1 as ext_data_control_v1;
+pub use gnoblin_wayland_ext_foreign_toplevel_list_v1 as ext_foreign_toplevel_list_v1;
 pub use gnoblin_wayland_ext_idle_notify_v1 as ext_idle_notify_v1;
+pub use gnoblin_wayland_foreign_toplevel_shared as foreign_toplevel_shared;
 pub use gnoblin_wayland_wl_output as wl_output;
 pub use gnoblin_wayland_wl_shm as wl_shm;
 pub use gnoblin_wayland_wp_alpha_modifier_v1 as wp_alpha_modifier_v1;
@@ -26,6 +28,7 @@ pub use gnoblin_wayland_xdg_system_bell_v1 as xdg_system_bell_v1;
 pub use gnoblin_wayland_xdg_toplevel_icon_v1 as xdg_toplevel_icon_v1;
 pub use gnoblin_wayland_xdg_toplevel_tag_v1 as xdg_toplevel_tag_v1;
 pub use gnoblin_wayland_zwlr_data_control_v1 as zwlr_data_control_v1;
+pub use gnoblin_wayland_zwlr_foreign_toplevel_management_v1 as zwlr_foreign_toplevel_management_v1;
 pub use gnoblin_wayland_zwlr_gamma_control_v1 as zwlr_gamma_control_v1;
 pub use gnoblin_wayland_zwlr_output_power_management_v1 as zwlr_output_power_management_v1;
 pub use gnoblin_wayland_zwp_idle_inhibit_v1 as zwp_idle_inhibit_v1;
@@ -72,4 +75,6 @@ pub const ALL: &[&ProtocolInfo] = &[
     &xdg_foreign::PROTOCOL,
     &ext_idle_notify_v1::PROTOCOL,
     &zwp_text_input_v3::PROTOCOL,
+    &ext_foreign_toplevel_list_v1::PROTOCOL,
+    &zwlr_foreign_toplevel_management_v1::PROTOCOL,
 ];
