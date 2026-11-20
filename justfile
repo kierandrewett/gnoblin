@@ -116,11 +116,11 @@ modular:
 native-libs:
     cargo xtask native-libs
 
-# Write every language SDK from the schema catalog and the ABI crates; see docs/sdk-generator.md.
+# Write a readable copy of every generated SDK file to target/sdk (the build renders them itself; nothing generated is committed); see docs/sdk-generator.md.
 gen-sdks:
     cargo xtask gen-sdks
 
-# Fail when a generated SDK file is stale. Part of `just workspace-ci`.
+# Prove the SDK generator is sound: deterministic render, Python compiles, the surface locks and the C ABI locks hold. Part of `just workspace-ci`.
 gen-sdks-check:
     cargo xtask gen-sdks --check
 

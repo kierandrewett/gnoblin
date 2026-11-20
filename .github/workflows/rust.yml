@@ -251,10 +251,10 @@ jobs:
       - name: Check the system packages of the -sys crates
         run: just native-libs
 
-  # The generated SDKs (Rust constants, Python and TypeScript bindings, `gnoblin.d.ts`) against the schema catalog and the ABI crates
-  # (`cargo xtask gen-sdks --check`). A stale generated file fails here with the command that rewrites it.
+  # The SDK generator against the schema catalog and the ABI crates (`cargo xtask gen-sdks --check`): it renders twice to the same bytes, the
+  # Python it writes compiles, and the public surface and the C ABI match their locks. Nothing generated is committed; a build renders it.
   gen-sdks:
-    name: Generated SDKs are current
+    name: SDK generator is sound
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

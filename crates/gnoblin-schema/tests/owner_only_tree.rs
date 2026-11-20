@@ -32,6 +32,13 @@ const OWNER_PATHS: &[(&str, &str)] = &[
          without `tree`, which this test keeps true",
     ),
     (
+        "crates/gnoblin-sdkgen/src/model.rs",
+        "the SDK generator writes the vocabulary of a shell, which runs in the owner's process: the typed node classes of every \
+         SDK (`Window`, `Seat`, `View`, `Screen`, ...) are the `tree` namespace, and the same catalog fingerprint is what the \
+         core reports as `gnoblin_catalog_hash`, so it must see what the core embeds. It writes names and types only, no \
+         authority. Its output reaches only the SDK crates and the script runtimes, which sit on the owner side",
+    ),
+    (
         "crates/gnoblin-proto/build.rs",
         "the owner socket's tree wire types are generated from the whole catalog",
     ),
