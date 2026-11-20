@@ -306,7 +306,7 @@
         "Macro Pad|<Super>x"
       ],
       "diagnostics": [
-        "KeyBinding \"bind-3:Super+a\".onPress threw: <root>/shell.ts:14:41: boom"
+        "KeyBinding \"bind-3:Super+a\".onPress threw: <root>/shell.ts:15:41: boom"
       ],
       "log": [
         {

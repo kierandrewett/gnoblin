@@ -66,7 +66,7 @@
         "<Super>Button3"
       ],
       "diagnostics": [
-        "Decorations.onAdded threw: <root>/shell.ts:9:114: no"
+        "Decorations.onAdded threw: <root>/shell.ts:10:114: no"
       ],
       "log": [
         {

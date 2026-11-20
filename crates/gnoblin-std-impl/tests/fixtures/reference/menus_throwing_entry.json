@@ -862,7 +862,7 @@
         "<Super>Button3"
       ],
       "diagnostics": [
-        "WindowMenu.onKey threw: <root>/shell.ts:15:67: boom"
+        "WindowMenu.onKey threw: <root>/shell.ts:16:67: boom"
       ],
       "log": [
         {

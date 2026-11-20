@@ -82,7 +82,7 @@
         "<Super>Button3"
       ],
       "diagnostics": [
-        "Object.onTitleChanged threw: <root>/shell.ts:10:53: boom"
+        "Object.onTitleChanged threw: <root>/shell.ts:11:53: boom"
       ],
       "log": [
         "after the throw"
