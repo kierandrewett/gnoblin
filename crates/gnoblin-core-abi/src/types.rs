@@ -74,6 +74,9 @@ abi_callbacks! {
     /// One entry of an object-protocol catalog, from `catalog_each`: a class, then its members, class by class in id order.
     /// `entry` is valid until the callback returns. A nonzero return stops the walk and is returned by `catalog_each`.
     pub type GnoblinCatalogFn = unsafe extern "C" fn(user: *mut c_void, entry: *const GnoblinCatalogEntry) -> i32;
+    /// A read of a property, told to the tracker a library holds (`GnoblinObjectApi::track`): the object, its class and the member that
+    /// was read. It is the library's own code calling the tracker's, on the shell thread, inside the `get` that made the read.
+    pub type GnoblinTrackFn = unsafe extern "C" fn(user: *mut c_void, obj: GnoblinObj, class: GnoblinClassId, member: GnoblinMemberId);
 }
 
 abi_consts! {
@@ -1154,6 +1157,12 @@ abi_structs! {
         pub implement: unsafe extern "C" fn(ctx: GnoblinCtx, class: GnoblinClassId, imp: *const GnoblinImpl, out: *mut GnoblinObj) -> i32,
         /// Writes the class of an object to `out`: the most derived one.
         pub class_of: unsafe extern "C" fn(ctx: GnoblinCtx, obj: GnoblinObj, out: *mut GnoblinClassId) -> i32,
+        /// Installs a tracker for this thread, or clears it when `cb` is null: from now on every `get` of this library on this thread calls
+        /// `cb(user, obj, class, member)` once the read succeeded, until the tracker is cleared. It is how a binding that computes a value
+        /// from properties of objects of several libraries learns what it depends on (the core runs the compute, installs a tracker on
+        /// each library it may read, and listens to what was read). `user` is borrowed: the caller keeps it alive until it clears the
+        /// tracker. A second tracker replaces the first. The tracker must not call into the library that called it.
+        pub track: unsafe extern "C" fn(ctx: GnoblinCtx, cb: Option<GnoblinTrackFn>, user: *mut c_void) -> i32,
     }
 
     /// The versioned function table. `size` is the byte size of the table the core filled in; a field is present when

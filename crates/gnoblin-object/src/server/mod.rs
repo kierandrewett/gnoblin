@@ -34,7 +34,9 @@ pub use registry::{Builder, ClassBuilder, Inits};
 pub use shell::ShellImpl;
 
 use crate::catalog::CatalogDef;
+use crate::client::Api;
 use crate::error::{Fail, Res};
+use crate::value::{ClassId, MemberId, Obj};
 use object::CtxState;
 use registry::ClassImpl;
 
@@ -49,7 +51,12 @@ pub struct Hooks {
     pub set_last: fn(&Fail),
     /// Write a line to the generation's log (`LOG_*` level).
     pub log: fn(GnoblinCtx, u32, &str),
+    /// The object protocol of another namespace's library, for a class whose base class is that library's.
+    pub foreign: fn(GnoblinCtx, &str) -> Res<Api>,
 }
+
+/// What a library tells of every property read while a tracker is installed: the object, its class and the member.
+pub type Tracker = Box<dyn Fn(Obj, ClassId, MemberId)>;
 
 /// A library's objects, on the shell thread.
 pub struct Library {
@@ -60,6 +67,7 @@ pub struct Library {
     ctxs: RefCell<HashMap<GnoblinCtx, Rc<CtxState>>>,
     retired: RefCell<HashSet<GnoblinCtx>>,
     next_reg: Cell<u64>,
+    tracker: RefCell<Option<Tracker>>,
 }
 
 impl Library {
@@ -77,6 +85,7 @@ impl Library {
             ctxs: RefCell::new(HashMap::new()),
             retired: RefCell::new(HashSet::new()),
             next_reg: Cell::new(0),
+            tracker: RefCell::new(None),
         }
     }
 
@@ -104,7 +113,7 @@ impl Library {
             if class.kind == abi::CLASS_INTERFACE {
                 continue;
             }
-            for (member_index, member) in class.members.iter().enumerate() {
+            for (member_index, member) in class.members.iter().enumerate().skip(class.foreign_members) {
                 if member.kind == abi::MEMBER_SIGNAL || member.flags & abi::MEMBER_INERT != 0 || !member.abi.is_empty()
                 {
                     continue;
@@ -169,6 +178,18 @@ impl Library {
             .borrow()
             .get(&ctx)
             .map_or(0, |state| state.objects.borrow().len())
+    }
+
+    /// Installs the tracker that is told of every property read, or clears it. The tracker must not call into the library.
+    pub fn set_tracker(&self, tracker: Option<Tracker>) {
+        *self.tracker.borrow_mut() = tracker;
+    }
+
+    /// Tells the tracker a property of `obj` was read.
+    pub(crate) fn tell_tracker(&self, obj: Obj, class: ClassId, member: MemberId) {
+        if let Some(tracker) = self.tracker.borrow().as_ref() {
+            tracker(obj, class, member);
+        }
     }
 
     fn next_reg(&self) -> u64 {

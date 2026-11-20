@@ -48,6 +48,7 @@ pub const fn api_table<P: Provider>(hash: u64) -> GnoblinObjectApi {
         unlisten: unlisten::<P>,
         implement: implement::<P>,
         class_of: class_of::<P>,
+        track: track::<P>,
     }
 }
 
@@ -458,5 +459,19 @@ unsafe extern "C" fn class_of<P: Provider>(ctx: GnoblinCtx, obj: GnoblinObj, out
         let class = lib.class_of(ctx, obj)?;
         // SAFETY: the table's contract passes `out` as writable.
         unsafe { put(out, class) }
+    })
+}
+
+unsafe extern "C" fn track<P: Provider>(_ctx: GnoblinCtx, cb: Option<abi::GnoblinTrackFn>, user: *mut c_void) -> i32 {
+    run::<P>("track", |lib| {
+        let user = user as usize;
+        let tracker = cb.map(|cb| -> crate::server::Tracker {
+            Box::new(move |obj, class, member| {
+                // SAFETY: `cb` and `user` are the tracker's, which its owner keeps alive until it clears the tracker.
+                unsafe { cb(user as *mut c_void, obj, class, member) }
+            })
+        });
+        lib.set_tracker(tracker);
+        Ok(())
     })
 }

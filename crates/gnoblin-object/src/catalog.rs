@@ -106,6 +106,9 @@ pub struct ClassDef {
     pub flags: u32,
     /// The base class's name, or empty. A name with a dot is another namespace's class.
     pub base: &'static str,
+    /// How many of the first members belong to a base class of another namespace: that library serves them, with the ids they have
+    /// there, and an object of this class forwards them to its base object. Zero when the base is in this namespace or there is none.
+    pub foreign_members: usize,
     /// The class's members, a base class's first.
     pub members: &'static [MemberDef],
 }
@@ -174,5 +177,12 @@ impl ClassDef {
     /// The properties, in order: the fields of a record.
     pub fn properties(&self) -> impl Iterator<Item = &'static MemberDef> {
         self.members.iter().filter(|member| member.kind == abi::MEMBER_PROPERTY)
+    }
+}
+
+impl ClassDef {
+    /// The namespace and the name of the base class when it is another namespace's.
+    pub fn foreign_base(&self) -> Option<(&'static str, &'static str)> {
+        self.base.rsplit_once('.')
     }
 }

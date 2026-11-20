@@ -25,6 +25,9 @@ pub(crate) struct Entry {
     pub(crate) children: Vec<Obj>,
     /// The class is retained (it stays until `destroy`) or a service (one per generation).
     pub(crate) pinned: bool,
+    /// The namespace and the object of the base class when another library serves it: this object forwards those members to it
+    /// and releases it when it ends.
+    pub(crate) base: Option<(&'static str, Obj)>,
 }
 
 struct Slot {
@@ -194,6 +197,8 @@ pub(crate) struct CtxState {
     pub(crate) scheduled: Cell<bool>,
     /// The singleton object of each service class.
     pub(crate) services: RefCell<HashMap<ClassId, Obj>>,
+    /// The listeners registered on a base object of another library: our registration, the namespace and its registration there.
+    pub(crate) forwarded: RefCell<HashMap<u64, (&'static str, u64)>>,
 }
 
 impl CtxState {
@@ -205,6 +210,7 @@ impl CtxState {
             queue: RefCell::new(Vec::new()),
             scheduled: Cell::new(false),
             services: RefCell::new(HashMap::new()),
+            forwarded: RefCell::new(HashMap::new()),
         }
     }
 }

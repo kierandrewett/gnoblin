@@ -511,3 +511,50 @@ impl Drop for Object {
         let _ = self.api.release(self.obj);
     }
 }
+
+/// What a tracker does with a read.
+type Observe = Box<dyn FnMut(Obj, ClassId, MemberId)>;
+
+/// A tracker installed on a library: it is told every property read of that library on this thread until the guard is dropped.
+pub struct TrackerGuard {
+    api: Api,
+    user: *mut RefCell<Observe>,
+}
+
+impl Api {
+    /// Installs `observe` as this library's tracker: it is called with the object, its class and the member of every property read
+    /// through this table until the returned guard is dropped. A binding that computes a value from properties of several libraries
+    /// installs one on each, runs the compute, and listens to what was read. `observe` must not call into the library it tracks.
+    ///
+    /// # Errors
+    ///
+    /// The library refuses the tracker.
+    pub fn track(&self, observe: impl FnMut(Obj, ClassId, MemberId) + 'static) -> Res<TrackerGuard> {
+        unsafe extern "C" fn tell(user: *mut c_void, obj: Obj, class: ClassId, member: MemberId) {
+            // SAFETY: `user` is the `RefCell` of the guard, which clears the tracker before it frees it.
+            let observe = unsafe { &*user.cast::<RefCell<Observe>>() };
+            if let Ok(mut observe) = observe.try_borrow_mut() {
+                observe(obj, class, member);
+            }
+        }
+        let user = Box::into_raw(Box::new(RefCell::new(Box::new(observe) as Observe)));
+        // SAFETY: `tell` and `user` stay valid until the guard clears the tracker.
+        let code = unsafe { (self.raw.track)(self.ctx, Some(tell), user.cast()) };
+        if code != abi::E_OK {
+            // SAFETY: the library did not keep `user`.
+            drop(unsafe { Box::from_raw(user) });
+            self.check(code)?;
+        }
+        Ok(TrackerGuard { api: *self, user })
+    }
+}
+
+impl Drop for TrackerGuard {
+    fn drop(&mut self) {
+        // SAFETY: clearing the tracker first means nothing can call `user` after it is freed.
+        unsafe {
+            (self.api.raw.track)(self.api.ctx, None, core::ptr::null_mut());
+            drop(Box::from_raw(self.user));
+        }
+    }
+}

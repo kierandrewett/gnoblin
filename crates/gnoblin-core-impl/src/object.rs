@@ -42,7 +42,15 @@ const HOOKS: Hooks = Hooks {
     schedule,
     set_last,
     log,
+    foreign,
 };
+
+/// The core's classes extend no other library's.
+fn foreign(_ctx: GnoblinCtx, namespace: &str) -> Res<gnoblin_object::client::Api> {
+    Err(Fail::no_such(format!(
+        "libgnoblin-core extends no class of `{namespace}`"
+    )))
+}
 
 /// The context travels as the `user` of the hooks the registry calls back.
 fn user_of(ctx: GnoblinCtx) -> *mut c_void {

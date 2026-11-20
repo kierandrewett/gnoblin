@@ -48,7 +48,28 @@ const HOOKS: Hooks = Hooks {
     schedule,
     set_last,
     log,
+    foreign,
 };
+
+/// The object protocol of the core, for a class of `gnoblin.std` whose base class is one of `gnoblin.model`: the library is a guest of
+/// the core and reaches it through the table the shell's generation holds.
+fn foreign(ctx: GnoblinCtx, namespace: &str) -> Res<gnoblin_object::client::Api> {
+    let g = gnoblin_core::private::gnoblin_for(ctx).map_err(core_fail)?;
+    let table = gnoblin_core::private::api_of(&g);
+    let mut raw: *const GnoblinObjectApi = core::ptr::null();
+    // SAFETY: `raw` is a live local the core writes, and `namespace` is borrowed for the call.
+    let code = unsafe { (table.object_api)(ctx, abi::GnoblinStr::borrowed(namespace), &raw mut raw) };
+    if code != abi::E_OK {
+        return Err(Fail::new(code, gnoblin_core::private::last_error()));
+    }
+    // SAFETY: the table the core returns is static.
+    let raw = unsafe { raw.as_ref() }.ok_or_else(|| Fail::err("the core gave no object table"))?;
+    Ok(gnoblin_object::client::Api::new(
+        raw,
+        ctx,
+        gnoblin_core::private::last_error,
+    ))
+}
 
 fn core_fail(error: gnoblin_core::CoreError) -> Fail {
     Fail::new(error.kind().code(), error.to_string())

@@ -89,7 +89,7 @@ fn flatten<'a>(by_name: &BTreeMap<&str, &'a ObjectType>, object: &'a ObjectType)
 /// The `TypeDef` statics of a catalog, one per distinct type.
 struct Types<'a> {
     catalog: &'a Catalog,
-    namespace: &'a Namespace,
+    namespace: Namespace,
     statics: Vec<String>,
     index: BTreeMap<String, usize>,
 }
@@ -97,7 +97,7 @@ struct Types<'a> {
 impl Types<'_> {
     /// The index of the static for `ty`, writing it (and its element type) if it is new.
     fn of(&mut self, ty: &Type, secret: bool) -> usize {
-        let key = format!("{ty}{}", if secret { "!secret" } else { "" });
+        let key = format!("{ty}{}@{}", if secret { "!secret" } else { "" }, self.namespace);
         if let Some(index) = self.index.get(&key) {
             return *index;
         }
@@ -273,7 +273,7 @@ fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String, String> {
     }
     let mut types = Types {
         catalog,
-        namespace,
+        namespace: namespace.clone(),
         statics: Vec::new(),
         index: BTreeMap::new(),
     };
@@ -285,14 +285,39 @@ fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String, String> {
             ObjectKind::Interface => "CLASS_INTERFACE",
             ObjectKind::Service => "CLASS_SERVICE",
         };
-        let members: Vec<String> = flatten(&objects, object)
-            .iter()
-            .map(|member| member_source(&mut types, member))
-            .collect();
+        let mut foreign = Vec::new();
+        let foreign_base = object
+            .base
+            .as_deref()
+            .and_then(|base| base.rsplit_once('.'))
+            .and_then(|(home, bare)| Namespace::parse(home).ok().map(|home| (home, bare)));
+        if let Some((home, bare)) = foreign_base {
+            // The base class belongs to another library: its members come first, with the ids they have there, and the derived
+            // class forwards them. Their types are the base namespace's.
+            let by_name: BTreeMap<&str, &ObjectType> = catalog
+                .objects(&home)
+                .map(|candidate| (candidate.name.as_str(), candidate))
+                .collect();
+            if let Some(base) = by_name.get(bare) {
+                types.namespace = home.clone();
+                foreign = flatten(&by_name, base)
+                    .iter()
+                    .map(|member| member_source(&mut types, member))
+                    .collect();
+                types.namespace = namespace.clone();
+            }
+        }
+        let foreign_members = foreign.len();
+        let mut members = foreign;
+        members.extend(
+            flatten(&objects, object)
+                .iter()
+                .map(|member| member_source(&mut types, member)),
+        );
         classes.insert(
             (*name).to_owned(),
             format!(
-                "ClassDef {{ name: {name:?}, kind: abi::{kind}, flags: {}, base: {:?}, members: &[\n        {}\n    ] }}",
+                "ClassDef {{ name: {name:?}, kind: abi::{kind}, flags: {}, base: {:?}, foreign_members: {foreign_members}, members: &[\n        {}\n    ] }}",
                 if object.retained { "abi::CLASS_FLAG_RETAINED" } else { "0" },
                 object.base.as_deref().unwrap_or(""),
                 members.join(",\n        ")
@@ -313,7 +338,7 @@ fn render(catalog: &Catalog, namespace: &Namespace) -> Result<String, String> {
         classes.insert(
             (*name).to_owned(),
             format!(
-                "ClassDef {{ name: {name:?}, kind: abi::CLASS_ENUM, flags: 0, base: \"\", members: &[\n        {}\n    ] }}",
+                "ClassDef {{ name: {name:?}, kind: abi::CLASS_ENUM, flags: 0, base: \"\", foreign_members: 0, members: &[\n        {}\n    ] }}",
                 members.join(",\n        ")
             ),
         );

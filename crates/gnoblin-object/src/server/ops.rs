@@ -12,6 +12,7 @@ use super::object::{CtxState, Entry, Listener, Pending, State};
 use super::registry::Inits;
 use super::shell::ShellImpl;
 use crate::catalog::{ClassDef, MemberDef};
+use crate::client::Api;
 use crate::error::{Fail, Res};
 use crate::value::{Callable, ClassId, MemberId, Obj, Timing, Val};
 use crate::wire::RawClosure;
@@ -104,6 +105,10 @@ impl Library {
             self.apply_inits(&st, obj, class, inits)?;
             return self.add_ref(&st, obj).map(|()| obj);
         }
+        // The members of a base class that another library serves go to that library, which makes the base object.
+        let (foreign_inits, inits): (Vec<_>, Vec<_>) = inits
+            .into_iter()
+            .partition(|(member, _)| (*member as usize) <= def.foreign_members);
         let imp = &self.classes[class as usize - 1];
         let ctor = imp
             .ctor
@@ -117,6 +122,14 @@ impl Library {
             adopt.push(value.clone());
             checked.push((member, property.name, value));
         }
+        let base = match def.foreign_base() {
+            Some((home, bare)) if def.foreign_members > 0 => {
+                let api = (self.hooks.foreign)(ctx, home)?;
+                let base_class = api.class(bare)?;
+                Some((home, api.create(base_class, &foreign_inits)?))
+            }
+            _ => None,
+        };
         let obj = st.objects.borrow_mut().insert(Entry {
             class,
             state: Rc::new(RefCell::new(Box::new(()))),
@@ -125,6 +138,7 @@ impl Library {
             parent: None,
             children: Vec::new(),
             pinned: service || def.flags & abi::CLASS_FLAG_RETAINED != 0,
+            base,
         });
         let mut cx = Cx::new(self, &st, obj, class);
         let mut inits = Inits::new(checked);
@@ -147,6 +161,7 @@ impl Library {
             }
         }
         adopt.iter().for_each(Val::adopt_closures);
+        foreign_inits.iter().for_each(|(_, value)| value.adopt_closures());
         if let Some(entry) = st.objects.borrow_mut().get_mut(obj) {
             entry.refs = 1;
         }
@@ -256,8 +271,25 @@ impl Library {
                 }
             }
         }
+        let bases: Vec<(&'static str, Obj)> = removed.iter().filter_map(|entry| entry.base).collect();
         drop(dead_listeners);
         drop(removed);
+        for (home, base) in bases {
+            if let Ok(api) = (self.hooks.foreign)(st.ctx, home) {
+                let _ = api.release(base);
+            }
+        }
+    }
+
+    /// The base object of `obj` and the library that serves it, for a member the base class owns.
+    fn forward(&self, st: &CtxState, ctx: GnoblinCtx, obj: Obj) -> Res<(Api, Obj)> {
+        let (home, base) = st
+            .objects
+            .borrow()
+            .get(obj)
+            .and_then(|entry| entry.base)
+            .ok_or_else(|| Fail::stale("the object has no base object"))?;
+        Ok(((self.hooks.foreign)(ctx, home)?, base))
     }
 
     // ---- properties ------------------------------------------------------------------------------------------------------
@@ -266,7 +298,14 @@ impl Library {
     pub fn get(&self, ctx: GnoblinCtx, obj: Obj, member: MemberId) -> Res<Val> {
         let st = self.state(ctx, false)?;
         let target = self.target(&st, obj)?;
+        let def = self.class_def(target.class)?;
         let property = self.member_def(target.class, member, abi::MEMBER_PROPERTY)?;
+        if member as usize <= def.foreign_members {
+            let (api, base) = self.forward(&st, ctx, obj)?;
+            let value = api.get(base, member)?;
+            self.tell_tracker(obj, target.class, member);
+            return Ok(value);
+        }
         let imp = &self.classes[target.class as usize - 1];
         let read = imp.get[member as usize - 1].as_ref().ok_or_else(|| {
             Fail::unsupported(format!("`{}` is in the catalog and not implemented yet", property.name))
@@ -276,7 +315,9 @@ impl Library {
             .try_borrow_mut()
             .map_err(|_| Fail::new(abi::E_BUSY, "the object is in use by a call that is running"))?;
         let mut cx = Cx::new(self, &st, obj, target.class);
-        guarded(property.name, || read(&mut **guard, &mut cx))
+        let value = guarded(property.name, || read(&mut **guard, &mut cx))?;
+        self.tell_tracker(obj, target.class, member);
+        Ok(value)
     }
 
     /// Sets a property.
@@ -337,6 +378,13 @@ impl Library {
     ) -> Res<()> {
         let def = self.class_def(class)?;
         let property = self.member_def(class, member, abi::MEMBER_PROPERTY)?;
+        if member as usize <= def.foreign_members {
+            let (api, base) = self.forward(st, st.ctx, obj)?;
+            return match timing {
+                Some(timing) => api.set_timed(base, member, &value, timing),
+                None => api.set(base, member, &value),
+            };
+        }
         if property.flags & abi::MEMBER_READONLY != 0 {
             return Err(Fail::type_error(format!(
                 "`{}.{}` is read-only",
@@ -380,6 +428,10 @@ impl Library {
             )));
         }
         let def = self.class_def(target.class)?;
+        if member as usize <= def.foreign_members {
+            let (api, base) = self.forward(&st, ctx, obj)?;
+            return api.call(base, member, &args);
+        }
         let args = self.check_args(&st, def.name, method, args)?;
         let imp = &self.classes[target.class as usize - 1];
         let run = imp.call[member as usize - 1].as_ref().ok_or_else(|| {
@@ -451,6 +503,19 @@ impl Library {
                 kind_word(found.kind)
             )));
         }
+        if member as usize <= def.foreign_members
+            && let Some((home, _)) = def.foreign_base()
+        {
+            // A member of the base class: the base object's library hears it, and what it tells goes to the shell's closure.
+            let (api, base) = self.forward(&st, ctx, obj)?;
+            let closure = Rc::new(RawClosure::pending(invoke, user, drop_user));
+            let run = Rc::clone(&closure);
+            let foreign_reg = api.listen(base, member, move |member, args| run.call(member, args))?;
+            closure.adopt();
+            let reg = self.next_reg();
+            st.forwarded.borrow_mut().insert(reg, (home, foreign_reg));
+            return Ok(reg);
+        }
         // Nothing can fail from here: the closure takes `user`.
         let closure: Rc<dyn Callable> = Rc::new(RawClosure::owned(invoke, user, drop_user));
         let reg = self.next_reg();
@@ -469,6 +534,10 @@ impl Library {
     /// Ends a listener.
     pub fn unlisten(&self, ctx: GnoblinCtx, reg: u64) -> Res<()> {
         let st = self.state(ctx, false)?;
+        let forwarded = st.forwarded.borrow_mut().remove(&reg);
+        if let Some((home, foreign_reg)) = forwarded {
+            return (self.hooks.foreign)(ctx, home)?.unlisten(foreign_reg);
+        }
         let removed = st.listeners.borrow_mut().remove(reg);
         if removed.is_none() {
             return Err(Fail::stale("the listener is gone, or never was"));
@@ -524,6 +593,7 @@ impl Library {
             parent: None,
             children: Vec::new(),
             pinned: false,
+            base: None,
         });
         Ok(obj)
     }

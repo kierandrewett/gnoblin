@@ -176,6 +176,7 @@ impl<'a> Cx<'a> {
             parent: None,
             children: Vec::new(),
             pinned: def.flags & abi::CLASS_FLAG_RETAINED != 0,
+            base: None,
         };
         Ok(self.st.objects.borrow_mut().insert(entry))
     }

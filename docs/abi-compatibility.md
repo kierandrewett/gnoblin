@@ -67,11 +67,21 @@ The rules a shell and a library keep, which the table's documentation states in 
   next turn of the dispatch, and the changes of one turn to a property are told once. A `listen` is for a signal or a property.
 - A closure (`VALUE_CLOSURE`) or an implemented interface (`implement`) is adopted only when the call that carried it returns `E_OK`; after
   any other result the shell still owns its `user`. When the library lets go, `drop_user` runs once, while the generation's code is mapped.
-- `catalog_hash` of the table is the hash of the namespace's catalog, so a generated SDK built from another catalog is refused with both
-  hashes named. The `gnoblin` namespace's hash (`gnoblin_catalog_hash`) does not include a namespace a library serves.
+- A class may extend a class another library serves (a std class whose base is a `gnoblin.model` class). The derived class's catalog lists
+  the base's members first, with the ids they have there, and the derived library makes a base object in the other library when it makes
+  its own, forwards those members to it (`get`, `set`, `call`, `listen`) and releases it with its own. A handle that a forwarded member
+  returns belongs to the base library's table, and a client reads it through that table.
+- `track(ctx, cb, user)` installs a tracker on a library for the thread, or clears it with a null `cb`. The library calls it with the
+  object, class and member of every property read that succeeded, from inside the `get`, so a binding that computes a value from
+  properties of objects of several libraries learns what it depends on: it installs a tracker on each library, runs the compute and
+  listens to what was read. The tracker must not call back into the library that told it.
+- `catalog_hash` of the table is the hash of the catalog the library was built with. An SDK built from another catalog still works: it
+  looks up by name what it uses and refuses only a name the library does not have. The `gnoblin` namespace's hash (`gnoblin_catalog_hash`)
+  does not include a namespace a library serves.
 
 `gnoblin-object` is the one implementation of both ends. `cargo xtask gen-sdks --check` proves the catalogs of the two libraries and their
-locks, and the golden shells prove the table did not move what they were built against: B1 appended `object_api` and no function was moved.
+locks, and the golden shells prove the table did not move what they were built against: B1 appended `object_api`, B1.1 appended `track` to
+`GnoblinObjectApi`, and no function was moved.
 
 ## What a shell sees
 

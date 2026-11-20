@@ -329,6 +329,17 @@ pub struct RawClosure {
 }
 
 impl RawClosure {
+    /// A closure the library will own once the call that carries it succeeds: until [`Callable::adopt`], dropping it frees nothing.
+    pub(crate) fn pending(invoke: GnoblinInvokeFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> RawClosure {
+        RawClosure {
+            invoke,
+            user,
+            drop_user,
+            own: true,
+            adopted: Cell::new(false),
+        }
+    }
+
     /// A listener the shell registered: the library owns `user` from the start and frees it when the closure is dropped.
     pub(crate) fn owned(invoke: GnoblinInvokeFn, user: *mut c_void, drop_user: Option<GnoblinDropFn>) -> RawClosure {
         RawClosure {
