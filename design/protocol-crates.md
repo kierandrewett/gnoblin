@@ -6,7 +6,7 @@ Status: design, lane ProtoCrates. Phase 1 (this note) is decided. Phase 2, the e
 ## Decision
 
 **One crate per protocol.** Every module in `crates/gnoblin-wayland/src/protocols/` that serves a Wayland protocol
-becomes its own crate, named `gnoblin-proto-<protocol>`. Code that two protocols share goes into a small shared crate
+becomes its own crate, named `gnoblin-wayland-<protocol>`. Code that two protocols share goes into a small shared crate
 that both depend on. `gnoblin-wayland` keeps only compositor glue: the state, the server, the input, frame and output
 machinery, and the handlers that forward into the protocol crates.
 
@@ -16,7 +16,7 @@ The owner chose this granularity over one crate per family. The consequences are
 The dependency direction is fixed:
 
 ```text
-gnoblin-wayland -> gnoblin-protocols -> gnoblin-proto-<protocol> -> gnoblin-proto-<shared> -> gnoblin-proto-api
+gnoblin-wayland -> gnoblin-wayland-protocols -> gnoblin-wayland-<protocol> -> gnoblin-wayland-<shared> -> gnoblin-wayland-api
 ```
 
 Every protocol crate may also name the foundation crates, as `gnoblin-wayland` does today. No protocol crate names
@@ -26,9 +26,12 @@ implements those traits on its `State`.
 ## What is there today
 
 `protocols/` holds 56 modules and 13,934 lines, which is 61 per cent of the 22,960 lines in `gnoblin-wayland/src/`.
-Smithay serves most of the protocols. This crate serves the rest, and adds its own objects to some of Smithay's. The two
-Gnoblin-owned protocols, `gnoblin_session_host_v1` and `gnoblin_view_source_v1`, are generated from `protocols/*.xml` by
-`wire.rs`, which carries the crate's only `unsafe_code` allow.
+Smithay serves most of the protocols. This crate serves the rest, and adds its own objects to some of Smithay's.
+
+Two modules are not extracted. `gnoblin_session_host_v1` and `gnoblin_view_source_v1` (871 lines, with `wire.rs`, which
+carries the crate's only `unsafe_code` allow) are being deleted by lane ProtoRetire, by the owner's decision. They are
+not in the inventory, no crate is made for them, and this lane does not edit them or the parts of `access.rs`,
+`state.rs`, `server.rs` and `lib.rs` that name them. The root `protocols/gnoblin-blur-fade-v1.xml` was deleted (D24).
 
 Two facts decide the design.
 
@@ -47,133 +50,135 @@ that module defines on `State` itself. "Access" is the `access::Global` that gat
 entry, so every client that is not sandboxed sees it. `open` means the global is gated through the roster but
 advertised to every client that is not sandboxed. `shared` marks a crate that serves no protocol of its own.
 
-| Crate                                          | Module                                | Lines | Served by                 | Access                    | State f / m |
-| ---------------------------------------------- | ------------------------------------- | ----- | ------------------------- | ------------------------- | ----------- |
-| `gnoblin-proto-capture-shared`                 | `capture_dmabuf`                      | 370   | own code                  | shared                    | 2 / 10      |
-| `gnoblin-proto-capture-shared`                 | `capture_shared`                      | 1054  | own code                  | shared                    | 6 / 19      |
-| `gnoblin-proto-capture-shared`                 | `capture_views`                       | 215   | own code                  | shared                    | 2 / 7       |
-| `gnoblin-proto-ext-background-effect`          | `ext_background_effect_v1`            | 123   | Smithay + own objects     | BackgroundEffect (open)   | 2 / 1       |
-| `gnoblin-proto-ext-data-control`               | `ext_data_control_v1`                 | 35    | Smithay                   | DataControl               | 1 / 0       |
-| `gnoblin-proto-ext-foreign-toplevel`           | `ext_foreign_toplevel_list_v1`        | 57    | Smithay                   | ForeignToplevelList       | 1 / 0       |
-| `gnoblin-proto-ext-idle-notify`                | `ext_idle_notify_v1`                  | 355   | own code                  | open                      | 4 / 6       |
-| `gnoblin-proto-ext-image-capture-source`       | `ext_image_capture_source_v1`         | 72    | Smithay                   | ImageCopyCapture          | 1 / 1       |
-| `gnoblin-proto-ext-image-copy-capture`         | `ext_image_copy_capture_v1`           | 199   | Smithay                   | ImageCopyCapture          | 1 / 13      |
-| `gnoblin-proto-ext-session-lock`               | `ext_session_lock_v1`                 | 805   | Smithay                   | core                      | 7 / 31      |
-| `gnoblin-proto-foreign-toplevel-shared`        | `foreign_toplevel_shared`             | 254   | own code                  | shared                    | 5 / 5       |
-| `gnoblin-proto-image-copy-session`             | `image_copy_session`                  | 659   | Smithay + own objects     | shared                    | 1 / 5       |
-| `gnoblin-proto-layer-shell`                    | `zwlr_layer_shell_v1`                 | 972   | Smithay                   | LayerShell                | 8 / 22      |
-| `gnoblin-proto-session-host`                   | `gnoblin_session_host_v1`             | 774   | own code (generated wire) | SessionHost               | 8 / 10      |
-| `gnoblin-proto-view-source`                    | `gnoblin_view_source_v1`              | 97    | own code (generated wire) | ViewSource                | 3 / 0       |
-| `gnoblin-proto-wl-compositor`                  | `wl_compositor`                       | 165   | Smithay                   | core                      | 2 / 7       |
-| `gnoblin-proto-wl-data-device`                 | `wl_data_device_manager`              | 356   | Smithay                   | core                      | 6 / 6       |
-| `gnoblin-proto-wl-output`                      | `wl_output`                           | 23    | Smithay                   | core                      | 0 / 0       |
-| `gnoblin-proto-wl-seat`                        | `wl_seat`                             | 122   | Smithay                   | core                      | 1 / 1       |
-| `gnoblin-proto-wl-shm`                         | `wl_shm`                              | 28    | Smithay                   | core                      | 1 / 0       |
-| `gnoblin-proto-wlr-data-control`               | `zwlr_data_control_v1`                | 30    | Smithay                   | WlrDataControl            | 1 / 0       |
-| `gnoblin-proto-wlr-foreign-toplevel`           | `zwlr_foreign_toplevel_management_v1` | 391   | own code                  | ForeignToplevelManagement | 3 / 7       |
-| `gnoblin-proto-wlr-gamma-control`              | `zwlr_gamma_control_v1`               | 238   | own code                  | GammaControl              | 2 / 1       |
-| `gnoblin-proto-wlr-output-management`          | `zwlr_output_management_v1`           | 614   | own code                  | OutputManagement          | 2 / 3       |
-| `gnoblin-proto-wlr-output-power`               | `zwlr_output_power_management_v1`     | 170   | own code                  | OutputPower               | 2 / 1       |
-| `gnoblin-proto-wlr-screencopy`                 | `zwlr_screencopy_v1`                  | 397   | Smithay + own objects     | Screencopy                | 2 / 10      |
-| `gnoblin-proto-wp-alpha-modifier`              | `wp_alpha_modifier_v1`                | 38    | Smithay                   | core                      | 0 / 0       |
-| `gnoblin-proto-wp-content-type`                | `wp_content_type_v1`                  | 66    | Smithay                   | core                      | 0 / 1       |
-| `gnoblin-proto-wp-cursor-shape`                | `wp_cursor_shape_v1`                  | 188   | Smithay                   | core                      | 7 / 4       |
-| `gnoblin-proto-wp-fifo`                        | `wp_fifo_v1`                          | 77    | Smithay                   | core                      | 1 / 0       |
-| `gnoblin-proto-wp-fractional-scale`            | `wp_fractional_scale_v1`              | 186   | Smithay + own objects     | core                      | 1 / 1       |
-| `gnoblin-proto-wp-presentation-time`           | `wp_presentation_time`                | 152   | Smithay                   | core                      | 2 / 3       |
-| `gnoblin-proto-wp-security-context`            | `wp_security_context_v1`              | 60    | Smithay                   | core                      | 1 / 0       |
-| `gnoblin-proto-wp-single-pixel-buffer`         | `wp_single_pixel_buffer_v1`           | 34    | Smithay                   | core                      | 0 / 0       |
-| `gnoblin-proto-wp-tearing-control`             | `wp_tearing_control_v1`               | 170   | own code                  | core                      | 1 / 1       |
-| `gnoblin-proto-wp-viewporter`                  | `wp_viewporter`                       | 316   | Smithay + own objects     | core                      | 0 / 0       |
-| `gnoblin-proto-xdg-activation`                 | `xdg_activation_v1`                   | 380   | Smithay                   | core                      | 6 / 6       |
-| `gnoblin-proto-xdg-decoration`                 | `zxdg_decoration_v1`                  | 227   | Smithay                   | core                      | 4 / 3       |
-| `gnoblin-proto-xdg-dialog`                     | `xdg_dialog_v1`                       | 48    | Smithay                   | core                      | 0 / 2       |
-| `gnoblin-proto-xdg-foreign`                    | `xdg_foreign`                         | 506   | Smithay + own objects     | core                      | 1 / 2       |
-| `gnoblin-proto-xdg-output`                     | `zxdg_output_v1`                      | 198   | Smithay + own objects     | core                      | 1 / 3       |
-| `gnoblin-proto-xdg-shell`                      | `xdg_shell`                           | 268   | Smithay                   | core                      | 3 / 19      |
-| `gnoblin-proto-xdg-system-bell`                | `xdg_system_bell_v1`                  | 46    | Smithay                   | core                      | 0 / 2       |
-| `gnoblin-proto-xdg-toplevel-icon`              | `xdg_toplevel_icon_v1`                | 48    | Smithay                   | core                      | 0 / 0       |
-| `gnoblin-proto-xdg-toplevel-tag`               | `xdg_toplevel_tag_v1`                 | 45    | Smithay                   | core                      | 0 / 0       |
-| `gnoblin-proto-zwp-idle-inhibit`               | `zwp_idle_inhibit_v1`                 | 40    | Smithay                   | core                      | 0 / 1       |
-| `gnoblin-proto-zwp-input-method`               | `zwp_input_method_v2`                 | 78    | Smithay                   | InputMethod (open)        | 1 / 2       |
-| `gnoblin-proto-zwp-keyboard-shortcuts-inhibit` | `zwp_keyboard_shortcuts_inhibit_v1`   | 105   | Smithay                   | core                      | 3 / 1       |
-| `gnoblin-proto-zwp-linux-dmabuf`               | `zwp_linux_dmabuf_v1`                 | 281   | Smithay                   | core                      | 4 / 2       |
-| `gnoblin-proto-zwp-pointer-constraints`        | `zwp_pointer_constraints_v1`          | 353   | Smithay                   | core                      | 6 / 5       |
-| `gnoblin-proto-zwp-pointer-gestures`           | `zwp_pointer_gestures_v1`             | 33    | Smithay                   | core                      | 0 / 0       |
-| `gnoblin-proto-zwp-primary-selection`          | `zwp_primary_selection_v1`            | 22    | Smithay                   | core                      | 1 / 0       |
-| `gnoblin-proto-zwp-relative-pointer`           | `zwp_relative_pointer_v1`             | 34    | Smithay                   | core                      | 0 / 0       |
-| `gnoblin-proto-zwp-tablet`                     | `zwp_tablet_v2`                       | 758   | Smithay + own objects     | core                      | 6 / 11      |
-| `gnoblin-proto-zwp-text-input`                 | `zwp_text_input_v3`                   | 295   | Smithay                   | core                      | 3 / 0       |
-| `gnoblin-proto-zwp-virtual-keyboard`           | `zwp_virtual_keyboard_v1`             | 307   | own code                  | VirtualKeyboard (open)    | 1 / 6       |
+| Crate                                                 | Module                                | Lines | Served by             | Access                    | State f / m |
+| ----------------------------------------------------- | ------------------------------------- | ----- | --------------------- | ------------------------- | ----------- |
+| `gnoblin-wayland-capture-shared`                      | `capture_dmabuf`                      | 370   | own code              | shared                    | 2 / 10      |
+| `gnoblin-wayland-capture-shared`                      | `capture_shared`                      | 1054  | own code              | shared                    | 6 / 19      |
+| `gnoblin-wayland-capture-shared`                      | `capture_views`                       | 215   | own code              | shared                    | 2 / 7       |
+| `gnoblin-wayland-ext-background-effect-v1`            | `ext_background_effect_v1`            | 123   | Smithay + own objects | BackgroundEffect (open)   | 2 / 1       |
+| `gnoblin-wayland-ext-data-control-v1`                 | `ext_data_control_v1`                 | 35    | Smithay               | DataControl               | 1 / 0       |
+| `gnoblin-wayland-ext-foreign-toplevel-list-v1`        | `ext_foreign_toplevel_list_v1`        | 57    | Smithay               | ForeignToplevelList       | 1 / 0       |
+| `gnoblin-wayland-ext-idle-notify-v1`                  | `ext_idle_notify_v1`                  | 355   | own code              | open                      | 4 / 6       |
+| `gnoblin-wayland-ext-image-capture-source-v1`         | `ext_image_capture_source_v1`         | 72    | Smithay               | ImageCopyCapture          | 1 / 1       |
+| `gnoblin-wayland-ext-image-copy-capture-v1`           | `ext_image_copy_capture_v1`           | 199   | Smithay               | ImageCopyCapture          | 1 / 13      |
+| `gnoblin-wayland-ext-session-lock-v1`                 | `ext_session_lock_v1`                 | 805   | Smithay               | core                      | 7 / 31      |
+| `gnoblin-wayland-foreign-toplevel-shared`             | `foreign_toplevel_shared`             | 254   | own code              | shared                    | 5 / 5       |
+| `gnoblin-wayland-image-copy-session`                  | `image_copy_session`                  | 659   | Smithay + own objects | shared                    | 1 / 5       |
+| `gnoblin-wayland-zwlr-layer-shell-v1`                 | `zwlr_layer_shell_v1`                 | 972   | Smithay               | LayerShell                | 8 / 22      |
+| `gnoblin-wayland-wl-compositor`                       | `wl_compositor`                       | 165   | Smithay               | core                      | 2 / 7       |
+| `gnoblin-wayland-wl-data-device-manager`              | `wl_data_device_manager`              | 356   | Smithay               | core                      | 6 / 6       |
+| `gnoblin-wayland-wl-output`                           | `wl_output`                           | 23    | Smithay               | core                      | 0 / 0       |
+| `gnoblin-wayland-wl-seat`                             | `wl_seat`                             | 122   | Smithay               | core                      | 1 / 1       |
+| `gnoblin-wayland-wl-shm`                              | `wl_shm`                              | 28    | Smithay               | core                      | 1 / 0       |
+| `gnoblin-wayland-zwlr-data-control-v1`                | `zwlr_data_control_v1`                | 30    | Smithay               | WlrDataControl            | 1 / 0       |
+| `gnoblin-wayland-zwlr-foreign-toplevel-management-v1` | `zwlr_foreign_toplevel_management_v1` | 391   | own code              | ForeignToplevelManagement | 3 / 7       |
+| `gnoblin-wayland-zwlr-gamma-control-v1`               | `zwlr_gamma_control_v1`               | 238   | own code              | GammaControl              | 2 / 1       |
+| `gnoblin-wayland-zwlr-output-management-v1`           | `zwlr_output_management_v1`           | 614   | own code              | OutputManagement          | 2 / 3       |
+| `gnoblin-wayland-zwlr-output-power-management-v1`     | `zwlr_output_power_management_v1`     | 170   | own code              | OutputPower               | 2 / 1       |
+| `gnoblin-wayland-zwlr-screencopy-v1`                  | `zwlr_screencopy_v1`                  | 397   | Smithay + own objects | Screencopy                | 2 / 10      |
+| `gnoblin-wayland-wp-alpha-modifier-v1`                | `wp_alpha_modifier_v1`                | 38    | Smithay               | core                      | 0 / 0       |
+| `gnoblin-wayland-wp-content-type-v1`                  | `wp_content_type_v1`                  | 66    | Smithay               | core                      | 0 / 1       |
+| `gnoblin-wayland-wp-cursor-shape-v1`                  | `wp_cursor_shape_v1`                  | 188   | Smithay               | core                      | 7 / 4       |
+| `gnoblin-wayland-wp-fifo-v1`                          | `wp_fifo_v1`                          | 77    | Smithay               | core                      | 1 / 0       |
+| `gnoblin-wayland-wp-fractional-scale-v1`              | `wp_fractional_scale_v1`              | 186   | Smithay + own objects | core                      | 1 / 1       |
+| `gnoblin-wayland-wp-presentation-time`                | `wp_presentation_time`                | 152   | Smithay               | core                      | 2 / 3       |
+| `gnoblin-wayland-wp-security-context-v1`              | `wp_security_context_v1`              | 60    | Smithay               | core                      | 1 / 0       |
+| `gnoblin-wayland-wp-single-pixel-buffer-v1`           | `wp_single_pixel_buffer_v1`           | 34    | Smithay               | core                      | 0 / 0       |
+| `gnoblin-wayland-wp-tearing-control-v1`               | `wp_tearing_control_v1`               | 170   | own code              | core                      | 1 / 1       |
+| `gnoblin-wayland-wp-viewporter`                       | `wp_viewporter`                       | 316   | Smithay + own objects | core                      | 0 / 0       |
+| `gnoblin-wayland-xdg-activation-v1`                   | `xdg_activation_v1`                   | 380   | Smithay               | core                      | 6 / 6       |
+| `gnoblin-wayland-zxdg-decoration-v1`                  | `zxdg_decoration_v1`                  | 227   | Smithay               | core                      | 4 / 3       |
+| `gnoblin-wayland-xdg-dialog-v1`                       | `xdg_dialog_v1`                       | 48    | Smithay               | core                      | 0 / 2       |
+| `gnoblin-wayland-xdg-foreign`                         | `xdg_foreign`                         | 506   | Smithay + own objects | core                      | 1 / 2       |
+| `gnoblin-wayland-zxdg-output-v1`                      | `zxdg_output_v1`                      | 198   | Smithay + own objects | core                      | 1 / 3       |
+| `gnoblin-wayland-xdg-shell`                           | `xdg_shell`                           | 268   | Smithay               | core                      | 3 / 19      |
+| `gnoblin-wayland-xdg-system-bell-v1`                  | `xdg_system_bell_v1`                  | 46    | Smithay               | core                      | 0 / 2       |
+| `gnoblin-wayland-xdg-toplevel-icon-v1`                | `xdg_toplevel_icon_v1`                | 48    | Smithay               | core                      | 0 / 0       |
+| `gnoblin-wayland-xdg-toplevel-tag-v1`                 | `xdg_toplevel_tag_v1`                 | 45    | Smithay               | core                      | 0 / 0       |
+| `gnoblin-wayland-zwp-idle-inhibit-v1`                 | `zwp_idle_inhibit_v1`                 | 40    | Smithay               | core                      | 0 / 1       |
+| `gnoblin-wayland-zwp-input-method-v2`                 | `zwp_input_method_v2`                 | 78    | Smithay               | InputMethod (open)        | 1 / 2       |
+| `gnoblin-wayland-zwp-keyboard-shortcuts-inhibit-v1`   | `zwp_keyboard_shortcuts_inhibit_v1`   | 105   | Smithay               | core                      | 3 / 1       |
+| `gnoblin-wayland-zwp-linux-dmabuf-v1`                 | `zwp_linux_dmabuf_v1`                 | 281   | Smithay               | core                      | 4 / 2       |
+| `gnoblin-wayland-zwp-pointer-constraints-v1`          | `zwp_pointer_constraints_v1`          | 353   | Smithay               | core                      | 6 / 5       |
+| `gnoblin-wayland-zwp-pointer-gestures-v1`             | `zwp_pointer_gestures_v1`             | 33    | Smithay               | core                      | 0 / 0       |
+| `gnoblin-wayland-zwp-primary-selection-v1`            | `zwp_primary_selection_v1`            | 22    | Smithay               | core                      | 1 / 0       |
+| `gnoblin-wayland-zwp-relative-pointer-v1`             | `zwp_relative_pointer_v1`             | 34    | Smithay               | core                      | 0 / 0       |
+| `gnoblin-wayland-zwp-tablet-v2`                       | `zwp_tablet_v2`                       | 758   | Smithay + own objects | core                      | 6 / 11      |
+| `gnoblin-wayland-zwp-text-input-v3`                   | `zwp_text_input_v3`                   | 295   | Smithay               | core                      | 3 / 0       |
+| `gnoblin-wayland-zwp-virtual-keyboard-v1`             | `zwp_virtual_keyboard_v1`             | 307   | own code              | VirtualKeyboard (open)    | 1 / 6       |
 
 `extension.rs` (499 lines) is not in the table. It is the seam through which a compat adapter registers a redirect. It
 serves no protocol, and it names `LockAuth`, `CursorSettings`, `TreeHooks` and `WindowRequest`, which are compositor
-types. It leaves `protocols/` and stays in `gnoblin-wayland` as `src/extension.rs`. `mod.rs` disappears, and `wire.rs`
-is split between the two crates it generates for.
+types. It leaves `protocols/` and stays in `gnoblin-wayland` as `src/extension.rs`. `mod.rs` disappears with the last
+extraction, and `wire.rs` goes with ProtoRetire's deletion.
 
-The inventory yields 54 crates: 51 protocol crates and 3 shared crates. The shared crates are the rows marked `shared`
+The inventory yields 52 crates: 49 protocol crates and 3 shared crates. The shared crates are the rows marked `shared`
 in the Access column. `capture_dmabuf.rs` and `capture_views.rs` are parts of the capture engine and fold into
-`gnoblin-proto-capture-shared`. The Gnoblin-owned protocols drop the doubled word in their names, and the layer shell is
-`gnoblin-proto-layer-shell`, as the owner named it.
+`gnoblin-wayland-capture-shared`.
 
 ### Naming rule
 
-The name is `gnoblin-proto-` plus the protocol's registry family and name, with the version suffix dropped. The family
-keeps its prefix: `wl`, `wp`, `xdg`, `ext`, `wlr`, `zwp`. The unstable `z` is dropped from `zwlr` and `zxdg`, so
-`wlr-foreign-toplevel` and `xdg-decoration`. It is kept for `zwp`, because `wp` is already a different family:
-`wp-viewporter` is stable and `zwp-pointer-constraints` is not. The table in `crates/protocols/protocols.toml` is the
-authority, and the rule only explains it.
+The owner fixed the names: `gnoblin-wayland-` plus the protocol's own name with underscores turned into hyphens,
+version suffix included when the name has one. The protocol's name is the interface or manager name that the module
+already carries, so the crate for `zwlr_layer_shell_v1` is `gnoblin-wayland-zwlr-layer-shell-v1`, for
+`ext_foreign_toplevel_list_v1` it is `gnoblin-wayland-ext-foreign-toplevel-list-v1`, and for `wp_viewporter` it is
+`gnoblin-wayland-wp-viewporter`. The api crate and the shared crates take the same prefix. The compositor crate stays
+`gnoblin-wayland`.
 
-`gnoblin-proto` already exists and is the IPC wire codec. The prefix makes the new crates look like its children, and
-they are not. `xtask deps` classifies by exact name, so `gnoblin-proto` stays foundation and `gnoblin-proto-*` is a tier
-of its own. Each new crate's description says so first.
+The prefix means `gnoblin-wayland-*` is a family of crates the compositor crate depends on, so a reader sees at once
+whose they are. `xtask deps` finds the tier through the table, not through the prefix, so `gnoblin-wayland` itself and
+any later crate that happens to share the prefix are not caught by accident.
 
 ## Layout
 
+The crates live in the top-level `protocols/` directory, which held only the Gnoblin-owned XML that is now deleted. One
+subdirectory per crate, named after the protocol without the prefix:
+
 ```text
-crates/protocols/
-  protocols.toml                      the table: one row per crate
-  gnoblin-proto-api/                  the seam: traits and types every protocol crate may use
-  gnoblin-proto-testkit/              dev-only: the real-client session harness
-  gnoblin-protocols/                  the aggregate: re-exports each crate, owns the globals table
-  gnoblin-proto-capture-shared/       the shared crates
-  gnoblin-proto-foreign-toplevel-shared/
-  gnoblin-proto-image-copy-session/
-  gnoblin-proto-layer-shell/          one directory per protocol crate
+protocols/
+  zwlr-layer-shell-v1/               gnoblin-wayland-zwlr-layer-shell-v1
+  ext-foreign-toplevel-list-v1/      gnoblin-wayland-ext-foreign-toplevel-list-v1
+  wp-viewporter/                     gnoblin-wayland-wp-viewporter
+  capture-shared/                    gnoblin-wayland-capture-shared (shared crates)
+  foreign-toplevel-shared/
+  image-copy-session/
+  api/                               gnoblin-wayland-api: the seam every protocol crate may use
+  all/                               gnoblin-wayland-protocols: the aggregate, owns the globals table
+  testkit/                           gnoblin-wayland-testkit: dev-only real-client harness
   ...
+xtask/protocols.toml                 the table: one row per crate
 ```
 
-`crates/protocols/` follows `crates/compat/`, which shows the tooling already handles one directory of related crates.
-The root `Cargo.toml` lists these members by glob (`crates/protocols/*`), so a new protocol does not touch it.
-`gnoblin-wayland` names one dependency, `gnoblin-protocols`, instead of 54.
+The root `Cargo.toml` lists these members by glob (`protocols/*`), so a new protocol does not touch it. The table sits
+in `xtask/` next to the other reviewed lists (`layout-allow.toml`, `dupes-allow.toml`) so that the glob matches only
+directories. `gnoblin-wayland` names one dependency, `gnoblin-wayland-protocols`, instead of 52.
 
 ### The table and the generator
 
-`crates/protocols/protocols.toml` is the only list. One row per crate:
+`xtask/protocols.toml` is the only list. One row per crate:
 
 ```toml
 [[crate]]
-name = "wp-viewporter"                # gnoblin-proto-wp-viewporter
+name = "wp-viewporter"                # gnoblin-wayland-wp-viewporter
 module = "wp_viewporter"              # the old module, for the migration record
 interfaces = [["wp_viewporter", 1]]   # advertised interface and its maximum version
 serves = "smithay+own"                # smithay | own | smithay+own | shared
 access = "core"                       # core | open | an access::Global variant
 needs = []                            # shared crates this one depends on
 deps = ["smithay"]                    # foundation and external crates, by workspace name
-unsafe = false                        # true only for the two generated-wire crates
 ```
 
 `cargo xtask protocol-crates` reads the table and writes:
 
 - each crate's `Cargo.toml`, which carries nothing the row does not;
-- `gnoblin-protocols/Cargo.toml`;
-- `gnoblin-protocols/src/lib.rs`: `pub use gnoblin_proto_x as x;` per crate, and the `ALL` table.
+- `gnoblin-wayland-protocols/Cargo.toml`;
+- `gnoblin-wayland-protocols/src/lib.rs`: `pub use gnoblin_proto_x as x;` per crate, and the `ALL` table.
 
 With `--check` it fails when a crate directory has no row, a row has no directory, or a generated file differs. It
 joins the gates that run next to `gen-sdks --check`. The sources of each crate are written by hand. Only manifests and
 the aggregate are generated, which is where the churn would otherwise be.
 
-## The seam: `gnoblin-proto-api`
+## The seam: `gnoblin-wayland-api`
 
 The api crate holds what two or more protocol crates need from the compositor, and the types the compositor already
 shares with them. A need only one protocol has lives in that protocol's own host trait
@@ -197,7 +202,7 @@ The shared host traits start from the census, most shared first:
 | `SeatHost`   | `set_keyboard_focus`, `clear_pointer_focus`, `focused_window_surface`, `pointer_position`   | about 7 modules  |
 | `LockHost`   | `lock_capture`, `lock_is_held`, `capture_allowed`                                           | about 6 modules  |
 
-These are a first cut. Phase 2 may split a trait when its users diverge. `gnoblin-proto-api` depends on Smithay (the
+These are a first cut. Phase 2 may split a trait when its users diverge. `gnoblin-wayland-api` depends on Smithay (the
 traits mention `WlSurface` and `DisplayHandle`), on the foundation crates and on `gnoblin-log`, and on no other
 workspace crate.
 
@@ -206,7 +211,7 @@ workspace crate.
 Each protocol crate states what it needs in one trait, `Host`, which refines the shared traits it uses:
 
 ```rust
-// crates/protocols/gnoblin-proto-zwp-idle-inhibit/src/lib.rs
+// protocols/zwp-idle-inhibit-v1/src/lib.rs
 pub trait Host: 'static {
     /// Records or clears an inhibitor for a surface.
     fn set_idle_inhibited(&mut self, surface: &WlSurface, inhibited: bool);
@@ -278,7 +283,7 @@ pub fn register<H: Host>(registry: &mut Registry<'_, H>) -> State { .. }
 struct, which `State` stores in its typed field. `State::new` calls the registers in the order it calls today's
 `global()` functions, so global numbering does not change.
 
-`gnoblin-protocols` collects the constants:
+`gnoblin-wayland-protocols` collects the constants:
 
 ```rust
 pub const ALL: &[&ProtocolInfo] = &[&gnoblin_proto_wp_viewporter::PROTOCOL, ..];
@@ -301,7 +306,7 @@ loads advertises the same globals. `scripts/wlcs.sh --gate` is the check, run on
 ## Privilege policy
 
 The roster in `access` is a security decision, so it stays reviewed in one place. `Global` and `decide` move to
-`gnoblin-proto-api` with their unit tests, and `tests/access.rs`, which drives sessions, stays in `gnoblin-wayland`.
+`gnoblin-wayland-api` with their unit tests, and `tests/access.rs`, which drives sessions, stays in `gnoblin-wayland`.
 
 A new privileged protocol adds one `Global` variant in the api crate and names it in its own `PROTOCOL` constant. The
 default stays the safe one: a privileged variant is hidden from applications until someone says otherwise. An open
@@ -323,47 +328,47 @@ copies never meet. `xtask deps` already exempts development edges from `engine-i
 same.
 
 The session harness (`tests/stock`, `tests/owned`, `tests/session` and the helpers at the top of `tests/protocols.rs`)
-is shared today by `#[path]` modules. It moves into one dev-only crate, `gnoblin-proto-testkit`, so each protocol crate
+is shared today by `#[path]` modules. It moves into one dev-only crate, `gnoblin-wayland-testkit`, so each protocol crate
 imports it and none copies it. A test moves with its protocol when the protocol's name is in its file or test name and
 it needs nothing from another protocol. The rest stays. To limit link time, a crate has one integration-test binary,
 `tests/real.rs`, with submodules.
 
 ## Gates
 
-`xtask deps` gains one tier, `PROTOCOL`, defined as the crates in `protocols.toml`.
+`xtask deps` gains one tier, `PROTOCOL`, defined as the crates in `xtask/protocols.toml`.
 
 | Rule                 | Statement                                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `protocol-layering`  | a protocol crate depends on `gnoblin-proto-api`, the shared crates its row `needs`, foundation crates, the engine hubs and external crates, and nothing else         |
+| `protocol-layering`  | a protocol crate depends on `gnoblin-wayland-api`, the shared crates its row `needs`, foundation crates, the engine hubs and external crates, and nothing else       |
 | `protocol-no-engine` | no protocol crate depends on `gnoblin-wayland`, `gnoblin-backend`, another engine crate, or a protocol crate that its row does not list; dev-dependencies are exempt |
 | `protocol-root`      | only `gnoblin-wayland` and the aggregate depend on a protocol crate as an ordinary dependency, and the compat adapters that name a type from one                     |
-| `protocol-api`       | `gnoblin-proto-api` depends on no protocol crate                                                                                                                     |
-| `protocol-lints`     | every protocol crate keeps `[lints] workspace = true`; the two generated-wire crates are the reviewed `unsafe_code` exceptions in `LINT_OPT_OUT`                     |
+| `protocol-api`       | `gnoblin-wayland-api` depends on no protocol crate                                                                                                                   |
+| `protocol-lints`     | every protocol crate keeps `[lints] workspace = true`; none needs an `unsafe_code` exception, because the generated wire code leaves with ProtoRetire's deletion     |
 
-`engine-isolation` keeps its meaning. The edge from `gnoblin-wayland` to `gnoblin-protocols` is the one engine-to-protocol
-edge, and the rule names it as it names the hubs. `pipewire-export-isolation` lists `gnoblin-proto-capture-shared` next
+`engine-isolation` keeps its meaning. The edge from `gnoblin-wayland` to `gnoblin-wayland-protocols` is the one engine-to-protocol
+edge, and the rule names it as it names the hubs. `pipewire-export-isolation` lists `gnoblin-wayland-capture-shared` next
 to `gnoblin-wayland`, because the capture engine that names the export moves with that crate.
 
-`logging` and `layout` scan `crates/**/src` and `crates/**/*.toml`, and the compat directory already shows they handle
-nesting. The generated-wire crates read `../../../protocols/*.xml`, one level deeper than today. `cargo xtask layout` is
-run to prove the path is not flagged, and `layout-allow.toml` gets an entry if it is.
+`logging` scans `crates/*/src` today. It is extended to the table's directories, and `cargo xtask logging` is run to
+prove the new crates are read. `layout` scans `crates` and `xtask` for root `src/` and `patches/` paths, and the
+new crates name neither.
 
 ## Consequences of many small crates
 
 | Effect                               | Size                                                                                 | Mitigation                                                                                  |
 | ------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| Workspace members                    | 56 more (54 crates, the api crate, the aggregate), on 117 today                      | members by glob; manifests generated                                                        |
-| `Cargo.lock`                         | 56 more `[[package]]` entries and no new external dependency                         | none needed                                                                                 |
+| Workspace members                    | 55 more (52 crates, the api crate, the aggregate, the testkit), on 117 today         | members by glob; manifests generated                                                        |
+| `Cargo.lock`                         | 55 more `[[package]]` entries and no new external dependency                         | none needed                                                                                 |
 | `cargo metadata` and the xtask graph | a few per cent slower                                                                | measure once; each gate reads the graph once                                                |
-| Cold build of the engine             | the same total work, better parallelism: 54 units build beside Smithay               | none needed                                                                                 |
+| Cold build of the engine             | the same total work, better parallelism: 52 units build beside Smithay               | none needed                                                                                 |
 | Incremental build                    | an edit recompiles one protocol, the aggregate and the glue, not the other protocols | keep logic out of the aggregate and the glue                                                |
-| An edit to `gnoblin-proto-api`       | recompiles every protocol crate                                                      | the api crate is small; an operation enters it with a second user                           |
+| An edit to `gnoblin-wayland-api`     | recompiles every protocol crate                                                      | the api crate is small; an operation enters it with a second user                           |
 | Test binaries                        | one more link per crate that has real-client tests                                   | one binary per crate; one shared harness                                                    |
 | Review                               | a protocol change is a change in one directory                                       | the table and the generator keep manifests uniform                                          |
-| Boilerplate                          | 54 manifests and `lib.rs` headers                                                    | manifests generated; the headers carry the doc sentence that `protocols/mod.rs` holds today |
+| Boilerplate                          | 52 manifests and `lib.rs` headers                                                    | manifests generated; the headers carry the doc sentence that `protocols/mod.rs` holds today |
 
 Moving the "what it does here" sentence from `protocols/mod.rs` into each crate's `lib.rs` is the one place the prose
-changes. The `dupes` gate is a risk: 54 crates share the `register` shape and the extension-trait pattern. The
+changes. The `dupes` gate is a risk: 52 crates share the `register` shape and the extension-trait pattern. The
 generator keeps the boilerplate out of the sources, and a reviewed `dupes-allow.toml` entry is the fallback.
 
 ## Migration order and gates
@@ -371,8 +376,8 @@ generator keeps the boilerplate out of the sources, and a reviewed `dupes-allow.
 Each step is one small commit, pushed after the gate passes on the exact SHA. A step moves one crate's code, deletes the
 old module in the same commit, moves that crate's tests and updates the docs it names.
 
-1. **Scaffolding.** `gnoblin-proto-api` with `access` moved in, `gnoblin-protocols` with an empty table,
-   `protocols.toml`, `xtask protocol-crates`, the member glob, the `deps` tier and its tests, `gnoblin-proto-testkit`,
+1. **Scaffolding.** `gnoblin-wayland-api` with `access` moved in, `gnoblin-wayland-protocols` with an empty table,
+   `xtask/protocols.toml`, `xtask protocol-crates`, the member glob, the `deps` tier and its tests, `gnoblin-wayland-testkit`,
    `CHANGELOG`, and the crate list in `design/modular-framework.md`.
 2. **Smithay-only protocols with no `State` method:** alpha modifier, single-pixel buffer, pointer gestures, relative
    pointer, primary selection, both data-control crates, toplevel icon, toplevel tag, system bell, dialog, idle
@@ -382,14 +387,15 @@ old module in the same commit, moves that crate's tests and updates the docs it 
    shared crate, wlr-foreign-toplevel.
 4. **Medium protocols:** idle notify, activation, xdg-foreign, gamma control, output power, output management,
    text-input, input-method, virtual keyboard, pointer constraints, wl-data-device, wl-compositor, wl-seat.
-5. **Large protocols:** xdg-shell, layer shell, tablet, session lock, session host.
+5. **Large protocols:** xdg-shell, layer shell, tablet, session lock.
 6. **The capture family in one run,** because its modules form a cycle today: `image-copy-session`, then
    `capture-shared` with `capture_dmabuf` and `capture_views` folded in, then screencopy, image-copy-capture,
-   image-capture-source and view source. Three edges point up today: `capture_shared` creates the screencopy and
+   and image-capture-source. The family waits for ProtoRetire, which removes `view_source` and may redesign
+   `capture_views`. Three edges point up today: `capture_shared` creates the screencopy and
    image-copy globals, and `capture_dmabuf` calls `answer_copy` in screencopy. Global creation moves into each
    protocol's `register`, and `answer_copy` moves down into the shared crate.
-7. **ProtoMissing's protocols,** each when its lane has pushed it: `wlr-virtual-pointer`, `kde-server-decoration`,
-   `kde-appmenu`, `ext-workspace`, `ext-transient-seat`. Each moves in a commit of its own.
+7. **ProtoMissing's protocols,** each when its lane has pushed it: `zwlr-virtual-pointer-v1`, `kde-server-decoration`,
+   `kde-appmenu`, `ext-workspace-v1`, `ext-transient-seat-v1`. Each moves in a commit of its own.
 8. **Close-out.** `protocols/` is gone from `gnoblin-wayland`. The docs, `CHANGELOG`, the crate lists and
    `design/modular-framework.md` name the final set.
 
@@ -425,7 +431,7 @@ do not overlap. The cheap steps come first, so the pattern is proven on trivial 
 | Option                                                                                                                                                                    | Why not                                                                                                   |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | One crate per family: 12 crates for layer shell, foreign toplevel, capture, data control, input, pointer, idle, lock, xdg extras, surface hints and the private protocols | the first choice; the owner then chose one crate per protocol, for isolation of a change and of its tests |
-| One `gnoblin-protocols` crate with a module per protocol                                                                                                                  | it only moves the monolith, and an edit still recompiles every protocol                                   |
+| One `gnoblin-wayland-protocols` crate with a module per protocol                                                                                                          | it only moves the monolith, and an edit still recompiles every protocol                                   |
 | A type map for protocol state instead of typed `State` fields                                                                                                             | removes the accessor per crate, but puts a hash lookup on the pointer and frame paths                     |
 | Make `State` generic, or move it into the api crate                                                                                                                       | `State` owns the scene, the seat and the backend; every protocol crate would depend on all of it          |
 | A `delegate_*!`-style macro exported by each crate                                                                                                                        | keeps the logic in the crate but hides it from the tools and from unit tests                              |
