@@ -11,41 +11,27 @@ Check that the `gnoblin` package is installed. On Fedora, run:
 rpm -q gnoblin
 ```
 
-For source builds, run `make` and then `make install`.
-It asks for sudo to copy the build to its prefix and add the login entry. See [session registration](install-source.md#login-session).
+For a source build, install it with `just dist` or `cargo xtask dist install`. The install writes the login entry,
+`share/wayland-sessions/gnoblin.desktop`, under its prefix. See [build from source](install-source.md).
 
-## The source build returns to the login screen
+## The session returns to the login screen
 
-Log into another session or a text console and read the startup records:
-
-```sh
-cat "${XDG_STATE_HOME:-$HOME/.local/state}/gnoblin/session-last.log"
-cat "${XDG_STATE_HOME:-$HOME/.local/state}/gnoblin/compositor-last.log"
-```
-
-The session record shows startup stages and process exit statuses. The
-compositor record contains its error output. Each file is limited to 64 KiB;
-the previous attempt is kept as `session-previous.log` and
-`compositor-previous.log` in the same folder.
-
-Also check the session journal:
+Log into another session or a text console and read the session's records:
 
 ```sh
+gnoblinctl log --level WARN --since 10m
 journalctl -b --no-pager -g gnoblin
 ```
 
-If it reports a missing Gnoblin or Mutter library, run `make` and then
-`make install` to install the build. The `PREFIX` for `make` and `make install`
-must be the same.
+`gnoblinctl log` reads `gnoblin.jsonl` in `$XDG_STATE_HOME/gnoblin/log` (see [logs](gnoblinctl.md#logs)); the journal
+holds what the login manager and the user services printed.
 
-Do not copy an executable out of `build/` by hand. Its library paths point at the
-build directory and can fail under the login manager. Run `make install` instead.
-It checks that the installed executable loads its libraries without
-`LD_LIBRARY_PATH` set. Run it again after a rebuild or if the login entry changed.
+If the journal reports a missing Gnoblin library, such as `libgnoblin-core.so.1`, the install is incomplete or the prefix
+is not where the session file points. Install again with `cargo xtask dist install --prefix PREFIX`, using the same
+`PREFIX` the session file names.
 
-The installed session does not need the source directory. If an earlier install
-left links in your home directory that point into it, run `make install` again to
-remove them.
+Run `cargo xtask dist-check --prefix PREFIX` to see which file or library is wrong. Do not copy an executable out of `target/` by hand: it finds its libraries beside the build tree and can fail under the
+login manager.
 
 GDM logs “Session never registered” when a session ends before it registers.
 Gnoblin's login entry sets `X-GDM-SessionRegisters=false`, so GDM's session
@@ -56,7 +42,7 @@ Check which case applies:
 - The session ended within 10 seconds of starting. The warning is expected, and
   reinstalling does not prevent it.
 - The session ran longer than 10 seconds. Check that the entry says
-  `X-GDM-SessionRegisters=false`, and run `make install` again if it does not.
+  `X-GDM-SessionRegisters=false`, and install again if it does not.
   If the message still appears, include the output of `journalctl -b -u gdm` in
   your bug report.
 
@@ -65,36 +51,19 @@ and never replaces an existing file.
 
 Gnoblin starts with its embedded configuration before applying the user
 configuration. If loading `shell.ts` or the native settings fail, it tries the last
-accepted settings, then keeps embedded defaults if those also fail.
-
-The top-left ImGui recovery panel appears above application and shell layers
-and shows the error. Choose **Open config** to open its folder, fix the config
-in an editor, then choose **Reload** or run
-`gnoblinctl config reload` from a terminal. Gnoblin keeps failed files unchanged. See
+accepted settings, then keeps embedded defaults if those also fail. A failed load leaves your files unchanged: read the
+error with `gnoblinctl log --level WARN`, fix the file, and run `gnoblinctl config reload`. See
 [the TypeScript shell](/typescript-shell#with-no-shell-ts).
-
-The panel requires a running compositor. A missing library or a native
-compositor crash prevents it from displaying; inspect the login logs above
-for those failures.
-
-The panel also reports config-owned autostart commands that cannot start or
-exit with an error. It names the failed component and its exit status or signal.
 
 ## No bar, dock or launcher
 
 Gnoblin does not include a desktop shell.
 [Install one](bring-your-own-shell.md) if you have not already.
 
-Gnoblin reports failed config-owned autostart commands in its recovery panel.
-Choose **Open config**, **Terminal**, or **Reload** to investigate. **Terminal**
-is disabled when no supported terminal is installed. The panel hides while
-the session is locked. Choose **Dismiss** to hide the current notice; a new
-error opens it again.
-
-If the panel does not appear, switch to another session or a text console and
-inspect Gnoblin's session logs for config-owned shell clients:
+If the shell does not start, read why:
 
 ```sh
+gnoblinctl log --level WARN --since 10m
 journalctl -b --no-pager | rg -i 'gnoblin'
 ```
 
@@ -125,25 +94,16 @@ file makes them. Run `gnoblinctl config init` to write the default as code, then
 Run its command in a terminal. Check that the executable is on PATH.
 Command arguments do not expand `~`, `$HOME` or pipes.
 
-Check for another shortcut in your Gnoblin config that uses the same binding.
-Use `gnoblin.configure.keybindings` to change a built-in action. Set
-`enable = false` on a named `gnoblin.configure.shortcuts` entry to disable it.
-See [shortcut conflicts](/guides/shortcuts#avoid-conflicts).
+Check for another binding in your `shell.ts` on the same trigger: the shell refuses a second binding of one trigger, and
+the load reports it. See [shortcut conflicts](/guides/shortcuts#avoid-conflicts).
 
 ## Shell integration errors
 
-| Symptom                                                | Check                                                                                                                                                                                |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `gnoblinctl window list` cannot connect                | Run `gnoblinctl status --json` and check `windowControlError` and the active socket path. See [connection details](gnoblinctl.md#connection-problems).                               |
-| A bridge request says a window is unavailable          | Get a fresh ID from `gnoblinctl window list --json` or a `windows` snapshot. IDs expire when windows close.                                                                          |
-| A Wayland client cannot bind a Gnoblin interface       | Inspect the registry inside the Gnoblin session, then check its [protocol gate](wayland-protocols.md). Changes apply after config reload; existing client bindings remain connected. |
-| A layer appears on the host desktop during devkit work | Launch it from the devkit environment and check `WAYLAND_DISPLAY`. The [devkit guide](devkit.md) explains the nested display.                                                        |
-
-## Removing a setting does not reset it
-
-Built-in bindings and native feature booleans persist in GSettings.
-Set the desired value explicitly. Removing an autostart entry does not stop
-its running process.
+| Symptom                                          | Check                                                                                                                                                                                |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gnoblinctl window list` cannot connect          | Run `gnoblinctl status --json` and check `windowControlError` and the active socket path. See [connection details](gnoblinctl.md#connection-problems).                               |
+| A bridge request says a window is unavailable    | Get a fresh ID from `gnoblinctl window list --json` or a `windows` snapshot. IDs expire when windows close.                                                                          |
+| A Wayland client cannot bind a Gnoblin interface | Inspect the registry inside the Gnoblin session, then check its [protocol gate](wayland-protocols.md). Changes apply after config reload; existing client bindings remain connected. |
 
 ## Blur is invisible
 
@@ -164,21 +124,9 @@ is then `SCHED_IDLE`, and the session misses its frame and input deadlines.
 
 ### Ananicy-cpp rules {#ananicy-cpp-rules}
 
-Install the `gnoblin-ananicy-rules` package from [Gnoblin's package repository](package-repositories.md). It gives
-Gnoblin normal scheduling:
-
-```sh
-sudo dnf install gnoblin-ananicy-rules        # Fedora
-sudo zypper install gnoblin-ananicy-rules     # openSUSE
-sudo apt install gnoblin-ananicy-rules        # Debian
-sudo pacman -S gnoblin-ananicy-rules          # Arch Linux
-```
-
-On another system, copy `99-gnoblin.types` and `99-gnoblin.rules` from the `data/ananicy/` folder of the source
-to `/etc/ananicy.d/`. Then run `sudo systemctl restart ananicy-cpp`.
-
-Log out and back in, then check the policy again. To go back to the daemon's defaults, remove the two files or the
-package.
+Gnoblin ships no `ananicy-cpp` rules. Give the `gnoblin` process and the programs it starts a rule of your own that does
+not use `SCHED_IDLE`, in `/etc/ananicy.d/`, then run `sudo systemctl restart ananicy-cpp`. Log out and back in, then
+check the policy again. To go back to the daemon's defaults, remove the rule.
 
 ## The session ended and returned to the login screen
 
@@ -186,51 +134,14 @@ If the compositor stops on its own, every Wayland app stops with it, because
 apps cannot survive their compositor. GDM then shows the login screen. Gnoblin
 does not restart the compositor in place.
 
-Log in again. If the compositor ended on a signal other than an orderly stop
-request, the recovery panel appears with the signal and the time the session
-ran, for example `The compositor was stopped by signal 11 (Segmentation fault)
-after 53 seconds`. The panel shows once. A clean logout never shows it.
-
-The logs from the session that ended stay available until the next login after
-this one:
+Log in again, then read what the compositor logged before it stopped, and whether it left a core dump:
 
 ```sh
-cat ~/.local/state/gnoblin/session-previous.log
-tail -n 40 ~/.local/state/gnoblin/compositor-previous.log
+gnoblinctl log --level WARN --limit 100
 coredumpctl list --no-pager | rg gnoblin
 ```
 
-`session-previous.log` records the exit as `compositor pid=... killed
-signal=11`. Keep these files when you report the problem.
-
-## Portal requests fail or apps start slowly
-
-Look for a portal backend that cannot start:
-
-```sh
-journalctl --user -b --no-pager | rg 'Failed at step EXEC'
-```
-
-A line such as `xdg-desktop-portal-gnome.service: Failed at step EXEC spawning
-.../install/libexec/xdg-desktop-portal-gnome: No such file or directory` means
-a user override points the service at a file that does not exist. Apps then
-wait for the failed backend whenever they read settings or open a dialog.
-
-Show the unit with its overrides and note the path in `ExecStart`:
-
-```sh
-systemctl --user cat xdg-desktop-portal-gnome.service
-```
-
-A drop-in from a local build is the usual cause. Move it away and reload:
-
-```sh
-mv ~/.config/systemd/user/xdg-desktop-portal-gnome.service.d ~/xdg-desktop-portal-gnome.service.d.bak
-systemctl --user daemon-reload
-systemctl --user reset-failed xdg-desktop-portal-gnome.service
-```
-
-Restart the session so apps reconnect to the portal.
+Keep that output when you report the problem.
 
 ## X11 apps closed but Wayland apps kept running
 
@@ -245,26 +156,8 @@ If the same X11 app closes each time, run it from a terminal and read its output
 Xwayland itself keeps stopping, report it with the compositor log:
 
 ```sh
-tail -n 40 ~/.local/state/gnoblin/compositor-last.log
+gnoblinctl log --limit 40
 ```
-
-## X11 apps look too large on a fractional-scale display
-
-With a fractional display scale such as 1.25, Mutter rounds the X11 scale up to
-the next whole number. X11 apps then:
-
-- report `Xft.dpi: 192` instead of 96
-- draw larger than Wayland apps at the same font size
-- show small titlebar buttons
-
-Check the value an X11 app sees:
-
-```sh
-xrdb -query | rg Xft.dpi
-```
-
-The X11 scale is the `xwayland` section of the compositor's configuration, and `shell.ts` cannot set it: no object of the
-shell API carries it. See [Settings with no object](/js-settings).
 
 ## A window opens behind the focused window
 

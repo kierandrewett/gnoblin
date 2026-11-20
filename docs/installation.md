@@ -23,7 +23,6 @@ The guide for your system has the same steps by hand.
 | Debian              | [Debian](install-debian.md)            |
 | Arch Linux, CachyOS | [Arch Linux](install-arch.md)          |
 | Alpine              | [Alpine](install-alpine.md)            |
-| NixOS               | [NixOS](install-nixos.md)              |
 | Anything else       | [Build from source](install-source.md) |
 
 Each guide shows how to install, update and remove Gnoblin on that system. For the supported releases and
@@ -41,5 +40,5 @@ Run `gnoblin --version` to see which version you have installed.
 
 ## Optional packages
 
-Gnoblin has optional packages for a portal backend, location prompts and scheduling rules. See
+Gnoblin has optional packages for a portal backend. See
 [optional packages](optional-packages.md).

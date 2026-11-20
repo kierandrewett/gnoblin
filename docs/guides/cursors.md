@@ -1,7 +1,6 @@
 # Cursor themes
 
-Gnoblin draws the pointer with an installed Xcursor theme. Source builds made with `./build.sh --with-vector-cursors` also
-read Hyprcursor themes.
+Gnoblin draws the pointer with an installed Xcursor or compiled Hyprcursor theme.
 
 `shell.ts` cannot set the cursor theme or size. See [dropped settings](/js-settings#dropped-settings).
 
@@ -13,7 +12,7 @@ read Hyprcursor themes.
 
 ## Hyprcursor themes
 
-Build with `--with-vector-cursors` to enable Hyprcursor support. The upstream
+Gnoblin reads compiled Hyprcursor themes itself. The upstream
 [theme guide](https://github.com/hyprwm/hyprcursor/blob/main/docs/MAKING_THEMES.md) describes theme files and cursor
 metadata.
 
@@ -23,15 +22,3 @@ and timing.
 
 If the selected theme or shape is unavailable through Hyprcursor, Gnoblin tries Xcursor. Client applications that supply
 their own cursor surfaces continue to draw those surfaces themselves.
-
-## Adwaita-Hyprcursor
-
-The optional source build can install Gnoblin's Adwaita vector artwork. Install Hyprcursor 0.1.13 or newer,
-hyprcursor-util, librsvg and your distribution's Adwaita cursor theme, then build with:
-
-```sh
-./build.sh --with-vector-cursors
-```
-
-This adds `Adwaita-Hyprcursor` under the build prefix. Select it by that name. The compiled theme includes Adwaita SVG
-artwork, animation and Xcursor fallbacks. Other installed themes need no theme build step.

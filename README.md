@@ -2,7 +2,7 @@
 
 # Gnoblin
 
-A standalone Mutter-based compositor and session runtime.
+A standalone Wayland compositor and session runtime, written in Rust.
 
 [Documentation](https://gnoblin.org/) · [Install](docs/installation.md) · [Choose a shell](docs/bring-your-own-shell.md) · [Configure](docs/config.md) · [Protocols](#supported-protocols) · [Contribute](CONTRIBUTING.md)
 
@@ -12,7 +12,7 @@ Gnoblin provides window management and Wayland interfaces for an external
 desktop shell such as [Bingux](https://github.com/kierandrewett/bingux), or a
 setup built from Waybar and other layer-shell clients.
 
-Gnoblin is built on Mutter. It does not ship a desktop shell UI.
+Gnoblin is built on [Smithay](https://github.com/Smithay/smithay). It does not ship a desktop shell UI.
 
 ## Run a shell
 
@@ -41,8 +41,8 @@ and the [examples](examples/README.md) for small example shells, and [Write a sh
 - **Cursor themes.** [Configure compositor cursors](docs/guides/cursors.md) with
   the generic `cursor.theme` and `cursor.size` settings in Gnoblin's live
   config. Xcursor themes work on every install, and an uninstalled theme falls
-  back to the default cursor. Builds with Hyprcursor support also read
-  Hyprcursor themes, with animated frames that preserve hotspots and timing.
+  back to the default cursor. Gnoblin also reads compiled Hyprcursor themes, with animated frames that preserve
+  hotspots and timing.
 - **Compositor effects.** Configure [blur, opacity, rounded corners, borders,
   shadows and layer animations](docs/guides/window_effects.md) with
   window rules.
@@ -71,20 +71,13 @@ and the [examples](examples/README.md) for small example shells, and [Write a sh
 
 ## Supported protocols
 
-Added to Mutter's existing Wayland support, enabled by default:
+The [Wayland protocol catalogue](docs/wayland-protocols.md) lists every global a session advertises, its version, who can
+bind it and the setting that switches it off. It includes:
 
-| Protocol                          | Used for                                                       |
-| --------------------------------- | -------------------------------------------------------------- |
-| `wlr-layer-shell`                 | Bars, docks, wallpapers and overlays                           |
-| `ext-background-effect-v1`        | [Client-requested background blur](docs/background-effects.md) |
-| `wlr-screencopy`                  | Screen and region capture                                      |
-| `ext-foreign-toplevel-list`       | Window lists, titles and app IDs                               |
-| `wlr-foreign-toplevel-management` | Dock and taskbar window controls                               |
-| `ext-data-control`                | Clipboard and primary-selection managers                       |
-| `ext-idle-notify`                 | Idle detection                                                 |
-| `wlr-gamma-control`               | Display gamma and colour temperature                           |
-| `wlr-output-power-management`     | Display power control                                          |
-| `ext-session-lock`                | Compositor-enforced session locking                            |
+- `wlr-layer-shell`, `ext-background-effect-v1` and `wlr-screencopy`
+- The foreign-toplevel protocols and `ext-data-control`
+- `ext-idle-notify`, `wlr-gamma-control` and `wlr-output-power-management`
+- `ext-session-lock`
 
 Gnoblin exposes standard `ext-session-lock-v1` in its own session. It does not
 ship a built-in lock screen or choose a locker. Bingux supplies its lock client
@@ -98,24 +91,20 @@ transitions and failsafe. No lock-specific portal setting is required.
 
 ## Get started
 
-Download the source tarball from a [Gnoblin release](https://github.com/kierandrewett/gnoblin/releases),
-extract it, and run `make` from the extracted directory. A Git checkout
-uses the same command. The build uses compatible development libraries from
-your distribution. `make` builds the compositor and native runtime for
-`/usr/local/lib/gnoblin` and installs nothing. The build includes Gnoblin's
-GTK-based portal backend.
+[Install](docs/installation.md) from the package repository on Fedora, openSUSE, Debian, Arch Linux or Alpine, or from
+source. A source build needs Rust, `just` and the system libraries that `scripts/ci-install-system-libraries.sh` installs:
 
-After building, run `make install`. It asks for sudo, copies the build to
-`/usr/local/lib/gnoblin` and adds the lean login to the session picker. The
-install is permanent, so you can delete the source directory. The
-[source instructions](docs/install-source.md) cover prerequisites and login
-setup. `make preview` tries the build in a window first, and
-`./build.sh --dry-run` shows what a build would change before you run it.
+```sh
+git clone https://github.com/kierandrewett/gnoblin.git
+cd gnoblin
+just dist /usr/local        # build in release mode and install the session; `cargo xtask dist uninstall` removes it
+```
 
-[Install](docs/installation.md) from the package repository on Fedora, openSUSE, Debian, Arch Linux or Alpine,
-on NixOS, or from source. You can also [try a nested session](docs/devkit.md) without logging out.
+The [source instructions](docs/install-source.md) cover prerequisites, a nested try-out window and the login session.
+`GNOBLIN_BACKEND=nested gnoblin` runs a session inside your current desktop without logging out; see
+[backends](docs/backends.md).
 
 [Configuration](docs/config.md) · [Window effects](docs/guides/window_effects.md) · [Event handlers](docs/user-scripts.md) · [All docs](docs/index.md)
 
-Built from the [Gnoblin Mutter fork](https://github.com/kierandrewett/gnoblin-mutter),
-based on [upstream Mutter](https://gitlab.gnome.org/GNOME/mutter).
+Gnoblin is GPL-2.0-or-later. The Mutter-based releases before 0.2.0 are built from the
+[Gnoblin Mutter fork](https://github.com/kierandrewett/gnoblin-mutter) and live on the `main` branch.

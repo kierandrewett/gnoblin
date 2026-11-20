@@ -32,7 +32,7 @@ example `nautilus` for the Files app.
 
 Apps ask for files, screen sharing and similar things through portals. Install `xdg-desktop-portal-gnoblin` to use
 Gnoblin's portal backend. Without it, Gnoblin uses another portal backend that is installed. To choose a different
-backend, see [`gnoblin.configure.portals`](/config/configure/portals).
+backend, route the interface in a `portals.conf` (see [portals](/config/configure/portals)).
 
 ## Removable media and email
 

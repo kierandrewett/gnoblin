@@ -19,7 +19,7 @@ XR mode is off. The guardian starts `gnoblin-xr` only when you opt in:
 
 Release packages do not ship `gnoblin-xr`:
 
-- The extension is its own workspace, and nothing in the packaging (`pkgsmith`, `nix`, the CI release jobs) builds it.
+- The extension is its own workspace, and nothing in the packaging builds it.
 - `cargo xtask dist install` installs it only when a developer built it first (`just dist`).
 - A package install therefore has none, and `GNOBLIN_XR=1` logs the one warning and starts without it.
 

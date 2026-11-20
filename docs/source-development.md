@@ -1,109 +1,66 @@
 # Source development
 
-Start with [build from source](install-source.md). The source build uses Ninja
-to coordinate Gnoblin, Mutter, and session files. The GTK-based portal backend
-is optional.
+Start with [build from source](install-source.md). Gnoblin is a Cargo workspace driven by `just` recipes and
+`cargo xtask` commands. `justfile` is the list of what CI runs, so a local `just ci` and the GitHub jobs cannot drift.
 
-## Build a component
-
-The default command builds the standalone session. It uses the portal frontend
-and backend installed on your system:
+## Build
 
 ```sh
-make
+just build              # cargo build --workspace --all-targets
+cargo xtask stage       # stage the core and std libraries beside target/debug/gnoblin
 ```
 
-To include Gnoblin's GTK-based portal backend, use:
+The compositor lives in `libgnoblin_core_impl.so`, not in the `gnoblin` launcher, so a launcher built alone needs the
+library staged beside it.
 
-```sh
-./build.sh --with-portal
-```
+- `cargo build --workspace` stages the library.
+- `cargo xtask stage` stages it for a launcher built with `cargo build -p gnoblin`.
+  `CONTRIBUTING.md` has the build order in "The core library in the build tree".
 
-It needs the GTK4 and `xdg-desktop-portal` development packages that
-[build from source](install-source.md) lists. You can instead configure another
-installed backend for Gnoblin with the [`portals` key](/config/configure/portals).
-
-To rebuild one upstream component, select its CMake target:
-
-```sh
-./build.sh --target mutter
-./build.sh --target xdg-desktop-portal-gnome
-```
-
-Each target prepares its pinned source and checks its own development
-dependencies. Use the default command after rebuilding to write the complete
-session into the selected prefix.
-
-Native compositor changes require a fresh session. A config reload does not
-load rebuilt libraries. For shell API methods, events, and operation results, use
-the [runtime API reference](/shell-api/) and [event catalog](/events/).
+Native compositor changes require a fresh session. A config reload does not load rebuilt libraries. For shell API
+methods, events and operation results, use the [runtime API reference](/shell-api/) and [event catalog](/events/).
 
 ## Preview a change
 
-Build the nested viewer when needed and start a private Gnoblin session:
+Run the build tree as a nested session in a window of your desktop:
 
 ```sh
-make preview
+cargo xtask stage
+GNOBLIN_BACKEND=nested target/debug/gnoblin
 ```
 
-`make preview` runs the build that `make` wrote to `build/stage`, so run `make`
-first. It shows the stage at the install prefix inside a private mount
-namespace, which needs no root access and leaves the host unchanged. Inside the
-preview, the directory above the prefix shows only the staged build.
-
-The preview uses a temporary home, config, data, cache, state, runtime
-directory, and D-Bus session. It still uses the host Wayland display and may
-connect to the host PipeWire socket. This is a development session, not a
-sandbox. See the [devkit guide](/devkit) for options and isolation details.
+`GNOBLIN_BACKEND=headless` runs the same session with no window at all. See [backends](backends.md) for the settings of
+each. A nested session is not a login: use [hardware verification](real-hardware-verification.md) for that.
 
 ## Choose a prefix
 
-`make` builds for the prefix `/usr/local/lib/gnoblin`. Set `PREFIX=DIR` to use
-another prefix. The binaries have the prefix compiled in, so use the same
-`PREFIX` for `make` and `make install`.
+`cargo xtask dist install --prefix PREFIX` installs a release build under `PREFIX`; `just dist PREFIX` builds it first.
 
-- `make install` copies the build to the prefix.
-- `make clean` deletes `build/` but leaves the installed copy.
-
-`./build.sh` is separate. Its default build prefix is `./install`, with libraries
-in `lib64`.
-
-```sh
-GNOBLIN_LIBDIR=lib ./build.sh --prefix /tmp/gnoblin
-./build.sh --prefix /tmp/gnoblin --preview
-```
-
-`GNOBLIN_LIBDIR` is relative to the prefix. Use the same prefix for subsequent
-build and preview commands. System prefixes `/usr` and `/usr/local` are
-rejected. To add a prefix that already holds the runtime to your login screen,
-without a copy, run:
-
-```sh
-./build.sh --prefix /tmp/gnoblin --register-session
-```
+- `--libdir`, `--destdir` and `--profile` choose the library directory, a staging root and the cargo profile.
+- The [install layout](install-layout.md) lists the files.
+- `cargo xtask dist uninstall --prefix PREFIX` removes exactly what the install wrote.
+- `just dist-check` installs into three temporary trees and checks each.
 
 ## Portal backend
 
-The default build uses portal services already installed on the system. To
-build Gnoblin's optional backend, run `./build.sh --with-portal`. A GNOME
-session can continue using GNOME's backend. To choose another backend for
-Gnoblin, see [`gnoblin.configure.portals`](/config/configure/portals).
+The portal backend, `xdg-desktop-portal-gnoblin`, is a crate of the workspace and `cargo xtask dist` installs it. A GNOME
+session can continue using GNOME's backend. To choose another backend for Gnoblin, see [portals](/config/configure/portals).
 
 ## Verify changes
 
-Run deterministic checks and the native runtime tests with:
-
 ```sh
-make check
-make test
+just ci                 # the whole gate: the root workspace, the extension workspace and the core-only build
+just workspace-ci       # only the root workspace
+just script-tests       # the scripts' own tests (no build needed)
+cargo test -p gnoblin-js -p gnoblin-js-types -p gnoblinctl
 ```
 
-Use `tests/test-gnoblin-devkit.sh` for an isolated live session. It requires a working
-Wayland desktop and a current build. A successful build or CTest run does not
-verify login on a real seat; see [hardware verification](real-hardware-verification.md).
+[Testing](testing.md) says which check proves which part of the session. A successful build or test run does not verify
+login on a real seat; see [hardware verification](real-hardware-verification.md).
 
-Keep upstream submodules at their pinned commits. Put Gnoblin-owned behavior in
-`src/`, protocol changes in `src/protocols/`, and narrow upstream fixes in
-`patches/`. Export committed subproject changes with
-[`scripts/manage-patches.py`](https://github.com/kierandrewett/gnoblin/blob/main/scripts/manage-patches.py)
-so patch identity and headers stay consistent.
+## Where code goes
+
+Gnoblin-owned behaviour goes in a crate under `crates/`, named for its area (`gnoblin-portal-core`) or, when it builds a
+binary, for the binary. Do not commit build prefixes, generated tarballs or local session configuration.
+`cargo xtask layout` fails on a reference to the retired C source and patch trees of the Mutter product, which lives on
+the `main` branch.

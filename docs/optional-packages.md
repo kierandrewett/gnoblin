@@ -4,11 +4,9 @@ Install these only if you need them. Use your system's package manager, for exam
 `sudo dnf install NAME` on Fedora, `sudo apt install NAME` on Debian, `sudo pacman -S NAME` on Arch Linux,
 `sudo zypper install NAME` on openSUSE and `apk add NAME` on Alpine.
 
-| Package                       | What it adds                                                                       |
-| ----------------------------- | ---------------------------------------------------------------------------------- |
-| `xdg-desktop-portal-gnoblin`  | Gnoblin's portal backend, which shows the permission dialogs of apps               |
-| `gnoblin-geoclue-integration` | Location permission prompts through Gnoblin. Restart GeoClue after you install it. |
-| `gnoblin-ananicy-rules`       | Scheduling rules for Gnoblin, for systems that run `ananicy-cpp`                   |
+| Package                      | What it adds                                                         |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `xdg-desktop-portal-gnoblin` | Gnoblin's portal backend, which shows the permission dialogs of apps |
 
 Without `xdg-desktop-portal-gnoblin`, Gnoblin uses another portal backend that is installed.
 

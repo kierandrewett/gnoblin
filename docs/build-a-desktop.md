@@ -258,10 +258,6 @@ _A settings app beneath Waybar._
 
 The cursor uses your system's default theme.
 
-Capture this example from the checkout with
-`scripts/capture-doc-examples.sh waybar-settings`. It uses a disposable config and
-profile; see the [capture script](devkit.md#documentation-captures) for setup.
-
 A shell or package ships its settings as a TypeScript module that your `shell.ts` imports; there are no system
 drop-in directories.
 
@@ -304,15 +300,15 @@ remote control; see [portal routing](/config/configure/portals).
 
 ### Work on the desktop in a nested session
 
-The [devkit](devkit.md) starts Gnoblin in a window. Use it to try a bar or rule
+`GNOBLIN_BACKEND=nested gnoblin` starts Gnoblin in a window of your desktop (see
+[run on a desktop](backends.md#run-on-a-desktop)). Use it to try a bar or rule
 before logging out.
 
 For screenshots and demos, give it fresh home and XDG config, data, cache,
 state, and runtime directories. Launch only the applications that belong in
-the example. A normal devkit invocation keeps your real home directory; see
-the [isolation notes](devkit.md#isolation).
+the example.
 
-For packaging or a final session check, use a real Gnoblin login. A devkit
+For packaging or a final session check, use a real Gnoblin login. A nested
 image proves what appeared in that nested run, not what is installed in a
 login session.
 

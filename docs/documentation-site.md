@@ -51,7 +51,7 @@ Terraform uploads the build to the `gnoblin-website` Worker. See `infra/README.m
 - Explain an option beside its example: accepted values, default, units and reload.
 - Keep tables short. Link to details instead of packing paragraphs into cells.
 - Keep user instructions separate from protocol and testing notes.
-- Capture screenshots in a fresh devkit profile or VM and inspect them for personal data before publishing.
+- Capture screenshots in a fresh nested-session profile or VM and inspect them for personal data before publishing.
 - Show real interface activity, without placeholder output. Put commands and explanatory text in prose or code blocks, not in staged terminal screenshots.
 - Check published package names before updating installation commands.
 

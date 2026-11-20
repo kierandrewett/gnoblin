@@ -1,139 +1,95 @@
 # Build from source
 
-Use this on a system that has no package for Gnoblin. You build Gnoblin from a release tarball or a Git checkout,
-try it in a window, then add a login session.
-
-`make` builds into `build/stage` inside the source directory and installs nothing. `make install` copies the build
-to `/usr/local/lib/gnoblin`. After that, you can delete the source directory.
+Use this on a system that has no package for Gnoblin. You build Gnoblin from a Git checkout with Cargo, install it into a
+prefix with `cargo xtask dist`, and add a login session.
 
 ## Prerequisites
 
 Install these with your package manager:
 
-- A C/C++ compiler and [GNU Make](https://www.gnu.org/software/make/manual/)
-- Python 3, [CMake](https://cmake.org/), [Meson](https://mesonbuild.com/) and [Ninja](https://ninja-build.org/)
-- `tar` and `xz`
-- Git, if you build from a Git checkout
-- The development libraries that Gnoblin needs, including [GLib](https://docs.gtk.org/glib/),
-  [GTK4](https://www.gtk.org/), [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/),
-  [PipeWire](https://pipewire.org/), [xdg-desktop-portal](https://flatpak.github.io/xdg-desktop-portal/docs/),
-  [Glycin](https://gitlab.gnome.org/GNOME/glycin) and `gsettings-desktop-schemas`
+- A C compiler, `pkg-config` and Git
+- [`just`](https://just.systems/), optional: the recipes below are one-line wrappers over `cargo` and `cargo xtask`
+- Rust, through [rustup](https://rustup.rs/). The toolchain that `rust-toolchain.toml` pins is installed on first use.
+- The system libraries the Rust crates link: `libwayland`, `libdrm`, `libinput`, `libseat`, `libudev`, `libgbm`,
+  `libxkbcommon`, `pixman`, `PipeWire`, `libclang` and `OpenSSL`, with their development files, and Python's for the optional Python shell runtime
 
-`python3 scripts/check-build-deps.py` checks the library versions. The versions Gnoblin builds against are listed in the
-[pinned versions file](https://github.com/kierandrewett/gnoblin/blob/main/data/gnome-versions.json).
+`scripts/ci-install-system-libraries.sh` installs all of them on Ubuntu, Debian and Fedora, and
+`scripts/ci-install-system-libraries.sh list` prints the package names without installing anything. Run `cargo xtask
+native-libs` to check that the list covers every `-sys` crate in the tree.
 
-To build without Gnoblin's portal backend, run `./build.sh --without-portal` instead of `make`. You then need no
-GTK4, libadwaita or Glycin.
+At run time you also need Xwayland for X11 applications, `dbus-daemon`, `xdg-desktop-portal` and WirePlumber.
 
-## 1. Get the source
-
-Download `gnoblin-*-source.tar.xz` from the [Gnoblin releases](https://github.com/kierandrewett/gnoblin/releases),
-then build it:
-
-```sh
-tar -xf gnoblin-*-source.tar.xz
-cd gnoblin-[0-9]*/
-make
-```
-
-To build the development code instead, use Git:
+## 1. Get the source and build
 
 ```sh
 git clone https://github.com/kierandrewett/gnoblin.git
 cd gnoblin
-make
+cargo build --release --workspace
 ```
 
-Run `make` as your normal user.
+Run the build as your normal user.
 
 ## 2. Try it in a window
 
-From a Wayland desktop, after `make`:
+From a Wayland desktop, run the build tree as a nested session:
 
 ```sh
-make preview
+cargo xtask stage --release
+GNOBLIN_BACKEND=nested target/release/gnoblin
 ```
 
-A nested Gnoblin window opens with a terminal. It needs no root access and changes nothing on your system. Close
-the terminal to end the preview. See [Devkit](devkit.md) if it does not open.
+A Gnoblin window opens on your desktop. Close it to end the session. See [backends](backends.md) for the nested
+backend and its settings, and [Start Gnoblin and choose a shell](starting-gnoblin.md) for which shell runs.
 
-## 3. Add a login session {#login-session}
+## 3. Install and add a login session {#login-session}
 
-Install these with your package manager first:
-
-- `xdg-desktop-portal` and WirePlumber
-- `dconf`, so your settings survive logout
-- `dbus-tools` on Fedora, or `dbus` on Arch Linux
-
-Then run:
+Install `xdg-desktop-portal` and WirePlumber with your package manager first. Then install the session under a prefix:
 
 ```sh
-make install
+just dist /usr/local
 ```
 
-`make install` asks for `sudo` and installs:
+`just dist PREFIX` builds the workspace and the XR extension in release mode, then runs
+`cargo xtask dist install --prefix PREFIX`. It installs:
 
-- Gnoblin, in `/usr/local/lib/gnoblin`
-- The `gnoblin` and `gnoblinctl` commands, in `/usr/local/bin`
-- The **Gnoblin** login entry and the manual pages
+- The `gnoblin` and `gnoblinctl` programs, the core and std libraries, and the shell runtimes
+- The portal backend, the PAM module and the lock screen's PAM service
+- The **Gnoblin** login entry, `share/wayland-sessions/gnoblin.desktop`, and the systemd user target
 
-[Install a desktop shell and log in](installation.md#after-installing). Run `gnoblin --version` to check the
-installed version.
+[Install layout](install-layout.md) lists every file. A login manager finds the login entry only in a directory it
+searches, and `/usr` is always one; pass `--prefix /usr` to `cargo xtask dist install` for a system-wide session, as root
+or with `--destdir` for a staged copy.
 
-Gnoblin reads these desktop settings for idle and lock timing:
+[Install a desktop shell and log in](installation.md#after-installing). Run `gnoblin --version` to check the installed
+version.
 
-| Setting                                      | What it does                                           |
-| -------------------------------------------- | ------------------------------------------------------ |
-| `org.gnome.desktop.session idle-delay`       | Seconds before the session goes idle. `0` turns it off |
-| `org.gnome.desktop.screensaver lock-enabled` | `true` locks the screen when the session goes idle     |
-| `org.gnome.desktop.screensaver lock-delay`   | Seconds to wait before it locks                        |
+## Check the install
 
-For X11 applications, install Xwayland with your package manager.
+```sh
+cargo xtask dist-check --prefix /usr/local
+```
 
-## Build options
-
-Add these settings after the command, for example `make JOBS=4`:
-
-| Setting  | Default                  | What it does                                                                        |
-| -------- | ------------------------ | ----------------------------------------------------------------------------------- |
-| `PREFIX` | `/usr/local/lib/gnoblin` | Where `make install` puts Gnoblin. Use the same value for `make` and `make install` |
-| `JOBS`   | number of processors     | Number of parallel compilation jobs                                                 |
-| `DEVKIT` | `1`                      | `0` skips the nested viewer that `make preview` needs                               |
-
-`make clean` deletes the `build` directory. An installed copy stays.
-
-To leave out the portal backend or X11 application support, or to see what a build would do, run `./build.sh --help`
-for the flags.
+It verifies the core library's name and exports, what each library links against, and that no library is missing.
 
 ## Update
 
-For a Git checkout:
-
 ```sh
 git pull --ff-only
-make
-make install
+just dist /usr/local
 ```
 
-For a release tarball, download the newer tarball, extract it into a new directory, and run `make` and
-`make install` there. Log out and back in to use the new version.
+`cargo xtask dist install` replaces only files its manifest lists and that still hold what the install wrote, and refuses
+any other file at a destination before it writes anything. Log out and back in to use the new version.
 
 ## Remove
 
-Log in to another session first. Then remove the files that `make install` created:
+Log in to another session first. Then run:
 
 ```sh
-sudo rm -f /usr/local/bin/gnoblin /usr/local/bin/gnoblinctl
-sudo rm -f /usr/share/man/man1/gnoblin.1 /usr/share/man/man1/gnoblinctl.1
-sudo rm -f /usr/share/wayland-sessions/gnoblin.desktop
-sudo rm -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-sudo rm -f /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
-sudo rm -f /usr/lib/systemd/user/gnoblin-session.target /usr/lib/systemd/user/gnoblin-idle.service
-sudo rm -f /usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service
-sudo rm -rf /usr/local/lib/gnoblin
+cargo xtask dist uninstall --prefix /usr/local
 ```
 
-If you set another `PREFIX`, remove that directory instead of `/usr/local/lib/gnoblin`. Your shell and your
-configuration stay.
+It removes exactly the files `share/gnoblin/install-manifest` lists and that still hold what the install wrote, keeps and
+reports a file you changed, and removes a directory only when it is empty. Your shell and your configuration stay.
 
-See [source development](source-development.md) to rebuild one component.
+See [source development](source-development.md) to work on the code.

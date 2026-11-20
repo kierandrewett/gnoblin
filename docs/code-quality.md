@@ -19,11 +19,9 @@ files or when unrelated edits are in progress.
 Install Python 3 and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 The first run downloads tools; later runs reuse the cache.
 
-| Files | Additional requirement                                 |
-| ----- | ------------------------------------------------------ |
-| QML   | Qt 6 QML tools; set `QMLFORMAT` for a nonstandard path |
-| Rust  | `rustfmt`                                              |
-| Nix   | Nix with flakes                                        |
+| Files | Additional requirement |
+| ----- | ---------------------- |
+| Rust  | `rustfmt`              |
 
 Missing tools fail the check. They are not silently skipped.
 
@@ -40,19 +38,15 @@ The same wrapper works in Bingux. Its Make targets are `make lint` and
 
 ## What is checked?
 
-| Language                        | Tools                |
-| ------------------------------- | -------------------- |
-| Python                          | Ruff                 |
-| Shell                           | ShellCheck, shfmt    |
-| JavaScript                      | ESLint, Prettier     |
-| QML                             | Qt parser, qmlformat |
-| C/C++                           | clang-format         |
-| Rust                            | rustfmt              |
-| Nix                             | nixfmt               |
-| Markdown, YAML, JSON, CSS, HTML | Prettier             |
+| Language                        | Tools             |
+| ------------------------------- | ----------------- |
+| Python                          | Ruff              |
+| Shell                           | ShellCheck, shfmt |
+| JavaScript and TypeScript       | ESLint, Prettier  |
+| Rust                            | rustfmt           |
+| Markdown, YAML, JSON, CSS, HTML | Prettier          |
 
-Submodules, patches, locks and generated output are excluded.
-QML checks do not replace `qmllint` with the matching installed modules.
+Patches, locks and generated output are excluded.
 Builds and runtime tests remain separate.
 
 EditorConfig records layout conventions. Keep shared tooling identical in

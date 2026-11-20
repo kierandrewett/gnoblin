@@ -1,7 +1,7 @@
 # Testing Gnoblin
 
-Choose a check based on the code you changed. The source build, native tests,
-nested preview, and real login each verify a different part of the session.
+Choose a check based on the code you changed. The workspace tests, the conformance suites, the nested session and a real
+login each verify a different part of the session. `justfile` lists every recipe CI runs.
 
 ## Test the TypeScript shell
 
@@ -11,76 +11,37 @@ shell against a headless compositor in the test's own process, so they need no s
 shell's behaviour over the compositor's own sockets; it does not prove a graphical login (see
 [hardware verification](real-hardware-verification.md)).
 
-The nested-session scripts below belong to the Mutter-based session. Four of them (marked "Mutter session Lua") exercise the
-Mutter session's own Lua configuration, not the Rust compositor's shell.
-
 ## Available checks
 
-| Command or test                           | What it checks                                                                                                         | Requirement                                                        |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `make check`                              | Source manifests, patch metadata, scripts, configuration, and packaging checks                                         | Python and repository tooling                                      |
-| `make test`                               | CTest runtime, configuration, protocol, and CLI tests                                                                  | A configured build in `build/make`                                 |
-| `tests/test-gnoblin-devkit.sh`            | Config, native controls, and visible workspace animation frames in a fresh nested Gnoblin session                      | A working Wayland desktop and `grim`                               |
-| `tests/test-privacy-pipewire.py`          | Live microphone and camera activity through `gnoblin.privacy.state()`                                                  | Source build, Wayland desktop, PipeWire tools                      |
-| `tests/test-window-csd-reconstruction.py` | Mutter session Lua: `remove_csd` pixel behavior in a fresh nested Gnoblin session                                      | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
-| `tests/test-window-native-borders.py`     | Mutter session Lua: border rule pixels in a fresh nested Gnoblin session                                               | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
-| `tests/test-window-rule-lifecycle.py`     | Mutter session Lua: repeated window-rule reloads preserve a live window in a fresh nested session                      | Source-build prefix, Wayland desktop, and Quickshell               |
-| `tests/test-window-native-shadows.py`     | Mutter session Lua: replacement shadow pixels, rule removal, and translucent content in a fresh nested Gnoblin session | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
-| `tests/test-window-manager.sh`            | Mutter unit, Wayland, backend, and focus tests                                                                         | A working seat and file-monitoring support                         |
+| Command                            | What it checks                                                                                                         | Requirement                                                  |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `just workspace-ci`                | The whole root gate: formatting, build, clippy, tests, the xtask rules, the ABI locks and the SDK generator            | The libraries `scripts/ci-install-system-libraries.sh` lists |
+| `just ci`                          | `workspace-ci`, the extension workspace's gate and the core-only build                                                 | The same, and `cargo-deny`                                   |
+| `just test`                        | Every crate's unit and integration tests                                                                               | The same                                                     |
+| `just core-only`                   | The core builds with no std crate in its tree, places windows at the origin and refuses portal requests `no-ui`        | The same                                                     |
+| `just modular`                     | The shipped binary with shells of every language, reload, the failure modes and the ABI upgrade tests                  | The same                                                     |
+| `just pipewire-test`               | The PipeWire export and the compositor's capture end-to-end tests                                                      | A `pipewire` daemon on `PATH`                                |
+| `just abi-check`                   | The C ABI lock files and the golden shells of `tests/modular/golden`                                                   | None                                                         |
+| `just dist-check`                  | How the session links, and what it installs, in three temporary prefixes                                               | A C compiler and `pkg-config`                                |
+| `just js-check`                    | Type-checks and lints the TypeScript shell sources and checks formatting                                               | Node.js                                                      |
+| `just script-tests`                | Syntax of the scripts, and the tests of `pkgrepo`, the RPM target probe and the contract recording                     | Python 3                                                     |
+| `scripts/wlcs.sh`                  | Canonical's Wayland Conformance Suite against the compositor; `tests/wlcs/expected.toml` lists what must pass          | `scripts/ci-install-system-libraries.sh wlcs`                |
+| `scripts/real-host-conformance.sh` | The nested backend against a real host compositor, Sway or Weston, headless                                            | Sway or Weston                                               |
+| `scripts/xr-smoke.sh`              | The compositor, the stock shell, two clients, the XR extension and a simulated headset together                        | Monado and Vulkan; it installs its own packages              |
+| `cargo run -p gnoblin-parity`      | `run tests/parity/scenarios` against the Rust candidate; with the reference sessions, Mutter 51 and the legacy Gnoblin | A Fedora machine; `scripts/parity-reference.sh`              |
 
-`make` builds the session and `make test` runs the CTest suites after it. The nested pixel tests
-(`test-window-csd-reconstruction`, `test-window-native-borders`, `test-window-rule-lifecycle` and
-`test-window-native-shadows`) run through the nested viewer. For example:
+CI runs the Rust workflows in `rust.yml`, `wlcs.yml` and `parity-reference.yml`. A passing CI job does not prove behaviour
+on a real seat.
 
-```sh
-GNOBLIN_DEVKIT_EXEC='python3 tests/test-window-csd-reconstruction.py' make preview
-```
+## Test a nested session
 
-Use the same form for the other three tests. Replace the script name in `GNOBLIN_DEVKIT_EXEC`.
-`test-window-rule-lifecycle` also needs `GNOBLIN_DEVKIT_CONFIG_SOURCE=tests/configs/window-rule-lifecycle`.
-
-## Test the shell runtime in a preview
-
-Run `tests/test-gnoblin-devkit.sh` to build or reuse the private nested viewer and check
-that a configuration loads and that `gnoblinctl` can query and mutate
-compositor state. It uses temporary home and XDG directories, a private D-Bus
-session, and the host Wayland display. It is not a login or a sandbox.
-
-The test also resizes a Wayland client through `Window:resize`, checks the
-animation lifecycle events, and captures intermediate rendered frames.
-
-For an interactive preview, run:
-
-```sh
-make preview
-```
-
-See the [devkit guide](/devkit) for launching shell clients and choosing a
-configuration snapshot.
-
-Run `python3 tests/test-privacy-pipewire.py` to check live microphone and camera
-transitions. It starts a private PipeWire graph for the nested session, so the
-test does not connect to or change the host audio graph. A virtual audio source
-and an active stream with the PipeWire media role set to `Camera` let the test
-run without capture hardware.
-
-The test requires `pipewire`, `wireplumber`, `pipewire-pulse`, `pactl`,
-`pw-cat`, and `pw-cli`. Its source build prefix defaults to `install`, the
-`./build.sh` default. Set
-`GNOBLIN_TEST_PREFIX` to use a different prefix.
+`GNOBLIN_BACKEND=nested gnoblin` runs a whole session in a window of your desktop (see [backends](backends.md)), and
+`GNOBLIN_BACKEND=headless` runs it with no window, which is what the tests use. `scripts/js-shell-screenshots.sh` takes
+pictures of the shipped shell on a real compositor. These sessions are not a login or a sandbox.
 
 ## Test compositor changes
 
-Run `tests/test-window-manager.sh` for Mutter and Wayland changes. These tests need
-access to a real seat; a successful CMake build or CTest run alone does not
-verify input, output hotplug, or a graphical login.
-
-Use [hardware verification](real-hardware-verification.md) to check a fresh
-login, display configuration, input, lock, and logout on a supported machine.
-
-## CI
-
-The release workflows build the source archive without Git metadata, run the
-source build as an unprivileged user, and check package installation and
-removal. Separate workflows assess build dependencies and run application
-compatibility checks. A passing CI job does not prove behavior on a real seat.
+Run `cargo test --workspace --no-fail-fast --locked` for the whole suite, and the crate's own tests while you work. The
+tests that need a render node print `skipping` and pass on a machine without one, so use
+[hardware verification](real-hardware-verification.md) to check a fresh login, display configuration, input, lock and
+logout on a supported machine.

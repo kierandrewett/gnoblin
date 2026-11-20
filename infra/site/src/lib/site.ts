@@ -48,7 +48,6 @@ export const SYSTEMS: System[] = [
         href: docsHref("install-arch"),
     },
     { glyph: "alpinelinux", name: "Alpine", short: "Alpine", pm: "apk", href: docsHref("install-alpine") },
-    { glyph: "nixos", name: "NixOS", short: "NixOS", pm: "Nix flake", href: docsHref("install-nixos") },
     {
         glyph: "",
         name: "Build from source",

@@ -53,8 +53,7 @@ Record the GPU driver and whether the GLES context came up. A GPU that cannot gi
 Verify the bar, dock, launcher and notifications appear and respond to input.
 Open and close menus near each screen edge. Test every display.
 
-If the shell fails, confirm desktop right-click opens a terminal and the recovery
-panel appears. Check the shell's log before restarting it.
+If the shell fails, read `gnoblinctl log --level WARN` for the reason before restarting it.
 
 ## 4. Check windows and keys
 

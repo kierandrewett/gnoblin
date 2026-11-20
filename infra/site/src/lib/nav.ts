@@ -1,5 +1,4 @@
-// The documentation sidebar, converted once from the VitePress sidebar in infra/website/.vitepress/config.mts.
-// Section and page order are the same; labels are in sentence case. `slug` is the page's path under docs/ without
+// The documentation sidebar. Section and page order are the order shown; labels are in sentence case. `slug` is the page's path under docs/ without
 // `.md` ("" is docs/index.md, "recipes" is docs/recipes/index.md). An item with `items` is a group; it links to
 // its own page only when it has a `slug`.
 //
@@ -31,7 +30,6 @@ export const NAV: NavSection[] = [
                     { label: "Fedora", slug: "install-fedora" },
                     { label: "Arch Linux", slug: "install-arch" },
                     { label: "Debian", slug: "install-debian" },
-                    { label: "NixOS", slug: "install-nixos" },
                     { label: "openSUSE", slug: "install-opensuse" },
                     { label: "Alpine", slug: "install-alpine" },
                     { label: "Build from source", slug: "install-source" },
@@ -214,7 +212,6 @@ export const NAV: NavSection[] = [
         label: "Contributing",
         items: [
             { label: "Source development", slug: "source-development" },
-            { label: "Devkit", slug: "devkit" },
             { label: "Testing", slug: "testing" },
             { label: "Desktop verification", slug: "real-hardware-verification" },
             { label: "Formatting", slug: "code-quality" },
