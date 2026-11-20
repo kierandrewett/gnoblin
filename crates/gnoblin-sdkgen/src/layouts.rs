@@ -6,8 +6,7 @@
 //! every language the day `cargo xtask gen-sdks` runs.
 
 use gnoblin_std_abi::layouts::{
-    ActionDesc, BINDING_KINDS, EnumMember, Initial, LAYOUT_KINDS, LayoutKindDesc, LowerBound, OptionDesc, ValueDesc,
-    ValueShape,
+    ActionDesc, BINDING_KINDS, EnumMember, Initial, LAYOUT_KINDS, LayoutKindDesc, OptionDesc, ValueDesc, ValueShape,
 };
 use gnoblin_std_abi::{STD_VALUE_BOOL, STD_VALUE_ENUM, STD_VALUE_NODE, STD_VALUE_NUMBER, STD_VALUE_TEXT};
 
@@ -657,16 +656,6 @@ fn ts_layout(code: &mut CodeWriter, kind: &LayoutKindDesc) {
     code.dedent();
     code.line("}");
     code.blank();
-}
-
-/// Lower-bounds are documentation in the generated classes; the library enforces them.
-#[allow(dead_code)]
-fn bound_doc(bound: &LowerBound) -> &'static str {
-    match bound {
-        LowerBound::Free => "",
-        LowerBound::AtLeast(_) => "at least",
-        LowerBound::Above(_) => "above",
-    }
 }
 
 /// The base classes the generated layouts and bindings extend. They are the part that does not depend on a kind, so they are written

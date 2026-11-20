@@ -34,17 +34,14 @@ Counts are for `const`/`static` items in non-test code. "Grouped" means a family
 
 | Crate                                      | Const items | Listed individually | Grouped | Notes                                           |
 | ------------------------------------------ | ----------- | ------------------- | ------- | ----------------------------------------------- |
-| gnoblin-compat-dbus-gnome-session-manager  | 0           | 0                   | 0       | No constants in non-test code.                  |
 | gnoblin-compat-dbus-gnome-shell-introspect | 9           | 6                   | 3       | Bus, path, interface, version, state keys.      |
 | gnoblin-compat-dbus-gnome-shell-screenshot | 7           | 5                   | 2       | Bus, path, interface, version, refusal text.    |
 | gnoblin-compat-dbus-mutter-clipboard       | 4           | 4                   | 0       | Name, interface, version, matrix include.       |
 | gnoblin-compat-dbus-mutter-displayconfig   | 8           | 6                   | 2       | Bus, path, interface, version, mode separators. |
 | gnoblin-compat-dbus-mutter-idlemonitor     | 6           | 6                   | 0       | Bus, path, interface, version, object names.    |
 | gnoblin-compat-dbus-mutter-inputcapture    | 5           | 5                   | 0       | Interface names, version.                       |
-| gnoblin-compat-dbus-mutter-inputmapping    | 0           | 0                   | 0       | No constants in non-test code.                  |
 | gnoblin-compat-dbus-mutter-remotedesktop   | 5           | 5                   | 0       | Interface names, version.                       |
 | gnoblin-compat-dbus-mutter-screencast      | 9           | 9                   | 0       | Bus, path, interfaces, version.                 |
-| gnoblin-compat-dbus-mutter-servicechannel  | 0           | 0                   | 0       | No constants in non-test code.                  |
 
 Crates with `support-matrix.json` pull it in with `include_str!`. Those are counted as one item each in the per-crate rows.
 

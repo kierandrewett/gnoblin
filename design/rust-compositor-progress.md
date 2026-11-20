@@ -17,7 +17,7 @@ against it.
 | F    | `gnoblin-proto`                                                                   | framed envelope, handshake, version rule, generated wire types                    | `4dedd5ca` | 28    |
 | F    | `xtask`                                                                           | dependency rules, `gen-proto`, `gen-config`, `dupes`, compat report               | `8778ccc8` | 23    |
 | P    | `gnoblin-parity`                                                                  | scenario runner, targets, normaliser, report                                      | `c3779eed` | 50    |
-| P    | `gnoblin-testkit`                                                                 | runtime directory, clock, recorder                                                | `c3779eed` | 13    |
+| P    | `gnoblin-testkit`                                                                 | runtime directory, fake compositor                                                | `c3779eed` | 13    |
 | OBJ  | `gnoblin-model`                                                                   | object graph, revisions, request broker, in-process loopback                      | `8778ccc8` | 15    |
 | OBJ  | `gnoblin-client`                                                                  | IPC client                                                                        | `8778ccc8` | 30    |
 | OBJ  | `gnoblinctl`                                                                      | generated tree, typed arguments, `ipc dump` redaction                             | `b9614390` | 45    |

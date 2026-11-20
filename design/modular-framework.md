@@ -2771,17 +2771,14 @@ crates (cdylib only) is refused by cargo and is not counted.
 | `gnoblin-client`                             |       82 |      0 |       0 | S1  | pass                                  |
 | `gnoblin-compat-core`                        |       37 |      0 |       1 | S1  | pass                                  |
 | `gnoblin-compat-dbus-a11y-keyboard-monitor`  |        0 |      0 |       0 | S1  | no tests                              |
-| `gnoblin-compat-dbus-gnome-session-manager`  |        0 |      0 |       0 | S1  | no tests                              |
 | `gnoblin-compat-dbus-gnome-shell-introspect` |       13 |      0 |       0 | S1  | pass                                  |
 | `gnoblin-compat-dbus-gnome-shell-screenshot` |        7 |      0 |       0 | S1  | pass                                  |
 | `gnoblin-compat-dbus-mutter-clipboard`       |        4 |      0 |       0 | S1  | pass                                  |
 | `gnoblin-compat-dbus-mutter-displayconfig`   |       19 |      0 |       0 | S1  | pass                                  |
 | `gnoblin-compat-dbus-mutter-idlemonitor`     |       17 |      0 |       0 | S1  | pass                                  |
 | `gnoblin-compat-dbus-mutter-inputcapture`    |        4 |      0 |       0 | S1  | pass                                  |
-| `gnoblin-compat-dbus-mutter-inputmapping`    |        0 |      0 |       0 | S1  | no tests                              |
 | `gnoblin-compat-dbus-mutter-remotedesktop`   |        4 |      0 |       0 | S1  | pass                                  |
 | `gnoblin-compat-dbus-mutter-screencast`      |       10 |      0 |       0 | S1  | pass                                  |
-| `gnoblin-compat-dbus-mutter-servicechannel`  |        0 |      0 |       0 | S1  | no tests                              |
 | `gnoblin-compat-gtk-dconf-settings`          |       10 |      0 |       0 | S1  | pass                                  |
 | `gnoblin-compat-host`                        |       13 |      0 |       0 | S1  | pass                                  |
 | `gnoblin-compat-qt-portal-settings`          |        5 |      0 |       0 | S1  | pass                                  |
@@ -3093,17 +3090,14 @@ them; the doc step of a cdylib-only crate is refused by cargo and is not counted
 | `gnoblin-client`                             |       82 |      0 |       0 | pass     |
 | `gnoblin-compat-core`                        |       37 |      0 |       1 | pass     |
 | `gnoblin-compat-dbus-a11y-keyboard-monitor`  |        0 |      0 |       0 | no tests |
-| `gnoblin-compat-dbus-gnome-session-manager`  |        0 |      0 |       0 | no tests |
 | `gnoblin-compat-dbus-gnome-shell-introspect` |       13 |      0 |       0 | pass     |
 | `gnoblin-compat-dbus-gnome-shell-screenshot` |        7 |      0 |       0 | pass     |
 | `gnoblin-compat-dbus-mutter-clipboard`       |        4 |      0 |       0 | pass     |
 | `gnoblin-compat-dbus-mutter-displayconfig`   |       19 |      0 |       0 | pass     |
 | `gnoblin-compat-dbus-mutter-idlemonitor`     |       17 |      0 |       0 | pass     |
 | `gnoblin-compat-dbus-mutter-inputcapture`    |        4 |      0 |       0 | pass     |
-| `gnoblin-compat-dbus-mutter-inputmapping`    |        0 |      0 |       0 | no tests |
 | `gnoblin-compat-dbus-mutter-remotedesktop`   |        4 |      0 |       0 | pass     |
 | `gnoblin-compat-dbus-mutter-screencast`      |       10 |      0 |       0 | pass     |
-| `gnoblin-compat-dbus-mutter-servicechannel`  |        0 |      0 |       0 | no tests |
 | `gnoblin-compat-gtk-dconf-settings`          |       10 |      0 |       0 | pass     |
 | `gnoblin-compat-host`                        |       13 |      0 |       0 | pass     |
 | `gnoblin-compat-qt-portal-settings`          |        5 |      0 |       0 | pass     |

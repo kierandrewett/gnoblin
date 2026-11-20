@@ -1106,15 +1106,6 @@ fn client(rig: &Rig, index: i64) -> Obj {
         .expect("a client")
 }
 
-/// The number of windows `gnoblin.clients` holds.
-#[allow(dead_code)]
-fn client_count(rig: &Rig) -> u64 {
-    let class = rig.core.class("gnoblin").expect("the service class");
-    let service = rig.core.create(class, &[]).expect("the service");
-    let clients = cget(rig, service, "clients").object().expect("the clients");
-    cget(rig, clients, "length").uint().expect("a length")
-}
-
 /// The properties a window has for a binding to follow.
 fn bindings_of(rig: &Rig, client: Obj) -> Obj {
     cget(rig, client, "properties").object().expect("the bindings")

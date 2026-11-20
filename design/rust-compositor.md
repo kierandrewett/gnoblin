@@ -682,12 +682,9 @@ gnoblin/
       gnoblin-compat-dbus-mutter-clipboard/    org.gnome.Mutter.Clipboard
       gnoblin-compat-dbus-mutter-displayconfig/  org.gnome.Mutter.DisplayConfig
       gnoblin-compat-dbus-mutter-idlemonitor/  org.gnome.Mutter.IdleMonitor
-      gnoblin-compat-dbus-mutter-inputmapping/  org.gnome.Mutter.InputMapping (later)
-      gnoblin-compat-dbus-mutter-servicechannel/  org.gnome.Mutter.ServiceChannel (later)
       gnoblin-compat-wayland-mutter-x11-interop/  mutter_x11_interop Wayland redirect (later)
       gnoblin-compat-dbus-gnome-shell-introspect/  org.gnome.Shell.Introspect
       gnoblin-compat-dbus-gnome-shell-screenshot/  org.gnome.Shell.Screenshot
-      gnoblin-compat-dbus-gnome-session-manager/  org.gnome.SessionManager
       gnoblin-compat-wayland-gtk-shell1/          gtk_shell1 Wayland redirect (compositor side)
       gnoblin-compat-gtk-dconf-settings/  dconf layer for GTK (D15)
       gnoblin-compat-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
@@ -711,7 +708,7 @@ gnoblin/
     gnoblin-portal-appchooser/   app chooser dialog screen (D19)
     gnoblinctl/               command line client (binary)
     xdg-desktop-portal-gnoblin/  portal backend (binary)
-    gnoblin-testkit/          in-process fixture, test clients, input injection, observation recorder
+    gnoblin-testkit/          in-process fixture, fake compositor, oracle fixtures
     gnoblin-parity/           scenario runner, targets (Mutter reference, Rust candidate), normaliser, reports
     xtask/                    code generation: d.lua, API docs, schema dump, compatibility report
   protocols/                  Gnoblin-owned Wayland XML, with version history

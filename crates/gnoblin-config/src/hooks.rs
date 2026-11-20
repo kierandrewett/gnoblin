@@ -20,14 +20,14 @@
 use std::collections::BTreeMap;
 
 use crate::appearance::Accent;
-use crate::engine::{Parser, is_inherit};
+use crate::engine::Parser;
 use crate::generated::{
     AccelCurve, Appearance, Compositor, DialogsFont, DialogsStyle, Gesture, GesturePoint, PadButton, PadButtonAction,
     Tablet, TouchpadGestures, WindowManagement, Workspace, Workspaces, Xwayland,
 };
 use crate::model::Inherit;
 use crate::path::Path;
-use crate::problem::{Fault, Problem};
+use crate::problem::Fault;
 use crate::value::Value;
 
 /// Every hook this module implements, checked against the schema by test.
@@ -577,18 +577,4 @@ fn connector_shaped(name: &str) -> bool {
     characters.next().is_some_and(|first| first.is_ascii_alphanumeric())
         && name.len() <= 64
         && characters.all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
-}
-
-/// A problem list entry, so a hook can build a report without importing
-/// [`Problem`] twice.
-#[allow(dead_code)]
-pub(crate) fn problem(path: &Path, fault: Fault) -> Problem {
-    Problem::new(path.clone(), fault)
-}
-
-/// Whether a value is the `"inherit"` marker, re-exported for hooks that read the
-/// map directly.
-#[allow(dead_code)]
-pub(crate) fn inherited(value: &Value) -> bool {
-    is_inherit(value)
 }

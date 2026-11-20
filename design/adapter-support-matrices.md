@@ -211,9 +211,6 @@ Globals Mutter offers that the candidate's sources never name (8): `xdg_toplevel
 A crate under `crates/compat/` that has no `support-matrix.json` has declared nothing yet. The ones below are one-line crate
 roots, so the declaration is owed with the adapter:
 
-- `gnoblin-compat-dbus-gnome-session-manager`: `org.gnome.SessionManager adapter.` (1 line(s))
-- `gnoblin-compat-dbus-mutter-inputmapping`: `org.gnome.Mutter.InputMapping adapter (later).` (1 line(s))
-- `gnoblin-compat-dbus-mutter-servicechannel`: `org.gnome.Mutter.ServiceChannel adapter (later).` (1 line(s))
 
 ## Gaps the comparison found
 

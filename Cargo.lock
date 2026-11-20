@@ -1154,10 +1154,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-dbus-gnome-session-manager"
-version = "0.2.0-alpha.0"
-
-[[package]]
 name = "gnoblin-compat-dbus-gnome-shell-introspect"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1234,10 +1230,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-dbus-mutter-inputmapping"
-version = "0.2.0-alpha.0"
-
-[[package]]
 name = "gnoblin-compat-dbus-mutter-remotedesktop"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1253,10 +1245,6 @@ dependencies = [
  "gnoblin-log",
  "zbus",
 ]
-
-[[package]]
-name = "gnoblin-compat-dbus-mutter-servicechannel"
-version = "0.2.0-alpha.0"
 
 [[package]]
 name = "gnoblin-compat-gtk-dconf-settings"

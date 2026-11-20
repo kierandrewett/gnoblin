@@ -7,7 +7,6 @@
 //! there is one fake and not one per runtime.
 //!
 //! The fake is single-threaded (`Rc`): a test drives it from the thread that runs the shell.
-#![allow(dead_code)]
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
