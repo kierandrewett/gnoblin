@@ -26,7 +26,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use gnoblin_core_abi::GnoblinCtx;
-use gnoblin_object::server::Builder;
+use gnoblin_object::server::{Builder, Cx};
 use gnoblin_object::{Obj, Res};
 
 use crate::error::Res as StdRes;
@@ -86,6 +86,25 @@ pub(crate) fn announce(std: &Std, notice: &Notice) {
             })
         });
     }
+}
+
+/// The id of the workspace an object of the class `workspace` stands for, for a class of another module that takes one.
+///
+/// # Errors
+///
+/// The value is not a workspace of this generation.
+pub(crate) fn workspace_id(cx: &Cx<'_>, value: &gnoblin_object::Val) -> Res<String> {
+    let handle = cx.with_state(value.object()?, |held: &mut workspaces::WorkspaceRef| held.id())?;
+    look(cx.ctx(), |st| st.workspace(handle).map(|ws| ws.id.clone()))
+}
+
+/// The node a client value (its node number as text) names, for a class of another module that takes one.
+///
+/// # Errors
+///
+/// The value is not a client's number.
+pub(crate) fn client_node(value: &gnoblin_object::Val) -> Res<crate::state::NodeId> {
+    values::client_of(value)
 }
 
 /// The generation ended: the objects it held are gone.

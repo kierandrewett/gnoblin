@@ -470,6 +470,25 @@ readonly = true
 name = "clear_camera"
 since = "0.2.0"
 
+# Draws a workspace's windows as a mirror, as setting `workspace` does, given the workspace object.
+[[object.method]]
+name = "show_workspace"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "workspace"
+type = "object:workspace"
+
+# Draws a client, as setting `source` does, given the client as the text of its node number (the `id` of a client). A client's number has
+# the top bit set, which JavaScript's numbers cannot hold, so a script uses this and not `source`.
+[[object.method]]
+name = "show_client"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
 # A camera that projects what is under it in three dimensions. A view draws through its camera.
 [[object]]
 name = "camera3d"

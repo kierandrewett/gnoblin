@@ -110,6 +110,30 @@ pub(super) fn register(builder: &mut Builder) {
                 h.world.mirrors_workspace(h.node).is_none() && h.source()? == 0,
             ))
         })
+        .method("show_workspace", |h, cx, args| {
+            // The workspace as an object, the way a shell that holds one has it: the same mirror `workspace` starts, by the id the
+            // workspace object has.
+            let id = crate::workspace_objects::workspace_id(cx, &args[0])?;
+            h.world.mirror_stop(h.node);
+            if !h.world.has_workspace(&id) {
+                return Err(Fail::no_such(format!(
+                    "{}.show_workspace: there is no workspace `{id}`",
+                    h.label()
+                )));
+            }
+            h.put("source", Prop::Node(0))?;
+            h.world.mirror_start(h.node, &id)?;
+            h.touched();
+            Ok(Val::None)
+        })
+        .method("show_client", |h, _, args| {
+            // A client as the text of its node number, as everywhere a client is named: the number has the top bit set, which a
+            // script's number cannot hold (`source` is that number for the shells that can).
+            let node = crate::workspace_objects::client_node(&args[0])?;
+            h.world.mirror_stop(h.node);
+            h.put("source", Prop::Node(node))?;
+            Ok(Val::None)
+        })
         .method("clear_camera", |h, _, _| {
             h.put("camera", Prop::Node(0))?;
             Ok(Val::None)
