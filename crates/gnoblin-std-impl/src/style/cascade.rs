@@ -128,10 +128,13 @@ impl StyleState {
     }
 }
 
+/// What one style holds.
+type Held = (BTreeMap<ScalarProp, Scalar>, BTreeMap<ListProp, Vec<Entry>>);
+
 /// What the styles held at one moment: a transition that does not commit puts it back.
 #[derive(Clone, Debug)]
 pub(crate) struct StyleSnapshot {
-    stores: HashMap<Id, (BTreeMap<ScalarProp, Scalar>, BTreeMap<ListProp, Vec<Entry>>)>,
+    stores: HashMap<Id, Held>,
     ranks: HashMap<Id, f64>,
 }
 

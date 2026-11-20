@@ -19,7 +19,7 @@ use std::rc::Rc;
 use gnoblin_core_abi::{E_STALE, E_TYPE, GnoblinStr, MEMBER_METHOD, MEMBER_PROPERTY};
 use gnoblin_object::client::Api;
 use gnoblin_object::{Fail, Obj, Val};
-use gnoblin_std_abi::{GnoblinStdTransitionOptions, GnoblinStdWorkspaceSpec};
+use gnoblin_std_abi::GnoblinStdWorkspaceSpec;
 use gnoblin_testkit::oracle::{Value, json};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 use rig::{Rig, W, b, callback, d, en, js, recorded, t};
@@ -746,30 +746,35 @@ fn nodes_and_writes() {
 
 // ---- the scene root and views ---------------------------------------------------------------------------------------------------
 
-/// Runs `work` as one transition, as the TypeScript library's `requestTransition` does: the writes of `work` are held, and sent as
-/// timed writes joined to one `tween` node when it ends. The easing is `ease-out`. A `work` that fails ends the transition without
-/// sending what it staged, as a callback that throws does.
+/// Runs `work` as one transition through the native `Transition` class: `begin` holds the writes of `work`, and `commit` sends them
+/// as timed writes joined to one `tween` node. The easing is `ease-out`. A `work` that fails is aborted: nothing it staged is sent
+/// and the shell's `rollback` runs, once, before the failure is answered (a callback that does not fail leaves it unrun).
 fn try_transition(rig: &Rig, duration_ms: f64, work: impl FnOnce() -> Result<(), Fail>) -> Result<(), Fail> {
-    let options = GnoblinStdTransitionOptions {
-        size: std::mem::size_of::<GnoblinStdTransitionOptions>() as u32,
-        autoplay: 1,
-        easing: gnoblin_std_abi::STD_EASING_EASE_OUT,
-        reserved: 0,
-        duration_ms,
-        delay_ms: 0.0,
+    let class = rig.api.class("transition").expect("the class");
+    let call = |name: &str, args: &[Val]| {
+        let member = rig.api.member(class, MEMBER_METHOD, name).expect("the function");
+        rig.api.call_static(class, member, args)
     };
-    // SAFETY: `options` is a live struct for the call, and the table's functions take the generation's context.
-    assert_eq!(unsafe { (rig.std.transition_begin)(rig.ctx, &raw const options) }, 0);
+    let rolled = Rc::new(Cell::new(0_u32));
+    let counted = Rc::clone(&rolled);
+    let rollback = callback(move |_| {
+        counted.set(counted.get() + 1);
+        Ok(Val::None)
+    });
+    let options = Val::Record {
+        class: 0,
+        fields: vec![d(duration_ms), en(4), d(0.0), Val::Bool(true)],
+    };
+    call("begin", &[options, rollback]).expect("a transition begins");
     match work() {
         Ok(()) => {
-            let mut made = 0_u64;
-            // SAFETY: `made` is a live local the library writes.
-            assert_eq!(unsafe { (rig.std.transition_commit)(rig.ctx, &raw mut made) }, 0);
+            call("commit", &[]).expect("a transition commits");
+            assert_eq!(rolled.get(), 0, "a transition that commits is not rolled back");
             Ok(())
         }
         Err(fail) => {
-            // SAFETY: the table's functions take the generation's context.
-            assert_eq!(unsafe { (rig.std.transition_abort)(rig.ctx) }, 0);
+            call("abort", &[]).expect("a transition aborts");
+            assert_eq!(rolled.get(), 1, "an aborted transition is rolled back once");
             Err(fail)
         }
     }
@@ -1588,7 +1593,8 @@ fn a_clients_placement_from_a_transform() {
     };
     // The TypeScript engine rolled back its own copy of the window's state when the callback threw, and wrote that copy to the tree:
     // the copy had not heard of the writes of the earlier steps, so `z`, `rotation` and `scale` went back to what a window starts
-    // with. The native engine has no copy to restore (NpStdStyle's `abort` callback is where a shell's own state is rolled back), so
+    // with. The native engine has no copy to restore (the shell's own state is put back by the `rollback` of the transition, which
+    // `try_transition` gives and asserts ran), so
     // the window keeps what the earlier steps wrote.
     rig.allow_shared("refused_transform", 3, "z", json!(0.0), json!(-5.0));
     rig.allow_shared(

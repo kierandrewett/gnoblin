@@ -337,8 +337,8 @@ pub(crate) fn register(builder: &mut Builder) {
         })
         .function("commit", |cx, _| commit(cx))
         .function("abort", |cx, _| abort(cx.ctx()).map(|()| Val::None))
-        .function("request", |cx, args| request(cx, args))
-        .function("animate", |cx, args| animate(cx, args))
+        .function("request", request)
+        .function("animate", animate)
         .function("sample", |_, args| {
             let (_, easing) = easing_of(&args[0])?;
             Ok(Val::Double(easing.sample(args[1].double()?)))

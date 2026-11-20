@@ -23,6 +23,7 @@ mod native_object;
 mod native_scene;
 mod native_services;
 mod native_std;
+mod native_style;
 mod native_ui;
 mod no_std;
 mod no_workspaces;

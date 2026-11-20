@@ -49,8 +49,6 @@ const CORNER_RADIUS: usize = 1;
 const BACKGROUND: usize = 2;
 const BORDERS: usize = 3;
 const SHADOWS: usize = 4;
-const FILTER: usize = 5;
-const BACKDROP: usize = 6;
 
 const TINT: &str = "fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) -> vec4<f32> { return c * p[0]; }";
 
