@@ -4,32 +4,38 @@ A shader is a small GPU program that decides the colour of each pixel of a windo
 it, to draw a gradient over it, or to build a material from what is behind it.
 
 This page says how to write one, how to attach it to a window's style, what the compositor refuses and what it does not
-draw. Custom shaders are off by default: read [Turn them on](#turn-them-on) first.
+draw. Custom shaders are on by default; [switch them off](#switch-them-off) if you do not want shells to use them.
 
-## Turn them on
+## They are on by default
 
-The setting is `compositor.user-shaders`. It takes `true` or `false` and defaults to `false`. It is read when the compositor
+Custom shaders are on. A shell is code the compositor already runs and trusts, the compositor checks every source before it
+accepts it, a watchdog disables a shader that costs too much, and a shader that reads the backdrop sees only what a screen
+capture sees. See [the limits](#limits) and [the backdrop](#the-backdrop).
+
+## Switch them off
+
+The setting is `compositor.user-shaders`. It takes `true` or `false` and defaults to `true`. It is read when the compositor
 starts, so a change needs a new session.
 
-Set it in `shell.ts`, with the other settings of the compositor itself:
+Switch it off in `shell.ts`, with the other settings of the compositor itself:
 
 ```ts
-gnoblin.compositor.userShaders = true;
+gnoblin.compositor.userShaders = false;
 ```
 
 The shell commits the setting with the rest of its configuration, and the compositor keeps it in the last configuration
-document it accepted. The running compositor does not change: it started without shaders. Log out and in again, or restart
-`gnoblin`, and the next session starts with them. Delete the line to go back to the default after the next login.
-`gnoblinctl config get` prints the document the compositor holds, and `gnoblinctl check shell.ts` runs the file without a
-session to show that the setting is accepted.
+document it accepted. The running compositor does not change: it started with shaders. Log out and in again, or restart
+`gnoblin`, and the next session refuses them. Delete the line, or set it to `true`, to go back to the default after the next
+login. `gnoblinctl config get` prints the document the compositor holds, and `gnoblinctl check shell.ts` runs the file
+without a session to show that the setting is accepted.
 
 A shell written in Rust or Python commits no configuration document of its own. The compositor reads the document of the
 `shell.ts` in your configuration directory, so run that file as your shell once with the line above; the setting stays in
 the last accepted document until another login commits a document without it.
 
-Whether the setting is on is also a fact a shell can read. The seat has a read-only `user_shaders` property that is `true`
-while the compositor accepts shaders, and `effect_kinds`, which lists the effect kinds the active renderer draws. A shader
-is drawn only when both say yes: the setting is on and `effect_kinds` holds `shader`.
+Whether shaders are accepted is also a fact a shell can read. The seat has a read-only `user_shaders` property that is `true`
+unless the setting is switched off, and `effect_kinds`, which lists the effect kinds the active renderer draws. A shader is
+drawn only when both say yes: the setting is not off and `effect_kinds` holds `shader`.
 
 ## Set one on a window
 
@@ -185,14 +191,14 @@ nothing extra.
 
 A shader can fail to appear for five reasons. Each one leaves the window drawn without it and says why.
 
-### The setting is off
+### The setting is switched off
 
 The library does not write the shader, so the compositor has nothing to refuse. The rest of the style is written.
 
 The client's style warnings say so, and a TypeScript shell logs the same line once:
 
 ```text
-not applied: style.filter: a ShaderFilter is not drawn because the compositor's custom shaders are off (set `compositor.user-shaders`); the window is drawn without it
+not applied: style.filter: a ShaderFilter is not drawn because the compositor's custom shaders are switched off (`compositor.user-shaders` is false); the window is drawn without it
 ```
 
 ### The source does not validate

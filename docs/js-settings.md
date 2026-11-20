@@ -125,10 +125,10 @@ the default.
 
 | Property      | Accepted values   | Default | Effect                                                                                   |
 | ------------- | ----------------- | ------- | ---------------------------------------------------------------------------------------- |
-| `userShaders` | `true` or `false` | `false` | Whether a shell may give a window its own shader. See [custom shaders](/custom-shaders). |
+| `userShaders` | `true` or `false` | `true`  | Whether a shell may give a window its own shader. See [custom shaders](/custom-shaders). |
 
 ```ts
-gnoblin.compositor.userShaders = true;
+gnoblin.compositor.userShaders = false;
 ```
 
 ## Settings with no TypeScript home yet {#dropped-settings}

@@ -3363,7 +3363,7 @@ rendering policies) is the new reason to reopen it.
   `abi.lock` move with it.
 - **Std.** A `ShaderFilter` style element beside `BlurFilter` (TypeScript, Python, Rust) that maps onto the `shader` effect. It is
   natural, because styles already map onto `effects`; it is small once the kind exists.
-- **Capability.** A setting (built as the document leaf `compositor.user-shaders`, default off, restart required) and a capability, the
+- **Capability.** A setting (built as the document leaf `compositor.user-shaders`, restart required; default off when written, on since decision 48, 37.15) and a capability, the
   seat's read-only `user_shaders`. While it is off the tree refuses the kind with a message that points at `Canvas`.
 
 ### 37.4 Effort (phase A covers the validator, schema and wire, frame data, software, catalog, SDK and test rows)
@@ -3389,8 +3389,8 @@ the risk is real and is kept, not removed.
 ### 37.5 What the owner decided
 
 Build it with backdrop sampling too (the third option). O7 is reversed and D20 is resolved: the owner approved the pass **with backdrop
-sampling** (the third option of 37.4's last paragraph). The pass exists behind `compositor.user-shaders`, default off until the owner confirms
-the default. Sections 34 and 36 keep their "not done" text as history, with a pointer here (34.6, 34.7, 38.2); this section is the current state.
+sampling** (the third option of 37.4's last paragraph). The pass exists behind `compositor.user-shaders`. It was default off until the owner confirmed
+the default; decision 48 made it on (37.15). Sections 34 and 36 keep their "not done" text as history, with a pointer here (34.6, 34.7, 38.2); this section is the current state.
 
 ### 37.6 What phase A built (lane ShaderFound)
 
@@ -3633,6 +3633,28 @@ shell built before had to be rebuilt. That broke the promise of `docs/abi-compat
   that hits one frame in a hundred never strikes. (b) 10 s before a struck pass is tried again; the alternative is to stay off until the shell
   writes the list again. (c) A device loss is one strike for every source in the frame, with no wait for three frames. (d) A pass comes
   back on its own clock with its nodes damaged, so an idle output shows it again without a write.
+
+### 37.15 Custom shaders are on by default (owner decision 48; lane ShaderStd)
+
+The owner decided that custom shaders are **on by default**. There is no `config.toml` key and no new route. The off switch is the document leaf
+that already existed, `compositor.user-shaders = false`, which a TypeScript shell writes with `gnoblin.compositor.userShaders = false` and the
+compositor reads at the next login (restart required, as before).
+
+Why it is safe to default on:
+
+- A shell is code the compositor already runs and trusts (D1), so a shader adds no new trust boundary for code execution (37.2).
+- The validator bounds the program before it runs: source size, `for` loops of constant bounds only, texture reads, expression count, no variables or
+  entry points (37.2, 37.6).
+- The frame-cost watchdog bounds what a valid program costs, and disables a pass that goes over budget (37.14).
+- A shader that samples the backdrop reads only what a screen capture sees, with secure windows and the lock card black, and it can write nothing but
+  its own pixel (37.7).
+
+What changed: the default of the config leaf (`crates/gnoblin-config/schema/config.toml`), the seat's `user_shaders` default (`seat.toml`, the
+generated catalog and SDK defaults), `gnoblin_wayland::Config::user_shaders`, the composer's initial value and `TreeHostHandle`'s initial acceptance,
+and `renderer::configure_from_store` (a document that does not say reads as on). What stays: the refusal `bad-value` and its log line that points at
+`Canvas` when it is switched off, the library's `not applied: style.filter: a ShaderFilter is not drawn ...` note, and the std library reading a seat
+that lacks the property (a compositor from before the pass) as off. The tests that assumed off by default now switch it off explicitly, and the
+real-session tests assert the default (a Rust, a TypeScript and a Python shell tint a window with no configuration) and the off switch the user's way.
 
 ## 38. D11, window motion as std policy, and the stale statements of sections 31 to 34 (lane TsStdObjects)
 

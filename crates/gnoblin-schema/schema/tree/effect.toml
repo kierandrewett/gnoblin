@@ -16,7 +16,7 @@ record = true
 
 # The kind of effect: `blur`, `shadow`, `border` or `shader`. Any other kind is refused
 # `bad-value` and the whole list is refused with it. A `shader` is refused `bad-value` too
-# while the compositor's `compositor.user-shaders` setting is off (the default; the seat's
+# while the compositor's `compositor.user-shaders` setting is switched off (it is on by default; the seat's
 # `user_shaders` says which), and when its source does not validate. A node holds at most 8
 # `border`, 8 `shadow` and 4 `shader` elements; a list over any cap is refused `too-large`.
 [[object.property]]

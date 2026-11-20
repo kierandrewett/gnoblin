@@ -144,12 +144,13 @@ impl TreeHostHandle {
             session: Arc::new(Mutex::new(TreeSession::default())),
             serial: Arc::new(AtomicU64::new(0)),
             painter: SharedPainter::system(),
-            shaders: ShaderWrites::default(),
+            // The setting is on unless a document turns it off; the compositor sets it from the document before it serves.
+            shaders: ShaderWrites::default().accepted(true),
         })
     }
 
     /// This host with the `shader` effect kind accepted or refused: the `compositor.user-shaders` setting, read once at
-    /// startup. A host starts refusing it.
+    /// startup. A host built without this call accepts it, as the setting's default does.
     #[must_use]
     pub fn with_user_shaders(mut self, accepted: bool) -> Self {
         self.shaders = self.shaders.accepted(accepted);

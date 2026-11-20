@@ -418,9 +418,14 @@ fn set_effects(node: u64, effects: Vec<effect::Properties>) -> op::Properties {
     }
 }
 
-/// A session whose `compositor.user-shaders` setting is on.
+/// A session with the default of `compositor.user-shaders`, which is on.
 fn session_with_user_shaders() -> Session {
-    Session::start_configured(None, |config| config.wayland.user_shaders = true)
+    Session::start()
+}
+
+/// A session whose `compositor.user-shaders` setting is switched off.
+fn session_without_user_shaders() -> Session {
+    Session::start_configured(None, |config| config.wayland.user_shaders = false)
 }
 
 /// Writes `effects` to a new node and returns the reply to the write.
@@ -440,11 +445,19 @@ fn write_effects(session: &Session, effects: Vec<effect::Properties>) -> ReplyPa
 }
 
 #[test]
-fn a_shader_effect_is_refused_bad_value_while_user_shaders_are_off() {
+fn a_shader_effect_is_refused_bad_value_while_user_shaders_are_switched_off() {
+    let session = session_without_user_shaders();
+    let reply = write_effects(&session, vec![shader_effect(TINT_SHADER, &[0.5])]);
+    assert!(!reply.applied, "the setting is switched off");
+    assert_eq!(reply.code, "bad-value");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_shader_effect_is_accepted_by_default() {
     let session = Session::start();
     let reply = write_effects(&session, vec![shader_effect(TINT_SHADER, &[0.5])]);
-    assert!(!reply.applied, "the setting is off by default");
-    assert_eq!(reply.code, "bad-value");
+    assert!(reply.applied, "the setting is on by default: {reply:?}");
     session.stop().expect("the session stops cleanly");
 }
 
@@ -457,15 +470,17 @@ fn the_seat_says_whether_the_tree_accepts_user_shaders() {
         .iter()
         .find(|node| node.class == "seat")
         .expect("the main seat node");
+    // A snapshot leaves out a property that holds its schema default, and the default is true.
     assert!(
-        seat.props
+        !seat
+            .props
             .iter()
-            .any(|prop| prop.key == "user_shaders" && prop.value_bool),
-        "with the setting on the seat carries `user_shaders`: {seat:?}"
+            .any(|prop| prop.key == "user_shaders" && !prop.value_bool),
+        "by default the seat does not say shaders are refused: {seat:?}"
     );
     on.stop().expect("the session stops cleanly");
 
-    let off = Session::start();
+    let off = session_without_user_shaders();
     let mut wire = Wire::connect(off.socket());
     let (_, nodes) = attach_and_snapshot(&mut wire, 1);
     let seat = nodes
@@ -473,11 +488,10 @@ fn the_seat_says_whether_the_tree_accepts_user_shaders() {
         .find(|node| node.class == "seat")
         .expect("the main seat node");
     assert!(
-        !seat
-            .props
+        seat.props
             .iter()
-            .any(|prop| prop.key == "user_shaders" && prop.value_bool),
-        "with it off the value is the default, false: {seat:?}"
+            .any(|prop| prop.key == "user_shaders" && !prop.value_bool),
+        "with it switched off the seat says false: {seat:?}"
     );
     off.stop().expect("the session stops cleanly");
 }

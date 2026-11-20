@@ -170,7 +170,7 @@ type = "list<string>"
 since = "0.2.0"
 readonly = true
 
-# Whether the tree accepts a `shader` effect: true when the `compositor.user-shaders` setting is on. Read-only: the
+# Whether the tree accepts a `shader` effect: true unless the `compositor.user-shaders` setting is switched off (it is on by default). Read-only: the
 # compositor sets it once at startup. While it is false a list with a `shader` element is refused `bad-value`; while it
 # is true the source is validated, and what the renderer cannot draw is named in the node's `skipped` as `shader:
 # unsupported-by-renderer` (`effect_kinds` lists `shader` only for a renderer that draws it).
@@ -178,7 +178,7 @@ readonly = true
 name = "user_shaders"
 type = "bool"
 since = "0.2.0"
-default = false
+default = true
 readonly = true
 
 # Whether the shell that holds the tree draws window decorations (its stock `Titlebar`). The shell writes it: true

@@ -96,7 +96,7 @@ A filter is one of five classes. In a list you can write the shorthand, which be
 - `BlurFilter` has a `radius` from 0 to 100. Default 12.
 - `SaturateFilter`, `BrightnessFilter` and `ContrastFilter` have an `amount` from 0 to 2. Default 1.
 - `ShaderFilter` has a WGSL `source` of at most 16 KiB and up to 8 `params`. Its shorthand is
-  `{ shader: { source, params } }`. It is drawn only when the compositor's custom shaders are on: see
+  `{ shader: { source, params } }`. It is drawn unless the compositor's custom shaders are switched off (they are on by default): see
   [custom shaders](/custom-shaders).
 
 ```ts
@@ -170,7 +170,7 @@ The tree has four effect kinds (blur, shadow, border and shader), a node `corner
   of the chain multiply into the blur's saturation, brightness and contrast, each at most 2. Without a blur in the
   chain they have nothing to draw.
 - A `ShaderFilter` of either filter list as one `shader` effect, after the blur and before the shadows, at most four of
-  them. While the compositor's custom shaders are off it is not written and the style reports it as
+  them. While the compositor's custom shaders are switched off it is not written and the style reports it as
   `not applied: style.filter: ...`. The other `filter` elements have no effect kind and are not applied.
 
 | Kind or property | GLES | Software                         | Vulkan                 |

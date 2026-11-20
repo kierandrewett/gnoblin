@@ -4201,20 +4201,27 @@ fn a_shader_pass_on_the_software_renderer_is_accepted_and_listed_skipped() {
 #[test]
 fn the_main_seat_publishes_whether_user_shaders_are_accepted() {
     let mut composer = stock_composer();
-    composer.set_user_shaders(true);
     let seat = composer.add_main_seat("seat0").expect("a seat node");
     assert_eq!(
         composer.with_scene(|scene| scene.value(seat, "user_shaders").cloned()),
         Some(TreeValue::Bool(true)),
+        "shaders are accepted unless the setting switches them off"
+    );
+    let mut composer = stock_composer();
+    composer.set_user_shaders(false);
+    let seat = composer.add_main_seat("seat0").expect("a seat node");
+    assert_eq!(
+        composer.with_scene(|scene| scene.value(seat, "user_shaders").cloned()),
+        Some(TreeValue::Bool(false)),
         "a setting made before the seat exists reaches the seat when it is made"
     );
     composer.take_tree_changes();
-    composer.set_user_shaders(false);
+    composer.set_user_shaders(true);
     assert!(composer.take_tree_changes().iter().any(|change| matches!(
         change,
-        TreeChange::Set { node, key, value } if *node == seat && key == "user_shaders" && *value == TreeValue::Bool(false)
+        TreeChange::Set { node, key, value } if *node == seat && key == "user_shaders" && *value == TreeValue::Bool(true)
     )));
-    composer.set_user_shaders(false);
+    composer.set_user_shaders(true);
     assert!(
         composer.take_tree_changes().is_empty(),
         "an unchanged value is not republished"

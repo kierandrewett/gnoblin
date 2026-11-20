@@ -556,7 +556,7 @@ pub(crate) fn map_style(computed: &Computed, user_shaders: bool) -> Mapping {
             shaders.extend(held);
         } else {
             unapplied.push(format!(
-                "{name}: a ShaderFilter is not drawn because the compositor's custom shaders are off (set `compositor.user-shaders`); the window is drawn without it"
+                "{name}: a ShaderFilter is not drawn because the compositor's custom shaders are switched off (`compositor.user-shaders` is false); the window is drawn without it"
             ));
         }
     }

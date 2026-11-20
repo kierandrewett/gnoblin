@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Custom shaders are on by default (owner decision 48; lane ShaderStd; design/modular-framework.md, section 37.15; docs/custom-shaders.md). `compositor.user-shaders` defaults to `true`, the seat's `user_shaders` is `true` unless it is switched off, and `gnoblin_wayland::Config::user_shaders` and the tree host start accepting the `shader` effect. There is no new route: the off switch is the document leaf `compositor.user-shaders = false`, which `shell.ts` writes with `gnoblin.compositor.userShaders = false` and the compositor reads at the next login. The refusal (`bad-value`, the log line pointing at `Canvas`) and the library's `not applied: style.filter: a ShaderFilter is not drawn ...` note stay, for a session that switched it off.
+
 ### Added
 
 - Golden fixtures of the TypeScript std for the native std port (lane NpOracle; design/native-std-port.md, 6.4 and 7.1; `design/native-std-port-tests.md`). `cargo xtask oracle record` runs the TypeScript library over the fake compositor and writes the transactions, log order, tree snapshots and widget paint lists of 51 scenarios (174 fixture files) (toolkit, frame, menus, alerts, launcher, lock screen, scene and math, style, transitions, object model, input matcher) and of the tiling, examples and anim_style parity tests; `cargo xtask oracle check --repeat 3` proves them stable and equal to the committed files (`crates/gnoblin-testkit/src/oracle.rs`, `crates/gnoblin-js/tests/oracle/`, `xtask/src/oracle.rs`). Nothing is deleted. `tests/ts-compat/` holds the declaration emit of the library and `compat.ts`, which type-checks against it (`tests/ts-compat/check.sh`).

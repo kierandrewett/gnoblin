@@ -297,7 +297,7 @@ impl Default for Config {
             check_alive_timeout: Duration::from_secs(5),
             gpu_memory_period: crate::gpu_memory::DEFAULT_PERIOD,
             gpu_limits: crate::gpu_memory::MemoryLimits::default(),
-            user_shaders: false,
+            user_shaders: true,
             shader_refusals: gnoblin_render_frame::shader::watchdog::ShaderRefusals::default(),
             clock: Arc::new(SystemClock),
             observer: None,

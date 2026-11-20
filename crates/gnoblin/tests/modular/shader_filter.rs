@@ -2,12 +2,12 @@
 //! window's node in the compositor's tree as a `shader` effect, and every way it can be refused is what the user sees.
 //!
 //! The shell is the shipped binary on a headless backend with a Wayland client that stays connected, and what is asserted is what the compositor's
-//! tree holds (read over the socket) and what the session logs, not what the shell believes. `compositor.user-shaders` is a setting of the accepted
-//! configuration document, read when the compositor starts. A user supplies it the way a shell supplies any document setting: a TypeScript
-//! `shell.ts` sets `gnoblin.compositor.userShaders = true`, the shell commits it with its document, the compositor keeps it as the last accepted
-//! document, and the next login reads it. The TypeScript tests below do exactly that (a first login that commits, a second login over the same
-//! home). A Rust or a Python shell commits no document of its own, so their tests start over a last-accepted document that a TypeScript
-//! configuration committed earlier, written to the place the binary reads it (`XDG_STATE_HOME`).
+//! tree holds (read over the socket) and what the session logs, not what the shell believes. `compositor.user-shaders` is on by default and is a
+//! setting of the accepted configuration document, read when the compositor starts. A user switches it off the way a shell supplies any document
+//! setting: a TypeScript `shell.ts` sets `gnoblin.compositor.userShaders = false`, the shell commits it with its document, the compositor keeps it
+//! as the last accepted document, and the next login reads it. The TypeScript tests below do exactly that (a first login that commits, a second
+//! login over the same home). A Rust or a Python shell commits no document of its own, so the test of a Rust shell with shaders switched off starts
+//! over a last-accepted document that a TypeScript configuration committed earlier, written to the place the binary reads it (`XDG_STATE_HOME`).
 //!
 //! What this cannot prove is a pixel: a headless session draws with the software renderer, which has no shader compiler and lists the pass as
 //! skipped. The renderer lanes prove the drawing; the tests here assert the tree, the listing and the refusals. If the headless renderer comes to
@@ -96,19 +96,19 @@ fn accepted_document(ipc: &Path) -> Option<serde_json::Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
-/// A second login over a TypeScript `shell.ts` that turns `compositor.user-shaders` on with `gnoblin.compositor.userShaders = true`: the
-/// first login commits the setting, which the compositor accepts and keeps without applying (it reads the setting when it starts), and
-/// the second one starts with it. Returns the second session and the path of `shell.ts`.
-fn second_login_with_user_shaders(shell_text: &str) -> (Gnoblin, PathBuf) {
+/// A second login over a TypeScript `shell.ts` that switches `compositor.user-shaders` off with `gnoblin.compositor.userShaders = false`: the
+/// first login commits the setting, which the compositor accepts and keeps without applying (it reads the setting when it starts), and the
+/// second one starts with it. Returns the first session, which has run to the commit, and the path of `shell.ts`; the caller starts the second
+/// from `first.into_home()`.
+fn first_login_that_switches_user_shaders_off(shell_text: &str) -> (Gnoblin, PathBuf) {
     let home = Home::new();
     let source = home.write("config/gnoblin/shell.ts", shell_text);
     let mut first = start_script(home, &source);
     let ipc = first.ipc();
-    first.wait_for("the first login commits compositor.user-shaders", |_| {
-        accepted_document(&ipc).is_some_and(|document| document["compositor"]["user-shaders"] == true)
+    first.wait_for("the first login commits compositor.user-shaders = false", |_| {
+        accepted_document(&ipc).is_some_and(|document| document["compositor"]["user-shaders"] == false)
     });
-    let second = start_script(first.into_home(), &source);
-    (second, source)
+    (first, source)
 }
 
 /// One entry of a node's `effects` list: `(kind, source, params)`.
@@ -200,47 +200,54 @@ fn assert_tinted(session: &mut Gnoblin, mapper: &mut Mapper, app: &str) {
 }
 
 #[test]
-fn a_typescript_config_that_turns_user_shaders_on_has_its_shaders_drawn_from_the_next_login() {
-    let example = fs::read_to_string(repo_root().join("examples/19-shader-tint-ts/shell.ts")).expect("the example");
-    let text = format!("{example}\ngnoblin.compositor.userShaders = true;\n");
-    let home = Home::new();
-    let source = home.write("config/gnoblin/shell.ts", &text);
-    let mut first = start_script(home, &source);
-    let ipc = first.ipc();
-    let mut mapper = Mapper::connect(&first.wayland());
-    mapper.map_window("first.ts", "First");
-    // The first login: the setting is committed and kept, and this compositor started without it, so the shader is not written and the
-    // library says so.
-    first.wait_for("the first login commits compositor.user-shaders", |_| {
-        accepted_document(&ipc).is_some_and(|document| document["compositor"]["user-shaders"] == true)
-    });
-    first.wait_log("the first login says its shader is not drawn yet", |line| {
-        line.contains("not applied: style.filter: a ShaderFilter is not drawn")
-    });
-    assert!(effects_of(&ipc, "first.ts").is_some_and(|held| shaders(&held).is_empty()));
-    drop(mapper);
-
-    // The second login reads it.
-    let mut second = start_script(first.into_home(), &source);
-    let mut mapper = Mapper::connect(&second.wayland());
-    assert_tinted(&mut second, &mut mapper, "second.ts");
+fn a_typescript_shell_tints_a_window_with_a_shader_filter_by_default() {
+    let shell = repo_root().join("examples/19-shader-tint-ts/shell.ts");
+    let mut session = start_script(Home::new(), &shell);
+    let mut mapper = Mapper::connect(&session.wayland());
+    assert_tinted(&mut session, &mut mapper, "tint.ts");
 }
 
 #[test]
-fn a_rust_shell_tints_a_window_with_a_shader_filter_while_the_setting_is_on() {
-    let (home, _) = home_with(true, "// the settings file; the shell is the library\n");
-    let mut session = start_native(home, &std_shells().shader_tint);
+fn a_rust_shell_tints_a_window_with_a_shader_filter_by_default() {
+    let mut session = start_native(Home::new(), &std_shells().shader_tint);
     let mut mapper = Mapper::connect(&session.wayland());
     assert_tinted(&mut session, &mut mapper, "tint.rs");
 }
 
 #[test]
-fn a_python_shell_tints_a_window_with_a_shader_filter_while_the_setting_is_on() {
+fn a_python_shell_tints_a_window_with_a_shader_filter_by_default() {
     let shell = repo_root().join("examples/19-shader-tint-py/shell.py");
-    let (home, _) = home_with(true, "// the settings file; the shell is the script\n");
-    let mut session = start_script(home, &shell);
+    let mut session = start_script(Home::new(), &shell);
     let mut mapper = Mapper::connect(&session.wayland());
     assert_tinted(&mut session, &mut mapper, "tint.py");
+}
+
+#[test]
+fn a_typescript_config_that_switches_user_shaders_off_has_them_refused_from_the_next_login() {
+    let example = fs::read_to_string(repo_root().join("examples/19-shader-tint-ts/shell.ts")).expect("the example");
+    let text = format!("{example}\ngnoblin.compositor.userShaders = false;\n");
+    let (mut first, source) = first_login_that_switches_user_shaders_off(&text);
+    // The first login: this compositor started with the default, so the shader is drawn while the setting is committed and kept.
+    let mut mapper = Mapper::connect(&first.wayland());
+    assert_tinted(&mut first, &mut mapper, "first.ts");
+    drop(mapper);
+
+    // The second login reads it: the shader is not written, the library says why, and the compositor was never asked.
+    let mut second = start_script(first.into_home(), &source);
+    let ipc = second.ipc();
+    let mut mapper = Mapper::connect(&second.wayland());
+    mapper.map_window("second.ts", "Second");
+    let said = second.wait_log("the library says why the shader is not drawn", |line| {
+        line.contains("not applied: style.filter: a ShaderFilter is not drawn")
+    });
+    assert!(said.text.contains("compositor.user-shaders"), "{}", said.text);
+    mapper.roundtrip();
+    assert!(effects_of(&ipc, "second.ts").is_none_or(|held| shaders(&held).is_empty()));
+    assert!(
+        !second.log_text().contains("an effect was refused"),
+        "nothing was sent for the compositor to refuse:\n{}",
+        second.log_text()
+    );
 }
 
 /// A TypeScript shell that gives every window a shadow and a shader (`shader`, WGSL as a JavaScript string).
@@ -254,17 +261,14 @@ fn shadow_and_shader_shell(shader: &str) -> String {
     )
 }
 
-/// `shell`, which also turns `compositor.user-shaders` on.
-fn with_setting(shell: &str) -> String {
-    format!("{shell}\ngnoblin.compositor.userShaders = true;\n")
-}
-
 #[test]
-fn with_the_setting_off_a_shader_filter_is_not_written_and_the_rest_of_the_style_is() {
-    // The default, as a user has it: `shell.ts` says nothing about `gnoblin.compositor.userShaders`.
-    let home = Home::new();
-    let source = home.write("config/gnoblin/shell.ts", &shadow_and_shader_shell(WORKING_JS));
-    let mut session = start_script(home, &source);
+fn with_the_setting_switched_off_a_shader_filter_is_not_written_and_the_rest_of_the_style_is() {
+    let off = format!(
+        "{}\ngnoblin.compositor.userShaders = false;\n",
+        shadow_and_shader_shell(WORKING_JS)
+    );
+    let (first, source) = first_login_that_switches_user_shaders_off(&off);
+    let mut session = start_script(first.into_home(), &source);
     let ipc = session.ipc();
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("off.ts", "Off");
@@ -292,9 +296,9 @@ fn with_the_setting_off_a_shader_filter_is_not_written_and_the_rest_of_the_style
 }
 
 #[test]
-fn with_the_setting_off_a_rust_shell_reads_why_from_the_style_warnings() {
-    // The default, as a user has it: nothing turns the setting on.
-    let home = Home::new();
+fn with_the_setting_switched_off_a_rust_shell_reads_why_from_the_style_warnings() {
+    // What a TypeScript configuration committed earlier: `compositor.user-shaders = false`.
+    let (home, _) = home_with(false, "// the settings file; the shell is the library\n");
     let mut session = start_native(home, &std_shells().shader_tint);
     let ipc = session.ipc();
     let mut mapper = Mapper::connect(&session.wayland());
@@ -322,7 +326,9 @@ fn with_the_setting_off_a_rust_shell_reads_why_from_the_style_warnings() {
 
 #[test]
 fn a_shader_the_compositor_refuses_leaves_the_windows_effects_as_they_were_and_the_log_says_where() {
-    let (mut session, source) = second_login_with_user_shaders(&with_setting(&shadow_and_shader_shell(LOOPING_JS)));
+    let home = Home::new();
+    let source = home.write("config/gnoblin/shell.ts", &shadow_and_shader_shell(LOOPING_JS));
+    let mut session = start_script(home, &source);
     let ipc = session.ipc();
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("bad.ts", "Bad");
@@ -338,7 +344,7 @@ fn a_shader_the_compositor_refuses_leaves_the_windows_effects_as_they_were_and_t
     );
 
     // A source that validates is accepted by the next load, and the shadow and the shader arrive together.
-    save(&source, &with_setting(&shadow_and_shader_shell(WORKING_JS)));
+    save(&source, &shadow_and_shader_shell(WORKING_JS));
     session.wait_for("the corrected shell's style reaches the node", |_| {
         effects_of(&ipc, "bad.ts")
             .is_some_and(|held| shaders(&held).len() == 1 && held.iter().any(|(kind, _, _)| kind == "shadow"))

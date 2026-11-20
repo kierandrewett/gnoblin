@@ -4,7 +4,7 @@
 //! the way towards a warm orange (`p[0]` to `p[2]` are the colour and `p[3]` how far to go). The library writes it to each window's node
 //! as one `shader` effect.
 //!
-//! A shader is drawn only when the compositor's `compositor.user-shaders` setting is on, and only by a renderer that draws shaders. While
+//! A shader is drawn unless the compositor's `compositor.user-shaders` setting is switched off, and only by a renderer that draws shaders. While
 //! it is off the windows are drawn as they are, and `<Super>w` logs why: the style warnings of the windows, which name the
 //! setting. The compositor checks the source before it accepts it: a source it refuses leaves the window's other effects as they were,
 //! and the compositor's log says where the source is wrong.

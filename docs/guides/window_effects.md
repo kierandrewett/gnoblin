@@ -37,8 +37,8 @@ gnoblin.clients.where({ appId: "foot" }).style.backdropFilter = [{ blur: 24 }, {
 
 ## Your own shader
 
-A `ShaderFilter` gives a window a shader you wrote. It is off by default: the compositor draws one only when its
-`compositor.user-shaders` setting is on and the renderer draws shaders. [Custom shaders](/custom-shaders) has the
+A `ShaderFilter` gives a window a shader you wrote. It is on by default: the compositor draws one when the renderer draws
+shaders, unless the `compositor.user-shaders` setting is switched off. [Custom shaders](/custom-shaders) has the
 contract, the limits and two complete examples.
 
 ## Background blur from applications

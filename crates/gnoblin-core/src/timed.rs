@@ -128,7 +128,7 @@ impl Effect {
 
     /// A shader effect: `source` is WGSL that defines `fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) ->
     /// vec4<f32>`, and `params` (at most 8) is what it reads as `p`. The compositor refuses it, and the whole list with it,
-    /// when `compositor.user-shaders` is off (the seat's `user_shaders` says) or the source does not validate.
+    /// when `compositor.user-shaders` is switched off (the seat's `user_shaders` says) or the source does not validate.
     pub fn shader(source: &str, params: &[f64]) -> Effect {
         Effect {
             source: source.to_owned(),

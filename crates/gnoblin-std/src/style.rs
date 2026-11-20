@@ -92,8 +92,8 @@ pub enum Filter {
     Brightness(f64),
     /// The contrast gain about mid grey: 1 unchanged, up to 2.
     Contrast(f64),
-    /// A shader of the shell's own: one `shader` effect on the window's node, drawn when the compositor's `compositor.user-shaders`
-    /// setting is on (the seat's `user_shaders`) and otherwise reported by [`Client::style_warnings`]. The same in either filter list.
+    /// A shader of the shell's own: one `shader` effect on the window's node, drawn unless the compositor's `compositor.user-shaders`
+    /// setting is switched off (it is on by default; the seat's `user_shaders` says) and then reported by [`Client::style_warnings`]. The same in either filter list.
     Shader {
         /// The WGSL source, at most 16 KiB. It defines `fn effect(c: vec4<f32>, uv: vec2<f32>, p: array<f32, 8>, t: f32) ->
         /// vec4<f32>`: the window's premultiplied colour at `uv` (`(0, 0)` is the top left), the numbers, and the time in seconds.

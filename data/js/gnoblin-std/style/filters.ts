@@ -129,7 +129,7 @@ export interface ShaderFilterInit {
  * top left), `p` is `params` and `t` is the time in seconds; the source may call `backdrop(uv)` for the colour of what is behind the
  * window. It is one `shader` effect of the window's node, in either filter list.
  *
- * The compositor draws it only when `compositor.user-shaders` is on; while it is off the client's `styleWarnings` say so. The source is
+ * The compositor draws it unless `compositor.user-shaders` is switched off (it is on by default); while it is off the client's `styleWarnings` say so. The source is
  * checked by the compositor, and a source it refuses leaves the window's whole effect list as it was.
  */
 export class ShaderFilter extends StyleElement {

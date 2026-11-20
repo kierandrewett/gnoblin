@@ -222,8 +222,8 @@ function readSetting<T>(name: SettingName): T | undefined {
 export class CompositorSettings extends NativeObject {
     /**
      * Whether a shell may give a window its own shader (a `ShaderFilter` in a style). Written to
-     * `compositor.user-shaders`, which defaults to `false` and is read when the compositor starts: after the first login that
-     * sets it, log out and in again. See docs/custom-shaders.md.
+     * `compositor.user-shaders`, which defaults to `true` and is read when the compositor starts: after the first login that
+     * sets it to `false`, log out and in again. See docs/custom-shaders.md.
      */
     get userShaders(): boolean | undefined {
         return readSetting("userShaders");

@@ -738,7 +738,7 @@ impl Composer {
             secure_treatment: SecureTreatment::default(),
             secure_scope: BTreeSet::new(),
             effect_kinds: Pass::NAMES,
-            user_shaders: false,
+            user_shaders: true,
             shaders: shader_watch::ShaderWatch::default(),
             canvases: BTreeMap::new(),
             output_scales: BTreeMap::new(),
