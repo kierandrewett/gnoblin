@@ -378,7 +378,11 @@ old module in the same commit, moves that crate's tests and updates the docs it 
 
 1. **Scaffolding.** `gnoblin-wayland-api` with `access` moved in, `gnoblin-wayland-protocols` with an empty table,
    `xtask/protocols.toml`, `xtask protocol-crates`, the member glob, the `deps` tier and its tests, `gnoblin-wayland-testkit`,
-   `CHANGELOG`, and the crate list in `design/modular-framework.md`.
+   `CHANGELOG`, and the crate list in `design/modular-framework.md`. `access` moves into the api crate only after
+   ProtoRetire's deletion has landed, because that lane edits `access.rs` (the `SessionHost` and `View` roles). Until
+   then the crates that need the roster (layer shell, the foreign-toplevel pair, data control, capture, gamma, output
+   power and management, virtual keyboard, input method, background effect) wait, and steps 2 to 4 start with the
+   protocols that need none of it.
 2. **Smithay-only protocols with no `State` method:** alpha modifier, single-pixel buffer, pointer gestures, relative
    pointer, primary selection, both data-control crates, toplevel icon, toplevel tag, system bell, dialog, idle
    inhibit, wl-output, wl-shm, FIFO, content type, security context.
@@ -415,12 +419,12 @@ The final SHA also runs the full `gnoblin-wayland` tests, the advertised-globals
 | 2 Seventeen trivial crates, a half hour of edits each, plus gate runs | 3            |
 | 3 Fourteen small crates                                               | 6            |
 | 4 Thirteen medium crates                                              | 12           |
-| 5 Five large crates                                                   | 10           |
-| 6 The capture family, seven crates in one cycle                       | 6            |
+| 5 Four large crates                                                   | 8            |
+| 6 The capture family, six crates in one cycle                         | 5            |
 | 7 ProtoMissing's five protocols                                       | 2            |
 | 8 Close-out and docs                                                  | 2            |
 | Tests moved with their crates                                         | 5            |
-| **Total**                                                             | **about 50** |
+| **Total**                                                             | **about 46** |
 
 The figure is for one lane on one box. The box limit, one box and one test target at a time on 12 GB, bounds it more
 than the editing does: a `gnoblin-wayland` build with Smithay takes minutes, so a step batches crates whose host traits
