@@ -917,8 +917,36 @@ What the numbers say:
 - Text is the dear value: a `get` of text is one and a half times a number and a `set` three to five times, and the text is copied each
   way. A lane that moves large amounts of text (paint lists, 4.x) passes one record or bytes value, not many small strings.
 
-Not measured: a call from a script runtime (its own conversion of values is added to every figure above; NpObjectAbiB measures it with
-the first generated classes), and the typed Rust API's own cost over the raw call (a cell check and the conversion of one `Val`).
+**Cost of a call from a script, measured.** The same calls through the generated classes of NpObjectAbiB, over the real std library, in an
+optimised build on a 2-CPU Agent37 box (`what_a_call_from_a_script_costs` in `crates/gnoblin-js/tests/object_classes.rs`, run with
+`cargo test -p gnoblin-js --release --test object_classes -- --ignored --nocapture --test-threads=1`; `what_a_call_from_python_costs` in
+`crates/gnoblin-runtime-python/tests/shells.rs`, run with `--release` and the fixtures built with `CARGO_PROFILE_DEV_OPT_LEVEL=3` and no
+debug assertions). Each figure is nanoseconds per call over 200 000 calls, the script's own loop (11 ns in JavaScript, 10 ns in Python)
+taken off. One run each, not repeated, so read the figures to about 10 per cent:
+
+| What is timed                                                         | JavaScript (QuickJS) | Python |
+| --------------------------------------------------------------------- | -------------------- | ------ |
+| `get` of a number                                                     | 307                  | 235    |
+| `get` of text (28 characters)                                         | 427                  | 324    |
+| `get` of a record that is absent                                      | 379                  | 273    |
+| `set` of text                                                         | 832                  | 779    |
+| A method with no arguments that changes nothing (`home`)              | 936                  | 664    |
+| Two calls that each change the entry (`insert`, `backspace`)          | 1 775                | 1 616  |
+| A static function with a record and a boolean (`opens_focused`)       | 4 120                | 3 780  |
+| A static function with two records, answering a record (`focus_decision`) | 8 130            | 6 908  |
+
+What the figures say:
+
+- A property read from a script costs three to five times the same read from Rust (65 ns), and a method three to five times (210 ns): most of it is
+  the script engine's own call and its conversion of the value, not the table. A shell can still do a thousand calls in a frame for about
+  half a millisecond.
+- A **record is the dear value**, as text is in Rust: a call that takes one costs 3.8 to 4.1 us in either language, and one that takes two and
+  answers one costs 7 to 8 us. The generated code builds the record's fields (filling the defaults, naming a missing field), the runtime
+  converts them, and the library checks them against the catalog and builds the answer. A shell that moves records in a loop should call
+  once with a list, or keep the record and write one property; nothing in a layout or paint pass should cross a record per item.
+- The turn is as measured for Rust: it is the library's, shared by every change in it.
+
+Not measured: the typed Rust API's own cost over the raw call (a cell check and the conversion of one `Val`).
 Painting, hit testing, layout and cascade run inside the library without crossing.
 
 **B1.1, landed with B1 as the one more change to `abi.lock`.** `GnoblinObjectApi` gained `track(ctx, cb, user)`, and a class may extend a
