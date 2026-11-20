@@ -11,15 +11,15 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `OutputHost`), the aggregate `gnoblin-wayland-protocols` (the `ALL` table), `xtask/protocols.toml`,
   `cargo xtask protocol-crates [--check]`, and the deps rules `protocol-layering` and `protocol-root`;
 - `access` moved into the api crate, and `Registrar` carries the roster (`Registrar::filter`);
-- the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 48 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
+- the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 50 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
   `zwp-relative-pointer-v1`, `zwp-idle-inhibit-v1`, `xdg-system-bell-v1`, `xdg-toplevel-icon-v1`,
   `xdg-toplevel-tag-v1`, `xdg-dialog-v1`, `wl-output`, `wl-shm`, `zwp-primary-selection-v1`, `wp-content-type-v1`,
   `wp-fifo-v1`, `wp-fractional-scale-v1`, `wp-tearing-control-v1`, `wp-presentation-time`,
-  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`, `zwlr-layer-shell-v1`, `wl-compositor`, `wl-seat`, `xdg-shell`, `zwp-tablet-v2`, `zwp-linux-dmabuf-v1`. Their forwarding
+  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`, `zwlr-layer-shell-v1`, `wl-compositor`, `wl-seat`, `xdg-shell`, `zwp-tablet-v2`, `zwp-linux-dmabuf-v1`, `wl-data-device-manager`, `ext-session-lock-v1`. Their forwarding
   impls are in `crates/gnoblin-wayland/src/glue/`, one file per crate.
 
 Not yet done: the capture family (`capture_shared`, `image_copy_session`, `zwlr_screencopy_v1`, `ext_image_copy_capture_v1`,
-`ext_image_capture_source_v1`, `capture_dmabuf`), `ext_session_lock_v1`, `wl_data_device_manager`,
+`ext_image_capture_source_v1`, `capture_dmabuf`),
 the `gnoblin_view_source_v1` and `capture_views` modules (they wait for the owner's decision on view source),
 ProtoMissing's five protocols, the real-client test move and `gnoblin-wayland-testkit`, the advertised-globals test, and
 deleting `protocols/mod.rs` with the last of them. What each one needs first is under
@@ -34,8 +34,7 @@ Shared crates must end in `-shared`, so `image_copy_session` will be `gnoblin-wa
 The protocols still in `gnoblin-wayland` name types that live in the compositor, so their crates cannot depend only on the api crate. The blockers, by module:
 
 - `xdg_shell`, `wl_compositor`, `wl_seat` have crates that hold the global, what the protocol advertises and the code that is the protocol's alone (`WlCompositorClientState`, `verify_buffer`, the implicit touch grab). Their handlers stay in `crates/gnoblin-wayland/src/glue/` for good, and that is the decision, not a gap: each answer is the engine's own work (the popup manager and its grabs, interactive move and resize, the commit path, the seat's focus), so a host trait that gave a crate that access would be the whole of `State` behind a trait with one implementor.
-- `wl_data_device_manager`: the selection bridge to the backend and Xwayland (`gnoblin_backend::selection`, `selection_bridge`, `xwayland`).
-- `ext_session_lock_v1`: the lock card, the lock authentication and the frame embargo (`gnoblin_render_frame::frame` types, `lock_auth`, `lock_card`).
+- `wl_data_device_manager` and `ext_session_lock_v1` have crates that hold the global, what it advertises and the table the protocol alone reads (`WlDataDeviceManagerSelections`). Their handlers stay in the engine for good: a paste chooses between a client's source, the X11 window manager and the host's clipboard, and a lock needs the frame path, the lock card and the lock's authentication. The lock's engine module is `session_lock`, outside `protocols/`.
 - the capture family: the frame pixel path, the lock embargo, `DmabufSupport` and `gnoblin_pipewire_export`; every handler is `Dispatch2<_, State>`, so each needs a host trait the size of `foreign_toplevel`'s.
 
 Each needs its shared types moved down first, into the types crate below. `zwlr_output_management_v1` was the first: its

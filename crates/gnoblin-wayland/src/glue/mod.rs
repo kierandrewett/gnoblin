@@ -18,6 +18,8 @@ mod ext_workspace_v1;
 mod org_kde_kwin_appmenu;
 mod org_kde_kwin_server_decoration;
 mod wl_compositor;
+mod wl_data_device_manager;
+pub(crate) use wl_data_device_manager::BackendSelection;
 mod wl_output;
 mod wl_seat;
 mod wl_shm;

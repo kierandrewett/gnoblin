@@ -895,10 +895,10 @@ impl Server {
                 // selection a client pastes is read for it. A backend with no host ignores both.
                 for change in state.take_backend_selection() {
                     match change {
-                        crate::protocols::wl_data_device_manager::BackendSelection::Session { target, mime_types } => {
+                        crate::glue::BackendSelection::Session { target, mime_types } => {
                             backend.session_selection(target, mime_types);
                         }
-                        crate::protocols::wl_data_device_manager::BackendSelection::Read { target, mime_type, fd } => {
+                        crate::glue::BackendSelection::Read { target, mime_type, fd } => {
                             if let Err(refusal) = backend.read_host_selection(target, &mime_type, fd) {
                                 log::debug!(area = "selection", ?target, %refusal, "a paste of the host's selection was refused");
                             }

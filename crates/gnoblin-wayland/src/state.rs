@@ -88,13 +88,13 @@ use crate::observation::{
 };
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
-use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
-use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
 use crate::server::StartupError;
+use crate::session_lock::ExtSessionLockV1Tables;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
 use crate::window_request::{Decider, X11Flags};
 use gnoblin_wayland_api::access::{Access, ClientRole, Global};
 use gnoblin_wayland_protocols::ext_idle_notify_v1::{ExtIdleNotifyV1Tables, IdleNotifyExt as _};
+use gnoblin_wayland_protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
 use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
 use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
 use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
@@ -306,7 +306,7 @@ pub struct State {
     /// `ext_workspace_manager_v1`: the global and the managers clients bound ([`gnoblin_wayland_protocols::ext_workspace_v1`]).
     pub(crate) workspace_protocol: gnoblin_wayland_protocols::ext_workspace_v1::Workspaces,
     /// Kept alive so the `ext_session_lock_manager_v1` global stays registered; the
-    /// handler in [`crate::protocols::ext_session_lock_v1`] answers its requests.
+    /// handler in [`crate::session_lock`] answers its requests.
     pub(crate) session_lock_state: SessionLockManagerState,
     /// Kept alive so `xwayland-shell-v1` stays registered. Only the Xwayland client can
     /// bind it, so the global is invisible to every other one; it is created only when a
@@ -483,7 +483,7 @@ pub struct State {
     /// Which side owns each selection while the X11 bridge is running.
     pub(crate) selection_owners: crate::selection_bridge::SelectionOwners,
     /// What the loop has to tell or ask the backend about the selections after a turn.
-    pub(crate) backend_selection: Vec<crate::protocols::wl_data_device_manager::BackendSelection>,
+    pub(crate) backend_selection: Vec<crate::glue::BackendSelection>,
     /// Sandbox listeners waiting for the event loop to watch them.
     ///
     /// `wp_security_context_v1` hands the compositor a listening socket during a
@@ -608,7 +608,7 @@ pub struct State {
 
     /// The session lock and protection-cover policy. Every request, output change
     /// and committed lock surface is an event for it, and the effects it returns are
-    /// what the protocol side in [`crate::protocols::ext_session_lock_v1`] performs.
+    /// what the protocol side in [`crate::session_lock`] performs.
     pub(crate) lock: Lock,
     /// The embargo the lock last announced. It is what the capture and selection
     /// queries answer, so a consumer reads what the lock decided rather than a second
@@ -701,7 +701,7 @@ impl State {
         // The lock global is advertised to every client: the standard protocol makes
         // the socket the admission boundary, and `docs/session-lock.md` states that
         // the first request owns the lock.
-        let session_lock_state = SessionLockManagerState::new::<Self, _>(&display_handle, |_| true);
+        let session_lock_state = gnoblin_wayland_protocols::ext_session_lock_v1::register::<Self>(&registrar);
         // The two Xwayland-only globals exist only with a session: `xwayland-shell-v1`
         // and the keyboard grab manager are bound by Xwayland alone. The data device is
         // not one of them: it is the clipboard, which every session serves, and
@@ -718,7 +718,7 @@ impl State {
         let foreign_toplevel_list_state =
             gnoblin_wayland_protocols::ext_foreign_toplevel_list_v1::register::<Self>(&registrar);
         let activation_state = gnoblin_wayland_protocols::xdg_activation_v1::register::<Self>(&registrar);
-        let data_device_state = DataDeviceState::new::<Self>(&display_handle);
+        let data_device_state = gnoblin_wayland_protocols::wl_data_device_manager::register::<Self>(&registrar);
         let primary_selection_state = gnoblin_wayland_protocols::zwp_primary_selection_v1::register::<Self>(&registrar);
         let ext_data_control_state =
             gnoblin_wayland_protocols::ext_data_control_v1::register::<Self>(&registrar, &primary_selection_state);

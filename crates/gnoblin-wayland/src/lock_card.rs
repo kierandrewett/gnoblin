@@ -39,7 +39,7 @@ use gnoblin_types::Tick;
 
 use crate::log;
 use crate::modal::{Modal, ModalEvent};
-use crate::protocols::ext_session_lock_v1::internal_locker;
+use crate::session_lock::internal_locker;
 use crate::state::State;
 use crate::tree_frame::TreeAnswer;
 

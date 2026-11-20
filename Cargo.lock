@@ -2408,6 +2408,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-wayland-ext-session-lock-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
 name = "gnoblin-wayland-ext-workspace-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -2454,11 +2462,13 @@ dependencies = [
  "gnoblin-wayland-ext-data-control-v1",
  "gnoblin-wayland-ext-foreign-toplevel-list-v1",
  "gnoblin-wayland-ext-idle-notify-v1",
+ "gnoblin-wayland-ext-session-lock-v1",
  "gnoblin-wayland-ext-workspace-v1",
  "gnoblin-wayland-foreign-toplevel-shared",
  "gnoblin-wayland-org-kde-kwin-appmenu",
  "gnoblin-wayland-org-kde-kwin-server-decoration",
  "gnoblin-wayland-wl-compositor",
+ "gnoblin-wayland-wl-data-device-manager",
  "gnoblin-wayland-wl-output",
  "gnoblin-wayland-wl-seat",
  "gnoblin-wayland-wl-shm",
@@ -2513,6 +2523,14 @@ name = "gnoblin-wayland-wl-compositor"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-render-frame",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-wl-data-device-manager"
+version = "0.2.0-alpha.0"
+dependencies = [
  "gnoblin-wayland-api",
  "smithay",
 ]

@@ -77,7 +77,7 @@ use crate::State;
 use crate::devices::{DeviceKeys, LOCKS};
 use crate::observation::{MenuAnchor, MenuSource};
 use crate::pointer_chord::PointerCapture;
-use crate::protocols::ext_session_lock_v1::internal_locker;
+use crate::session_lock::internal_locker;
 use crate::tree_frame::{ChordEvent, ChordState, TreeInput};
 
 use crate::log;

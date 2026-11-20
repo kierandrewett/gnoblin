@@ -51,7 +51,7 @@ use smithay::backend::input::InputTime;
 
 use crate::State;
 use crate::keyboard::claim_name;
-use crate::protocols::ext_session_lock_v1::internal_locker;
+use crate::session_lock::internal_locker;
 use crate::tree_frame::{PointerButtonEvent, TreeInput};
 
 use crate::log;

@@ -9,11 +9,13 @@ pub use gnoblin_wayland_ext_background_effect_v1 as ext_background_effect_v1;
 pub use gnoblin_wayland_ext_data_control_v1 as ext_data_control_v1;
 pub use gnoblin_wayland_ext_foreign_toplevel_list_v1 as ext_foreign_toplevel_list_v1;
 pub use gnoblin_wayland_ext_idle_notify_v1 as ext_idle_notify_v1;
+pub use gnoblin_wayland_ext_session_lock_v1 as ext_session_lock_v1;
 pub use gnoblin_wayland_ext_workspace_v1 as ext_workspace_v1;
 pub use gnoblin_wayland_foreign_toplevel_shared as foreign_toplevel_shared;
 pub use gnoblin_wayland_org_kde_kwin_appmenu as org_kde_kwin_appmenu;
 pub use gnoblin_wayland_org_kde_kwin_server_decoration as org_kde_kwin_server_decoration;
 pub use gnoblin_wayland_wl_compositor as wl_compositor;
+pub use gnoblin_wayland_wl_data_device_manager as wl_data_device_manager;
 pub use gnoblin_wayland_wl_output as wl_output;
 pub use gnoblin_wayland_wl_seat as wl_seat;
 pub use gnoblin_wayland_wl_shm as wl_shm;
@@ -91,6 +93,8 @@ pub const ALL: &[&ProtocolInfo] = &[
     &zwp_text_input_v3::PROTOCOL,
     &ext_foreign_toplevel_list_v1::PROTOCOL,
     &zwlr_foreign_toplevel_management_v1::PROTOCOL,
+    &wl_data_device_manager::PROTOCOL,
+    &ext_session_lock_v1::PROTOCOL,
     &zwp_tablet_v2::PROTOCOL,
     &wl_compositor::PROTOCOL,
     &wl_seat::PROTOCOL,

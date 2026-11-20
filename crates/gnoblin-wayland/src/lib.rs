@@ -31,7 +31,7 @@
 //!   through the software renderer in `gnoblin-backend`. [`ControlHandle::screenshot`]
 //!   reads those pixels back, which is what the pixel tests assert on.
 //! - Session locking is `gnoblin-lock`'s: a lock request is an
-//!   [`gnoblin_lock::Event`], the effects it returns are what `protocols::ext_session_lock_v1`
+//!   [`gnoblin_lock::Event`], the effects it returns are what `session_lock`
 //!   performs, and a frame carrying the armed cover generation on every output is what
 //!   lets the locker hear `locked`. While anything is covered the frame path describes
 //!   the opaque cover instead of the desktop, input reaches the owner's lock surface or
@@ -147,7 +147,7 @@
 //!
 //! Each entry names the integration test in `tests/real_client.rs` unless it says
 //! otherwise; the session lock's own list is at the top of
-//! `protocols::ext_session_lock_v1` and its tests are in `tests/session_lock.rs`.
+//! `session_lock` and its tests are in `tests/session_lock.rs`.
 //!
 //! 1. **A client crash leaves a mapped ghost window.** A client that disconnects
 //!    without destroying its toplevel has its resources destroyed by the display, so
@@ -238,6 +238,7 @@ mod request_tap;
 mod seat_grab;
 mod selection_bridge;
 mod server;
+mod session_lock;
 mod shader_wake;
 mod shell_cursor;
 mod state;

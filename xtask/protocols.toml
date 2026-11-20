@@ -269,6 +269,20 @@ needs = ["foreign-toplevel-shared", "types"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
 
 [[crate]]
+name = "wl-data-device-manager"
+description = "The wl_data_device_manager Wayland protocol of gnoblin-wayland: the clipboard, drag and drop, and the table of what the session's selections hold."
+kind = "protocol"
+interfaces = [["wl_data_device_manager", 3]]
+deps = ["smithay"]
+
+[[crate]]
+name = "ext-session-lock-v1"
+description = "The ext_session_lock_manager_v1 Wayland protocol of gnoblin-wayland: the lock request, the cover and the embargo."
+kind = "protocol"
+interfaces = [["ext_session_lock_manager_v1", 1]]
+deps = ["smithay"]
+
+[[crate]]
 name = "zwp-linux-dmabuf-v1"
 description = "The zwp_linux_dmabuf_v1 Wayland protocol of gnoblin-wayland: GPU buffers a client shares instead of copying pixels."
 kind = "protocol"
