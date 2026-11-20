@@ -66,6 +66,7 @@ use gnoblin_wayland_api::access::{Access, Global};
 use gnoblin_wayland_api::host::CoreHost;
 use gnoblin_wayland_api::{Privilege, ProtocolInfo, Registrar, ServedInterface};
 use gnoblin_wayland_foreign_toplevel_shared::{Sent, States, ToplevelChanges, ToplevelState};
+use gnoblin_wayland_types::window::WindowRequest;
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
 gnoblin_log::logger!(log = "wayland");
 
@@ -89,21 +90,6 @@ fn states_to_wire(states: States) -> Vec<u8> {
         }
     }
     wire
-}
-
-/// What a taskbar may ask of a window. The compositor decides what each ask means for the window manager.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ToplevelAsk {
-    /// Close the window.
-    Close,
-    /// Maximise (`true`) or restore (`false`).
-    Maximise(bool),
-    /// Minimise (`true`) or restore (`false`).
-    Minimise(bool),
-    /// Fullscreen (`true`) or leave fullscreen (`false`).
-    Fullscreen(bool),
-    /// Focus and raise.
-    Activate,
 }
 
 /// The published record of one window.
@@ -135,8 +121,9 @@ pub trait Host: CoreHost + Sized + 'static {
     /// The published window list.
     fn foreign_toplevels(&mut self) -> &mut ForeignToplevels;
 
-    /// Asks the window manager to do `ask` to `window`.
-    fn toplevel_ask(&mut self, window: WindowId, ask: ToplevelAsk);
+    /// Asks the window manager to do `request` to `window`. The compositor decides what each request means: the shell, or
+    /// the window manager when no shell holds the tree.
+    fn window_request(&mut self, window: WindowId, request: WindowRequest);
 
     /// The surface of `window`, if it has one.
     fn surface_of(&self, window: WindowId) -> Option<WlSurface>;
@@ -269,14 +256,16 @@ impl<D: Host> Dispatch2<ZwlrForeignToplevelHandleV1, D> for ZwlrForeignToplevelM
         let window = self.window;
         match request {
             handle::Request::Activate { seat } => toplevel_activated(state, window, &seat),
-            handle::Request::Close => state.toplevel_ask(window, ToplevelAsk::Close),
-            handle::Request::SetMaximized => state.toplevel_ask(window, ToplevelAsk::Maximise(true)),
-            handle::Request::UnsetMaximized => state.toplevel_ask(window, ToplevelAsk::Maximise(false)),
-            handle::Request::SetMinimized => state.toplevel_ask(window, ToplevelAsk::Minimise(true)),
-            handle::Request::UnsetMinimized => state.toplevel_ask(window, ToplevelAsk::Minimise(false)),
+            handle::Request::Close => state.window_request(window, WindowRequest::Close),
+            handle::Request::SetMaximized => state.window_request(window, WindowRequest::Maximise(true)),
+            handle::Request::UnsetMaximized => state.window_request(window, WindowRequest::Maximise(false)),
+            handle::Request::SetMinimized => state.window_request(window, WindowRequest::Minimise(true)),
+            handle::Request::UnsetMinimized => state.window_request(window, WindowRequest::Minimise(false)),
             // The output a taskbar names is not honoured yet: a window goes fullscreen on its own output.
-            handle::Request::SetFullscreen { output: _ } => state.toplevel_ask(window, ToplevelAsk::Fullscreen(true)),
-            handle::Request::UnsetFullscreen => state.toplevel_ask(window, ToplevelAsk::Fullscreen(false)),
+            handle::Request::SetFullscreen { output: _ } => {
+                state.window_request(window, WindowRequest::Fullscreen(true))
+            }
+            handle::Request::UnsetFullscreen => state.window_request(window, WindowRequest::Fullscreen(false)),
             handle::Request::SetRectangle {
                 surface,
                 x,
@@ -377,7 +366,7 @@ fn toplevel_activated<D: Host>(state: &mut D, window: WindowId, seat: &WlSeat) {
     // row is the trusted input context: the plan's rule is about a *client*
     // demanding focus, not about a shell reporting the user's action.
     log::debug!(area = "toplevel", %window, "activated by a taskbar");
-    state.toplevel_ask(window, ToplevelAsk::Activate);
+    state.window_request(window, WindowRequest::Activate);
 }
 
 /// A taskbar said where it draws a window's thumbnail.

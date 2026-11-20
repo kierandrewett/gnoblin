@@ -14,6 +14,7 @@ workspace = true
 [dependencies]
 gnoblin-wayland-api = { path = "../api" }
 gnoblin-wayland-foreign-toplevel-shared = { path = "../foreign-toplevel-shared" }
+gnoblin-wayland-types = { path = "../types" }
 smithay = { workspace = true }
 gnoblin-types = { workspace = true }
 gnoblin-log = { path = "../../gnoblin-log" }

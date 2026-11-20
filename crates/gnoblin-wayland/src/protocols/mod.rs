@@ -14,8 +14,6 @@ pub mod ext_image_capture_source_v1;
 pub mod ext_image_copy_capture_v1;
 /// `ext_session_lock_v1`: the session lock request, its cover and its input gate.
 pub mod ext_session_lock_v1;
-/// The seam a compat adapter's Wayland redirect registers through.
-pub mod extension;
 /// `gnoblin_view_source_v1`: the owner-only capture source of a View node.
 pub mod gnoblin_view_source_v1;
 /// The session and frame objects of `ext_image_copy_capture_v1`, with the device stated as the wire carries it.

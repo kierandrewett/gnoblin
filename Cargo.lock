@@ -2705,6 +2705,7 @@ dependencies = [
  "gnoblin-types",
  "gnoblin-wayland-api",
  "gnoblin-wayland-foreign-toplevel-shared",
+ "gnoblin-wayland-types",
  "smithay",
 ]
 

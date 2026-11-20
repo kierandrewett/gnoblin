@@ -3147,3 +3147,9 @@ left = "gnoblin-object::Fail"
 right = "gnoblin-std-dyn::StdError"
 kind = "same-shape"
 reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-core::WindowRequest"
+right = "gnoblin-wayland-types::WindowRequest"
+kind = "same-name"
+reason = "the shell SDK's event names a request by its wire string for the shell to read; the compositor's is the typed ask that becomes that event, so the name is shared and the shape is not"

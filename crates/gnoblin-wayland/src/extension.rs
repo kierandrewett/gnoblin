@@ -52,7 +52,7 @@ use gnoblin_config::{TitlebarAction, WindowManagement};
 use gnoblin_types::WindowId;
 
 use crate::State;
-use crate::window_request::WindowRequest;
+use gnoblin_wayland_types::window::WindowRequest;
 
 use crate::log;
 

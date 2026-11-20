@@ -19,6 +19,7 @@ use smithay::xwayland::xwm::X11Surface;
 use gnoblin_backend::x11::WindowAsk;
 use gnoblin_render::transaction::TreeCall;
 use gnoblin_types::{NodeId, OutputId, Rect, WindowId};
+use gnoblin_wayland_types::window::WindowRequest;
 use gnoblin_wm_api::WindowState;
 
 use crate::observation::WindowChangeRefusal;
@@ -26,50 +27,29 @@ use crate::state::{Managed, set_flag, x11_geometry};
 use crate::tree_frame::TreeRequest;
 use crate::{State, log};
 
-/// What a window is asked to do.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WindowRequest {
-    /// Fill the work area (`true`) or return to the floating rectangle (`false`).
-    Maximise(bool),
-    /// Cover the output (`true`) or leave fullscreen (`false`).
-    Fullscreen(bool),
-    /// Hide the window and hand focus on (`true`) or bring it back (`false`).
-    Minimise(bool),
-    /// Ask the window's client to close.
-    Close,
-    /// Focus and raise the window. The caller has already decided the activation is allowed.
-    Activate,
-    /// Put the window on top of its siblings.
-    Raise,
-    /// Put the window under its siblings.
-    Lower,
+/// The request an X11 client's own ask is: the one an `xdg_toplevel` makes for the same thing.
+pub(crate) const fn request_of_ask(ask: WindowAsk) -> WindowRequest {
+    match ask {
+        WindowAsk::Maximise(on) => WindowRequest::Maximise(on),
+        WindowAsk::Fullscreen(on) => WindowRequest::Fullscreen(on),
+        WindowAsk::Minimise(on) => WindowRequest::Minimise(on),
+        WindowAsk::Close => WindowRequest::Close,
+    }
 }
 
-impl WindowRequest {
-    /// The request an X11 client's own ask is: the one an `xdg_toplevel` makes for the same thing.
-    pub(crate) const fn of_ask(ask: WindowAsk) -> Self {
-        match ask {
-            WindowAsk::Maximise(on) => Self::Maximise(on),
-            WindowAsk::Fullscreen(on) => Self::Fullscreen(on),
-            WindowAsk::Minimise(on) => Self::Minimise(on),
-            WindowAsk::Close => Self::Close,
-        }
-    }
-
-    /// The request event the shell reads.
-    const fn tree(self) -> TreeRequest {
-        match self {
-            Self::Maximise(true) => TreeRequest::Maximize,
-            Self::Maximise(false) => TreeRequest::Unmaximize,
-            Self::Fullscreen(true) => TreeRequest::Fullscreen,
-            Self::Fullscreen(false) => TreeRequest::Unfullscreen,
-            Self::Minimise(true) => TreeRequest::Minimize,
-            Self::Minimise(false) => TreeRequest::Unminimize,
-            Self::Close => TreeRequest::Close,
-            Self::Activate => TreeRequest::Activate,
-            Self::Raise => TreeRequest::Raise,
-            Self::Lower => TreeRequest::Lower,
-        }
+/// The request event the shell reads.
+const fn tree_request(request: WindowRequest) -> TreeRequest {
+    match request {
+        WindowRequest::Maximise(true) => TreeRequest::Maximize,
+        WindowRequest::Maximise(false) => TreeRequest::Unmaximize,
+        WindowRequest::Fullscreen(true) => TreeRequest::Fullscreen,
+        WindowRequest::Fullscreen(false) => TreeRequest::Unfullscreen,
+        WindowRequest::Minimise(true) => TreeRequest::Minimize,
+        WindowRequest::Minimise(false) => TreeRequest::Unminimize,
+        WindowRequest::Close => TreeRequest::Close,
+        WindowRequest::Activate => TreeRequest::Activate,
+        WindowRequest::Raise => TreeRequest::Raise,
+        WindowRequest::Lower => TreeRequest::Lower,
     }
 }
 
@@ -126,7 +106,7 @@ impl State {
         if self.decider(window) == Decider::Shell
             && let Some(node) = self.composer.window_node(window)
         {
-            self.tree.event(node, request.tree());
+            self.tree.event(node, tree_request(request));
             return;
         }
         self.window_request_directly(window, request);
@@ -508,8 +488,9 @@ mod tests {
     use gnoblin_types::Rect;
     use gnoblin_wm_api::WindowState;
 
-    use super::{Decider, WindowRequest, X11Answer, X11Flags, X11Writes, decide, x11_answer};
+    use super::{Decider, X11Answer, X11Flags, X11Writes, decide, request_of_ask, tree_request, x11_answer};
     use crate::tree_frame::TreeRequest;
+    use gnoblin_wayland_types::window::WindowRequest;
 
     const FRAME: Rect = Rect::new(40, 50, 300, 200);
 
@@ -517,7 +498,7 @@ mod tests {
     // are the same node requests a Wayland toplevel's are: the shell reads them by name.
     #[test]
     fn an_x11_window_state_request_becomes_the_node_request_the_shell_reads() {
-        let named = |request: WindowRequest| request.tree().name();
+        let named = |request: WindowRequest| tree_request(request).name();
         assert_eq!(named(WindowRequest::Maximise(true)), "maximize");
         assert_eq!(named(WindowRequest::Maximise(false)), "unmaximize");
         assert_eq!(named(WindowRequest::Fullscreen(true)), "fullscreen");
@@ -525,9 +506,9 @@ mod tests {
         assert_eq!(named(WindowRequest::Minimise(true)), "minimize");
         assert_eq!(named(WindowRequest::Minimise(false)), "unminimize");
         assert_eq!(named(WindowRequest::Close), "close");
-        assert_eq!(WindowRequest::Activate.tree(), TreeRequest::Activate);
-        assert_eq!(WindowRequest::Raise.tree(), TreeRequest::Raise);
-        assert_eq!(WindowRequest::Lower.tree(), TreeRequest::Lower);
+        assert_eq!(tree_request(WindowRequest::Activate), TreeRequest::Activate);
+        assert_eq!(tree_request(WindowRequest::Raise), TreeRequest::Raise);
+        assert_eq!(tree_request(WindowRequest::Lower), TreeRequest::Lower);
     }
 
     // With a holder attached the request is the shell's; with none, a locked session or a window with no node it is
@@ -599,37 +580,31 @@ mod tests {
     // for both and the record applies one rule to both.
     #[test]
     fn an_x11_clients_own_ask_is_the_request_an_xdg_toplevel_makes() {
+        assert_eq!(request_of_ask(WindowAsk::Maximise(true)), WindowRequest::Maximise(true));
         assert_eq!(
-            WindowRequest::of_ask(WindowAsk::Maximise(true)),
-            WindowRequest::Maximise(true)
-        );
-        assert_eq!(
-            WindowRequest::of_ask(WindowAsk::Maximise(false)),
+            request_of_ask(WindowAsk::Maximise(false)),
             WindowRequest::Maximise(false)
         );
         assert_eq!(
-            WindowRequest::of_ask(WindowAsk::Fullscreen(true)),
+            request_of_ask(WindowAsk::Fullscreen(true)),
             WindowRequest::Fullscreen(true)
         );
         assert_eq!(
-            WindowRequest::of_ask(WindowAsk::Fullscreen(false)),
+            request_of_ask(WindowAsk::Fullscreen(false)),
             WindowRequest::Fullscreen(false)
         );
+        assert_eq!(request_of_ask(WindowAsk::Minimise(true)), WindowRequest::Minimise(true));
         assert_eq!(
-            WindowRequest::of_ask(WindowAsk::Minimise(true)),
-            WindowRequest::Minimise(true)
-        );
-        assert_eq!(
-            WindowRequest::of_ask(WindowAsk::Minimise(false)),
+            request_of_ask(WindowAsk::Minimise(false)),
             WindowRequest::Minimise(false)
         );
-        assert_eq!(WindowRequest::of_ask(WindowAsk::Close), WindowRequest::Close);
+        assert_eq!(request_of_ask(WindowAsk::Close), WindowRequest::Close);
         assert_eq!(
-            WindowRequest::of_ask(WindowAsk::Maximise(true)).tree().name(),
+            tree_request(request_of_ask(WindowAsk::Maximise(true))).name(),
             "maximize"
         );
         assert_eq!(
-            WindowRequest::of_ask(WindowAsk::Minimise(true)).tree().name(),
+            tree_request(request_of_ask(WindowAsk::Minimise(true))).name(),
             "minimize"
         );
     }

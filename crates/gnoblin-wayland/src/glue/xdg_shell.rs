@@ -37,7 +37,7 @@ use crate::interactive::{DragKind, Edges};
 use crate::observation::{MenuAnchor, MenuSource};
 use crate::state::xdg_geometry;
 use crate::tree_frame::TreeRequest;
-use crate::window_request::WindowRequest;
+use gnoblin_wayland_types::window::WindowRequest;
 
 use crate::log;
 

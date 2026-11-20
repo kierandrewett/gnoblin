@@ -210,6 +210,7 @@ mod cursor;
 mod decoration;
 mod devices;
 mod dispatch;
+mod extension;
 mod foreign_toplevels;
 mod frame;
 mod frame_policy;
@@ -304,14 +305,14 @@ pub use tree_frame::{
     keysym_name, keysym_text,
 };
 
+/// Protocol extension trait and host traits, with the activation and surface types they use.
+pub use extension::{
+    Activation, Extension, ExtensionError, Shell1Host, Surface, Titlebar, TitlebarActions, X11InteropHost,
+};
 /// The identity and the window process a client's surface belongs to.
 pub use process::{KillRefusal, KillTarget, ProcessIdentity, WindowProcess};
 /// A screen cast stream the compositor started for a consented session, and why one is refused.
 pub use protocols::capture_shared::{CastRefusal, CastStream};
-/// Protocol extension trait and host traits, with the activation and surface types they use.
-pub use protocols::extension::{
-    Activation, Extension, ExtensionError, Shell1Host, Surface, Titlebar, TitlebarActions, X11InteropHost,
-};
 /// The session's state.
 pub use state::State;
 /// The X11 session that runs Xwayland.

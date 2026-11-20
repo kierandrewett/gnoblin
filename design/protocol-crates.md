@@ -20,7 +20,7 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
 
 Not yet done: the capture family (`capture_shared`, `image_copy_session`, `zwlr_screencopy_v1`, `ext_image_copy_capture_v1`,
 `ext_image_capture_source_v1`, `capture_dmabuf`), `ext_session_lock_v1`, `wl_data_device_manager`, `zwp_linux_dmabuf_v1`,
-the `extension` and `gnoblin_view_source_v1` modules (the second waits for the owner's decision on view source),
+the `gnoblin_view_source_v1` and `capture_views` modules (they wait for the owner's decision on view source),
 ProtoMissing's five protocols, the real-client test move and `gnoblin-wayland-testkit`, the advertised-globals test, and
 deleting `protocols/mod.rs` with the last of them. What each one needs first is under
 [What blocks the rest](#what-blocks-the-rest).
@@ -33,12 +33,11 @@ Shared crates must end in `-shared`, so `image_copy_session` will be `gnoblin-wa
 
 The protocols still in `gnoblin-wayland` name types that live in the compositor, so their crates cannot depend only on the api crate. The blockers, by module:
 
-- `xdg_shell`, `wl_compositor`, `wl_seat` have crates that hold the global, what the protocol advertises and the code that is the protocol's alone (`WlCompositorClientState`, `verify_buffer`, the implicit touch grab). Their handlers name `WindowRequest`, `TreeRequest` and the seat's own tables, so they stay in `crates/gnoblin-wayland/src/glue/` until those move into the types crate.
+- `xdg_shell`, `wl_compositor`, `wl_seat` have crates that hold the global, what the protocol advertises and the code that is the protocol's alone (`WlCompositorClientState`, `verify_buffer`, the implicit touch grab). Their handlers stay in `crates/gnoblin-wayland/src/glue/` for good, and that is the decision, not a gap: each answer is the engine's own work (the popup manager and its grabs, interactive move and resize, the commit path, the seat's focus), so a host trait that gave a crate that access would be the whole of `State` behind a trait with one implementor.
 - `zwp_linux_dmabuf_v1`: `gnoblin_backend::{Backend, DmabufSupport}` and the GPU memory ledger.
 - `wl_data_device_manager`: the selection bridge to the backend and Xwayland (`gnoblin_backend::selection`, `selection_bridge`, `xwayland`).
 - `ext_session_lock_v1`: the lock card, the lock authentication and the frame embargo (`gnoblin_render_frame::frame` types, `lock_auth`, `lock_card`).
 - the capture family: the frame pixel path, the lock embargo, `DmabufSupport` and `gnoblin_pipewire_export`; every handler is `Dispatch2<_, State>`, so each needs a host trait the size of `foreign_toplevel`'s.
-- `extension`: `WindowRequest` and the window record.
 
 Each needs its shared types moved down first, into the types crate below. `zwlr_output_management_v1` was the first: its
 `HeadInfo`, `HeadRequest` and `ModeRequest` now live there. `zxdg_decoration_v1` was the second: `DecorationWanted` and
@@ -48,7 +47,7 @@ that says what a connection has earned, what the session's clock reads and what 
 `zwlr_layer_shell_v1` was the fourth: `LayerBand`, `LayerNodeInfo` and `LayerOverride` moved from the composer; the crate holds the
 global, the table of surfaces and the arithmetic that places one, and the compositor's `layer_shell` module arranges, configures
 and draws them.
-`zwp_tablet_v2` was the fifth: the tool, axis, pad and event types (`TabletEvent` and friends) moved from `gnoblin-backend`, which re-exports them at its root where they were public. The crate holds the tablet tables, the pad objects and every tool event, generic over a `Host` that supplies the seat, the surface under a point, the keyboard focus and the lock.
+`WindowRequest` moved to the types crate as well, so the foreign-toplevel host asks for a `WindowRequest` and its own `ToplevelAsk` is gone. `extension` is not a Wayland protocol (it is the seam compat adapters register through), so it left `protocols/` for a module of its own. `zwp_tablet_v2` was the fifth: the tool, axis, pad and event types (`TabletEvent` and friends) moved from `gnoblin-backend`, which re-exports them at its root where they were public. The crate holds the tablet tables, the pad objects and every tool event, generic over a `Host` that supplies the seat, the surface under a point, the keyboard focus and the lock.
 
 ### The types crate
 

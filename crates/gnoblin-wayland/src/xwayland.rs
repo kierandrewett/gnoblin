@@ -96,7 +96,7 @@ use gnoblin_wm_api::{Open, WindowKind};
 
 use crate::selection_bridge::ToWayland;
 use crate::state::State;
-use crate::window_request::{WindowRequest, X11Flags};
+use crate::window_request::{X11Flags, request_of_ask};
 use crate::x11_root::{RootMessage, RootWatch};
 
 use crate::log;
@@ -665,7 +665,7 @@ impl State {
         // A client's own state request is the request an `xdg_toplevel` makes for the same thing, so it goes
         // through the same entry. It runs with the session put back: a close the record decides is sent through it.
         for (window, ask) in asks {
-            self.window_request(window, WindowRequest::of_ask(ask));
+            self.window_request(window, request_of_ask(ask));
         }
         self.publish();
     }

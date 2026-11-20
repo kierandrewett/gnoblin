@@ -77,6 +77,7 @@ use gnoblin_types::{NodeId, OutputId, PointF, Rect, RectF, Size, Tick, WindowId,
 use gnoblin_wayland_types::decoration::DecorationWanted;
 use gnoblin_wm_api::{Open, Standing, WindowKind, WindowManager, WindowState, WmEffect, WmOptions, WmRefusal};
 
+use crate::extension::{Extension, TitlebarActions};
 use crate::frame_policy::{CallbackPacer, Pacing};
 use crate::keyboard::KeyboardTables;
 use crate::layer_draw::LayerPick;
@@ -88,11 +89,10 @@ use crate::observation::{
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
 use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
-use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
-use crate::window_request::{Decider, WindowRequest, X11Flags};
+use crate::window_request::{Decider, X11Flags};
 use gnoblin_wayland_api::access::{Access, ClientRole, Global};
 use gnoblin_wayland_protocols::ext_idle_notify_v1::{ExtIdleNotifyV1Tables, IdleNotifyExt as _};
 use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
@@ -107,6 +107,7 @@ use gnoblin_wayland_protocols::zwp_pointer_constraints_v1::{
     PointerConstraintsExt as _, ZwpPointerConstraintsV1Tables,
 };
 use gnoblin_wayland_protocols::zxdg_output_v1::XdgOutputExt as _;
+use gnoblin_wayland_types::window::WindowRequest;
 
 use crate::log;
 
@@ -948,7 +949,7 @@ impl State {
         state.composer.add_lock_node();
         // Every extension registers before the loop runs, so no client can observe a
         // session with half its globals.
-        crate::protocols::extension::Extensions::default()
+        crate::extension::Extensions::default()
             .register(extensions, &state.display_handle)
             .map_err(StartupError::Extension)?;
         state.sync_outputs(backend_outputs);

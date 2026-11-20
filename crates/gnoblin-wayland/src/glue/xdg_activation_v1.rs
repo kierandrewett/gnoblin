@@ -4,6 +4,7 @@
 use gnoblin_types::{Tick, WindowId};
 use gnoblin_wayland_api::access::ClientRole;
 use gnoblin_wayland_protocols::xdg_activation_v1::{self, Host, XdgActivationV1};
+use gnoblin_wayland_types::window::WindowRequest;
 use smithay::reexports::wayland_server::backend::ClientId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::wayland::xdg_activation::{
@@ -11,7 +12,6 @@ use smithay::wayland::xdg_activation::{
 };
 
 use crate::State;
-use crate::window_request::WindowRequest;
 
 impl XdgActivationHandler for State {
     fn activation_state(&mut self) -> &mut XdgActivationState {

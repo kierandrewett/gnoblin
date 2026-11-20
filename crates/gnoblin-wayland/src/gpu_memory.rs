@@ -324,7 +324,7 @@ mod tests {
             None,
             crate::tree_frame::TreeHooks::default(),
             &gnoblin_config::Protocols::default(),
-            crate::protocols::extension::TitlebarActions::default(),
+            crate::extension::TitlebarActions::default(),
             crate::server::CursorSettings::default(),
             &[],
             crate::lock_auth::LockAuth::new(Arc::new(gnoblin_lock_auth::FakeAuthenticator::new()), None).0,

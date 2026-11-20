@@ -13,3 +13,4 @@ pub mod decoration;
 pub mod layer;
 pub mod output;
 pub mod tablet;
+pub mod window;

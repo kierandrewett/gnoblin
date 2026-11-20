@@ -265,7 +265,7 @@ name = "zwlr-foreign-toplevel-management-v1"
 description = "The zwlr_foreign_toplevel_manager_v1 Wayland protocol of gnoblin-wayland: the window list a taskbar reads and controls."
 kind = "protocol"
 interfaces = [["zwlr_foreign_toplevel_manager_v1", 3]]
-needs = ["foreign-toplevel-shared"]
+needs = ["foreign-toplevel-shared", "types"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
 
 [[crate]]

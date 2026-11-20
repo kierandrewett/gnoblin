@@ -3170,7 +3170,7 @@ Enforcement. The pure grant check and the never-grantable list live in `gnoblin-
 
 Honest costs. Instruction and memory limits do not bound a C call the Lua VM makes (D17, blocking calls). Epochs and fuel bound a WASM guest's time but not a host call's time. Only the process tier keeps a crash or memory fault out of the compositor. A package that touches secrets, or runs on the frame path, belongs in the process or WASM tier with the rules below, not in Lua.
 
-Naming. The `Extension` trait in `crates/gnoblin-wayland/src/protocols/extension.rs` is the in-binary seam for compat adapters. It is not a D22 extension package and does not use the D21 envelope. The name stays, and docs say "compat adapter" when they mean it.
+Naming. The `Extension` trait in `crates/gnoblin-wayland/src/extension.rs` is the in-binary seam for compat adapters. It is not a D22 extension package and does not use the D21 envelope. The name stays, and docs say "compat adapter" when they mean it.
 
 #### WASM tier rules
 
@@ -3191,7 +3191,7 @@ Proposed. Blocking gate: until the prototype passes, a manifest with `[powers.wa
 Path from XML to global:
 
 1. **Load.** The XML is parsed, not compiled. Interface names begin with the package namespace (for example `ext_example_ext_v1`) and do not collide with `wl_*`, `xdg_*`, `gnoblin_*` or another loaded package. Versions are declared.
-2. **Descriptors.** Built from the parsed XML at load, before the event loop. That is the one moment a global can appear with no client racing it, the registration rule in `protocols/extension.rs`.
+2. **Descriptors.** Built from the parsed XML at load, before the event loop. That is the one moment a global can appear with no client racing it, the registration rule in `extension.rs`.
 3. **Global.** One per granted interface. Its version is the lower of the XML version and the version the grant allows. Clients bind lower versions as usual.
 4. **Dispatch.** One generic handler decodes each request by its descriptor, checks argument types and enum ranges, and forwards `(namespace, member, object id, request id, payload)` to the provider. Events come back and are encoded by descriptor.
 5. **Access.** The per-client access roster in `gnoblin-wayland` decides which clients may bind. A restricted (`security_context`) client sees no extension global unless the roster allows it. `wayland.client-policy` can narrow the roster and never widen it.
