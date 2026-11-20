@@ -18,12 +18,12 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`, `zwlr-layer-shell-v1`, `wl-compositor`, `wl-seat`, `xdg-shell`. Their forwarding
   impls are in `crates/gnoblin-wayland/src/glue/`, one file per crate.
 
-Not yet done, in the order of [Migration order and gates](#migration-order-and-gates): every crate that needs the
-access roster (ProtoRetire has removed session host from `access.rs`; view source is on hold by the owner, so the move can start), the capture family (waits for ProtoRetire's decision on
-`capture_views`), the large protocols (tablet, session lock),
-`wl-data-device-manager`, `zwp-linux-dmabuf-v1`,
-ProtoMissing's five protocols, the
-real-client test move and `gnoblin-wayland-testkit`, and the advertised-globals test.
+Not yet done: the capture family (`capture_shared`, `image_copy_session`, `zwlr_screencopy_v1`, `ext_image_copy_capture_v1`,
+`ext_image_capture_source_v1`, `capture_dmabuf`), `ext_session_lock_v1`, `wl_data_device_manager`, `zwp_linux_dmabuf_v1`,
+`zwp_tablet_v2`, the `extension` and `gnoblin_view_source_v1` modules (the second waits for the owner's decision on view source),
+ProtoMissing's five protocols, the real-client test move and `gnoblin-wayland-testkit`, the advertised-globals test, and
+deleting `protocols/mod.rs` with the last of them. What each one needs first is under
+[What blocks the rest](#what-blocks-the-rest).
 
 Two decisions made while doing the work differ from the text below. The table lives in `xtask/protocols.toml`, not in
 `crates/protocols/`, and a row carries no module name or access column, because each crate states its own `PROTOCOL`.
@@ -34,8 +34,12 @@ Shared crates must end in `-shared`, so `image_copy_session` will be `gnoblin-wa
 The protocols still in `gnoblin-wayland` name types that live in the compositor, so their crates cannot depend only on the api crate. The blockers, by module:
 
 - `xdg_shell`, `wl_compositor`, `wl_seat` have crates that hold the global, what the protocol advertises and the code that is the protocol's alone (`WlCompositorClientState`, `verify_buffer`, the implicit touch grab). Their handlers name `WindowRequest`, `TreeRequest` and the seat's own tables, so they stay in `crates/gnoblin-wayland/src/glue/` until those move into the types crate.
-- `zwp_linux_dmabuf_v1`: the backend's `Backend` and the GPU ledger.
-- the capture family: the frame pixel path, the lock embargo and `gnoblin_pipewire_export`.
+- `zwp_linux_dmabuf_v1`: `gnoblin_backend::{Backend, DmabufSupport}` and the GPU memory ledger.
+- `zwp_tablet_v2`: the backend's device model (`DeviceInfo`, `PadLayout`, `TabletAxes`, `TabletEvent`, `TabletTool`), which is plain data and can move to the types crate, and the seat's tablet tables.
+- `wl_data_device_manager`: the selection bridge to the backend and Xwayland (`gnoblin_backend::selection`, `selection_bridge`, `xwayland`).
+- `ext_session_lock_v1`: the lock card, the lock authentication and the frame embargo (`gnoblin_render_frame::frame` types, `lock_auth`, `lock_card`).
+- the capture family: the frame pixel path, the lock embargo, `DmabufSupport` and `gnoblin_pipewire_export`; every handler is `Dispatch2<_, State>`, so each needs a host trait the size of `foreign_toplevel`'s.
+- `extension`: `WindowRequest` and the window record.
 
 Each needs its shared types moved down first, into the types crate below. `zwlr_output_management_v1` was the first: its
 `HeadInfo`, `HeadRequest` and `ModeRequest` now live there. `zxdg_decoration_v1` was the second: `DecorationWanted` and
