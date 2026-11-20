@@ -292,6 +292,7 @@ fn what_a_call_costs() {
     let text = rig.member(class, abi::MEMBER_PROPERTY, "text");
     let home = rig.member(class, abi::MEMBER_METHOD, "home");
     let insert = rig.member(class, abi::MEMBER_METHOD, "insert");
+    let backspace = rig.member(class, abi::MEMBER_METHOD, "backspace");
     let changed = rig.member(class, abi::MEMBER_SIGNAL, "changed");
     let obj = api
         .create(class, &[(text, Val::from("a text of some length"))])
@@ -308,6 +309,23 @@ fn what_a_call_costs() {
             start.elapsed().as_nanos() as f64 / f64::from(n)
         );
     };
+    each(
+        "baseline, an existing typed table function (the core's stats)",
+        &mut || {
+            let mut counters = abi::GnoblinStats {
+                size: size_of::<abi::GnoblinStats>() as u32,
+                reserved: 0,
+                registrations: 0,
+                callbacks: 0,
+                panics: 0,
+                retired_generations: 0,
+                stale_calls: 0,
+            };
+            // SAFETY: `stats` fills the struct up to the `size` it carries; `counters` is a live local.
+            let code = unsafe { (host::api().stats)(rig.ctx, &raw mut counters) };
+            assert!(code >= 0);
+        },
+    );
     each("get of a number (caret)", &mut || {
         let _ = api.get(obj, caret).unwrap();
     });
@@ -320,9 +338,20 @@ fn what_a_call_costs() {
     each("call of a method, no arguments (home)", &mut || {
         let _ = api.call(obj, home, &[]).unwrap();
     });
-    each("call of a method with text (insert, then undo)", &mut || {
-        let _ = api.call(obj, insert, &[Val::from("x")]).unwrap();
+    each("lookup of a member id by name", &mut || {
+        let _ = api.member(class, abi::MEMBER_PROPERTY, "caret").unwrap();
     });
+    each("lookup of a class id by name", &mut || {
+        let _ = api.class("entry_model").unwrap();
+    });
+    // The text does not grow: an insert and a backspace of one character, so what is timed is the call and not a longer text.
+    each(
+        "two calls with and without a text argument (insert, backspace)",
+        &mut || {
+            let _ = api.call(obj, insert, &[Val::from("x")]).unwrap();
+            let _ = api.call(obj, backspace, &[]).unwrap();
+        },
+    );
     each("subscribe and unsubscribe", &mut || {
         let reg = api.listen(obj, changed, |_, _| Ok(Val::None)).unwrap();
         api.unlisten(reg).unwrap();
@@ -334,12 +363,30 @@ fn what_a_call_costs() {
         Ok(Val::None)
     })
     .unwrap();
+    each("the turn with nothing to tell (dispatch)", &mut || rig.turn());
+    *heard.borrow_mut() = 0;
     let start = Instant::now();
     for _ in 0..n {
         api.call(obj, insert, &[Val::from("y")]).unwrap();
+        api.call(obj, backspace, &[]).unwrap();
         rig.turn();
     }
     let per = start.elapsed().as_nanos() as f64 / f64::from(n);
-    println!("object-protocol call that changes + signal delivered into a closure, with the turn: {per:.0} ns");
-    assert_eq!(*heard.borrow(), n);
+    println!("object-protocol two calls that change, two signals delivered into a closure, one turn: {per:.0} ns");
+    assert_eq!(*heard.borrow(), 2 * n);
+    // The same work with one turn for fifty pairs: what a change costs once the turn is shared.
+    *heard.borrow_mut() = 0;
+    let start = Instant::now();
+    for _ in 0..n / 50 {
+        for _ in 0..50 {
+            api.call(obj, insert, &[Val::from("y")]).unwrap();
+            api.call(obj, backspace, &[]).unwrap();
+        }
+        rig.turn();
+    }
+    let per = start.elapsed().as_nanos() as f64 / f64::from(n / 50) / 100.0;
+    println!(
+        "object-protocol a call that changes and its signal delivered into a closure, one turn for a hundred: {per:.0} ns"
+    );
+    assert_eq!(*heard.borrow(), 100 * (n / 50));
 }

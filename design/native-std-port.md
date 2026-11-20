@@ -880,8 +880,66 @@ Rules that carry over from section 5:
   the library which interface methods the shell defined, so an absent optional hook costs nothing and a stock default runs
   natively.
 
-Cost model [INFERENCE: to be measured by NpObjectAbiA on the toast slice]: `get` and `set` of a scalar are one table
-call plus a value conversion. Painting, hit testing, layout and cascade run inside the library without crossing.
+**Cost of a call, measured.** `what_a_call_costs` in `crates/gnoblin-std-impl/tests/object_protocol.rs` (`#[ignore]`d; run it with
+`cargo test -p gnoblin-std-impl --release --test object_protocol -- --ignored --nocapture --test-threads=1`) times each call 200 000
+times against an `entry_model` made through the C table, over a real core generation, in a release build on a 2-CPU Agent37 box. Two
+runs agreed within about 10 per cent; each figure is nanoseconds per call, the range of the two runs:
+
+| What is timed                                                                                  | ns            |
+| ---------------------------------------------------------------------------------------------- | ------------- |
+| An existing typed table function (the core's `stats`, which fills a struct)                    | 38            |
+| `get` of a number                                                                              | 64 to 72      |
+| `get` of text (21 characters)                                                                  | 100 to 127    |
+| `set` of text                                                                                  | 320 to 370    |
+| A method with no arguments that changes nothing (`home`)                                       | 200 to 220    |
+| Two calls that each change the model, `insert` with a text and `backspace`, no listener        | 770 to 810    |
+| `class_id` or `member_id` by name                                                              | 16 to 24      |
+| `listen` then `unlisten`                                                                       | 220 to 260    |
+| The turn when nothing is queued (`dispatch`)                                                   | 220           |
+| Two changing calls, two signals told into a closure, and a turn for those two alone            | 12 100 to 12 900 |
+| The same with one turn for every hundred changes, per change                                   | 790 to 855    |
+
+What the numbers say:
+
+- A property read is one table call and a conversion, about 30 ns over the cheapest typed function; a write of text or a method call
+  is three to nine times the typed function, because the library checks the arguments against the catalog and copies the text. A shell
+  can do a thousand calls in a frame for well under half a millisecond. Nothing here needs a bulk function in the table:
+  `update(obj, inits)` writes several properties in one call, and a record answers every field in one `get`, for a lane that wants one
+  crossing.
+- What costs is the turn. A turn that has something to tell costs about 12 microseconds by itself (the library posts a turn when the
+  first change is queued, and the dispatch runs it; the time is the two together and is not broken down further), and the same turn
+  shared by a hundred changes costs under a microsecond for each. The library already posts one turn per generation and tells a
+  property that changed several times in it once, so a lane that changes a thousand properties in one layout pass pays for one turn. A
+  lane must not make a change and wait for its signal in a loop.
+- Looking a class or a member up by name costs about 20 ns, a fraction of a call, so resolving every member of a class when it is
+  first used (what the typed Rust API does) costs about a microsecond a class, once.
+- Text is the dear value: a `get` of text is one and a half times a number and a `set` three to five times, and the text is copied each
+  way. A lane that moves large amounts of text (paint lists, 4.x) passes one record or bytes value, not many small strings.
+
+Not measured: a call from a script runtime (its own conversion of values is added to every figure above; NpObjectAbiB measures it with
+the first generated classes), and the typed Rust API's own cost over the raw call (a cell check and the conversion of one `Val`).
+Painting, hit testing, layout and cascade run inside the library without crossing.
+
+**B1.1, landed with B1 as the one more change to `abi.lock`.** `GnoblinObjectApi` gained `track(ctx, cb, user)`, and a class may extend a
+class the other library serves.
+
+- `track` installs a tracker for the thread. Until it is cleared, every successful property `get` through that library's table calls
+  `cb(user, obj, class, member)`. This is all the property-dependency hook of 5.6 needs, so `node.properties.bind` adds no table
+  function: the core installs a tracker on its own table and on std's, runs `compute`, removes the trackers, and listens to each
+  (object, member) that was read (`listen` already takes a property) and runs `compute` again when one changes. NpCoreModel writes
+  that loop in `gnoblin-core-impl`; the typed client has `Api::track`, which returns a guard that clears the tracker when dropped.
+- A class of `gnoblin.std` whose base class is one of `gnoblin.model` (`base = "gnoblin.model.client"`) lists the base's members first
+  in its catalog, with the ids they have in the base. The derived library makes a base object in the core with its own, forwards `get`,
+  `set`, `call` and `listen` of those members to it, and releases it with its own. A handle that a forwarded member returns belongs to
+  the core's table, so the typed Rust API refuses at build time a base member whose type names a class of the other namespace; no
+  lane needs one yet, and the first that does adds the second `Objects` to the typed handle.
+- A property of a record may say `optional = true` (4.1): the typed Rust API reads it as an `Option`, and a field with neither a default
+  nor `optional` is always there. The focus policy's records say which of their fields are which.
+
+The tests are `crates/gnoblin-object/tests/protocol.rs` (an interface, a closure property, values of every kind, signals, the tracker
+and a class with a foreign base, over two hand-written catalogs), `crates/gnoblin-object/fixtures/probe` (the catalog of one class of
+every kind, rendered into tables and a typed API at build time and run against a library built on them), and
+`modular::native_object` (example 20, in a real session).
 
 NpObjectAbiA proves the protocol with a vertical slice before anything else is built on it: `toast` (section 4.4) from the
 Rust SDK, from Python and from TypeScript, in a real session. If the slice shows a flaw, the protocol changes once, before
