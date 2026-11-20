@@ -101,13 +101,16 @@ Before a stream may start, all of these must be designed and agreed:
 `gnoblin_view_source_manager_v1` is 97 lines of server code and one XML. Its one request, `create_source(node)`, makes an
 `ext_image_capture_source_v1` for a View node, and everything after that (the lock embargo, damage, the privacy
 indicator, the secure-content mask, the size follow) is `capture_shared` working on `Target::View`. The question is only
-how a client names the View. Two ways to keep it standard, read from the code at `c32194972`:
+how a client names the View. Four ways to keep it standard, read from the code at `c32194972`:
 
 - **A. Publish each View as an `ext_foreign_toplevel_handle_v1`.** The source comes from the standard
   `ext_foreign_toplevel_image_capture_source_manager_v1`, and the handle's identifier names the View.
 - **B. Keep a source manager** whose `create_source` takes a node id, as now. `ext-image-capture-source-v1` says it "may be
   extended to support more image capture sources", and a source manager that creates `ext_image_capture_source_v1` is that
   extension point, the same one the output and toplevel managers use.
+- **D. Expose each View as a virtual `wl_output`** and capture it with `ext_output_image_capture_source_manager_v1`.
+- **E. Keep standard capture and change only how the XR extension gets its source:** the screen-cast members
+  (`cast.grant` and `cast.start` with a View) and a PipeWire stream, with no Wayland capture protocol in the extension.
 
 What A costs, each checked against the code:
 
@@ -145,9 +148,42 @@ What is the same either way: `capture_shared` resolves a source to `Target::View
 beside `window_of_identifier` for A, the existing `create_source` for B), and the lock embargo, damage, privacy indicator and
 secure-content mask apply to the target and not to how it was named. A changes none of them, so it does not add safety.
 
+## D and E, judged the same way
+
+**D, a View as a virtual output.** It fails on the first check. Outputs come from the backend (`BackendEvent::OutputConnected`,
+`gnoblin-backend/src/lib.rs:721`), and only the headless backend can add one at run time, through a handle meant for tests
+(`headless.rs:435`, `connect_output`); the nested and DRM backends cannot. The compositor's own "outputs with no place of
+their own" show another output's picture, not a node (`gnoblin-wayland/src/output_policy.rs:83-89`), so a View output is a new
+kind of output rendered from a scene node. Then every consumer of outputs has to learn it or exclude it: every output must
+present a frame for a lock to be proven (`report_outputs`, `ext_session_lock_v1.rs:563`, `output_ids`, `state.rs:1072`);
+`wl_output` is not privileged, so every application would list an extra monitor and the shell would lay windows out on it;
+`zwlr_output_management_v1` (`Global::OutputManagement`, `zwlr_output_management_v1.rs:320`) would list it and let a user
+disable or move it. Hiding it from them is per-client output visibility, the special case the nested-session rule forbids, and
+the `view` role would need `wl_output`, which `VIEW_INTERFACES` hides today. A View also has a camera, a stereo rig and a size
+with no mode or scale, so the mapping is by analogy only. D is worse than A on every point above and removes nothing.
+
+**E, the screen-cast path.** Real, and narrower than it sounds. What works today, by consumer:
+
+| Consumer of a View's pixels                              | State                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The shell's `View:capture(path)`                         | Works; reads the capture picture, tested in `view_capture_e2e.rs`.                                                                                                                                                                                                                                                                           |
+| The XR extension, through `gnoblin_view_source_v1`       | Works, with damage and the shared-memory and GPU buffer paths; tested in `view_capture_e2e.rs` and in `xr-capture`. This is what A or B would keep.                                                                                                                                                                                          |
+| A PipeWire stream of a View (`cast.grant`, `cast.start`) | The compositor half works: `ipc/consent.rs:13-14,223-330`, tested with a fake portal in `crates/gnoblin-compositor/tests/cast.rs:165-250` (`no-view`, no consent, the lock) and with a private PipeWire daemon in `view_capture_e2e.rs`. The stream is memfd only; a DMA-BUF stream buffer is "not done" (`design/cutover-survey.md`, 16.7). |
+| A real portal frontend offering a View to an app         | Planned, not wired: the same survey calls the portal ScreenCast path "not wired to the portal (16.2)".                                                                                                                                                                                                                                       |
+
+The extension would need to link PipeWire, which `design/xr-extension.md:45` says it does not have and `:170` says is for audio.
+Its connection is already an owner connection (`gnoblin-xr/src/main.rs:77`; every same-user helper is the owner,
+`ipc/privileged.rs:10-20`), so it could call `cast.grant` for itself. Then the consent step records the owner's own consent
+to itself, and a real portal prompt per View is not workable for a headset desktop. It also trades the Wayland copy's
+damage-driven frames and buffer-constraint negotiation for a stream paced by PipeWire, from a path that has no GPU buffer yet. E
+removes the private Wayland protocol and does nothing about naming, because the View is still named by node id, now over the
+IPC; it deletes nothing in `capture_shared`. It is a possible end state once the stream has DMA-BUF buffers and the extension
+accepts PipeWire, not a way to retire the protocol now.
+
 Findings: A is expressible and nothing in the capture path blocks it, but it trades one small, typed, owner-visible source
 manager for a second list global, a naming convention, a lifetime coupling to the list's no-reuse rule and a second
-publishing path. B keeps the one private XML, and nothing else private. **B is the less hacky choice**, and it is the
+publishing path. D is worse. E works on the compositor side but needs the extension to take PipeWire and gives up damage and
+GPU buffers for now. B keeps the one private XML, and nothing else private. **B is the less hacky choice**, and it is the
 extension the capture-source protocol is built for. The refactor that remains under B is to narrow the manager, not to remove
 it: keep `create_source(node)`, keep it in `VIEW_INTERFACES`, keep the view role, and move its XML under the protocol crate
 layout. This is waiting on the owner's choice; no Part B code, test or XR change was made.
