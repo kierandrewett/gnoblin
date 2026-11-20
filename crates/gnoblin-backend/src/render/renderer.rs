@@ -72,18 +72,18 @@ impl RendererKind {
 
     /// The effect kinds the renderer draws, by [`gnoblin_render::Pass::name`].
     ///
-    /// GLES draws a blur, a shadow and a border. The software renderer draws a shadow and a border as spans of pixels
+    /// GLES draws a blur, a shadow, a border and a shader. The software renderer draws a shadow and a border as spans of pixels
     /// with hard edges (`gnoblin-render-software`'s `shape` module) and leaves a blur undrawn. The Vulkan renderer
     /// does not draw effects yet: it rounds a layer's corners, the radius is not an effect, and it reports every
     /// effect kind as skipped.
     ///
-    /// No renderer draws the `shader` kind yet, so none lists it: a node's shader pass is accepted by the tree
-    /// (while `compositor.user-shaders` is on) and named in its `skipped` list as `shader: unsupported-by-renderer`.
-    /// The renderer that draws it adds `"shader"` to its list here.
+    /// The GLES renderer draws the `shader` kind (a shell's own fragment shader, `compositor.user-shaders`). A renderer that
+    /// does not list it leaves a node's shader pass undrawn and names it in the node's `skipped` list as
+    /// `shader: unsupported-by-renderer`.
     #[must_use]
     pub const fn effect_kinds(self) -> &'static [&'static str] {
         match self {
-            Self::Gles => &["blur", "shadow", "border"],
+            Self::Gles => &["blur", "shadow", "border", "shader"],
             Self::Software => &["shadow", "border"],
             Self::Vulkan => &[],
         }
@@ -426,6 +426,11 @@ mod tests {
         let mut renderer = AnyRenderer::new(RendererKind::Software, Size::new(8, 8)).expect("a software renderer");
         assert_eq!(renderer.kind(), RendererKind::Software);
         assert!(renderer.gles_mut().is_none(), "only a GLES renderer answers gles_mut");
+    }
+
+    #[test]
+    fn the_gles_renderer_lists_the_shader_kind_it_draws() {
+        assert!(RendererKind::Gles.effect_kinds().contains(&"shader"));
     }
 
     #[cfg(not(feature = "vulkan"))]
