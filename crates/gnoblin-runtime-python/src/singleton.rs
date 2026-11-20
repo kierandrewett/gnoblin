@@ -25,14 +25,14 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyCFunction, PyDict, PyList, PyString, PyTuple};
 
 use crate::descriptors::of;
-use crate::subscription::{Subscription, forget, remember};
+use crate::subscription::{SubscriptionHandle, forget, remember};
 use crate::{events, input, module, process, tree, values};
 
 const LEVELS: [&str; 5] = ["error", "warn", "info", "debug", "trace"];
 
 /// The named subscriptions, with how many parameters each takes before the function.
 #[derive(Clone, Copy)]
-enum Kind {
+enum SubscriptionKind {
     ClientCreated,
     ClientDestroyed,
     TitleChanged,
@@ -55,26 +55,26 @@ enum Kind {
 }
 
 /// `(attribute, parameters before the function, how it registers)`.
-const EVENTS: [(&str, usize, Kind); 19] = [
-    ("on_client_created", 0, Kind::ClientCreated),
-    ("on_client_destroyed", 0, Kind::ClientDestroyed),
-    ("on_title_changed", 0, Kind::TitleChanged),
-    ("on_app_id_changed", 0, Kind::AppIdChanged),
-    ("on_focus_changed", 0, Kind::FocusChanged),
-    ("on_window_property_changed", 1, Kind::WindowPropertyChanged),
-    ("on_node_created", 1, Kind::NodeCreated),
-    ("on_node_destroyed", 1, Kind::NodeDestroyed),
-    ("on_class_property_changed", 2, Kind::ClassPropertyChanged),
-    ("on_property_changed", 2, Kind::PropertyChanged),
-    ("on_window_request", 0, Kind::WindowRequest),
-    ("on_node_event", 1, Kind::NodeEvent),
-    ("on_signal", 2, Kind::Signal),
-    ("on_shutdown", 0, Kind::Shutdown),
-    ("bind", 1, Kind::Bind),
-    ("bind_events", 1, Kind::BindEvents),
-    ("bind_pointer", 1, Kind::BindPointer),
-    ("bind_gesture", 2, Kind::BindGesture),
-    ("claim_pointer_buttons", 1, Kind::ClaimPointerButtons),
+const EVENTS: [(&str, usize, SubscriptionKind); 19] = [
+    ("on_client_created", 0, SubscriptionKind::ClientCreated),
+    ("on_client_destroyed", 0, SubscriptionKind::ClientDestroyed),
+    ("on_title_changed", 0, SubscriptionKind::TitleChanged),
+    ("on_app_id_changed", 0, SubscriptionKind::AppIdChanged),
+    ("on_focus_changed", 0, SubscriptionKind::FocusChanged),
+    ("on_window_property_changed", 1, SubscriptionKind::WindowPropertyChanged),
+    ("on_node_created", 1, SubscriptionKind::NodeCreated),
+    ("on_node_destroyed", 1, SubscriptionKind::NodeDestroyed),
+    ("on_class_property_changed", 2, SubscriptionKind::ClassPropertyChanged),
+    ("on_property_changed", 2, SubscriptionKind::PropertyChanged),
+    ("on_window_request", 0, SubscriptionKind::WindowRequest),
+    ("on_node_event", 1, SubscriptionKind::NodeEvent),
+    ("on_signal", 2, SubscriptionKind::Signal),
+    ("on_shutdown", 0, SubscriptionKind::Shutdown),
+    ("bind", 1, SubscriptionKind::Bind),
+    ("bind_events", 1, SubscriptionKind::BindEvents),
+    ("bind_pointer", 1, SubscriptionKind::BindPointer),
+    ("bind_gesture", 2, SubscriptionKind::BindGesture),
+    ("claim_pointer_buttons", 1, SubscriptionKind::ClaimPointerButtons),
 ];
 
 /// A Python callable made from a closure over the arguments the core passes.
@@ -115,24 +115,24 @@ fn node_id(node: &Bound<'_, PyAny>) -> PyResult<u64> {
 /// `event(fn)` for an event without parameters, and `event(*params)(fn)`, register and return the function. `event(*params, fn)` and
 /// `subscribe` register and return the `Subscription`.
 #[pyclass(frozen, name = "Event", module = "gnoblin.api")]
-pub(crate) struct Event {
+pub(crate) struct NamedEvent {
     name: &'static str,
     nparams: usize,
-    kind: Kind,
+    kind: SubscriptionKind,
 }
 
-impl Event {
+impl NamedEvent {
     /// Registers `args[-1]` with the parameters before it.
     fn register(&self, py: Python<'_>, args: &Bound<'_, PyTuple>) -> PyResult<u64> {
         let function = args.get_item(self.nparams)?;
         let param = |index: usize| args.get_item(index);
         let text = |index: usize| -> PyResult<String> { param(index)?.extract() };
         match self.kind {
-            Kind::ClientCreated => events::on_node_created("window", &function),
-            Kind::ClientDestroyed => events::on_node_destroyed("window", &function),
-            Kind::TitleChanged => events::on_class_property_changed("window", "title", &function),
-            Kind::AppIdChanged => events::on_class_property_changed("window", "app_id", &function),
-            Kind::FocusChanged => {
+            SubscriptionKind::ClientCreated => events::on_node_created("window", &function),
+            SubscriptionKind::ClientDestroyed => events::on_node_destroyed("window", &function),
+            SubscriptionKind::TitleChanged => events::on_class_property_changed("window", "title", &function),
+            SubscriptionKind::AppIdChanged => events::on_class_property_changed("window", "app_id", &function),
+            SubscriptionKind::FocusChanged => {
                 let function = function.unbind();
                 let hook = closure(py, move |args| {
                     let py = args.py();
@@ -140,12 +140,18 @@ impl Event {
                 })?;
                 events::on_class_property_changed("seat", "focus", &hook)
             }
-            Kind::WindowPropertyChanged => events::on_class_property_changed("window", &text(0)?, &function),
-            Kind::NodeCreated => events::on_node_created(&text(0)?, &function),
-            Kind::NodeDestroyed => events::on_node_destroyed(&text(0)?, &function),
-            Kind::ClassPropertyChanged => events::on_class_property_changed(&text(0)?, &text(1)?, &function),
-            Kind::PropertyChanged => events::on_property_changed(node_id(&param(0)?)?, &text(1)?, &function),
-            Kind::WindowRequest => {
+            SubscriptionKind::WindowPropertyChanged => {
+                events::on_class_property_changed("window", &text(0)?, &function)
+            }
+            SubscriptionKind::NodeCreated => events::on_node_created(&text(0)?, &function),
+            SubscriptionKind::NodeDestroyed => events::on_node_destroyed(&text(0)?, &function),
+            SubscriptionKind::ClassPropertyChanged => {
+                events::on_class_property_changed(&text(0)?, &text(1)?, &function)
+            }
+            SubscriptionKind::PropertyChanged => {
+                events::on_property_changed(node_id(&param(0)?)?, &text(1)?, &function)
+            }
+            SubscriptionKind::WindowRequest => {
                 let function = function.unbind();
                 let class = py.get_type::<values::WindowRequest>().into_any().unbind();
                 let hook = closure(py, move |args| {
@@ -157,26 +163,26 @@ impl Event {
                 })?;
                 events::on_window_request(&hook)
             }
-            Kind::NodeEvent => {
+            SubscriptionKind::NodeEvent => {
                 let hook = with_record(py, &function, py.get_type::<values::NodeEvent>().into_any())?;
                 events::on_node_event(node_id(&param(0)?)?, &hook)
             }
-            Kind::Signal => events::on_signal(&text(0)?, &text(1)?, &function),
-            Kind::Shutdown => events::on_shutdown(&function),
-            Kind::Bind => input::bind(&text(0)?, &function),
-            Kind::BindEvents => {
+            SubscriptionKind::Signal => events::on_signal(&text(0)?, &text(1)?, &function),
+            SubscriptionKind::Shutdown => events::on_shutdown(&function),
+            SubscriptionKind::Bind => input::bind(&text(0)?, &function),
+            SubscriptionKind::BindEvents => {
                 let hook = with_record(py, &function, py.get_type::<values::ChordEvent>().into_any())?;
                 input::bind_events(&text(0)?, &hook)
             }
-            Kind::BindPointer => {
+            SubscriptionKind::BindPointer => {
                 let hook = with_record(py, &function, py.get_type::<values::PointerDrag>().into_any())?;
                 input::bind_pointer(&text(0)?, &hook)
             }
-            Kind::BindGesture => {
+            SubscriptionKind::BindGesture => {
                 let hook = with_record(py, &function, py.get_type::<values::GestureEvent>().into_any())?;
                 input::bind_gesture(&text(0)?, param(1)?.extract()?, &hook)
             }
-            Kind::ClaimPointerButtons => {
+            SubscriptionKind::ClaimPointerButtons => {
                 let hook = with_record(py, &function, py.get_type::<values::PointerButton>().into_any())?;
                 input::claim_pointer_buttons(&text(0)?, &hook)
             }
@@ -184,7 +190,11 @@ impl Event {
     }
 
     /// Registers `args[-1]` with the parameters before it; returns the `Subscription` and notes it under the function.
-    fn subscribe_all<'py>(&self, py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, Subscription>> {
+    fn subscribe_all<'py>(
+        &self,
+        py: Python<'py>,
+        args: &Bound<'py, PyTuple>,
+    ) -> PyResult<Bound<'py, SubscriptionHandle>> {
         let function = args.get_item(args.len().saturating_sub(1)).ok();
         let Some(function) = function.filter(|function| args.len() == self.nparams + 1 && function.is_callable())
         else {
@@ -193,17 +203,17 @@ impl Event {
                 self.name, self.nparams
             )));
         };
-        let subscription = Bound::new(py, Subscription::new(self.register(py, args)?))?;
+        let subscription = Bound::new(py, SubscriptionHandle::new(self.register(py, args)?))?;
         remember(py, &function, &subscription)?;
         Ok(subscription)
     }
 }
 
 #[pymethods]
-impl Event {
+impl NamedEvent {
     /// Registers `args[-1]` with the parameters before it; returns the `Subscription`.
     #[pyo3(signature = (*args))]
-    fn subscribe<'py>(&self, py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, Subscription>> {
+    fn subscribe<'py>(&self, py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, SubscriptionHandle>> {
         self.subscribe_all(py, args)
     }
 
@@ -257,10 +267,10 @@ impl Event {
 
 /// The shell's handle on the compositor. Use the instance `gnoblin`, not the class.
 #[pyclass(dict, name = "Gnoblin", module = "gnoblin.api")]
-pub(crate) struct Gnoblin;
+pub(crate) struct GnoblinObject;
 
 #[pymethods]
-impl Gnoblin {
+impl GnoblinObject {
     #[new]
     fn new() -> Self {
         Self
@@ -269,7 +279,7 @@ impl Gnoblin {
     fn __init__(slf: &Bound<'_, Self>) -> PyResult<()> {
         let py = slf.py();
         for (name, nparams, kind) in EVENTS {
-            slf.setattr(name, Bound::new(py, Event { name, nparams, kind })?)?;
+            slf.setattr(name, Bound::new(py, NamedEvent { name, nparams, kind })?)?;
         }
         Ok(())
     }
@@ -322,13 +332,13 @@ impl Gnoblin {
     // ---- timers, programs -----------------------------------------------------------------------------------------
 
     /// Calls `function()` once, `ms` milliseconds from now.
-    fn after(&self, ms: u32, function: &Bound<'_, PyAny>) -> PyResult<Subscription> {
-        Ok(Subscription::new(events::after(ms, function)?))
+    fn after(&self, ms: u32, function: &Bound<'_, PyAny>) -> PyResult<SubscriptionHandle> {
+        Ok(SubscriptionHandle::new(events::after(ms, function)?))
     }
 
     /// Calls `function()` every `ms` milliseconds.
-    fn every(&self, ms: u32, function: &Bound<'_, PyAny>) -> PyResult<Subscription> {
-        Ok(Subscription::new(events::every(ms, function)?))
+    fn every(&self, ms: u32, function: &Bound<'_, PyAny>) -> PyResult<SubscriptionHandle> {
+        Ok(SubscriptionHandle::new(events::every(ms, function)?))
     }
 
     /// Starts a program in a process group of its own. The name is looked up on `PATH`; it is not run through a shell.
@@ -354,7 +364,7 @@ impl Gnoblin {
         output_limit: u64,
         timeout: Option<f64>,
         on_exit: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<values::Process> {
+    ) -> PyResult<values::ProcessHandle> {
         let mut argv: Vec<String> = if program.is_instance_of::<PyString>() {
             vec![program.extract()?]
         } else {
@@ -393,20 +403,20 @@ impl Gnoblin {
             timeout_ms,
             hook.as_ref(),
         )?;
-        Ok(values::Process::new(token))
+        Ok(values::ProcessHandle::new(token))
     }
 
     // ---- input claims that return no events -----------------------------------------------------------------------
 
     /// Takes a device from the compositor's own input handling.
-    fn claim_device(&self, device: &str) -> PyResult<Subscription> {
-        Ok(Subscription::new(input::claim_device(device)?))
+    fn claim_device(&self, device: &str) -> PyResult<SubscriptionHandle> {
+        Ok(SubscriptionHandle::new(input::claim_device(device)?))
     }
 
     /// Sends the `pointer`, the `keyboard` or `both` to the node until the claim is removed.
     #[pyo3(signature = (node, scope = "both"))]
-    fn grab_input(&self, node: &Bound<'_, PyAny>, scope: &str) -> PyResult<Subscription> {
-        Ok(Subscription::new(input::grab_input(node_id(node)?, scope)?))
+    fn grab_input(&self, node: &Bound<'_, PyAny>, scope: &str) -> PyResult<SubscriptionHandle> {
+        Ok(SubscriptionHandle::new(input::grab_input(node_id(node)?, scope)?))
     }
 
     // ---- the shell ------------------------------------------------------------------------------------------------
@@ -483,9 +493,9 @@ impl Gnoblin {
 /// Fills the module `gnoblin.api`.
 pub(crate) fn build(module: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = module.py();
-    module.add_class::<Event>()?;
-    module.add_class::<Gnoblin>()?;
+    module.add_class::<NamedEvent>()?;
+    module.add_class::<GnoblinObject>()?;
     // The one object a script uses: `from gnoblin import gnoblin`.
-    module.add("gnoblin", py.get_type::<Gnoblin>().call0()?)?;
+    module.add("gnoblin", py.get_type::<GnoblinObject>().call0()?)?;
     Ok(())
 }

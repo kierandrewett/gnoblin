@@ -1073,6 +1073,122 @@ fn the_package_is_served_by_the_runtime_and_no_file_of_it_is_read() {
     assert!(!run.stderr.contains("served-path"), "{}", run.dump());
 }
 
+// ---- the golden shell -------------------------------------------------------------------------------------------------------------
+
+fn golden_shell() -> PathBuf {
+    repo_root().join("crates/gnoblin-runtime-python/tests/golden/shell.py")
+}
+
+#[test]
+fn the_golden_shell_runs_over_the_embedded_package_and_every_registration_works() {
+    let run = drive(
+        &golden_shell(),
+        &["pump", "open:50", "mark:open", "dump", "sleep:300", "pump", "stop"],
+    );
+    assert_eq!(run.code, 0, "{}", run.dump());
+    assert!(!run.stderr.contains("Traceback"), "{}", run.dump());
+    let log = &run.stderr;
+    for wanted in [
+        "golden runs 1",
+        "golden window 40 Terminal",
+        "golden node gone",
+        // `off` removed the one registration made for the function, and only that.
+        "golden off 1",
+        "golden info ['generation', 'isolate', 'module_path', 'reload_count', 'state_dir']",
+        // The decorator registration placed the window that opened, as the window's own typed object.
+        "golden placed 50 ",
+        // The program the shell started ended and its exit hook heard the record.
+        "golden exit 0 True",
+    ] {
+        assert!(log.contains(wanted), "no `{wanted}` in\n{}", run.dump());
+    }
+    let section = run.section("open");
+    assert_eq!(run.window(&section, 50).0, 40.0, "{}", run.dump());
+    assert_eq!(run.window(&section, 50).1, 40.0, "{}", run.dump());
+}
+
+/// A type checker, when this machine has one: `$GNOBLIN_PYRIGHT`, or `pyright` on the path.
+fn pyright() -> Option<PathBuf> {
+    if let Some(explicit) = std::env::var_os("GNOBLIN_PYRIGHT").filter(|value| !value.is_empty()) {
+        return Some(PathBuf::from(explicit));
+    }
+    let paths = std::env::var_os("PATH")?;
+    std::env::split_paths(&paths)
+        .map(|dir| dir.join("pyright"))
+        .find(|candidate| candidate.is_file())
+}
+
+/// The stub package `cargo xtask dist` installs under `share/gnoblin/types/python/`: the crate's own stubs, then the generated ones, where a
+/// module that has a stub is the stub only.
+fn installed_stubs(into: &Path) {
+    let _ = fs::remove_dir_all(into);
+    let mut copy = vec![repo_root().join("crates/gnoblin-runtime-python/stubs")];
+    while let Some(from) = copy.pop() {
+        for entry in fs::read_dir(&from).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                copy.push(path);
+                continue;
+            }
+            let relative = path
+                .strip_prefix(repo_root().join("crates/gnoblin-runtime-python/stubs"))
+                .unwrap();
+            fs::create_dir_all(into.join(relative).parent().unwrap()).unwrap();
+            fs::copy(&path, into.join(relative)).unwrap();
+        }
+    }
+    let spec = gnoblin_sdkgen::SdkSpec::load(&repo_root()).expect("the catalog and the ABIs load");
+    for target in ["python", "object-types"] {
+        let rendered = gnoblin_sdkgen::render(&spec, Some(target)).expect("the target renders");
+        let files = gnoblin_sdkgen::files_of(&rendered);
+        let stubbed: Vec<String> = files
+            .iter()
+            .filter_map(|(path, _)| path.strip_suffix(".pyi").map(str::to_owned))
+            .collect();
+        for (path, text) in files {
+            if path
+                .strip_suffix(".py")
+                .is_some_and(|module| stubbed.iter().any(|stub| stub == module))
+            {
+                continue;
+            }
+            let Some(relative) = path.strip_prefix("python/") else {
+                continue;
+            };
+            fs::create_dir_all(into.join(relative).parent().unwrap()).unwrap();
+            fs::write(into.join(relative), text).unwrap();
+        }
+    }
+}
+
+#[test]
+fn the_golden_shell_type_checks_clean_against_the_installed_stubs() {
+    let Some(pyright) = pyright() else {
+        eprintln!("no pyright (GNOBLIN_PYRIGHT, or pyright on the path): the check is skipped");
+        return;
+    };
+    let dir = project("golden-pyright");
+    let stubs = dir.join("types/python");
+    installed_stubs(&stubs);
+    fs::copy(golden_shell(), dir.join("shell.py")).unwrap();
+    fs::write(
+        dir.join("pyrightconfig.json"),
+        r#"{ "include": ["shell.py"], "extraPaths": ["types/python"], "pythonVersion": "3.11", "typeCheckingMode": "standard" }"#,
+    )
+    .unwrap();
+    let output = std::process::Command::new(pyright)
+        .arg("-p")
+        .arg(&dir)
+        .output()
+        .expect("pyright runs");
+    assert!(
+        output.status.success(),
+        "pyright found problems with the golden shell:\n{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 // ---- example 3: a Python shell on gnoblin.std -------------------------------------------------------------------------------
 
 /// The scenario of example 6 over the Python shell of example 3: the same windows, the same chord, the same rectangles the native Rust

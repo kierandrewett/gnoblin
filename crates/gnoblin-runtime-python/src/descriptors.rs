@@ -3,14 +3,15 @@
 //! The classes themselves (`Window`, `Seat`, ... in `gnoblin._generated.classes`) are generated from the schema catalog; nothing about
 //! one of them is written by hand. What is here is what they are built from:
 //!
-//! - [`Node`], a handle on one node of the compositor's tree, by id. It holds the id and nothing else: the compositor owns the node,
+//! - [`ScriptNode`], a handle on one node of the compositor's tree, by id. It holds the id and nothing else: the compositor owns the node,
 //!   so reading a window that has closed raises `NodeGoneError`, and a handle kept across a reload keeps working because the node does.
-//! - [`Property`], [`Method`] and [`Signal`], descriptors that read, call and listen **by name** through the core, so a property added to
+//! - [`PropertyDescriptor`], [`MethodDescriptor`] and [`SignalDescriptor`], descriptors that read, call and listen **by name** through the core, so a property added to
 //!   the schema works the day it is generated.
 //!
 //! A subclass of `Node` that names `__class_name__` in its own body is registered under that name in `CLASSES`, which is how a node
 //! the core reports by class becomes the typed object for it.
 
+use gnoblin_core::NodeId;
 use pyo3::IntoPyObjectExt;
 use pyo3::basic::CompareOp;
 use pyo3::exceptions::{PyAttributeError, PyTypeError};
@@ -19,7 +20,7 @@ use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyCFunction, PyDict, PyTuple, PyType};
 
 use crate::errors::NodeGoneError;
-use crate::subscription::{Subscription, remember};
+use crate::subscription::{SubscriptionHandle, remember};
 use crate::{events, tree};
 
 /// Every generated class by its schema name (`"window"`), filled as the classes are defined.
@@ -35,21 +36,21 @@ fn repr_of(py: Python<'_>, text: &str) -> PyResult<String> {
     Ok(text.into_bound_py_any(py)?.repr()?.to_string())
 }
 
-/// The id of a node object: a [`Node`], or anything that names one in `_id`.
+/// The id of a node object: a [`ScriptNode`], or anything that names one in `_id`.
 fn id_of(node: &Bound<'_, PyAny>) -> PyResult<u64> {
-    match node.cast::<Node>() {
-        Ok(node) => Ok(node.get().id),
+    match node.cast::<ScriptNode>() {
+        Ok(node) => Ok(node.get().id.0),
         Err(_) => node.getattr("_id")?.extract(),
     }
 }
 
 /// A node of the compositor's tree, by id. The typed subclasses add the schema's properties, methods and signals.
 #[pyclass(subclass, frozen, name = "Node", module = "gnoblin._base")]
-pub(crate) struct Node {
-    id: u64,
+pub(crate) struct ScriptNode {
+    id: NodeId,
 }
 
-/// The typed handle for node `id`: the class registered for its schema name, or [`Node`] for one the generated classes do not know (or
+/// The typed handle for node `id`: the class registered for its schema name, or [`ScriptNode`] for one the generated classes do not know (or
 /// one that has left the tree and cannot be asked). `class` is the schema name when the caller knows it.
 ///
 /// # Errors
@@ -70,15 +71,15 @@ pub(crate) fn of<'py>(py: Python<'py>, id: u64, class: Option<&str>) -> PyResult
     };
     match typed {
         Some(class) => class.call1((id,)),
-        None => py.get_type::<Node>().call1((id,)),
+        None => py.get_type::<ScriptNode>().call1((id,)),
     }
 }
 
 #[pymethods]
-impl Node {
+impl ScriptNode {
     #[new]
     fn new(id: u64) -> Self {
-        Self { id }
+        Self { id: NodeId(id) }
     }
 
     /// The schema name a generated class sets; a plain `Node` is `node`.
@@ -113,34 +114,34 @@ impl Node {
 
     #[getter(_id)]
     fn private_id(&self) -> u64 {
-        self.id
+        self.id.0
     }
 
     /// What the runtime's conversions look for: a value with this attribute is a reference to that node.
     #[getter(_gnoblin_node_id)]
     fn gnoblin_node_id(&self) -> u64 {
-        self.id
+        self.id.0
     }
 
     /// The node's id in the tree.
     #[getter]
     fn node_id(&self) -> u64 {
-        self.id
+        self.id.0
     }
 
     /// Whether the node is in the tree now.
     fn is_alive(&self) -> PyResult<bool> {
-        tree::node_exists(self.id)
+        tree::node_exists(self.id.0)
     }
 
     /// The schema name of the node's class.
     fn class_name(&self) -> PyResult<String> {
-        tree::node_class(self.id)
+        tree::node_class(self.id.0)
     }
 
     /// The node's children, in order.
     fn children<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyAny>>> {
-        tree::node_children(self.id)?
+        tree::node_children(self.id.0)?
             .into_iter()
             .map(|child| of(py, child, None))
             .collect()
@@ -148,34 +149,34 @@ impl Node {
 
     /// Reads a property by its schema name.
     fn get<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
-        tree::node_get(py, self.id, name)
+        tree::node_get(py, self.id.0, name)
     }
 
     /// Writes a property by its schema name; `seconds` asks the compositor to animate an animated property.
     #[pyo3(signature = (name, value, seconds = 0.0))]
     fn set(&self, name: &str, value: &Bound<'_, PyAny>, seconds: f64) -> PyResult<()> {
-        tree::node_set(self.id, name, value, seconds)
+        tree::node_set(self.id.0, name, value, seconds)
     }
 
     /// Calls a method by its schema name.
     #[pyo3(signature = (method, *args, on_answer = None))]
     fn call(&self, method: &str, args: &Bound<'_, PyTuple>, on_answer: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        tree::node_call(self.id, method, Some(args), on_answer)
+        tree::node_call(self.id.0, method, Some(args), on_answer)
     }
 
     /// Puts the node under `parent` at `index` (the top when `None`), moving it from where it was.
     #[pyo3(signature = (parent, index = None))]
     fn insert_into(&self, parent: &Bound<'_, PyAny>, index: Option<usize>) -> PyResult<()> {
-        tree::node_insert(self.id, id_of(parent)?, index)
+        tree::node_insert(self.id.0, id_of(parent)?, index)
     }
 
     /// Destroys the node and everything beneath it. To close a window, call its `close` method.
     fn destroy(&self) -> PyResult<()> {
-        tree::node_destroy(self.id)
+        tree::node_destroy(self.id.0)
     }
 
     fn __richcmp__(&self, py: Python<'_>, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
-        let same = other.cast::<Self>().is_ok_and(|other| other.get().id == self.id);
+        let same = other.cast::<Self>().is_ok_and(|other| other.get().id.0 == self.id.0);
         match op {
             CompareOp::Eq => same.into_py_any(py),
             CompareOp::Ne => (!same).into_py_any(py),
@@ -185,20 +186,20 @@ impl Node {
 
     fn __hash__(&self) -> isize {
         // `hash(int)` of an id: the id itself, but for the values Python reserves.
-        match isize::try_from(self.id) {
+        match isize::try_from(self.id.0) {
             Ok(-1) | Err(_) => -2,
             Ok(id) => id,
         }
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
-        Ok(format!("<{} {}>", slf.get_type().name()?, slf.get().id))
+        Ok(format!("<{} {}>", slf.get_type().name()?, slf.get().id.0))
     }
 }
 
 /// A property of a node class, read and written by name.
 #[pyclass(name = "Property", module = "gnoblin._base")]
-pub(crate) struct Property {
+pub(crate) struct PropertyDescriptor {
     #[pyo3(get)]
     name: String,
     #[pyo3(get, name = "type")]
@@ -212,7 +213,7 @@ pub(crate) struct Property {
 }
 
 #[pymethods]
-impl Property {
+impl PropertyDescriptor {
     #[new]
     #[pyo3(signature = (name, r#type = None, readonly = false, animated = false))]
     fn new(py: Python<'_>, name: String, r#type: Option<Py<PyAny>>, readonly: bool, animated: bool) -> Self {
@@ -271,7 +272,7 @@ impl Property {
 /// A method of a node class. Calling it asks the compositor; it returns `None` and the answer, if wanted, goes to
 /// `on_answer(result: bytes, error: str | None)`.
 #[pyclass(name = "Method", module = "gnoblin._base")]
-pub(crate) struct Method {
+pub(crate) struct MethodDescriptor {
     #[pyo3(get)]
     name: String,
     #[pyo3(get)]
@@ -285,7 +286,7 @@ pub(crate) struct Method {
 }
 
 #[pymethods]
-impl Method {
+impl MethodDescriptor {
     #[new]
     #[pyo3(signature = (name, params = None, returns = None))]
     fn new(
@@ -346,10 +347,10 @@ impl Method {
     }
 }
 
-/// A [`Method`] of one node: calling it calls the method on that node.
+/// A [`MethodDescriptor`] of one node: calling it calls the method on that node.
 #[pyclass(frozen, name = "_BoundMethod", module = "gnoblin._base")]
 struct BoundMethod {
-    method: Py<Method>,
+    method: Py<MethodDescriptor>,
     node: Py<PyAny>,
 }
 
@@ -392,7 +393,7 @@ impl BoundMethod {
 /// (`@Window.closed`) or called with the function (`Window.closed(fn)`), which returns the function. `.subscribe(fn)` returns the
 /// `Subscription` instead.
 #[pyclass(name = "Signal", module = "gnoblin._base")]
-pub(crate) struct Signal {
+pub(crate) struct SignalDescriptor {
     #[pyo3(get)]
     name: String,
     #[pyo3(get)]
@@ -402,7 +403,7 @@ pub(crate) struct Signal {
 }
 
 #[pymethods]
-impl Signal {
+impl SignalDescriptor {
     #[new]
     #[pyo3(signature = (name, fields = None))]
     fn new(py: Python<'_>, name: String, fields: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
@@ -451,18 +452,18 @@ impl Signal {
     }
 }
 
-/// A [`Signal`] seen from a class or from one node.
+/// A [`SignalDescriptor`] seen from a class or from one node.
 #[pyclass(frozen, name = "_SignalHook", module = "gnoblin._base")]
 struct SignalHook {
     owner: Option<Py<PyAny>>,
-    signal: Py<Signal>,
+    signal: Py<SignalDescriptor>,
     node: Option<Py<PyAny>>,
 }
 
 #[pymethods]
 impl SignalHook {
     /// Registers `callback(source, values)`; returns the `Subscription`.
-    fn subscribe(&self, py: Python<'_>, callback: &Bound<'_, PyAny>) -> PyResult<Subscription> {
+    fn subscribe(&self, py: Python<'_>, callback: &Bound<'_, PyAny>) -> PyResult<SubscriptionHandle> {
         let callback = match &self.node {
             None => callback.clone(),
             Some(node) => {
@@ -491,7 +492,7 @@ impl SignalHook {
             None => "node".to_owned(),
         };
         let token = events::on_signal(&class_name, &self.signal.bind(py).borrow().name, &callback)?;
-        Ok(Subscription::new(token))
+        Ok(SubscriptionHandle::new(token))
     }
 
     fn __call__<'py>(&self, py: Python<'py>, callback: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
@@ -503,10 +504,10 @@ impl SignalHook {
 
 /// Fills the module `gnoblin._base`.
 pub(crate) fn build(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<Node>()?;
-    module.add_class::<Property>()?;
-    module.add_class::<Method>()?;
-    module.add_class::<Signal>()?;
+    module.add_class::<ScriptNode>()?;
+    module.add_class::<PropertyDescriptor>()?;
+    module.add_class::<MethodDescriptor>()?;
+    module.add_class::<SignalDescriptor>()?;
     module.add("CLASSES", classes(module.py()))?;
     Ok(())
 }

@@ -1,6 +1,6 @@
 //! `gnoblin.events`: the handles a registration returns, and the values an event carries.
 //!
-//! A [`Subscription`] is a registration the core holds for the running generation: an event, a chord, a timer. It lasts until a reload
+//! A [`SubscriptionHandle`] is a registration the core holds for the running generation: an event, a chord, a timer. It lasts until a reload
 //! replaces the generation, or until `unsubscribe`. Dropping the object does not remove it.
 //!
 //! `gnoblin.off(function)` removes the registrations made for a function, so each registration is also noted under its function, weakly:
@@ -16,12 +16,12 @@ use crate::values;
 
 /// A registration the core holds for the running generation.
 #[pyclass(name = "Subscription", module = "gnoblin.events")]
-pub(crate) struct Subscription {
+pub(crate) struct SubscriptionHandle {
     token: u64,
     active: bool,
 }
 
-impl Subscription {
+impl SubscriptionHandle {
     /// The handle for the registration the core numbered `token`.
     pub(crate) const fn new(token: u64) -> Self {
         Self { token, active: true }
@@ -29,7 +29,7 @@ impl Subscription {
 }
 
 #[pymethods]
-impl Subscription {
+impl SubscriptionHandle {
     #[new]
     fn py_new(token: u64) -> Self {
         Self::new(token)
@@ -51,7 +51,7 @@ impl Subscription {
 
     fn __repr__(&self) -> String {
         format!(
-            "<Subscription {}{}>",
+            "<SubscriptionHandle {}{}>",
             self.token,
             if self.active { "" } else { " removed" }
         )
@@ -72,11 +72,11 @@ fn by_function(py: Python<'_>) -> PyResult<&Bound<'_, PyAny>> {
 pub(crate) fn remember(
     py: Python<'_>,
     function: &Bound<'_, PyAny>,
-    subscription: &Bound<'_, Subscription>,
+    subscription: &Bound<'_, SubscriptionHandle>,
 ) -> PyResult<()> {
     let notes = match by_function(py)?.call_method1("setdefault", (function, PyList::empty(py))) {
         Ok(notes) => notes,
-        // A callable that cannot be weakly referenced cannot be found by `off`; the `Subscription` is still the way to remove it.
+        // A callable that cannot be weakly referenced cannot be found by `off`; the `SubscriptionHandle` is still the way to remove it.
         Err(error) if error.is_instance_of::<PyTypeError>(py) => return Ok(()),
         Err(error) => return Err(error),
     };
@@ -85,7 +85,10 @@ pub(crate) fn remember(
 }
 
 /// The subscriptions made for `function`, removed from the record.
-pub(crate) fn forget<'py>(py: Python<'py>, function: &Bound<'py, PyAny>) -> PyResult<Vec<Bound<'py, Subscription>>> {
+pub(crate) fn forget<'py>(
+    py: Python<'py>,
+    function: &Bound<'py, PyAny>,
+) -> PyResult<Vec<Bound<'py, SubscriptionHandle>>> {
     let notes = match by_function(py)?.call_method1("pop", (function, PyList::empty(py))) {
         Ok(notes) => notes,
         Err(error) if error.is_instance_of::<PyTypeError>(py) => return Ok(Vec::new()),
@@ -93,13 +96,13 @@ pub(crate) fn forget<'py>(py: Python<'py>, function: &Bound<'py, PyAny>) -> PyRe
     };
     notes
         .try_iter()?
-        .map(|item| Ok(item?.cast_into::<Subscription>()?))
+        .map(|item| Ok(item?.cast_into::<SubscriptionHandle>()?))
         .collect()
 }
 
 /// Fills the module `gnoblin.events`.
 pub(crate) fn build(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<Subscription>()?;
+    module.add_class::<SubscriptionHandle>()?;
     module.add_class::<values::WindowRequest>()?;
     module.add_class::<values::NodeEvent>()?;
     module.add_class::<values::ChordEvent>()?;
@@ -107,6 +110,6 @@ pub(crate) fn build(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<values::GestureEvent>()?;
     module.add_class::<values::PointerButton>()?;
     module.add_class::<values::ProcessExit>()?;
-    module.add_class::<values::Process>()?;
+    module.add_class::<values::ProcessHandle>()?;
     Ok(())
 }

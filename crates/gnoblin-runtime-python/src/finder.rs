@@ -20,44 +20,44 @@ use crate::{descriptors, errors, singleton, std_base, std_sugar, subscription};
 include!(concat!(env!("OUT_DIR"), "/python_embedded.rs"));
 
 /// A module this crate builds: its name, whether it is a package, and what fills it.
-struct Native {
+struct RustModule {
     name: &'static str,
     package: bool,
     build: fn(&Bound<'_, PyModule>) -> PyResult<()>,
 }
 
-const NATIVE: [Native; 7] = [
-    Native {
+const NATIVE: [RustModule; 7] = [
+    RustModule {
         name: "gnoblin",
         package: true,
         build: build_package,
     },
-    Native {
+    RustModule {
         name: "gnoblin._base",
         package: false,
         build: descriptors::build,
     },
-    Native {
+    RustModule {
         name: "gnoblin.api",
         package: false,
         build: singleton::build,
     },
-    Native {
+    RustModule {
         name: "gnoblin.errors",
         package: false,
         build: errors::build,
     },
-    Native {
+    RustModule {
         name: "gnoblin.events",
         package: false,
         build: subscription::build,
     },
-    Native {
+    RustModule {
         name: "gnoblin._std_base",
         package: false,
         build: std_base::build,
     },
-    Native {
+    RustModule {
         name: "gnoblin._std_sugar",
         package: false,
         build: std_sugar::build,
@@ -178,7 +178,7 @@ fn generated(name: &str) -> Option<&'static (&'static str, bool, &'static str)> 
 }
 
 /// The module of this crate `name`, if there is one.
-fn native(name: &str) -> Option<&'static Native> {
+fn native(name: &str) -> Option<&'static RustModule> {
     NATIVE.iter().find(|module| module.name == name)
 }
 

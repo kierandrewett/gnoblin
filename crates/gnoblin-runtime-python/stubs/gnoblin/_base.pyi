@@ -17,7 +17,8 @@ from typing import Any, Callable, ClassVar, Generic, Iterable, TypeVar
 
 from .events import Subscription
 
-_T = TypeVar("T")
+_T = TypeVar("_T")
+_F = TypeVar("_F", bound=Callable[..., Any])
 
 #: Every generated class by its schema name (``"window"``). Filled as the classes are defined.
 CLASSES: dict[str, type[Node]]
@@ -57,7 +58,15 @@ class Signal:
     attribute: str
     def __init__(self, name: str, fields: Iterable[tuple[Any, ...]] = ...) -> None: ...
     def __set_name__(self, owner: type, attribute: str) -> None: ...
-    def __get__(self, node: Node | None, owner: type | None = None) -> Any: ...
+    def __get__(self, node: Node | None, owner: type | None = None) -> _SignalHook: ...
+
+class _SignalHook:
+    """A signal seen from a class or from one node: ``Window.closed`` or ``window.closed``."""
+
+    def subscribe(self, callback: Callable[..., None]) -> Subscription:
+        """Registers ``callback(source, values)`` and returns the :class:`Subscription` that removes it."""
+    def __call__(self, callback: _F) -> _F:
+        """Registers ``callback`` and returns it, so the call works as a decorator."""
 
 class Node:
     """A node of the compositor's tree, by id. The typed subclasses add the schema's properties, methods and signals."""

@@ -198,7 +198,7 @@ fn compile<'py>(py: Python<'py>, source: &[u8], path: &str) -> PyResult<Bound<'p
 }
 
 /// What a generation changed in the process, so a failed one can be undone.
-struct Stage {
+struct GenerationStage {
     previous_modules: Py<PyDict>,
     previous_main: Option<Py<PyAny>>,
     previous_finder: Option<Py<FreshFinder>>,
@@ -207,14 +207,14 @@ struct Stage {
 }
 
 #[derive(Default)]
-struct Loader {
-    serving: Option<Stage>,
-    staged: Option<Stage>,
+struct LoaderState {
+    serving: Option<GenerationStage>,
+    staged: Option<GenerationStage>,
     original_main: Option<Py<PyAny>>,
 }
 
 thread_local! {
-    static LOADER: RefCell<Loader> = RefCell::new(Loader::default());
+    static LOADER: RefCell<LoaderState> = RefCell::new(LoaderState::default());
 }
 
 /// `sys.modules`.
@@ -381,7 +381,7 @@ pub(crate) fn load(py: Python<'_>, script: &str) -> PyResult<Loaded> {
     if !sys_path.contains(&root)? {
         sys_path.call_method1("insert", (0, &root))?;
     }
-    let stage = Stage {
+    let stage = GenerationStage {
         previous_modules: previous_modules.unbind(),
         previous_main: previous_main.map(Bound::unbind),
         previous_finder,
@@ -427,7 +427,7 @@ pub(crate) fn load(py: Python<'_>, script: &str) -> PyResult<Loaded> {
 }
 
 /// Puts the process as it was before `stage` was evaluated.
-fn undo(py: Python<'_>, stage: &Stage) -> PyResult<()> {
+fn undo(py: Python<'_>, stage: &GenerationStage) -> PyResult<()> {
     let modules = sys_modules(py)?;
     for (name, _) in user_modules(py)? {
         modules.del_item(name).ok();

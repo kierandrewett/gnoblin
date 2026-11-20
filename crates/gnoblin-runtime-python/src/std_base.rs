@@ -31,10 +31,10 @@ pub(crate) fn set_registration_class(class: Bound<'_, PyAny>) {
 ///
 /// The number is the one attribute the subclass names in `__slots__`.
 #[pyclass(subclass, frozen, name = "Handle", module = "gnoblin._std_base")]
-pub(crate) struct Handle;
+pub(crate) struct StdHandle;
 
 #[pymethods]
-impl Handle {
+impl StdHandle {
     #[new]
     #[pyo3(signature = (*_args, **_kwargs))]
     fn new(_args: &Bound<'_, PyTuple>, _kwargs: Option<&Bound<'_, PyDict>>) -> Self {
@@ -73,8 +73,8 @@ impl Handle {
 /// The number behind a handle, a node or a plain integer.
 #[pyfunction]
 fn ident(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-    if let Ok(handle) = value.cast::<Handle>() {
-        return Ok(Handle::number(handle)?.unbind());
+    if let Ok(handle) = value.cast::<StdHandle>() {
+        return Ok(StdHandle::number(handle)?.unbind());
     }
     if let Some(node) = value.getattr_opt("_gnoblin_node_id")?.filter(|node| !node.is_none()) {
         return Ok(py.get_type::<PyInt>().call1((node,))?.unbind());
@@ -237,14 +237,14 @@ fn given_options<'py>(
 ///
 /// Options given before `attach` are kept here; after it they are the workspace's, read and written through the library.
 #[pyclass(subclass, name = "BuiltinLayout", module = "gnoblin._std_base")]
-pub(crate) struct BuiltinLayout {
+pub(crate) struct LayoutBase {
     options: Py<PyDict>,
     #[pyo3(get, set)]
     workspace: Py<PyAny>,
 }
 
 #[pymethods]
-impl BuiltinLayout {
+impl LayoutBase {
     #[classattr]
     const KIND: i64 = 0;
 
@@ -367,12 +367,12 @@ impl BuiltinLayout {
 
 /// A pointer binding the library runs: a kind of `BINDING_KINDS` with its options, written by the generator.
 #[pyclass(subclass, name = "BuiltinBinding", module = "gnoblin._std_base")]
-pub(crate) struct BuiltinBinding {
+pub(crate) struct BindingBase {
     options: Py<PyDict>,
 }
 
 #[pymethods]
-impl BuiltinBinding {
+impl BindingBase {
     #[classattr]
     const KIND: i64 = 0;
 
@@ -425,9 +425,9 @@ pub(crate) fn build(module: &Bound<'_, PyModule>) -> PyResult<()> {
     std_native::load()?;
     module.add("call", py.import("_gnoblin_std")?.getattr("call")?)?;
     module.add("functions", py.import("_gnoblin_std")?.getattr("functions")?)?;
-    module.add_class::<Handle>()?;
-    module.add_class::<BuiltinLayout>()?;
-    module.add_class::<BuiltinBinding>()?;
+    module.add_class::<StdHandle>()?;
+    module.add_class::<LayoutBase>()?;
+    module.add_class::<BindingBase>()?;
     module.add_function(wrap_pyfunction!(ident, module)?)?;
     module.add_function(wrap_pyfunction!(dyn_value, module)?)?;
     module.add_function(wrap_pyfunction!(wrap, module)?)?;

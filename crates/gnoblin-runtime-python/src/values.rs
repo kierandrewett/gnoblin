@@ -167,18 +167,18 @@ record! {
 
 /// A program the shell started, in a process group of its own.
 #[pyclass(frozen, name = "Process", module = "gnoblin.events")]
-pub(crate) struct Process {
+pub(crate) struct ProcessHandle {
     token: u64,
 }
 
-impl Process {
+impl ProcessHandle {
     pub(crate) const fn new(token: u64) -> Self {
         Self { token }
     }
 }
 
 #[pymethods]
-impl Process {
+impl ProcessHandle {
     #[new]
     fn py_new(token: u64) -> Self {
         Self { token }
@@ -203,6 +203,6 @@ impl Process {
     }
 
     fn __repr__(&self) -> String {
-        format!("<Process {}>", self.token)
+        format!("<ProcessHandle {}>", self.token)
     }
 }

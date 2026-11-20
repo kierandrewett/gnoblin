@@ -26,6 +26,7 @@ import os
 from typing import Any, Callable, Mapping, Sequence
 
 from ._base import Node
+from ._generated.classes import Window
 from .events import Process, ProcessExit, Subscription
 
 class Event:
@@ -67,7 +68,7 @@ class Gnoblin:
     def root(self) -> Node:
         """The root of the tree."""
     @property
-    def windows(self) -> list[Node]:
+    def windows(self) -> list[Window]:
         """The windows now in the tree, in stacking order (the first is the bottom)."""
     def node(self, id: int) -> Node:
         """The handle for the node with this id."""
