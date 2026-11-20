@@ -41,15 +41,15 @@ fn assert_the_scene_is_placed_and_read_back(session: &mut Gnoblin) {
     let view = named("view", "panel");
     let camera = named("camera", "cam");
     assert_eq!(
-        [number(&view, "x"), number(&view, "y"), number(&view, "z")],
+        [number(view, "x"), number(view, "y"), number(view, "z")],
         [0.5, 0.2, -1.4]
     );
     assert_eq!(
-        [number(&camera, "x"), number(&camera, "y"), number(&camera, "z")],
+        [number(camera, "x"), number(camera, "y"), number(camera, "z")],
         [1.0, 2.0, 3.0]
     );
-    assert_eq!(number(&camera, "fov"), 70.0);
-    assert_eq!(number(&view, "width"), 400.0);
+    assert_eq!(number(camera, "fov"), 70.0);
+    assert_eq!(number(view, "width"), 400.0);
     assert_eq!(view.parent, camera.parent, "both hang from the scene's root");
     assert_eq!(
         view.props

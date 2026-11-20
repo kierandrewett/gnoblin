@@ -155,9 +155,9 @@ fn vector_table(rig: &Rig) -> Value {
         "scale": vector_json(&g("scale", &[a.clone(), d(2.5)])),
         "dot": rounded(g("dot", &[a.clone(), b_.clone()]).double().expect("a number")),
         "cross": vector_json(&g("cross", &[a.clone(), b_.clone()])),
-        "length": rounded(g("length", &[a.clone()]).double().expect("a number")),
-        "normalize": vector_json(&g("normalize", &[a.clone()])),
-        "zero": vector_json(&g("normalize", &[z.clone()])),
+        "length": rounded(g("length", std::slice::from_ref(&a)).double().expect("a number")),
+        "normalize": vector_json(&g("normalize", std::slice::from_ref(&a))),
+        "zero": vector_json(&g("normalize", std::slice::from_ref(&z))),
         "distance": rounded(g("distance", &[a.clone(), b_.clone()]).double().expect("a number")),
         "from": vector_json(&g("vec3_of", &[list(&[7.0, 8.0, 9.0])])),
         "zeroes": vector_json(&z),
@@ -236,7 +236,7 @@ fn pose_table(rig: &Rig) -> Value {
     for rotation in rotations {
         for scale in [1.0, 2.0, 0.5] {
             let placed = pose([1.0, -2.0, 3.0], rotation, scale);
-            let normal = geometry(rig, "pose_normalise", &[placed.clone()]);
+            let normal = geometry(rig, "pose_normalise", std::slice::from_ref(&placed));
             let direction = |axis: [f64; 3]| {
                 vector_json(&geometry(
                     rig,
@@ -244,7 +244,7 @@ fn pose_table(rig: &Rig) -> Value {
                     &[placed.clone(), v3(axis[0], axis[1], axis[2])],
                 ))
             };
-            let facing = geometry(rig, "pose_plane", &[placed.clone()]);
+            let facing = geometry(rig, "pose_plane", std::slice::from_ref(&placed));
             let facing = facing.record().expect("a plane");
             out.push(json!({
                 "rotation": numbers_json(&rotation),
@@ -277,8 +277,8 @@ fn compose_table(rig: &Rig) -> Value {
     let probe = v3(0.3, -0.2, 0.9);
     let g = |name: &str, args: &[Val]| geometry(rig, name, args);
     // A pose a script makes reports its rotation as the angles of its matrix; `pose_normalise` is that.
-    let seen = |value: &Val| pose_json(&g("pose_normalise", &[value.clone()]));
-    let inverse = g("pose_inverse", &[p.clone()]);
+    let seen = |value: &Val| pose_json(&g("pose_normalise", std::slice::from_ref(value)));
+    let inverse = g("pose_inverse", std::slice::from_ref(&p));
     let through = g(
         "transform_point",
         &[inverse.clone(), g("transform_point", &[p.clone(), probe])],
@@ -297,6 +297,8 @@ fn compose_table(rig: &Rig) -> Value {
     })
 }
 
+// The fixture's quaternion has the digits `0.7071`, which is not the constant: the table is held to those digits.
+#[allow(clippy::approx_constant)]
 fn parse_table(rig: &Rig) -> Value {
     use std::f64::consts::FRAC_PI_4;
     let target = || t("target");
@@ -1345,7 +1347,7 @@ fn bindings_and_their_owners() {
         &n,
         "bind_number",
         "x",
-        counting(&runs, move || Ok(read_member(api, first_client, "x")?.double()?)),
+        counting(&runs, move || read_member(api, first_client, "x")?.double()),
     );
     let second = bind_node(&n, "bind_number", "x", callback(|_| Ok(d(7.0))));
     let c2 = client(&rig, 1);
