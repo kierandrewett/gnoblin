@@ -6,7 +6,9 @@
 
 use std::rc::Rc;
 
-use super::widget::{BarPart, Cid, Kind, Special, Ui, en};
+use gnoblin_core::Rect;
+
+use super::widget::{BarPart, Cid, Special, Ui, WidgetKind, en};
 
 /// The bar's part of a canvas.
 fn part(ui: &Ui, cid: Cid) -> Option<BarPart> {
@@ -17,18 +19,10 @@ fn part(ui: &Ui, cid: Cid) -> Option<BarPart> {
     .flatten()
 }
 
-/// An output as a bar needs it: its rectangle in the compositor's coordinates.
-struct Place {
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-}
-
-fn place_of(ui: &Ui, output: u64) -> Place {
+fn place_of(ui: &Ui, output: u64) -> Rect {
     let node = ui.node(output);
     let number = |key: &str| node.get_f64(key).unwrap_or(0.0);
-    Place {
+    Rect {
         x: number("x"),
         y: number("y"),
         width: number("width"),
@@ -51,7 +45,7 @@ impl Ui {
             .borrow()
             .widgets
             .iter()
-            .filter(|(_, widget)| widget.alive && widget.kind == Kind::Bar)
+            .filter(|(_, widget)| widget.alive && widget.kind == WidgetKind::Bar)
             .map(|(cid, _)| *cid)
             .collect()
     }
@@ -139,7 +133,7 @@ pub(crate) fn refresh(ui: &Rc<Ui>, cid: Cid) -> Result<(), String> {
     let output = ui.bar_output(bar.output)?;
     let placed = match output {
         Some(node) if ui.node(node).is_alive() => Some(place_of(ui, node)),
-        _ if bar.output == 0 => ui.primary_screen().map(|(width, height)| Place {
+        _ if bar.output == 0 => ui.primary_screen().map(|(width, height)| Rect {
             x: 0.0,
             y: 0.0,
             width,

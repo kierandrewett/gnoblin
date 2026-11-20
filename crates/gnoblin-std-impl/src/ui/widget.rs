@@ -1,6 +1,6 @@
 //! What the toolkit keeps for one generation: the canvases, how they are told apart, and the handle an object holds on its canvas.
 //!
-//! A canvas is a [`Widget`] in the generation's [`World`]. The object the shell holds is a [`Handle`] that names it by a [`Cid`]; the
+//! A canvas is a [`Widget`] in the generation's [`Canvases`]. The object the shell holds is a [`CanvasHandle`] that names it by a [`Cid`]; the
 //! widget stays in the world until its object ends, so a canvas the compositor destroyed (or the shell did) still reads as it was
 //! with `alive` false. Nothing here calls into the shell: every piece of work that does works on copies it took out of the world first,
 //! because a closure or a hook may call back into the toolkit.
@@ -59,7 +59,7 @@ pub(crate) mod en {
 
 /// Which class of the toolkit a canvas is, as the TypeScript toolkit's classes nested: a canvas, a box, and what derives from a box.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Kind {
+pub(crate) enum WidgetKind {
     Canvas,
     Box,
     Grid,
@@ -71,51 +71,51 @@ pub(crate) enum Kind {
     Toast,
 }
 
-impl Kind {
+impl WidgetKind {
     /// The class's name in the catalog.
     pub(crate) fn class(self) -> &'static str {
         match self {
-            Kind::Canvas => "canvas",
-            Kind::Box => "box",
-            Kind::Grid => "grid",
-            Kind::Text => "text",
-            Kind::Icon => "icon",
-            Kind::Entry => "entry",
-            Kind::Clock => "clock",
-            Kind::Bar => "bar",
-            Kind::Toast => "toast",
+            WidgetKind::Canvas => "canvas",
+            WidgetKind::Box => "box",
+            WidgetKind::Grid => "grid",
+            WidgetKind::Text => "text",
+            WidgetKind::Icon => "icon",
+            WidgetKind::Entry => "entry",
+            WidgetKind::Clock => "clock",
+            WidgetKind::Bar => "bar",
+            WidgetKind::Toast => "toast",
         }
     }
 
     /// The class's name as a shell's log knows it (the names the TypeScript toolkit's classes have).
     pub(crate) fn title(self) -> &'static str {
         match self {
-            Kind::Canvas => "Canvas",
-            Kind::Box => "Box",
-            Kind::Grid => "Grid",
-            Kind::Text => "Text",
-            Kind::Icon => "Icon",
-            Kind::Entry => "Entry",
-            Kind::Clock => "Clock",
-            Kind::Bar => "Bar",
-            Kind::Toast => "Toast",
+            WidgetKind::Canvas => "Canvas",
+            WidgetKind::Box => "Box",
+            WidgetKind::Grid => "Grid",
+            WidgetKind::Text => "Text",
+            WidgetKind::Icon => "Icon",
+            WidgetKind::Entry => "Entry",
+            WidgetKind::Clock => "Clock",
+            WidgetKind::Bar => "Bar",
+            WidgetKind::Toast => "Toast",
         }
     }
 
     /// Whether the class is a box or derives from one: what a parent box arranges, and what `fill` and `padding` mean to.
     pub(crate) fn is_box(self) -> bool {
-        self != Kind::Canvas
+        self != WidgetKind::Canvas
     }
 
     /// Whether the class is a text or derives from one.
     pub(crate) fn is_text(self) -> bool {
-        matches!(self, Kind::Text | Kind::Clock)
+        matches!(self, WidgetKind::Text | WidgetKind::Clock)
     }
 }
 
 /// The properties last written to the compositor, or their initial values.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Written {
+pub(crate) struct WrittenProps {
     pub(crate) x: f64,
     pub(crate) y: f64,
     pub(crate) width: f64,
@@ -127,9 +127,9 @@ pub(crate) struct Written {
     pub(crate) placement: u32,
 }
 
-impl Default for Written {
-    fn default() -> Written {
-        Written {
+impl Default for WrittenProps {
+    fn default() -> WrittenProps {
+        WrittenProps {
             x: 0.0,
             y: 0.0,
             width: 0.0,
@@ -304,7 +304,7 @@ pub(crate) struct Behaviour {
 pub(crate) struct Widget {
     pub(crate) obj: Obj,
     pub(crate) node: u64,
-    pub(crate) kind: Kind,
+    pub(crate) kind: WidgetKind,
     pub(crate) alive: bool,
     pub(crate) parent: Option<Cid>,
     pub(crate) children: Vec<Cid>,
@@ -317,7 +317,7 @@ pub(crate) struct Widget {
     pub(crate) placement: u32,
     pub(crate) width: Option<f64>,
     pub(crate) height: Option<f64>,
-    pub(crate) written: Written,
+    pub(crate) written: WrittenProps,
     /// The bytes last written as the canvas's `content`.
     pub(crate) content: Option<Vec<u8>>,
     /// How many steps of the canvas's update pass have failed.
@@ -334,7 +334,7 @@ pub(crate) struct Widget {
 }
 
 impl Widget {
-    pub(crate) fn new(kind: Kind, node: u64) -> Widget {
+    pub(crate) fn new(kind: WidgetKind, node: u64) -> Widget {
         Widget {
             obj: 0,
             node,
@@ -351,7 +351,7 @@ impl Widget {
             placement: en::PLACEMENT_FRAME,
             width: None,
             height: None,
-            written: Written::default(),
+            written: WrittenProps::default(),
             content: None,
             failures: 0,
             reported: Vec::new(),
@@ -368,7 +368,7 @@ impl Widget {
 
 /// The canvases of a generation, and what the whole toolkit shares between them.
 #[derive(Default)]
-pub(crate) struct World {
+pub(crate) struct Canvases {
     next: Cid,
     pub(crate) widgets: BTreeMap<Cid, Widget>,
     pub(crate) by_node: HashMap<u64, Cid>,
@@ -380,7 +380,7 @@ pub(crate) struct World {
     pub(crate) bars_primary: Option<Closure>,
 }
 
-impl World {
+impl Canvases {
     /// Takes the next name.
     pub(crate) fn mint(&mut self) -> Cid {
         self.next += 1;
@@ -445,7 +445,7 @@ pub(crate) struct Hook {
 pub(crate) struct Ui {
     pub(crate) ctx: GnoblinCtx,
     pub(crate) g: Gnoblin,
-    pub(crate) w: RefCell<World>,
+    pub(crate) w: RefCell<Canvases>,
     /// A turn is posted and has not run.
     pub(crate) pending: Cell<bool>,
     /// The timer that asks for the next turn of a time-based part.
@@ -483,12 +483,12 @@ pub(crate) struct ModelIds {
 }
 
 /// The handle an object of the toolkit holds: the generation's toolkit and the canvas. When the object ends, the canvas goes with it.
-pub(crate) struct Handle {
+pub(crate) struct CanvasHandle {
     pub(crate) ui: Rc<Ui>,
     pub(crate) cid: Cid,
 }
 
-impl Drop for Handle {
+impl Drop for CanvasHandle {
     fn drop(&mut self) {
         self.ui.object_ended(self.cid);
     }

@@ -1,5 +1,5 @@
 //! The classes of the toolkit as the object protocol serves them: `canvas` and what derives from it. Every one holds the same state, a
-//! [`Handle`] on its canvas in the generation's toolkit, and its members read and write that canvas.
+//! [`CanvasHandle`] on its canvas in the generation's toolkit, and its members read and write that canvas.
 
 use std::rc::Rc;
 
@@ -7,13 +7,13 @@ use gnoblin_object::server::{Builder, ClassBuilder, Cx};
 use gnoblin_object::{Fail, Res, Val};
 
 use super::tree::ui_of;
-use super::widget::{BarPart, Behaviour, Cid, ClockPart, Handle, Kind, Special, Widget, en};
+use super::widget::{BarPart, Behaviour, CanvasHandle, Cid, ClockPart, Special, Widget, WidgetKind, en};
 use super::{clock, entry, paint, toast};
 use crate::object::with_lib;
 
-type Class<'a> = ClassBuilder<'a, Handle>;
+type Class<'a> = ClassBuilder<'a, CanvasHandle>;
 
-impl Handle {
+impl CanvasHandle {
     fn read<R>(&self, read: impl FnOnce(&Widget) -> R) -> Res<R> {
         self.ui
             .read(self.cid, read)
@@ -43,7 +43,7 @@ fn enumeration(value: u32) -> Val {
 
 /// The canvas an object of the toolkit holds.
 fn canvas_of(cx: &Cx<'_>, obj: u64) -> Res<Cid> {
-    cx.with_state(obj, |handle: &mut Handle| handle.cid)
+    cx.with_state(obj, |handle: &mut CanvasHandle| handle.cid)
 }
 
 /// The members every canvas has.
@@ -206,7 +206,7 @@ fn canvas_members(class: Class<'_>) -> Class<'_> {
 }
 
 /// Puts the canvas of the object `child` last under this one: the toolkit's tree, the compositor's and the objects'.
-fn add_child(h: &Handle, cx: &mut Cx<'_>, child: u64) -> Res<()> {
+fn add_child(h: &CanvasHandle, cx: &mut Cx<'_>, child: u64) -> Res<()> {
     if child == cx.me() {
         return Err(Fail::type_error("a canvas cannot be its own ancestor"));
     }
@@ -277,14 +277,14 @@ fn text_members(class: Class<'_>) -> Class<'_> {
 
 /// The members an entry adds.
 fn entry_members(class: Class<'_>) -> Class<'_> {
-    fn part<R>(h: &Handle, read: impl FnOnce(&super::widget::EntryPart) -> R) -> Res<R> {
+    fn part<R>(h: &CanvasHandle, read: impl FnOnce(&super::widget::EntryPart) -> R) -> Res<R> {
         h.read(|w| match &w.sp {
             Special::Entry(part) => Some(read(part)),
             _ => None,
         })?
         .ok_or_else(|| Fail::type_error("the canvas is not an entry"))
     }
-    fn change(h: &Handle, change: impl FnOnce(&mut super::widget::EntryPart)) -> Res<()> {
+    fn change(h: &CanvasHandle, change: impl FnOnce(&mut super::widget::EntryPart)) -> Res<()> {
         h.edit(|w| {
             if let Special::Entry(part) = &mut w.sp {
                 change(part);
@@ -345,14 +345,14 @@ fn entry_members(class: Class<'_>) -> Class<'_> {
 
 /// The members a clock adds.
 fn clock_members(class: Class<'_>) -> Class<'_> {
-    fn part<R>(h: &Handle, read: impl FnOnce(&ClockPart) -> R) -> Res<R> {
+    fn part<R>(h: &CanvasHandle, read: impl FnOnce(&ClockPart) -> R) -> Res<R> {
         h.read(|w| match &w.sp {
             Special::Clock(part) => Some(read(part)),
             _ => None,
         })?
         .ok_or_else(|| Fail::type_error("the canvas is not a clock"))
     }
-    fn change(h: &Handle, change: impl FnOnce(&mut ClockPart)) -> Res<()> {
+    fn change(h: &CanvasHandle, change: impl FnOnce(&mut ClockPart)) -> Res<()> {
         h.edit(|w| {
             if let Special::Clock(part) = &mut w.sp {
                 change(part);
@@ -378,14 +378,14 @@ fn clock_members(class: Class<'_>) -> Class<'_> {
 
 /// The members a bar adds, and its functions.
 fn bar_members(class: Class<'_>) -> Class<'_> {
-    fn part<R>(h: &Handle, read: impl FnOnce(&BarPart) -> R) -> Res<R> {
+    fn part<R>(h: &CanvasHandle, read: impl FnOnce(&BarPart) -> R) -> Res<R> {
         h.read(|w| match &w.sp {
             Special::Bar(part) => Some(read(part)),
             _ => None,
         })?
         .ok_or_else(|| Fail::type_error("the canvas is not a bar"))
     }
-    fn change(h: &Handle, change: impl FnOnce(&mut BarPart)) -> Res<()> {
+    fn change(h: &CanvasHandle, change: impl FnOnce(&mut BarPart)) -> Res<()> {
         h.edit(|w| {
             if let Special::Bar(part) = &mut w.sp {
                 change(part);
@@ -436,14 +436,14 @@ fn bar_members(class: Class<'_>) -> Class<'_> {
 
 /// The members a toast adds, and its function.
 fn toast_members(class: Class<'_>) -> Class<'_> {
-    fn part<R>(h: &Handle, read: impl FnOnce(&super::widget::ToastPart) -> R) -> Res<R> {
+    fn part<R>(h: &CanvasHandle, read: impl FnOnce(&super::widget::ToastPart) -> R) -> Res<R> {
         h.read(|w| match &w.sp {
             Special::Toast(part) => Some(read(part)),
             _ => None,
         })?
         .ok_or_else(|| Fail::type_error("the canvas is not a toast"))
     }
-    fn change(h: &Handle, change: impl FnOnce(&mut super::widget::ToastPart)) -> Res<()> {
+    fn change(h: &CanvasHandle, change: impl FnOnce(&mut super::widget::ToastPart)) -> Res<()> {
         h.edit(|w| {
             if let Special::Toast(part) = &mut w.sp {
                 change(part);
@@ -491,7 +491,7 @@ fn toast_members(class: Class<'_>) -> Class<'_> {
         })
         .function("show", |cx, args| {
             let ui = ui_of(cx)?;
-            let (obj, cid) = make_object(&ui, cx, Kind::Toast)?;
+            let (obj, cid) = make_object(&ui, cx, WidgetKind::Toast)?;
             let text = args[0].text()?.to_owned();
             let number = |at: usize| args.get(at).filter(|v| !v.is_none()).and_then(|v| v.double().ok());
             let clock = args.get(4).and_then(|v| v.closure().ok()).map(Rc::clone);
@@ -516,9 +516,9 @@ fn toast_members(class: Class<'_>) -> Class<'_> {
 
 /// Makes an object of `kind` that is not the one the call is about (a function of a class makes one): the canvas and what its class
 /// builds around it.
-fn make_object(ui: &Rc<super::widget::Ui>, cx: &mut Cx<'_>, kind: Kind) -> Res<(u64, Cid)> {
+fn make_object(ui: &Rc<super::widget::Ui>, cx: &mut Cx<'_>, kind: WidgetKind) -> Res<(u64, Cid)> {
     let cid = ui.make(kind)?;
-    let handle = Handle { ui: Rc::clone(ui), cid };
+    let handle = CanvasHandle { ui: Rc::clone(ui), cid };
     let obj = cx.spawn(kind.class(), handle)?;
     ui.tweak(cid, |widget| widget.obj = obj);
     build_for(ui, cx, obj, cid, kind)?;
@@ -526,10 +526,10 @@ fn make_object(ui: &Rc<super::widget::Ui>, cx: &mut Cx<'_>, kind: Kind) -> Res<(
 }
 
 /// What a class builds around its canvas once it has an object: its hidden parts and its defaults.
-fn build_for(ui: &Rc<super::widget::Ui>, cx: &mut Cx<'_>, obj: u64, cid: Cid, kind: Kind) -> Res<()> {
+fn build_for(ui: &Rc<super::widget::Ui>, cx: &mut Cx<'_>, obj: u64, cid: Cid, kind: WidgetKind) -> Res<()> {
     match kind {
-        Kind::Entry => entry::build(ui, cx, obj, cid)?,
-        Kind::Clock => {
+        WidgetKind::Entry => entry::build(ui, cx, obj, cid)?,
+        WidgetKind::Clock => {
             ui.tweak(cid, |widget| {
                 widget.sp = Special::Clock(ClockPart {
                     format: "%H:%M".to_owned(),
@@ -538,7 +538,7 @@ fn build_for(ui: &Rc<super::widget::Ui>, cx: &mut Cx<'_>, obj: u64, cid: Cid, ki
             });
             clock::set_text(ui, cid).map_err(Fail::err)?;
         }
-        Kind::Bar => {
+        WidgetKind::Bar => {
             ui.tweak(cid, |widget| {
                 widget.b.direction = en::DIRECTION_ROW;
                 widget.height = Some(32.0);
@@ -553,15 +553,15 @@ fn build_for(ui: &Rc<super::widget::Ui>, cx: &mut Cx<'_>, obj: u64, cid: Cid, ki
             });
             ui.mount_top(cid)?;
         }
-        Kind::Toast => toast::build(ui, cx, obj, cid)?,
+        WidgetKind::Toast => toast::build(ui, cx, obj, cid)?,
         _ => {}
     }
     Ok(())
 }
 
 /// Registers one class of the toolkit: its constructor and the members of the classes it derives from.
-fn class<'a>(builder: &'a mut Builder, kind: Kind) -> Class<'a> {
-    let made = builder.class::<Handle>(kind.class()).ctor(move |cx, _inits| {
+fn class<'a>(builder: &'a mut Builder, kind: WidgetKind) -> Class<'a> {
+    let made = builder.class::<CanvasHandle>(kind.class()).ctor(move |cx, _inits| {
         let ui = ui_of(cx)?;
         let obj = cx.me();
         let handle = ui.make_for(obj, kind)?;
@@ -573,11 +573,11 @@ fn class<'a>(builder: &'a mut Builder, kind: Kind) -> Class<'a> {
 }
 
 pub(super) fn register(builder: &mut Builder) {
-    let _ = class(builder, Kind::Canvas);
-    let _ = class(builder, Kind::Box);
-    let _ = class(builder, Kind::Grid);
-    let _ = text_members(class(builder, Kind::Text));
-    let _ = class(builder, Kind::Icon)
+    let _ = class(builder, WidgetKind::Canvas);
+    let _ = class(builder, WidgetKind::Box);
+    let _ = class(builder, WidgetKind::Grid);
+    let _ = text_members(class(builder, WidgetKind::Text));
+    let _ = class(builder, WidgetKind::Icon)
         .get("icon", |h, _| h.text(|w| &w.i.icon))
         .set("icon", |h, _, v| {
             let icon = v.text()?.to_owned();
@@ -590,10 +590,10 @@ pub(super) fn register(builder: &mut Builder) {
             let color = v.text()?.to_owned();
             h.edit(|w| w.i.color = color)
         });
-    let _ = entry_members(class(builder, Kind::Entry));
-    let _ = clock_members(text_members(class(builder, Kind::Clock)));
-    let _ = bar_members(class(builder, Kind::Bar));
-    let _ = toast_members(class(builder, Kind::Toast));
+    let _ = entry_members(class(builder, WidgetKind::Entry));
+    let _ = clock_members(text_members(class(builder, WidgetKind::Clock)));
+    let _ = bar_members(class(builder, WidgetKind::Bar));
+    let _ = toast_members(class(builder, WidgetKind::Toast));
     let _ = builder
         .class::<()>("time_format")
         .function("format_time", |_cx, args| clock::call(args));

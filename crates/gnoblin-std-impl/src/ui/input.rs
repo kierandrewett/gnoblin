@@ -13,7 +13,7 @@ use super::tree::{core_fail, find, forget};
 use super::widget::{Cid, Ui, en};
 
 /// An event of the `tree` class's `event` signal, as the compositor sent it.
-pub(crate) struct RawEvent {
+pub(crate) struct CanvasEvent {
     pub(crate) node: u64,
     pub(crate) kind: String,
     pub(crate) x: f64,
@@ -27,9 +27,9 @@ pub(crate) struct RawEvent {
     pub(crate) pressed: bool,
 }
 
-impl RawEvent {
+impl CanvasEvent {
     /// Reads the fields of the signal in the schema's order: frame, seq, node, kind, x, y, button, key, text, dx, dy, request, pressed.
-    fn read(event: &SignalEvent<'_>) -> Option<RawEvent> {
+    fn read(event: &SignalEvent<'_>) -> Option<CanvasEvent> {
         if event.len() < 13 {
             return None;
         }
@@ -41,7 +41,7 @@ impl RawEvent {
             Some(ShellValue::Double(value)) => value,
             _ => 0.0,
         };
-        Some(RawEvent {
+        Some(CanvasEvent {
             node: event.node().0,
             kind: text(3),
             x: number(4),
@@ -82,7 +82,7 @@ pub(crate) fn subscribe(ui: &Rc<Ui>) -> Res<()> {
     let g = &ui.g;
     g.on_shutdown(move || shutdown(ctx)).map_err(core_fail)?;
     g.on_signal_named("tree", "event", move |event| {
-        if let (Some(ui), Some(raw)) = (find(ctx), RawEvent::read(event)) {
+        if let (Some(ui), Some(raw)) = (find(ctx), CanvasEvent::read(event)) {
             ui.on_event(&raw);
         }
     })
@@ -107,7 +107,7 @@ pub(crate) fn subscribe(ui: &Rc<Ui>) -> Res<()> {
 
 impl Ui {
     /// An event the compositor sent: a pointer event or a key addressed to a canvas of ours, or a request made of any window.
-    fn on_event(self: &Rc<Self>, raw: &RawEvent) {
+    fn on_event(self: &Rc<Self>, raw: &CanvasEvent) {
         if raw.kind == "request" {
             self.request(raw);
             return;
@@ -123,7 +123,7 @@ impl Ui {
     }
 
     /// A request made of a window goes to the shell's hooks, not to a canvas: a window's menu is not a canvas event.
-    fn request(self: &Rc<Self>, raw: &RawEvent) {
+    fn request(self: &Rc<Self>, raw: &CanvasEvent) {
         let record = Val::Record {
             class: 0,
             fields: vec![
@@ -147,7 +147,7 @@ impl Ui {
     }
 
     /// A `ui_pointer_event` record, in the coordinates of the canvas whose handler runs.
-    fn pointer_record(&self, kind: u32, x: f64, y: f64, raw: &RawEvent, target: Obj) -> Val {
+    fn pointer_record(&self, kind: u32, x: f64, y: f64, raw: &CanvasEvent, target: Obj) -> Val {
         Val::Record {
             class: 0,
             fields: vec![
@@ -164,7 +164,7 @@ impl Ui {
 
     /// Sends a pointer event to `target` and then up its parents until a handler stops it. Coordinates are relative to the canvas
     /// whose handler is running.
-    fn dispatch_pointer(self: &Rc<Self>, target: Cid, kind: u32, raw: &RawEvent) {
+    fn dispatch_pointer(self: &Rc<Self>, target: Cid, kind: u32, raw: &CanvasEvent) {
         let Some(target_obj) = self.read(target, |widget| widget.obj) else {
             return;
         };
@@ -224,7 +224,7 @@ impl Ui {
     }
 
     /// A `ui_key_event` record. Its text may be a passphrase: nothing logs it.
-    fn key_record(&self, raw: &RawEvent, target: Obj) -> Val {
+    fn key_record(&self, raw: &CanvasEvent, target: Obj) -> Val {
         Val::Record {
             class: 0,
             fields: vec![
@@ -237,7 +237,7 @@ impl Ui {
     }
 
     /// Sends a key to `target` (the canvas that holds the keyboard focus) and then up its parents until a handler stops it.
-    fn dispatch_key(self: &Rc<Self>, target: Cid, raw: &RawEvent) {
+    fn dispatch_key(self: &Rc<Self>, target: Cid, raw: &CanvasEvent) {
         let Some(target_obj) = self.read(target, |widget| widget.obj) else {
             return;
         };

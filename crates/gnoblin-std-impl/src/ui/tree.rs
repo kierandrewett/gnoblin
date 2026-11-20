@@ -10,7 +10,7 @@ use gnoblin_core_abi::{self as abi, GnoblinCtx};
 use gnoblin_object::server::{Cx, Library};
 use gnoblin_object::{Fail, Obj, Res, Val};
 
-use super::widget::{Cid, Handle, Ids, Kind, ModelIds, Ui, Widget, WidgetIds, World};
+use super::widget::{CanvasHandle, Canvases, Cid, Ids, ModelIds, Ui, Widget, WidgetIds, WidgetKind};
 use crate::object::with_lib;
 
 thread_local! {
@@ -49,7 +49,7 @@ pub(crate) fn ui_for(ctx: GnoblinCtx) -> Res<Rc<Ui>> {
     let ui = Rc::new(Ui {
         ctx,
         g,
-        w: RefCell::new(World::default()),
+        w: RefCell::new(Canvases::default()),
         pending: Cell::new(false),
         timer: RefCell::new(None),
         epoch: Cell::new(0),
@@ -119,7 +119,7 @@ impl Ui {
     }
 
     /// Makes a canvas of `kind`: its node, in this turn's transaction, and nothing else. The caller puts it in an object.
-    pub(crate) fn make(&self, kind: Kind) -> Res<Cid> {
+    pub(crate) fn make(&self, kind: WidgetKind) -> Res<Cid> {
         let node = self.g.create_node("canvas").map_err(core_fail)?.id().0;
         let mut w = self.w.borrow_mut();
         let cid = w.mint();
@@ -129,20 +129,20 @@ impl Ui {
     }
 
     /// Makes a canvas of `kind` that lives in the object `obj`, the object the call is about. Returns its handle state.
-    pub(crate) fn make_for(self: &Rc<Self>, obj: Obj, kind: Kind) -> Res<Handle> {
+    pub(crate) fn make_for(self: &Rc<Self>, obj: Obj, kind: WidgetKind) -> Res<CanvasHandle> {
         let cid = self.make(kind)?;
         self.tweak(cid, |widget| widget.obj = obj);
         self.schedule();
-        Ok(Handle {
+        Ok(CanvasHandle {
             ui: Rc::clone(self),
             cid,
         })
     }
 
     /// Makes a canvas of `kind` in an object of its own, owned by the object the call is about.
-    pub(crate) fn spawn(self: &Rc<Self>, cx: &mut Cx<'_>, kind: Kind, owner: Obj) -> Res<(Obj, Cid)> {
+    pub(crate) fn spawn(self: &Rc<Self>, cx: &mut Cx<'_>, kind: WidgetKind, owner: Obj) -> Res<(Obj, Cid)> {
         let cid = self.make(kind)?;
-        let handle = Handle {
+        let handle = CanvasHandle {
             ui: Rc::clone(self),
             cid,
         };
@@ -166,7 +166,7 @@ impl Ui {
     pub(crate) fn link(&self, parent: Cid, child: Cid) -> Res<()> {
         let (parent_node, child_node) = {
             let mut w = self.w.borrow_mut();
-            let alive = |w: &World, cid: Cid| w.get(cid).is_some_and(|widget| widget.alive);
+            let alive = |w: &Canvases, cid: Cid| w.get(cid).is_some_and(|widget| widget.alive);
             if !alive(&w, parent) || !alive(&w, child) {
                 return Err(Fail::stale("Canvas.add: the canvas is destroyed"));
             }

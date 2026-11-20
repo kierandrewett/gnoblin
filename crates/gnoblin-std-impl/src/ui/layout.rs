@@ -1,6 +1,6 @@
 //! Where a box puts its children: a row, a column, or a grid of equal cells.
 
-use super::widget::{Cid, Kind, Ui, en};
+use super::widget::{Cid, Ui, WidgetKind, en};
 
 impl Ui {
     /// Places the children of `cid` as its class does by itself: a box in a `row` or a `column` (a small flexbox: the main axis in
@@ -12,8 +12,8 @@ impl Ui {
             return;
         };
         match kind {
-            Kind::Canvas => {}
-            Kind::Grid => self.arrange_grid(cid),
+            WidgetKind::Canvas => {}
+            WidgetKind::Grid => self.arrange_grid(cid),
             _ if direction == en::DIRECTION_NONE => {}
             _ => self.arrange_flex(cid, direction == en::DIRECTION_COLUMN),
         }

@@ -3237,3 +3237,9 @@ left = "gnoblin-wayland::Session"
 right = "gnoblin-wayland-testkit::Session"
 kind = "same-name"
 reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
+
+[[allow]]
+left = "gnoblin-std-impl::CanvasEvent"
+right = "gnoblin-tree-client::EventFields"
+kind = "near-shape"
+reason = "the toolkit's event is the `tree.event` signal as the core hands it to a shell (a node, a kind, strings); the tree client's is the wire's fields of the same message for the engine's mirror, and std never names the client crate"

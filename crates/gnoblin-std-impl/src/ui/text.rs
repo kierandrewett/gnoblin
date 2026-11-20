@@ -24,9 +24,9 @@ pub trait Measurer {
 }
 
 /// The painter the compositor draws with, over the fonts of the system and the embedded face.
-struct Painter(SharedPainter);
+struct PainterMeasurer(SharedPainter);
 
-impl Measurer for Painter {
+impl Measurer for PainterMeasurer {
     fn measure(&self, font: &str, size: f64, text: &str) -> Result<(u32, u32, u32), &'static str> {
         let metrics = self.0.get().measure_checked(text, size as f32, font)?;
         Ok((metrics.width, metrics.height, metrics.ascent))
@@ -34,7 +34,7 @@ impl Measurer for Painter {
 }
 
 thread_local! {
-    static MEASURER: RefCell<Rc<dyn Measurer>> = RefCell::new(Rc::new(Painter(SharedPainter::system())));
+    static MEASURER: RefCell<Rc<dyn Measurer>> = RefCell::new(Rc::new(PainterMeasurer(SharedPainter::system())));
 }
 
 /// Replaces the measurer of this thread.

@@ -13,7 +13,7 @@ use gnoblin_object::Val;
 use gnoblin_paint::PaintOp;
 
 use super::tree::find;
-use super::widget::{Cid, Kind, Special, Ui, WidgetIds};
+use super::widget::{Cid, Special, Ui, WidgetIds, WidgetKind};
 use super::{bar, clock, entry, paint, toast};
 
 /// How often a canvas that animates (a toast's fade) asks for a turn, in milliseconds.
@@ -125,10 +125,10 @@ impl Ui {
     /// Updates the canvas's fields from live state, then lets the shell's own refresh run.
     fn refresh(self: &Rc<Self>, cid: Cid) -> Result<(), String> {
         match self.read(cid, |widget| widget.kind) {
-            Some(Kind::Entry) => entry::refresh(self, cid)?,
-            Some(Kind::Clock) => clock::refresh(self, cid)?,
-            Some(Kind::Bar) => bar::refresh(self, cid)?,
-            Some(Kind::Toast) => toast::refresh(self, cid)?,
+            Some(WidgetKind::Entry) => entry::refresh(self, cid)?,
+            Some(WidgetKind::Clock) => clock::refresh(self, cid)?,
+            Some(WidgetKind::Bar) => bar::refresh(self, cid)?,
+            Some(WidgetKind::Toast) => toast::refresh(self, cid)?,
             _ => {}
         }
         if let Some(done) = self.hook_call(cid, |ids| ids.refresh, &[]) {
@@ -180,7 +180,7 @@ impl Ui {
         }
         match self.read(cid, |widget| (widget.kind, widget.i.size)) {
             Some((kind, _)) if kind.is_text() => self.metrics(cid).width,
-            Some((Kind::Icon, size)) => size,
+            Some((WidgetKind::Icon, size)) => size,
             _ => 0.0,
         }
     }
@@ -198,7 +198,7 @@ impl Ui {
         }
         match self.read(cid, |widget| (widget.kind, widget.i.size)) {
             Some((kind, _)) if kind.is_text() => self.metrics(cid).height,
-            Some((Kind::Icon, size)) => size,
+            Some((WidgetKind::Icon, size)) => size,
             _ => 0.0,
         }
     }
@@ -217,10 +217,10 @@ impl Ui {
             return Ok(Vec::new());
         };
         match kind {
-            Kind::Canvas => Ok(Vec::new()),
-            Kind::Box | Kind::Grid | Kind::Bar | Kind::Toast => self.box_ops(cid),
-            Kind::Text | Kind::Clock => self.text_ops(cid),
-            Kind::Icon => {
+            WidgetKind::Canvas => Ok(Vec::new()),
+            WidgetKind::Box | WidgetKind::Grid | WidgetKind::Bar | WidgetKind::Toast => self.box_ops(cid),
+            WidgetKind::Text | WidgetKind::Clock => self.text_ops(cid),
+            WidgetKind::Icon => {
                 let (size, color, name) = self
                     .read(cid, |widget| {
                         (widget.i.size, widget.i.color.clone(), widget.i.icon.clone())
@@ -228,7 +228,7 @@ impl Ui {
                     .unwrap_or_default();
                 Ok(vec![paint::icon(size, &color, &name)?])
             }
-            Kind::Entry => entry::ops(self, cid),
+            WidgetKind::Entry => entry::ops(self, cid),
         }
     }
 

@@ -10,9 +10,9 @@ use std::rc::Rc;
 use gnoblin_object::{Obj, Res, Val};
 use gnoblin_paint::PaintOp;
 
-use super::input::RawEvent;
+use super::input::CanvasEvent;
 use super::paint;
-use super::widget::{Cid, EntryPart, Kind, Special, Ui};
+use super::widget::{Cid, EntryPart, Special, Ui, WidgetKind};
 use crate::object::{entry_model::EntryModel, with_lib};
 
 /// The entry's part of a canvas.
@@ -35,7 +35,7 @@ pub(crate) fn build(ui: &Rc<Ui>, cx: &mut gnoblin_object::server::Cx<'_>, me: Ob
     // Hidden texts the painter measures: the whole line, what lies before the caret, and before the anchor.
     let mut probes = [0; 3];
     for probe in &mut probes {
-        let (_, made) = ui.spawn(cx, Kind::Text, me)?;
+        let (_, made) = ui.spawn(cx, WidgetKind::Text, me)?;
         ui.tweak(made, |widget| widget.visible = false);
         *probe = made;
     }
@@ -190,7 +190,7 @@ fn typed(text: &str) -> bool {
 }
 
 /// What an entry does with a key by itself. Answers whether it used the key, which stops the key there.
-pub(crate) fn on_key(ui: &Rc<Ui>, cid: Cid, raw: &RawEvent) -> bool {
+pub(crate) fn on_key(ui: &Rc<Ui>, cid: Cid, raw: &CanvasEvent) -> bool {
     let Some(entry) = part(ui, cid) else {
         return false;
     };

@@ -9,7 +9,7 @@ use gnoblin_object::server::Cx;
 use gnoblin_object::{Obj, Res};
 
 use super::update::now_ms;
-use super::widget::{Cid, Kind, Special, ToastPart, Ui, en};
+use super::widget::{Cid, Special, ToastPart, Ui, WidgetKind, en};
 
 /// The card's width in pixels.
 const WIDTH: f64 = 320.0;
@@ -34,7 +34,7 @@ const FILL: &str = "#45475a";
 pub(crate) fn build(ui: &Rc<Ui>, cx: &mut Cx<'_>, me: Obj, cid: Cid) -> Res<()> {
     // 340 is the width the card takes when the tree has no screen yet; the card then sits at x = 0.
     let screen = ui.primary_screen().unwrap_or((RIGHT_INSET, 0.0));
-    let (_, message) = ui.spawn(cx, Kind::Text, me)?;
+    let (_, message) = ui.spawn(cx, WidgetKind::Text, me)?;
     ui.tweak(message, |widget| widget.b.grow = 1.0);
     ui.tweak(cid, |widget| {
         widget.x = screen.0 - RIGHT_INSET;
