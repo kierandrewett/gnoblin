@@ -63,7 +63,7 @@ impl XdgShellHandler for State {
         serial: Serial,
         location: Point<i32, Logical>,
     ) {
-        if !self.serial_issued(u32::from(serial)) {
+        if !self.activation.issued(u32::from(serial)) {
             log::debug!(
                 area = "xdg",
                 serial = u32::from(serial),

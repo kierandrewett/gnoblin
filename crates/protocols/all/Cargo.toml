@@ -48,6 +48,7 @@ gnoblin-wayland-zwp-text-input-v3 = { path = "../zwp-text-input-v3" }
 gnoblin-wayland-foreign-toplevel-shared = { path = "../foreign-toplevel-shared" }
 gnoblin-wayland-ext-foreign-toplevel-list-v1 = { path = "../ext-foreign-toplevel-list-v1" }
 gnoblin-wayland-zwlr-foreign-toplevel-management-v1 = { path = "../zwlr-foreign-toplevel-management-v1" }
+gnoblin-wayland-xdg-activation-v1 = { path = "../xdg-activation-v1" }
 gnoblin-wayland-zxdg-decoration-v1 = { path = "../zxdg-decoration-v1" }
 gnoblin-wayland-zwlr-output-management-v1 = { path = "../zwlr-output-management-v1" }
 gnoblin-wayland-zwp-virtual-keyboard-v1 = { path = "../zwp-virtual-keyboard-v1" }

@@ -29,8 +29,6 @@ pub mod wl_compositor;
 pub mod wl_data_device_manager;
 /// `wl_seat`: keyboard and pointer focus over surfaces.
 pub mod wl_seat;
-/// `xdg_activation_v1`: one-shot activation tokens.
-pub mod xdg_activation_v1;
 /// `xdg_shell`: toplevels, popups, configure and ack.
 pub mod xdg_shell;
 /// `zwlr_layer_shell_v1`: layer surfaces for bars and docks.

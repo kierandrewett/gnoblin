@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 
 use gnoblin_lock::State as LockState;
 use gnoblin_types::{Insets, OutputId, Rect, Scale, WindowId, WorkspaceId};
+use gnoblin_wayland_types::activation::ActivationDenial;
 
 /// One window, as the server last saw it.
 #[derive(Clone, PartialEq, Debug)]
@@ -69,21 +70,6 @@ pub struct ObservedLayer {
     /// What it takes out of its output's work area: the strip its exclusive zone asks for along its anchored edge, or the
     /// insets a shell that places it chose instead (`reserve` on its node).
     pub reserved: Insets,
-}
-
-/// A refused activation: what was refused and why.
-///
-/// The plan calls the signal `activation-denied`; a shell shows it and a test asserts
-/// on it, so "focus did not move" is never the only evidence. `reason` is one of
-/// `gnoblin-authority`'s own denial names (`unknown-token`, `reused-token`,
-/// `session-locked`, ...) or `not-a-window` when the token named a surface that is not
-/// a managed window.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct ActivationDenial {
-    /// The window that asked, when the surface was a managed one.
-    pub window: Option<WindowId>,
-    /// Why it was refused.
-    pub reason: String,
 }
 
 /// The name a session publishes for a lock state: `unlocked`, `covering` (a cover is up

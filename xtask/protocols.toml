@@ -17,6 +17,7 @@ gnoblin-types = '{ workspace = true }'
 gnoblin-log = '{ path = "../../gnoblin-log" }'
 getrandom = '{ workspace = true }'
 gnoblin-input = '{ path = "../../gnoblin-input" }'
+gnoblin-authority = '{ path = "../../gnoblin-authority" }'
 wayland-protocols-misc = '{ version = "0.3.12", features = ["server"] }'
 
 [[crate]]
@@ -264,6 +265,14 @@ kind = "protocol"
 interfaces = [["zwlr_foreign_toplevel_manager_v1", 3]]
 needs = ["foreign-toplevel-shared"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+
+[[crate]]
+name = "xdg-activation-v1"
+description = "The xdg_activation_v1 Wayland protocol of gnoblin-wayland: who may raise a window, by token."
+kind = "protocol"
+interfaces = [["xdg_activation_v1", 1]]
+needs = ["types"]
+deps = ["smithay", "gnoblin-types", "gnoblin-log", "gnoblin-authority"]
 
 [[crate]]
 name = "zxdg-decoration-v1"

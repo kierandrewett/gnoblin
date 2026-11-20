@@ -90,7 +90,6 @@ use crate::protocols::capture_shared::CaptureTables;
 use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
 use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
-use crate::protocols::xdg_activation_v1::XdgActivationV1;
 use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
 use crate::server::StartupError;
 use crate::tree_frame::{TreeFrame, TreeHooks, TreeInput, TreeRequest};
@@ -100,6 +99,7 @@ use gnoblin_wayland_protocols::ext_idle_notify_v1::{ExtIdleNotifyV1Tables, IdleN
 use gnoblin_wayland_protocols::wp_fractional_scale_v1::FractionalScaleExt as _;
 use gnoblin_wayland_protocols::wp_presentation_time::WpPresentationTimeTables;
 use gnoblin_wayland_protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
+use gnoblin_wayland_protocols::xdg_activation_v1::XdgActivationV1;
 use gnoblin_wayland_protocols::zwlr_foreign_toplevel_management_v1::ForeignToplevels;
 use gnoblin_wayland_protocols::zwlr_output_management_v1::ZwlrOutputManagementV1State;
 use gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::ShortcutInhibitExt as _;
@@ -704,7 +704,7 @@ impl State {
         });
         let foreign_toplevel_list_state =
             gnoblin_wayland_protocols::ext_foreign_toplevel_list_v1::register::<Self>(&registrar);
-        let activation_state = XdgActivationState::new::<Self>(&display_handle);
+        let activation_state = gnoblin_wayland_protocols::xdg_activation_v1::register::<Self>(&registrar);
         let data_device_state = DataDeviceState::new::<Self>(&display_handle);
         let primary_selection_state = gnoblin_wayland_protocols::zwp_primary_selection_v1::register::<Self>(&registrar);
         let ext_data_control_state =
@@ -1994,7 +1994,7 @@ impl State {
         self.pointer_placed = true;
         let pointer = self.pointer.clone();
         let serial = SERIAL_COUNTER.next_serial();
-        self.remember_input_serial(u32::from(serial));
+        self.activation.remember_serial(u32::from(serial));
         pointer.motion(
             self,
             focus,
@@ -3344,7 +3344,7 @@ impl State {
                     return;
                 };
                 let serial = SERIAL_COUNTER.next_serial();
-                self.remember_input_serial(u32::from(serial));
+                self.activation.remember_serial(u32::from(serial));
                 self.touch_points.insert(
                     slot,
                     TouchPoint {
@@ -3385,7 +3385,7 @@ impl State {
                     return;
                 }
                 let serial = SERIAL_COUNTER.next_serial();
-                self.remember_input_serial(u32::from(serial));
+                self.activation.remember_serial(u32::from(serial));
                 touch.up(
                     self,
                     &UpEvent {
@@ -4233,7 +4233,7 @@ impl Host for State {
                 let serial = SERIAL_COUNTER.next_serial();
                 // A button serial is the one an application names in
                 // `xdg_activation_token.set_serial`, so it has to be remembered.
-                self.remember_input_serial(u32::from(serial));
+                self.activation.remember_serial(u32::from(serial));
                 let dragging = self.dragged.is_some();
                 pointer.button(
                     self,
@@ -4263,7 +4263,7 @@ impl Host for State {
                 pressed,
             } => {
                 let serial = SERIAL_COUNTER.next_serial();
-                self.remember_input_serial(u32::from(serial));
+                self.activation.remember_serial(u32::from(serial));
                 let state = if pressed {
                     gnoblin_types::KeyState::Pressed
                 } else {

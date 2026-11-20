@@ -258,6 +258,7 @@ pub use frame::{FrameStats, SCREENSHOT_TIMEOUT, ShotRefusal};
 pub use gnoblin_backend::render::compose::{BellFlash, MotionPolicy, Setting};
 pub use gnoblin_lock::State as LockState;
 /// Output configuration types the output management protocol reports and asks for.
+pub use gnoblin_wayland_types::activation::ActivationDenial;
 pub use gnoblin_wayland_types::output::{HeadInfo, HeadRequest, ModeInfo, ModeRequest};
 /// The window management options a configuration carries, and the choices in them, which `gnoblin-wm-api` defines.
 pub use gnoblin_wm_api::{DragConstraint, FocusMode, NewWindowFocus, WindowManagerFactory, WmOptions};
@@ -273,8 +274,8 @@ pub use modal::{Modal, ModalEvent};
 pub use observation::lock_state_name;
 /// LedgerSnapshot types a reader observes, and the observer trait it implements.
 pub use observation::{
-    ActivationDenial, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput,
-    ObservedWindow, ObservedWorkspace, Observer, SessionSnapshot,
+    LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput, ObservedWindow,
+    ObservedWorkspace, Observer, SessionSnapshot,
 };
 pub use observation::{PresentAnswer, WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal};
 /// Output control: the trait a backend implements and the no-op default.

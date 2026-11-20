@@ -303,7 +303,7 @@ impl Shell1Host for State {
             return Activation::Focused;
         }
         let reason = Denial::NoAuthority.as_str();
-        self.refuse_activation(Some(window), reason);
+        gnoblin_wayland_protocols::xdg_activation_v1::refuse(self, Some(window), reason);
         Activation::Refused(reason)
     }
 

@@ -8,5 +8,6 @@
 //! The crate holds data and trivial helpers. Anything that decides something about the compositor stays in
 //! `gnoblin-wayland`.
 
+pub mod activation;
 pub mod decoration;
 pub mod output;

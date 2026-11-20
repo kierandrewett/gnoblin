@@ -605,7 +605,7 @@ impl State {
                 known.tip = down;
                 let (handle, location) = (known.handle.clone(), known.location);
                 let serial = SERIAL_COUNTER.next_serial();
-                self.remember_input_serial(u32::from(serial));
+                self.activation.remember_serial(u32::from(serial));
                 if down {
                     // A pen pressed on a window asks for activation, as a pointer press does.
                     self.activate_at(location);
