@@ -1520,6 +1520,63 @@ and stay.
   list, run a transition with a rollback callback and abort it. The writes equal the NpOracle fixtures. `style`, `transition`,
   and `modular::{style_reload,transition_reload}` pass.
 
+**What exists.** `style.toml` and `transition.toml` declare the classes below; `style/objects.rs` and `animation/objects.rs` implement them over
+the library's own state, so the std table's `style_*` and `transition_*` functions (which the TypeScript library still calls) and the classes
+see one set of styles and one engine. The checks, and their words, are shared (`style/edit.rs`, `style/values.rs`): a bad value is refused with
+the path of the property (`Client#42.style.opacity: must be finite and between 0 and 1`) whichever way it came.
+
+- `style` (one object for each scope): the scalars `opacity`, `corner_radius` (a record of `all`, or of the four corners), `background` (the
+  empty text is none) and the lists `borders`, `shadows`, `filter`, `backdrop_filter` (lists of the records `border`, `shadow`, `filter`,
+  `shader`). A read gives what the scope sets, else what it inherits; `is_set`, `unset`, `reset`, `values` and `assign` (replace, all or
+  nothing) say and change which. The functions `of_clients`, `of_workspace(id)` and `of_client(node)` give the scope's style, `where(query,
+priority)` the style of a live selection, `computed(node)` the resolved style with the scope each property came from, and `warnings(node)`
+  what nothing draws.
+- `style_list` and its kinds `shadow_list`, `border_list`, `filter_list` edit a list in place (`at`, `add`, `insert`, `replace`, `remove`,
+  `clear`, `unset`); the first change of a list the scope inherits copies it into the scope, so the scopes it came from are not touched.
+- `transition`: `begin(options, rollback)`, `set`/`peek`/`release` of a node's property while staging, `commit`, `abort`, `request(work, options,
+rollback)` (begin, `work`, commit, aborting when `work` fails), `animate` and `sample`; a transition has `state`, `running`, `paused`,
+  `reversed`, `progress` (writing it seeks), `play`, `pause`, `reverse`, `cancel` and the signal `finished`, which a listener added after the end
+  hears from the next turn.
+- **Rollback.** A transition begun through the object protocol holds an `Undo` (`animation/staging.rs`): a snapshot of every style, and the
+  shell's `rollback`. When the callback fails, the commit is refused (a layout that throws) or the shell aborts, the library puts back the
+  styles (a style made since is emptied), then calls the `rollback` (once, synchronously, before the failing call answers), and drops what was
+  staged. What the TypeScript engine snapshotted for the workspaces (their layouts, gaps, names) is the shell's to put back until NpStdObjects
+  serves the workspace class; the replay's `rollback` does it for the layout it assigned.
+
+`crates/gnoblin-std-impl/tests/style.rs` replays the 20 style and transition fixtures (`tests/scene.rs` replays the rollback of
+`scene_client_set` through `begin`, `abort` and a counting `rollback`); example 25 and `modular::native_style` run the classes from Rust,
+TypeScript and Python.
+
+**Allowances of the replay** (each is in the test, with its reason): (1) a value no typed catalog carries (a key that is not a field, two filter
+keys, a text where a record is declared, a style property that is not one, a bad option name or type) is refused by the protocol or the library in
+its own words; the replay asserts the refusal and records the fixture's text. (2) A TypeScript message whose path was the element's own
+(`ShaderFilter.source`) is the library's path to the entry; the words after it are asserted (`params` says `holds at most 8 numbers`, not `must be
+an array of at most 8 numbers`). (3) `constructor.name`, `instanceof`, `Object.isFrozen` and a detached `new Style(...)` are answered from the
+kinds of the catalog, or are `true` where a record cannot be changed. (4) `style.shadows[0].blur = 40` is `at` then `replace` on the list object.
+(5) The notices of the frame (`not applied: ...`, said once) are the shell's, so the replay says them. (6) A focus write on a new window is the
+replay's (NpStdPolicy's policy does it later). (7) A callback that fails answers the library only that it did; the failure's words are the shell
+runtime's, so the replay keeps the inner call's. (8) A call of the core inside a callback (`raise`, `spawn`) is refused by the TypeScript host,
+which wraps the core's calls; the library cannot see them. (9) The library settles a transition inside the write that took its last property; the
+TypeScript shell saw it a turn later (`fourth.cancelled` is read false there). (10) The TypeScript host started its styles from nothing at boot
+(`installStyles`, which makes the library their owner); the transition replays call `style_reset` for the same effect, since a shell that makes its
+first style scope while a transition plays takes the window's opacity from the transition only at the next application. (11) The workspaces and
+layouts of the transition scenarios belong to NpStdObjects; the replay makes them through the table, with a foreign layout for `Layout`, `Half` and
+the failing one and the library's own for dwindle and master and stack. (12) `scene_client_set`: the three shared values the TypeScript engine wrote
+back from its stale copy stay allowed in `scene.rs`; the native `rollback` has nothing of the tree to restore.
+
+**Differences from the TypeScript surface** (acceptable for the flip): a `style` holds the values the scope sets and reads what it inherits (the
+TypeScript style answered `undefined` for what it did not set: `is_set` says which); a client is named by its node (`of_client(node)`; the
+core's client `id` is that number as text); a selection is made on a style (`where`), not on a core collection, because the core's collection does
+not publish its query; a filter is a record of a `kind` (`blur`, `saturate`, `brightness`, `contrast`, `shader`) and an `amount`, so a blur's
+`radius` is its `amount`; the computed corner radius is a record of `all` or of the four corners. `transition.peek` answers a record with every
+field left out for a property the node has not: NpCoreOptional's optional result replaces that when it lands.
+
+**Importers of the TypeScript modules** (nothing is deleted before NpFlip): `gnoblin-std/style/*` and `style.ts` are imported by
+`gnoblin-std/{index.ts,host/frame.ts,host/install.ts,host/members.ts,host/rollback.ts,host/state.ts,host/style_scopes.ts,host/styles.ts}`;
+`gnoblin-std/transition/*` and `host/{staging,rollback}.ts` are imported by `gnoblin-core/host/contract.ts` and
+`gnoblin-std/{index.ts,host.ts,host/install.ts,host/members.ts,host/rollback.ts,host/staging.ts,host/state.ts,host/workspace.ts}`. The std table's
+`style_*` and `transition_*` functions and `data/js/gnoblin-std/generated/` serve them and stay.
+
 #### NpCoreModel (14 days)
 
 - **Owns:** `gnoblin-core-impl/src/model/{collection,client,output,listener,find,focus_history,properties,gnoblin}.rs`, catalog
