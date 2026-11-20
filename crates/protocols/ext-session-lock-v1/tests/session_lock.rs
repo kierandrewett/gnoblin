@@ -8,7 +8,7 @@
 //! locked before a covering frame reached every output.
 //!
 //! The tests are the crate's failure-mode list for this protocol, in the order
-//! `crates/gnoblin-wayland/src/protocols/ext_session_lock_v1.rs` states them.
+//! `crates/gnoblin-wayland/crates/protocols/ext-session-lock-v1/src/lib.rs` states them.
 
 use gnoblin_wayland_testkit::stock;
 

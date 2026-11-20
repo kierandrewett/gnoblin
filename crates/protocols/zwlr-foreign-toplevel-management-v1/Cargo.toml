@@ -18,3 +18,10 @@ gnoblin-wayland-types = { path = "../types" }
 smithay = { workspace = true }
 gnoblin-types = { workspace = true }
 gnoblin-log = { path = "../../gnoblin-log" }
+
+[dev-dependencies]
+gnoblin-types = { workspace = true }
+gnoblin-wayland = { path = "../../gnoblin-wayland" }
+gnoblin-wayland-testkit = { path = "../testkit" }
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }

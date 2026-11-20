@@ -18,3 +18,7 @@ smithay = { workspace = true }
 gnoblin-types = { workspace = true }
 gnoblin-log = { path = "../../gnoblin-log" }
 gnoblin-authority = { path = "../../gnoblin-authority" }
+
+[dev-dependencies]
+gnoblin-wayland-testkit = { path = "../testkit" }
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }

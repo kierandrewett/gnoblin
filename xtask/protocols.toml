@@ -21,6 +21,18 @@ gnoblin-authority = '{ path = "../../gnoblin-authority" }'
 gnoblin-render-frame = '{ path = "../../gnoblin-render-frame" }'
 wayland-protocols-misc = '{ version = "0.3.12", features = ["server"] }'
 wayland-protocols-plasma = '{ version = "0.3.12", features = ["server"] }'
+gnoblin-wayland-testkit = '{ path = "../testkit" }'
+wayland-protocols = '{ version = "0.32.13", features = ["client", "staging", "unstable"] }'
+gnoblin-render = '{ path = "../../gnoblin-render" }'
+gnoblin-backend = '{ path = "../../gnoblin-backend" }'
+gnoblin-wayland = '{ path = "../../gnoblin-wayland" }'
+tempfile = '"3.23.0"'
+wayland-client = '"0.31.14"'
+wayland-protocols-wlr = '{ version = "0.3.12", features = ["client"] }'
+gnoblin-config = '{ path = "../../gnoblin-config" }'
+gnoblin-lock = '{ path = "../../gnoblin-lock" }'
+gnoblin-cursor = '{ path = "../../gnoblin-cursor" }'
+gnoblin-secret = '{ workspace = true }'
 
 [[crate]]
 name = "wp-alpha-modifier-v1"
@@ -267,6 +279,7 @@ kind = "protocol"
 interfaces = [["zwlr_foreign_toplevel_manager_v1", 3]]
 needs = ["foreign-toplevel-shared", "types"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+dev-deps = ["gnoblin-types", "gnoblin-wayland", "gnoblin-wayland-testkit", "wayland-protocols", "wayland-protocols-wlr"]
 
 [[crate]]
 name = "wl-data-device-manager"
@@ -274,6 +287,7 @@ description = "The wl_data_device_manager Wayland protocol of gnoblin-wayland: t
 kind = "protocol"
 interfaces = [["wl_data_device_manager", 3]]
 deps = ["smithay"]
+dev-deps = ["gnoblin-config", "gnoblin-wayland-testkit", "wayland-client", "wayland-protocols", "wayland-protocols-wlr"]
 
 [[crate]]
 name = "ext-session-lock-v1"
@@ -281,6 +295,7 @@ description = "The ext_session_lock_manager_v1 Wayland protocol of gnoblin-wayla
 kind = "protocol"
 interfaces = [["ext_session_lock_manager_v1", 1]]
 deps = ["smithay"]
+dev-deps = ["gnoblin-backend", "gnoblin-lock", "gnoblin-render-frame", "gnoblin-types", "gnoblin-wayland", "gnoblin-wayland-testkit", "tempfile", "wayland-client", "wayland-protocols"]
 
 [[crate]]
 name = "zwp-linux-dmabuf-v1"
@@ -289,6 +304,7 @@ kind = "protocol"
 interfaces = [["zwp_linux_dmabuf_v1", 4]]
 conditional = true
 deps = ["smithay", "gnoblin-log"]
+dev-deps = ["gnoblin-backend", "gnoblin-render-frame", "gnoblin-wayland", "gnoblin-wayland-testkit", "smithay", "tempfile", "wayland-client", "wayland-protocols"]
 
 [[crate]]
 name = "zwp-tablet-v2"
@@ -297,6 +313,7 @@ kind = "protocol"
 interfaces = [["zwp_tablet_manager_v2", 1]]
 needs = ["types"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+dev-deps = ["gnoblin-backend", "gnoblin-types", "gnoblin-wayland-testkit", "wayland-client"]
 
 [[crate]]
 name = "wl-compositor"
@@ -326,6 +343,7 @@ kind = "protocol"
 interfaces = [["zwlr_layer_shell_v1", 5]]
 needs = ["types"]
 deps = ["smithay", "gnoblin-types"]
+dev-deps = ["gnoblin-backend", "gnoblin-render", "gnoblin-types", "gnoblin-wayland", "gnoblin-wayland-testkit", "wayland-protocols", "wayland-protocols-wlr"]
 
 [[crate]]
 name = "xdg-activation-v1"
@@ -334,6 +352,7 @@ kind = "protocol"
 interfaces = [["xdg_activation_v1", 1]]
 needs = ["types"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log", "gnoblin-authority"]
+dev-deps = ["gnoblin-wayland-testkit", "wayland-protocols"]
 
 [[crate]]
 name = "zxdg-decoration-v1"
@@ -342,6 +361,7 @@ kind = "protocol"
 interfaces = [["zxdg_decoration_manager_v1", 1]]
 needs = ["types"]
 deps = ["smithay"]
+dev-deps = ["gnoblin-render", "gnoblin-wayland-testkit", "wayland-protocols"]
 
 [[crate]]
 name = "zwlr-output-management-v1"
@@ -364,6 +384,7 @@ description = "The zwlr_virtual_pointer_manager_v1 Wayland protocol of gnoblin-w
 kind = "protocol"
 interfaces = [["zwlr_virtual_pointer_manager_v1", 2]]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+dev-deps = ["gnoblin-render-frame", "gnoblin-types", "gnoblin-wayland", "gnoblin-wayland-testkit", "wayland-client", "wayland-protocols-wlr"]
 
 [[crate]]
 name = "org-kde-kwin-server-decoration"
@@ -372,6 +393,7 @@ kind = "protocol"
 interfaces = [["org_kde_kwin_server_decoration_manager", 1]]
 needs = ["types"]
 deps = ["smithay", "gnoblin-log", "wayland-protocols-plasma"]
+dev-deps = ["gnoblin-config", "gnoblin-render", "gnoblin-wayland-testkit", "wayland-protocols-plasma"]
 
 [[crate]]
 name = "org-kde-kwin-appmenu"
@@ -379,6 +401,7 @@ description = "The org_kde_kwin_appmenu_manager Wayland protocol of gnoblin-wayl
 kind = "protocol"
 interfaces = [["org_kde_kwin_appmenu_manager", 2]]
 deps = ["smithay", "gnoblin-log", "wayland-protocols-plasma"]
+dev-deps = ["gnoblin-render", "gnoblin-types", "gnoblin-wayland-testkit", "wayland-protocols-plasma"]
 
 [[crate]]
 name = "ext-workspace-v1"
@@ -386,3 +409,4 @@ description = "The ext_workspace_manager_v1 Wayland protocol of gnoblin-wayland:
 kind = "protocol"
 interfaces = [["ext_workspace_manager_v1", 1]]
 deps = ["smithay", "gnoblin-log"]
+dev-deps = ["gnoblin-wayland-testkit", "wayland-client", "wayland-protocols"]

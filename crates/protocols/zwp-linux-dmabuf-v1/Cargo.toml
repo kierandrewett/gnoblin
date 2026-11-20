@@ -15,3 +15,13 @@ workspace = true
 gnoblin-wayland-api = { path = "../api" }
 smithay = { workspace = true }
 gnoblin-log = { path = "../../gnoblin-log" }
+
+[dev-dependencies]
+gnoblin-backend = { path = "../../gnoblin-backend" }
+gnoblin-render-frame = { path = "../../gnoblin-render-frame" }
+gnoblin-wayland = { path = "../../gnoblin-wayland" }
+gnoblin-wayland-testkit = { path = "../testkit" }
+smithay = { workspace = true }
+tempfile = "3.23.0"
+wayland-client = "0.31.14"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }

@@ -2412,8 +2412,17 @@ dependencies = [
 name = "gnoblin-wayland-ext-session-lock-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-backend",
+ "gnoblin-lock",
+ "gnoblin-render-frame",
+ "gnoblin-types",
+ "gnoblin-wayland",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "smithay",
+ "tempfile",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]
@@ -2422,7 +2431,10 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-log",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "smithay",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]
@@ -2438,7 +2450,10 @@ name = "gnoblin-wayland-org-kde-kwin-appmenu"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-log",
+ "gnoblin-render",
+ "gnoblin-types",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "smithay",
  "wayland-protocols-plasma",
 ]
@@ -2447,8 +2462,11 @@ dependencies = [
 name = "gnoblin-wayland-org-kde-kwin-server-decoration"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-config",
  "gnoblin-log",
+ "gnoblin-render",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "gnoblin-wayland-types",
  "smithay",
  "wayland-protocols-plasma",
@@ -2551,8 +2569,13 @@ dependencies = [
 name = "gnoblin-wayland-wl-data-device-manager"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-config",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "smithay",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]
@@ -2600,8 +2623,20 @@ dependencies = [
 name = "gnoblin-wayland-wp-cursor-shape-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-backend",
+ "gnoblin-config",
+ "gnoblin-cursor",
+ "gnoblin-render",
+ "gnoblin-secret",
+ "gnoblin-types",
+ "gnoblin-wayland",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "smithay",
+ "tempfile",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]
@@ -2671,8 +2706,10 @@ dependencies = [
  "gnoblin-log",
  "gnoblin-types",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "gnoblin-wayland-types",
  "smithay",
+ "wayland-protocols",
 ]
 
 [[package]]
@@ -2742,10 +2779,14 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-log",
  "gnoblin-types",
+ "gnoblin-wayland",
  "gnoblin-wayland-api",
  "gnoblin-wayland-foreign-toplevel-shared",
+ "gnoblin-wayland-testkit",
  "gnoblin-wayland-types",
  "smithay",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]
@@ -2762,10 +2803,16 @@ dependencies = [
 name = "gnoblin-wayland-zwlr-layer-shell-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-backend",
+ "gnoblin-render",
  "gnoblin-types",
+ "gnoblin-wayland",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "gnoblin-wayland-types",
  "smithay",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]
@@ -2794,9 +2841,14 @@ name = "gnoblin-wayland-zwlr-virtual-pointer-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-log",
+ "gnoblin-render-frame",
  "gnoblin-types",
+ "gnoblin-wayland",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "smithay",
+ "wayland-client",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]
@@ -2829,9 +2881,16 @@ dependencies = [
 name = "gnoblin-wayland-zwp-linux-dmabuf-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-backend",
  "gnoblin-log",
+ "gnoblin-render-frame",
+ "gnoblin-wayland",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "smithay",
+ "tempfile",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]
@@ -2871,11 +2930,14 @@ dependencies = [
 name = "gnoblin-wayland-zwp-tablet-v2"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-backend",
  "gnoblin-log",
  "gnoblin-types",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "gnoblin-wayland-types",
  "smithay",
+ "wayland-client",
 ]
 
 [[package]]
@@ -2901,9 +2963,12 @@ dependencies = [
 name = "gnoblin-wayland-zxdg-decoration-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-render",
  "gnoblin-wayland-api",
+ "gnoblin-wayland-testkit",
  "gnoblin-wayland-types",
  "smithay",
+ "wayland-protocols",
 ]
 
 [[package]]

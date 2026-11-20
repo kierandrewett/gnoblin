@@ -1,6 +1,6 @@
 //! `ext_workspace_manager_v1`: the workspace list a panel reads, from a real client.
 //!
-//! The scenarios are the failure modes listed at the top of `src/protocols/ext_workspace_v1.rs`. The compositor keeps
+//! The scenarios are the failure modes listed at the top of `crates/protocols/ext-workspace-v1/src/lib.rs`. The compositor keeps
 //! no workspaces: the list is the seat's declared workspaces and the one the shell wrote to `active_workspace`, so
 //! the tests that need a shell use the stand-in of `tests/session/shell.rs` to write it, and the ones that declare
 //! workspaces start the session with a configuration that does. Who may bind the manager is `tests/access.rs`: the

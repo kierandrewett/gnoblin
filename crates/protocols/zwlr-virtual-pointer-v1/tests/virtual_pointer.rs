@@ -1,6 +1,6 @@
 //! `zwlr_virtual_pointer_manager_v1` and `zwlr_virtual_pointer_v1` against real clients.
 //!
-//! The scenarios are the failure modes listed at the top of `src/protocols/zwlr_virtual_pointer_v1.rs`. A virtual
+//! The scenarios are the failure modes listed at the top of `crates/protocols/zwlr-virtual-pointer-v1/src/lib.rs`. A virtual
 //! pointer's whole point is what the client *under* it hears, so each test runs two real clients on a real socket
 //! each: the injector on the privileged socket, and an application with a window on the ordinary one. Who may bind
 //! the manager is `tests/access.rs`: the manager is in its `PRIVILEGED` list, so an application and a sandbox are

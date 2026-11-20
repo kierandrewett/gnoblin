@@ -17,3 +17,9 @@ gnoblin-wayland-types = { path = "../types" }
 smithay = { workspace = true }
 gnoblin-log = { path = "../../gnoblin-log" }
 wayland-protocols-plasma = { version = "0.3.12", features = ["server"] }
+
+[dev-dependencies]
+gnoblin-config = { path = "../../gnoblin-config" }
+gnoblin-render = { path = "../../gnoblin-render" }
+gnoblin-wayland-testkit = { path = "../testkit" }
+wayland-protocols-plasma = { version = "0.3.12", features = ["server"] }

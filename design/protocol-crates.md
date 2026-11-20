@@ -19,15 +19,21 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`, `zwlr-layer-shell-v1`, `wl-compositor`, `wl-seat`, `xdg-shell`, `zwp-tablet-v2`, `zwp-linux-dmabuf-v1`, `wl-data-device-manager`, `ext-session-lock-v1`. Their forwarding
   impls are in `crates/gnoblin-wayland/src/glue/`, one file per crate.
 
-Not yet done: the capture family (`capture_shared`, `image_copy_session`, `zwlr_screencopy_v1`, `ext_image_copy_capture_v1`,
-`ext_image_capture_source_v1`, `capture_dmabuf`),
-the `gnoblin_view_source_v1` and `capture_views` modules (they wait for the owner's decision on view source),
-the move of each protocol's real-client tests into its crate, and deleting `protocols/mod.rs` with the last of them. What each one needs first is under
-[What blocks the rest](#what-blocks-the-rest).
+Not yet done:
 
-Two decisions made while doing the work differ from the text below. The table lives in `xtask/protocols.toml`, not in
-`crates/protocols/`, and a row carries no module name or access column, because each crate states its own `PROTOCOL`.
-Shared crates must end in `-shared`, so `image_copy_session` will be `gnoblin-wayland-image-copy-shared`.
+- The capture family: `capture_shared`, `image_copy_session`, `zwlr_screencopy_v1` and `ext_image_copy_capture_v1`.
+- `ext_image_capture_source_v1` and `capture_dmabuf`, with the family.
+- The view-source modules `gnoblin_view_source_v1` and `capture_views`, which wait for the owner's decision.
+- The move of the remaining real-client tests into their crates.
+- Deleting `protocols/mod.rs`, with the last module.
+
+What each needs first is under [What blocks the rest](#what-blocks-the-rest).
+
+Two decisions made while doing the work differ from the text below.
+
+- The table lives in `xtask/protocols.toml`, not in `crates/protocols/`.
+- A row carries no module name or access column, because each crate states its own `PROTOCOL`.
+- Shared crates must end in `-shared`, so `image_copy_session` will be `gnoblin-wayland-image-copy-shared`.
 
 ## What blocks the rest
 
@@ -37,16 +43,18 @@ The protocols still in `gnoblin-wayland` name types that live in the compositor,
 - `wl_data_device_manager` and `ext_session_lock_v1` have crates that hold the global, what it advertises and the table the protocol alone reads (`WlDataDeviceManagerSelections`). Their handlers stay in the engine for good: a paste chooses between a client's source, the X11 window manager and the host's clipboard, and a lock needs the frame path, the lock card and the lock's authentication. The lock's engine module is `session_lock`, outside `protocols/`.
 - the capture family: the frame pixel path, the lock embargo, `DmabufSupport` and `gnoblin_pipewire_export`; every handler is `Dispatch2<_, State>`, so each needs a host trait the size of `foreign_toplevel`'s.
 
-Each needs its shared types moved down first, into the types crate below. `zwlr_output_management_v1` was the first: its
-`HeadInfo`, `HeadRequest` and `ModeRequest` now live there. `zxdg_decoration_v1` was the second: `DecorationWanted` and
-`WindowDecoration` moved from `gnoblin-backend`'s compose module, which now names them from the types crate.
-`xdg_activation_v1` was the third: `ActivationDenial` moved from the observation module, and the token rules are generic over a `Host`
-that says what a connection has earned, what the session's clock reads and what an allowed activation does to a window.
-`zwlr_layer_shell_v1` was the fourth: `LayerBand`, `LayerNodeInfo` and `LayerOverride` moved from the composer; the crate holds the
-global, the table of surfaces and the arithmetic that places one, and the compositor's `layer_shell` module arranges, configures
-and draws them.
-`WindowRequest` moved to the types crate as well, so the foreign-toplevel host asks for a `WindowRequest` and its own `ToplevelAsk` is gone. `extension` is not a Wayland protocol (it is the seam compat adapters register through), so it left `protocols/` for a module of its own. `zwp_tablet_v2` was the fifth: the tool, axis, pad and event types (`TabletEvent` and friends) moved from `gnoblin-backend`, which re-exports them at its root where they were public. The crate holds the tablet tables, the pad objects and every tool event, generic over a `Host` that supplies the seat, the surface under a point, the keyboard focus and the lock.
-`zwp_linux_dmabuf_v1` was the sixth: the crate holds the global, the table of buffers waiting for an answer and the fence-blocker that holds a commit; the import itself (the backend's renderer and the session's GPU memory ledger) stays in the compositor's glue. The global exists only on a session whose renderer imports GPU buffers, so its table row is `conditional`, which puts it in `CONDITIONAL` instead of `ALL`, and the advertised-globals test checks that a registry never lists it above the declared version.
+Each needs its shared types moved down first, into the types crate below. What has moved so far:
+
+- `zwlr_output_management_v1`: `HeadInfo`, `HeadRequest` and `ModeRequest` now live in the types crate.
+- `zxdg_decoration_v1`: `DecorationWanted` and `WindowDecoration` moved from the backend's compose module, which now names them from the types crate.
+- `xdg_activation_v1`: `ActivationDenial` moved from the observation module. The token rules are generic over a `Host` that says what a connection has earned and what the clock reads.
+- `zwlr_layer_shell_v1`: `LayerBand`, `LayerNodeInfo` and `LayerOverride` moved from the composer. The compositor's `layer_shell` module arranges, configures and draws the surfaces.
+- `WindowRequest`: the foreign-toplevel host asks for it directly, and its own `ToplevelAsk` is gone.
+- `extension`: it is not a Wayland protocol but the seam compat adapters register through, so it left `protocols/` for a module of its own.
+- `zwp_tablet_v2`: `TabletEvent` and the tool, axis and pad types moved from the backend, which re-exports them where they were public. The crate is generic over a `Host` that supplies the seat, the surface under a point, the keyboard focus and the lock.
+- `zwp_linux_dmabuf_v1`: the crate holds the global, the table of waiting buffers and the fence blocker. The import, which asks the backend's renderer and the GPU memory ledger, stays in the glue.
+
+The dmabuf global exists only on a session whose renderer imports GPU buffers, so its row is `conditional`. That puts it in `CONDITIONAL` instead of `ALL`, and the advertised-globals test checks that a registry never lists it above the declared version.
 
 ### The types crate
 
@@ -56,13 +64,13 @@ plain-data compositor types that the blocked protocols name. It sits beside the 
 - **Data only.** Structs, enums and trivial helpers. Anything that decides something about the compositor stays in
   `gnoblin-wayland`: for example `HeadRequest`'s change to an output profile is `output_config::request_change`, because it
   names `gnoblin-output`.
-- **Who depends on it.** `gnoblin-wayland` and the protocol crates that list `needs = ["types"]` in their row. A crate that
-  names the type elsewhere in the workspace (`gnoblin-backend` for a compose type) depends on it directly. There is no
-  second definition and no re-export shim: a caller names the type from the types crate, or `gnoblin-wayland` re-exports
-  it at its public root where it was already public (`HeadInfo`, `HeadRequest`, `ModeInfo`, `ModeRequest`).
-- **The rule.** `xtask deps` (`protocol-layering`) lets a protocol crate name the api crate, the types crate and shared
-  crates, and nothing else of the workspace beyond the foundation crates and the three hubs. The types crate names only
-  foundation crates; it names no crate of the tier and no engine crate.
+- **Who depends on it.** `gnoblin-wayland` and the protocol crates that list `needs = ["types"]` in their row.
+  A crate elsewhere in the workspace that names a type depends on it directly, as `gnoblin-backend` does.
+  There is no second definition and no shim. A caller names the type from the types crate, or `gnoblin-wayland`
+  re-exports it at its root where it was already public.
+- **The rule.** The `protocol-layering` rule of `xtask deps` lets a protocol crate name the api crate, the types crate and
+  shared crates. Beyond those it may name only the foundation crates and the three hubs. The types crate names only
+  foundation crates, no crate of the tier and no engine crate.
 
 ## Decision
 
@@ -89,27 +97,28 @@ implements those traits on its `State`.
 `protocols/` holds 56 modules and 13,934 lines, which is 61 per cent of the 22,960 lines in `gnoblin-wayland/src/`.
 Smithay serves most of the protocols. This crate serves the rest, and adds its own objects to some of Smithay's.
 
-Two modules are not extracted. `gnoblin_session_host_v1` and `gnoblin_view_source_v1` (871 lines, with `wire.rs`, which
-carries the crate's only `unsafe_code` allow) are being deleted by lane ProtoRetire, by the owner's decision. They are
-not in the inventory, no crate is made for them, and this lane does not edit them or the parts of `access.rs`,
-`state.rs`, `server.rs` and `lib.rs` that name them. The root `protocols/gnoblin-blur-fade-v1.xml` was deleted (D24).
+Two modules are not extracted. Lane ProtoRetire is deleting them by the owner's decision.
+
+- `gnoblin_session_host_v1` and `gnoblin_view_source_v1`: 871 lines, with `wire.rs`, which carries the crate's only `unsafe_code` allow.
+- They are not in the inventory and no crate is made for them. This lane does not edit them or the parts of `access.rs`, `state.rs`, `server.rs` and `lib.rs` that name them.
+- The root `protocols/gnoblin-blur-fade-v1.xml` was deleted (D24).
 
 Two facts decide the design.
 
-1. **The dispatch glue is already generic.** `dispatch.rs` implements `Dispatch` and `GlobalDispatch` once for `State`,
-   over any user data that implements Smithay's `Dispatch2<I, State>` or `GlobalDispatch2<I, State>`. No module carries a
-   `delegate_*!` macro. A protocol crate can implement `Dispatch2<I, D>` for its own user data, for any `D` that meets
-   its host trait, and the one blanket impl in `gnoblin-wayland` binds it. That removes the orphan-rule problem for the
-   protocol's own objects.
-2. **State coupling is wide but shallow.** The modules together read 133 `State` fields and 493 `State` methods. Each
-   module reads few of them, and most are read by one module only.
+1. **The dispatch glue is already generic.** `dispatch.rs` implements `Dispatch` and `GlobalDispatch` once for `State`, over
+   any user data that implements Smithay's `Dispatch2` or `GlobalDispatch2`. No module carries a `delegate_*!` macro.
+   A protocol crate implements `Dispatch2<I, D>` for its own user data, for any `D` that meets its host trait,
+   and the one blanket impl binds it. That removes the orphan-rule problem for the protocol's own objects.
 
 ### Inventory
 
-"State f / m" counts the distinct `State` fields and methods a module uses (`self.x` or `state.x`), including methods
-that module defines on `State` itself. "Access" is the `access::Global` that gates the module. `core` means no roster
-entry, so every client that is not sandboxed sees it. `open` means the global is gated through the roster but
-advertised to every client that is not sandboxed. `shared` marks a crate that serves no protocol of its own.
+The columns of the table mean this.
+
+- "State f / m" counts the distinct `State` fields and methods a module uses, including methods it defines on `State`.
+- "Access" is the `access::Global` that gates the module.
+- `core` means no roster entry, so every client that is not sandboxed sees it.
+- `open` means the roster gates it but every client that is not sandboxed sees it.
+- `shared` marks a crate that serves no protocol of its own.
 
 | Crate                                                 | Module                                | Lines | Served by             | Access                    | State f / m |
 | ----------------------------------------------------- | ------------------------------------- | ----- | --------------------- | ------------------------- | ----------- |
@@ -168,10 +177,11 @@ advertised to every client that is not sandboxed. `shared` marks a crate that se
 | `gnoblin-wayland-zwp-text-input-v3`                   | `zwp_text_input_v3`                   | 295   | Smithay               | core                      | 3 / 0       |
 | `gnoblin-wayland-zwp-virtual-keyboard-v1`             | `zwp_virtual_keyboard_v1`             | 307   | own code              | VirtualKeyboard (open)    | 1 / 6       |
 
-`extension.rs` (499 lines) is not in the table. It is the seam through which a compat adapter registers a redirect. It
-serves no protocol, and it names `LockAuth`, `CursorSettings`, `TreeHooks` and `WindowRequest`, which are compositor
-types. It leaves `protocols/` and stays in `gnoblin-wayland` as `src/extension.rs`. `mod.rs` disappears with the last
-extraction, and `wire.rs` goes with ProtoRetire's deletion.
+`extension.rs` (499 lines) is not in the table. It is the seam a compat adapter registers a redirect through.
+
+- It serves no protocol, and it names compositor types such as `LockAuth`, `TreeHooks` and `CursorSettings`.
+- It has left `protocols/` and is `src/extension.rs` of `gnoblin-wayland`.
+- `mod.rs` disappears with the last extraction, and `wire.rs` goes with ProtoRetire's deletion.
 
 The inventory yields 52 crates: 49 protocol crates and 3 shared crates. The shared crates are the rows marked `shared`
 in the Access column. `capture_dmabuf.rs` and `capture_views.rs` are parts of the capture engine and fold into
@@ -179,12 +189,12 @@ in the Access column. `capture_dmabuf.rs` and `capture_views.rs` are parts of th
 
 ### Naming rule
 
-The owner fixed the names: `gnoblin-wayland-` plus the protocol's own name with underscores turned into hyphens,
-version suffix included when the name has one. The protocol's name is the interface or manager name that the module
-already carries, so the crate for `zwlr_layer_shell_v1` is `gnoblin-wayland-zwlr-layer-shell-v1`, for
-`ext_foreign_toplevel_list_v1` it is `gnoblin-wayland-ext-foreign-toplevel-list-v1`, and for `wp_viewporter` it is
-`gnoblin-wayland-wp-viewporter`. The api crate and the shared crates take the same prefix. The compositor crate stays
-`gnoblin-wayland`.
+The owner fixed the names. A crate is `gnoblin-wayland-` plus the protocol's own name, with underscores turned into hyphens.
+
+- The version suffix stays when the name has one.
+- The name is the interface or manager name the module already carries.
+- So `zwlr_layer_shell_v1` is `gnoblin-wayland-zwlr-layer-shell-v1`, and `wp_viewporter` is `gnoblin-wayland-wp-viewporter`.
+- The api crate and the shared crates take the same prefix. The compositor crate stays `gnoblin-wayland`.
 
 The prefix means `gnoblin-wayland-*` is a family of crates the compositor crate depends on, so a reader sees at once
 whose they are. `xtask deps` finds the tier through the table, not through the prefix, so `gnoblin-wayland` itself and
@@ -210,9 +220,10 @@ protocols/
 xtask/protocols.toml                 the table: one row per crate
 ```
 
-The root `Cargo.toml` lists these members by glob (`protocols/*`), so a new protocol does not touch it. The table sits
-in `xtask/` next to the other reviewed lists (`layout-allow.toml`, `dupes-allow.toml`) so that the glob matches only
-directories. `gnoblin-wayland` names one dependency, `gnoblin-wayland-protocols`, instead of 52.
+The root `Cargo.toml` lists these members by glob, so a new protocol does not touch it.
+
+- The table sits in `xtask/` next to the other reviewed lists, so the glob matches only directories.
+- `gnoblin-wayland` names one dependency, `gnoblin-wayland-protocols`, instead of one per protocol.
 
 ### The table and the generator
 
@@ -287,10 +298,11 @@ impl gnoblin_proto_zwp_idle_inhibit::Host for State { /* forwards to the existin
 impl IdleInhibitHandler for State { /* one call into the crate */ }
 ```
 
-The `State` fields that hold a protocol's tables (`ExtIdleNotifyV1Tables`, `CaptureTables`, `XdgForeign` and the rest)
-stay fields of `State`, typed. Several are read on the pointer and frame paths, and a type map would put a hash lookup
-there. The table type moves into its crate, and the host trait hands it out: `fn tables(&mut self) -> &mut Tables`. A
-protocol that needs two fields at once gets them from one accessor, so the borrow checker still sees disjoint borrows.
+The `State` fields that hold a protocol's tables stay fields of `State`, typed.
+
+- Several are read on the pointer and frame paths, and a type map would put a hash lookup there.
+- The table type moves into its crate, and the host trait hands it out.
+- A protocol that needs two fields at once gets them from one accessor, so the borrow checker still sees disjoint borrows.
 
 ### Methods that `impl State` today
 
@@ -318,12 +330,11 @@ Three kinds of impl are involved, and each has one answer.
 | a Smithay handler trait on the state (`IdleInhibitHandler`, `XdgShellHandler`, `SeatHandler`) | only where `State` is defined                            | `gnoblin-wayland/src/glue/`, as a forwarding body |
 | `impl Host for State`                                                                         | only where `State` is defined                            | the same glue file                                |
 
-`impl<D: Host> IdleInhibitHandler for D` is rejected by the compiler as an uncovered type parameter. A macro that the
-crate exports and the glue invokes would work, but it hides the logic from the tools and from unit tests. Forwarding is
-the choice. The logic is a generic function in the protocol crate, `pub fn inhibit<H: Host>(host: &mut H, surface:
-WlSurface)`, and the glue body is one line. The blanket `Dispatch` and `GlobalDispatch` impls in `dispatch.rs` stay as
-they are: `request_guard`, `request_tap`, the memory ledger and the `view` role gate run there, and the protocol crates
-need none of it.
+A blanket impl of a Smithay handler for every `D: Host` is rejected by the compiler as an uncovered type parameter.
+
+- A macro the crate exports and the glue invokes would work, but it hides the logic from the tools and from unit tests.
+- So the logic is a generic function in the protocol crate, and the glue body is one line.
+- The blanket `Dispatch` impls in `dispatch.rs` stay as they are. The request guard, the request tap, the memory ledger and the view-role gate run there, and the protocol crates need none of it.
 
 ## Registration and the globals table
 
@@ -339,10 +350,11 @@ pub const PROTOCOL: ProtocolInfo = ProtocolInfo {
 pub fn register<H: Host>(registry: &mut Registry<'_, H>) -> State { .. }
 ```
 
-`Registry` carries the `DisplayHandle`, the `Access` roster, the `Protocols` configuration and the host's loop handle.
-`register` creates the globals with the filter that the `Privilege` implies, and returns the Smithay state or the table
-struct, which `State` stores in its typed field. `State::new` calls the registers in the order it calls today's
-`global()` functions, so global numbering does not change.
+`Registrar` carries the display handle and the access roster.
+
+- `register` creates the globals with the filter the `Privilege` implies, and returns the Smithay state or the table struct.
+- `State::new` stores that value in its typed field.
+- It calls the registers in the order it called the old `global()` functions, so global numbering does not change.
 
 `gnoblin-wayland-protocols` collects the constants:
 
@@ -383,16 +395,17 @@ interface name, so no crate names a role.
 | tests that cross protocols (focus, lock, capture embargo, access) and the advertised-globals test | stay in `gnoblin-wayland/tests/`                        |
 
 A real-client test needs a session, and a session is `gnoblin-wayland`. The crate takes it as a **dev-dependency**.
-Cargo allows the cycle, because a dev-dependency is not part of the normal graph. The crate under test is compiled
-twice, once as `gnoblin-wayland`'s dependency and once as the test target. The tests talk over the socket, so the two
-copies never meet. `xtask deps` already exempts development edges from `engine-isolation`, and the new rules do the
-same.
 
-The session harness (`tests/stock`, `tests/owned`, `tests/session` and the helpers at the top of `tests/protocols.rs`)
-is shared today by `#[path]` modules. It moves into one dev-only crate, `gnoblin-wayland-testkit`, so each protocol crate
-imports it and none copies it. A test moves with its protocol when the protocol's name is in its file or test name and
-it needs nothing from another protocol. The rest stays. To limit link time, a crate has one integration-test binary,
-`tests/real.rs`, with submodules.
+- Cargo allows the cycle, because a dev-dependency is not part of the normal graph.
+- The crate under test is compiled twice, once as the engine's dependency and once as the test target. The tests talk over the socket, so the two copies never meet.
+- `xtask deps` exempts development edges from the engine-isolation rule, and the tier rules do the same.
+
+The session harness is the crate `gnoblin-wayland-testkit`, so each protocol crate imports it and none copies it.
+
+- It holds the session, the client, the stock window manager and the client halves of the protocols whose events a test reads.
+- A test moves with its protocol when the protocol's name is in its file name and it needs nothing from another protocol.
+- Moved so far: the tests of activation, decoration, dmabuf, foreign toplevel, the two KDE protocols, layer shell, the data-device manager, session lock, tablet, virtual pointer and ext-workspace.
+- The rest stays in `gnoblin-wayland/tests/`. Some need the harness's `owned` or `nested_host` helpers, and `cursor_shape` names `gnoblin-cursor`, which the `cursor-isolation` rule keeps out of every crate but the pointer's users. Tests that define a `Dispatch` impl for the harness's `App` need that impl in the testkit, because Rust refuses an impl of a foreign trait for a foreign type.
 
 ## Gates
 
@@ -410,9 +423,10 @@ it needs nothing from another protocol. The rest stays. To limit link time, a cr
 edge, and the rule names it as it names the hubs. `pipewire-export-isolation` lists `gnoblin-wayland-capture-shared` next
 to `gnoblin-wayland`, because the capture engine that names the export moves with that crate.
 
-`logging` scans `crates/*/src` today. It is extended to the table's directories, and `cargo xtask logging` is run to
-prove the new crates are read. `layout` scans `crates` and `xtask` for root `src/` and `patches/` paths, and the
-new crates name neither.
+`logging` and `layout` need no change for the new crates.
+
+- `logging` scans `crates/*/src`, and the protocol crates sit under it.
+- `layout` scans `crates` and `xtask` for root `src/` and `patches/` paths, and the new crates name neither.
 
 ## Consequences of many small crates
 
@@ -437,32 +451,17 @@ generator keeps the boilerplate out of the sources, and a reviewed `dupes-allow.
 Each step is one small commit, pushed after the gate passes on the exact SHA. A step moves one crate's code, deletes the
 old module in the same commit, moves that crate's tests and updates the docs it names.
 
-1. **Scaffolding.** `gnoblin-wayland-api` with `access` moved in, `gnoblin-wayland-protocols` with an empty table,
-   `xtask/protocols.toml`, `xtask protocol-crates`, the member glob, the `deps` tier and its tests, `gnoblin-wayland-testkit`,
-   `CHANGELOG`, and the crate list in `design/modular-framework.md`. `access` moves into the api crate only after
-   ProtoRetire's deletion has landed, because that lane edits `access.rs` (the `SessionHost` and `View` roles). Until
-   then the crates that need the roster (layer shell, the foreign-toplevel pair, data control, capture, gamma, output
-   power and management, virtual keyboard, input method, background effect) wait, and steps 2 to 4 start with the
-   protocols that need none of it.
-2. **Smithay-only protocols with no `State` method:** alpha modifier, single-pixel buffer, pointer gestures, relative
-   pointer, primary selection, both data-control crates, toplevel icon, toplevel tag, system bell, dialog, idle
-   inhibit, wl-output, wl-shm, FIFO, content type, security context.
-3. **Small protocols with host methods:** fractional scale, tearing control, viewporter, presentation time, cursor
-   shape, xdg-output, xdg-decoration, background effect, shortcuts inhibit, linux-dmabuf, ext-foreign-toplevel with its
-   shared crate, wlr-foreign-toplevel.
-4. **Medium protocols:** idle notify, activation, xdg-foreign, gamma control, output power, output management,
-   text-input, input-method, virtual keyboard, pointer constraints, wl-data-device, wl-compositor, wl-seat.
-5. **Large protocols:** xdg-shell, layer shell, tablet, session lock.
-6. **The capture family in one run,** because its modules form a cycle today: `image-copy-session`, then
-   `capture-shared` with `capture_dmabuf` and `capture_views` folded in, then screencopy, image-copy-capture,
-   and image-capture-source. The family waits for ProtoRetire, which removes `view_source` and may redesign
-   `capture_views`. Three edges point up today: `capture_shared` creates the screencopy and
-   image-copy globals, and `capture_dmabuf` calls `answer_copy` in screencopy. Global creation moves into each
-   protocol's `register`, and `answer_copy` moves down into the shared crate.
-7. **ProtoMissing's protocols,** each when its lane has pushed it: `zwlr-virtual-pointer-v1`, `kde-server-decoration`,
-   `kde-appmenu`, `ext-workspace-v1`, `ext-transient-seat-v1`. Each moves in a commit of its own.
-8. **Close-out.** `protocols/` is gone from `gnoblin-wayland`. The docs, `CHANGELOG`, the crate lists and
-   `design/modular-framework.md` name the final set.
+1. **Scaffolding.** Done: the api crate with `access`, the aggregate crate, the table and its generator, the member glob, the tier rules and the testkit.
+2. **Smithay-only protocols with no `State` method.** Done.
+3. **Small protocols with host methods.** Done, including linux-dmabuf and the foreign-toplevel pair with their shared crate.
+4. **Medium protocols.** Done, including activation, output management, the data-device manager, wl-compositor and wl-seat.
+5. **Large protocols.** Done for xdg-shell, layer shell, tablet and session lock. Their handlers that need the engine stay in the glue.
+6. **The capture family in one run,** because its modules form a cycle. It waits for ProtoRetire, which removes the view-source modules.
+    - The order is `image-copy-session`, then `capture-shared` with `capture_dmabuf` folded in, then the three protocols.
+    - Three edges point up today: `capture_shared` creates the screencopy and image-copy globals, and `capture_dmabuf` calls `answer_copy`.
+    - Global creation moves into each protocol's `register`, and `answer_copy` moves down into the shared crate.
+7. **ProtoMissing's protocols.** Done: virtual pointer, the KDE server decoration and appmenu, and ext-workspace landed as crates.
+8. **Close-out.** `protocols/` is gone from `gnoblin-wayland`. The docs, the changelog and the crate lists name the final set.
 
 **Gate per step**, on one Agent37 box and the exact pushed SHA:
 
@@ -487,26 +486,28 @@ The final SHA also runs the full `gnoblin-wayland` tests, the advertised-globals
 | Tests moved with their crates                                         | 5            |
 | **Total**                                                             | **about 46** |
 
-The figure is for one lane on one box. The box limit, one box and one test target at a time on 12 GB, bounds it more
-than the editing does: a `gnoblin-wayland` build with Smithay takes minutes, so a step batches crates whose host traits
-do not overlap. The cheap steps come first, so the pattern is proven on trivial crates before the large ones.
+The figure is for one lane on one box.
+
+- The box limit bounds it more than the editing does: one box, and one test target at a time on 12 GB.
+- A build with Smithay takes minutes, so a step batches crates whose host traits do not overlap.
+- The cheap steps come first, so the pattern is proven on trivial crates before the large ones.
 
 ## Alternatives considered
 
-| Option                                                                                                                                                                    | Why not                                                                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| One crate per family: 12 crates for layer shell, foreign toplevel, capture, data control, input, pointer, idle, lock, xdg extras, surface hints and the private protocols | the first choice; the owner then chose one crate per protocol, for isolation of a change and of its tests |
-| One `gnoblin-wayland-protocols` crate with a module per protocol                                                                                                          | it only moves the monolith, and an edit still recompiles every protocol                                   |
-| A type map for protocol state instead of typed `State` fields                                                                                                             | removes the accessor per crate, but puts a hash lookup on the pointer and frame paths                     |
-| Make `State` generic, or move it into the api crate                                                                                                                       | `State` owns the scene, the seat and the backend; every protocol crate would depend on all of it          |
-| A `delegate_*!`-style macro exported by each crate                                                                                                                        | keeps the logic in the crate but hides it from the tools and from unit tests                              |
-| Fold `extension.rs` into a crate                                                                                                                                          | it serves no protocol and names four compositor types, which the api crate would then have to carry       |
-| Write each `Cargo.toml` by hand                                                                                                                                           | 54 manifests drift; the table is the one place to review a dependency                                     |
+| Option                                                              | Why not                                                                                                   |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| One crate per family: twelve crates grouping the protocols by theme | the first choice; the owner then chose one crate per protocol, for isolation of a change and of its tests |
+| One `gnoblin-wayland-protocols` crate with a module per protocol    | it only moves the monolith, and an edit still recompiles every protocol                                   |
+| A type map for protocol state instead of typed `State` fields       | removes the accessor per crate, but puts a hash lookup on the pointer and frame paths                     |
+| Make `State` generic, or move it into the api crate                 | `State` owns the scene, the seat and the backend; every protocol crate would depend on all of it          |
+| A `delegate_*!`-style macro exported by each crate                  | keeps the logic in the crate but hides it from the tools and from unit tests                              |
+| Fold `extension.rs` into a crate                                    | it serves no protocol and names four compositor types, which the api crate would then have to carry       |
+| Write each `Cargo.toml` by hand                                     | 54 manifests drift; the table is the one place to review a dependency                                     |
 
 ## Coordination
 
-ProtoMissing adds `zwlr_virtual_pointer_v1`, `kde_server_decoration`, `kde_appmenu`, `ext_workspace_v1` and
-`ext_transient_seat_v1` as modules in `protocols/`, and a `tests/protocol_list.rs` that reads the registry and checks
-`docs/wayland-protocols.md`. This lane extracts the existing modules first and moves theirs when they are pushed, so
-neither lane edits a file the other is rewriting. Until step 7, `protocols/mod.rs` shrinks by deletions from this lane
-and grows by `pub mod` lines from that one.
+ProtoMissing added four protocols while this lane worked, and they landed as crates in the new layout.
+
+- The virtual pointer, the KDE server decoration, the KDE appmenu and ext-workspace are crates with their glue in `glue/`.
+- `ext_transient_seat_v1` was not added.
+- `tests/protocol_list.rs` reads the registry and checks `docs/wayland-protocols.md`.

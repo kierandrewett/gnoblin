@@ -6,7 +6,7 @@
 //! from them. The nested translation and the libinput mapper are proven on their own sides of the contract, and
 //! `backend_conformance.rs` runs the same stroke through each.
 //!
-//! The tests are the failure-mode list of `src/protocols/zwp_tablet_v2.rs`, in its order.
+//! The tests are the failure-mode list of `crates/protocols/zwp-tablet-v2/src/lib.rs`, in its order.
 
 use gnoblin_wayland_testkit::session;
 

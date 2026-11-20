@@ -16,3 +16,12 @@ gnoblin-wayland-api = { path = "../api" }
 gnoblin-wayland-types = { path = "../types" }
 smithay = { workspace = true }
 gnoblin-types = { workspace = true }
+
+[dev-dependencies]
+gnoblin-backend = { path = "../../gnoblin-backend" }
+gnoblin-render = { path = "../../gnoblin-render" }
+gnoblin-types = { workspace = true }
+gnoblin-wayland = { path = "../../gnoblin-wayland" }
+gnoblin-wayland-testkit = { path = "../testkit" }
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }

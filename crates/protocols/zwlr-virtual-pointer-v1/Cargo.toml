@@ -16,3 +16,11 @@ gnoblin-wayland-api = { path = "../api" }
 smithay = { workspace = true }
 gnoblin-types = { workspace = true }
 gnoblin-log = { path = "../../gnoblin-log" }
+
+[dev-dependencies]
+gnoblin-render-frame = { path = "../../gnoblin-render-frame" }
+gnoblin-types = { workspace = true }
+gnoblin-wayland = { path = "../../gnoblin-wayland" }
+gnoblin-wayland-testkit = { path = "../testkit" }
+wayland-client = "0.31.14"
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
