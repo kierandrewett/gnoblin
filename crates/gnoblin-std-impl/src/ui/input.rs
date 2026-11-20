@@ -11,6 +11,7 @@ use gnoblin_object::{Fail, Obj, Res, Val};
 use super::entry;
 use super::tree::{core_fail, find, forget};
 use super::widget::{Cid, Ui, en};
+use crate::menus;
 
 /// An event of the `tree` class's `event` signal, as the compositor sent it.
 pub(crate) struct CanvasEvent {
@@ -144,6 +145,7 @@ impl Ui {
                 self.warn(&format!("onUiRequest threw: {fail}"));
             }
         }
+        menus::on_request(self, raw.node, &raw.request, raw.x, raw.y);
     }
 
     /// A `ui_pointer_event` record, in the coordinates of the canvas whose handler runs.
@@ -185,7 +187,8 @@ impl Ui {
             };
             // What a frame part does with the pointer by itself (a drag area drags, a button acts) comes first: a shell's hooks hear what
             // the part left.
-            let mut stopped = crate::frame::pointer(self, cid, kind, x, y, raw.button);
+            let mut stopped =
+                crate::frame::pointer(self, cid, kind, x, y, raw.button) || menus::on_pointer(self, cid, kind, raw);
             let record = self.pointer_record(kind, x, y, raw, target_obj);
             if !stopped && let Some(done) = self.hook_call(cid, |ids| ids.on_pointer, std::slice::from_ref(&record)) {
                 match done {
@@ -252,7 +255,7 @@ impl Ui {
             };
             // What the canvas does with a key by itself comes first: an entry types it. A shell's hooks hear it after, and what the
             // entry used it stops.
-            let mut stopped = entry::on_key(self, cid, raw);
+            let mut stopped = entry::on_key(self, cid, raw) || menus::on_key(self, cid, raw);
             let record = self.key_record(raw, target_obj);
             if !stopped && let Some(done) = self.hook_call(cid, |ids| ids.on_key, std::slice::from_ref(&record)) {
                 match done {

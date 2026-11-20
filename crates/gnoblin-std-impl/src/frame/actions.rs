@@ -240,7 +240,8 @@ pub(crate) fn minimise(ui: &Rc<Ui>, frame: FrameId) -> Result<(), String> {
     }
 }
 
-/// Opens the window menu where the pointer is, through the decorations' `menu` hook. Without one it does nothing.
+/// Opens the window menu where the pointer is, through the decorations' `menu` hook, else the library's own menu when its service has
+/// started.
 pub(crate) fn menu(ui: &Rc<Ui>, frame: FrameId) -> Result<(), String> {
     let Some(node) = ui.frame_node_alive(frame) else {
         return Ok(());
@@ -250,7 +251,10 @@ pub(crate) fn menu(ui: &Rc<Ui>, frame: FrameId) -> Result<(), String> {
             .call(0, &[Win::of(ui, node).record()])
             .map(drop)
             .map_err(|fail| fail.message),
-        None => Ok(()),
+        None => {
+            crate::menus::show_at_pointer(ui, node);
+            Ok(())
+        }
     }
 }
 

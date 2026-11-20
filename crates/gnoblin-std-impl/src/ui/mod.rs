@@ -32,6 +32,10 @@ pub(crate) mod tree;
 pub(crate) mod update;
 pub(crate) mod widget;
 
+pub(crate) use classes::{box_members, canvas_members};
+pub(crate) use tree::{find, ui_of};
+pub(crate) use widget::{CanvasHandle, Cid, Special, Ui, WidgetKind, en};
+
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 

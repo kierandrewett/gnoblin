@@ -51,6 +51,7 @@ mod floating_api;
 mod frame;
 mod layout;
 mod math;
+mod menus;
 mod nodes;
 mod object;
 mod objects;

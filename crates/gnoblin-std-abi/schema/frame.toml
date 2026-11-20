@@ -1337,7 +1337,7 @@ name = "now"
 type = "callback:time_source"
 since = "0.2.0"
 
-# The seat's `menu` action: open the window menu where the pointer is. Left out it does nothing.
+# The seat's `menu` action: open the window menu where the pointer is. Left out, the library's window menu opens when its service has started.
 [[object.property]]
 name = "menu"
 type = "callback:frame_action"

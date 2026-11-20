@@ -74,6 +74,9 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging", "uns
 # `tests/native_shell.rs` types a chord into a real session through `zwp_virtual_keyboard_v1`, as an on-screen keyboard does: the
 # spawned binary has no input tap to inject through.
 wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
+# `tests/modular/native_menus.rs` clicks in a real session through `zwlr_virtual_pointer_v1`: a client asks for its window menu with the serial of
+# a button press, which only a pointer gives.
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-proto = { path = "../gnoblin-proto" }
 # `tests/js_shell.rs` moves a manual clock under the shell and reads its health: the host's supervisor types.

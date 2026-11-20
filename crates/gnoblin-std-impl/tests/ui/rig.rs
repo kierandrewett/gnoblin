@@ -93,6 +93,12 @@ impl Fixed {
         format!("{font}\u{1}{size}\u{1}{text}")
     }
 
+    /// The compositor has answered nothing yet for what is made from now on: the TypeScript toolkit asked again for each text a new
+    /// widget showed, and drew its estimate until the answer came. Widgets that measured already keep what they measured.
+    pub fn unanswer(&self) {
+        self.answered.borrow_mut().clear();
+    }
+
     /// The compositor answers every measurement asked so far.
     pub fn answer(&self) {
         let asked = std::mem::take(&mut *self.asked.borrow_mut());
@@ -524,6 +530,11 @@ impl Rig {
         self.settle();
     }
 
+    /// The compositor has answered nothing for the widgets made from now on (see [`Fixed::unanswer`]).
+    pub fn unanswer_measures(&self) {
+        self.fixed.unanswer();
+    }
+
     /// The compositor answers every measurement asked.
     pub fn answer_measures(&mut self) {
         self.fixed.answer();
@@ -550,6 +561,41 @@ impl Rig {
             class: class_id,
             obj,
         }
+    }
+
+    /// An object of the interface `class` that the shell implements: the members it defines, by name, run `run` with their name. The
+    /// library calls them from its turn.
+    pub fn implement(
+        &self,
+        class: &str,
+        members: &[&str],
+        mut run: impl FnMut(&str, &[Val]) -> gnoblin_object::Res<Val> + 'static,
+    ) -> Val {
+        let class_id = self.api.class(class).expect("the interface");
+        let ids: Vec<(u32, String)> = members
+            .iter()
+            .map(|name| {
+                (
+                    self.api
+                        .member(class_id, abi::MEMBER_METHOD, name)
+                        .unwrap_or_else(|fail| panic!("{class} has no {name}: {fail}")),
+                    (*name).to_owned(),
+                )
+            })
+            .collect();
+        let defined: Vec<u32> = ids.iter().map(|(id, _)| *id).collect();
+        let obj = self
+            .api
+            .implement(class_id, &defined, move |member, args| {
+                let name = ids
+                    .iter()
+                    .find(|(id, _)| *id == member)
+                    .map(|(_, name)| name.clone())
+                    .expect("a member the shell defined");
+                run(&name, args)
+            })
+            .expect("the shell implements the interface");
+        Val::Object { class: class_id, obj }
     }
 
     /// A function of a class.
@@ -608,6 +654,57 @@ impl Rig {
     /// The node `node` is the replay's own probe of what the fixture's script held in an object of its own: it is not compared.
     pub fn probe(&mut self, node: u64) {
         self.probes.push(node);
+    }
+
+    /// The scenario started services the library does not have natively yet (the window decorations, the lock screen): the first `made`
+    /// nodes it made, the nodes made in the steps `steps`, and the properties of the compositor's own nodes it set (`shared`: node and
+    /// key) belong to the TypeScript run and to nothing the replay does. The fixture is read without them: their writes are dropped, and
+    /// the nodes after them are numbered from the first, as the replay numbers its own.
+    pub fn foreign(&mut self, made: usize, steps: &[&str], shared: &[(u64, &str)]) {
+        let number = |name: &Value| {
+            name.as_str()
+                .and_then(|name| name.strip_prefix('n'))
+                .and_then(|digits| digits.parse::<usize>().ok())
+        };
+        // Which of the fixture's nodes are foreign: the first `made`, and every one a listed step made.
+        let mut foreign: Vec<usize> = (1..=made).collect();
+        let mut seen = made;
+        for step in &self.expected {
+            let listed = steps.iter().any(|label| step["step"] == json!(label));
+            for batch in step["writes"].as_array().into_iter().flatten() {
+                for op in batch.as_array().into_iter().flatten() {
+                    if op["op"] == "new"
+                        && let Some(at) = number(&op["node"])
+                    {
+                        seen = seen.max(at);
+                        if listed && at > made {
+                            foreign.push(at);
+                        }
+                    }
+                }
+            }
+        }
+        let is_foreign = |name: &Value| number(name).is_some_and(|at| foreign.contains(&at));
+        let foreign_op = |op: &Value| {
+            is_foreign(&op["node"])
+                || is_foreign(&op["parent"])
+                || is_foreign(&op["value"]["node"])
+                || (op["op"] == "set"
+                    && shared
+                        .iter()
+                        .any(|(node, key)| op["node"] == json!(node) && op["key"] == json!(key)))
+        };
+        for step in &mut self.expected {
+            if let Some(batches) = step["writes"].as_array_mut() {
+                for batch in batches.iter_mut() {
+                    if let Some(ops) = batch.as_array_mut() {
+                        ops.retain(|op| !foreign_op(op));
+                    }
+                }
+                batches.retain(|batch| batch.as_array().is_some_and(|ops| !ops.is_empty()));
+            }
+            renumber(step, &foreign);
+        }
     }
 
     /// Records `value` under `label` in the step being made.
@@ -1156,6 +1253,22 @@ impl Fold {
             out.insert(key.clone(), value.clone());
         }
         out
+    }
+}
+
+/// Renames the nodes `n<K>` of a fixture's value to the number they have without the foreign ones before them.
+fn renumber(value: &mut Value, foreign: &[usize]) {
+    match value {
+        Value::String(name) => {
+            if let Some(at) = name.strip_prefix('n').and_then(|digits| digits.parse::<usize>().ok())
+                && !foreign.contains(&at)
+            {
+                *name = format!("n{}", at - foreign.iter().filter(|held| **held < at).count());
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(|item| renumber(item, foreign)),
+        Value::Object(map) => map.values_mut().for_each(|item| renumber(item, foreign)),
+        _ => {}
     }
 }
 

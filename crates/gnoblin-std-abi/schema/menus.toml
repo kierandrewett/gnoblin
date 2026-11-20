@@ -1,0 +1,653 @@
+# The `menus` module of `gnoblin.std`: the window menu.
+#
+# A card of entries opens over the windows when a client asks for its menu, or when a shell shows it. It holds the keyboard, takes
+# every press outside its cards to close itself, and answers the arrows, Home, End, Tab, Return, Escape and a letter. Its members are
+# the public members of the TypeScript library it replaces (`data/js/gnoblin-std/menus/*`), with the same meanings.
+#
+# A client is named by its node as text, as everywhere in `gnoblin.std`. An entry (`menu_entry`) is what a person sees in the menu and
+# what runs; the card builds a row (`menu_item`) for each when it opens, so an entry made but not shown has no node.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# What a key does in a menu.
+[[enum]]
+name = "menu_key_kind"
+since = "0.2.0"
+values = ["escape", "move", "home", "end", "activate", "right", "left", "jump"]
+
+# Runs an entry, after the menu closed, for the client the menu was opened on.
+[[callback]]
+name = "menu_run"
+since = "0.2.0"
+
+[[callback.param]]
+name = "client"
+type = "string"
+
+# The entries of a submenu, asked for when it opens: the entries a window's menu has depend on the window.
+[[callback]]
+name = "menu_entries"
+since = "0.2.0"
+returns = "list<object:menu_entry>"
+
+[[callback.param]]
+name = "client"
+type = "string"
+
+# The colours of the card, as the stock look draws it.
+[[object]]
+name = "menu_colours"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "card"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "hot"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "text"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "hot_text"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "off"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "line"
+type = "string"
+since = "0.2.0"
+
+# What a key does in a menu: `step` is 1 or -1 for `move`, `letter` the character of `jump`.
+[[object]]
+name = "menu_key_action"
+since = "0.2.0"
+kind = "record"
+
+[[object.property]]
+name = "kind"
+type = "enum:menu_key_kind"
+since = "0.2.0"
+
+[[object.property]]
+name = "step"
+type = "int"
+since = "0.2.0"
+optional = true
+
+[[object.property]]
+name = "letter"
+type = "string"
+since = "0.2.0"
+optional = true
+
+# The sizes and rules of the card, as functions: where a card goes, how tall it is, and what a key means to it.
+[[object]]
+name = "menu_metrics"
+since = "0.2.0"
+
+# The card's colours.
+[[object.method]]
+name = "colours"
+since = "0.2.0"
+function = true
+returns = "object:menu_colours"
+
+# The height of a card for `entries`, in logical pixels: its padding, 28 for each entry and 9 for each separator.
+[[object.method]]
+name = "menu_height"
+since = "0.2.0"
+function = true
+returns = "double"
+
+[[object.method.param]]
+name = "entries"
+type = "list<object:menu_entry>"
+
+# Places a card of `size` at `anchor`, clamping its top-left corner inside `area`.
+[[object.method]]
+name = "place_card"
+since = "0.2.0"
+function = true
+returns = "object:ui_point"
+
+[[object.method.param]]
+name = "anchor"
+type = "object:ui_point"
+
+[[object.method.param]]
+name = "size"
+type = "object:ui_size"
+
+[[object.method.param]]
+name = "area"
+type = "object:ui_size"
+
+# What the menu does with the key `key` (its name) that typed `text`, or none when the menu does not use it. A single printable character
+# that is not white space is a `jump`.
+[[object.method]]
+name = "key_action"
+since = "0.2.0"
+function = true
+returns = "object:menu_key_action"
+optional = true
+
+[[object.method.param]]
+name = "key"
+type = "string"
+
+[[object.method.param]]
+name = "text"
+type = "string"
+
+# One entry of a menu: what it says and what it does. `run` runs after the menu closes. A disabled entry is dimmed and the keyboard
+# skips it. `checked` shows a tick. `submenu` (a list, or `submenu_entries` asked for when it opens) opens a list beside the card instead
+# of running the entry. A `separator` is a gap between groups of entries and has nothing else. An entry a shell answers a provider with stays
+# until the library has read it, even when the shell lets go of it as it answers (a Rust handle does).
+[[object]]
+name = "menu_entry"
+since = "0.2.0"
+retained = true
+ctor = ["label"]
+
+# The entry's text.
+[[object.property]]
+name = "label"
+type = "string"
+since = "0.2.0"
+default = ""
+
+# Whether the entry can be selected or run.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# Whether the entry shows a tick.
+[[object.property]]
+name = "checked"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# Whether the entry is a gap between groups.
+[[object.property]]
+name = "separator"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# Runs after the menu closes, with the window the menu was opened on.
+[[object.property]]
+name = "run"
+type = "callback:menu_run"
+since = "0.2.0"
+
+# The entries opened beside this one instead of running it.
+[[object.property]]
+name = "submenu"
+type = "list<object:menu_entry>"
+since = "0.2.0"
+optional = true
+
+# The entries opened beside this one, asked for when the submenu opens.
+[[object.property]]
+name = "submenu_entries"
+type = "callback:menu_entries"
+since = "0.2.0"
+
+# One row of a card: a check column, the label, and a mark when it opens a submenu. `selected` is the row the keyboard is on. A disabled
+# row is shown dim and the selection skips it. The card makes its rows when it opens; a shell makes one only to use a `menu_navigator`.
+[[object]]
+name = "menu_item"
+since = "0.2.0"
+base = "box"
+retained = true
+ctor = ["entry"]
+
+# The entry the row was made from.
+[[object.property]]
+name = "entry"
+type = "object:menu_entry"
+since = "0.2.0"
+readonly = true
+
+# The label, or an empty string when the entry has none.
+[[object.property]]
+name = "label"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# Whether the row can be selected or run.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the row shows a tick.
+[[object.property]]
+name = "checked"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the row opens a submenu.
+[[object.property]]
+name = "submenu"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Whether the pointer or the keyboard is on the row.
+[[object.property]]
+name = "selected"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The row's text.
+[[object.property]]
+name = "label_text"
+type = "object:text"
+since = "0.2.0"
+readonly = true
+
+# The colour of the label and the marks: dim for a disabled row, dark on the selected one.
+[[object.method]]
+name = "ink"
+since = "0.2.0"
+returns = "string"
+
+# The width the row needs for its label, marks, gaps and edges.
+[[object.method]]
+name = "natural"
+since = "0.2.0"
+returns = "double"
+
+# A column of rows on a card. It takes the presses on its padding, so a press there is not a click away.
+[[object]]
+name = "menu_panel"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# The rows, in the order they are shown. Separators are not rows.
+[[object.property]]
+name = "rows"
+type = "list<object:menu_item>"
+since = "0.2.0"
+readonly = true
+
+# Keyboard selection across a menu and its open submenu. Each card keeps its selection when the submenu closes. The rows it works over
+# are a card's, or rows a shell made.
+[[object]]
+name = "menu_navigator"
+since = "0.2.0"
+ctor = ["rows"]
+
+# The rows of the main card.
+[[object.property]]
+name = "rows"
+type = "list<object:menu_item>"
+since = "0.2.0"
+readonly = true
+
+# The rows of the open submenu, or none while it is closed.
+[[object.property]]
+name = "sub_rows"
+type = "list<object:menu_item>"
+since = "0.2.0"
+readonly = true
+
+# Whether the selection is in the main card (1) or in the submenu (2).
+[[object.property]]
+name = "depth"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The selected row's place in the active card, or -1.
+[[object.property]]
+name = "index"
+type = "int"
+since = "0.2.0"
+readonly = true
+
+# The row the keyboard is on, or none.
+[[object.property]]
+name = "selected"
+type = "object:menu_item"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# The rows of the active card.
+[[object.method]]
+name = "active"
+since = "0.2.0"
+returns = "list<object:menu_item>"
+
+# Whether `row` is selected, in either card.
+[[object.method]]
+name = "is_selected"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "row"
+type = "object:menu_item"
+
+# Selects `row`; selecting a row outside the submenu closes it.
+[[object.method]]
+name = "select"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "row"
+type = "object:menu_item"
+
+# Moves the selection by `step` (1 or -1) over the rows that can be run, wrapping at the ends. With nothing selected a step forward
+# lands on the first row and a step back on the last.
+[[object.method]]
+name = "move"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "step"
+type = "int"
+
+# Selects the first row that can be run.
+[[object.method]]
+name = "home"
+since = "0.2.0"
+
+# Selects the last row that can be run.
+[[object.method]]
+name = "end"
+since = "0.2.0"
+
+# Selects the next row that can be run whose label starts with `letter`, ignoring case.
+[[object.method]]
+name = "jump"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "letter"
+type = "string"
+
+# Opens a submenu and selects its first row that can be run.
+[[object.method]]
+name = "open_submenu"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "rows"
+type = "list<object:menu_item>"
+
+# Closes the submenu and gives the main card back its selection.
+[[object.method]]
+name = "close_submenu"
+since = "0.2.0"
+
+# The menu layer: it takes every press outside its cards and holds the keyboard focus. Closing it closes its cards. The library makes
+# it when a menu opens (`window_menus.open`).
+[[object]]
+name = "window_menu"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# The window whose menu is open.
+[[object.property]]
+name = "client"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The node that held the keyboard before the menu took it, and gets it back when the menu closes; zero for none.
+[[object.property]]
+name = "before"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# The keyboard selection across the main card and the submenu.
+[[object.property]]
+name = "nav"
+type = "object:menu_navigator"
+since = "0.2.0"
+readonly = true
+
+# The main card, with the entries of the menu.
+[[object.property]]
+name = "panel"
+type = "object:menu_panel"
+since = "0.2.0"
+readonly = true
+
+# The open submenu's card, or none while there is none.
+[[object.property]]
+name = "sub"
+type = "object:menu_panel"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# Runs `row`: opens its submenu, or closes the menu and then runs its entry.
+[[object.method]]
+name = "activate"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "row"
+type = "object:menu_item"
+
+# Opens `row`'s submenu to the right of the card, or to the left when there is no room.
+[[object.method]]
+name = "open_submenu"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "row"
+type = "object:menu_item"
+
+# Closes the submenu and gives the selection back to the main card.
+[[object.method]]
+name = "close_submenu"
+since = "0.2.0"
+
+# The menu closed: told once, from the next turn.
+[[object.signal]]
+name = "closed"
+since = "0.2.0"
+
+# What a shell implements to change what the window menu shows. A method it leaves out is the library's.
+[[object]]
+name = "menu_provider"
+since = "0.2.0"
+kind = "interface"
+
+# The entries of `client`'s menu, in place of the stock ones (`window_menus.default_items`).
+[[object.method]]
+name = "items"
+since = "0.2.0"
+returns = "list<object:menu_entry>"
+default = "native"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Opens the menu of `client` at (`x`, `y`), in place of the library's card. A menu request from a client, and a titlebar's right click,
+# come here.
+[[object.method]]
+name = "show"
+since = "0.2.0"
+default = "native"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+[[object.method.param]]
+name = "x"
+type = "double"
+
+[[object.method.param]]
+name = "y"
+type = "double"
+
+# The window menu: it answers the compositor's `menu` requests, opens one menu at a time, and gives the keyboard back when it closes.
+# It also keeps the windows a person pinned with "Always on top" above the others.
+[[object]]
+name = "window_menus"
+since = "0.2.0"
+kind = "service"
+
+# Whether the service has started answering requests.
+[[object.property]]
+name = "started"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The open menu, or none.
+[[object.property]]
+name = "current"
+type = "object:window_menu"
+since = "0.2.0"
+readonly = true
+optional = true
+
+# What the shell changes of the menu (`menu_provider`).
+[[object.property]]
+name = "provider"
+type = "object:menu_provider"
+since = "0.2.0"
+optional = true
+
+# Starts the keyboard move mode of a window, for the "Move" entry. Left out, the entry is shown disabled: the mode belongs to the policy,
+# which a shell without one lacks.
+[[object.property]]
+name = "move_with_keys"
+type = "callback:menu_run"
+since = "0.2.0"
+
+# Starts the keyboard resize mode of a window, for the "Resize" entry. Left out, the entry is shown disabled.
+[[object.property]]
+name = "resize_with_keys"
+type = "callback:menu_run"
+since = "0.2.0"
+
+# Starts answering menu requests. Calling it again does nothing. A config that does not call it has no window menu.
+[[object.method]]
+name = "start"
+since = "0.2.0"
+
+# The stock entries of `client`'s menu: Maximise or Restore, Minimise, Move, Resize, Always on top, Move to workspace and Close. A
+# provider's `items` may add to them.
+[[object.method]]
+name = "default_items"
+since = "0.2.0"
+returns = "list<object:menu_entry>"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# The entries of `client`'s menu: the provider's, or the stock ones.
+[[object.method]]
+name = "items"
+since = "0.2.0"
+returns = "list<object:menu_entry>"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Opens `client`'s menu at (`x`, `y`), or at the pointer when they are left out. The provider's `show` is asked first.
+[[object.method]]
+name = "show"
+since = "0.2.0"
+returns = "object:window_menu"
+optional = true
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+[[object.method.param]]
+name = "x"
+type = "double"
+optional = true
+
+[[object.method.param]]
+name = "y"
+type = "double"
+optional = true
+
+# Closes any open menu, then opens the stock menu, unless the window or the session cannot show it or it has no entries: the window is
+# gone or minimised, the session is locked, there is no screen, or the window is on a workspace that is not showing.
+[[object.method]]
+name = "open"
+since = "0.2.0"
+returns = "object:window_menu"
+optional = true
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+[[object.method.param]]
+name = "x"
+type = "double"
+
+[[object.method.param]]
+name = "y"
+type = "double"
+
+# Closes the open menu and gives the keyboard back. Answers whether a menu was open.
+[[object.method]]
+name = "close"
+since = "0.2.0"
+returns = "bool"
+
+# Whether `client` is pinned above the windows that are not.
+[[object.method]]
+name = "is_above"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Pins `client` above the windows that are not, or lets it go. A pinned window is raised when another would cover it; a fullscreen window
+# keeps the top.
+[[object.method]]
+name = "set_above"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+[[object.method.param]]
+name = "on"
+type = "bool"

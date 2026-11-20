@@ -15,6 +15,7 @@ use gnoblin_paint::PaintOp;
 use super::tree::find;
 use super::widget::{Cid, Special, Ui, WidgetIds, WidgetKind};
 use super::{bar, clock, entry, paint, toast};
+use crate::menus;
 
 /// How often a canvas that animates (a toast's fade) asks for a turn, in milliseconds.
 const FRAME_MS: u64 = 16;
@@ -44,6 +45,7 @@ pub(crate) fn epoch_ms() -> f64 {
 impl Ui {
     /// One frame of the toolkit: the frame hooks run, then each root canvas updates its whole tree, and the next wake is planned.
     pub(crate) fn frame(self: &Rc<Self>) {
+        menus::watch(self);
         let hooks: Vec<_> = self
             .frame_hooks
             .borrow()
@@ -131,6 +133,9 @@ impl Ui {
             Some(WidgetKind::Clock) => clock::refresh(self, cid)?,
             Some(WidgetKind::Bar) => bar::refresh(self, cid)?,
             Some(WidgetKind::Toast) => toast::refresh(self, cid)?,
+            Some(kind @ (WidgetKind::MenuItem | WidgetKind::MenuPanel | WidgetKind::Menu)) => {
+                menus::refresh(self, cid, kind)
+            }
             _ => {}
         }
         crate::frame::refresh(self, cid)?;
@@ -230,7 +235,14 @@ impl Ui {
         };
         match kind {
             WidgetKind::Canvas => Ok(Vec::new()),
-            WidgetKind::Box | WidgetKind::Grid | WidgetKind::Bar | WidgetKind::Toast => self.box_ops(cid),
+            WidgetKind::Box
+            | WidgetKind::Grid
+            | WidgetKind::Bar
+            | WidgetKind::Toast
+            | WidgetKind::MenuItem
+            | WidgetKind::MenuPanel
+            | WidgetKind::Menu => self.box_ops(cid),
+            WidgetKind::MenuMark | WidgetKind::MenuSeparator => menus::ops(self, cid, kind),
             WidgetKind::Text | WidgetKind::Clock => self.text_ops(cid),
             WidgetKind::Icon => {
                 let (size, color, name) = self
@@ -394,6 +406,9 @@ impl Ui {
         }
         if let Some(delay) = crate::frame::wake_in(self) {
             wake = Some(wake.map_or(delay, |held| held.min(delay)));
+        }
+        if menus::polls(self) {
+            wake = Some(wake.map_or(FRAME_MS, |held| held.min(FRAME_MS)));
         }
         if let Some(old) = self.timer.borrow_mut().take() {
             // A timer that already fired is not an error.

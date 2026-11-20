@@ -1805,7 +1805,7 @@ a layout before the context, a device before both and its decline falling throug
 release, a binding moved to another trigger (the new claim is made before the old one goes), a wheel refused with nothing left behind, an object the
 shell implements, a binding's scope, a context a shell made with devices moved between contexts, a device unplugged, a seat that goes and a second seat,
 the reads of the seat, and the handover. The `floating_bindings` step of `input_grammar` is the standard library's `FloatingLayout` and is not replayed
-here. `modular::native_input` runs example 28 (`examples/28-native-input`, Rust and Python) in a real session: `Super+a` runs the binding that declines
+here. `modular::native_input` runs example 29 (`examples/28-native-input`, Rust and Python) in a real session: `Super+a` runs the binding that declines
 and then the one that handles it, three bindings stand on two claims, and a reload (the library swapped under `--watch`, the file saved again) hands
 `Super+b` from generation 1 to generation 2, which runs it once while generation 1 hears nothing. A TypeScript shell reaches the same classes through
 the generated objects at NpFlip.
@@ -1898,6 +1898,70 @@ O11 (a text constant inside the crate) was not needed: nothing was found that Py
 - **Deletes now:** `menus/**`.
 - **Acceptance:** `modular::native_menus`: a client's `show_window_menu` request opens the card, arrows and a letter select,
   Return runs the entry, a press elsewhere closes it, a secure window gets a secure card. `stock_ui` menu cases pass.
+
+**What exists.** `menus.toml` declares the classes below; `menus/{metrics,navigator,entry,card,windows,classes}.rs` implement them over the toolkit
+(`ui/`), which calls back into `menus/mod.rs` for what only a menu knows: the request a client made of a window (`Ui::request`), the pointer and
+the keys a card takes (before a shell's handler hears them, as the entry does), the refresh of its rows and what its marks and separators paint.
+The card is canvases of the toolkit, made in the order the TypeScript card made its widgets, so the nodes number the same.
+
+- `menu_entry` (what a person sees and what runs): `label`, `enabled`, `checked`, `separator`, `run` (called with the window's id after the menu
+  closed), `submenu` (a list of entries) or `submenu_entries` (a function asked when the submenu opens). An entry is data: the card reads it into
+  a row when it opens, so an entry that is not shown has no node.
+- `menu_item` (a row, base `box`), `menu_panel` (a card, base `box`), `window_menu` (the layer over the screen, base `box`: it takes every press
+  outside the cards and holds the keyboard) are canvases with the members of the TypeScript `MenuItem`, `MenuPanel` and `WindowMenu`; a shell makes
+  a `menu_item` only for a `menu_navigator` of its own, and the library makes the other two. `window_menu.closed` is told once, from the next turn.
+- `menu_navigator` (keyboard selection across a card and its submenu), `menu_metrics` (`menu_height`, `place_card`, `key_action`, `colours`).
+- `window_menus` (service): `start`, `current`, `show`, `open`, `close`, `items`, `default_items`, `is_above`, `set_above`, and `provider`, a
+  `menu_provider` the shell implements for `items(client)` and `show(client, x, y)`, each of which replaces the library's own. A client is its node as
+  text, as everywhere in the library. The service answers a `menu` request after the shell's own `ui.on_request` hooks, and its frame closes the
+  menu when the window goes or the session locks (`Ui::frame`), and raises the pinned windows while one is pinned (a turn each frame, the one
+  place the toolkit polls, because the tree has no event for a restack).
+- The stock entries are native: Maximise or Restore, Minimise, Move, Resize, Always on top, Move to workspace (a submenu with a workspace on each
+  line, from the library's list, the one the window is on ticked and off) and Close. They read the library's own state (the client records, the
+  workspaces, the node's flags) and do what they say: Maximise fills the work area less the frame's inset and keeps the rectangle for Restore;
+  Minimise hands the keyboard on; Move to workspace transfers the client; Close asks the window to close. **Move and Resize** start the policy's
+  keyboard modes, which are NpStdPolicy's: the shell gives them as `move_with_keys` and `resize_with_keys`, and an entry whose function is missing
+  is shown off, as the TypeScript menu showed it for a client with no `moveWithKeys`. NpStdPolicy replaces both with its own at NpFlip.
+
+`crates/gnoblin-std-impl/tests/menus.rs` replays the 11 menu fixtures (`menus_card`, `menus_keys`, `menus_pointer`, `menus_submenu`, `menus_actions`,
+`menus_lifecycle`, `menus_secure_lock`, `menus_scripted`, `menus_throwing_entry`, `menus_at_the_pointer`, `menus_not_started`) and the seven paint
+files (`menus_card.{floating,near_corner,maximised,fullscreen}`, `menus_submenu.submenu`, `menus_actions.pinned_tick`, `menus_scripted.scripted`);
+`tests/menus_api.rs` covers what the TypeScript menu never had; example 29 and `modular::native_menus` run the menu from Rust, TypeScript and Python
+over a real session: a client's `show_window_menu` (with the serial a virtual pointer's click earned) opens the card, a virtual keyboard moves
+over the entries with the arrows and a letter, Return runs the entry after the card closed, a press elsewhere closes it, and the card of a secure
+window is secure.
+
+**Allowances of the replay** (each is in the test, with its reason): (1) The scenarios also ran `startDecorations()`, which NpStdFrame ports: the
+replay reads the fixtures without the seven canvases a window's titlebar made, the seat's `decorations_available`, and the writes to them
+(`Rig::foreign`), and numbers the nodes from the first it makes. (2) `menus_secure_lock` also holds the TypeScript lock screen (five canvases in
+`locking_closes`, the lock's `engaged`, the keyboard it took), which NpStdShellUi ports: they are left out the same way. (3) The TypeScript toolkit
+asked the compositor again for the text of each widget it made and drew an estimate until the answer: a card opened after an answer has its estimate
+in the fixture, and the native toolkit measures at once (O9). The replay makes the compositor answer nothing for what a card makes from the open
+or the key that makes it, so the two agree at every step (`Rig::unanswer_measures`). (4) The window the "Maximise" entry fills the work area with
+has the titlebar's 28 pixels of inset in the fixture (the frame makes it) and none in the replay, so `y` and `height` of that step differ by it
+(`allow_shared`), and the two positions of the window that were `0` already are not written, because the library writes what differs. The same
+inset is the `y` of the window a workspace move lays out in `menus_submenu`. (5) `uiCanvasCount()` counts the titlebars' fourteen canvases; the
+replay adds them back to the library's count. (6) The titlebar's right click and middle click are the titlebar's (NpStdFrame): the replay makes
+the call `host/services.ts` made (`window_menus.show(client)`) and none for a middle click or a seat that says `none`. (7) An entry that throws
+answers the library only that it did, so the diagnostic is the library's own words and the replay compares the tail the toolkit's replays compare.
+(8) `windowMenu.items` and `windowMenu.show` were assigned methods; they are a `menu_provider` the shell implements, so `menus_scripted` sets one
+that defines `items`, then another that defines both.
+
+**Surface notes**: a window is its node as text (`items("3")`), and an entry's `run` gets that text. `window_menus.show(client, x?, y?)` with the
+coordinates left out opens at the pointer; a provider's `show` is always given coordinates. A listener of `current` is told when a menu opens;
+`window_menu.closed` says when it closes. `menu_navigator` takes `menu_item` objects. The policy's request listeners are NpStdPolicy's, so a shell
+that answers the request itself implements `provider.show`.
+A click on a frame that asks for the menu runs the decorations' `menu` hook, and without one opens this menu at the pointer once the service has started.
+
+**Importers of the TypeScript modules** (nothing is deleted before NpFlip): `gnoblin-std/menus/{card,metrics,navigator,types,windows}.ts` are
+imported by `gnoblin-std/index.ts` (the re-exports) and `host/services.ts` (`windowMenu`, `startWindowMenu`, the titlebar's `menu` hook and the
+alert's `closeMenu`), which `host.ts` re-exports; `window_state.ts` names the `menu` request. Outside the library: the oracle's scenarios
+(`crates/gnoblin-js/tests/oracle/{menus,frame,parts}.rs`), `crates/gnoblin-js/tests/{stock_ui,reposition,spec_native_settings,starter_parity}.rs`,
+`crates/gnoblin/tests/js_shell.rs`, `shells/default/shell.ts` (`startWindowMenu()`), the config migration that emits `startWindowMenu()`
+(`crates/gnoblin-config-migrate/src/emit.rs`, `crates/gnoblinctl/tests/config_migrate.rs`), the committed old surface
+(`tests/ts-compat/old-surface/gnoblin-std/{index,host,host/services,menus/card,menus/metrics,menus/windows}.d.ts`) and the guides
+`docs/guides/{stock-window-menu,window_menu}.md`, `docs/js-ui.md` and `docs/typescript-shell.md`. `stock_ui`'s menu cases run the TypeScript menu
+and pass unchanged.
 
 #### NpStdShellUi (8 days)
 

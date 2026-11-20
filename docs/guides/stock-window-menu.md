@@ -108,6 +108,26 @@ windowMenu.show = (client, x = 0, y = 0) => {
 A menu you draw yourself should take the keyboard, close on a press elsewhere, and be `secure` when the window is, as the
 stock menu does. Without `startWindowMenu()` the compositor still sends the requests and nothing answers them.
 
+## The same menu from the generated classes
+
+A shell in Rust, TypeScript or Python reaches the window menu through the generated classes, and the library draws the card and runs the
+keyboard. Start the service with `WindowMenus.get().start()`.
+
+Change what the menu offers by giving the service a `MenuProvider`:
+
+- `items(client)` answers the entries of a window's menu in place of the stock ones. A window is its node number as text.
+- `defaultItems(client)` is the stock list, so a provider can add to it.
+- `show(client, x, y)` opens the menu in place of the library's card.
+
+Two members of the service start the keyboard modes of the stock Move and Resize entries. An entry whose function is missing is shown dim.
+
+- `moveWithKeys` starts the keyboard move mode.
+- `resizeWithKeys` starts the keyboard resize mode.
+
+`WindowMenus.current` is the open card. Listen to `currentChanged` to hear a card open, and to the card's `closed` signal to hear it close.
+
+Example 29 (`examples/29-native-menus`, with `-ts` and `-py`) starts the menu with three entries of its own and logs what the card does.
+
 ## The not-responding alert
 
 The compositor pings each client that has a window. A client that leaves a ping unanswered for longer than the

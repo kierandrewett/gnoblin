@@ -69,6 +69,16 @@ pub(crate) enum WidgetKind {
     Clock,
     Bar,
     Toast,
+    /// A check or a submenu arrow of a menu row: a box that draws lines.
+    MenuMark,
+    /// The rule between groups of menu entries.
+    MenuSeparator,
+    /// A row of a menu card.
+    MenuItem,
+    /// A column of rows of a menu.
+    MenuPanel,
+    /// The layer a menu is made on.
+    Menu,
 }
 
 impl WidgetKind {
@@ -84,6 +94,11 @@ impl WidgetKind {
             WidgetKind::Clock => "clock",
             WidgetKind::Bar => "bar",
             WidgetKind::Toast => "toast",
+            // A mark and a separator are boxes to a shell: it never makes one.
+            WidgetKind::MenuMark | WidgetKind::MenuSeparator => "box",
+            WidgetKind::MenuItem => "menu_item",
+            WidgetKind::MenuPanel => "menu_panel",
+            WidgetKind::Menu => "window_menu",
         }
     }
 
@@ -99,6 +114,11 @@ impl WidgetKind {
             WidgetKind::Clock => "Clock",
             WidgetKind::Bar => "Bar",
             WidgetKind::Toast => "Toast",
+            WidgetKind::MenuMark => "MenuMark",
+            WidgetKind::MenuSeparator => "MenuSeparator",
+            WidgetKind::MenuItem => "MenuItem",
+            WidgetKind::MenuPanel => "MenuPanel",
+            WidgetKind::Menu => "WindowMenu",
         }
     }
 
@@ -281,6 +301,10 @@ pub(crate) enum Special {
     Bar(BarPart),
     Toast(ToastPart),
     Frame(crate::frame::FramePart),
+    Mark(crate::menus::MarkPart),
+    Item(Box<crate::menus::ItemPart>),
+    Panel(Box<crate::menus::PanelPart>),
+    Menu(Box<crate::menus::MenuPart>),
 }
 
 /// The members of the `widget` interface, by id: what a shell that implements it is asked.
@@ -460,6 +484,8 @@ pub(crate) struct Ui {
     pub(crate) ids: RefCell<Option<Ids>>,
     /// The window frames, the decorations and what they keep (`crate::frame`).
     pub(crate) frames: RefCell<crate::frame::FrameWorld>,
+    /// The window menu: what it was started with, and the menu that is open.
+    pub(crate) menus: RefCell<crate::menus::State>,
 }
 
 /// The ids of the classes and members of the object library that the toolkit calls by name, resolved once.

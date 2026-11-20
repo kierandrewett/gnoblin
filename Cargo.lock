@@ -1098,6 +1098,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-misc",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]
@@ -1562,6 +1563,14 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-example-native-linked"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-std",
+]
+
+[[package]]
+name = "gnoblin-example-native-menus"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-core",

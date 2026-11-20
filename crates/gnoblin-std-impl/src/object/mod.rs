@@ -48,6 +48,7 @@ fn build() -> Library {
     entry_model::register(&mut builder);
     focus::register(&mut builder);
     crate::ui::register(&mut builder);
+    crate::menus::register(&mut builder);
     crate::scene::register(&mut builder);
     crate::style::objects::register(&mut builder);
     crate::animation::objects::register(&mut builder);

@@ -832,6 +832,17 @@ impl Mapper {
         (self.app.serial != 0).then_some(self.app.serial)
     }
 
+    /// Asks for the window menu the way a client does when its user right-clicks its own titlebar: `xdg_toplevel.show_window_menu` for
+    /// window number `window` at (`x`, `y`) in its surface, with the serial of the last button press the client was sent.
+    pub fn show_window_menu(&mut self, window: usize, x: i32, y: i32) {
+        let seat = self.seat.clone().expect("listen_pointer ran first");
+        let serial = self
+            .press_serial()
+            .expect("the client was sent a button press, so it holds a serial");
+        self.windows[window].2.show_window_menu(&seat, serial, x, y);
+        self.roundtrip();
+    }
+
     /// Asks for an activation token with `serial` (a button press the client was sent) and redeems it for window
     /// number `window`: the request a client makes to be brought forward. The compositor decides whether to allow it.
     pub fn activate(&mut self, window: usize, serial: u32) {

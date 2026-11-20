@@ -1,0 +1,221 @@
+# The public surface of the `menus` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | menu_entries | (client:string) -> list<object:menu_entry> | 0.2.0
+callback | menu_run | (client:string) | 0.2.0
+
+enum | menu_key_kind | values escape move home end activate right left jump | 0.2.0
+
+member | menu_colours.card | property string rw | 0.2.0
+member | menu_colours.hot | property string rw | 0.2.0
+member | menu_colours.hot_text | property string rw | 0.2.0
+member | menu_colours.line | property string rw | 0.2.0
+member | menu_colours.off | property string rw | 0.2.0
+member | menu_colours.text | property string rw | 0.2.0
+member | menu_entry.checked | property bool rw | 0.2.0
+member | menu_entry.enabled | property bool rw | 0.2.0
+member | menu_entry.label | property string rw | 0.2.0
+member | menu_entry.run | property callback:menu_run rw | 0.2.0
+member | menu_entry.separator | property bool rw | 0.2.0
+member | menu_entry.submenu | property list<object:menu_entry> rw,optional | 0.2.0
+member | menu_entry.submenu_entries | property callback:menu_entries rw | 0.2.0
+member | menu_item.add | method (child:object:canvas) | 0.2.0
+member | menu_item.alive | property bool ro | 0.2.0
+member | menu_item.arrange_default | method () | 0.2.0
+member | menu_item.behaviour | property object:widget rw | 0.2.0
+member | menu_item.checked | property bool ro | 0.2.0
+member | menu_item.children | property list<object:canvas> rw | 0.2.0
+member | menu_item.clear_height | method () | 0.2.0
+member | menu_item.clear_width | method () | 0.2.0
+member | menu_item.contains | method (other:object:canvas) -> bool | 0.2.0
+member | menu_item.direction | property enum:direction rw | 0.2.0
+member | menu_item.enabled | property bool ro | 0.2.0
+member | menu_item.entry | property object:menu_entry ro | 0.2.0
+member | menu_item.failures | property uint ro | 0.2.0
+member | menu_item.fill | property string rw | 0.2.0
+member | menu_item.focus | method () | 0.2.0
+member | menu_item.focus_changed | signal (focused:bool) | 0.2.0
+member | menu_item.focused | property bool ro | 0.2.0
+member | menu_item.gap | property double rw | 0.2.0
+member | menu_item.gone | signal () | 0.2.0
+member | menu_item.grow | property double rw | 0.2.0
+member | menu_item.height | property double rw | 0.2.0
+member | menu_item.ink | method () -> string | 0.2.0
+member | menu_item.input | property bool rw | 0.2.0
+member | menu_item.invalidate | method () | 0.2.0
+member | menu_item.key | signal (event:object:ui_key_event) | 0.2.0
+member | menu_item.label | property string ro | 0.2.0
+member | menu_item.label_text | property object:text ro | 0.2.0
+member | menu_item.mount | method (parent:uint) | 0.2.0
+member | menu_item.mount_top | method () | 0.2.0
+member | menu_item.natural | method () -> double | 0.2.0
+member | menu_item.natural_height | property double ro | 0.2.0
+member | menu_item.natural_width | property double ro | 0.2.0
+member | menu_item.node | property uint ro | 0.2.0
+member | menu_item.on_key | property callback:key_handler rw | 0.2.0
+member | menu_item.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | menu_item.opacity | property double rw | 0.2.0
+member | menu_item.padding | property double rw | 0.2.0
+member | menu_item.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | menu_item.parent | property object:canvas ro | 0.2.0
+member | menu_item.placement | property enum:placement rw | 0.2.0
+member | menu_item.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | menu_item.radius | property double rw | 0.2.0
+member | menu_item.remove | method (child:object:canvas) | 0.2.0
+member | menu_item.secure | property bool rw | 0.2.0
+member | menu_item.selected | property bool rw | 0.2.0
+member | menu_item.submenu | property bool ro | 0.2.0
+member | menu_item.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | menu_item.visible | property bool rw | 0.2.0
+member | menu_item.width | property double rw | 0.2.0
+member | menu_item.x | property double rw | 0.2.0
+member | menu_item.y | property double rw | 0.2.0
+member | menu_key_action.kind | property enum:menu_key_kind rw | 0.2.0
+member | menu_key_action.letter | property string rw,optional | 0.2.0
+member | menu_key_action.step | property int rw,optional | 0.2.0
+member | menu_metrics.colours | function () -> object:menu_colours | 0.2.0
+member | menu_metrics.key_action | function (key:string, text:string) -> object:menu_key_action? | 0.2.0
+member | menu_metrics.menu_height | function (entries:list<object:menu_entry>) -> double | 0.2.0
+member | menu_metrics.place_card | function (anchor:object:ui_point, size:object:ui_size, area:object:ui_size) -> object:ui_point | 0.2.0
+member | menu_navigator.active | method () -> list<object:menu_item> | 0.2.0
+member | menu_navigator.close_submenu | method () | 0.2.0
+member | menu_navigator.depth | property uint ro | 0.2.0
+member | menu_navigator.end | method () | 0.2.0
+member | menu_navigator.home | method () | 0.2.0
+member | menu_navigator.index | property int ro | 0.2.0
+member | menu_navigator.is_selected | method (row:object:menu_item) -> bool | 0.2.0
+member | menu_navigator.jump | method (letter:string) | 0.2.0
+member | menu_navigator.move | method (step:int) | 0.2.0
+member | menu_navigator.open_submenu | method (rows:list<object:menu_item>) | 0.2.0
+member | menu_navigator.rows | property list<object:menu_item> ro | 0.2.0
+member | menu_navigator.select | method (row:object:menu_item) | 0.2.0
+member | menu_navigator.selected | property object:menu_item ro,optional | 0.2.0
+member | menu_navigator.sub_rows | property list<object:menu_item> ro | 0.2.0
+member | menu_panel.add | method (child:object:canvas) | 0.2.0
+member | menu_panel.alive | property bool ro | 0.2.0
+member | menu_panel.arrange_default | method () | 0.2.0
+member | menu_panel.behaviour | property object:widget rw | 0.2.0
+member | menu_panel.children | property list<object:canvas> rw | 0.2.0
+member | menu_panel.clear_height | method () | 0.2.0
+member | menu_panel.clear_width | method () | 0.2.0
+member | menu_panel.contains | method (other:object:canvas) -> bool | 0.2.0
+member | menu_panel.direction | property enum:direction rw | 0.2.0
+member | menu_panel.failures | property uint ro | 0.2.0
+member | menu_panel.fill | property string rw | 0.2.0
+member | menu_panel.focus | method () | 0.2.0
+member | menu_panel.focus_changed | signal (focused:bool) | 0.2.0
+member | menu_panel.focused | property bool ro | 0.2.0
+member | menu_panel.gap | property double rw | 0.2.0
+member | menu_panel.gone | signal () | 0.2.0
+member | menu_panel.grow | property double rw | 0.2.0
+member | menu_panel.height | property double rw | 0.2.0
+member | menu_panel.input | property bool rw | 0.2.0
+member | menu_panel.invalidate | method () | 0.2.0
+member | menu_panel.key | signal (event:object:ui_key_event) | 0.2.0
+member | menu_panel.mount | method (parent:uint) | 0.2.0
+member | menu_panel.mount_top | method () | 0.2.0
+member | menu_panel.natural_height | property double ro | 0.2.0
+member | menu_panel.natural_width | property double ro | 0.2.0
+member | menu_panel.node | property uint ro | 0.2.0
+member | menu_panel.on_key | property callback:key_handler rw | 0.2.0
+member | menu_panel.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | menu_panel.opacity | property double rw | 0.2.0
+member | menu_panel.padding | property double rw | 0.2.0
+member | menu_panel.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | menu_panel.parent | property object:canvas ro | 0.2.0
+member | menu_panel.placement | property enum:placement rw | 0.2.0
+member | menu_panel.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | menu_panel.radius | property double rw | 0.2.0
+member | menu_panel.remove | method (child:object:canvas) | 0.2.0
+member | menu_panel.rows | property list<object:menu_item> ro | 0.2.0
+member | menu_panel.secure | property bool rw | 0.2.0
+member | menu_panel.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | menu_panel.visible | property bool rw | 0.2.0
+member | menu_panel.width | property double rw | 0.2.0
+member | menu_panel.x | property double rw | 0.2.0
+member | menu_panel.y | property double rw | 0.2.0
+member | menu_provider.items | method (client:string) -> list<object:menu_entry> native-default | 0.2.0
+member | menu_provider.show | method (client:string, x:double, y:double) native-default | 0.2.0
+member | window_menu.activate | method (row:object:menu_item) | 0.2.0
+member | window_menu.add | method (child:object:canvas) | 0.2.0
+member | window_menu.alive | property bool ro | 0.2.0
+member | window_menu.arrange_default | method () | 0.2.0
+member | window_menu.before | property uint ro | 0.2.0
+member | window_menu.behaviour | property object:widget rw | 0.2.0
+member | window_menu.children | property list<object:canvas> rw | 0.2.0
+member | window_menu.clear_height | method () | 0.2.0
+member | window_menu.clear_width | method () | 0.2.0
+member | window_menu.client | property string ro | 0.2.0
+member | window_menu.close_submenu | method () | 0.2.0
+member | window_menu.closed | signal () | 0.2.0
+member | window_menu.contains | method (other:object:canvas) -> bool | 0.2.0
+member | window_menu.direction | property enum:direction rw | 0.2.0
+member | window_menu.failures | property uint ro | 0.2.0
+member | window_menu.fill | property string rw | 0.2.0
+member | window_menu.focus | method () | 0.2.0
+member | window_menu.focus_changed | signal (focused:bool) | 0.2.0
+member | window_menu.focused | property bool ro | 0.2.0
+member | window_menu.gap | property double rw | 0.2.0
+member | window_menu.gone | signal () | 0.2.0
+member | window_menu.grow | property double rw | 0.2.0
+member | window_menu.height | property double rw | 0.2.0
+member | window_menu.input | property bool rw | 0.2.0
+member | window_menu.invalidate | method () | 0.2.0
+member | window_menu.key | signal (event:object:ui_key_event) | 0.2.0
+member | window_menu.mount | method (parent:uint) | 0.2.0
+member | window_menu.mount_top | method () | 0.2.0
+member | window_menu.natural_height | property double ro | 0.2.0
+member | window_menu.natural_width | property double ro | 0.2.0
+member | window_menu.nav | property object:menu_navigator ro | 0.2.0
+member | window_menu.node | property uint ro | 0.2.0
+member | window_menu.on_key | property callback:key_handler rw | 0.2.0
+member | window_menu.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | window_menu.opacity | property double rw | 0.2.0
+member | window_menu.open_submenu | method (row:object:menu_item) | 0.2.0
+member | window_menu.padding | property double rw | 0.2.0
+member | window_menu.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | window_menu.panel | property object:menu_panel ro | 0.2.0
+member | window_menu.parent | property object:canvas ro | 0.2.0
+member | window_menu.placement | property enum:placement rw | 0.2.0
+member | window_menu.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | window_menu.radius | property double rw | 0.2.0
+member | window_menu.remove | method (child:object:canvas) | 0.2.0
+member | window_menu.secure | property bool rw | 0.2.0
+member | window_menu.sub | property object:menu_panel ro,optional | 0.2.0
+member | window_menu.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | window_menu.visible | property bool rw | 0.2.0
+member | window_menu.width | property double rw | 0.2.0
+member | window_menu.x | property double rw | 0.2.0
+member | window_menu.y | property double rw | 0.2.0
+member | window_menus.close | method () -> bool | 0.2.0
+member | window_menus.current | property object:window_menu ro,optional | 0.2.0
+member | window_menus.default_items | method (client:string) -> list<object:menu_entry> | 0.2.0
+member | window_menus.is_above | method (client:string) -> bool | 0.2.0
+member | window_menus.items | method (client:string) -> list<object:menu_entry> | 0.2.0
+member | window_menus.move_with_keys | property callback:menu_run rw | 0.2.0
+member | window_menus.open | method (client:string, x:double, y:double) -> object:window_menu? | 0.2.0
+member | window_menus.provider | property object:menu_provider rw,optional | 0.2.0
+member | window_menus.resize_with_keys | property callback:menu_run rw | 0.2.0
+member | window_menus.set_above | method (client:string, on:bool) | 0.2.0
+member | window_menus.show | method (client:string, x?:double, y?:double) -> object:window_menu? | 0.2.0
+member | window_menus.start | method () | 0.2.0
+member | window_menus.started | property bool ro | 0.2.0
+
+object | menu_colours | base none record | 0.2.0
+object | menu_entry | base none retained ctor(label) | 0.2.0
+object | menu_item | base box retained ctor(entry) | 0.2.0
+object | menu_key_action | base none record | 0.2.0
+object | menu_metrics | base none | 0.2.0
+object | menu_navigator | base none ctor(rows) | 0.2.0
+object | menu_panel | base box retained | 0.2.0
+object | menu_provider | base none interface | 0.2.0
+object | window_menu | base box retained | 0.2.0
+object | window_menus | base none service | 0.2.0

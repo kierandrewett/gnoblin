@@ -22,10 +22,13 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
-use wayland_client::protocol::{wl_registry, wl_seat};
+use wayland_client::protocol::{wl_pointer, wl_registry, wl_seat};
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols_misc::zwp_virtual_keyboard_v1::client::{
     zwp_virtual_keyboard_manager_v1::ZwpVirtualKeyboardManagerV1, zwp_virtual_keyboard_v1::ZwpVirtualKeyboardV1,
+};
+use wayland_protocols_wlr::virtual_pointer::v1::client::{
+    zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1, zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1,
 };
 
 /// The binary under test, built by cargo for this test.
@@ -218,6 +221,8 @@ pub struct StdShells {
     /// Example 26: a workspace with the library's layout, then one of the shell's own, then the library's again with its divider moved.
     pub objects: PathBuf,
     pub frame: PathBuf,
+    /// Example 29: the window menu, started with entries of the shell's own that log what they run.
+    pub menus: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -258,6 +263,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-objects",
             "-p",
             "gnoblin-example-native-frame",
+            "-p",
+            "gnoblin-example-native-menus",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -280,6 +287,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         style: debug.join("libnative_style.so"),
         objects: debug.join("libnative_objects.so"),
         frame: debug.join("libnative_frame.so"),
+        menus: debug.join("libnative_menus.so"),
     })
 }
 
@@ -868,6 +876,11 @@ impl Gnoblin {
         self.home().root().join(gnoblin_wayland::DEFAULT_SOCKET_NAME)
     }
 
+    /// The privileged Wayland socket, where the globals an application must not have (the virtual pointer) are offered.
+    pub fn wayland_privileged(&self) -> PathBuf {
+        self.home().root().join(gnoblin_wayland::DEFAULT_PRIVILEGED_SOCKET_NAME)
+    }
+
     /// The directory the test and the fixture shell command each other through.
     pub fn fixture(&self) -> &Path {
         &self.fixture
@@ -1137,6 +1150,12 @@ pub const KEY_E: u32 = 18;
 pub const KEY_TAB: u32 = 15;
 pub const KEY_A: u32 = 30;
 pub const KEY_B: u32 = 48;
+pub const KEY_G: u32 = 34;
+pub const KEY_UP: u32 = 103;
+pub const KEY_ESC: u32 = 1;
+
+/// The kernel's code of the left mouse button.
+pub const BTN_LEFT: u32 = 0x110;
 
 /// The `Mod4` bit of an xkb modifier mask, which `pc+us` gives the Super keys.
 const MOD_SUPER: u32 = 1 << 6;
@@ -1158,6 +1177,8 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Typing {
 wayland_client::delegate_noop!(Typing: ignore wl_seat::WlSeat);
 wayland_client::delegate_noop!(Typing: ignore ZwpVirtualKeyboardManagerV1);
 wayland_client::delegate_noop!(Typing: ignore ZwpVirtualKeyboardV1);
+wayland_client::delegate_noop!(Typing: ignore ZwlrVirtualPointerManagerV1);
+wayland_client::delegate_noop!(Typing: ignore ZwlrVirtualPointerV1);
 
 /// A virtual keyboard on the session's own socket: the way an on-screen keyboard types, and the one door into a session
 /// that runs as a process, which has no input tap.
@@ -1212,5 +1233,57 @@ impl Typist {
         self.keyboard.modifiers(0, 0, 0, 0);
         self.key(KEY_LEFTMETA, false);
         self.queue.roundtrip(&mut Typing).expect("the keys are delivered");
+    }
+}
+
+/// A virtual pointer on the session's own socket, as a remote-control client moves and clicks the session's pointer: the one door into a
+/// session that runs as a process for a press, which is what earns a client the serial it asks for its window menu with.
+pub struct Pointer {
+    _connection: Connection,
+    queue: EventQueue<Typing>,
+    pointer: ZwlrVirtualPointerV1,
+    extent: (u32, u32),
+    clock: u32,
+}
+
+impl Pointer {
+    /// A pointer over an output of `extent` logical pixels.
+    pub fn connect(socket: &Path, extent: (u32, u32)) -> Self {
+        let stream = UnixStream::connect(socket).expect("the session is listening");
+        let connection = Connection::from_socket(stream).expect("a client connection");
+        let (globals, mut queue) = registry_queue_init::<Typing>(&connection).expect("the global list");
+        let qh = queue.handle();
+        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_seat");
+        let manager: ZwlrVirtualPointerManagerV1 = globals
+            .bind(&qh, 1..=2, ())
+            .expect("the session advertises zwlr_virtual_pointer_manager_v1");
+        let pointer = manager.create_virtual_pointer(Some(&seat), &qh, ());
+        queue.roundtrip(&mut Typing).expect("the pointer is made");
+        Self {
+            _connection: connection,
+            queue,
+            pointer,
+            extent,
+            clock: 1000,
+        }
+    }
+
+    /// Moves the pointer to (`x`, `y`) in the output's logical pixels.
+    pub fn move_to(&mut self, x: u32, y: u32) {
+        self.clock += 10;
+        self.pointer
+            .motion_absolute(self.clock, x, y, self.extent.0, self.extent.1);
+        self.pointer.frame();
+        self.queue.roundtrip(&mut Typing).expect("the motion is delivered");
+    }
+
+    /// Presses `button` and lets it go.
+    pub fn click(&mut self, button: u32) {
+        for state in [wl_pointer::ButtonState::Pressed, wl_pointer::ButtonState::Released] {
+            self.clock += 10;
+            self.pointer.button(self.clock, button, state);
+            self.pointer.frame();
+        }
+        self.queue.roundtrip(&mut Typing).expect("the click is delivered");
     }
 }

@@ -58,6 +58,7 @@ pub(crate) fn ui_for(ctx: GnoblinCtx) -> Res<Rc<Ui>> {
         next_hook: Cell::new(0),
         ids: RefCell::new(None),
         frames: RefCell::new(crate::frame::FrameWorld::default()),
+        menus: RefCell::new(crate::menus::State::default()),
     });
     UIS.with(|uis| uis.borrow_mut().insert(ctx, Rc::clone(&ui)));
     if let Err(fail) = super::input::subscribe(&ui) {
@@ -358,6 +359,13 @@ impl Ui {
     pub(crate) fn announce(&self, obj: Obj, work: impl FnOnce(&mut Cx<'_>)) {
         let ctx = self.ctx;
         let _ = with_lib(|lib| lib.with_cx(ctx, obj, work));
+    }
+
+    /// Runs `work` as a call about `obj`, from outside a call: for what the library does when the compositor or a frame asks and it has
+    /// objects to make. `None` when the generation holds no such object any more.
+    pub(crate) fn with_cx<R>(&self, obj: Obj, work: impl FnOnce(&mut Cx<'_>) -> R) -> Option<R> {
+        let ctx = self.ctx;
+        with_lib(|lib| lib.with_cx(ctx, obj, work)).ok()
     }
 
     /// Hands the object `obj` to the shell as a value: one more reference, which the shell releases.
