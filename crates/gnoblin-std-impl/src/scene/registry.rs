@@ -18,11 +18,11 @@ use gnoblin_core_abi::GnoblinCtx;
 use gnoblin_object::server::Cx;
 use gnoblin_object::{Fail, Obj, Res, Val};
 
-use super::bindings::BindingEngine;
+use super::bindings::SceneBindings;
 use super::mirror::Mirror;
 use super::{Kind, SceneState};
 use crate::animation::staging::Prop;
-use crate::math::transform::Placement;
+use crate::math::transform::PoseMatrix;
 use crate::math::vector::Point3;
 use crate::object::with_lib;
 use crate::ui::CanvasEvent;
@@ -85,7 +85,7 @@ pub(crate) struct SceneWorld {
     /// The generation is ending: the objects that go no longer take their nodes with them.
     pub(crate) ending: Cell<bool>,
     pub(crate) mirrors: RefCell<HashMap<u64, Mirror>>,
-    pub(crate) engine: RefCell<BindingEngine>,
+    pub(crate) engine: RefCell<SceneBindings>,
     /// A turn of the scene is posted and has not run.
     pub(crate) pending: Cell<bool>,
 }
@@ -118,7 +118,7 @@ pub(crate) fn world_for(ctx: GnoblinCtx) -> Res<Rc<SceneWorld>> {
         metres: Cell::new(1.0),
         ending: Cell::new(false),
         mirrors: RefCell::new(HashMap::new()),
-        engine: RefCell::new(BindingEngine::default()),
+        engine: RefCell::new(SceneBindings::default()),
         pending: Cell::new(false),
     });
     WORLDS.with(|worlds| worlds.borrow_mut().insert(ctx, Rc::clone(&world)));
@@ -305,7 +305,7 @@ impl SceneWorld {
     }
 
     /// The placement of a node: its position, rotation and first scale.
-    pub(crate) fn pose_at(&self, node: u64) -> Res<Placement> {
+    pub(crate) fn pose_at(&self, node: u64) -> Res<PoseMatrix> {
         let state = self.state.borrow();
         let read = |key: &str| state.get(&self.g, node, key).map_err(Fail::from);
         let number = |key: &str| -> Res<f64> {
@@ -321,7 +321,7 @@ impl SceneWorld {
             })
         };
         let position = Point3::new(number("x")?, number("y")?, number("z")?);
-        Ok(Placement::new(
+        Ok(PoseMatrix::new(
             position,
             triple("rotation", [0.0; 3])?,
             triple("scale", [1.0; 3])?[0],

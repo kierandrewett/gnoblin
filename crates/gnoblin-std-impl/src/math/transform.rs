@@ -50,24 +50,24 @@ pub(crate) fn euler_of(m: &Mat3) -> [f64; 3] {
 
 /// A position, a rotation and a uniform scale that can transform points and directions.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Placement {
+pub(crate) struct PoseMatrix {
     pub(crate) position: Point3,
     pub(crate) scale: f64,
     matrix: Mat3,
 }
 
-impl Placement {
+impl PoseMatrix {
     /// A pose from a position, Euler angles and a uniform scale.
-    pub(crate) fn new(position: Point3, rotation: [f64; 3], scale: f64) -> Placement {
-        Placement {
+    pub(crate) fn new(position: Point3, rotation: [f64; 3], scale: f64) -> PoseMatrix {
+        PoseMatrix {
             position,
             scale,
             matrix: matrix_of(rotation),
         }
     }
 
-    pub(crate) fn identity() -> Placement {
-        Placement::new(Point3::default(), [0.0; 3], 1.0)
+    pub(crate) fn identity() -> PoseMatrix {
+        PoseMatrix::new(Point3::default(), [0.0; 3], 1.0)
     }
 
     /// The rotation as Euler angles.
@@ -76,19 +76,19 @@ impl Placement {
     }
 
     /// The pose that places `other` inside this one.
-    pub(crate) fn multiply(&self, other: &Placement) -> Placement {
-        Placement {
+    pub(crate) fn multiply(&self, other: &PoseMatrix) -> PoseMatrix {
+        PoseMatrix {
             position: self.transform_point(other.position),
             scale: self.scale * other.scale,
             matrix: product(&self.matrix, &other.matrix),
         }
     }
 
-    pub(crate) fn inverse(&self) -> Placement {
+    pub(crate) fn inverse(&self) -> PoseMatrix {
         let m = &self.matrix;
         let transposed = [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]];
         let scale = 1.0 / self.scale;
-        let mut back = Placement {
+        let mut back = PoseMatrix {
             position: Point3::default(),
             scale,
             matrix: transposed,
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn a_pose_composed_with_its_inverse_is_the_identity() {
-        let pose = Placement::new(Point3::new(1.0, 2.0, 3.0), [0.3, -0.4, 0.5], 2.0);
+        let pose = PoseMatrix::new(Point3::new(1.0, 2.0, 3.0), [0.3, -0.4, 0.5], 2.0);
         let round = pose.multiply(&pose.inverse());
         assert!(near(round.position, Point3::default()));
         assert!((round.scale - 1.0).abs() < 1e-12);

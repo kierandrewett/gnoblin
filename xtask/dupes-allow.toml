@@ -3243,3 +3243,9 @@ left = "gnoblin-std-impl::CanvasEvent"
 right = "gnoblin-tree-client::EventFields"
 kind = "near-shape"
 reason = "the toolkit's event is the `tree.event` signal as the core hands it to a shell (a node, a kind, strings); the tree client's is the wire's fields of the same message for the engine's mirror, and std never names the client crate"
+
+[[allow]]
+left = "gnoblin-std-impl::Point3"
+right = "gnoblin-types::Vec3"
+kind = "same-shape"
+reason = "the scene's arithmetic works on three numbers inside the library on the far side of the C ABI, where the shared geometry crate's vector is not a dependency of std and its operations are not the scene's (lengths, cross products, planes)"

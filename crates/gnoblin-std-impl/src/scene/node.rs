@@ -9,7 +9,7 @@ use super::registry::{NodeHandle, SceneWorld, world_of};
 use super::{Kind, camera};
 use crate::animation::staging::Prop;
 use crate::math::spatial::{self, Given, ParsedTransform};
-use crate::math::transform::Placement;
+use crate::math::transform::PoseMatrix;
 use crate::math::vector::Point3;
 use crate::math::{given_of, pose_val, triple_val, vec3_of};
 
@@ -96,7 +96,7 @@ impl NodeHandle {
     }
 
     /// The node's own placement.
-    fn pose(&self) -> Res<Placement> {
+    fn pose(&self) -> Res<PoseMatrix> {
         self.world.pose_at(self.node)
     }
 
@@ -115,7 +115,7 @@ impl NodeHandle {
     }
 
     /// The placement in the space of the topmost scene ancestor.
-    fn world_pose(&self) -> Res<Placement> {
+    fn world_pose(&self) -> Res<PoseMatrix> {
         let mut pose = self.pose()?;
         let mut at = self.node;
         while let Some((parent, _)) = self.world.parent_of(at) {

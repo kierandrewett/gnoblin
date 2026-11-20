@@ -7,7 +7,7 @@ use gnoblin_object::server::Builder;
 use gnoblin_object::{Fail, Res, Val};
 
 use super::spatial::{self, Given};
-use super::transform::Placement;
+use super::transform::PoseMatrix;
 use super::vector::{Flat, Point3, RayLine};
 
 /// A record with the fields given.
@@ -67,7 +67,7 @@ fn quaternion_of(value: &Val) -> Res<[f64; 4]> {
 }
 
 /// A `pose` as a value.
-pub(crate) fn pose_val(pose: &Placement) -> Val {
+pub(crate) fn pose_val(pose: &PoseMatrix) -> Val {
     record(vec![
         vec3_val(pose.position),
         triple_val(pose.rotation()),
@@ -76,11 +76,11 @@ pub(crate) fn pose_val(pose: &Placement) -> Val {
 }
 
 /// The pose a value holds.
-pub(crate) fn pose_of(value: &Val) -> Res<Placement> {
+pub(crate) fn pose_of(value: &Val) -> Res<PoseMatrix> {
     let fields = value.record()?;
     let position = optional_vec3(fields.first())?.unwrap_or_default();
     let rotation = optional_vec3(fields.get(1))?.unwrap_or_default();
-    Ok(Placement::new(position, rotation.array(), field(fields, 2, 1.0)?))
+    Ok(PoseMatrix::new(position, rotation.array(), field(fields, 2, 1.0)?))
 }
 
 fn line_of(value: &Val) -> Res<RayLine> {
@@ -176,10 +176,10 @@ pub(crate) fn register(builder: &mut Builder) {
                 None => record(vec![Val::Bool(false), Val::Double(0.0), Val::None]),
             })
         })
-        .function("pose_identity", |_cx, _args| Ok(pose_val(&Placement::identity())))
+        .function("pose_identity", |_cx, _args| Ok(pose_val(&PoseMatrix::identity())))
         .function("pose_translation", |_cx, args| {
             let position = Point3::new(args[0].double()?, args[1].double()?, args[2].double()?);
-            Ok(pose_val(&Placement::new(position, [0.0; 3], 1.0)))
+            Ok(pose_val(&PoseMatrix::new(position, [0.0; 3], 1.0)))
         })
         .function("pose_multiply", |_cx, args| {
             Ok(pose_val(&pose_of(&args[0])?.multiply(&pose_of(&args[1])?)))

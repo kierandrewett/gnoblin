@@ -60,12 +60,12 @@ struct NodeBindingState {
 
 /// The bindings of a generation.
 #[derive(Default)]
-pub(crate) struct BindingEngine {
+pub(crate) struct SceneBindings {
     list: Vec<NodeBindingState>,
     next: u64,
 }
 
-impl BindingEngine {
+impl SceneBindings {
     /// Whether any binding is live.
     pub(crate) fn active(&self) -> bool {
         self.list.iter().any(|binding| !binding.disposed)
