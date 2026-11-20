@@ -269,6 +269,14 @@ needs = ["foreign-toplevel-shared"]
 deps = ["smithay", "gnoblin-types", "gnoblin-log"]
 
 [[crate]]
+name = "zwp-tablet-v2"
+description = "The zwp_tablet_manager_v2 Wayland protocol of gnoblin-wayland: drawing tablets, their tools and pads."
+kind = "protocol"
+interfaces = [["zwp_tablet_manager_v2", 1]]
+needs = ["types"]
+deps = ["smithay", "gnoblin-types", "gnoblin-log"]
+
+[[crate]]
 name = "wl-compositor"
 description = "The wl_compositor and wl_subcompositor Wayland protocols of gnoblin-wayland: surfaces, subsurfaces and the client state every connection carries."
 kind = "protocol"

@@ -2493,6 +2493,7 @@ dependencies = [
  "gnoblin-wayland-zwp-pointer-gestures-v1",
  "gnoblin-wayland-zwp-primary-selection-v1",
  "gnoblin-wayland-zwp-relative-pointer-v1",
+ "gnoblin-wayland-zwp-tablet-v2",
  "gnoblin-wayland-zwp-text-input-v3",
  "gnoblin-wayland-zwp-virtual-keyboard-v1",
  "gnoblin-wayland-zxdg-decoration-v1",
@@ -2814,6 +2815,17 @@ name = "gnoblin-wayland-zwp-relative-pointer-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwp-tablet-v2"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "gnoblin-wayland-types",
  "smithay",
 ]
 

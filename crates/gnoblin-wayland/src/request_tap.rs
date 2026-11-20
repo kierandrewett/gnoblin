@@ -32,7 +32,7 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::{se
 use smithay::reexports::wayland_server::{DataInit, DisplayHandle, Resource};
 
 use crate::State;
-use crate::protocols::zwp_tablet_v2 as tablet;
+use gnoblin_wayland_protocols::zwp_tablet_v2 as tablet;
 use gnoblin_wayland_protocols::zwp_text_input_v3 as text_input;
 
 /// Moves a value between two names for one type. The tap picks the request type from the resource's, so the two are

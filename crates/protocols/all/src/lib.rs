@@ -48,6 +48,7 @@ pub use gnoblin_wayland_zwp_pointer_constraints_v1 as zwp_pointer_constraints_v1
 pub use gnoblin_wayland_zwp_pointer_gestures_v1 as zwp_pointer_gestures_v1;
 pub use gnoblin_wayland_zwp_primary_selection_v1 as zwp_primary_selection_v1;
 pub use gnoblin_wayland_zwp_relative_pointer_v1 as zwp_relative_pointer_v1;
+pub use gnoblin_wayland_zwp_tablet_v2 as zwp_tablet_v2;
 pub use gnoblin_wayland_zwp_text_input_v3 as zwp_text_input_v3;
 pub use gnoblin_wayland_zwp_virtual_keyboard_v1 as zwp_virtual_keyboard_v1;
 pub use gnoblin_wayland_zxdg_decoration_v1 as zxdg_decoration_v1;
@@ -89,6 +90,7 @@ pub const ALL: &[&ProtocolInfo] = &[
     &zwp_text_input_v3::PROTOCOL,
     &ext_foreign_toplevel_list_v1::PROTOCOL,
     &zwlr_foreign_toplevel_management_v1::PROTOCOL,
+    &zwp_tablet_v2::PROTOCOL,
     &wl_compositor::PROTOCOL,
     &wl_seat::PROTOCOL,
     &xdg_shell::PROTOCOL,

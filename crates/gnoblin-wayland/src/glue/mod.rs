@@ -45,6 +45,7 @@ mod zwp_input_method_v2;
 mod zwp_keyboard_shortcuts_inhibit_v1;
 mod zwp_pointer_constraints_v1;
 mod zwp_primary_selection_v1;
+mod zwp_tablet_v2;
 mod zwp_text_input_v3;
 mod zwp_virtual_keyboard_v1;
 mod zxdg_decoration_v1;

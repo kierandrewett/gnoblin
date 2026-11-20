@@ -355,7 +355,7 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) pointer_gestures_state: PointerGesturesState,
     /// The tablets, their tools and pads, and the `zwp_tablet_manager_v2` global.
-    pub(crate) tablets: crate::protocols::zwp_tablet_v2::TabletTables,
+    pub(crate) tablets: gnoblin_wayland_protocols::zwp_tablet_v2::TabletTables<State>,
     /// The `wp_fractional_scale_manager_v1` global, kept so a session can stop offering it ([`State::withdraw_fractional_scale`]).
     fractional_scale_global: GlobalId,
     /// Kept alive so `zwp_idle_inhibit_manager_v1` stays registered; the handler in `src/glue/idle_inhibit.rs`
@@ -769,7 +769,7 @@ impl State {
         let pointer_constraints_state =
             gnoblin_wayland_protocols::zwp_pointer_constraints_v1::register::<Self>(&registrar);
         let pointer_gestures_state = gnoblin_wayland_protocols::zwp_pointer_gestures_v1::register::<Self>(&registrar);
-        let tablets = crate::protocols::zwp_tablet_v2::global(&display_handle);
+        let tablets = gnoblin_wayland_protocols::zwp_tablet_v2::register::<Self>(&registrar);
         let idle_inhibit_state = gnoblin_wayland_protocols::zwp_idle_inhibit_v1::register::<Self>(&registrar);
         let shortcuts_inhibit_state =
             gnoblin_wayland_protocols::zwp_keyboard_shortcuts_inhibit_v1::register::<Self>(&registrar);
@@ -4422,7 +4422,7 @@ impl Host for State {
             InputEvent::DeviceRemoved { id } => self.device_removed(id),
             // A drawing tablet's tool goes to the client under it and its pad to the client with the keyboard; a tool
             // moves no pointer.
-            InputEvent::Tablet(event) => self.tablet_input(event),
+            InputEvent::Tablet(event) => gnoblin_wayland_protocols::zwp_tablet_v2::input(self, event),
         }
     }
 

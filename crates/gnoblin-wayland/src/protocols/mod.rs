@@ -29,5 +29,3 @@ pub mod wl_data_device_manager;
 pub mod zwlr_screencopy_v1;
 /// `zwp_linux_dmabuf_v1`: GPU buffers shared by clients, with feedback and an import check.
 pub mod zwp_linux_dmabuf_v1;
-/// `zwp_tablet_manager_v2`: drawing tablets, their tools and pads.
-pub mod zwp_tablet_v2;

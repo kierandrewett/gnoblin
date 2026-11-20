@@ -11,16 +11,16 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `OutputHost`), the aggregate `gnoblin-wayland-protocols` (the `ALL` table), `xtask/protocols.toml`,
   `cargo xtask protocol-crates [--check]`, and the deps rules `protocol-layering` and `protocol-root`;
 - `access` moved into the api crate, and `Registrar` carries the roster (`Registrar::filter`);
-- the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 42 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
+- the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 47 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
   `zwp-relative-pointer-v1`, `zwp-idle-inhibit-v1`, `xdg-system-bell-v1`, `xdg-toplevel-icon-v1`,
   `xdg-toplevel-tag-v1`, `xdg-dialog-v1`, `wl-output`, `wl-shm`, `zwp-primary-selection-v1`, `wp-content-type-v1`,
   `wp-fifo-v1`, `wp-fractional-scale-v1`, `wp-tearing-control-v1`, `wp-presentation-time`,
-  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`, `zwlr-layer-shell-v1`, `wl-compositor`, `wl-seat`, `xdg-shell`. Their forwarding
+  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`, `zwlr-layer-shell-v1`, `wl-compositor`, `wl-seat`, `xdg-shell`, `zwp-tablet-v2`. Their forwarding
   impls are in `crates/gnoblin-wayland/src/glue/`, one file per crate.
 
 Not yet done: the capture family (`capture_shared`, `image_copy_session`, `zwlr_screencopy_v1`, `ext_image_copy_capture_v1`,
 `ext_image_capture_source_v1`, `capture_dmabuf`), `ext_session_lock_v1`, `wl_data_device_manager`, `zwp_linux_dmabuf_v1`,
-`zwp_tablet_v2`, the `extension` and `gnoblin_view_source_v1` modules (the second waits for the owner's decision on view source),
+the `extension` and `gnoblin_view_source_v1` modules (the second waits for the owner's decision on view source),
 ProtoMissing's five protocols, the real-client test move and `gnoblin-wayland-testkit`, the advertised-globals test, and
 deleting `protocols/mod.rs` with the last of them. What each one needs first is under
 [What blocks the rest](#what-blocks-the-rest).
@@ -35,7 +35,6 @@ The protocols still in `gnoblin-wayland` name types that live in the compositor,
 
 - `xdg_shell`, `wl_compositor`, `wl_seat` have crates that hold the global, what the protocol advertises and the code that is the protocol's alone (`WlCompositorClientState`, `verify_buffer`, the implicit touch grab). Their handlers name `WindowRequest`, `TreeRequest` and the seat's own tables, so they stay in `crates/gnoblin-wayland/src/glue/` until those move into the types crate.
 - `zwp_linux_dmabuf_v1`: `gnoblin_backend::{Backend, DmabufSupport}` and the GPU memory ledger.
-- `zwp_tablet_v2`: the backend's device model (`DeviceInfo`, `PadLayout`, `TabletAxes`, `TabletEvent`, `TabletTool`), which is plain data and can move to the types crate, and the seat's tablet tables.
 - `wl_data_device_manager`: the selection bridge to the backend and Xwayland (`gnoblin_backend::selection`, `selection_bridge`, `xwayland`).
 - `ext_session_lock_v1`: the lock card, the lock authentication and the frame embargo (`gnoblin_render_frame::frame` types, `lock_auth`, `lock_card`).
 - the capture family: the frame pixel path, the lock embargo, `DmabufSupport` and `gnoblin_pipewire_export`; every handler is `Dispatch2<_, State>`, so each needs a host trait the size of `foreign_toplevel`'s.
@@ -49,6 +48,7 @@ that says what a connection has earned, what the session's clock reads and what 
 `zwlr_layer_shell_v1` was the fourth: `LayerBand`, `LayerNodeInfo` and `LayerOverride` moved from the composer; the crate holds the
 global, the table of surfaces and the arithmetic that places one, and the compositor's `layer_shell` module arranges, configures
 and draws them.
+`zwp_tablet_v2` was the fifth: the tool, axis, pad and event types (`TabletEvent` and friends) moved from `gnoblin-backend`, which re-exports them at its root where they were public. The crate holds the tablet tables, the pad objects and every tool event, generic over a `Host` that supplies the seat, the surface under a point, the keyboard focus and the lock.
 
 ### The types crate
 
