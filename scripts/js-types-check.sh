@@ -26,7 +26,7 @@ fi
 
 # A user's directory: shell.ts and a few files beside it. The wrong programs sit in a directory of their own so that
 # the checker can tell which file a line belongs to.
-cp data/js/starter/shell.ts "$config/shell.ts"
+cp shells/default/shell.ts "$config/shell.ts"
 cp tests/js-types/ok/*.ts "$config/"
 mkdir "$config/bad"
 cp tests/js-types/bad/*.ts "$config/bad/"

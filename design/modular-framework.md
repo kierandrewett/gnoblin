@@ -2226,7 +2226,7 @@ What JsCutover built, where it differs from the text above, and why.
 
 `gnoblin-js` no longer embeds `data/js`. The loader serves `gnoblin-core/...` and `gnoblin-std/...` from the first directory of the stock search path that holds the package: `GNOBLIN_JS_STOCK_DIR`, then `$XDG_DATA_HOME/gnoblin/js` and `$XDG_DATA_DIRS/gnoblin/js`, then the `share/gnoblin/js` (or source-tree `data/js`) of the prefix of the core and of the executable. A missing package is `gnoblin-std is not installed (looked in: ...)`.
 
-The workspace `.cargo/config.toml` sets `GNOBLIN_JS_STOCK_DIR` for `cargo test` in a source tree. The starter (`data/js/starter/shell.ts`) is installed as `share/gnoblin/default-shell/shell.ts`, the discovery tier Startup added; `gnoblinctl config init` writes the same text.
+The workspace `.cargo/config.toml` sets `GNOBLIN_JS_STOCK_DIR` for `cargo test` in a source tree. The starter (`shells/default/shell.ts`) is installed as `share/gnoblin/default-shell/shell.ts`, the discovery tier Startup added; `gnoblinctl config init` writes the same text.
 
 ### Packaging
 

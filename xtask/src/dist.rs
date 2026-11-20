@@ -312,7 +312,7 @@ const ITEMS: &[InstallItem] = &[
     // The starter is the packaged default shell (section 7.2, tier 7): what `gnoblin` runs on a fresh install, and what `gnoblinctl
     // config init` writes.
     InstallItem::File {
-        from: InstallSource::Repo("data/js/starter/shell.ts"),
+        from: InstallSource::Repo("shells/default/shell.ts"),
         to: "share/gnoblin/default-shell/shell.ts",
         mode: FileMode::Data,
         template: false,
@@ -1629,7 +1629,7 @@ mod tests {
             .expect("the packaged default shell is planned");
         assert_eq!(
             shell.content,
-            PlannedContent::File(repo_root().join("data/js/starter/shell.ts"))
+            PlannedContent::File(repo_root().join("shells/default/shell.ts"))
         );
         assert_eq!(shell.mode, FileMode::Data);
     }

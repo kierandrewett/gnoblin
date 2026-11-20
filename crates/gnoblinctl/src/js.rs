@@ -19,7 +19,7 @@ use gnoblin_cli_style::{
     ColorChoice, ErrorReport, LineOutcome, OutputEnvironment, OutputTheme, error_block, status_line,
 };
 use gnoblin_config::Environment;
-use gnoblin_js::{JsError, JsErrorKind, default_shell_path, editor_library_in, stock_search_path};
+use gnoblin_js::{JsError, JsErrorKind, default_shell_path, editor_library_in, source_starter, stock_search_path};
 use gnoblin_js_types::{
     GENERATED_DIR, GENERATED_TSCONFIG_FILE, JsWritten, TSCONFIG_FILE, TYPES_FILE, TsconfigOutcome, ensure_user_files,
 };
@@ -194,13 +194,12 @@ fn stock_dirs() -> Vec<PathBuf> {
     stock_search_path(&|name| std::env::var(name).ok(), &anchors())
 }
 
-/// The starter, the text of the packaged default shell: the `starter/shell.ts` of a stock directory laid out as a source tree, else
+/// The starter, the text of the packaged default shell: the `shells/default/shell.ts` of a stock directory laid out as a source tree, else
 /// `<prefix>/share/gnoblin/default-shell/shell.ts`.
 fn starter_text() -> io::Result<String> {
     let path = stock_dirs()
         .into_iter()
-        .map(|dir| dir.join("starter").join("shell.ts"))
-        .find(|path| path.is_file())
+        .find_map(|dir| source_starter(&dir))
         .or_else(|| default_shell_path(&anchors()))
         .ok_or_else(|| {
             io::Error::other("the packaged default shell (share/gnoblin/default-shell/shell.ts) is not installed")

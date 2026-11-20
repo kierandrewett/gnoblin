@@ -128,14 +128,13 @@ impl JsShellConfig {
         }
     }
 
-    /// Reads the stock library from `stock_dir` (laid out as `data/js`), and takes the `starter/shell.ts` beside its packages, as a
-    /// source tree has it, as the starter. An installed library has no starter there: the packaged default shell is a shell of its
-    /// own (`share/gnoblin/default-shell/shell.ts`), not a fallback of the engine.
+    /// Reads the stock library from `stock_dir` (laid out as `data/js`), and takes the `shells/default/shell.ts` of the source tree
+    /// it sits in as the starter. An installed library has no starter: the packaged default shell is a shell of its own
+    /// (`share/gnoblin/default-shell/shell.ts`), not a fallback of the engine.
     #[must_use]
     pub fn with_stock(mut self, stock_dir: impl Into<PathBuf>) -> Self {
         let stock_dir = stock_dir.into();
-        let starter = stock_dir.join("starter").join("shell.ts");
-        self.starter = starter.is_file().then_some(starter);
+        self.starter = crate::stock::source_starter(&stock_dir);
         self.stock_dirs = vec![stock_dir];
         self
     }
@@ -422,7 +421,7 @@ impl JsShell {
     }
 
     /// Runs the stock desktop as the generation's whole config, for a shell with no user entry (or whose entry could
-    /// not load): the starter file ([`JsShellConfig::starter`], `data/js/starter/shell.ts`, the text `gnoblinctl config init`
+    /// not load): the starter file ([`JsShellConfig::starter`], `shells/default/shell.ts`, the text `gnoblinctl config init`
     /// writes) is the entry, so the default is a user's `shell.ts` that nobody wrote. Returns the failures of calls that ran
     /// while it loaded.
     ///

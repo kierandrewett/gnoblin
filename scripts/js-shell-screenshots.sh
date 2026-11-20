@@ -106,7 +106,7 @@ seed_renderer() {
 # starter_with LINES: the text of the stock desktop (the starter `shell.ts`, which a shell with no init runs) followed by
 # LINES, for a scenario that wants the stock default plus a setting.
 starter_with() {
-    cat "$repo_root/data/js/starter/shell.ts"
+    cat "$repo_root/shells/default/shell.ts"
     printf '\n%s\n' "$1"
 }
 

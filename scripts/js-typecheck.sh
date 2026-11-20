@@ -24,8 +24,7 @@ cat >"$temporary_config" <<EOF
   },
   "include": [
     "$repo_root/data/js/**/*.ts"
-  ],
-  "exclude": ["$repo_root/data/js/starter"]
+  ]
 }
 EOF
 

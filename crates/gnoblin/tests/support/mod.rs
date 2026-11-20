@@ -51,8 +51,8 @@ pub fn stock_dir() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js")
 }
 
-/// The starter, `data/js/starter/shell.ts`: the file `cargo xtask dist` installs as the packaged default shell.
-pub const STARTER_CONFIG: &str = include_str!("../../../../data/js/starter/shell.ts");
+/// The starter, `shells/default/shell.ts`: the file `cargo xtask dist` installs as the packaged default shell.
+pub const STARTER_CONFIG: &str = include_str!("../../../../shells/default/shell.ts");
 
 // ---- the scene, read as an observer ------------------------------------------------------------------------------
 

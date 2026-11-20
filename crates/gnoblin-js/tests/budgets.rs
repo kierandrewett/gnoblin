@@ -26,8 +26,8 @@ use gnoblin_js::{
 mod common;
 use common::*;
 
-/// The starter, `data/js/starter/shell.ts`: what the packaged default shell is.
-const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
+/// The starter, `shells/default/shell.ts`: what the packaged default shell is.
+const STARTER_CONFIG: &str = include_str!("../../../shells/default/shell.ts");
 
 #[test]
 fn the_budgets_are_the_documented_constants() {

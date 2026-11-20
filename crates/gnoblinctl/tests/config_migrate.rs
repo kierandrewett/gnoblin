@@ -24,8 +24,8 @@ use tempfile::TempDir;
 #[path = "../../gnoblin/tests/support/core_rig.rs"]
 mod core_rig;
 
-/// The starter, `data/js/starter/shell.ts`: the packaged default shell.
-const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
+/// The starter, `shells/default/shell.ts`: the packaged default shell.
+const STARTER_CONFIG: &str = include_str!("../../../shells/default/shell.ts");
 
 /// A connection that was never meant to be opened: the command needs no session.
 struct NoSession;

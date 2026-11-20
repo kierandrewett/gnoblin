@@ -15,8 +15,8 @@ use gnoblin_client::Client;
 use gnoblin_client::unix::UnixTransport;
 use gnoblinctl::{ConnectFailure, Connection};
 
-/// The starter, `data/js/starter/shell.ts`: the packaged default shell.
-const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
+/// The starter, `shells/default/shell.ts`: the packaged default shell.
+const STARTER_CONFIG: &str = include_str!("../../../shells/default/shell.ts");
 
 /// A connection that was never meant to be opened: a command that needs no session must not ask for one.
 struct NoSession;

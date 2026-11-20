@@ -173,7 +173,7 @@ looked:
 gnoblin-std is not installed (looked in: /home/you/.local/share/gnoblin/js, /usr/local/share/gnoblin/js, /usr/share/gnoblin/js)
 ```
 
-The starter is the packaged default shell, `share/gnoblin/default-shell/shell.ts`: it is what `gnoblin` runs on a fresh
+The starter is the packaged default shell, `share/gnoblin/default-shell/shell.ts` (`shells/default/shell.ts` in a source tree): it is what `gnoblin` runs on a fresh
 install and what `gnoblinctl config init` writes.
 
 ### If you still have an `init.lua`

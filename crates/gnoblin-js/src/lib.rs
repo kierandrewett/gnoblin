@@ -82,7 +82,7 @@ pub use rquickjs;
 pub use script_console::{JsConsoleLevel, JsConsoleLine, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};
 pub use shell::{JsFrame, JsFrameStats, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
 pub use stock::{
-    PACKAGES as STOCK_PACKAGES, STOCK_DIR_VARIABLE, StockError, default_shell_path, editor_library_in,
+    PACKAGES as STOCK_PACKAGES, STOCK_DIR_VARIABLE, StockError, default_shell_path, editor_library_in, source_starter,
     stock_modules_in, stock_search_path, stock_sources_in,
 };
 pub use ts::{JsStripped, strip_types};

@@ -44,7 +44,7 @@ export function clearWorkspaces(): void {
 
 /**
  * A script that declared no workspace gets one floating `desktop`, so there is always somewhere for a window to go. The
- * stock default's four workspaces are declared by `data/js/starter/shell.ts`; a user's `shell.ts` that declares none gets this one.
+ * stock default's four workspaces are declared by `shells/default/shell.ts`; a user's `shell.ts` that declares none gets this one.
  */
 export function ensureDefaultWorkspace(): void {
     syncMembership();

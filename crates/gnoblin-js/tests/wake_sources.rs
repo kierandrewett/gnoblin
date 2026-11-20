@@ -33,8 +33,8 @@ enum Part {
 
 use Part::{Driven, State, Wakes};
 
-/// The starter, `data/js/starter/shell.ts`: what the packaged default shell is.
-const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
+/// The starter, `shells/default/shell.ts`: what the packaged default shell is.
+const STARTER_CONFIG: &str = include_str!("../../../shells/default/shell.ts");
 
 /// Every field of `HostContext` (`data/js/gnoblin-core/host/context.ts`). A new field fails
 /// `every_subsystem_of_the_host_context_is_classified` until it has a row: decide whether it can change the tree or hold

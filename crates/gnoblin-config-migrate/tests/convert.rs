@@ -8,9 +8,9 @@ use gnoblin_config_migrate::{
     ConfigSourceLoader, MigrateError, MigrateSource, MigrationOutput, glob_matches, is_glob, migrate, resolve_load_path,
 };
 
-/// The stock starter, `data/js/starter/shell.ts`: what `gnoblinctl config init` writes and what a shell with no
+/// The stock starter, `shells/default/shell.ts`: what `gnoblinctl config init` writes and what a shell with no
 /// `shell.ts` runs.
-const STARTER_TS: &str = include_str!("../../../data/js/starter/shell.ts");
+const STARTER_TS: &str = include_str!("../../../shells/default/shell.ts");
 
 /// The Lua starter as it shipped, `data/default-config` at the time the converter was written.
 const STARTER_INIT: &str = include_str!("fixtures/starter/init.lua");

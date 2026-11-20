@@ -366,7 +366,7 @@ fn a_session_with_no_shell_of_the_users_runs_the_packaged_starter_and_commits_it
     let prefix = Prefix::new();
     std::fs::create_dir_all(prefix.default_shell_dir()).expect("the default shell's directory");
     std::fs::copy(
-        support::native_shell::repo_root().join("data/js/starter/shell.ts"),
+        support::native_shell::repo_root().join("shells/default/shell.ts"),
         prefix.default_shell_dir().join("shell.ts"),
     )
     .expect("the starter, installed");

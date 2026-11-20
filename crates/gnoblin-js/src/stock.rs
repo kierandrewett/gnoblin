@@ -27,14 +27,14 @@ pub const STOCK_DIR_VARIABLE: &str = "GNOBLIN_JS_STOCK_DIR";
 /// The directory of the data prefix that holds the library: `<prefix>/share/gnoblin/js`.
 const INSTALLED: &str = "share/gnoblin/js";
 
-/// Where a source tree keeps the library, and the starter beside it.
+/// Where a source tree keeps the library.
 const SOURCE_TREE: &str = "data/js";
 
 /// The packaged default shell under a data directory (`share/gnoblin/default-shell/shell.ts`): the starter, as installed.
 const DEFAULT_SHELL: &str = "share/gnoblin/default-shell/shell.ts";
 
 /// The starter in a source tree: the file `cargo xtask dist` installs as the packaged default shell.
-const SOURCE_STARTER: &str = "data/js/starter/shell.ts";
+const SOURCE_STARTER: &str = "shells/default/shell.ts";
 
 /// The package every shell needs: the machinery, with no desktop policy. Its entry is `gnoblin-core`.
 pub(crate) const CORE_PACKAGE: &str = "gnoblin-core";
@@ -106,7 +106,7 @@ fn data_directories(env: &dyn Fn(&str) -> Option<String>) -> Vec<PathBuf> {
     dirs
 }
 
-/// The packaged default shell (`<prefix>/share/gnoblin/default-shell/shell.ts`, which is `data/js/starter/shell.ts` of a source
+/// The packaged default shell (`<prefix>/share/gnoblin/default-shell/shell.ts`, which is `shells/default/shell.ts` of a source
 /// tree) the way [`stock_search_path`] finds the library: through the prefix `anchors` sit in.
 pub fn default_shell_path(anchors: &[PathBuf]) -> Option<PathBuf> {
     anchors
@@ -114,6 +114,16 @@ pub fn default_shell_path(anchors: &[PathBuf]) -> Option<PathBuf> {
         .flat_map(|anchor| anchor.ancestors().skip(1).take(4))
         .flat_map(|ancestor| [ancestor.join(DEFAULT_SHELL), ancestor.join(SOURCE_STARTER)])
         .find(|path| path.is_file())
+}
+
+/// The starter of the source tree that holds `stock_dir` (`<root>/data/js`): `<root>/shells/default/shell.ts`. An installed
+/// library directory is not laid out as `data/js`, so it has none.
+pub fn source_starter(stock_dir: &Path) -> Option<PathBuf> {
+    if !stock_dir.ends_with(SOURCE_TREE) {
+        return None;
+    }
+    let root = stock_dir.ancestors().nth(Path::new(SOURCE_TREE).components().count())?;
+    Some(root.join(SOURCE_STARTER)).filter(|path| path.is_file())
 }
 
 /// A stock library that could not be read.

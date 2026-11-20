@@ -1,6 +1,6 @@
 //! The stock default is the starter file, run twice.
 //!
-//! A shell with no `shell.ts` runs the embedded `data/js/starter/shell.ts` as its entry (`load_default_config`), and
+//! A shell with no `shell.ts` runs the embedded `shells/default/shell.ts` as its entry (`load_default_config`), and
 //! `gnoblinctl config init` writes the same text. Two boots over the same fake compositor, the default and a user's
 //! `shell.ts` equal to the starter, are digested into the workspaces, the claimed keys and gestures, the titlebars, the
 //! window menu, the not-responding alert and what each stock key does when it is pressed. The digests must be equal.
@@ -12,8 +12,8 @@ use std::sync::Arc;
 mod common;
 use common::*;
 
-/// The starter, `data/js/starter/shell.ts`: what the packaged default shell is.
-const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/shell.ts");
+/// The starter, `shells/default/shell.ts`: what the packaged default shell is.
+const STARTER_CONFIG: &str = include_str!("../../../shells/default/shell.ts");
 
 /// A screen of 1000 by 800, one seat, one lock and two windows (ids 3 and 4).
 fn populate(comp: &FakeCompositor) {
@@ -238,6 +238,6 @@ fn the_recipe_page_shows_the_starter_file_as_it_is() {
     let shown = &body[..body.find("\n```\n").expect("the block closes") + 1];
     assert_eq!(
         shown, STARTER_CONFIG,
-        "paste data/js/starter/shell.ts into the first ts block of docs/recipes/complete-starter-config.md"
+        "paste shells/default/shell.ts into the first ts block of docs/recipes/complete-starter-config.md"
     );
 }

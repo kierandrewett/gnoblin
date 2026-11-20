@@ -294,8 +294,8 @@ pub(crate) fn rules(items: &[Placed<RuleDef>], needs: &mut Needs) -> Vec<String>
     out
 }
 
-/// The stock desktop's one description: the starter, `data/js/starter/shell.ts`.
-const STARTER: &str = include_str!("../../../data/js/starter/shell.ts");
+/// The stock desktop's one description: the starter, `shells/default/shell.ts`.
+const STARTER: &str = include_str!("../../../shells/default/shell.ts");
 
 /// The first line of the starter's statement that binds `Super+1` to `Super+9`.
 const POSITION_LOOP: &str = "for (let position = 1; position <= 9; position++) {";
@@ -333,7 +333,7 @@ impl Starter {
     }
 }
 
-/// The stock desktop: what `data/js/starter/shell.ts` does, written out for a config that replaces it.
+/// The stock desktop: what `shells/default/shell.ts` does, written out for a config that replaces it.
 ///
 /// The text is the starter's own, so it cannot drift from it. Each of its blocks is kept whole except for what the Lua
 /// config said: `own_workspaces` (the Lua config declared workspaces, which then stand where the stock four would) drops
