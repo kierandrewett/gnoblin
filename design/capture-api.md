@@ -96,6 +96,62 @@ Before a stream may start, all of these must be designed and agreed:
 - Lock: the lock stops every stream, as the export already does for ScreenCast sessions.
 - Node ids: each node id belongs to the connection that opened it.
 
+## Naming a View as a capture source: the options (findings, nothing implemented)
+
+`gnoblin_view_source_manager_v1` is 97 lines of server code and one XML. Its one request, `create_source(node)`, makes an
+`ext_image_capture_source_v1` for a View node, and everything after that (the lock embargo, damage, the privacy
+indicator, the secure-content mask, the size follow) is `capture_shared` working on `Target::View`. The question is only
+how a client names the View. Two ways to keep it standard, read from the code at `c32194972`:
+
+- **A. Publish each View as an `ext_foreign_toplevel_handle_v1`.** The source comes from the standard
+  `ext_foreign_toplevel_image_capture_source_manager_v1`, and the handle's identifier names the View.
+- **B. Keep a source manager** whose `create_source` takes a node id, as now. `ext-image-capture-source-v1` says it "may be
+  extended to support more image capture sources", and a source manager that creates `ext_image_capture_source_v1` is that
+  extension point, the same one the output and toplevel managers use.
+
+What A costs, each checked against the code:
+
+1. **The list cannot be filtered per client inside one global.** Smithay's `ForeignToplevelListState` announces every
+   handle to every list instance and replays every live handle to a new one (`new_toplevel_with_identifier`, `bind`); its
+   only filter is whether a client may bind the global. The protocol text says the toplevel event is "emitted for all
+   toplevels". So "Views only to the `view` role, windows only to everyone else" is two globals with one interface name
+   (two `ForeignToplevelListState`s with opposite `can_view` filters), not a filter on one list. That is a role-specific
+   audience for a standard interface: the same kind of per-client special case the nested-session rule removes, and a
+   registry that shows two `ext_foreign_toplevel_list_v1` entries to a debugging tool.
+2. **The role gate is by interface name and cannot tell the two lists apart.** `VIEW_INTERFACES` and `sees_interface` work
+   on interface names. The `view` role would need `ext_foreign_toplevel_list_v1` and
+   `ext_foreign_toplevel_image_capture_source_manager_v1` in the list, and the name does not say which of the two lists it
+   may bind; only each global's own `can_view` does. A new `Global` variant for the Views list replaces `Global::ViewSource`,
+   so the deletion removes no role or global from `access.rs`, it renames one.
+3. **The identifier becomes a private contract.** XR must build or parse an identifier such as `gnoblin-view-<node>`
+   to ask for the View whose node id it already holds from the tree. The alternative is to match `title` or `app_id`, which are
+   not unique. Either way a convention outside the standard says which handle is which node, which is what `create_source(node)`
+   states in one typed argument.
+4. **Identifier uniqueness is stricter than a node id.** The list says an identifier "must not be reused" while the toplevel
+   is unmapped. Node ids are chosen by the tree's writer and `Scene::insert` refuses only a live duplicate, so an id can come
+   back after a node is destroyed [INFERENCE: not shown to happen in practice]. A window identifier is derived from a window
+   id (`gnoblin-<window id>`, `ext_foreign_toplevel_list_v1.rs`), and the session counts window ids up from one (`next_window`
+   in `State`) [INFERENCE: nothing else mints one]. A View identifier would need a
+   publication counter as well, and `gnoblin-view-` plus 16 hex digits plus a counter does not fit the 32 characters.
+5. **A new publish and retire path.** Windows are published from the window record on every `publish`
+   (`sync_foreign_toplevels`). A View appears and goes as its node, its source and its size change (`views()` reports each View
+   with a size), so it needs its own diff, `closed` on removal, and `title` and `app_id` that a View node may not have. On
+   destruction the handle closes and the source stops, which `capture_shared` already does for `Target::View` (`target_closed`).
+6. **What other list clients see.** With one global, every taskbar, switcher, portal picker and accessibility tool that reads
+   the standard list would show Views as windows, and the wlr list (fed from the same record) would have to leave them out
+   again. With two globals they see nothing, which is item 1.
+
+What is the same either way: `capture_shared` resolves a source to `Target::View(node)` in one line (a second branch
+beside `window_of_identifier` for A, the existing `create_source` for B), and the lock embargo, damage, privacy indicator and
+secure-content mask apply to the target and not to how it was named. A changes none of them, so it does not add safety.
+
+Findings: A is expressible and nothing in the capture path blocks it, but it trades one small, typed, owner-visible source
+manager for a second list global, a naming convention, a lifetime coupling to the list's no-reuse rule and a second
+publishing path. B keeps the one private XML, and nothing else private. **B is the less hacky choice**, and it is the
+extension the capture-source protocol is built for. The refactor that remains under B is to narrow the manager, not to remove
+it: keep `create_source(node)`, keep it in `VIEW_INTERFACES`, keep the view role, and move its XML under the protocol crate
+layout. This is waiting on the owner's choice; no Part B code, test or XR change was made.
+
 ## Needs Kieran
 
 1. Secure windows: is a per-window secure flag wanted? Should window stills of secure content be refused, or masked?
