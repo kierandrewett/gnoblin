@@ -3281,9 +3281,9 @@ files, one test, the changelog and this document); `gnoblin-compositor` and `gno
 
 ## 37. The custom shader pass: analysis for the owner (D20, M7.9, O7)
 
-Status: **phase A is built**; the renderers are not. The owner approved the pass with backdrop sampling, which reverses O7 (D20, M7.9).
+Status: **phase A is built**, and the GLES pass (37.10). The owner approved the pass with backdrop sampling, which reverses O7 (D20, M7.9).
 Built: the validator, the `shader` effect kind and its wire path, the setting and the capability, the frame data, the secure-surface input,
-the software renderer's skipped listing, the catalog, the C ABI and the SDKs (37.6). Not built: the GLES pass, the Vulkan pass, the
+the software renderer's skipped listing, the catalog, the C ABI and the SDKs (37.6), and the GLES pass. Not built here: the Vulkan pass, the
 frame-cost watchdog, the std element and the real-session tests; 37.8 gives each lane its seam. 37.1 to 37.4 are the analysis the build
 followed, with the corrections noted in 37.3.
 
@@ -3445,6 +3445,26 @@ line and column go to the compositor's log (`an effect was refused`, field `reas
 6. The module has a second uniform block and a third bind group, which the renderer lanes pay for.
 7. `params` are `f32` in the scene; a value an `f32` cannot hold is refused.
 8. `GnoblinEffect` grew by 32 bytes (appended, as the ABI rules allow); the struct is passed as an array, so a shell built before has to be rebuilt.
+
+### 37.10 The GLES pass (lane ShaderGles)
+
+Status: **built and tested on llvmpipe** (`crates/gnoblin-render-gles/src/shader_tests.rs`, 18 cases). `RendererKind::Gles.effect_kinds()` lists `shader`.
+
+| Part           | Where                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compile        | `program.rs` `link_user`: `user::validate`, then `Validated::wgsl()` and `sources::VERTEX` through `translate`, linked with two blocks (`GlContext::program(.., 2)`); a mismatch between `ShaderPass::backdrop` and what the source reads is refused                                                                                                                      |
+| Bindings       | `gl.rs` `binding_map`: group 0 bindings 0 and 1 are uniform bindings 0 and 1, group 1 is texture unit 0, group 2 is unit 1; `naga` writes them as `layout(binding = N)`, so every shipped pass uses the map too and `glUniformBlockBinding` is gone                                                                                                                       |
+| Cache          | `Gles::shaders`: `ShaderCache<Result<Program, ShaderError>>` by `pass.key()`, 64 entries; an evicted program is deleted (`GlContext::delete_program`); `Gles::drain_shaders` runs when a frame fails with `Failed` or `Lost`                                                                                                                                              |
+| Draw           | `Painter::draw_shaded`: the pass takes the place of the layer's own draw, in the blur group when there is one; a solid's colour reaches `c` through a one-pixel texture (premultiplied, 8 bits)                                                                                                                                                                           |
+| Several passes | In list order. Each pass before the last draws into a layer-sized picture (`GlContext::lease`) with tint white, opacity 1 and corner 0 and the next reads it as `c`; only the last applies the layer's tint, opacity and corners                                                                                                                                          |
+| Backdrop       | `Gles::build_backdrops`, before the frame is painted: `OutputFrame::backdrop_input(index)` is drawn into a leased output-sized target and the layer's rectangle is blitted, top row first, into a leased texture of the layer's size (what lies off the output is transparent); built only for a layer a damage rectangle reaches, and nested to `MAX_BACKDROP_DEPTH` (3) |
+| Time           | `t` is the seconds since the renderer was made: the frame carries no clock                                                                                                                                                                                                                                                                                                |
+| Cost           | `Painter::shader_draw` times the draw to `glFinish` and calls `frame.shader_timings().record(key, elapsed)`; there is no GPU timer query (llvmpipe has none, so it could not be tested)                                                                                                                                                                                   |
+| Failure        | A source that does not compile is cached as its `ShaderError`, drawn without the pass, and reported through `record_refused(key, "compile-failed")`; a pass whose backdrop could not be built is reported `backdrop-unavailable`                                                                                                                                          |
+
+Not drawn: a shader on a layer placed in 3D (the composer already lists every effect of such a node as skipped), and a shader on a layer inside
+a View's subtree, which draws through an eye's viewport that the pictures between chained passes would lose. A layer nested more than 3
+backdrops deep draws without a shader that reads the backdrop. Nothing here changes the shipped passes' pixels (the goldens are unchanged).
 
 ## 38. D11, window motion as std policy, and the stale statements of sections 31 to 34 (lane TsStdObjects)
 

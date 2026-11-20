@@ -902,6 +902,7 @@ fn glass_over_edge(quad: Rect, opacity: f32, alpha: u8) -> Option<Image> {
         tint: Color::WHITE,
         opacity,
         src: [0.0, 0.0, 1.0, 1.0],
+        backdrop: None,
     };
     renderer
         .paint(&frame, Scale::IDENTITY, &[Rect::new(0, 0, 64, 64)], Some(&glass))

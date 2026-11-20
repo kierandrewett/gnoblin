@@ -15,10 +15,14 @@
 //!
 //! # Objects are freed by the context, not one by one
 //!
-//! A [`Framebuffer`] and a [`Program`] own GL names but do not delete them: the context that
+//! A [`Framebuffer`] and a shipped [`Program`] own GL names but do not delete them: the context that
 //! created them is destroyed with the renderer, and destroying a context frees every
 //! object it made. Deleting them individually would need a current context at drop
 //! time, which is exactly the state this module cannot promise on a failure path.
+//!
+//! The programs of the user shader cache are the exception, because the cache evicts and a shell that writes a new
+//! source every frame must not grow the driver's memory: [`GlContext::delete_program`] frees one, and does nothing
+//! when the context is not current, which is what a lost context has done to its names already.
 #![allow(unsafe_code)]
 
 use std::fmt;
@@ -58,11 +62,32 @@ impl fmt::Debug for CompileFailure {
     }
 }
 
-/// The binding the uniform buffer is uploaded to.
+/// The binding the shared uniform block is uploaded to.
 const UNIFORM_BINDING: u32 = 0;
 
-/// The texture unit every pass samples from.
+/// The binding of a user shader's own uniform block (`gnoblin_user`, group 0 binding 1).
+const USER_BINDING: u32 = 1;
+
+/// The texture unit every pass samples its layer's pixels from.
 const TEXTURE_UNIT: u32 = 0;
+
+/// The texture unit a user shader's backdrop is bound to (group 2 binding 0).
+const BACKDROP_UNIT: u32 = 1;
+
+/// What `naga` is told about the module's resources, so the GLSL it writes says which block and which unit each is on.
+///
+/// WGSL names a resource by group and binding and GLSL ES 3.10 by one number, so the map is the whole agreement
+/// between the shader sources and the draw calls above: the shared block at 0, a user shader's block at 1, the
+/// layer's own pixels on unit 0 and the backdrop on unit 1.
+pub(crate) fn binding_map() -> naga::back::glsl::BindingMap {
+    use naga::ResourceBinding;
+    let mut map = naga::back::glsl::BindingMap::default();
+    map.insert(ResourceBinding { group: 0, binding: 0 }, UNIFORM_BINDING as u8);
+    map.insert(ResourceBinding { group: 0, binding: 1 }, USER_BINDING as u8);
+    map.insert(ResourceBinding { group: 1, binding: 0 }, TEXTURE_UNIT as u8);
+    map.insert(ResourceBinding { group: 2, binding: 0 }, BACKDROP_UNIT as u8);
+    map
+}
 
 /// The floats one quad vertex carries: the unit position, the destination rectangle and the
 /// target's size, then the three columns of the placement's clip matrix, then the placement's
@@ -71,6 +96,10 @@ const VERTEX_FLOATS: usize = 24;
 
 /// The bytes per pixel of an output target's `DEPTH_COMPONENT24` buffer (a driver stores 24 bits in four bytes).
 const DEPTH_BYTES_PER_PIXEL: u64 = 4;
+
+/// How many targets [`GlContext::give_back`] keeps: a few backdrops and intermediate pictures of the sizes a session's
+/// shader layers have, so a frame that needs them again does not make them again.
+const SPARE_TARGETS: usize = 8;
 
 /// The bytes per pixel of a View target's `STENCIL_INDEX8` buffer.
 const STENCIL_BYTES_PER_PIXEL: u64 = 1;
@@ -146,12 +175,17 @@ pub(crate) struct GlContext {
     /// white is the identity for a multiply, so the pass's own colour is the only
     /// thing that shows.
     white: Texture,
+    /// A one-pixel texture holding the colour of the solid layer a user shader is shading, rewritten for each such
+    /// draw: the shader reads a node's colour from a texture, and a solid has none of its own.
+    swatch: Texture,
     /// The size of the target last bound, which the vertex stage needs as an attribute.
     viewport: (i32, i32),
     /// The one framebuffer a copy into, or a read of, a client's texture attaches that texture to, made on
     /// first use. Framebuffers are not freed one by one (see the module docs), so a copy cannot make one per
     /// call.
     scratch: Option<glow::Framebuffer>,
+    /// The targets a frame leased and gave back, for the next frame that needs one of the same size.
+    spare: Vec<Framebuffer>,
 }
 
 impl GlContext {
@@ -162,42 +196,54 @@ impl GlContext {
     ///
     /// [`RenderError::Unavailable`] when the context cannot draw a 1×1 texture.
     pub(crate) fn on(mut renderer: GlowRenderer) -> Result<Self, RenderError> {
-        let white = renderer
+        let (white, swatch) = renderer
             .with_context(|gl| unsafe {
                 // SAFETY: the context is current (that is what `with_context` establishes)
-                // and the one name created here is stored in `GlContext`, which the context
+                // and the names created here are stored in `GlContext`, which the context
                 // outlives.
-                let name = gl.create_texture().map_err(|error| {
-                    log::debug!(area = "render", %error, "no white texture for the GLES renderer");
-                    RenderError::Unavailable
-                })?;
-                gl.bind_texture(glow::TEXTURE_2D, Some(name));
-                gl.tex_image_2d(
-                    glow::TEXTURE_2D,
-                    0,
-                    glow::RGBA8 as i32,
-                    1,
-                    1,
-                    0,
-                    glow::RGBA,
-                    glow::UNSIGNED_BYTE,
-                    glow::PixelUnpackData::Slice(Some(&[255, 255, 255, 255])),
-                );
-                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
-                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
-                gl.bind_texture(glow::TEXTURE_2D, None);
-                Ok(Texture {
-                    handle: name,
-                    size: (1, 1),
-                })
+                let one_pixel = || {
+                    let name = gl.create_texture().map_err(|error| {
+                        log::debug!(area = "render", %error, "no one-pixel texture for the GLES renderer");
+                        RenderError::Unavailable
+                    })?;
+                    gl.bind_texture(glow::TEXTURE_2D, Some(name));
+                    gl.tex_image_2d(
+                        glow::TEXTURE_2D,
+                        0,
+                        glow::RGBA8 as i32,
+                        1,
+                        1,
+                        0,
+                        glow::RGBA,
+                        glow::UNSIGNED_BYTE,
+                        glow::PixelUnpackData::Slice(Some(&[255, 255, 255, 255])),
+                    );
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
+                    gl.bind_texture(glow::TEXTURE_2D, None);
+                    Ok::<_, RenderError>(Texture {
+                        handle: name,
+                        size: (1, 1),
+                    })
+                };
+                Ok::<_, RenderError>((one_pixel()?, one_pixel()?))
             })
             .map_err(context_lost)??;
         Ok(Self {
             renderer,
             white,
+            swatch,
             viewport: (0, 0),
             scratch: None,
+            spare: Vec::new(),
         })
+    }
+
+    /// The one-pixel texture holding `rgba` (premultiplied), for a user shader to read a solid layer's colour from.
+    pub(crate) fn swatch(&mut self, rgba: [u8; 4]) -> Result<Texture, RenderError> {
+        let swatch = self.swatch;
+        self.upload_into(swatch, Rect::new(0, 0, 1, 1), &rgba)?;
+        Ok(swatch)
     }
 
     /// The Smithay renderer, for the client-buffer import only.
@@ -242,7 +288,7 @@ impl GlContext {
     /// # Errors
     ///
     /// [`CompileFailure`] with the driver's log.
-    pub(crate) fn program(&mut self, vertex: &str, fragment: &str) -> Result<Program, CompileFailure> {
+    pub(crate) fn program(&mut self, vertex: &str, fragment: &str, blocks: i32) -> Result<Program, CompileFailure> {
         let built = self.renderer.with_context(|gl| unsafe {
             // SAFETY: compiling and linking only create and destroy names this closure owns;
             // nothing outside it refers to them until `Program` takes ownership of the linked
@@ -274,44 +320,66 @@ impl GlContext {
                     log,
                 });
             }
-            // Every pass declares exactly one uniform block, and binding it here is what
-            // lets a draw only upload its bytes.
-            let blocks = gl.get_program_parameter_i32(program, glow::ACTIVE_UNIFORM_BLOCKS);
-            gl.uniform_block_binding(program, 0, UNIFORM_BINDING);
+            // The blocks and the texture units are bound by the `layout(binding = N)` that `binding_map` makes `naga`
+            // write, so a draw only uploads its bytes. A program that declares another number of blocks than the
+            // caller's module has is one whose uniforms the draw would silently leave out.
+            let declared = gl.get_program_parameter_i32(program, glow::ACTIVE_UNIFORM_BLOCKS);
+            if declared != blocks {
+                log::debug!(
+                    area = "render",
+                    declared,
+                    blocks,
+                    "a pass declares an unexpected number of uniform blocks"
+                );
+                gl.delete_program(program);
+                return Err(CompileFailure {
+                    stage: Stage::Link,
+                    log: format!("the shader declares {declared} uniform blocks, not {blocks}"),
+                });
+            }
             let buffer = gl.create_buffer().map_err(|log| CompileFailure {
                 stage: Stage::Link,
                 log,
             })?;
+            let user = if blocks > 1 {
+                Some(gl.create_buffer().map_err(|log| CompileFailure {
+                    stage: Stage::Link,
+                    log,
+                })?)
+            } else {
+                None
+            };
             let geometry = gl.create_buffer().map_err(|log| CompileFailure {
                 stage: Stage::Link,
                 log,
             })?;
-            Ok((program, buffer, geometry, blocks))
+            Ok((program, buffer, user, geometry))
         });
-        let (program, buffer, geometry, blocks) = match built {
+        let (program, buffer, user, geometry) = match built {
             Ok(Ok(built)) => built,
             Ok(Err(failure)) => return Err(failure),
             Err(error) => return Err(context_compile_lost(error)),
         };
-        if blocks != 1 {
-            // The shaders are written so that the fragment stage is the only one with a
-            // uniform block; a second block would be a program that silently ignored half of
-            // its uniforms.
-            log::debug!(
-                area = "render",
-                blocks,
-                "a pass declares an unexpected number of uniform blocks"
-            );
-            return Err(CompileFailure {
-                stage: Stage::Link,
-                log: format!("the shader declares {blocks} uniform blocks, not one"),
-            });
-        }
         Ok(Program {
             program,
             buffer,
+            user,
             geometry,
         })
+    }
+
+    /// Frees a program the user shader cache let go of: the program and its three buffers. A context that is not
+    /// current frees nothing, because it has freed them itself.
+    pub(crate) fn delete_program(&mut self, program: Program) {
+        let _ = self.renderer.with_context(|gl| unsafe {
+            // SAFETY: the names belong to this context and are not used again, because `program` is consumed.
+            gl.delete_program(program.program);
+            gl.delete_buffer(program.buffer);
+            if let Some(user) = program.user {
+                gl.delete_buffer(user);
+            }
+            gl.delete_buffer(program.geometry);
+        });
     }
 
     /// A target of `size` physical pixels, holding no defined pixel.
@@ -533,6 +601,52 @@ impl GlContext {
             gl.delete_framebuffer(target.framebuffer);
             gl.delete_renderbuffer(target.renderbuffer);
             gl.delete_texture(target.texture.handle);
+        });
+    }
+
+    /// A target of `size` for a pass that needs one for the length of a frame (a backdrop, a shader's intermediate
+    /// picture), taken from the targets earlier frames gave back when one has that size, and made otherwise. It holds
+    /// no defined pixel; give it back with [`Self::give_back`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::target`].
+    pub(crate) fn lease(&mut self, size: Size) -> Result<Framebuffer, RenderError> {
+        match self.spare.iter().position(|spare| spare.size() == size) {
+            Some(index) => Ok(self.spare.swap_remove(index)),
+            None => self.target(size),
+        }
+    }
+
+    /// Keeps a leased target for the next frame that asks for its size. The pool holds [`SPARE_TARGETS`]; the target
+    /// that no longer fits is deleted.
+    pub(crate) fn give_back(&mut self, target: Framebuffer) {
+        self.spare.push(target);
+        if self.spare.len() > SPARE_TARGETS {
+            let oldest = self.spare.remove(0);
+            self.release(oldest);
+        }
+    }
+
+    /// The nominal bytes the pool of leased targets holds.
+    pub(crate) fn spare_bytes(&self) -> u64 {
+        self.spare.iter().map(Framebuffer::bytes).fold(0, u64::saturating_add)
+    }
+
+    /// Deletes every target in the pool.
+    pub(crate) fn release_spare(&mut self) {
+        for target in std::mem::take(&mut self.spare) {
+            self.release(target);
+        }
+    }
+
+    /// Waits for every command issued so far, so the time since a draw began is what the draw cost. A user shader's
+    /// draw is timed this way for the watchdog, because the GPU runs behind the CPU and a draw's own call returns at
+    /// once.
+    pub(crate) fn finish(&mut self) {
+        let _ = self.renderer.with_context(|gl| unsafe {
+            // SAFETY: `finish` blocks until the commands issued are complete and changes no state.
+            gl.finish();
         });
     }
 
@@ -917,6 +1031,35 @@ impl GlContext {
         texture: Option<Texture>,
         placement: QuadPlacement,
     ) -> Result<(), RenderError> {
+        self.draw_with(program, bytes, None, quad, texture, placement)
+    }
+
+    /// [`Self::draw`] for a user shader's program, which has a second uniform block and may sample a backdrop.
+    ///
+    /// `user.block` is the packed `gnoblin_user` block, and `user.backdrop` the texture on the backdrop's unit, which
+    /// the program reads only when its source calls `backdrop`.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Failed`] when the program's blocks and the inputs do not agree, or the context is lost.
+    pub(crate) fn draw_with(
+        &mut self,
+        program: &Program,
+        bytes: &[u8],
+        user: Option<UserInputs<'_>>,
+        quad: Rect,
+        texture: Option<Texture>,
+        placement: QuadPlacement,
+    ) -> Result<(), RenderError> {
+        if program.user.is_some() != user.is_some() {
+            log::debug!(
+                area = "render",
+                "a program was drawn with the wrong number of uniform blocks"
+            );
+            return Err(RenderError::Failed);
+        }
+        let user_block = user.as_ref().map(|inputs| inputs.block);
+        let backdrop = user.as_ref().and_then(|inputs| inputs.backdrop);
         let (width, height) = self.viewport;
         let texture = texture.unwrap_or(self.white);
         // Two triangles, each vertex carrying the unit position, the destination, the viewport,
@@ -979,6 +1122,11 @@ impl GlContext {
                 gl.bind_buffer(glow::UNIFORM_BUFFER, Some(program.buffer));
                 gl.buffer_data_u8_slice(glow::UNIFORM_BUFFER, bytes, glow::DYNAMIC_DRAW);
                 gl.bind_buffer_base(glow::UNIFORM_BUFFER, UNIFORM_BINDING, Some(program.buffer));
+                if let (Some(buffer), Some(block)) = (program.user, user_block) {
+                    gl.bind_buffer(glow::UNIFORM_BUFFER, Some(buffer));
+                    gl.buffer_data_u8_slice(glow::UNIFORM_BUFFER, block, glow::DYNAMIC_DRAW);
+                    gl.bind_buffer_base(glow::UNIFORM_BUFFER, USER_BINDING, Some(buffer));
+                }
 
                 gl.active_texture(glow::TEXTURE0 + TEXTURE_UNIT);
                 gl.bind_texture(glow::TEXTURE_2D, Some(texture.handle));
@@ -992,6 +1140,15 @@ impl GlContext {
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
+                if let Some(backdrop) = backdrop {
+                    gl.active_texture(glow::TEXTURE0 + BACKDROP_UNIT);
+                    gl.bind_texture(glow::TEXTURE_2D, Some(backdrop.handle));
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
+                    gl.active_texture(glow::TEXTURE0 + TEXTURE_UNIT);
+                }
                 match placement.stencil {
                     Stencil::Off => gl.disable(glow::STENCIL_TEST),
                     Stencil::Test(depth) => {
@@ -1029,6 +1186,11 @@ impl GlContext {
                 gl.color_mask(true, true, true, true);
 
                 gl.bind_texture(glow::TEXTURE_2D, None);
+                if backdrop.is_some() {
+                    gl.active_texture(glow::TEXTURE0 + BACKDROP_UNIT);
+                    gl.bind_texture(glow::TEXTURE_2D, None);
+                    gl.active_texture(glow::TEXTURE0 + TEXTURE_UNIT);
+                }
                 gl.bind_buffer(glow::ARRAY_BUFFER, None);
                 gl.bind_buffer(glow::UNIFORM_BUFFER, None);
                 gl.disable_vertex_attrib_array(0);
@@ -1188,11 +1350,21 @@ fn context_compile_lost(error: GlesError) -> CompileFailure {
     }
 }
 
-/// A program: the linked GLSL and its uniform buffer.
+/// What a user shader's draw uploads and binds beyond the shared block: see [`GlContext::draw_with`].
+pub(crate) struct UserInputs<'a> {
+    /// The packed `gnoblin_user` block.
+    pub block: &'a [u8],
+    /// The backdrop texture, top row first, when the pass reads it.
+    pub backdrop: Option<Texture>,
+}
+
+/// A program: the linked GLSL and its uniform buffers.
 pub(crate) struct Program {
     program: glow::Program,
-    /// The uniform block's buffer.
+    /// The shared uniform block's buffer.
     buffer: glow::Buffer,
+    /// The buffer of a user shader's own block, which only a user shader's program has.
+    user: Option<glow::Buffer>,
     /// The geometry buffer this program's draws upload their vertices to.
     geometry: glow::Buffer,
 }

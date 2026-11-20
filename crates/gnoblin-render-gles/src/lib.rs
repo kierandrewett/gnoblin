@@ -40,9 +40,9 @@
 //!
 //! A pass draws one quad. The vertex stage is shared ([`shaders::VERTEX`]) and takes the
 //! destination rectangle and the target's size as attributes, so the fragment stage is the
-//! only stage with a uniform block: one block per program, bound once, overwritten per
+//! only stage with a uniform block: one block per shipped program, bound once, overwritten per
 //! draw. That is what makes "uniforms typed-checked and uploaded" a single small write of a
-//! 96-byte buffer.
+//! 96-byte buffer. A shell's shader program has a second block, its own, beside it.
 //!
 //! | Pass    | Shader                 | Draws                                        |
 //! | ------- | ---------------------- | -------------------------------------------- |
@@ -51,6 +51,7 @@
 //! | shadow  | [`shaders::SHADOW`]    | a [`Pass::Shadow`], behind its layer          |
 //! | blur    | [`shaders::BLUR`]      | one axis of a Gaussian over the backdrop      |
 //! | downsample | [`shaders::DOWNSAMPLE`] | a supersampled target, averaged to the mode |
+//! | shader  | a shell's source        | a [`Pass::Shader`], in place of the layer's pixels |
 //!
 //! # Where the pixels go
 //!
@@ -99,6 +100,31 @@
 //! 9. **A target is asked for past the driver's texture limit.** The size is checked against
 //!    `GL_MAX_TEXTURE_SIZE` before any object is made, and a refused resize keeps the old target:
 //!    `downsample_tests::a_target_past_the_drivers_limit_is_refused_and_the_old_one_stays`.
+//! 10. **A shell's shader reads a secure window.** A shader that calls `backdrop` samples a texture this renderer drew
+//!     from [`OutputFrame::backdrop_input`] into a target of its own, never the frame's target, which shows the secure
+//!     layers: `shader_tests::a_secure_window_reads_as_black_in_a_backdrop` and
+//!     `shader_tests::the_lock_card_reads_as_black_in_a_backdrop`.
+//! 11. **A shader that does not compile stops the frame.** The failure is cached with the source's key, the layer is
+//!     drawn without the pass and the pass is reported refused:
+//!     `shader_tests::a_broken_user_shader_leaves_the_frame_drawn`.
+//! 12. **A shader that was compiled by a lost context is used.** A failed frame drops every compiled program
+//!     ([`Gles::drain_shaders`]), and the next frame that needs one compiles it again:
+//!     `shader_tests::a_lost_device_drops_every_compiled_shader_and_the_next_frame_compiles_again`.
+//!
+//! # The shell's shader pass
+//!
+//! A [`Pass::Shader`] draws in place of the layer's own pixels with a program compiled from the shell's source
+//! ([`program::link_user`]): two uniform blocks (group 0, bindings 0 and 1), the layer's pixels on unit 0 (group 1), and
+//! the backdrop on unit 1 (group 2) when the source calls `backdrop`. `naga` is told these numbers through
+//! [`gl::binding_map`], so the GLSL it writes states them and a draw only uploads bytes. Programs live in a
+//! [`ShaderCache`] keyed by [`gnoblin_render::ShaderKey`]; unlike the shipped passes they are deleted when the cache
+//! evicts one.
+//!
+//! The backdrop is built before the frame's own layers are painted ([`Gles::build_backdrops`]): the layers below the
+//! shader's layer are drawn into an output-sized target of their own and the layer's rectangle is copied, top row first,
+//! into a texture of that size. A layer below that reads a backdrop in turn is built the same way, to
+//! [`MAX_BACKDROP_DEPTH`] levels. Targets for backdrops and for the pictures between chained passes come from the
+//! context's pool ([`gl::GlContext::lease`]).
 
 gnoblin_log::logger!(log = "render");
 
@@ -113,23 +139,30 @@ use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportMem, ImportMemWl};
 use smithay::utils::{Physical, Rectangle};
 
-use gnoblin_render::{Mat4, Pass};
+use gnoblin_render::{Mat4, Pass, ShaderPass};
 use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
-use gl::{Depth, Framebuffer, GlContext, Program, QuadPlacement, Texture};
+use gl::{Depth, Framebuffer, GlContext, Program, QuadPlacement, Texture, UserInputs};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::footprint::Footprint;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, Model, OutputFrame, Overlay, Surface, SurfaceSource, View};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
-use gnoblin_render_frame::shader::uniforms::Uniforms;
+use gnoblin_render_frame::shader::uniforms::{Uniforms, UserBlock};
+use gnoblin_render_frame::shader::{ShaderCache, ShaderError, ShaderTimings};
+use std::time::Instant;
 
 /// The largest corner radius or blur radius a pass draws, in physical pixels.
 ///
 /// A radius larger than half the shorter side is clamped by the shader anyway; this bound
 /// keeps the buffer arithmetic far from an overflow.
 const MAX_RADIUS: f32 = 4096.0;
+
+/// How many backdrops a frame builds inside one another. A layer whose shader reads the backdrop paints the layers
+/// below it first; if one of those reads its own, that is a second picture, and each level multiplies the work by the
+/// layers below it. Past this depth a layer's shader that reads the backdrop is not drawn.
+const MAX_BACKDROP_DEPTH: u8 = 3;
 
 /// A GLES renderer and the offscreen target it draws into.
 pub struct Gles {
@@ -165,6 +198,11 @@ pub struct Gles {
     /// The target [`Gles::downsampled`] averages into and reads back, made on first use and replaced when the size
     /// asked for changes.
     shown: Option<Framebuffer>,
+    /// The user shader passes' programs.
+    shaders: UserShaders,
+    /// How many backdrops deep the frame being painted is: a layer whose shader reads the backdrop paints the layers
+    /// below it first, and one of those may read its own. See [`MAX_BACKDROP_DEPTH`].
+    backdrop_depth: u8,
 }
 
 impl std::fmt::Debug for Gles {
@@ -188,6 +226,14 @@ struct Passes {
     view: Program,
     /// The whole-output downsample pass of a supersampled output.
     downsample: Program,
+}
+
+/// The compiled shader programs of the shells' user shader passes and the clock they read.
+struct UserShaders {
+    /// Each source's program, or why it has none: a source that does not compile is compiled once and not once a frame.
+    cache: ShaderCache<Result<Program, ShaderError>>,
+    /// When this renderer was made: a shader's `t` is the seconds since.
+    started: Instant,
 }
 
 /// One scan-out buffer of an output: the dmabuf imported as a GL texture and the framebuffer
@@ -243,6 +289,11 @@ impl Gles {
             subtrees: subtree::Subtrees::default(),
             stale: true,
             shown: None,
+            shaders: UserShaders {
+                cache: ShaderCache::new(),
+                started: Instant::now(),
+            },
+            backdrop_depth: 0,
         })
     }
 
@@ -277,7 +328,8 @@ impl Gles {
             .iter()
             .flatten()
             .map(Framebuffer::bytes)
-            .fold(0, u64::saturating_add);
+            .fold(0, u64::saturating_add)
+            .saturating_add(self.device.spare_bytes());
         let scratch = blur.saturating_add(self.cursor_under.capacity() as u64);
         Footprint {
             target: self
@@ -288,15 +340,28 @@ impl Gles {
             staging: 0,
             views: self.subtree_bytes(),
             // The blur pair is made on first use and again after a resize (`ensure_scratch`), and holds nothing a
-            // later frame reads.
+            // later frame reads; nor do the targets the user shader passes leased.
             releasable: blur,
         }
     }
 
-    /// Gives back the blur scratch targets. The next frame that blurs makes them again.
+    /// Gives back the blur scratch targets and the pool of backdrop and shader targets. The next frame that needs
+    /// them makes them again.
     pub fn release_scratch(&mut self) {
         for scratch in self.scratch.take().into_iter().flatten() {
             self.device.release(scratch);
+        }
+        self.device.release_spare();
+    }
+
+    /// Deletes every compiled user shader, which the next frame that needs one compiles again. It is what a lost device
+    /// asks for: nothing the old context made can be used, and a program of the new one is not the old one's.
+    fn drain_shaders(&mut self) {
+        let Self { device, shaders, .. } = self;
+        for (_, entry) in shaders.cache.drain() {
+            if let Ok(program) = entry {
+                device.delete_program(program);
+            }
         }
     }
 
@@ -628,16 +693,144 @@ impl Gles {
         // Every texture the frame imported was dropped when `paint_layers` returned, on every path out of it, so their
         // names are given back here, once per frame.
         self.device.collect_textures();
+        if matches!(painted, Err(RenderError::Failed | RenderError::Lost)) {
+            // A frame that failed may have lost the context, and a program of a lost context draws nothing.
+            self.drain_shaders();
+        }
         painted
     }
 
-    /// [`Gles::paint`] without the collection of what the frame imported.
+    /// Paints the layers and, for each whose shader reads the backdrop, the picture it reads, built first and given back
+    /// after.
     fn paint_layers(
         &mut self,
         frame: &OutputFrame,
         scale: Scale,
         damage: &[Rect],
         glass: Option<&LayerParts<'_>>,
+    ) -> Result<(), RenderError> {
+        let backdrops = self.build_backdrops(frame, scale, damage)?;
+        let painted = self.paint_layers_with(frame, scale, damage, glass, &backdrops);
+        for backdrop in backdrops.into_iter().flatten() {
+            self.device.give_back(backdrop);
+        }
+        painted
+    }
+
+    /// The picture each layer whose shader reads the backdrop reads, indexed like the frame's layers (a layer with none,
+    /// or one this frame does not draw a shader on, has `None`).
+    ///
+    /// A layer on a 3D placement has none, because no shader is drawn on it. A layer none of the damage reaches has
+    /// none either. Past [`MAX_BACKDROP_DEPTH`] nested backdrops the list is empty and a shader that needs one is not
+    /// drawn.
+    fn build_backdrops(
+        &mut self,
+        frame: &OutputFrame,
+        scale: Scale,
+        damage: &[Rect],
+    ) -> Result<Vec<Option<Framebuffer>>, RenderError> {
+        let mut built: Vec<Option<Framebuffer>> = Vec::new();
+        if self.backdrop_depth >= MAX_BACKDROP_DEPTH || !frame.layers().iter().any(reads_backdrop) {
+            return Ok(built);
+        }
+        for (index, layer) in frame.layers().iter().enumerate() {
+            let wanted = reads_backdrop(layer)
+                && layer_model(layer).is_none()
+                && damage.iter().any(|rect| intersects(layer, *rect, scale));
+            let picture = if wanted {
+                self.backdrop_of(frame, index, scale)
+            } else {
+                Ok(None)
+            };
+            match picture {
+                Ok(picture) => built.push(picture),
+                Err(error) => {
+                    for backdrop in built.into_iter().flatten() {
+                        self.device.give_back(backdrop);
+                    }
+                    return Err(error);
+                }
+            }
+        }
+        Ok(built)
+    }
+
+    /// The backdrop of the layer at `index`: [`OutputFrame::backdrop_input`] drawn into a target and copied, top row
+    /// first, into a texture the size of the layer's own rectangle, which is what `backdrop(uv)` reads. What lies off
+    /// the output stays transparent.
+    ///
+    /// The layers below are drawn into their own output-sized target and never into the frame's: the frame's target
+    /// shows secure windows, and the input has them black.
+    fn backdrop_of(
+        &mut self,
+        frame: &OutputFrame,
+        index: usize,
+        scale: Scale,
+    ) -> Result<Option<Framebuffer>, RenderError> {
+        let Some(input) = frame.backdrop_input(index) else {
+            return Ok(None);
+        };
+        let region = physical_rect(input.region, scale);
+        let quad = Rect::new(
+            region.loc.x,
+            region.loc.y,
+            region.size.w.max(0) as u32,
+            region.size.h.max(0) as u32,
+        );
+        if quad.is_empty() {
+            return Ok(None);
+        }
+        let mut below = self.device.lease(self.physical)?;
+        let texture = match self.device.lease(Size::new(quad.width, quad.height)) {
+            Ok(texture) => texture,
+            Err(error) => {
+                self.device.give_back(below);
+                return Err(error);
+            }
+        };
+        let drawn = self.draw_backdrop(&input.frame, scale, quad, &mut below, &texture);
+        self.device.give_back(below);
+        match drawn {
+            Ok(()) => Ok(Some(texture)),
+            Err(error) => {
+                self.device.give_back(texture);
+                Err(error)
+            }
+        }
+    }
+
+    /// Draws `frame` over `quad` into `below` and copies that rectangle into `texture`, flipped so its first row is the
+    /// top of the layer.
+    fn draw_backdrop(
+        &mut self,
+        frame: &OutputFrame,
+        scale: Scale,
+        quad: Rect,
+        below: &mut Framebuffer,
+        texture: &Framebuffer,
+    ) -> Result<(), RenderError> {
+        self.device.clear(texture, Color::TRANSPARENT);
+        let Some(visible) = quad.intersection(Rect::from_size(self.physical)) else {
+            return Ok(());
+        };
+        std::mem::swap(&mut self.target, below);
+        self.backdrop_depth += 1;
+        let painted = self.paint_layers(frame, scale, &[visible], None);
+        self.backdrop_depth -= 1;
+        std::mem::swap(&mut self.target, below);
+        painted?;
+        let within = Rect::new(visible.x - quad.x, visible.y - quad.y, visible.width, visible.height);
+        self.device.blit_into(below, texture.texture(), visible, within, true)
+    }
+
+    /// [`Gles::paint_layers`] with the backdrops its layers read already built.
+    fn paint_layers_with(
+        &mut self,
+        frame: &OutputFrame,
+        scale: Scale,
+        damage: &[Rect],
+        glass: Option<&LayerParts<'_>>,
+        backdrops: &[Option<Framebuffer>],
     ) -> Result<(), RenderError> {
         // Textures first: importing needs the renderer mutably, and a pass borrows it for the
         // whole of the draw.
@@ -676,6 +869,7 @@ impl Gles {
             target,
             scratch,
             passes,
+            shaders,
             physical,
             cursor_under,
             cursor_under_rect,
@@ -692,11 +886,15 @@ impl Gles {
         }
         let order = spatial_order(frame.layers(), *physical, scale);
         device.begin(target)?;
+        let backdrop_of = |index: usize| backdrops.get(index).and_then(Option::as_ref).map(Framebuffer::texture);
         let mut painter = Painter {
             device,
             target,
             scratch,
             passes,
+            shaders: Some(shaders),
+            timings: Some(frame.shader_timings().clone()),
+            user_bytes: Vec::new(),
             physical: *physical,
             scale,
             background,
@@ -713,7 +911,7 @@ impl Gles {
                     continue;
                 }
                 let texture = textures.get(index).and_then(|texture| *texture);
-                painter.layer(layer, texture, QuadPlacement::FLAT)?;
+                painter.layer(layer, texture, QuadPlacement::FLAT, backdrop_of(index))?;
             }
             if !order.is_empty() {
                 painter.device.clear_depth(painter.target);
@@ -721,7 +919,7 @@ impl Gles {
             for (index, placement) in &order {
                 let layer = &frame.layers()[*index];
                 let texture = textures.get(*index).and_then(|texture| *texture);
-                painter.layer(layer, texture, *placement)?;
+                painter.layer(layer, texture, *placement, None)?;
             }
             if let Some(parts) = glass {
                 painter.draw_parts(parts, None, QuadPlacement::FLAT)?;
@@ -864,6 +1062,8 @@ struct LayerParts<'a> {
     tint: Color,
     opacity: f32,
     src: [f32; 4],
+    /// The picture a shader on the layer reads with `backdrop(uv)`, built by [`Gles::build_backdrops`].
+    backdrop: Option<Texture>,
 }
 
 /// One frame's mutable state, so a pass's parameters stay a method's arguments.
@@ -872,6 +1072,13 @@ struct Painter<'a> {
     target: &'a Framebuffer,
     scratch: &'a mut Option<[Framebuffer; 2]>,
     passes: &'a mut Passes,
+    /// The user shader programs, or `None` where a shader is not drawn: inside a View, whose layers are drawn through
+    /// an eye's viewport that a shader's intermediate pictures would lose.
+    shaders: Option<&'a mut UserShaders>,
+    /// Where the frame's shader draws report their cost, for the watchdog.
+    timings: Option<ShaderTimings>,
+    /// The packed `gnoblin_user` block of the draw in progress, reused across draws.
+    user_bytes: Vec<u8>,
     physical: Size,
     scale: Scale,
     background: Color,
@@ -903,7 +1110,13 @@ impl Painter<'_> {
     /// full opacity inside the group, and the finished group is faded over the frame by the
     /// layer's opacity, so the blur fades with the layer as a browser's `backdrop-filter` does
     /// under `opacity`.
-    fn layer(&mut self, layer: &Layer, texture: Option<Texture>, placement: QuadPlacement) -> Result<(), RenderError> {
+    fn layer(
+        &mut self,
+        layer: &Layer,
+        texture: Option<Texture>,
+        placement: QuadPlacement,
+        backdrop: Option<Texture>,
+    ) -> Result<(), RenderError> {
         let (dst, corner_radius, silhouette, effects, colour, tint, opacity, src) = match layer {
             Layer::Solid(solid) => (
                 solid.dst,
@@ -958,6 +1171,7 @@ impl Painter<'_> {
                 tint,
                 opacity,
                 src,
+                backdrop,
             },
             texture,
             placement,
@@ -980,6 +1194,7 @@ impl Painter<'_> {
             tint,
             opacity,
             src,
+            backdrop,
         } = *parts;
         // The shape the corner radius rounds, the shadow follows when it asks for the frame and a border runs
         // along: the layer's silhouette when it is one part of a larger frame, else its own quad. A layer drawn
@@ -988,11 +1203,16 @@ impl Painter<'_> {
         let shape = silhouette.filter(|_| flat).unwrap_or(quad);
         let rounded_to = silhouette.filter(|_| flat && radius > 0.0);
         let mut grouped = false;
+        let ready = if flat {
+            self.ready_shaders(effects, backdrop.is_some())
+        } else {
+            Vec::new()
+        };
         for pass in effects.passes() {
             match pass {
-                Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) if !flat => {
+                Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) | Pass::Shader(_) if !flat => {
                     log::warn!(
-                        "unsupported-effect-on-3d: a shadow, blur or border on a transformed layer is not drawn"
+                        "unsupported-effect-on-3d: a shadow, blur, border or shader on a transformed layer is not drawn"
                     );
                 }
                 Pass::Shadow(shadow) if shadow.opacity > 0.0 && shadow.color.a > 0.0 => {
@@ -1004,29 +1224,27 @@ impl Painter<'_> {
                 }
                 // A border is a stroke over the layer's own pixels, so it waits until they are down.
                 Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) => {}
-                // The user shader pass is the shader lane's: this renderer does not draw it yet and does not list the kind in
-                // `RendererKind::effect_kinds`, so the node's `skipped` names it. The pass to draw is `ShaderPass`
-                // (`gnoblin_render_frame::shader::user::validate` gives the module, `OutputFrame::backdrop_input` the backdrop).
+                // A shader draws in place of the layer's own pixels, below.
                 Pass::Shader(_) => {}
             }
         }
         // A grouped layer is drawn at full opacity into its group, which then fades as one.
         let (group_opacity, fade) = if grouped { (1.0, Some(opacity)) } else { (opacity, None) };
-        if grouped {
-            self.enter_group()?;
-        }
-        let mut uniforms = match (colour, texture) {
-            (Some(colour), _) => {
-                let mut uniforms = Uniforms::solid(quad, colour, tint, group_opacity);
-                uniforms.corner = radius;
-                uniforms
+        let drawn = if ready.is_empty() {
+            if grouped {
+                self.enter_group()?;
             }
-            (None, _) => Uniforms::surface(quad, src, tint, group_opacity, radius),
-        };
-        if let Some(frame) = rounded_to {
-            uniforms.round_to(frame);
-        }
-        let drawn = {
+            let mut uniforms = match (colour, texture) {
+                (Some(colour), _) => {
+                    let mut uniforms = Uniforms::solid(quad, colour, tint, group_opacity);
+                    uniforms.corner = radius;
+                    uniforms
+                }
+                (None, _) => Uniforms::surface(quad, src, tint, group_opacity, radius),
+            };
+            if let Some(frame) = rounded_to {
+                uniforms.round_to(frame);
+            }
             let Self {
                 device, passes, bytes, ..
             } = self;
@@ -1037,6 +1255,22 @@ impl Painter<'_> {
             };
             program.pack(&uniforms, bytes);
             device.draw(program, bytes, quad, texture, placement)
+        } else {
+            self.draw_shaded(
+                &ready,
+                &Shaded {
+                    quad,
+                    colour,
+                    texture,
+                    src,
+                    tint,
+                    opacity: group_opacity,
+                    radius,
+                    rounded_to,
+                    backdrop,
+                    grouped,
+                },
+            )
         };
         match (drawn, fade) {
             (Ok(()), Some(factor)) => self.fade_group(quad, factor, radius, rounded_to)?,
@@ -1050,6 +1284,170 @@ impl Painter<'_> {
             }
         }
         Ok(())
+    }
+
+    /// The shader passes of `effects` this frame can draw, in list order: each one's program is compiled the first time
+    /// its source is met and kept, and a source that does not compile is a pass left undrawn with its reason reported
+    /// (`shader: compile-failed` in the node's `skipped` list), so the layer still draws.
+    ///
+    /// A pass that reads the backdrop needs `has_backdrop`; without one (the layer is nested too deep in backdrops, or
+    /// the picture could not be made) it is left undrawn as `shader: backdrop-unavailable`.
+    fn ready_shaders<'e>(&mut self, effects: &'e gnoblin_render::Effects, has_backdrop: bool) -> Vec<&'e ShaderPass> {
+        let Self {
+            device,
+            shaders,
+            timings,
+            ..
+        } = self;
+        let Some(shaders) = shaders.as_deref_mut() else {
+            return Vec::new();
+        };
+        let mut ready = Vec::new();
+        for pass in effects.passes() {
+            let Pass::Shader(pass) = pass else {
+                continue;
+            };
+            let key = pass.key();
+            if pass.backdrop() && !has_backdrop {
+                if let Some(timings) = timings.as_ref() {
+                    timings.record_refused(key, "backdrop-unavailable");
+                }
+                continue;
+            }
+            if !shaders.cache.contains(key) {
+                let program = program::link_user(device, pass.source(), pass.backdrop());
+                if let Err(error) = &program {
+                    log::warn!(
+                        area = "render",
+                        %error,
+                        shader = key.get(),
+                        "a user shader does not compile; the layer is drawn without it"
+                    );
+                }
+                if let Some((_, Ok(evicted))) = shaders.cache.insert(key, program) {
+                    device.delete_program(evicted);
+                }
+            }
+            match shaders.cache.get(key) {
+                Some(Ok(_)) => ready.push(pass),
+                Some(Err(_)) => {
+                    if let Some(timings) = timings.as_ref() {
+                        timings.record_refused(key, "compile-failed");
+                    }
+                }
+                None => {}
+            }
+        }
+        ready
+    }
+
+    /// Draws a layer's own pixels through its shader passes: each pass but the last draws into a picture the size of the
+    /// layer, which the next reads as the node's colour, and the last draws into the frame with the layer's tint,
+    /// opacity and rounded corners.
+    fn draw_shaded(&mut self, ready: &[&ShaderPass], node: &Shaded) -> Result<(), RenderError> {
+        let Some((last, earlier)) = ready.split_last() else {
+            return Ok(());
+        };
+        // The node's own colour is a texture: the layer's pixels, or for a solid the one pixel of its colour.
+        let (mut input, mut src) = match (node.colour, node.texture) {
+            (Some(colour), _) => (self.device.swatch(premultiplied_bytes(colour))?, [0.0, 0.0, 1.0, 1.0]),
+            (None, Some(texture)) => (texture, node.src),
+            (None, None) => return Ok(()),
+        };
+        let mut leased: Vec<Framebuffer> = Vec::new();
+        let drawn = self
+            .shade_earlier(earlier, node, &mut input, &mut src, &mut leased)
+            .and_then(|()| {
+                if node.grouped {
+                    self.enter_group()?;
+                } else if !leased.is_empty() {
+                    // The pictures were drawn into other targets, so the frame's own is bound again.
+                    self.device.begin(self.target)?;
+                    self.device.scissor(Some(self.clip));
+                }
+                let mut uniforms = Uniforms::surface(node.quad, src, node.tint, node.opacity, node.radius);
+                if let Some(frame) = node.rounded_to {
+                    uniforms.round_to(frame);
+                }
+                self.shader_draw(last, &uniforms, input, node.backdrop, node.quad)
+            });
+        for picture in leased {
+            self.device.give_back(picture);
+        }
+        drawn
+    }
+
+    /// Draws the passes before the last, each into a picture of the layer's size with the identity tint, opacity and
+    /// corner. `input` and `src` become the last picture and how to read it; the pictures are pushed to `leased`, for
+    /// the caller to give back on every path.
+    fn shade_earlier(
+        &mut self,
+        earlier: &[&ShaderPass],
+        node: &Shaded,
+        input: &mut Texture,
+        src: &mut [f32; 4],
+        leased: &mut Vec<Framebuffer>,
+    ) -> Result<(), RenderError> {
+        let size = Size::new(node.quad.width, node.quad.height);
+        let local = Rect::from_size(size);
+        for pass in earlier {
+            leased.push(self.device.lease(size)?);
+            let Some(picture) = leased.last() else {
+                return Err(RenderError::Failed);
+            };
+            self.device.begin(picture)?;
+            self.device.blend_replace()?;
+            let uniforms = Uniforms::surface(local, *src, Color::WHITE, 1.0, 0.0);
+            let drawn = self.shader_draw(pass, &uniforms, *input, node.backdrop, local);
+            self.device.blend_premultiplied()?;
+            drawn?;
+            *input = picture.texture();
+            // A target's texture starts at its bottom row.
+            *src = flipped_mapping(local, size);
+        }
+        Ok(())
+    }
+
+    /// One shader draw: the pass's program over `quad`, reading `input` as the node's colour, and its cost reported.
+    ///
+    /// The cost is the wall time from the draw to the end of the GPU's work on it, which is why the draw waits: the GPU
+    /// runs behind the CPU, so a call that returns at once says nothing about a runaway shader.
+    fn shader_draw(
+        &mut self,
+        pass: &ShaderPass,
+        uniforms: &Uniforms,
+        input: Texture,
+        backdrop: Option<Texture>,
+        quad: Rect,
+    ) -> Result<(), RenderError> {
+        let Self {
+            device,
+            shaders,
+            bytes,
+            user_bytes,
+            timings,
+            ..
+        } = self;
+        let Some(shaders) = shaders.as_deref_mut() else {
+            return Ok(());
+        };
+        let time = shaders.started.elapsed().as_secs_f32();
+        let Some(Ok(program)) = shaders.cache.get(pass.key()) else {
+            return Ok(());
+        };
+        program.pack(uniforms, bytes);
+        UserBlock::new(pass.params_padded(), time).pack(user_bytes);
+        let began = Instant::now();
+        let user = UserInputs {
+            block: &user_bytes[..],
+            backdrop: backdrop.filter(|_| pass.backdrop()),
+        };
+        let drawn = device.draw_with(program, bytes, Some(user), quad, Some(input), QuadPlacement::FLAT);
+        device.finish();
+        if let Some(timings) = timings.as_ref() {
+            timings.record(pass.key(), began.elapsed());
+        }
+        drawn
     }
 
     /// Keeps the pixels of `rect` before the cursor is drawn over them, read back from the
@@ -1389,6 +1787,48 @@ impl Passes {
     }
 }
 
+/// What [`Painter::draw_shaded`] needs of a layer: the quad and the paint [`Painter::draw_parts`] would have drawn.
+struct Shaded {
+    quad: Rect,
+    /// The solid's colour, straight; `None` for a layer of pixels.
+    colour: Option<Color>,
+    texture: Option<Texture>,
+    src: [f32; 4],
+    tint: Color,
+    /// The opacity the draw carries: the group's 1 when the layer is drawn into a group, else the layer's own.
+    opacity: f32,
+    radius: f32,
+    rounded_to: Option<Rect>,
+    backdrop: Option<Texture>,
+    /// Whether the layer is drawn into its blur group, which the last pass binds.
+    grouped: bool,
+}
+
+/// Whether a layer has a shader pass that samples the backdrop.
+fn reads_backdrop(layer: &Layer) -> bool {
+    let effects = match layer {
+        Layer::Solid(solid) => &solid.effects,
+        Layer::Surface(surface) => &surface.effects,
+        Layer::Overlay(_) => return false,
+    };
+    effects
+        .passes()
+        .iter()
+        .any(|pass| matches!(pass, Pass::Shader(shader) if shader.backdrop()))
+}
+
+/// A solid's colour as the premultiplied bytes a shader reads it from.
+fn premultiplied_bytes(colour: Color) -> [u8; 4] {
+    let alpha = colour.a.clamp(0.0, 1.0);
+    let byte = |value: f32| (value.clamp(0.0, 1.0) * alpha * 255.0).round() as u8;
+    [
+        byte(colour.r),
+        byte(colour.g),
+        byte(colour.b),
+        (alpha * 255.0).round() as u8,
+    ]
+}
+
 /// The layer's model placement, `None` for a flat layer.
 fn layer_model(layer: &Layer) -> Option<&Model> {
     match layer {
@@ -1565,6 +2005,8 @@ mod view;
 mod downsample_tests;
 #[cfg(test)]
 mod golden;
+#[cfg(test)]
+mod shader_tests;
 #[cfg(test)]
 mod shape_tests;
 #[cfg(test)]

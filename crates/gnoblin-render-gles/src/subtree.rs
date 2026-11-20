@@ -284,6 +284,9 @@ impl Gles {
             target,
             scratch,
             passes,
+            shaders: None,
+            timings: None,
+            user_bytes: Vec::new(),
             physical: size,
             scale: Scale::IDENTITY,
             background: Color::BLACK,
@@ -315,7 +318,7 @@ impl Painter<'_> {
                     };
                     let stencil = if depth > 0 { Stencil::Test(depth) } else { Stencil::Off };
                     let placement = placement(&screen, model, layer_dst(layer), stencil);
-                    self.layer(layer, *texture, placement)?;
+                    self.layer(layer, *texture, placement, None)?;
                 }
                 ViewOp::PushClip(plane) if depth < MAX_CLIP_DEPTH => {
                     depth += 1;

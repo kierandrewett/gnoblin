@@ -19,8 +19,10 @@ use naga::front::wgsl::Frontend;
 use naga::proc::BoundsCheckPolicies;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
-use crate::gl::{GlContext, Program};
+use crate::gl::{self, GlContext, Program};
 use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::shader::sources::VERTEX;
+use gnoblin_render_frame::shader::user::validate;
 use gnoblin_render_frame::shader::{ENTRY, ShaderError, Stage};
 
 use crate::log;
@@ -46,6 +48,7 @@ fn translate(source: &str, pass: &'static str, stage: Stage) -> Result<String, S
             version: 310,
             is_webgl: false,
         },
+        binding_map: gl::binding_map(),
         ..Default::default()
     };
     let pipelines = PipelineOptions {
@@ -94,8 +97,36 @@ pub(crate) fn link(device: &mut GlContext, vertex: &str, fragment: &str) -> Resu
         log::debug!(area = "render", %error, "an effect pass does not compile");
         RenderError::Unavailable
     })?;
-    device.program(&vertex_glsl, &fragment_glsl).map_err(|failure| {
+    device.program(&vertex_glsl, &fragment_glsl, 1).map_err(|failure| {
         log::debug!(area = "render", ?failure, "an effect pass does not link");
         RenderError::Unavailable
     })
+}
+
+/// Compiles a shell's shader: the source is validated again here (a pass that reached the frame some other way is
+/// never run unchecked), the wrapped module is written as GLSL, and the program is linked with the two uniform blocks
+/// a user shader declares.
+///
+/// # Errors
+///
+/// A [`ShaderError`] when the source is refused, `naga` cannot write it, or the driver does not compile or link it. A
+/// shipped pass failing is a startup failure ([`link`]); this one is the shell's to hear of and the frame still draws.
+pub(crate) fn link_user(device: &mut GlContext, source: &str, backdrop: bool) -> Result<Program, ShaderError> {
+    let validated = validate(source)?;
+    if validated.backdrop() != backdrop {
+        // The renderer builds a backdrop for a pass that says it reads one, and binds it only then; a pass that is wrong
+        // about it would read an unbound texture, or build a picture nobody reads.
+        return Err(ShaderError::new(
+            "effect",
+            Stage::Module,
+            0,
+            0,
+            "the pass's backdrop flag does not match what its source reads".to_owned(),
+        ));
+    }
+    let vertex_glsl = translate(VERTEX, "vertex", Stage::Vertex)?;
+    let fragment_glsl = translate(validated.wgsl(), "effect", Stage::Fragment)?;
+    device
+        .program(&vertex_glsl, &fragment_glsl, 2)
+        .map_err(|failure| ShaderError::new("effect", failure.stage, 0, 0, failure.log))
 }
