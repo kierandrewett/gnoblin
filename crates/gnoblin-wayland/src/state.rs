@@ -123,10 +123,6 @@ const MENU_REQUESTS_KEPT: usize = 32;
 /// repeats, and the gap between repeats, both in milliseconds. These are the values the
 /// configuration reference defaults to.
 pub(crate) const KEY_REPEAT_DELAY: i32 = 200;
-/// How many logical pixels one wheel step scrolls. The backend states scroll in 1/120 of a step,
-/// and `wl_pointer.axis` wants pixels beside the discrete step, so a client that ignores the
-/// discrete value still moves by the distance a notch is worth.
-const AXIS_PIXELS_PER_STEP: f64 = 15.0;
 /// The gap, in milliseconds, between repeats once a key repeat has started.
 pub(crate) const KEY_REPEAT_INTERVAL: i32 = 40;
 
@@ -298,6 +294,13 @@ pub struct State {
     /// decoration can be answered with the protocol's `orphaned` error: Smithay keeps the object where nothing else
     /// can read it.
     pub(crate) decoration_links: Vec<crate::protocols::zxdg_decoration_v1::DecorationLink>,
+    /// `org_kde_kwin_server_decoration_manager`: the global, its managers and the objects clients made
+    /// ([`crate::protocols::kde_server_decoration`]).
+    pub(crate) kde_decorations: crate::protocols::kde_server_decoration::KdeDecorations,
+    /// `org_kde_kwin_appmenu_manager`: the global and the objects clients made ([`crate::protocols::kde_appmenu`]).
+    pub(crate) kde_appmenus: crate::protocols::kde_appmenu::KdeAppmenus,
+    /// `ext_workspace_manager_v1`: the global and the managers clients bound ([`crate::protocols::ext_workspace_v1`]).
+    pub(crate) workspace_protocol: crate::protocols::ext_workspace_v1::Workspaces,
     /// Kept alive so the `ext_session_lock_manager_v1` global stays registered; the
     /// handler in [`crate::protocols::ext_session_lock_v1`] answers its requests.
     pub(crate) session_lock_state: SessionLockManagerState,
@@ -432,6 +435,9 @@ pub struct State {
     /// the access roster in [`crate::protocols::zwp_virtual_keyboard_v1`].
     #[allow(dead_code)]
     pub(crate) virtual_keyboard_global: GlobalId,
+    /// The `zwlr_virtual_pointer_manager_v1` global and the pointers clients made
+    /// ([`crate::protocols::zwlr_virtual_pointer_v1`]).
+    pub(crate) virtual_pointer: crate::protocols::zwlr_virtual_pointer_v1::VirtualPointerServing,
 
     /// The seat the keyboard and pointer belong to, which is what the text-input and
     /// shortcut-inhibit handles hang off.
@@ -683,6 +689,14 @@ impl State {
         let decoration_offered = protocols.toggles.get(&Protocol::XdgDecoration).copied().unwrap_or(true);
         let decoration_state =
             XdgDecorationState::new_with_filter::<Self, _>(&display_handle, move |_| decoration_offered);
+        // `protocols.kde-server-decoration = false` does the same for KDE's older protocol.
+        let kde_offered = protocols
+            .toggles
+            .get(&Protocol::KdeServerDecoration)
+            .copied()
+            .unwrap_or(true);
+        let kde_decorations = crate::protocols::kde_server_decoration::global(&display_handle, kde_offered);
+        let kde_appmenus = crate::protocols::kde_appmenu::global(&display_handle);
         // The lock global is advertised to every client: the standard protocol makes
         // the socket the admission boundary, and `docs/session-lock.md` states that
         // the first request owns the lock.
@@ -797,6 +811,8 @@ impl State {
         let input_method_state = crate::protocols::zwp_input_method_v2::input_method_global(&display_handle, &access);
         let virtual_keyboard_global =
             crate::protocols::zwp_virtual_keyboard_v1::virtual_keyboard_global(&display_handle, &access);
+        let virtual_pointer = crate::protocols::zwlr_virtual_pointer_v1::global(&display_handle, &access);
+        let workspace_protocol = crate::protocols::ext_workspace_v1::global(&display_handle, &access);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&display_handle, seat_name);
@@ -826,6 +842,9 @@ impl State {
             decoration_state,
             decorations_seen: false,
             decoration_links: Vec::new(),
+            kde_decorations,
+            kde_appmenus,
+            workspace_protocol,
             session_lock_state,
             xwayland_shell_state,
             keyboard_grab_state,
@@ -866,6 +885,7 @@ impl State {
             text_input_state,
             input_method_state,
             virtual_keyboard_global,
+            virtual_pointer,
             security_context_state,
             keyboard,
             pointer,
@@ -2030,6 +2050,92 @@ impl State {
         self.update_pointer_constraints();
     }
 
+    /// What every input event meets before it is routed; `true` means the event is spent.
+    ///
+    /// Any input counts as activity: it is what ends an idle period and what the idle
+    /// notifications are derived from. It is recorded before the event is routed, so a
+    /// key a binding consumes still counts as the user being present. A shell's grab stands
+    /// only while the shell holds the tree, its node is there and the lock allows it, so it is
+    /// checked before the event is routed: a locked session never sends a key or button into a
+    /// grab. The lock card takes every key while it is up, ahead of the shell and every client.
+    /// While a modal is active it takes the keys and pointer buttons, and the clients see none
+    /// of them; the rest of the input is dropped for the same reason. While the session is
+    /// locked no modal is active, so the event goes to the lock's own focus.
+    pub(crate) fn intercept_input(&mut self, event: &InputEvent) -> bool {
+        self.record_activity();
+        self.refresh_seat_grab();
+        if self.lock_card_active().is_some() && self.route_to_lock_card(event) {
+            return true;
+        }
+        self.active_modal().is_some() && self.route_to_modal(event)
+    }
+
+    /// A scroll frame a device sent that the backend's one scroll event cannot state (a
+    /// finger or continuous source, or a stop), taken through the same gates every input
+    /// event meets and then routed as a wheel is.
+    pub(crate) fn input_scroll(&mut self, scroll: crate::scroll::Scroll) {
+        let time = InputTime::now();
+        // The gates read the kind of event, not its amount, so an empty scroll stands for any.
+        let probe = InputEvent::PointerAxis {
+            device: gnoblin_types::DeviceId::VIRTUAL,
+            horizontal: 0,
+            vertical: 0,
+        };
+        if self.intercept_input(&probe) {
+            return;
+        }
+        self.route_scroll(scroll, time);
+    }
+
+    /// Sends a scroll to what is under the pointer: a shell node gets the pixel distance and no client does, and a
+    /// client gets one `wl_pointer` axis group. A scroll that moved nothing and stopped nothing sends nothing.
+    fn route_scroll(&mut self, scroll: crate::scroll::Scroll, time: InputTime) {
+        if scroll.is_empty() {
+            return;
+        }
+        // A wheel over a shell node is the shell's: the tree gets the pixel distance, and no client does. The
+        // shell's grab of the pointer takes the wheel wherever the pointer is.
+        let picked = if self.pointer_grabbed() {
+            self.pointer_grab_target()
+        } else {
+            self.shell_pick(self.pointer_position)
+        };
+        if self.pointer_grabbed() && picked.is_none() {
+            return;
+        }
+        if let Some((node, local)) = picked {
+            let pixels = |axis: Option<crate::scroll::ScrollAxis>| axis.map_or(0.0, |axis| axis.pixels);
+            self.tree.input(
+                node,
+                TreeInput::Scroll {
+                    x: local.x,
+                    y: local.y,
+                    dx: pixels(scroll.horizontal),
+                    dy: pixels(scroll.vertical),
+                },
+            );
+            return;
+        }
+        let mut frame = AxisFrame::new(time).source(scroll.source);
+        for (axis, moved) in [(Axis::Horizontal, scroll.horizontal), (Axis::Vertical, scroll.vertical)] {
+            let Some(moved) = moved else { continue };
+            if moved.stop {
+                frame = frame.stop(axis);
+                continue;
+            }
+            if moved.is_still() {
+                continue;
+            }
+            frame = frame.value(axis, moved.pixels);
+            if let Some(steps) = moved.steps {
+                frame = frame.v120(axis, steps);
+            }
+        }
+        let pointer = self.pointer.clone();
+        pointer.axis(self, frame);
+        pointer.frame(self);
+    }
+
     /// The layout position nearest `wanted` that is inside an output.
     ///
     /// A relative move has no output to be relative to, so it is the seat that decides
@@ -2176,6 +2282,9 @@ impl State {
             Ok(effects) => self.apply_decided(effects),
             Err(refusal) => log::debug!(area = "window", %window, ?refusal, "the window is left unmanaged"),
         }
+        // A KDE decoration object made for this surface before it had a toplevel asks for its mode now.
+        crate::protocols::kde_server_decoration::toplevel_created(self, &wl_surface);
+        crate::protocols::kde_appmenu::toplevel_created(self, &wl_surface);
         log::debug!(area = "window", %window, surface = ?wl_surface.id(), "opened");
         self.publish();
     }
@@ -4028,6 +4137,8 @@ impl Host for State {
         let window_writes = self.tree.take_window_writes();
         self.answer_window_writes(window_writes);
         self.follow_decorations_available();
+        // The workspace list a panel reads follows what the shell wrote to the seat and the outputs the session has.
+        crate::protocols::ext_workspace_v1::follow(self);
         self.follow_frame_policies();
         // The popups, subsurfaces and layer surfaces the shell placed, restacked or hid in those transactions.
         self.follow_surface_overrides();
@@ -4133,21 +4244,7 @@ impl Host for State {
 
     fn input(&mut self, event: InputEvent) {
         let time = InputTime::now();
-        // Any input counts as activity: it is what ends an idle period and what the idle
-        // notifications are derived from. It is recorded before the event is routed, so a
-        // key a binding consumes still counts as the user being present.
-        self.record_activity();
-        // A shell's grab stands only while the shell holds the tree, its node is there and the lock allows it, so it is
-        // checked before the event is routed: a locked session never sends a key or button into a grab.
-        self.refresh_seat_grab();
-        // The lock card takes every key while it is up, ahead of the shell and every client.
-        if self.lock_card_active().is_some() && self.route_to_lock_card(&event) {
-            return;
-        }
-        // While a modal is active it takes the keys and pointer buttons, and the clients
-        // see none of them; the rest of the input is dropped for the same reason. While the
-        // session is locked no modal is active, so the event goes to the lock's own focus.
-        if self.active_modal().is_some() && self.route_to_modal(&event) {
+        if self.intercept_input(&event) {
             return;
         }
         match event {
@@ -4305,48 +4402,11 @@ impl Host for State {
             // A scroll goes to the client the pointer is over. The value is in 1/120 of a step, so
             // it is both the discrete `v120` value and, scaled, the pixel distance. The backend
             // cannot tell a wheel from a touchpad finger, so the source is the wheel: a client
-            // that smooths scrolling still gets the exact fractional steps.
+            // that smooths scrolling still gets the exact fractional steps. A scroll that moved
+            // nothing sends nothing, so a client never sees an empty frame.
             InputEvent::PointerAxis {
                 horizontal, vertical, ..
-            } if horizontal != 0 || vertical != 0 => {
-                // A wheel over a shell node is the shell's: the tree gets the pixel distance, and no client does. The
-                // shell's grab of the pointer takes the wheel wherever the pointer is.
-                let picked = if self.pointer_grabbed() {
-                    self.pointer_grab_target()
-                } else {
-                    self.shell_pick(self.pointer_position)
-                };
-                if self.pointer_grabbed() && picked.is_none() {
-                    return;
-                }
-                if let Some((node, local)) = picked {
-                    let dx = f64::from(horizontal) / 120.0 * AXIS_PIXELS_PER_STEP;
-                    let dy = f64::from(vertical) / 120.0 * AXIS_PIXELS_PER_STEP;
-                    self.tree.input(
-                        node,
-                        TreeInput::Scroll {
-                            x: local.x,
-                            y: local.y,
-                            dx,
-                            dy,
-                        },
-                    );
-                } else {
-                    let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
-                    for (axis, steps) in [(Axis::Horizontal, horizontal), (Axis::Vertical, vertical)] {
-                        if steps != 0 {
-                            frame = frame
-                                .value(axis, f64::from(steps) / 120.0 * AXIS_PIXELS_PER_STEP)
-                                .v120(axis, steps);
-                        }
-                    }
-                    let pointer = self.pointer.clone();
-                    pointer.axis(self, frame);
-                    pointer.frame(self);
-                }
-            }
-            // A scroll that moved nothing sends nothing, so a client never sees an empty frame.
-            InputEvent::PointerAxis { .. } => {}
+            } => self.route_scroll(crate::scroll::Scroll::wheel(horizontal, vertical), time),
             // A gesture a shell claimed goes to that shell and to no client or binding; any other is
             // routed to a configured binding and never to a client. While the session is locked it
             // fires nothing: bindings do not run on the lock screen.

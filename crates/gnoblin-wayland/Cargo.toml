@@ -91,6 +91,9 @@ gnoblin-authority = { path = "../gnoblin-authority" }
 # come straight from the wlroots protocol definitions. The tests use the same
 # crate's client side, which is what keeps one XML behind both halves.
 wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
+# `org_kde_kwin_server_decoration_manager` and `org_kde_kwin_appmenu_manager` are KDE's, so their server halves
+# come from the plasma protocol definitions; the tests use the client half of the same XML.
+wayland-protocols-plasma = { version = "0.3.12", features = ["client", "server"] }
 # Log lines go through the `gnoblin-log` facade's macros, so each one carries this crate's component.
 gnoblin-log = { path = "../gnoblin-log" }
 # Random bytes for xdg-foreign handles, drawn from the kernel. Already in Cargo.lock.

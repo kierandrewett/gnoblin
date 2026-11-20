@@ -229,6 +229,7 @@ mod process;
 mod protocols;
 mod request_guard;
 mod request_tap;
+mod scroll;
 mod seat_grab;
 mod selection_bridge;
 mod server;

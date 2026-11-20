@@ -43,7 +43,9 @@ impl ClassInfo for WindowTable {
             }
             ("surface", "stack") => ValueType::Int,
             ("surface", "reserve") => ValueType::ListDouble,
-            ("node" | "window" | "view", "input_mode") | ("window", "frame_policy") => ValueType::Text,
+            ("node" | "window" | "view", "input_mode") | ("window", "frame_policy") | ("seat", "active_workspace") => {
+                ValueType::Text
+            }
             ("node" | "window" | "view", "rotation" | "scale") => ValueType::ListDouble,
             ("view", "source") => ValueType::Node("node".to_owned()),
             _ => return None,
@@ -214,6 +216,14 @@ impl Shell {
     pub fn declare_decorations(&self, available: bool) {
         let seat = wait("the main seat's node", || self.seat_node());
         self.write(seat, &[("decorations_available", TreeValue::Bool(available))]);
+    }
+
+    /// Tells the compositor, as a shell does when it switches workspace, which one is active: writes the seat's
+    /// `active_workspace`.
+    #[track_caller]
+    pub fn declare_active_workspace(&self, id: &str) {
+        let seat = wait("the main seat's node", || self.seat_node());
+        self.write(seat, &[("active_workspace", TreeValue::Text(id.to_owned()))]);
     }
 
     /// Waits until the compositor last published `decorations_available` as `available` on the seat.

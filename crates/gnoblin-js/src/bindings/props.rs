@@ -88,6 +88,10 @@ const WINDOW: &[JsPropDef] = &[
     // (`client`, `server` or `unset`). The compositor writes both.
     def("decoration", JsPropKind::Text, false),
     def("decoration_wanted", JsPropKind::Text, false),
+    // The DBus address of the window's application menu (`org_kde_kwin_appmenu`), empty while it has none. The
+    // compositor writes both.
+    def("appmenu_service", JsPropKind::Text, false),
+    def("appmenu_path", JsPropKind::Text, false),
     // Written by the shell: the window sits in a tiled layout, so its client drops its border and rounding.
     def("tiled", JsPropKind::Flag, true),
     // A hidden node is neither drawn nor hit.

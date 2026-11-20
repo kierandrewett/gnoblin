@@ -20,6 +20,8 @@
 //! | [`wp_content_type_v1`] | `wp_content_type_v1` | records whether a surface shows video or a game |
 //! | [`wp_cursor_shape_v1`] | `wp_cursor_shape_manager_v1` | records the cursor a client names |
 //! | [`zxdg_decoration_v1`] | `zxdg_decoration_manager_v1`, `zxdg_toplevel_decoration_v1` | answers the client's preference: server-side only while a shell that holds the tree declares decorations, client-side otherwise; raises `orphaned` for a toplevel destroyed before its decoration |
+//! | [`kde_server_decoration`] | `org_kde_kwin_server_decoration_manager`, `org_kde_kwin_server_decoration` | KDE's older form of the same negotiation, for toolkits that do not speak `xdg-decoration`: a request becomes the window's `decoration_wanted` and the answer is the one `xdg-decoration` gives, sent back as a `mode` event; behind `protocols.kde-server-decoration` |
+//! | [`kde_appmenu`] | `org_kde_kwin_appmenu_manager`, `org_kde_kwin_appmenu` | the DBus service and object path of a window's application menu, published on its node as `appmenu_service` and `appmenu_path` for a shell that shows a global menu; withdrawn with the object |
 //! | [`extension`] | none of its own | the seam a compat adapter's redirect registers through, and the operations it may ask the compositor for |
 //! | [`zwlr_foreign_toplevel_management_v1`] | `zwlr_foreign_toplevel_manager_v1` | the window list a taskbar reads, and the requests it may make on each window |
 //! | [`zwlr_gamma_control_v1`] | `zwlr_gamma_control_manager_v1` | per-output gamma ramps; a second client asking for an output another holds is refused |
@@ -44,6 +46,7 @@
 //! | [`ext_data_control_v1`] | `ext_data_control_manager_v1` | clipboard access for privileged clients |
 //! | [`zwlr_data_control_v1`] | `zwlr_data_control_manager_v1` | clipboard access for privileged clients (wlroots) |
 //! | [`ext_session_lock_v1`] | `ext_session_lock_v1` | the lock request, its cover, its surfaces and the input gate |
+//! | [`ext_workspace_v1`] | `ext_workspace_manager_v1`, `ext_workspace_group_handle_v1`, `ext_workspace_handle_v1` | the workspaces the configuration declares (one implicit one when none are) with the one the shell names active; one group holding every output; no capabilities, so the list is read-only; privileged |
 //! | [`zwp_keyboard_shortcuts_inhibit_v1`] | `zwp_keyboard_shortcuts_inhibit_manager_v1` | grants, refuses and revokes shortcut inhibitors |
 //! | [`wp_single_pixel_buffer_v1`] | `wp_single_pixel_buffer_manager_v1` | creates the global; the buffer carries its own colour |
 //! | [`zwp_linux_dmabuf_v1`] | `zwp_linux_dmabuf_v1` | GPU buffers from clients, served only when the backend's renderer can import them; each buffer is imported before the client may use it |
@@ -52,6 +55,7 @@
 //! | [`zwp_text_input_v3`] | `zwp_text_input_manager_v3`, `zwp_text_input_v3` | the text-input conversation: `enter` and `leave` follow the keyboard focus once each, a field enabled before the input method binds is held and replayed to it |
 //! | [`zwp_input_method_v2`] | `zwp_input_method_manager_v2`, `zwp_input_method_v2` | the privileged input-method half of a text conversation |
 //! | [`zwp_virtual_keyboard_v1`] | `zwp_virtual_keyboard_manager_v1` | the privileged virtual-keyboard half |
+//! | [`zwlr_virtual_pointer_v1`] | `zwlr_virtual_pointer_manager_v1`, `zwlr_virtual_pointer_v1` | a privileged pointer a client moves, clicks and scrolls; its events take the seat's own input path, so a modal, a lock card and a shell's grabs see them as a mouse's |
 //! | [`wp_viewporter`] | `wp_viewporter` | a surface's crop and scale, with the three errors Smithay's own handler does not raise (`viewport_exists` on the right object, `bad_size`, `out_of_buffer` on a commit with no new buffer) |
 //! | [`gnoblin_view_source_v1`] | `gnoblin_view_source_manager_v1` | the owner-only capture source of a View node; refused for a node that is not a View |
 //! | [`xdg_shell`] | `xdg_shell` | toplevels, popups (drawn above their window, `surface_tree.rs`), configure and ack |
@@ -79,6 +83,8 @@ pub mod ext_image_capture_source_v1;
 pub mod ext_image_copy_capture_v1;
 /// `ext_session_lock_v1`: the session lock request, its cover and its input gate.
 pub mod ext_session_lock_v1;
+/// `ext_workspace_v1`: the read-only workspace list a panel shows, from the declared workspaces and the shell's active one.
+pub mod ext_workspace_v1;
 /// The seam a compat adapter's Wayland redirect registers through.
 pub mod extension;
 /// The window record both foreign toplevel lists are fed from.
@@ -89,6 +95,10 @@ pub mod gnoblin_session_host_v1;
 pub mod gnoblin_view_source_v1;
 /// The session and frame objects of `ext_image_copy_capture_v1`, with the device stated as the wire carries it.
 pub mod image_copy_session;
+/// `org_kde_kwin_appmenu_manager`: the DBus address of a window's application menu, published on its node.
+pub mod kde_appmenu;
+/// `org_kde_kwin_server_decoration_manager`: KDE's older decoration negotiation, answered by the same policy as xdg-decoration.
+pub mod kde_server_decoration;
 /// The generated halves of the Gnoblin-owned protocols; see the module for why the
 /// generated code carries the one `unsafe_code` allow in this crate.
 mod wire;
@@ -150,6 +160,8 @@ pub mod zwlr_output_management_v1;
 pub mod zwlr_output_power_management_v1;
 /// `zwlr_screencopy_manager_v1`: one-shot screencopy of an output or region.
 pub mod zwlr_screencopy_v1;
+/// `zwlr_virtual_pointer_manager_v1`: the privileged virtual pointer, injected through the seat's own input path.
+pub mod zwlr_virtual_pointer_v1;
 /// `zwp_idle_inhibit_manager_v1`: surfaces that keep the session awake.
 pub mod zwp_idle_inhibit_v1;
 /// `zwp_input_method_manager_v2`: the privileged input-method half of a text conversation.

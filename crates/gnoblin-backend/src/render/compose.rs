@@ -477,6 +477,11 @@ struct WindowNode {
     decoration: (DecorationWanted, WindowDecoration),
     /// The pair last published to the node.
     published_decoration: (DecorationWanted, WindowDecoration),
+    /// The DBus service and object path of the window's application menu (`org_kde_kwin_appmenu`). Both are empty
+    /// while the client set none, which is the schema's default.
+    appmenu: (String, String),
+    /// The pair last published to the node.
+    published_appmenu: (String, String),
     /// The rectangle the window's node takes hits over beyond its own bounds, in surface-local pixels: the surface
     /// tree's, when a subsurface reaches past the root surface.
     hit_extent: Option<Rect>,
@@ -1167,6 +1172,8 @@ impl Composer {
                 published_from_launcher: false,
                 decoration: (DecorationWanted::Unset, WindowDecoration::Client),
                 published_decoration: (DecorationWanted::Unset, WindowDecoration::Client),
+                appmenu: (String::new(), String::new()),
+                published_appmenu: (String::new(), String::new()),
                 applied_size: None,
                 published_geometry: None,
                 hit_extent: None,
@@ -1400,6 +1407,51 @@ impl Composer {
     #[must_use]
     pub fn window_decoration(&self, window: WindowId) -> Option<(DecorationWanted, WindowDecoration)> {
         self.windows.get(&window).map(|entry| entry.decoration)
+    }
+
+    /// Records the DBus address of a window's application menu (`org_kde_kwin_appmenu`) and publishes it to the node's
+    /// `appmenu_service` and `appmenu_path` when it changed. An empty service and path is no menu, which is the schema's
+    /// default, so a client that releases its appmenu object leaves the node as it was before.
+    pub fn set_window_appmenu(&mut self, window: WindowId, service: &str, path: &str) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        entry.appmenu = (service.to_owned(), path.to_owned());
+        self.publish_appmenu(window);
+    }
+
+    /// The DBus service and object path of a window's application menu, empty while it has none.
+    #[must_use]
+    pub fn window_appmenu(&self, window: WindowId) -> Option<(&str, &str)> {
+        self.windows
+            .get(&window)
+            .map(|entry| (entry.appmenu.0.as_str(), entry.appmenu.1.as_str()))
+    }
+
+    /// Publishes a window's `appmenu_service` and `appmenu_path` when they differ from what its node holds.
+    fn publish_appmenu(&mut self, window: WindowId) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let Some(node) = entry.node else {
+            return;
+        };
+        let mut changes = Vec::new();
+        if entry.appmenu.0 != entry.published_appmenu.0 {
+            changes.push(("appmenu_service", entry.appmenu.0.clone()));
+        }
+        if entry.appmenu.1 != entry.published_appmenu.1 {
+            changes.push(("appmenu_path", entry.appmenu.1.clone()));
+        }
+        entry.published_appmenu = entry.appmenu.clone();
+        for (key, text) in changes {
+            let _ = self.scene.set_text(node, key, text.clone());
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: key.to_owned(),
+                value: TreeValue::Text(text),
+            });
+        }
     }
 
     /// Publishes a window's `decoration_wanted` and `decoration` when they differ from what its node holds.
@@ -2306,6 +2358,20 @@ impl Composer {
                 Some(TreeValue::Bool(true))
             )
         })
+    }
+
+    /// The id of the workspace the shell that holds the tree declared active, from the main seat's `active_workspace`.
+    /// `None` while no shell holds the tree or it has written none, so a stale answer never outlives its writer.
+    #[must_use]
+    pub fn active_workspace(&self) -> Option<String> {
+        if !self.scene.holder_attached() {
+            return None;
+        }
+        let seat = self.main_seat?;
+        match self.scene.value(seat, "active_workspace") {
+            Some(TreeValue::Text(id)) if !id.is_empty() => Some(id.clone()),
+            _ => None,
+        }
     }
 
     /// Clears the main seat's `decorations_available`: the shell that wrote it no longer holds the tree, so nothing
@@ -3586,6 +3652,7 @@ impl Composer {
                         self.sync_tree(TreeOwner::Window(window));
                         self.publish_relations(window);
                         self.publish_decoration(window);
+                        self.publish_appmenu(window);
                         self.publish_dialogs_of(window);
                     }
                     Err(error) => {

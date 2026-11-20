@@ -140,6 +140,27 @@ since = "0.2.0"
 default = "unset"
 readonly = true
 
+# The DBus service name of the window's application menu, as its client set it with `org_kde_kwin_appmenu.set_address`:
+# the name of a bus connection that exports a `com.canonical.dbusmenu` object on the session bus. Empty while the client
+# set none, or released its appmenu object (it went away, or no longer has a menu). A shell that draws a global menu
+# connects to `appmenu_service` at `appmenu_path` and shows what the object exports; the two are written together, so a
+# change is one batch. Written by the compositor, read-only to the shell.
+[[object.property]]
+name = "appmenu_service"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# The DBus object path of the window's application menu, which goes with `appmenu_service`. Empty while the window has no
+# menu. Written by the compositor, read-only to the shell.
+[[object.property]]
+name = "appmenu_path"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
 # How the compositor paces the window's client: `auto` (the default), `hold` or `throttle`. A window's client draws its
 # next frame when the compositor answers the `wl_surface.frame` callback it asked for, so the callback is the pace.
 # `auto` answers it after every frame the compositor draws that shows the window. `hold` answers it never: the client is
