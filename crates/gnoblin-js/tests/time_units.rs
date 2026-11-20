@@ -81,6 +81,11 @@ const SECONDS_ALLOWED: &[(&str, &str)] = &[
         "{seconds}",
         "the lock screen's message tells a person the wait in seconds; the placeholder is text, not a parameter",
     ),
+    (
+        "`t` is the time in seconds",
+        "the `t` argument of a WGSL `effect` function (`ShaderFilter`) is the shader language's clock in seconds, as every shader's \
+         `time` is; it is read by the GPU code in the source string, never set or read by a script as a parameter",
+    ),
     ("getSeconds", "`Date.getSeconds`, the clock widget's seconds field"),
     (
         "a `write_set` may carry `seconds`",
