@@ -54,6 +54,8 @@ fn golden_dir() -> PathBuf {
 struct Golden {
     core: PathBuf,
     std: PathBuf,
+    /// The core-only shell that writes an effect list, built against the `GnoblinEffect` of before the shader fields.
+    effects: PathBuf,
 }
 
 /// The golden shells, after checking they are the files `golden.lock` records (`sha256sum`, so the check does not share the
@@ -75,8 +77,8 @@ fn golden() -> &'static Golden {
         }
         assert_eq!(
             recorded.len(),
-            2,
-            "golden.lock records a core-only and a std shell: {lock}"
+            3,
+            "golden.lock records the core-only, std and effects shells: {lock}"
         );
         for (_, path, sha256, bytes) in &recorded {
             let file = dir.join(path);
@@ -94,13 +96,17 @@ fn golden() -> &'static Golden {
                 file.display()
             );
         }
-        let of = |kind: &str| {
-            let (_, path, _, _) = recorded.iter().find(|row| row.0 == kind).expect("the kind is recorded");
+        let of = |path: &str| {
+            let (_, path, _, _) = recorded
+                .iter()
+                .find(|row| row.1 == path)
+                .expect("the shell is recorded");
             dir.join(path)
         };
         Golden {
-            core: of("core-only"),
-            std: of("std"),
+            core: of("bin/libgolden_core_shell.so"),
+            std: of("bin/libgolden_std_shell.so"),
+            effects: of("bin/libgolden_effects_shell.so"),
         }
     });
     &GOLDEN
@@ -410,6 +416,43 @@ fn run_core_golden(install: &Install) -> String {
     line
 }
 
+/// Runs the effects golden shell in `install` and returns the line it logged about versions. The shell was built before `GnoblinEffect`
+/// grew the shader fields, so each record it passes is 152 bytes; it writes four in one array to every window and logs what the
+/// compositor made of the list. A core that read the array at its own, larger, struct size would refuse the list (the second record
+/// would start inside the first), and the shell would log the refusal instead.
+#[track_caller]
+fn run_effects_golden(install: &Install) -> String {
+    let mut session = install.start(&golden().effects);
+    let line = wait_running(&mut session, "golden-effects-shell");
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.map_window("dressed", "Dressed");
+    session.wait_log("the shell writes its effect list", |line| {
+        line.contains("golden-effects-shell: wrote 4 effects on window")
+            || line.contains("golden-effects-shell: cannot write effects")
+    });
+    // A software session draws a shadow and a border and leaves a blur undrawn, so the node's `skipped` names the two blurs and
+    // nothing else: the compositor read all four records, in order, and every one of them as the shell wrote it.
+    let skipped = session.wait_log("the compositor lists what it cannot draw", |line| {
+        line.contains("golden-effects-shell: skipped on window")
+            || line.contains("golden-effects-shell: cannot write effects")
+    });
+    assert!(
+        skipped
+            .text
+            .contains("[blur: unsupported-by-renderer; blur: unsupported-by-renderer]"),
+        "the compositor did not read the four records the shell wrote: {}\n{}",
+        skipped.text,
+        session.log_text()
+    );
+    assert!(
+        !session.log_text().contains("cannot write effects"),
+        "the compositor refused the effect list of a shell built before the shader fields: {}",
+        session.log_text()
+    );
+    assert!(session.exited().is_none(), "{}", session.log_text());
+    line
+}
+
 /// Runs the std golden shell in `install`; returns the versions line. The windows are placed by std's library, so two windows opening
 /// do not land on one spot.
 #[track_caller]
@@ -467,6 +510,7 @@ fn the_golden_shells_and_fresh_shells_depend_on_the_installed_libraries_and_noth
     let libs = libs();
     assert_shell_dependencies(&golden.core, false);
     assert_shell_dependencies(&golden.std, true);
+    assert_shell_dependencies(&golden.effects, false);
     assert_shell_dependencies(&libs.fresh_core, false);
     assert_shell_dependencies(&libs.fresh_std, true);
 
@@ -576,6 +620,11 @@ fn the_golden_shells_run_on_the_libraries_of_the_tree_they_were_built_with() {
         line.contains("built for core ABI 1.0 and std ABI 1.0; installed core ABI 1.0.0, installed std ABI 1.0.0"),
         "{line}"
     );
+    let line = run_effects_golden(&base);
+    assert!(
+        line.contains("golden-effects-shell: built for ABI 1.0; installed core ABI 1.0.0"),
+        "the effects shell, built before the shader fields, runs on the core that has them: {line}"
+    );
 }
 
 #[test]
@@ -608,6 +657,13 @@ fn example_twelve_golden_shells_built_for_abi_1_0_run_unchanged_on_libraries_of_
     assert!(
         line.contains("built for core ABI 1.0 and std ABI 1.0; installed core ABI 1.1.1, installed std ABI 1.1.1"),
         "the shell shows the marker of the new core and the new std: {line}"
+    );
+
+    // The golden effects shell, built before `GnoblinEffect` grew: its array of 152-byte records reads on the new core as well.
+    let line = run_effects_golden(&next);
+    assert!(
+        line.contains("golden-effects-shell: built for ABI 1.0; installed core ABI 1.1.1"),
+        "the effects shell shows the marker of the new core: {line}"
     );
 
     // The maps name the new files: the process runs the libraries of the new prefix, and no file of the old version is in it.

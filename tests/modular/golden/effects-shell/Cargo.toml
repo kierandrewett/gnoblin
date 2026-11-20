@@ -1,0 +1,17 @@
+[package]
+name = "gnoblin-golden-effects-shell"
+description = "Golden shell of example 12 that writes an effect list: four records in one array, built against the GnoblinEffect of ABI 1.0 before the shader fields were appended. Stored as a binary; see tests/modular/golden/regenerate.sh."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "golden_effects_shell"
+crate-type = ["cdylib"]
+
+[dependencies]
+gnoblin-core = { path = "../../../../crates/gnoblin-core" }
+
+[lints.rust]
+unsafe_code = "forbid"

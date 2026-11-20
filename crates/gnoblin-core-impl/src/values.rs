@@ -353,6 +353,53 @@ unsafe fn text_of(raw: &GnoblinValue) -> Result<String, ValueError> {
         .map_err(|error| ValueError::Malformed(format!("text that is not UTF-8 ({error})")))
 }
 
+/// The first size of a `GnoblinEffect`: every field before `source`. A shell built against that layout passes records of this
+/// size, and the core still reads them.
+const EFFECT_FIRST_SIZE: usize = core::mem::offset_of!(abi::GnoblinEffect, source);
+
+/// The `len` effect records at `base` as `GnoblinEffect`s, with every field the shell's records end before read as zero.
+///
+/// The array's stride is the `size` of its first record, which the shell sets from the struct it was built with. A struct that
+/// starts with `size` may grow by appending fields (`design/modular-framework.md` 5.8), so a shell built before a field existed
+/// passes shorter records than this core's `GnoblinEffect`, and a shell built after passes longer ones. Indexing the array with
+/// the core's own size would read the second record from the middle of the first, which is why the stride is the shell's. Every
+/// record must carry that same `size`; a field the record does not reach is zero, which is each field's empty value.
+///
+/// # Safety
+///
+/// `base` must point at `len` records laid out `size` bytes apart, each readable for its own `size`, and the text and number
+/// arrays they point at must be valid for the call.
+unsafe fn effect_records(base: *const u8, len: usize) -> Result<Vec<abi::GnoblinEffect>, ValueError> {
+    // SAFETY: the caller guarantees the first record is readable; `size` is its first four bytes.
+    let stride = unsafe { base.cast::<u32>().read_unaligned() } as usize;
+    if stride < EFFECT_FIRST_SIZE || !stride.is_multiple_of(align_of::<abi::GnoblinEffect>()) {
+        return Err(ValueError::Malformed(format!(
+            "an effect of {stride} bytes is too small or misaligned (at least {EFFECT_FIRST_SIZE}, a multiple of {})",
+            align_of::<abi::GnoblinEffect>()
+        )));
+    }
+    let known = stride.min(size_of::<abi::GnoblinEffect>());
+    (0..len)
+        .map(|index| {
+            // SAFETY: the caller guarantees `len` records `stride` bytes apart.
+            let at = unsafe { base.add(index * stride) };
+            // SAFETY: each record is readable for its `size`, whose first four bytes are the size.
+            let size = unsafe { at.cast::<u32>().read_unaligned() } as usize;
+            if size != stride {
+                return Err(ValueError::Malformed(format!(
+                    "effect {index} is {size} bytes but the first is {stride}: an array has one size"
+                )));
+            }
+            // SAFETY: every field of `GnoblinEffect` is an integer, a float, a pointer or a pair of them, so all-zero bytes
+            // are a valid value.
+            let mut record: abi::GnoblinEffect = unsafe { core::mem::zeroed() };
+            // SAFETY: `at` is readable for `stride >= known` bytes and `record` for its own size, which is at least `known`.
+            unsafe { core::ptr::copy_nonoverlapping(at, core::ptr::from_mut(&mut record).cast::<u8>(), known) };
+            Ok(record)
+        })
+        .collect()
+}
+
 /// Reads the shell's value as a tree value of kind `want` (a `VALUE_*` kind of the catalog), widening a number and accepting a
 /// node id as an unsigned integer.
 ///
@@ -469,8 +516,9 @@ pub(crate) unsafe fn read_value(raw: *const GnoblinValue, want: u32) -> Result<M
                     "a list of effects with a length and no data".to_owned(),
                 ));
             }
-            // SAFETY: the caller guarantees an effects value points at `len` `GnoblinEffect`s.
-            let items = unsafe { slice::from_raw_parts(raw.ptr.cast::<abi::GnoblinEffect>(), raw.len) };
+            // SAFETY: the caller guarantees an effects value points at `len` effect records, each `size` bytes (the
+            // stride: see `effect_records`).
+            let records = unsafe { effect_records(raw.ptr.cast::<u8>(), raw.len) }?;
             let text = |text: &GnoblinStr| -> Result<String, ValueError> {
                 if text.len == 0 {
                     return Ok(String::new());
@@ -483,15 +531,9 @@ pub(crate) unsafe fn read_value(raw: *const GnoblinValue, want: u32) -> Result<M
                 String::from_utf8(bytes.to_vec())
                     .map_err(|error| ValueError::Malformed(format!("text that is not UTF-8 ({error})")))
             };
-            items
+            records
                 .iter()
                 .map(|item| {
-                    if (item.size as usize) < size_of::<abi::GnoblinEffect>() {
-                        return Err(ValueError::Malformed(format!(
-                            "an effect of {} bytes is too small",
-                            item.size
-                        )));
-                    }
                     let kind = match item.kind {
                         abi::EFFECT_BLUR => "blur",
                         abi::EFFECT_SHADOW => "shadow",
@@ -677,6 +719,164 @@ mod tests {
         raw.ptr = value.as_ptr().cast();
         raw.len = value.len();
         raw
+    }
+
+    /// The `GnoblinEffect` of a shell built before the shader fields: 152 bytes, every field up to `colour`.
+    #[repr(C)]
+    struct FirstEffect {
+        size: u32,
+        kind: u32,
+        downscale: u32,
+        passes: u32,
+        inset: u32,
+        frame: u32,
+        numbers: [f64; 10],
+        texts: [GnoblinStr; 3],
+    }
+
+    fn first_effect(kind: u32) -> FirstEffect {
+        FirstEffect {
+            size: size_of::<FirstEffect>() as u32,
+            kind,
+            downscale: 0,
+            passes: 0,
+            inset: 0,
+            frame: 0,
+            numbers: [0.0; 10],
+            texts: [GnoblinStr::EMPTY; 3],
+        }
+    }
+
+    fn effects_value(ptr: *const u8, len: usize) -> GnoblinValue {
+        let mut raw = blank();
+        raw.kind = abi::VALUE_EFFECTS;
+        raw.ptr = ptr.cast();
+        raw.len = len;
+        raw
+    }
+
+    #[test]
+    fn the_first_effect_layout_is_what_the_shader_fields_were_appended_to() {
+        assert_eq!(size_of::<FirstEffect>(), EFFECT_FIRST_SIZE);
+        assert_eq!(EFFECT_FIRST_SIZE, 152);
+        assert!(size_of::<abi::GnoblinEffect>() > EFFECT_FIRST_SIZE);
+    }
+
+    #[test]
+    fn an_array_of_effects_built_before_the_shader_fields_reads_at_its_own_stride() {
+        // Two records, each 152 bytes: reading the second at the core's larger size would start in the middle of the first.
+        let mut blur = first_effect(abi::EFFECT_BLUR);
+        blur.downscale = 4;
+        blur.passes = 3;
+        blur.numbers[3] = 1.25;
+        blur.texts[1] = GnoblinStr::borrowed("#102030");
+        let mut border = first_effect(abi::EFFECT_BORDER);
+        border.inset = 1;
+        border.numbers[8] = 2.5;
+        border.texts[2] = GnoblinStr::borrowed("#ff0000");
+        let records = [blur, border];
+        // SAFETY: `records` is a live array of two 152-byte records whose text borrows are static.
+        let read = unsafe { read_value(&effects_value(records.as_ptr().cast(), 2), abi::VALUE_EFFECTS) };
+        let Ok(MirrorValue::Effects(effects)) = read else {
+            panic!("the array did not read: {read:?}");
+        };
+        assert_eq!(effects.len(), 2);
+        assert_eq!(
+            (effects[0].kind.as_str(), effects[0].downscale, effects[0].passes),
+            ("blur", 4, 3)
+        );
+        assert!((effects[0].saturation - 1.25).abs() < f64::EPSILON);
+        assert_eq!(effects[0].tint, "#102030");
+        assert_eq!((effects[1].kind.as_str(), effects[1].inset), ("border", true));
+        assert!((effects[1].width - 2.5).abs() < f64::EPSILON);
+        assert_eq!(effects[1].colour, "#ff0000");
+        assert!(
+            effects
+                .iter()
+                .all(|effect| effect.source.is_empty() && effect.params.is_empty())
+        );
+    }
+
+    #[test]
+    fn an_array_built_with_the_current_layout_carries_a_shader() {
+        let params = [0.5f64, 2.0];
+        // SAFETY: every field is a number or a pointer, so zero is valid; the pointers set below are live.
+        let mut shader: abi::GnoblinEffect = unsafe { core::mem::zeroed() };
+        shader.size = size_of::<abi::GnoblinEffect>() as u32;
+        shader.kind = abi::EFFECT_SHADER;
+        shader.source = GnoblinStr::borrowed("fn effect() {}");
+        shader.params = params.as_ptr();
+        shader.n_params = params.len();
+        let mut blur = shader;
+        blur.kind = abi::EFFECT_BLUR;
+        blur.source = GnoblinStr::EMPTY;
+        blur.params = core::ptr::null();
+        blur.n_params = 0;
+        let records = [blur, shader];
+        // SAFETY: a live array of two current records.
+        let read = unsafe { read_value(&effects_value(records.as_ptr().cast(), 2), abi::VALUE_EFFECTS) };
+        let Ok(MirrorValue::Effects(effects)) = read else {
+            panic!("the array did not read: {read:?}");
+        };
+        assert_eq!(effects[0].kind, "blur");
+        assert_eq!(effects[1].kind, "shader");
+        assert_eq!(effects[1].source, "fn effect() {}");
+        assert_eq!(effects[1].params, [0.5, 2.0]);
+    }
+
+    #[test]
+    fn records_of_a_later_layout_are_read_for_the_fields_this_core_knows() {
+        // A shell built after this core appended a field: the record is longer, and the stride is its own.
+        #[repr(C)]
+        struct Later {
+            known: abi::GnoblinEffect,
+            appended: [u64; 2],
+        }
+        let make = |kind| {
+            // SAFETY: every field is a number or a pointer, so zero is valid.
+            let mut known: abi::GnoblinEffect = unsafe { core::mem::zeroed() };
+            known.kind = kind;
+            known.size = size_of::<Later>() as u32;
+            Later {
+                known,
+                appended: [7, 8],
+            }
+        };
+        let records = [make(abi::EFFECT_BORDER), make(abi::EFFECT_SHADOW)];
+        // SAFETY: a live array of two `Later` records.
+        let read = unsafe { read_value(&effects_value(records.as_ptr().cast(), 2), abi::VALUE_EFFECTS) };
+        let Ok(MirrorValue::Effects(effects)) = read else {
+            panic!("the array did not read: {read:?}");
+        };
+        assert_eq!(
+            effects.iter().map(|effect| effect.kind.as_str()).collect::<Vec<_>>(),
+            ["border", "shadow"]
+        );
+    }
+
+    #[test]
+    fn an_effect_array_with_a_size_that_cannot_be_a_record_is_malformed() {
+        let mut small = first_effect(abi::EFFECT_BLUR);
+        small.size = 100;
+        let mut odd = first_effect(abi::EFFECT_BLUR);
+        odd.size = 156;
+        let mut second = first_effect(abi::EFFECT_BLUR);
+        second.size = 160;
+        let mixed = [first_effect(abi::EFFECT_BLUR), second];
+        for (name, ptr, len) in [
+            ("a record below the first size", (&raw const small).cast::<u8>(), 1),
+            (
+                "a record that is not a multiple of eight",
+                (&raw const odd).cast::<u8>(),
+                1,
+            ),
+            ("records of different sizes", mixed.as_ptr().cast::<u8>(), 2),
+        ] {
+            // SAFETY: each array is live and its first record is readable; a size that is wrong is refused before the record
+            // is copied.
+            let read = unsafe { read_value(&effects_value(ptr, len), abi::VALUE_EFFECTS) };
+            assert_eq!(read.unwrap_err().code(), abi::E_ERR, "{name}");
+        }
     }
 
     #[test]

@@ -28,14 +28,15 @@ A shell built against a later minor than the core it finds still loads. The wrap
 
 The rules of `design/modular-framework.md` section 5.8, as a developer reads them:
 
-| Change                                     | Allowed in a minor? | How it is done                                                                                                          |
-| ------------------------------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| a new function in the table                | yes                 | appended to `GnoblinApi` (or `GnoblinStdApi`); `size` grows; the SDK asks `table_has` before it calls it                |
-| a new class, property, method or signal    | yes                 | the catalog grows and its hash changes; an old SDK ignores what it does not know                                        |
-| a new error code, `kind` value or flag bit | yes                 | a caller treats an unknown code as an error and an unknown kind as unsupported                                          |
-| a new exported symbol                      | rarely              | appended to `exports.txt` and `abi.lock`; a shell that names it fails to load on an older core, so prefer a table field |
-| reorder, resize, retype or remove a field  | no                  | a removed function keeps its slot as a stub that returns `E_UNSUPPORTED` until the next major                           |
-| change what an existing call means         | no                  |                                                                                                                         |
+| Change                                          | Allowed in a minor? | How it is done                                                                                                           |
+| ----------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| a new function in the table                     | yes                 | appended to `GnoblinApi` (or `GnoblinStdApi`); `size` grows; the SDK asks `table_has` before it calls it                 |
+| a new class, property, method or signal         | yes                 | the catalog grows and its hash changes; an old SDK ignores what it does not know                                         |
+| a field appended to a struct passed as an array | yes                 | the stride of the array is the `size` of its first record; the core reads the fields a record reaches, the rest are zero |
+| a new error code, `kind` value or flag bit      | yes                 | a caller treats an unknown code as an error and an unknown kind as unsupported                                           |
+| a new exported symbol                           | rarely              | appended to `exports.txt` and `abi.lock`; a shell that names it fails to load on an older core, so prefer a table field  |
+| reorder, resize, retype or remove a field       | no                  | a removed function keeps its slot as a stub that returns `E_UNSUPPORTED` until the next major                            |
+| change what an existing call means              | no                  |                                                                                                                          |
 
 A change that is not allowed in a minor is a new major: a new SONAME (`libgnoblin-core.so.2`) that installs beside the old one, so
 shells built for each keep loading the library they were built for.
@@ -80,8 +81,10 @@ field offset, with the ABI version that introduced it.
 
 ### Example 12: the golden shells
 
-`tests/modular/golden/bin/` holds two shells built once against ABI 1.0 and stored as binaries: `libgolden_core_shell.so` (core only) and
-`libgolden_std_shell.so` (core and std). Each logs the ABI it was built for and the one it finds installed, and places windows. The
+`tests/modular/golden/bin/` holds three shells built against ABI 1.0 and stored as binaries: `libgolden_core_shell.so` (core only),
+`libgolden_std_shell.so` (core and std) and `libgolden_effects_shell.so` (core only; it writes four effects in one array, and was built before
+`GnoblinEffect` gained its shader fields, so its records are 152 bytes where the core's struct is 184). Each logs the ABI it was built for and the
+one it finds installed, and places windows or writes its effects. The
 test never rebuilds them. It starts the shipped `gnoblin` from a private prefix whose libraries are:
 
 - the libraries of this tree (the baseline), and the shells report `installed core ABI 1.0.0`;
@@ -112,6 +115,19 @@ dynamic facts above, and that the ABI the lock names is one the tree has.
 5. Add the function to the upgrade test only when it needs behaviour of its own. The test knob already appends one.
 
 A change the table above does not allow is a new major, which is a decision for the owners and a design note first.
+
+### Growing a struct that is passed as an array
+
+A struct that starts with `size: u32` may gain fields at its end, and a shell built earlier keeps passing the shorter struct. When the struct is
+passed one at a time that is enough. When it is passed as an array (`GnoblinEffect` in a `VALUE_EFFECTS` value), the core must not index the array
+with its own `sizeof`:
+
+1. Read the stride from the `size` of the first record, require every record to carry that `size`, and require at least the size the struct had in
+   its first release.
+2. Copy each record into a zeroed struct of the core's size, up to the shorter of the two, so a field the shell's record ends before is zero. Zero must
+   be the empty value of every appended field.
+3. Add a golden shell that passes the array, built against the SDK from before the field (`tests/modular/golden/regenerate.sh` explains how the effects
+   shell is built), so the check is a binary that was never rebuilt.
 
 ### The test knobs
 

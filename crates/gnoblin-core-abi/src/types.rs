@@ -326,7 +326,11 @@ abi_structs! {
 
     /// One effect of a node's `effects` list, the `effect` record of the schema flattened: a parameter the kind does not use is
     /// ignored. Text fields are borrowed for the call. A write of `effects` passes a `GnoblinValue` of kind `VALUE_EFFECTS` whose
-    /// `ptr` is an array of these; the list replaces the node's whole list.
+    /// `ptr` is an array of these; the list replaces the node's whole list. The array's stride is the `size` of its first record,
+    /// and every record carries the same `size`: this struct grows by appended fields, so a shell built before a field existed
+    /// passes shorter records than the core's struct, and the core reads each field the record reaches and takes the rest as
+    /// zero. A shell sets `size` to the size of the struct it was built with and indexes its own array with `sizeof`; it never
+    /// pads to a size it was not built with.
     pub struct GnoblinEffect {
         /// Size of this struct, set by the caller.
         pub size: u32,

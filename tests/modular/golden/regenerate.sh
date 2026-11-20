@@ -12,6 +12,11 @@
 # unusable. Never to make a failing test pass: a failure means the new core broke an old shell. (After ABI 1.0 ships and a
 # later minor is released, a golden of that minor is added beside these with the same recipe, and these are kept.)
 #
+# The effects shell is the exception to "built from the SDK of base": it is built from the SDK of EFFECTS_BASE, the last commit before
+# `GnoblinEffect` grew its shader fields (152 bytes, no `source`, `params` or `n_params`), in a detached worktree of that commit. It
+# exists to show that a shell built before a field was appended to a struct passed as an array runs on the library that has the field
+# (docs/abi-compatibility.md). Its source is the one in this directory; only the SDK it links is the old one.
+#
 # Recipe (what makes the files small and the build repeatable on one toolchain):
 #   - a workspace of its own (Cargo.toml here), `--release`, opt-level s, fat LTO, one codegen unit, symbols stripped (the
 #     dynamic table stays: `nm -D` shows `gnoshell_entry_v1` alone), `panic = unwind` (the SDK refuses abort);
@@ -38,8 +43,11 @@ if [ "$mode" = write ] && [ "${GNOBLIN_GOLDEN_OWNER:-}" != yes ]; then
     exit 1
 fi
 
+# The commit whose SDK the effects shell is built against: the parent of the commit that appended the shader fields to `GnoblinEffect`.
+effects_base="239370c00b3cae42a08a17418b81ba280535c752"
+
 scratch="$(mktemp -d)"
-trap 'rm -rf "$scratch" "$here/Cargo.lock"' EXIT
+trap 'git -C "$root" worktree remove --force "$scratch/effects-base" 2>/dev/null; rm -rf "$scratch" "$here/Cargo.lock"' EXIT
 cp "$root/Cargo.lock" "$here/Cargo.lock"
 
 cargo_home="${CARGO_HOME:-$HOME/.cargo}"
@@ -47,15 +55,29 @@ export RUSTFLAGS="--remap-path-prefix=$root=/gnoblin --remap-path-prefix=$cargo_
 export SOURCE_DATE_EPOCH=0
 export CARGO_INCREMENTAL=0
 # shellcheck disable=SC2086
-cargo build --release --manifest-path "$here/Cargo.toml" --target-dir "$scratch/target" ${GNOBLIN_GOLDEN_CARGO_ARGS:-} >&2
+cargo build --release --manifest-path "$here/Cargo.toml" -p gnoblin-golden-core-shell -p gnoblin-golden-std-shell \
+    --target-dir "$scratch/target" ${GNOBLIN_GOLDEN_CARGO_ARGS:-} >&2
+
+# The effects shell, against the SDK of `effects_base`: this directory's workspace and shell are copied over that commit's tree, and
+# its own Cargo.lock seeds the versions.
+effects_tree="$scratch/effects-base"
+git -C "$root" worktree add --detach -q "$effects_tree" "$effects_base"
+mkdir -p "$effects_tree/tests/modular/golden"
+cp -a "$here/Cargo.toml" "$here/effects-shell" "$effects_tree/tests/modular/golden/"
+cp "$effects_tree/Cargo.lock" "$effects_tree/tests/modular/golden/Cargo.lock"
+RUSTFLAGS="--remap-path-prefix=$effects_tree=/gnoblin --remap-path-prefix=$cargo_home=/cargo -C link-arg=-Wl,--build-id=none" \
+    cargo build --release --manifest-path "$effects_tree/tests/modular/golden/Cargo.toml" -p gnoblin-golden-effects-shell \
+    --target-dir "$scratch/target-effects" ${GNOBLIN_GOLDEN_CARGO_ARGS:-} >&2
 
 core="libgolden_core_shell.so"
 std="libgolden_std_shell.so"
+effects="libgolden_effects_shell.so"
+built() { if [ "$1" = "$effects" ]; then echo "$scratch/target-effects/release/$1"; else echo "$scratch/target/release/$1"; fi; }
 
 if [ "$mode" = check ]; then
     status=0
-    for file in "$core" "$std"; do
-        if cmp -s "$scratch/target/release/$file" "$here/bin/$file"; then
+    for file in "$core" "$std" "$effects"; do
+        if cmp -s "$(built "$file")" "$here/bin/$file"; then
             echo "$file: the stored binary is what this toolchain builds"
         else
             echo "$file: differs from the stored binary (another toolchain or linker, or the SDK sources changed since golden.lock's base)"
@@ -66,9 +88,10 @@ if [ "$mode" = check ]; then
 fi
 
 mkdir -p "$here/bin"
-cp "$scratch/target/release/$core" "$here/bin/$core"
-cp "$scratch/target/release/$std" "$here/bin/$std"
-chmod 0644 "$here/bin/$core" "$here/bin/$std"
+cp "$(built "$core")" "$here/bin/$core"
+cp "$(built "$std")" "$here/bin/$std"
+cp "$(built "$effects")" "$here/bin/$effects"
+chmod 0644 "$here/bin/$core" "$here/bin/$std" "$here/bin/$effects"
 
 abi_of() { sed -n 's/^abi \([0-9][0-9]*\.[0-9][0-9]*\)$/\1/p' "$root/$1" | head -n 1; }
 line_for() {
@@ -90,5 +113,7 @@ base="${GNOBLIN_GOLDEN_BASE:-$(git -C "$root" rev-parse HEAD)}"
     echo "toolchain $(rustc --version)"
     line_for core-only "$core"
     line_for std "$std"
+    echo "# The effects shell links the SDK of $effects_base, the last commit before GnoblinEffect grew its shader fields (152 bytes)."
+    line_for core-only "$effects"
 } >"$here/golden.lock"
 echo "wrote golden.lock and bin/ (SDK sources of $base)" >&2

@@ -9,3 +9,5 @@ catalog 0x8d9a5c8fd0c2c922
 toolchain rustc 1.99.1 (58cf8f9c3 2026-10-13)
 shell core-only bin/libgolden_core_shell.so 850ecdf2ba192d79c52473c04fc914369d07fa3b030ed6c60de3047d83dc227d 297752
 shell std bin/libgolden_std_shell.so 0fe44b86fd700723536098dc32b8bad685db3976122ea1bcd64e25a0ef518fd9 294360
+# The effects shell links the SDK of 239370c00b3cae42a08a17418b81ba280535c752, the last commit before GnoblinEffect grew its shader fields (152 bytes).
+shell core-only bin/libgolden_effects_shell.so 321fc9b666b9fea227d35fc71dd407920e08b630778dc84ba5db4929b15ebd3e 306040
