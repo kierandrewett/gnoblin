@@ -12,8 +12,8 @@
 //! folds the `window` objects (and the enabled `output` objects, which is where `ScreenSize`
 //! comes from); [`state`] turns them into the interface's dictionary; [`service`] serves the
 //! upstream interface and raises the two change signals. The interface is vendored beside this
-//! crate (`interfaces/org.gnome.Shell.Introspect.xml`, from gnome-shell 51.0, the release
-//! `data/gnome-versions.json` pins).
+//! crate (`interfaces/org.gnome.Shell.Introspect.xml`, from gnome-shell 51.0, the GNOME release
+//! Gnoblin follows).
 //!
 //! # What it is not
 //!

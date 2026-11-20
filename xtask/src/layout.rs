@@ -1,15 +1,17 @@
-//! `cargo xtask layout`: keep references to the root `src/` and `patches/` trees deliberate, and
-//! refuse the retired `src/data` tree outright.
+//! `cargo xtask layout`: keep the retired root `src/` and `patches/` trees from coming back, and refuse
+//! the retired `src/data` tree outright.
 //!
-//! Two root trees hold things the product reads. `src/` is the C tree: the C components still
-//! compile from it, and the build scripts read its sources to generate files. `patches/` is the patch
-//! series the build applies to the pinned upstream sources. The runtime and its shipped assets
-//! moved out of `src/data` to `data/` at the repository root, so a reference to `src/data` names a
-//! path that no longer exists. Such a reference is a hard failure, and no allow-list entry can cover it.
+//! The repository root once held two trees the Mutter product read: `src/`, the C tree, and `patches/`,
+//! the patch series applied to the pinned upstream sources. Both were removed with the Mutter product
+//! (it lives on `main`), and the runtime and its shipped assets moved out of `src/data` to `data/` before
+//! that. A reference to `src/data` names a path that no longer exists, so it is a hard failure that no
+//! allow-list entry can cover.
 //!
-//! Most references to `src/` and `patches/` are correct build inputs, so the rule does not ban them.
-//! It makes each one reviewed: a reference that is not on the allow-list fails, and so does an entry
-//! that matches no reference, so the list cannot rot. The two kinds of file are scanned differently:
+//! A reference to the root `src/` or `patches/` is a failure too, unless it is reviewed. The scanner
+//! cannot tell a crate-relative `src/lib.rs` from a root one in a text file, and some files name a path
+//! of the legacy tree on purpose (the design notes, the recorded parity contract), so such a file or
+//! directory gets one `[[allow]]` entry with its reason. An entry that matches no reference fails as
+//! well, so the list cannot rot. The two kinds of file are scanned differently:
 //!
 //! - Rust sources under `crates/` and `xtask/` are tokenised. A string literal whose value is a
 //!   root-relative path (`src/...`, `./src/...`, `patches/...`) is a root reference. Any literal that
@@ -43,30 +45,20 @@ const RUST_ROOTS: &[&str] = &["crates", "xtask"];
 /// The directories whose other text files are scanned for root-relative `src/` and `patches/`.
 /// `crates` and `xtask` appear here too: their manifests, READMEs and XML are text, while their
 /// `.rs` files are tokenised instead and skipped by the text walk.
-const TEXT_ROOTS: &[&str] = &[
-    "cmake", "crates", "design", "docs", ".github", "nix", "pkgsmith", "scripts", "tests", "xtask",
-];
+const TEXT_ROOTS: &[&str] = &["crates", "design", "docs", ".github", "scripts", "tests", "xtask"];
 
 /// The files at the repository root that are scanned as text.
-const TEXT_FILES: &[&str] = &[
-    "build.sh",
-    "CMakeLists.txt",
-    "Cargo.toml",
-    "Makefile",
-    "flake.nix",
-    "justfile",
-];
+const TEXT_FILES: &[&str] = &["Cargo.toml", "justfile"];
 
-/// Directories never scanned: VCS metadata, build output, and the vendored submodules, whose
-/// `src/` is their own upstream tree rather than this repository's.
-const SKIPPED_DIRS: &[&str] = &[".git", ".omp", "node_modules", "subprojects", "target"];
+/// Directories never scanned: VCS metadata and build output.
+const SKIPPED_DIRS: &[&str] = &[".git", ".omp", "node_modules", "target"];
 
 /// The path segments that name the retired location. A Rust literal is a retired reference when
 /// these two segments appear next to each other, so `src/database` is not one.
 const RETIRED_SEGMENTS: [&str; 2] = ["src", "data"];
 
-/// The root-relative trees a path can start with. A reference to either is a root reference unless
-/// it is reviewed.
+/// The retired root-relative trees a path can start with. A reference to either is a root reference
+/// unless it is reviewed.
 const ROOT_PREFIXES: [&str; 2] = ["src/", "patches/"];
 
 /// One reference the rule found: the line it is on, what it is, and whether it names the retired
@@ -84,7 +76,7 @@ pub fn run() -> ExitCode {
     match check(root) {
         Ok(violations) if violations.is_empty() => {
             println!(
-                "[layout] no reference to the root src/ or patches/ tree lacks a reviewed entry, and none names the retired tree"
+                "[layout] no reference to the retired root src/ or patches/ tree lacks a reviewed entry, and none names the retired src/data tree"
             );
             ExitCode::SUCCESS
         }
@@ -144,7 +136,7 @@ fn check(root: &Path) -> Result<Vec<String>, String> {
                     used.insert(index);
                 }
                 None => violations.push(format!(
-                    "{relative}:{}: {}; a build input needs a reviewed entry in {ALLOW_FILE}",
+                    "{relative}:{}: {}; the root src/ and patches/ trees are gone, so a reference needs a reviewed entry in {ALLOW_FILE}",
                     finding.line, finding.what
                 )),
             }

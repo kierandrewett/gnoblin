@@ -2,7 +2,7 @@
 //! directories. The converted file is run in the shell's dry-run host (the shell over an inert tree: a root and a
 //! seat), and the world it builds (workspaces, bindings, what each binding does, the started services) is compared
 //! with the world the stock starter builds and with what the Lua said. Nothing here runs Lua: the Lua starter is the
-//! fixture of `gnoblin-config-migrate`, which is `data/default-config` as it shipped.
+//! fixture of `gnoblin-config-migrate`, which is the `data/default-config` of the `main` branch as it shipped.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;

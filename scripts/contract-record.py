@@ -13,8 +13,8 @@ Usage:
 
 `--drive CMD` runs CMD (through the shell) after the event subscription is made and before it is read, so a client can
 map a window and the window events arrive. The environment of the session is the caller's business: this script never
-starts a compositor and only speaks the line-delimited JSON of the socket (the legacy tree's src/cli/gnoblinctl-client.c
-is the client whose requests it repeats).
+starts a compositor and only speaks the line-delimited JSON of the socket (the legacy tree's gnoblinctl client,
+cli/gnoblinctl-client.c, is the client whose requests it repeats).
 
 An operation is asked with an empty argument table. That is a deliberate choice: it records the answer to the plain
 call, which is the answer of every read operation and the refusal of every write operation that needs arguments. The
@@ -59,7 +59,7 @@ ANSWER_SECONDS = 5.0
 EVENT_TAIL_SECONDS = 2.0
 # Samples keep the shape of the answer and not its size: lists are cut to this many elements, strings to this length.
 SAMPLE_LIST = 3
-# The most event names one subscription may name (src/control/gnoblin-control-requests.c of the legacy tree).
+# The most event names one subscription may name (control/gnoblin-control-requests.c of the legacy tree).
 SUBSCRIBE_MAX = 64
 # Names in the hello event's list that are streams started by an operation, not names a subscription accepts.
 SNAPSHOT_STREAMS = {"windows", "monitors"}

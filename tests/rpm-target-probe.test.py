@@ -29,9 +29,9 @@ class RpmTargetProbeTests(unittest.TestCase):
         self.assertEqual(probe.REQUIREMENTS["wayland-protocols"]["declaredPackage"], "gnoblin")
         self.assertEqual(
             probe.REQUIREMENTS["wayland-protocols"]["floorSource"],
-            "subprojects/mutter/meson.build:50,217-218",
+            "mutter-51.0/meson.build:50,217-218",
         )
-        self.assertEqual(probe.REQUIREMENTS["glib"]["floorSource"], "subprojects/mutter/meson.build:19")
+        self.assertEqual(probe.REQUIREMENTS["glib"]["floorSource"], "mutter-51.0/meson.build:19")
         self.assertEqual(
             probe.REQUIREMENTS["girepository"]["capability"],
             "pkgconfig(gobject-introspection-1.0)",

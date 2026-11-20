@@ -47,7 +47,7 @@ subcommands:
   compat-report      print every compat adapter's declared support matrix
   dupes              fail on a struct or enum two crates declare twice
   dupes --warn       the same report, printing every hit and exiting zero
-  layout             fail on a Rust string literal that names the retired source-data tree
+  layout             fail on a reference to the retired src/data tree, or to a root src/ or patches/ path nobody reviewed
   logging            fail on a direct logging-crate dependency or a stock print in library code
   docs-parity        fail on a documented gnoblin name the implemented surface lacks, unless allow-listed
   compat-report --json  the same report as JSON

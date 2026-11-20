@@ -1,2 +1,0 @@
-# project source destination
-mutter gnoblin-control-session-activity.c src/core/gnoblin-control-session-activity.c

@@ -1,3 +1,0 @@
-# project source destination
-mutter gnoblin-animation.c src/core/gnoblin-animation.c
-mutter gnoblin-animation.h src/core/gnoblin-animation.h

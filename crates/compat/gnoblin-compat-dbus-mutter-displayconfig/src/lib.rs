@@ -11,8 +11,8 @@
 //! graph and folds it into the monitors and logical monitors [`state`] reports;
 //! [`service`] serves the upstream interface from that state and sends a write to each
 //! `output` object's own `apply` method. The upstream interface is vendored beside this
-//! crate (`interfaces/org.gnome.Mutter.DisplayConfig.xml`, from Mutter 51.0, the release
-//! `data/gnome-versions.json` pins) so the signature a caller sees is the one this
+//! crate (`interfaces/org.gnome.Mutter.DisplayConfig.xml`, from Mutter 51.0, the GNOME release
+//! Gnoblin follows) so the signature a caller sees is the one this
 //! adapter was written against rather than a paraphrase of it.
 //!
 //! # What it is not

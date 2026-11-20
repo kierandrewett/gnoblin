@@ -12,7 +12,7 @@ use gnoblin_config_migrate::{
 /// `shell.ts` runs.
 const STARTER_TS: &str = include_str!("../../../shells/default/shell.ts");
 
-/// The Lua starter as it shipped, `data/default-config` at the time the converter was written.
+/// The Lua starter as it shipped in the Mutter-based releases, the `data/default-config` of the `main` branch.
 const STARTER_INIT: &str = include_str!("fixtures/starter/init.lua");
 const STARTER_FILES: &[(&str, &str)] = &[
     (

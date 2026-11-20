@@ -1,3 +1,0 @@
-# project source destination
-mutter meta-wayland-foreign-toplevel-common.c src/wayland/meta-wayland-foreign-toplevel-common.c
-mutter meta-wayland-foreign-toplevel-common.h src/wayland/meta-wayland-foreign-toplevel-common.h

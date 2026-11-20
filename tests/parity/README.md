@@ -117,9 +117,8 @@ runner reads its output; `window kill <id>` and `workspace list` are the command
 `scripts/parity-launcher-lib.sh`, which enters the root file system and starts the private session bus the EIS door uses.
 
 `scripts/parity-reference.sh gnoblin` builds the prefix. The tree it builds must be a legacy one, and the Rust
-compositor's branch is not: on `rust-compositor` the starter configuration lost `data/default-config/config/50-pointer.lua`
-while the patched Mutter's `meson.build` still installs it, so the build stops with "File ... 50-pointer.lua does not exist"
-(observed on `829561ea2`). The reference is built from `main` (observed on `5bb523e9c`, API 1.93, which is the API of the
+compositor's branch is not: it no longer holds the Mutter product, so `GNOBLIN_PARITY_GNOBLIN_SOURCE` is required and names
+a checkout of `main`. The reference is built from `main` (observed on `5bb523e9c`, API 1.93, which is the API of the
 contract inventory); the launchers and the runner are this branch's. The CI job checks `main` out beside the branch for
 that reason.
 

@@ -15,20 +15,20 @@ REQUIREMENTS = {
         "capability": "pkgconfig(glib-2.0)",
         "minimum": "2.81.1",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "subprojects/mutter/meson.build:19",
+        "floorSource": "mutter-51.0/meson.build:19",
     },
     "wayland": {
         "capability": "pkgconfig(wayland-client)",
         "minimum": "1.26.0",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "subprojects/mutter/meson.build:49,215",
+        "floorSource": "mutter-51.0/meson.build:49,215",
     },
     "wayland-protocols": {
         "capability": "pkgconfig(wayland-protocols)",
         "minimum": "1.48",
         "declaredScope": "development-package-contract",
         "declaredPackage": "gnoblin",
-        "floorSource": "subprojects/mutter/meson.build:50,217-218",
+        "floorSource": "mutter-51.0/meson.build:50,217-218",
         "rpmSpecDeclarations": [
             {
                 "location": "packaging/opensuse/gnoblin.spec:20,74",
@@ -48,25 +48,25 @@ REQUIREMENTS = {
         "capability": "pkgconfig(libinput)",
         "minimum": "1.30.0",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "subprojects/mutter/meson.build:53",
+        "floorSource": "mutter-51.0/meson.build:53",
     },
     "pipewire": {
         "capability": "pkgconfig(libpipewire-0.3)",
         "minimum": "1.6.0",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "subprojects/mutter/meson.build:58",
+        "floorSource": "mutter-51.0/meson.build:58",
     },
     "gtk4": {
         "capability": "pkgconfig(gtk4)",
         "minimum": "4.14.0",
         "declaredScope": "build-closure",
-        "floorSource": "subprojects/mutter/meson.build:23",
+        "floorSource": "mutter-51.0/meson.build:23",
     },
     "girepository": {
         "capability": "pkgconfig(gobject-introspection-1.0)",
         "minimum": "1.41.4",
         "declaredScope": "build-closure",
-        "floorSource": "subprojects/mutter/meson.build:18,299",
+        "floorSource": "mutter-51.0/meson.build:18,299",
         "rpmSpecDeclarations": [
             {
                 "location": "packaging/opensuse/gnoblin.spec:5,42",
@@ -86,7 +86,7 @@ REQUIREMENTS = {
         "capability": "pkgconfig(glycin-2)",
         "minimum": "2.0.beta.2",
         "declaredScope": "build-closure",
-        "floorSource": "subprojects/mutter/meson.build:24,121",
+        "floorSource": "mutter-51.0/meson.build:24,121",
         "rpmSpecDeclarations": [
             {
                 "location": "packaging/opensuse/gnoblin.spec:57",
@@ -106,19 +106,19 @@ REQUIREMENTS = {
         "capability": "pkgconfig(libei-1.0)",
         "minimum": "1.3.901",
         "declaredScope": "build-closure",
-        "floorSource": "subprojects/mutter/meson.build:41,146",
+        "floorSource": "mutter-51.0/meson.build:41,146",
     },
     "libeis": {
         "capability": "pkgconfig(libeis-1.0)",
         "minimum": "1.3.901",
         "declaredScope": "build-closure",
-        "floorSource": "subprojects/mutter/meson.build:41,145",
+        "floorSource": "mutter-51.0/meson.build:41,145",
     },
     "libdisplay-info": {
         "capability": "pkgconfig(libdisplay-info)",
         "minimum": "0.2",
         "declaredScope": "build-closure",
-        "floorSource": "subprojects/mutter/meson.build:42,148",
+        "floorSource": "mutter-51.0/meson.build:42,148",
         "rpmSpecDeclarations": [
             {
                 "location": "packaging/opensuse/gnoblin.spec:67",

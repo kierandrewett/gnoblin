@@ -31,8 +31,8 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
   belongs to a shell integration or shell project. Keep these responsibilities
   separate and use their documented interfaces.
 - Keep upstream dependencies at their pinned revisions. Put Gnoblin-owned
-  behavior in Gnoblin's source and overlays; keep upstream patches narrow and
-  review their exact diff before applying them.
+  behavior in Gnoblin's crates, and review the exact diff of any dependency
+  bump or vendored file.
 - Trace behavior across the relevant configuration, protocol, compositor,
   shell, packaging, and startup boundaries. Change only the parts required by
   the requested outcome, but do not leave required integration incomplete.

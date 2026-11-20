@@ -1,4 +1,0 @@
-[portal]
-DBusName=org.freedesktop.impl.portal.desktop.gnoblin
-Interfaces=@PORTALS@;
-UseIn=gnoblin

@@ -1,8 +1,8 @@
 //! Names: which Lua sections have no TypeScript home yet and why, and how a string is written in TypeScript.
 //!
 //! The specification's object model has no home for most of the config document's sections, so the converter does not
-//! carry their settings over. Each one is reported with what a home would need, the status the design records in
-//! `design/js-spec-native.md` (3.11, "Dropped settings"). The statuses are one table here so a setting's reason is
+//! carry their settings over. Each one is reported with what a home would need, the status `docs/js-settings.md`
+//! records under "Dropped settings". The statuses are one table here so a setting's reason is
 //! the same wherever it was met.
 
 /// The sections of the config document that are plain tables of settings, by their Lua names. None has a TypeScript
