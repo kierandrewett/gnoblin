@@ -2871,3 +2871,279 @@ left = "gnoblin-wayland-org-kde-kwin-server-decoration::DecorationUserData"
 right = "gnoblin-wayland-wp-tearing-control-v1::WpTearingControlV1TearingControlUserData"
 kind = "same-shape"
 reason = "each is the surface its protocol object belongs to; the objects are different protocols' and share no code"
+
+[[allow]]
+left = "gnoblin-a11y::Model"
+right = "gnoblin-core-impl::Model"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-a11y::Pending"
+right = "gnoblin-object::Pending"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-authority::Pending"
+right = "gnoblin-object::Pending"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-capture::Target"
+right = "gnoblin-object::Target"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-compat-core::Builder"
+right = "gnoblin-object::Builder"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-compat-core::Member"
+right = "gnoblin-sdkgen::Member"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-compat-qt-portal-settings::Export"
+right = "gnoblin-schema::Export"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-config-codegen::EnumDecl"
+right = "gnoblin-schema::EnumDecl"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-core-impl::Arena"
+right = "gnoblin-object::Arena"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-core-impl::ClassDef"
+right = "gnoblin-object::ClassDef"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-core-impl::DefaultDef"
+right = "gnoblin-object::DefaultDef"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-core-impl::MemberDef"
+right = "gnoblin-object::MemberDef"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-core-impl::Model"
+right = "gnoblin-render-frame::Model"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-core::Slot"
+right = "gnoblin-object::Slot"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-core::Timing"
+right = "gnoblin-object::Timing"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-input-eis::Scope"
+right = "gnoblin-schema::Scope"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-input::Scope"
+right = "gnoblin-schema::Scope"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-input::Target"
+right = "gnoblin-object::Target"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-model::Object"
+right = "gnoblin-object::Object"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-model::Types"
+right = "gnoblin-sdkgen::Types"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Arena"
+right = "gnoblin-std-dyn::Arena"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Entry"
+right = "gnoblin-std-impl::Entry"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Entry"
+right = "gnoblinctl::Entry"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Fail"
+right = "gnoblin-std-impl::Fail"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Library"
+right = "gnoblin-sdkgen::Library"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Library"
+right = "xtask::Library"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Library"
+right = "xtask::Library"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Listener"
+right = "gnoblin-shell-host::Listener"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Listener"
+right = "gnoblin-std::Listener"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Pending"
+right = "gnoblin-service-core::Pending"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Pending"
+right = "gnoblin-wayland::Pending"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Slot"
+right = "gnoblin-render-gles::Slot"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Slot"
+right = "gnoblin-std::Slot"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Slot"
+right = "gnoblin-std::Slot"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Target"
+right = "gnoblin-shell-discovery::Target"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Timing"
+right = "gnoblin-render::Timing"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::TypeDef"
+right = "xtask::TypeDef"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Val"
+right = "gnoblin-std-impl::Val"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-schema::Scope"
+right = "gnoblin-std-impl::Scope"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-sdkgen::Member"
+right = "xtask::Member"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-std-impl::Settings"
+right = "gnoblin-xwayland::Settings"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-std-impl::Settings"
+right = "xdg-desktop-portal-gnoblin::Settings"
+kind = "same-name"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-compat-core::Kind"
+right = "gnoblin-sdkgen::Member"
+kind = "same-shape"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-core::MemberKind"
+right = "gnoblin-sdkgen::Member"
+kind = "same-shape"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
+
+[[allow]]
+left = "gnoblin-object::Fail"
+right = "gnoblin-std-dyn::StdError"
+kind = "same-shape"
+reason = "a name of the object protocol (gnoblin-object) or of its catalog tools that another crate also uses for something of its own; the declarations name different things"
