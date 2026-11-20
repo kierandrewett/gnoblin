@@ -3,11 +3,23 @@
 //! what the tree holds: a `camera` node and a `view` node, named as the shell named them, at the places the shell gave them, under
 //! the root. One core and one std are mapped.
 
-use crate::support::native_shell::{Gnoblin, Start, start_script, std_shells};
-use crate::support::snapshot;
+use crate::support::native_shell::{Gnoblin, Start, start_script, std_shells, wait_for_nodes};
 use crate::{copy_example, serving};
 
 use super::native_std::{assert_one_core_one_std, start_std};
+
+type Node = gnoblin_proto::tree::snapshot_node::Properties;
+
+/// The node of `class` the shell named `name`.
+fn named<'a>(nodes: &'a [Node], class: &str, name: &str) -> Option<&'a Node> {
+    nodes.iter().find(|node| {
+        node.class == class
+            && node
+                .props
+                .iter()
+                .any(|prop| prop.key == "name" && prop.value_text == name)
+    })
+}
 
 #[track_caller]
 fn assert_the_scene_is_placed_and_read_back(session: &mut Gnoblin) {
@@ -18,28 +30,19 @@ fn assert_the_scene_is_placed_and_read_back(session: &mut Gnoblin) {
     assert!(line.text.contains("the camera cam is node"), "{}", line.text);
     assert!(line.text.contains("with fov 70"), "{}", line.text);
 
-    let ipc = session.ipc();
-    let nodes = snapshot(&ipc);
-    let named = |class: &str, name: &str| {
-        nodes
-            .iter()
-            .find(|node| {
-                node.class == class
-                    && node
-                        .props
-                        .iter()
-                        .any(|prop| prop.key == "name" && prop.value_text == name)
-            })
-            .unwrap_or_else(|| panic!("the tree has no {class} named {name}"))
-    };
-    let number = |node: &gnoblin_proto::tree::snapshot_node::Properties, key: &str| -> f64 {
+    // The shell logged the line before the tree held its nodes: it sends what it wrote from its first turn after it started, and the
+    // compositor applies that on its own thread. The tree is read when it holds them.
+    let nodes = wait_for_nodes(session, "the tree holds the shell's camera and view", |nodes| {
+        named(nodes, "camera", "cam").is_some() && named(nodes, "view", "panel").is_some()
+    });
+    let number = |node: &Node, key: &str| -> f64 {
         node.props
             .iter()
             .find(|prop| prop.key == key)
             .map_or(0.0, |prop| prop.value_double)
     };
-    let view = named("view", "panel");
-    let camera = named("camera", "cam");
+    let view = named(&nodes, "view", "panel").expect("the view was in the tree that was read");
+    let camera = named(&nodes, "camera", "cam").expect("the camera was in the tree that was read");
     assert_eq!(
         [number(view, "x"), number(view, "y"), number(view, "z")],
         [0.5, 0.2, -1.4]

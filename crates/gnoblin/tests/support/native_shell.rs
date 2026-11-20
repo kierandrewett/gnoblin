@@ -987,6 +987,39 @@ pub fn wait_for_window(
     }
 }
 
+/// Waits (up to [`PATIENCE`]) until `held` is true of the nodes of the tree, and returns the nodes it was true of. For the nodes a shell
+/// made: they reach the tree after the lines the shell logs about them. The shell sends what its start wrote from its first dispatch after
+/// it serves, and the compositor applies it on its own thread, so a snapshot read once after those lines misses the nodes some of the time.
+/// A failure says what the tree held.
+#[track_caller]
+pub fn wait_for_nodes(
+    gnoblin: &mut Gnoblin,
+    what: &str,
+    held: impl Fn(&[gnoblin_proto::tree::snapshot_node::Properties]) -> bool,
+) -> Vec<gnoblin_proto::tree::snapshot_node::Properties> {
+    let ipc = gnoblin.ipc();
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        if let Some(status) = gnoblin.exited() {
+            panic!("gnoblin ended ({status}) before: {what}\n{}", gnoblin.log_text());
+        }
+        let nodes = super::snapshot(&ipc);
+        if held(&nodes) {
+            return nodes;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "never reached: {what}\nnodes (id, class, parent): {:?}\n{}",
+            nodes
+                .iter()
+                .map(|node| (node.id, node.class.clone(), node.parent))
+                .collect::<Vec<_>>(),
+            gnoblin.log_text()
+        );
+        std::thread::sleep(POLL);
+    }
+}
+
 /// The ids of the windows of the tree by their application id, for a test that asks whether they are the same windows.
 pub fn scene_ids(ipc: &Path) -> std::collections::BTreeMap<String, u64> {
     super::ids(&super::scene(ipc))

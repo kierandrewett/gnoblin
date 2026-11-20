@@ -3,8 +3,7 @@
 //! radius and shadows it set, the rollback that ran once, the opacity the library put back) and what the tree holds: the shell's
 //! `probe` node, where the aborted transition left it. One core and one std are mapped.
 
-use crate::support::native_shell::{Gnoblin, Start, start_script, std_shells};
-use crate::support::snapshot;
+use crate::support::native_shell::{Gnoblin, Start, start_script, std_shells, wait_for_nodes};
 use crate::{copy_example, serving};
 
 use super::native_std::{assert_one_core_one_std, start_std};
@@ -32,16 +31,20 @@ fn assert_the_style_is_set_and_the_transition_rolled_back(session: &mut Gnoblin)
     assert!(text.contains("opacity is set false"), "{}", aborted.text);
     assert!(text.contains("x is 0"), "{}", aborted.text);
 
-    let ipc = session.ipc();
-    let nodes = snapshot(&ipc);
+    // The shell logged the line before the tree held its node: it sends what it wrote from its first turn after it started, and the
+    // compositor applies that on its own thread. The tree is read when it holds the node.
+    let is_probe = |node: &gnoblin_proto::tree::snapshot_node::Properties| {
+        node.props
+            .iter()
+            .any(|prop| prop.key == "name" && prop.value_text == "probe")
+    };
+    let nodes = wait_for_nodes(session, "the tree holds the shell's probe node", |nodes| {
+        nodes.iter().any(is_probe)
+    });
     let probe = nodes
         .iter()
-        .find(|node| {
-            node.props
-                .iter()
-                .any(|prop| prop.key == "name" && prop.value_text == "probe")
-        })
-        .expect("the tree has the shell's probe node");
+        .find(|node| is_probe(node))
+        .expect("the probe was in the tree that was read");
     let x = probe
         .props
         .iter()

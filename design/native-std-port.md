@@ -1899,6 +1899,48 @@ a transition for workspaces, `View.content` as a workspace, and the `active_work
   `dist-check`, every test target) on fresh boxes, `grep -rn 'data/js\|data/python\|data/lua' .` returning only history, and the deletion
   of `tests/ts-compat` after the owner signs off.
 
+#### NpTsFlake (flaky TypeScript session tests)
+
+- **Owns:** `crates/gnoblin/tests/support/native_shell.rs` (`wait_for_nodes`), `crates/gnoblin/tests/modular/{native_scene,native_style}.rs`.
+- **Symptom.** The full `modular` suite (one binary, `--test-threads=1`, after `cargo xtask stage`) at `748c83046` failed now and then in the
+  TypeScript test of example 24 (`native_scene`) or 25 (`native_style`) and passed when the test ran alone; the Python and Rust halves never
+  failed. The messages are `the tree has no view named panel` and `the tree has the shell's probe node`. Every failure in the logs of the
+  earlier lanes is one of the two.
+- **Reproduction.** On a 2-CPU, 4 GB box each of the two tests ran alone 20 times: `native_scene` failed 9 times and `native_style` twice
+  (11 of 40), each in under a second. The session log of a failing run holds every line the shell should have logged, for example 24
+  `scene: the view panel is node 6442450946 at 0.5 0.2 -1.4, the camera cam is node 6442450945 with fov 70` and for example 25
+  `style: transition aborted, rollback ran 1, opacity is set false, x is 0`, and then `serves in process (generation 1)`; what is missing is
+  the node in the snapshot the test takes next. In the diagnostic runs (25 for each of the TypeScript, Python and Rust shells of example 24,
+  and for the TypeScript and Rust shells of example 25) a snapshot that missed the nodes was always followed, within 17 ms, by one that held
+  them.
+- **Cause.** The test reads the tree once, after the lines the shell logged, and nothing orders the tree before those lines. The nodes a
+  script makes while it starts are written through the library into the shell's tick. The tick is sent as one transaction by the first
+  `dispatch` of the generation (`gnoblin-core-impl/src/registry.rs`, `dispatch`), which the host runs after it has logged `serves in process`
+  (`gnoblin-core-impl/src/native_shell.rs`, `serve`). The compositor applies the transaction on its own thread, after it was sent
+  (`gnoblin-compositor/src/inproc_shell.rs`: the compositor thread owns the tree and never waits for a shell), so a snapshot requested after
+  the send need not hold it. The test polls the log every 25 ms (`POLL`), so it sees the `serves` line up to 25 ms after the shell wrote it and
+  takes its snapshot at once.
+- **Timing.** A TypeScript shell reaches the send later than a Python shell. The JavaScript runtime's first turn waits 1 ms (a frame is due,
+  `MIN_WAIT`) and runs the frame before the core's dispatch sends (`gnoblin-runtime-js/src/instance.rs`, `turn`; the host's
+  `NativeModule::dispatch` runs a script runtime's `turn` before the core's queue), and the Python runtime's turn is the core's dispatch
+  (`gnoblin-runtime-python/src/lib.rs`). Temporary trace lines in `hub.rs` (`send`) and `registry.rs` (`dispatch`), not committed, gave from the
+  `serves` line as the test read it to the send: +2.4 to +3.9 ms in 10 TypeScript runs and +0.6 ms in 3 Python runs. In four TypeScript runs whose
+  first snapshot missed the nodes (send after the `serves` line; first snapshot against the send; first snapshot to the one that held the
+  nodes): run 3 +2.8 ms, 0.65 ms before, 8.5 ms; run 18 +3.4 ms, 0.35 ms after, 9.6 ms; run 20 +3.1 ms, 4.5 ms after, 6.6 ms; run 22 +2.7 ms,
+  1.5 ms before, 9.2 ms. In runs 18 and 20 the transaction was on its way before the snapshot was requested and the snapshot still lacked the
+  nodes: sent is not applied.
+- **Ruled out.** `within_call`: the failing runs log `rollback ran 1` and the right values, and the shell has finished its start when the test
+  reads. State shared by tests: each test is its own `gnoblin` process, every log says `generation=1`, and the tests share only the staged
+  libraries, read-only. Starvation of the box: the failures took under a second each on an idle box. The first test run of a box also compiles the
+  runtimes (`build_runtimes`) before a script test starts, and the two long runs (128 s in NpStdStyle, 151 s here) were first runs; the 151 s one
+  failed with `the tree has the shell's probe node`, and libtest's "has been running for over 60 seconds" is not `PATIENCE`. A sleep that was too
+  short: the rig has none before these reads, and the tree read was the one that waited on nothing.
+- **Fix.** `wait_for_nodes(session, what, held)` takes a snapshot every `POLL` until `held` is true of it, up to `PATIENCE`, and returns it;
+  it fails with the nodes the tree held and the log, or with the exit status if the session ended. `native_scene` waits for the `camera` named
+  `cam` and the `view` named `panel`, and `native_style` for the node named `probe`. Each `assert` line is as it was; the lookups that panicked on
+  a node that was not there yet became the wait. The product is unchanged: a shell that never writes its nodes fails the wait after `PATIENCE`.
+- **Result.** The two TypeScript tests ran alone 60 times each with no failure (before: 11 failures in 40 runs).
+
 ### 6.5 Parity gates and how each test is migrated, not weakened
 
 Rules that every lane follows:
