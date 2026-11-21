@@ -28,9 +28,8 @@
 //!
 //! # Failure modes first
 //!
-//! The plan's component card, `src/protocols/session-lock/README.md` and the
-//! compositor invariants there give this list, and each entry names the test
-//! that covers it:
+//! The component card of the plan and the compositor invariants give this list,
+//! and each entry names the test that covers it:
 //!
 //! 1. A cover cannot be produced. The screen stays covered and nothing unlocks:
 //!    `cover_failure_keeps_the_cover`.

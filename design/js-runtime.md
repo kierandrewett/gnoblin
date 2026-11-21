@@ -124,8 +124,8 @@ a non-obvious choice or necessary `any` or type assertion exists. See
 Without any `init.ts`, the stock default runs: the embedded starter file (`data/js/starter/init.ts`), which is
 the `init.ts` that `gnoblinctl config init` writes.
 
-- It declares the four floating workspaces `1` to `4` of the Lua stock config (`data/default-config/config/10-windows.lua`),
-  titlebars, the window menu, the not-responding alert and the stock keys of the Lua shell.
+- It declares four floating workspaces `1` to `4`, titlebars, the window menu, the not-responding alert and the stock
+  keys.
 - `Super+1` to `Super+9` show the workspace at that position, so `Super+1` to `Super+4` act and the rest wait for more
   workspaces.
 - An `init.ts` replaces the default. A file that binds no keys has none, and one that declares no workspace gets one

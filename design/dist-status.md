@@ -84,26 +84,12 @@ Every installed file is listed in `share/gnoblin/install-manifest` as `<sha256> 
 
 ## Not installed
 
-- `data/session/systemd-user/gnoblin-idle.service.in` is stale. It runs `@PREFIX@/libexec/gnoblin-idle`, a binary from the Mutter-era CMake build (`src/idle.c`). No Rust target builds it, and nothing in the Rust tree references the unit. Decide whether to port the idle daemon or delete the unit. Until then it is not installed.
-- Ananicy rules, the GeoClue authorisation file and man pages are distribution-owned and not in the install table.
+- GeoClue authorisation files, process priority rules and man pages are distribution-owned and not in the install table.
 
 ## Version
 
 - `Cargo.toml` `[workspace.package] version`: `0.2.0-alpha.0`.
-- `data/gnoblin-version.json`: `0.1.13` (format 1). Read by `scripts/gnoblin-version.py`, `scripts/build-identity.py` and `.github/workflows/packages.yml`.
-- The comment at `Cargo.toml:97` says the version comes from `versions/gnoblin-version.json`. That path does not exist; the file is `data/gnoblin-version.json`. The comment is wrong.
 - Not bumped. The release decision is Kieran's.
-
-## Mutter-era files still in the tree (cutover work)
-
-These build or package the retired Mutter-based compositor. They are not part of the Rust install and are not removed by this change.
-
-- Build: `CMakeLists.txt` (5 mutter references), `cmake/` (9 files, Mutter-era build helpers), `build.sh` (7 references), `flake.nix` (6 references). `Makefile` has no mutter reference but only drives `build.sh`.
-- Session: `data/session/schemas/00_org.gnoblin.mutter.gschema.override`.
-- Packaging: `pkgsmith/` at the repo root (Starlark specs). `runtime.star` has a mutter reference. `packaging/nix` does not exist.
-- CI: `.github/workflows/packages.yml`, `verify.yml`, `lua-runtime.yml`, `application-e2e.yml` reference Mutter.
-
-Not stale: the `crates/compat/gnoblin-compat-dbus-mutter-*` crates. They implement Mutter's D-Bus interfaces on purpose.
 
 ## Gates
 
@@ -117,7 +103,7 @@ Run on Agent37 (`a37-gate.sh`) at commit `b40efadc9`, which this change is based
 | `cargo test -p xtask`                                   | rc 0, 94 passed         |
 | `cargo test -p xdg-desktop-portal-gnoblin`              | rc 0, all suites passed |
 | `xtask dupes --deny`                                    | rc 0                    |
-| `xtask logging`, `xtask deps`, `xtask layout`           | rc 0 each               |
+| `xtask logging`, `xtask deps`                           | rc 0 each               |
 
 ## Installed-tree smoke
 

@@ -273,13 +273,11 @@ version is exactly the Gnoblin version, with all three parts, and so is every
 surface generated from the schema. Nothing shortens it: Gnoblin 0.2.0 serves IPC
 0.2.0, and Gnoblin 0.2.3 serves IPC 0.2.3. The rewrite ships as 0.2.0.
 
-- **Source:** `data/gnoblin-version.json`, which `prepare-release.sh` writes and
-  the source bundle and `gnoblin --version` read.
-    - `xtask` copies it into the Cargo workspace version, the schema,
-      `gnoblin.d.lua`, the WIT package (`gnoblin:ipc@0.2.0`) and the API
-      reference, so no crate, file or protocol keeps its own number.
-    - The copy step is not written yet; the workspace version is `0.2.0-alpha.0`
-      by hand.
+- **Source:** `[workspace.package] version` in `Cargo.toml`, `0.2.0-alpha.0` by
+  hand until a release sets it.
+    - The schema, the WIT package (`gnoblin:ipc@0.2.0`) and the API reference
+      are meant to take their number from it, so no crate, file or protocol
+      keeps its own number. No `xtask` step copies it yet.
 - **Members:** each schema member records `since`, the full Gnoblin version that
   added it. Clients compare `since` with the compositor's version before they
   use a member.
@@ -3425,9 +3423,9 @@ evidence sits. None is a decision, and none blocks a crate that has landed.
   (`crates/gnoblin-render/src/camera.rs`). The plan's 3D rule names refused
   members but not what a camera's member is called.
 
-- **The version source path.** The plan named `versions/gnoblin-version.json`
-  and the tree holds `data/gnoblin-version.json`, which `prepare-release.sh`
-  writes. No `xtask` step copies it into the workspace yet.
+- **The version source path.** The plan named `versions/gnoblin-version.json`.
+  The workspace version in `Cargo.toml` is the source, and no `xtask` step
+  copies it into the schema yet.
 - **Layout VM and blocking calls.** D17 runs layouts on a worker thread and
   discards late results. A Lua instruction hook cannot pre-empt a C call that
   blocks, so the stdlib subset removes the long blocking calls and the backstop

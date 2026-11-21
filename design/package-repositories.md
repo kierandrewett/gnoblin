@@ -176,20 +176,12 @@ a digit makes the number longer, which apk reads as larger.
 ### Where the version is applied
 
 The version is applied to a throw-away CI checkout, never to the repository.
+`scripts/pkgrepo version --git .` computes the SemVer pre-release
+(`0.1.13-nightly.20261031.142.gabc1234`), and the release workflow that builds the
+packages (issue #379) gives the checkout that version before it builds.
 
-1. `scripts/pkgrepo version --git .` computes the SemVer pre-release
-   (`0.1.13-nightly.20261031.142.gabc1234`).
-2. `scripts/apply-nightly-version.py` writes it into
-   `data/gnoblin-version.json` and the Gnoblin entries of
-   `packaging/native-packages.json`.
-3. It runs `sync-package-manifest.py write`, which spells the version for each
-   recipe.
-
-The RPM spec gains `%global source_version`. `Version:` holds the tilde
-spelling, while the source bundle and its top directory keep the SemVer one. The
-Arch recipe gains `_srcver` for the same reason. The portal package keeps the
-version of its GNOME component, so a nightly rebuilds it under the release
-version.
+A package recipe spells the version for its format: `Version:` of an RPM spec holds
+the tilde spelling, while the source bundle and its top directory keep the SemVer one.
 
 Bingux does the same in `scripts/build-rpms.sh`, `scripts/build-arch.sh` and
 `scripts/build-debs.sh`: the version they receive is written into a copy of the
@@ -377,17 +369,11 @@ in `debian:trixie` and call the same `install-tools.sh`.
 
 Gnoblin (`.github/workflows`):
 
-- `release.yml` builds the source bundle, calls `packages.yml`, publishes the GitHub release for a
-  tag, and then calls `package-repository.yml`. `packages.yml` builds the bundle into a prefix on
-  Fedora 45 (amd64 and arm64), writes the rpm, deb, Arch and tar packages with pkgsmith, and
-  installs them on clean Fedora, openSUSE, Arch and Debian testing systems.
-- A release tag builds the stable channel and publishes it. A push to `main`, a pull request or a
+- No workflow calls `package-repository.yml` yet: the release workflow that builds the packages
+  and calls it is tracked in issue #379. A release tag is meant to build the stable channel and
+  publish it, and a scheduled run to publish the nightly channel when the commit in the published
+  `nightly/manifest.json` differs from the commit of the run. A push to `main`, a pull request or a
   manual dry run builds and verifies the tree with a throw-away key and publishes nothing.
-- `nightly.yml` runs at 02:17 UTC and on demand, and only where `REPO_DESTINATION` is set. It compares the
-  commit in the published `nightly/manifest.json` with the commit of the run and stops when they
-  are equal. Otherwise it calls `release.yml` with `nightly: true`, which gives the checkout the
-  nightly version, skips the GitHub release, runs the same build and clean-install checks as a
-  release, and publishes the nightly channel.
 - `package-repository.yml` is the reusable stage. It takes one concurrency group
   per channel, so two publications never interleave. It sorts the packages into `fedora/45`,
   `opensuse/tumbleweed`, `deb/forky`, `arch` and `alpine/edge/<arch>`.
@@ -451,8 +437,7 @@ no expiry, stored in the owner's Bitwarden) and the signing secrets in both repo
    secrets exist so far.
 5. Run the tool once by hand with `--apply` for each project and channel
    (`scripts/pkgrepo/README.md`), and install from the result on a clean machine.
-6. Merge the branch. Cut a release to publish the first stable channel, or run
-   `nightly.yml` with `force`.
+6. Merge the branch. Cut a release to publish the first stable channel.
 7. Bingux: after the Gnoblin branch is merged, set `packaging/pkgrepo.ref` of
    Bingux to the merged commit if it is not the one it names.
 8. Done: `infra.yml` no longer copies an APT archive from the `gh-pages` branch into

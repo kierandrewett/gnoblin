@@ -3,9 +3,8 @@
 //! A chord is zero or more modifiers in angle brackets, then one key:
 //! `<Super><Alt>F9`, `<Control>q`, `XF86AudioMute`, and the bare word `Super`.
 //! [`docs/guides/shortcuts.md`](../../../docs/guides/shortcuts.md) publishes the
-//! syntax and `src/control/gnoblin-chord.h` is the C implementation it replaces;
-//! this module keeps the same accepted language, so a chord written for a Mutter
-//! build means the same thing to the Rust compositor.
+//! syntax; this module accepts that language, so a chord written for an earlier
+//! Gnoblin build means the same thing to the Rust compositor.
 //!
 //! # Accepted forms
 //!

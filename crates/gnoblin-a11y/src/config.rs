@@ -1,11 +1,8 @@
-//! The accessibility configuration, with the field names, ranges and defaults
-//! of the C tree.
+//! The accessibility configuration: its field names, ranges and defaults.
 //!
-//! Every keyboard field maps one to one onto `docs/config/configure/input/keyboard.md`
-//! and the `keyboard_accessibility_fields` table in
-//! `src/config/gnoblin-config-input.c`, so a configuration file written for
-//! Gnoblin 0.1.x reads the same after the cutover. The magnifier is new state in
-//! this crate; its settings are the ones `gnoblin-render` needs and nothing
+//! Every keyboard field maps one to one onto `docs/config/configure/input/keyboard.md`,
+//! so a configuration file written for Gnoblin 0.1.x reads the same. The magnifier is
+//! state of this crate; its settings are the ones `gnoblin-render` needs and nothing
 //! else.
 
 use crate::geometry::Scale;

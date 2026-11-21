@@ -22,8 +22,7 @@ const DISPLAY_WAIT: u64 = 5_000;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Rules {
     /// How long a child may take to exit after a graceful signal before it is
-    /// killed. Two seconds matches `guardian_stop_supervisor` in
-    /// `src/session/gnoblin-runtime.c`.
+    /// killed. The default is two seconds.
     pub stop_grace: Tick,
     /// How many session starts may fail in a row before the guardian asks for
     /// safe mode.

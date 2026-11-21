@@ -103,11 +103,6 @@ frame protocol. `tests/window_frame.rs` covers:
 
 Status: done and tested as read. This lane did not run these tests.
 
-**Starter config: loads.** `data/default-config/config/10-windows.lua` sets an
-`opacity` rule and a `corners = {radius = ...}` rule, both accepted. The starter
-load test passes on Agent37 after `a9153b70b`, which fixes the spellings and
-removes the refused `frame` rule.
-
 ## Config keys
 
 | Key                                                                                          | Where                                                | Status                                                                          |

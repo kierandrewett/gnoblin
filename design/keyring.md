@@ -303,8 +303,8 @@ Phase 1 facts, measured on Agent37 (rusqlite 0.41.1, libsqlite3-sys 0.39.1):
   default to memory. Plain `bundled` does not set it. `PRAGMA temp_store` can still override.
 - The build links libcrypto dynamically (`dylib=crypto`) unless `OPENSSL_LIB_DIR` and
   `OPENSSL_INCLUDE_DIR` point elsewhere. It needs the OpenSSL 3 headers at build time.
-  The runtime dependency is `libcrypto.so.3`, which `gnoblin` must declare (see
-  `distribution.md`). `bundled-sqlcipher-vendored-openssl` would vendor it instead; not used.
+  The runtime dependency is `libcrypto.so.3`, which each package format must
+  declare as a runtime dependency once `gnoblin-service-keyring` ships. `bundled-sqlcipher-vendored-openssl` would vendor it instead; not used.
 
 Phase 3 facts, for `pam_gnoblin_keyring`:
 

@@ -33,8 +33,8 @@ const RESULTS: &str = "tests/native-probe/results";
 const MATRIX: &str = "tests/native-probe/MATRIX.md";
 const TARGETS: &str = "design/package-targets.json";
 
-/// Images the design names that `package-targets.json` does not list: `design/distribution.md` builds the apk packages
-/// in `alpine:edge`, which is the only Alpine target.
+/// Images the design names that `package-targets.json` does not list: the apk packages are built in `alpine:edge`,
+/// which is the only Alpine target.
 const EXTRA_IMAGES: &[(&str, &str)] = &[("alpine-edge", "alpine:edge")];
 
 /// The package families, in the order the table lists them.

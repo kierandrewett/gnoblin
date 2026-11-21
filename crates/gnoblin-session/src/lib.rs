@@ -46,7 +46,7 @@
 //!
 //! # Failure modes first
 //!
-//! The plan's card and `src/session` give this list. Each entry names the test that covers it.
+//! The plan's card gives this list. Each entry names the test that covers it.
 //!
 //! 1. A shell that crashes immediately is restarted forever and burns a core:
 //!    the budget stops it and the session is reported degraded —

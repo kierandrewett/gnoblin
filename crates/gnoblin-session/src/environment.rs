@@ -4,8 +4,7 @@
 //! systemd or D-Bus. It decides *which* variables the session must have, in
 //! which order, and when they become valid; the caller applies them to its own
 //! environment, to the user manager (`systemctl --user set-environment`) and to
-//! the D-Bus activation environment (`UpdateActivationEnvironment`), exactly as
-//! `src/session/gnoblin-runtime-environment.c` does today.
+//! the D-Bus activation environment (`UpdateActivationEnvironment`).
 
 /// Environment changes for one target: what to set, and what to unset.
 ///

@@ -7,9 +7,8 @@ use core::fmt;
 
 /// How long a child may take to report readiness before the guardian kills it.
 ///
-/// `STARTUP_TIMEOUT_MS` in `src/session/gnoblin-runtime-internal.h` gives the
-/// runtime ten seconds; one number for every child keeps the plan readable and a
-/// child that needs longer can override it in its own [`ChildSpec`].
+/// Ten seconds. One number for every child keeps the plan readable, and a child
+/// that needs longer can override it in its own [`ChildSpec`].
 pub const DEFAULT_READY_WITHIN: Tick = secs(10);
 
 /// What a planned child is.

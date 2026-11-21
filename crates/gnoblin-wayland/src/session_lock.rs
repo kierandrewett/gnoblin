@@ -23,8 +23,7 @@
 //!
 //! ## Failure modes first
 //!
-//! The plan's card, `src/protocols/session-lock/README.md` and `gnoblin-lock`'s own
-//! list name these; each is a test in `tests/session_lock.rs` unless it says
+//! The plan's card and `gnoblin-lock`'s own list name these; each is a test in `tests/session_lock.rs` unless it says
 //! otherwise.
 //!
 //! 1. **`locked` is sent before a frame proved the cover.** The confirmation is held

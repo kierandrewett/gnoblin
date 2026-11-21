@@ -4,7 +4,7 @@ Gnoblin uses the standard `ext-session-lock-v1` Wayland protocol in the
 Gnoblin session. The compositor owns the security boundary: it covers every
 output, stops normal input, refuses screen capture, and stays locked if a locker
 exits. The locker owns its appearance and
-authentication. See the [protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/session-lock/ext-session-lock-v1.xml).
+authentication. See the [protocol XML](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/ext-session-lock/ext-session-lock-v1.xml).
 
 The lock screen is a separate client. Bingux is one shell project with its own
 lock client.
@@ -511,5 +511,5 @@ covered and locked; another client may acquire the lock afterwards.
 The protocol rejects a null lock-surface buffer, a commit before the first
 configure is acknowledged, a buffer with the wrong dimensions, duplicate
 output surfaces, and destroying the active lock without unlocking. See the
-[protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/session-lock/ext-session-lock-v1.xml)
+[protocol XML](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/ext-session-lock/ext-session-lock-v1.xml)
 for the complete error enums.
