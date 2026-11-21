@@ -46,6 +46,7 @@ impl Ui {
     /// One frame of the toolkit: the frame hooks run, then each root canvas updates its whole tree, and the next wake is planned.
     pub(crate) fn frame(self: &Rc<Self>) {
         menus::watch(self);
+        crate::lock::turn(self);
         let hooks: Vec<_> = self
             .frame_hooks
             .borrow()
@@ -57,12 +58,14 @@ impl Ui {
                 self.warn(&format!("onUiFrame threw: {fail}"));
             }
         }
+        crate::shell::turn(self);
         crate::frame::turn(self);
         let roots = self.w.borrow().roots();
         for root in roots {
             self.update(root);
         }
         crate::frame::after_update(self);
+        crate::lock::after_update(self);
         self.plan_wake();
     }
 
@@ -139,6 +142,7 @@ impl Ui {
             _ => {}
         }
         crate::frame::refresh(self, cid)?;
+        crate::shell::refresh(self, cid)?;
         if let Some(done) = self.hook_call(cid, |ids| ids.refresh, &[]) {
             done?;
         }
@@ -227,7 +231,7 @@ impl Ui {
 
     /// The operations the library paints a canvas with by itself.
     pub(crate) fn paint_default(&self, cid: Cid) -> Result<Vec<PaintOp>, String> {
-        if let Some(ops) = crate::frame::paint(self, cid) {
+        if let Some(ops) = crate::frame::paint(self, cid).or_else(|| crate::lock::paint(self, cid)) {
             return ops;
         }
         let Some(kind) = self.read(cid, |widget| widget.kind) else {
@@ -404,7 +408,14 @@ impl Ui {
                 wake = Some(wake.map_or(delay, |held| held.min(delay)));
             }
         }
-        if let Some(delay) = crate::frame::wake_in(self) {
+        for delay in [
+            crate::frame::wake_in(self),
+            crate::shell::wake_in(self),
+            crate::lock::wake_in(self),
+        ]
+        .into_iter()
+        .flatten()
+        {
             wake = Some(wake.map_or(delay, |held| held.min(delay)));
         }
         if menus::polls(self) {

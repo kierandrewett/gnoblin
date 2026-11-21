@@ -187,8 +187,9 @@ impl Ui {
             };
             // What a frame part does with the pointer by itself (a drag area drags, a button acts) comes first: a shell's hooks hear what
             // the part left.
-            let mut stopped =
-                crate::frame::pointer(self, cid, kind, x, y, raw.button) || menus::on_pointer(self, cid, kind, raw);
+            let mut stopped = crate::frame::pointer(self, cid, kind, x, y, raw.button)
+                || menus::on_pointer(self, cid, kind, raw)
+                || crate::shell::pointer(self, cid, kind, raw.button);
             let record = self.pointer_record(kind, x, y, raw, target_obj);
             if !stopped && let Some(done) = self.hook_call(cid, |ids| ids.on_pointer, std::slice::from_ref(&record)) {
                 match done {
@@ -255,7 +256,10 @@ impl Ui {
             };
             // What the canvas does with a key by itself comes first: an entry types it. A shell's hooks hear it after, and what the
             // entry used it stops.
-            let mut stopped = entry::on_key(self, cid, raw) || menus::on_key(self, cid, raw);
+            let mut stopped = entry::on_key(self, cid, raw)
+                || menus::on_key(self, cid, raw)
+                || crate::shell::key(self, cid, raw)
+                || crate::lock::key(self, cid, raw);
             let record = self.key_record(raw, target_obj);
             if !stopped && let Some(done) = self.hook_call(cid, |ids| ids.on_key, std::slice::from_ref(&record)) {
                 match done {

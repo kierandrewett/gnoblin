@@ -1,0 +1,373 @@
+# The `shell` module of `gnoblin.std`: the parts of the stock shell that sit above the toolkit. The not-responding alert (the tracker that
+# decides which windows get one, the dialog, and the service that looks at the windows), the launcher and the overview. The toast is in `widgets`.
+#
+# A window is named by its node number as text, as every client is in this namespace. The alert reads what it needs of a window (`alive`,
+# `unresponsive`, `title`, `secure`) from the compositor's tree and asks it to kill the process through the window's own `kill`.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# ---- enums ---------------------------------------------------------------------------------------------------------------------------
+
+# What the user chose, or `recovered` when the alert ended without them.
+[[enum]]
+name = "alert_answer"
+since = "0.2.0"
+values = ["wait", "force", "recovered"]
+
+# ---- callbacks -----------------------------------------------------------------------------------------------------------------------
+
+# Starts a command line typed into the launcher.
+[[callback]]
+name = "launch_command"
+since = "0.2.0"
+
+[[callback.param]]
+name = "command"
+type = "string"
+
+# Closes the window menu, if one is open: an alert takes the keyboard from it.
+[[callback]]
+name = "alert_close_menu"
+since = "0.2.0"
+
+# ---- the tracker ---------------------------------------------------------------------------------------------------------------------
+
+# What a look at the windows decided.
+[[object]]
+name = "alert_changes"
+since = "0.2.0"
+kind = "record"
+
+# The windows that have just stopped answering and get an alert.
+[[object.property]]
+name = "open"
+type = "list<string>"
+since = "0.2.0"
+
+# The windows whose alert is no longer wanted: they answer again, are gone, or lie under a lock.
+[[object.property]]
+name = "close"
+type = "list<string>"
+since = "0.2.0"
+
+# Which windows get an alert. `check` looks at the windows it is given once and says which alerts to open and which to close; `answered` takes the
+# user's choice (or the end of the alert) and says whether to kill the window. A window the user chose Wait or Force quit for is waited on, and gets
+# no alert, until it answers a ping again.
+[[object]]
+name = "alert_tracker"
+since = "0.2.0"
+retained = true
+
+# Whether an alert is open for `client`.
+[[object.method]]
+name = "is_open"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Whether alerts for `client` are suppressed until it answers again.
+[[object.method]]
+name = "is_waiting"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# Looks at `clients` and returns the alerts to open and to close. A window that is not alive is forgotten; one that is unresponsive and has no alert,
+# is not waited on and is not under a lock gets one; one that answers again, is gone from the list or lies under a lock loses its alert.
+[[object.method]]
+name = "check"
+since = "0.2.0"
+returns = "object:alert_changes"
+
+[[object.method.param]]
+name = "clients"
+type = "list<string>"
+
+[[object.method.param]]
+name = "locked"
+type = "bool"
+
+# The alert for `client` ended with `answer`. Returns whether the window is to be killed. A window the user chose Wait or Force quit for is waited
+# on until it answers a ping again.
+[[object.method]]
+name = "answered"
+since = "0.2.0"
+returns = "bool"
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+[[object.method.param]]
+name = "answer"
+type = "enum:alert_answer"
+
+# Text from a peer is for display only: no control characters, and no more than `max` characters (an ellipsis ends what was cut).
+[[object.method]]
+name = "clean_text"
+since = "0.2.0"
+function = true
+returns = "string"
+
+[[object.method.param]]
+name = "text"
+type = "string"
+
+[[object.method.param]]
+name = "max"
+type = "uint"
+
+# ---- the dialog ----------------------------------------------------------------------------------------------------------------------
+
+# One of the two buttons of the alert: Wait or Force quit. A button that is not enabled is dim and does nothing.
+[[object]]
+name = "alert_button"
+since = "0.2.0"
+base = "box"
+retained = true
+
+# The button's label.
+[[object.property]]
+name = "label"
+type = "object:text"
+since = "0.2.0"
+readonly = true
+
+# Whether the button does anything. Force quit is off until the alert is armed.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# Whether the keyboard is on the button.
+[[object.property]]
+name = "picked"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The alert: what is wrong, and Wait and Force quit. Escape waits. Tab, Left and Right move between the buttons and Return or Space presses the
+# one the keyboard is on. Force quit ignores a press until `arm`, which the service calls `arm_ms` milliseconds after the alert opened. A press on
+# the card does not reach what lies under it. The card is placed in the middle of the primary screen's width, a quarter of the way down what the
+# card leaves free.
+[[object]]
+name = "not_responding_dialog"
+since = "0.2.0"
+base = "box"
+retained = true
+ctor = ["name"]
+
+# What the window is called: the card says `{name} is not responding`.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+readonly = true
+
+# The Wait and Force quit buttons, in the order the keyboard goes through them.
+[[object.property]]
+name = "choices"
+type = "list<object:alert_button>"
+since = "0.2.0"
+readonly = true
+
+# The button the keyboard is on: 0 is Wait, 1 is Force quit.
+[[object.property]]
+name = "index"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Whether Force quit is enabled.
+[[object.property]]
+name = "armed"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Puts the keyboard on a button.
+[[object.method]]
+name = "select"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "index"
+type = "uint"
+
+# Lets Force quit be pressed.
+[[object.method]]
+name = "arm"
+since = "0.2.0"
+
+# Presses a button, unless it is Force quit and the alert is not armed.
+[[object.method]]
+name = "activate"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "index"
+type = "uint"
+
+# The user chose Wait or Force quit.
+[[object.signal]]
+name = "chosen"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "answer"
+type = "enum:alert_answer"
+
+# ---- the service ---------------------------------------------------------------------------------------------------------------------
+
+# Looks at the windows a few times a second, opens the alert for one that has just stopped answering and closes the alert of one that answers
+# again, has gone, or lies under a lock. `unresponsive` is a property the compositor writes, so the alert reads it. Force quit asks the compositor
+# to kill the window's process; the compositor refuses to kill init and its own process.
+[[object]]
+name = "not_responding_alerts"
+since = "0.2.0"
+kind = "service"
+
+# Whether `start` ran and `stop` did not.
+[[object.property]]
+name = "started"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# Milliseconds after the alert opens before Force quit takes a press.
+[[object.property]]
+name = "arm_ms"
+type = "double"
+since = "0.2.0"
+default = 500.0
+
+# The least milliseconds between two looks at the windows.
+[[object.property]]
+name = "interval_ms"
+type = "double"
+since = "0.2.0"
+default = 250.0
+
+# The clock the alert times the arming by, in milliseconds. Left out, the toolkit's.
+[[object.property]]
+name = "now"
+type = "callback:time_source"
+since = "0.2.0"
+
+# Closes the window menu when an alert opens. Left out, nothing is closed.
+[[object.property]]
+name = "close_menu"
+type = "callback:alert_close_menu"
+since = "0.2.0"
+
+# The tracker the service decides by.
+[[object.property]]
+name = "tracker"
+type = "object:alert_tracker"
+since = "0.2.0"
+readonly = true
+
+# Starts the alert: from now the windows are looked at.
+[[object.method]]
+name = "start"
+since = "0.2.0"
+
+# Stops it, and closes the alerts that are open.
+[[object.method]]
+name = "stop"
+since = "0.2.0"
+
+# One look at the windows, now.
+[[object.method]]
+name = "check"
+since = "0.2.0"
+
+# The alert open for `client`, if there is one.
+[[object.method]]
+name = "card_of"
+since = "0.2.0"
+returns = "object:not_responding_dialog"
+optional = true
+
+[[object.method.param]]
+name = "client"
+type = "string"
+
+# An alert ended: the user chose, or the window answered, went, or lies under a lock.
+[[object.signal]]
+name = "answered"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "client"
+type = "string"
+
+[[object.signal.field]]
+name = "answer"
+type = "enum:alert_answer"
+
+# ---- the launcher --------------------------------------------------------------------------------------------------------------------
+
+# A command entry, 600 by 48 pixels. Return runs the text and closes it; Escape closes it without running anything; a blank text runs nothing. Only
+# one launcher lives at a time: `open` focuses the one that is open.
+[[object]]
+name = "launcher"
+since = "0.2.0"
+base = "entry"
+retained = true
+
+# Starts the typed command line. Left out, the core's `shell` does.
+[[object.property]]
+name = "spawn"
+type = "callback:launch_command"
+since = "0.2.0"
+
+# Opens the launcher in the middle of the primary screen's width, 200 pixels down, over the windows, and gives it the keyboard. When one is open,
+# focuses that one and returns it.
+[[object.method]]
+name = "open"
+since = "0.2.0"
+function = true
+returns = "object:launcher"
+
+[[object.method.param]]
+name = "spawn"
+type = "callback:launch_command"
+optional = true
+
+# ---- the overview --------------------------------------------------------------------------------------------------------------------
+
+# Dims the windows of the workspaces that are not shown when it is off, and shows every window at full strength when it is on. It changes opacity
+# only: it draws no thumbnails and moves no windows.
+[[object]]
+name = "overview"
+since = "0.2.0"
+kind = "service"
+
+# Whether the overview is on.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# How strong a window of a workspace that is not shown looks while the overview is off (0 is clear, 1 is full).
+[[object.property]]
+name = "dimmed_opacity"
+type = "double"
+since = "0.2.0"
+default = 0.4
+
+# Flips the overview, sets the opacity of every window of every workspace to match, and returns whether it is on.
+[[object.method]]
+name = "toggle"
+since = "0.2.0"
+returns = "bool"

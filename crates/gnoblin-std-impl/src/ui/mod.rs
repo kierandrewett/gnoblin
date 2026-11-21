@@ -19,8 +19,8 @@
 
 mod bar;
 pub(crate) mod classes;
-mod clock;
-mod entry;
+pub(crate) mod clock;
+pub(crate) mod entry;
 mod input;
 pub(crate) use input::CanvasEvent;
 mod layout;

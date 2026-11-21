@@ -1,0 +1,334 @@
+# The `lock` module of `gnoblin.std`: the stock lock screen.
+#
+# The screen shows a clock and a password entry while the session is locked. It reads the compositor's lock (the `lock` node's `state`) and sends the
+# password to it through the core's `session_lock`; nothing here can unlock, the compositor does that when it accepts a check. The password entry keeps
+# the characters it was given as code points, draws one mask character for each, and overwrites them when it hands the password on. A shell that makes
+# no `lock_screen` leaves the compositor's own lock card in charge (`docs/session-lock.md`): a core-only shell is safe by default.
+namespace = "gnoblin.std"
+version = "0.2.0"
+local = true
+
+# ---- callbacks -----------------------------------------------------------------------------------------------------------------------
+
+# A password was typed and Return pressed. The entry forgets what it held once the callback returns.
+[[callback]]
+name = "password_submit"
+since = "0.2.0"
+
+[[callback.param]]
+name = "password"
+type = "string"
+
+# ---- the style -----------------------------------------------------------------------------------------------------------------------
+
+# Everything that sets how the screen looks and what it says. Lengths are logical pixels.
+[[object]]
+name = "lock_style"
+since = "0.2.0"
+kind = "record"
+
+# The colour behind the lock card.
+[[object.property]]
+name = "scrim_fill"
+type = "string"
+since = "0.2.0"
+default = "#11111bf2"
+
+# The card's width.
+[[object.property]]
+name = "card_width"
+type = "double"
+since = "0.2.0"
+default = 360.0
+
+# The card's height.
+[[object.property]]
+name = "card_height"
+type = "double"
+since = "0.2.0"
+default = 220.0
+
+# The card's corner radius.
+[[object.property]]
+name = "card_radius"
+type = "double"
+since = "0.2.0"
+default = 16.0
+
+# The space inside the card.
+[[object.property]]
+name = "card_padding"
+type = "double"
+since = "0.2.0"
+default = 20.0
+
+# The space between what the card holds.
+[[object.property]]
+name = "card_gap"
+type = "double"
+since = "0.2.0"
+default = 12.0
+
+# The card's background colour.
+[[object.property]]
+name = "card_fill"
+type = "string"
+since = "0.2.0"
+default = "#1e1e2e"
+
+# The card's distance from the top, as a share of the screen's height.
+[[object.property]]
+name = "card_top"
+type = "double"
+since = "0.2.0"
+default = 0.3333333333333333
+
+# The clock's text size.
+[[object.property]]
+name = "clock_size"
+type = "double"
+since = "0.2.0"
+default = 44.0
+
+# The clock's text colour.
+[[object.property]]
+name = "clock_color"
+type = "string"
+since = "0.2.0"
+default = "#cdd6f4"
+
+# The password entry's height.
+[[object.property]]
+name = "entry_height"
+type = "double"
+since = "0.2.0"
+default = 44.0
+
+# The password entry's corner radius.
+[[object.property]]
+name = "entry_radius"
+type = "double"
+since = "0.2.0"
+default = 10.0
+
+# The password entry's background colour.
+[[object.property]]
+name = "entry_fill"
+type = "string"
+since = "0.2.0"
+default = "#313244"
+
+# The password entry's text size.
+[[object.property]]
+name = "entry_size"
+type = "double"
+since = "0.2.0"
+default = 15.0
+
+# The password entry's text colour.
+[[object.property]]
+name = "entry_color"
+type = "string"
+since = "0.2.0"
+default = "#cdd6f4"
+
+# The most characters the entry takes. The compositor refuses a password over 1024 bytes.
+[[object.property]]
+name = "entry_limit"
+type = "uint"
+since = "0.2.0"
+default = 1024
+
+# The message's text size.
+[[object.property]]
+name = "message_size"
+type = "double"
+since = "0.2.0"
+default = 13.0
+
+# The hint's text colour.
+[[object.property]]
+name = "hint_color"
+type = "string"
+since = "0.2.0"
+default = "#a6adc8"
+
+# The error's text colour.
+[[object.property]]
+name = "error_color"
+type = "string"
+since = "0.2.0"
+default = "#f38ba8"
+
+# What the message says before a password is submitted.
+[[object.property]]
+name = "hint"
+type = "string"
+since = "0.2.0"
+default = "Enter your password."
+
+# What it says while the compositor checks a password.
+[[object.property]]
+name = "checking"
+type = "string"
+since = "0.2.0"
+default = "Checking..."
+
+# What it says when a password is rejected.
+[[object.property]]
+name = "denied"
+type = "string"
+since = "0.2.0"
+default = "Wrong password."
+
+# What it says when another password check is still running.
+[[object.property]]
+name = "busy"
+type = "string"
+since = "0.2.0"
+default = "Checking the previous attempt."
+
+# What it says when the check fails.
+[[object.property]]
+name = "failed"
+type = "string"
+since = "0.2.0"
+default = "The password could not be checked."
+
+# What it says when the compositor asks for a wait: `{seconds}` is the wait, rounded up.
+[[object.property]]
+name = "rate_limited"
+type = "string"
+since = "0.2.0"
+default = "Too many attempts. Try again in {seconds} s."
+
+# ---- the entry -----------------------------------------------------------------------------------------------------------------------
+
+# The password entry. It holds the typed characters as code points and draws one mask character for each. Return hands the password, as one string, to
+# `on_submit` and then overwrites what it held. A key typed while the entry is not `enabled` is dropped. The entry takes its height, fill, corner radius,
+# limit, text size and colour from `style`.
+[[object]]
+name = "password_entry"
+since = "0.2.0"
+base = "box"
+retained = true
+ctor = ["style"]
+
+# The look the entry was made with.
+[[object.property]]
+name = "style"
+type = "object:lock_style"
+since = "0.2.0"
+readonly = true
+
+# Whether the entry takes keys. The lock screen turns it off before it comes down.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+default = true
+
+# The most characters it takes.
+[[object.property]]
+name = "limit"
+type = "uint"
+since = "0.2.0"
+
+# The mask text's size.
+[[object.property]]
+name = "size"
+type = "double"
+since = "0.2.0"
+
+# The mask text's colour.
+[[object.property]]
+name = "color"
+type = "string"
+since = "0.2.0"
+
+# How many characters are typed.
+[[object.property]]
+name = "length"
+type = "uint"
+since = "0.2.0"
+readonly = true
+
+# Receives the password on Return. The entry clears its characters after the callback returns or throws.
+[[object.property]]
+name = "on_submit"
+type = "callback:password_submit"
+since = "0.2.0"
+
+# Forgets what was typed: the code points are overwritten, then dropped.
+[[object.method]]
+name = "clear"
+since = "0.2.0"
+
+# ---- the screen ----------------------------------------------------------------------------------------------------------------------
+
+# The lock screen. Making one puts it to work for the generation: from then on it puts the screen up when the session locks and takes it down when
+# it unlocks, takes the compositor's answer to a password check, keeps the keyboard on its entry, and renews the compositor's lease while the screen
+# is whole. A screen that cannot draw is not one a password can be typed into: the turn that failed renews nothing, and the compositor's own card
+# takes the password when the lease lapses. Only one exists for a generation.
+[[object]]
+name = "lock_screen"
+since = "0.2.0"
+retained = true
+ctor = ["style"]
+
+# The look the screen was made with.
+[[object.property]]
+name = "style"
+type = "object:lock_style"
+since = "0.2.0"
+readonly = true
+
+# Whether the screen is up.
+[[object.property]]
+name = "shown"
+type = "bool"
+since = "0.2.0"
+readonly = true
+
+# The clock the screen's time of day is read from, in milliseconds since the Unix epoch. Left out, the system clock.
+[[object.property]]
+name = "now"
+type = "callback:time_source"
+since = "0.2.0"
+
+# Takes the screen down at once and keeps it down: the lock is the compositor's card's until `show`.
+[[object.method]]
+name = "hide"
+since = "0.2.0"
+
+# Lets the screen come up again after `hide`.
+[[object.method]]
+name = "show"
+since = "0.2.0"
+
+# The time of day as `HH:MM`, in the machine's time zone.
+[[object.method]]
+name = "format_clock"
+since = "0.2.0"
+function = true
+returns = "string"
+
+[[object.method.param]]
+name = "milliseconds"
+type = "double"
+
+# The stock look of the screen.
+[[object.method]]
+name = "default_lock_style"
+since = "0.2.0"
+function = true
+returns = "object:lock_style"
+
+# A password went to the compositor to be checked. `token` names the check.
+[[object.signal]]
+name = "submitted"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "token"
+type = "uint"

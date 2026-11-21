@@ -58,6 +58,7 @@ pub(crate) fn build(ui: &Rc<Ui>, cx: &mut gnoblin_object::server::Cx<'_>, me: Ob
             on_submit: None,
             shift: false,
             control: false,
+            launcher: None,
         }));
     });
     Ok(())
@@ -224,10 +225,12 @@ pub(crate) fn on_key(ui: &Rc<Ui>, cid: Cid, raw: &CanvasEvent) -> bool {
     match raw.key.as_str() {
         "Return" | "KP_Enter" => {
             let text = before.0.clone();
-            if let Some(submit) = &entry.on_submit
-                && let Err(fail) = submit.call(0, &[Val::Text(text.clone())])
-            {
-                ui.warn(&format!("Entry.on_key threw: {fail}"));
+            if let Some(submit) = &entry.on_submit {
+                if let Err(fail) = submit.call(0, &[Val::Text(text.clone())]) {
+                    ui.warn(&format!("Entry.on_key threw: {fail}"));
+                }
+            } else if entry.launcher.is_some() {
+                crate::shell::submit_launcher(ui, cid, &text);
             }
             if let Some(obj) = ui.read(cid, |widget| widget.obj) {
                 ui.announce(obj, |cx| cx.emit("submit", vec![Val::Text(text)]));

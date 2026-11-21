@@ -1973,6 +1973,43 @@ and pass unchanged.
   and Force quit ignores presses for the arming time; a lock is engaged and a wrong and a right password are handled by the
   native screen, while a core-only shell still gets the core card (`js_lock_core_only`). `lock`, `js_lock*` pass.
 
+**What exists.** `shell.toml` and `lock.toml` declare the classes below, and `crates/gnoblin-std-impl/src/{shell,lock}/` implements them over the
+UI toolkit: every canvas of them is a canvas of the toolkit that carries a part, so the toolkit's turn updates, paints and writes it. A window is
+named by its node as text. The toast is a widget of `widgets.toml`.
+
+- `alert_tracker` (`check(clients, locked)` answers an `alert_changes` record, `answered`, `is_open`, `is_waiting`, and the function `clean_text`),
+  `not_responding_dialog` (`choices`, `index`, `armed`, `select`, `arm`, `activate`, the signal `chosen`) with its two `alert_button`s, and the
+  service `not_responding_alerts` (`arm_ms`, `interval_ms`, `now`, `close_menu`, `tracker`, `start`, `stop`, `check`, `card_of`, the signal `answered`).
+  The service reads `unresponsive`, `title` and `secure` of the compositor's windows and asks a window's own `kill` for Force quit. A change of
+  `unresponsive` of a window or of the lock asks for a turn; the turn looks when `interval_ms` has passed, arms the cards whose delay is over, and
+  plans the wake for the next arming or look. `close_menu` is the callback that closes the window menu when a card opens.
+- `launcher` (base `entry`; `spawn`, the function `open`) and `overview` (service: `enabled`, `dimmed_opacity`, `toggle`). Return in a launcher
+  with no `on_submit` runs the text through `spawn`, else the core's `shell`, and closes it.
+- `lock_screen` (`style`, `shown`, `now`, `show`, `hide`, the signal `submitted`, the functions `format_clock` and `default_lock_style`),
+  `password_entry` (`style`, `enabled`, `limit`, `size`, `color`, `length`, `on_submit`, `clear`) and the record `lock_style`. Making a
+  `lock_screen` puts the screen to work for the generation (one at most); a shell that makes none leaves the lock to the compositor's card. The
+  screen follows the lock node's `state` and the seat's `focus`, sends the password through the core's `session_lock` (`authenticate`, `engage`,
+  `heartbeat`, the signal `answered`) and overwrites the typed code points when it hands the password on.
+
+**The replay.** `crates/gnoblin-std-impl/tests/shell_ui.rs` plays the `parts_*` scenarios as shells over the object protocol and holds every
+step's log, nodes, trees and paint bytes to the fixtures. The scenarios that lock the session run with a `lock_screen`, as the TypeScript runtime
+always attached one. Example 31 (`examples/31-native-shell-ui`, with `-ts` and `-py`) and `modular::native_shell_ui` run the alert, the
+launcher, the overview and the lock from the three languages in a real session.
+
+**Allowances of the replay** (each is in the test, with its reason): (1) `parts_alert_menu` is not replayed: it opens the window menu, and
+`the_alert_closes_the_menu_through_its_callback` asserts the `close_menu` callback instead. (2) The sample `cleanText('\ud800')` is not made: a
+native string is UTF-8 and holds no lone surrogate. (3) At step `checking` the fixture's message is 19 high, an estimate the TypeScript toolkit
+kept for a text; the native toolkit measures at once and holds 16. (4) The frame of a window that went stays in the fixture and is dropped
+(`Rig::forget`). (5) A launcher opened again asks the compositor again to measure its text (`unanswer`), as the TypeScript entry did.
+
+**What `modular::native_shell_ui` cannot do.** The shipped binary checks passwords with PAM, so a wrong password is typed and its answer
+read; the right password is the replay's. Force quit after its arming is the replay's too: it asks the compositor to kill the client's
+process, which in that test is the test.
+
+**Importers of the five modules (for NpFlip):** `gnoblin-std/index.ts` exports them; `host/services.ts` uses `notRespondingAlerts` and
+`attachLock`; `host/lifecycle.ts` uses `lockRelease` and `runLockFrame`; the tests are `crates/gnoblin-js/tests/oracle/parts.rs`, `lock.rs`
+and `crates/gnoblin/tests/js_lock*.rs`.
+
 #### NpStdXr (10 days)
 
 - **Owns:** `gnoblin-std-impl/src/xr/**`, catalog `xr.toml`, the optional JS module `gnoblin-std/xr`.

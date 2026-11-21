@@ -54,6 +54,8 @@ fn build() -> Library {
     crate::animation::objects::register(&mut builder);
     crate::workspace_objects::register(&mut builder);
     crate::frame::register(&mut builder);
+    crate::shell::register(&mut builder);
+    crate::lock::register(&mut builder);
     builder.finish(HOOKS)
 }
 

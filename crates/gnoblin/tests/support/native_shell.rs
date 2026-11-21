@@ -223,6 +223,8 @@ pub struct StdShells {
     pub frame: PathBuf,
     /// Example 29: the window menu, started with entries of the shell's own that log what they run.
     pub menus: PathBuf,
+    /// Example 31: the not-responding alert, the lock screen, the launcher and the overview.
+    pub shell_ui: PathBuf,
 }
 
 /// Builds the std examples into the shells' target directory. Built once per test binary.
@@ -265,6 +267,8 @@ fn build_std_shells() -> Result<StdShells, String> {
             "gnoblin-example-native-frame",
             "-p",
             "gnoblin-example-native-menus",
+            "-p",
+            "gnoblin-example-native-shell-ui",
         ])
         .env("CARGO_TARGET_DIR", &target)
         .output()
@@ -288,6 +292,7 @@ fn build_std_shells() -> Result<StdShells, String> {
         objects: debug.join("libnative_objects.so"),
         frame: debug.join("libnative_frame.so"),
         menus: debug.join("libnative_menus.so"),
+        shell_ui: debug.join("libnative_shell_ui.so"),
     })
 }
 
@@ -461,6 +466,17 @@ pub fn start_script(start: Start, shell: &Path, overrides: &[(&str, &str)]) -> G
 
 /// [`start_script`] with the launcher at `binary` when one is given.
 pub fn start_script_with(binary: Option<&Path>, start: Start, shell: &Path, overrides: &[(&str, &str)]) -> Gnoblin {
+    start_script_in(Home::new(), binary, start, shell, overrides)
+}
+
+/// [`start_script_with`] in `home`, which a test has written its configuration into.
+pub fn start_script_in(
+    home: Home,
+    binary: Option<&Path>,
+    start: Start,
+    shell: &Path,
+    overrides: &[(&str, &str)],
+) -> Gnoblin {
     let mut launch = match start {
         Start::Compositor => Launch::compositor(&[]),
         Start::Guardian => Launch::guardian(&[]),
@@ -477,7 +493,7 @@ pub fn start_script_with(binary: Option<&Path>, start: Start, shell: &Path, over
                 .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
         )
         .collect();
-    Gnoblin::launch(Home::new(), launch)
+    Gnoblin::launch(home, launch)
 }
 
 pub fn repo_root() -> PathBuf {
@@ -1134,6 +1150,8 @@ const KEYMAP: &str = "xkb_keymap {\n\
 
 /// evdev codes of the keys the tests press.
 pub const KEY_LEFTMETA: u32 = 125;
+pub const KEY_O: u32 = 24;
+pub const KEY_SPACE: u32 = 57;
 pub const KEY_ENTER: u32 = 28;
 pub const KEY_1: u32 = 2;
 pub const KEY_3: u32 = 4;

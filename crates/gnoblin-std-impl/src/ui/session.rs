@@ -51,6 +51,20 @@ impl Ui {
         })
     }
 
+    /// The tree's lock node, if it has one.
+    pub(crate) fn lock_node(&self) -> Option<u64> {
+        self.root_children_of("lock").first().map(|lock| lock.id().0)
+    }
+
+    /// The session lock's state as the compositor last published it: `not-locked` while the tree has no lock node.
+    pub(crate) fn lock_state(&self) -> String {
+        self.root_children_of("lock")
+            .first()
+            .and_then(|lock| lock.get_text("state").ok())
+            .filter(|state| !state.is_empty())
+            .unwrap_or_else(|| "not-locked".to_owned())
+    }
+
     /// The pointer's place in logical screen pixels, or `None` when the tree has no seat.
     pub(crate) fn pointer_place(&self) -> Option<(f64, f64)> {
         crate::nodes::pointer(&self.g)

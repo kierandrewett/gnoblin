@@ -1,0 +1,195 @@
+# The public surface of the `shell` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | alert_close_menu | () | 0.2.0
+callback | launch_command | (command:string) | 0.2.0
+
+enum | alert_answer | values wait force recovered | 0.2.0
+
+member | alert_button.add | method (child:object:canvas) | 0.2.0
+member | alert_button.alive | property bool ro | 0.2.0
+member | alert_button.arrange_default | method () | 0.2.0
+member | alert_button.behaviour | property object:widget rw | 0.2.0
+member | alert_button.children | property list<object:canvas> rw | 0.2.0
+member | alert_button.clear_height | method () | 0.2.0
+member | alert_button.clear_width | method () | 0.2.0
+member | alert_button.contains | method (other:object:canvas) -> bool | 0.2.0
+member | alert_button.direction | property enum:direction rw | 0.2.0
+member | alert_button.enabled | property bool rw | 0.2.0
+member | alert_button.failures | property uint ro | 0.2.0
+member | alert_button.fill | property string rw | 0.2.0
+member | alert_button.focus | method () | 0.2.0
+member | alert_button.focus_changed | signal (focused:bool) | 0.2.0
+member | alert_button.focused | property bool ro | 0.2.0
+member | alert_button.gap | property double rw | 0.2.0
+member | alert_button.gone | signal () | 0.2.0
+member | alert_button.grow | property double rw | 0.2.0
+member | alert_button.height | property double rw | 0.2.0
+member | alert_button.input | property bool rw | 0.2.0
+member | alert_button.invalidate | method () | 0.2.0
+member | alert_button.key | signal (event:object:ui_key_event) | 0.2.0
+member | alert_button.label | property object:text ro | 0.2.0
+member | alert_button.mount | method (parent:uint) | 0.2.0
+member | alert_button.mount_top | method () | 0.2.0
+member | alert_button.natural_height | property double ro | 0.2.0
+member | alert_button.natural_width | property double ro | 0.2.0
+member | alert_button.node | property uint ro | 0.2.0
+member | alert_button.on_key | property callback:key_handler rw | 0.2.0
+member | alert_button.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | alert_button.opacity | property double rw | 0.2.0
+member | alert_button.padding | property double rw | 0.2.0
+member | alert_button.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | alert_button.parent | property object:canvas ro | 0.2.0
+member | alert_button.picked | property bool rw | 0.2.0
+member | alert_button.placement | property enum:placement rw | 0.2.0
+member | alert_button.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | alert_button.radius | property double rw | 0.2.0
+member | alert_button.remove | method (child:object:canvas) | 0.2.0
+member | alert_button.secure | property bool rw | 0.2.0
+member | alert_button.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | alert_button.visible | property bool rw | 0.2.0
+member | alert_button.width | property double rw | 0.2.0
+member | alert_button.x | property double rw | 0.2.0
+member | alert_button.y | property double rw | 0.2.0
+member | alert_changes.close | property list<string> rw | 0.2.0
+member | alert_changes.open | property list<string> rw | 0.2.0
+member | alert_tracker.answered | method (client:string, answer:enum:alert_answer) -> bool | 0.2.0
+member | alert_tracker.check | method (clients:list<string>, locked:bool) -> object:alert_changes | 0.2.0
+member | alert_tracker.clean_text | function (text:string, max:uint) -> string | 0.2.0
+member | alert_tracker.is_open | method (client:string) -> bool | 0.2.0
+member | alert_tracker.is_waiting | method (client:string) -> bool | 0.2.0
+member | launcher.add | method (child:object:canvas) | 0.2.0
+member | launcher.alive | property bool ro | 0.2.0
+member | launcher.arrange_default | method () | 0.2.0
+member | launcher.behaviour | property object:widget rw | 0.2.0
+member | launcher.changed | signal () | 0.2.0
+member | launcher.children | property list<object:canvas> rw | 0.2.0
+member | launcher.clear_height | method () | 0.2.0
+member | launcher.clear_width | method () | 0.2.0
+member | launcher.color | property string rw | 0.2.0
+member | launcher.contains | method (other:object:canvas) -> bool | 0.2.0
+member | launcher.direction | property enum:direction rw | 0.2.0
+member | launcher.failures | property uint ro | 0.2.0
+member | launcher.fill | property string rw | 0.2.0
+member | launcher.focus | method () | 0.2.0
+member | launcher.focus_changed | signal (focused:bool) | 0.2.0
+member | launcher.focused | property bool ro | 0.2.0
+member | launcher.font | property string rw | 0.2.0
+member | launcher.gap | property double rw | 0.2.0
+member | launcher.gone | signal () | 0.2.0
+member | launcher.grow | property double rw | 0.2.0
+member | launcher.height | property double rw | 0.2.0
+member | launcher.input | property bool rw | 0.2.0
+member | launcher.invalidate | method () | 0.2.0
+member | launcher.key | signal (event:object:ui_key_event) | 0.2.0
+member | launcher.model | property object:entry_model ro | 0.2.0
+member | launcher.mount | method (parent:uint) | 0.2.0
+member | launcher.mount_top | method () | 0.2.0
+member | launcher.natural_height | property double ro | 0.2.0
+member | launcher.natural_width | property double ro | 0.2.0
+member | launcher.node | property uint ro | 0.2.0
+member | launcher.on_key | property callback:key_handler rw | 0.2.0
+member | launcher.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | launcher.on_submit | property callback:submit_handler rw | 0.2.0
+member | launcher.opacity | property double rw | 0.2.0
+member | launcher.open | function (spawn?:callback:launch_command) -> object:launcher | 0.2.0
+member | launcher.padding | property double rw | 0.2.0
+member | launcher.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | launcher.parent | property object:canvas ro | 0.2.0
+member | launcher.placement | property enum:placement rw | 0.2.0
+member | launcher.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | launcher.radius | property double rw | 0.2.0
+member | launcher.remove | method (child:object:canvas) | 0.2.0
+member | launcher.secret | property bool rw | 0.2.0
+member | launcher.secure | property bool rw | 0.2.0
+member | launcher.selection_fill | property string rw | 0.2.0
+member | launcher.shown | method (text:string) -> string | 0.2.0
+member | launcher.size | property double rw | 0.2.0
+member | launcher.spawn | property callback:launch_command rw | 0.2.0
+member | launcher.submit | signal (text:string) | 0.2.0
+member | launcher.text | property string rw | 0.2.0
+member | launcher.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | launcher.visible | property bool rw | 0.2.0
+member | launcher.width | property double rw | 0.2.0
+member | launcher.x | property double rw | 0.2.0
+member | launcher.y | property double rw | 0.2.0
+member | not_responding_alerts.answered | signal (client:string, answer:enum:alert_answer) | 0.2.0
+member | not_responding_alerts.arm_ms | property double rw | 0.2.0
+member | not_responding_alerts.card_of | method (client:string) -> object:not_responding_dialog? | 0.2.0
+member | not_responding_alerts.check | method () | 0.2.0
+member | not_responding_alerts.close_menu | property callback:alert_close_menu rw | 0.2.0
+member | not_responding_alerts.interval_ms | property double rw | 0.2.0
+member | not_responding_alerts.now | property callback:time_source rw | 0.2.0
+member | not_responding_alerts.start | method () | 0.2.0
+member | not_responding_alerts.started | property bool ro | 0.2.0
+member | not_responding_alerts.stop | method () | 0.2.0
+member | not_responding_alerts.tracker | property object:alert_tracker ro | 0.2.0
+member | not_responding_dialog.activate | method (index:uint) | 0.2.0
+member | not_responding_dialog.add | method (child:object:canvas) | 0.2.0
+member | not_responding_dialog.alive | property bool ro | 0.2.0
+member | not_responding_dialog.arm | method () | 0.2.0
+member | not_responding_dialog.armed | property bool ro | 0.2.0
+member | not_responding_dialog.arrange_default | method () | 0.2.0
+member | not_responding_dialog.behaviour | property object:widget rw | 0.2.0
+member | not_responding_dialog.children | property list<object:canvas> rw | 0.2.0
+member | not_responding_dialog.choices | property list<object:alert_button> ro | 0.2.0
+member | not_responding_dialog.chosen | signal (answer:enum:alert_answer) | 0.2.0
+member | not_responding_dialog.clear_height | method () | 0.2.0
+member | not_responding_dialog.clear_width | method () | 0.2.0
+member | not_responding_dialog.contains | method (other:object:canvas) -> bool | 0.2.0
+member | not_responding_dialog.direction | property enum:direction rw | 0.2.0
+member | not_responding_dialog.failures | property uint ro | 0.2.0
+member | not_responding_dialog.fill | property string rw | 0.2.0
+member | not_responding_dialog.focus | method () | 0.2.0
+member | not_responding_dialog.focus_changed | signal (focused:bool) | 0.2.0
+member | not_responding_dialog.focused | property bool ro | 0.2.0
+member | not_responding_dialog.gap | property double rw | 0.2.0
+member | not_responding_dialog.gone | signal () | 0.2.0
+member | not_responding_dialog.grow | property double rw | 0.2.0
+member | not_responding_dialog.height | property double rw | 0.2.0
+member | not_responding_dialog.index | property uint ro | 0.2.0
+member | not_responding_dialog.input | property bool rw | 0.2.0
+member | not_responding_dialog.invalidate | method () | 0.2.0
+member | not_responding_dialog.key | signal (event:object:ui_key_event) | 0.2.0
+member | not_responding_dialog.mount | method (parent:uint) | 0.2.0
+member | not_responding_dialog.mount_top | method () | 0.2.0
+member | not_responding_dialog.name | property string ro | 0.2.0
+member | not_responding_dialog.natural_height | property double ro | 0.2.0
+member | not_responding_dialog.natural_width | property double ro | 0.2.0
+member | not_responding_dialog.node | property uint ro | 0.2.0
+member | not_responding_dialog.on_key | property callback:key_handler rw | 0.2.0
+member | not_responding_dialog.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | not_responding_dialog.opacity | property double rw | 0.2.0
+member | not_responding_dialog.padding | property double rw | 0.2.0
+member | not_responding_dialog.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | not_responding_dialog.parent | property object:canvas ro | 0.2.0
+member | not_responding_dialog.placement | property enum:placement rw | 0.2.0
+member | not_responding_dialog.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | not_responding_dialog.radius | property double rw | 0.2.0
+member | not_responding_dialog.remove | method (child:object:canvas) | 0.2.0
+member | not_responding_dialog.secure | property bool rw | 0.2.0
+member | not_responding_dialog.select | method (index:uint) | 0.2.0
+member | not_responding_dialog.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | not_responding_dialog.visible | property bool rw | 0.2.0
+member | not_responding_dialog.width | property double rw | 0.2.0
+member | not_responding_dialog.x | property double rw | 0.2.0
+member | not_responding_dialog.y | property double rw | 0.2.0
+member | overview.dimmed_opacity | property double rw | 0.2.0
+member | overview.enabled | property bool ro | 0.2.0
+member | overview.toggle | method () -> bool | 0.2.0
+
+object | alert_button | base box retained | 0.2.0
+object | alert_changes | base none record | 0.2.0
+object | alert_tracker | base none retained | 0.2.0
+object | launcher | base entry retained | 0.2.0
+object | not_responding_alerts | base none service | 0.2.0
+object | not_responding_dialog | base box retained ctor(name) | 0.2.0
+object | overview | base none service | 0.2.0

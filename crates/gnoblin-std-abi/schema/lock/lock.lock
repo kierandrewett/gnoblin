@@ -1,0 +1,100 @@
+# The public surface of the `lock` module of the `gnoblin.std` namespace: every object and member, with the version that
+# added it. Written by `cargo xtask gen-sdks --update`; reviewed like source.
+#
+# `cargo xtask gen-sdks --check` compares this file with crates/gnoblin-std-abi/schema. An entry here that is missing or
+# different in the catalog is a removal or change; when `released` covers its `since` it is a breaking change and fails with
+# no way to bless it inside this major. A new entry in the catalog is additive and is recorded with `--update`.
+#
+# `released none` means the surface is still unstable (design/modular-framework.md, decision D18): the release commit sets it
+# to the version that ships, and from then on its entries are frozen.
+released none
+
+callback | password_submit | (password:string) | 0.2.0
+
+member | lock_screen.default_lock_style | function () -> object:lock_style | 0.2.0
+member | lock_screen.format_clock | function (milliseconds:double) -> string | 0.2.0
+member | lock_screen.hide | method () | 0.2.0
+member | lock_screen.now | property callback:time_source rw | 0.2.0
+member | lock_screen.show | method () | 0.2.0
+member | lock_screen.shown | property bool ro | 0.2.0
+member | lock_screen.style | property object:lock_style ro | 0.2.0
+member | lock_screen.submitted | signal (token:uint) | 0.2.0
+member | lock_style.busy | property string rw | 0.2.0
+member | lock_style.card_fill | property string rw | 0.2.0
+member | lock_style.card_gap | property double rw | 0.2.0
+member | lock_style.card_height | property double rw | 0.2.0
+member | lock_style.card_padding | property double rw | 0.2.0
+member | lock_style.card_radius | property double rw | 0.2.0
+member | lock_style.card_top | property double rw | 0.2.0
+member | lock_style.card_width | property double rw | 0.2.0
+member | lock_style.checking | property string rw | 0.2.0
+member | lock_style.clock_color | property string rw | 0.2.0
+member | lock_style.clock_size | property double rw | 0.2.0
+member | lock_style.denied | property string rw | 0.2.0
+member | lock_style.entry_color | property string rw | 0.2.0
+member | lock_style.entry_fill | property string rw | 0.2.0
+member | lock_style.entry_height | property double rw | 0.2.0
+member | lock_style.entry_limit | property uint rw | 0.2.0
+member | lock_style.entry_radius | property double rw | 0.2.0
+member | lock_style.entry_size | property double rw | 0.2.0
+member | lock_style.error_color | property string rw | 0.2.0
+member | lock_style.failed | property string rw | 0.2.0
+member | lock_style.hint | property string rw | 0.2.0
+member | lock_style.hint_color | property string rw | 0.2.0
+member | lock_style.message_size | property double rw | 0.2.0
+member | lock_style.rate_limited | property string rw | 0.2.0
+member | lock_style.scrim_fill | property string rw | 0.2.0
+member | password_entry.add | method (child:object:canvas) | 0.2.0
+member | password_entry.alive | property bool ro | 0.2.0
+member | password_entry.arrange_default | method () | 0.2.0
+member | password_entry.behaviour | property object:widget rw | 0.2.0
+member | password_entry.children | property list<object:canvas> rw | 0.2.0
+member | password_entry.clear | method () | 0.2.0
+member | password_entry.clear_height | method () | 0.2.0
+member | password_entry.clear_width | method () | 0.2.0
+member | password_entry.color | property string rw | 0.2.0
+member | password_entry.contains | method (other:object:canvas) -> bool | 0.2.0
+member | password_entry.direction | property enum:direction rw | 0.2.0
+member | password_entry.enabled | property bool rw | 0.2.0
+member | password_entry.failures | property uint ro | 0.2.0
+member | password_entry.fill | property string rw | 0.2.0
+member | password_entry.focus | method () | 0.2.0
+member | password_entry.focus_changed | signal (focused:bool) | 0.2.0
+member | password_entry.focused | property bool ro | 0.2.0
+member | password_entry.gap | property double rw | 0.2.0
+member | password_entry.gone | signal () | 0.2.0
+member | password_entry.grow | property double rw | 0.2.0
+member | password_entry.height | property double rw | 0.2.0
+member | password_entry.input | property bool rw | 0.2.0
+member | password_entry.invalidate | method () | 0.2.0
+member | password_entry.key | signal (event:object:ui_key_event) | 0.2.0
+member | password_entry.length | property uint ro | 0.2.0
+member | password_entry.limit | property uint rw | 0.2.0
+member | password_entry.mount | method (parent:uint) | 0.2.0
+member | password_entry.mount_top | method () | 0.2.0
+member | password_entry.natural_height | property double ro | 0.2.0
+member | password_entry.natural_width | property double ro | 0.2.0
+member | password_entry.node | property uint ro | 0.2.0
+member | password_entry.on_key | property callback:key_handler rw | 0.2.0
+member | password_entry.on_pointer | property callback:pointer_handler rw | 0.2.0
+member | password_entry.on_submit | property callback:password_submit rw | 0.2.0
+member | password_entry.opacity | property double rw | 0.2.0
+member | password_entry.padding | property double rw | 0.2.0
+member | password_entry.paint_default | method () -> list<object:paint_op> | 0.2.0
+member | password_entry.parent | property object:canvas ro | 0.2.0
+member | password_entry.placement | property enum:placement rw | 0.2.0
+member | password_entry.pointer | signal (event:object:ui_pointer_event) | 0.2.0
+member | password_entry.radius | property double rw | 0.2.0
+member | password_entry.remove | method (child:object:canvas) | 0.2.0
+member | password_entry.secure | property bool rw | 0.2.0
+member | password_entry.size | property double rw | 0.2.0
+member | password_entry.style | property object:lock_style ro | 0.2.0
+member | password_entry.to_global | method (x:double, y:double) -> object:ui_point | 0.2.0
+member | password_entry.visible | property bool rw | 0.2.0
+member | password_entry.width | property double rw | 0.2.0
+member | password_entry.x | property double rw | 0.2.0
+member | password_entry.y | property double rw | 0.2.0
+
+object | lock_screen | base none retained ctor(style) | 0.2.0
+object | lock_style | base none record | 0.2.0
+object | password_entry | base box retained ctor(style) | 0.2.0

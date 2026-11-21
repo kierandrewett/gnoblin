@@ -278,7 +278,7 @@ pub(crate) fn text_members(class: Class<'_>) -> Class<'_> {
 }
 
 /// The members an entry adds.
-fn entry_members(class: Class<'_>) -> Class<'_> {
+pub(crate) fn entry_members(class: Class<'_>) -> Class<'_> {
     fn part<R>(h: &CanvasHandle, read: impl FnOnce(&super::widget::EntryPart) -> R) -> Res<R> {
         h.read(|w| match &w.sp {
             Special::Entry(part) => Some(read(part)),

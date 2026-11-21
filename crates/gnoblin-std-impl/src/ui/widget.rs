@@ -262,6 +262,8 @@ pub(crate) struct EntryPart {
     pub(crate) on_submit: Option<Closure>,
     pub(crate) shift: bool,
     pub(crate) control: bool,
+    /// The launcher this entry is, if it is one.
+    pub(crate) launcher: Option<crate::shell::LauncherPart>,
 }
 
 /// What a clock adds to a text.
@@ -305,6 +307,8 @@ pub(crate) enum Special {
     Item(Box<crate::menus::ItemPart>),
     Panel(Box<crate::menus::PanelPart>),
     Menu(Box<crate::menus::MenuPart>),
+    Shell(crate::shell::ShellPart),
+    Password(Box<crate::lock::PasswordPart>),
 }
 
 /// The members of the `widget` interface, by id: what a shell that implements it is asked.
@@ -486,6 +490,10 @@ pub(crate) struct Ui {
     pub(crate) frames: RefCell<crate::frame::FrameWorld>,
     /// The window menu: what it was started with, and the menu that is open.
     pub(crate) menus: RefCell<crate::menus::State>,
+    /// The not-responding alerts, the launcher and the overview (`crate::shell`).
+    pub(crate) shell: RefCell<crate::shell::ShellWorld>,
+    /// The stock lock screen (`crate::lock`).
+    pub(crate) lock: RefCell<crate::lock::LockWorld>,
 }
 
 /// The ids of the classes and members of the object library that the toolkit calls by name, resolved once.
