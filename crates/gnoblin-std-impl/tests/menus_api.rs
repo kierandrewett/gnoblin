@@ -211,6 +211,38 @@ fn the_menu_says_when_it_closes() {
 }
 
 #[test]
+fn the_menu_says_when_it_closes_to_a_shell_that_has_let_go_of_it() {
+    let (mut rig, menus) = started();
+    let menu = open(&mut rig, &menus);
+    let told = Rc::new(Cell::new(0));
+    let count = Rc::clone(&told);
+    let signal = menu
+        .api
+        .member(menu.class, abi::MEMBER_SIGNAL, "closed")
+        .expect("a signal");
+    menu.api
+        .listen(menu.obj, signal, move |_, _| {
+            count.set(count.get() + 1);
+            Ok(Val::None)
+        })
+        .expect("a listener");
+    // A script's handle to the card is gone when its handler returns, and the listener it added stays: nothing but the library holds the
+    // card when it closes, and a signal is told from the next turn.
+    menu.api.release(menu.obj).expect("the reference goes back");
+    assert!(menus.call("close", &[]).bool().expect("a flag"));
+    rig.settle();
+    assert_eq!(
+        told.get(),
+        1,
+        "the listener hears of a close that nothing held the card for"
+    );
+    assert!(
+        menu.api.class_of(menu.obj).is_err(),
+        "and the card's object ends once it has been told"
+    );
+}
+
+#[test]
 fn a_provider_that_answers_badly_opens_no_menu() {
     let (mut rig, menus) = started();
     menus.set("provider", provide(&rig, &["items"], |_, _| Ok(Val::Bool(true))));

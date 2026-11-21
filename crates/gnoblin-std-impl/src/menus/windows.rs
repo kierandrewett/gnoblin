@@ -402,10 +402,23 @@ pub(crate) fn close(ui: &Rc<Ui>) -> bool {
         return false;
     };
     let held = card::part(ui, menu);
-    if let Some(obj) = ui.read(menu, |widget| widget.obj) {
-        ui.announce(obj, |cx| cx.emit("closed", Vec::new()));
-    }
+    // `closed` is told from the library's next turn, and the kill below ends the card's object at once when no shell holds a handle to it (a
+    // script's is gone when its handler returns, while the listener it added stays), which takes the listener with it. The library holds
+    // the card until the turn that tells `closed` has run.
+    let told = ui.read(menu, |widget| widget.obj).filter(|obj| {
+        ui.with_cx(*obj, |cx| {
+            let kept = cx.hold(*obj).is_ok();
+            if kept {
+                cx.emit("closed", Vec::new());
+            }
+            kept
+        }) == Some(true)
+    });
     ui.kill(menu);
+    if let Some(obj) = told {
+        // Queued after what the kill told, so the turn lets the card go once all of it has been heard.
+        ui.with_cx(obj, |cx| cx.later(move |cx| cx.unhold(obj)));
+    }
     // The node it came from may be gone: the compositor refuses a focus on a node it has not got, so ask and go on.
     let before = held.map_or(0, |held| held.before);
     if ui.focus_node(before).is_err() {

@@ -56,6 +56,21 @@ fn canvases(nodes: &[Properties]) -> usize {
     nodes.iter().filter(|node| node.class == "canvas").count()
 }
 
+/// Whether the tree holds the menu's layer: a canvas as big as the screen, which takes every press outside the cards. The shell logs a card
+/// when it makes one, and the compositor takes what the shell wrote in two transactions of its own, the canvases and then, from the toolkit's
+/// next turn, their places and sizes. A press that goes out before the second lands on what lies under the layer, and the card stays open.
+fn has_layer(nodes: &[Properties], screen: (f64, f64)) -> bool {
+    nodes.iter().any(|node| {
+        let size = |key: &str| {
+            node.props
+                .iter()
+                .find(|prop| prop.key == key)
+                .map_or(0.0, |prop| prop.value_double)
+        };
+        node.class == "canvas" && size("width") >= screen.0 && size("height") >= screen.1
+    })
+}
+
 #[track_caller]
 fn a_client_asks_for_its_menu_and_the_card_answers(session: &mut Gnoblin) {
     session.wait_log("the shell started the menu", |line| line.contains("menus: running"));
@@ -113,6 +128,9 @@ fn a_client_asks_for_its_menu_and_the_card_answers(session: &mut Gnoblin) {
     mapper.show_window_menu(0, 10, 10);
     session.wait_for("the card opens again", |session| {
         count(session, &format!("menus: a card opened for window {}", plain.id)) == 2
+    });
+    wait_for_nodes(session, "the card's layer is in the tree again", |nodes| {
+        has_layer(nodes, (width, height))
     });
     pointer.move_to(width as u32 - 20, height as u32 - 20);
     pointer.click(BTN_LEFT);
