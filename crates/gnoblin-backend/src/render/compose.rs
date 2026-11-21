@@ -3919,7 +3919,7 @@ mod decorated_window_tests;
 #[path = "surface_tree_tests.rs"]
 mod surface_tree_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gles"))]
 #[path = "view_gpu_tests.rs"]
 mod view_gpu_tests;
 

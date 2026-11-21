@@ -14,8 +14,12 @@ workspace = true
 # The hardware backend (`compositor.backend = drm`): KMS through udev and libseat, libinput for input. On by default. A build
 # without it neither compiles nor links `gnoblin-backend-drm`, and selecting `drm` is refused with a named error
 # (`Error::DrmNotBuilt`); the nested and headless backends are unchanged.
-default = ["drm"]
-drm = ["dep:gnoblin-backend-drm"]
+default = ["drm", "gles"]
+drm = ["gles", "dep:gnoblin-backend-drm"]
+# The GLES renderer (`compositor.renderer = gles`). On by default. A build without it neither compiles nor links
+# `gnoblin-render-gles`, and the setting is refused with `RenderError::Unavailable` and a log line that names the feature,
+# as a build without Vulkan refuses `vulkan`. The hardware backend scans out through GLES only, so `drm` needs it.
+gles = ["gnoblin-backend/gles"]
 
 [dependencies]
 # Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
@@ -28,7 +32,7 @@ gnoblin-polkit-auth = { path = "../gnoblin-polkit-auth" }
 gnoblin-wayland = { path = "../gnoblin-wayland" }
 # The backend trait and the backends this build selects between: headless, nested in
 # a parent compositor, and the hardware (DRM) backend.
-gnoblin-backend = { path = "../gnoblin-backend" }
+gnoblin-backend = { path = "../gnoblin-backend", default-features = false, features = ["vulkan"] }
 # The hardware backend `compositor.backend = drm` (and `auto` on a seated login session) starts. Optional: feature `drm`.
 gnoblin-backend-drm = { path = "../gnoblin-backend-drm", optional = true }
 gnoblin-render = { path = "../gnoblin-render" }

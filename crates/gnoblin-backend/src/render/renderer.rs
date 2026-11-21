@@ -2,8 +2,8 @@
 //!
 //! [`RendererKind`] is the choice and [`AnyRenderer`] is the choice made: a software, GLES
 //! or Vulkan renderer behind the four calls an offscreen output needs. This is the only
-//! place in the crate that dispatches on the renderer or tests the `vulkan` feature to do
-//! so; `render/mod.rs` explains why it is an enum and not a trait.
+//! place in the crate that dispatches on the renderer or tests the `vulkan` and `gles` features to
+//! do so; `render/mod.rs` explains why it is an enum and not a trait.
 
 use gnoblin_config::{CaptureSecureTreatment, RendererChoice};
 use gnoblin_types::{Rect, Scale, Size};
@@ -14,12 +14,13 @@ use gnoblin_render_frame::{
     frame::{OutputFrame, SecureTreatment},
     image::Image,
 };
+#[cfg(feature = "gles")]
 use gnoblin_render_gles::Gles;
 use gnoblin_render_software::Software;
 #[cfg(feature = "vulkan")]
 use gnoblin_render_vulkan::Vulkan;
 
-#[cfg(not(feature = "vulkan"))]
+#[cfg(not(all(feature = "vulkan", feature = "gles")))]
 use crate::log;
 
 /// The renderers this crate can draw an output with.
@@ -29,6 +30,9 @@ pub enum RendererKind {
     Software,
     /// Smithay's GLES renderer: effects, on a surfaceless EGL context when
     /// it draws offscreen.
+    ///
+    /// A build without the `gles` feature cannot create it: [`AnyRenderer::new`] refuses
+    /// with [`RenderError::Unavailable`] and a log line that names the feature.
     Gles,
     /// The Vulkan renderer on the device the loader offers, which may be a software driver.
     ///
@@ -123,6 +127,7 @@ pub enum AnyRenderer {
     /// Pixman, into an offscreen image buffer.
     Software(Box<Software>),
     /// GLES, into a texture on a surfaceless context.
+    #[cfg(feature = "gles")]
     Gles(Box<Gles>),
     /// Vulkan, into an offscreen image on the device the loader offers.
     #[cfg(feature = "vulkan")]
@@ -131,12 +136,13 @@ pub enum AnyRenderer {
 
 /// Runs one expression against whichever renderer is installed.
 ///
-/// It is where the `vulkan` feature is tested for dispatch: a call that every renderer
-/// answers the same way is written once and the macro supplies the three arms.
+/// It is where the `vulkan` and `gles` features are tested for dispatch: a call that every renderer
+/// answers the same way is written once and the macro supplies the arms.
 macro_rules! on_renderer {
     ($renderer:expr, $name:ident => $call:expr) => {
         match $renderer {
             Self::Software($name) => $call,
+            #[cfg(feature = "gles")]
             Self::Gles($name) => $call,
             #[cfg(feature = "vulkan")]
             Self::Vulkan($name) => $call,
@@ -153,13 +159,27 @@ impl AnyRenderer {
     /// [`RenderError::Unavailable`] when this machine cannot create the renderer at all:
     /// for GLES, no EGL library, no surfaceless platform or no GLES 3 context; for Vulkan,
     /// no loader, no device or a refused shader (the log names which), or a build without
-    /// the `vulkan` feature.
+    /// the `vulkan` feature; and for GLES, a build without the `gles` feature.
     pub fn new(kind: RendererKind, physical: Size) -> Result<Self, RenderError> {
         match kind {
             RendererKind::Software => Software::new(physical).map(|software| Self::Software(Box::new(software))),
-            RendererKind::Gles => Gles::new(physical).map(|gles| Self::Gles(Box::new(gles))),
+            RendererKind::Gles => Self::gles(physical),
             RendererKind::Vulkan => Self::vulkan(physical),
         }
+    }
+
+    #[cfg(feature = "gles")]
+    fn gles(physical: Size) -> Result<Self, RenderError> {
+        Gles::new(physical).map(|gles| Self::Gles(Box::new(gles)))
+    }
+
+    #[cfg(not(feature = "gles"))]
+    fn gles(_physical: Size) -> Result<Self, RenderError> {
+        log::warn!(
+            area = "render",
+            "this build has no GLES renderer (the `gles` feature is off)"
+        );
+        Err(RenderError::Unavailable)
     }
 
     #[cfg(feature = "vulkan")]
@@ -183,6 +203,7 @@ impl AnyRenderer {
     pub fn kind(&self) -> RendererKind {
         match self {
             Self::Software(_) => RendererKind::Software,
+            #[cfg(feature = "gles")]
             Self::Gles(_) => RendererKind::Gles,
             #[cfg(feature = "vulkan")]
             Self::Vulkan(_) => RendererKind::Vulkan,
@@ -194,6 +215,7 @@ impl AnyRenderer {
     /// which the compositor's own virtual-size limit bounds.
     pub fn max_texture_size(&mut self) -> u32 {
         match self {
+            #[cfg(feature = "gles")]
             Self::Gles(gles) => gles.max_texture_size(),
             #[cfg(feature = "vulkan")]
             Self::Vulkan(vulkan) => vulkan.max_image_edge(),
@@ -262,7 +284,10 @@ impl AnyRenderer {
     pub fn resize(&mut self, physical: Size) -> Result<(), RenderError> {
         on_renderer!(self, renderer => renderer.resize(physical))
     }
+}
 
+#[cfg(feature = "gles")]
+impl AnyRenderer {
     /// The GLES renderer, when this is one.
     ///
     /// A caller that wants the draw counter asks for it here; the other
@@ -368,12 +393,92 @@ impl AnyRenderer {
             gles.retire_views(&[]);
         }
     }
+}
 
+/// Without the `gles` feature no renderer imports a client's GPU buffer or draws a View on the GPU: each call answers what
+/// a renderer that cannot do it answers, and [`AnyRenderer::new`] refuses `RendererKind::Gles` before any holder exists.
+#[cfg(not(feature = "gles"))]
+impl AnyRenderer {
+    /// What this renderer imports of a client's GPU buffers: nothing.
+    #[must_use]
+    pub fn dmabuf_support(&mut self) -> Option<crate::DmabufSupport> {
+        None
+    }
+
+    /// Imports a client's GPU buffer.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::DmabufImportError::Unsupported`], always.
+    pub fn import_dmabuf(
+        &mut self,
+        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+    ) -> Result<(), crate::DmabufImportError> {
+        Err(crate::DmabufImportError::Unsupported)
+    }
+
+    /// Copies the frame last drawn into a client's GPU buffer.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unsupported`], always.
+    pub fn copy_frame_into_dmabuf(
+        &mut self,
+        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+        _copy: crate::DmabufCopy,
+        _with_cursor: bool,
+    ) -> Result<(), RenderError> {
+        Err(RenderError::Unsupported)
+    }
+
+    /// Writes a picture the CPU holds into a client's GPU buffer.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unsupported`], always.
+    pub fn copy_image_into_dmabuf(
+        &mut self,
+        _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+        _image: &Image,
+        _copy: crate::DmabufCopy,
+    ) -> Result<(), RenderError> {
+        Err(RenderError::Unsupported)
+    }
+
+    /// Reads a client's GPU buffer back as a picture.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unsupported`], always.
+    pub fn read_dmabuf(&mut self, _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<Image, RenderError> {
+        Err(RenderError::Unsupported)
+    }
+
+    /// Reads a View's picture back.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unsupported`], always: a renderer without GLES draws a View on the CPU.
+    pub fn view_pixels(
+        &mut self,
+        _scene: &gnoblin_render_frame::view_scene::ViewScene,
+        _capture: bool,
+        _live: &[u64],
+    ) -> Result<Image, RenderError> {
+        Err(RenderError::Unsupported)
+    }
+
+    /// Gives back every View texture the renderer holds: none.
+    pub fn release_views(&mut self) {}
+}
+
+impl AnyRenderer {
     /// Gives back what the renderer holds only between frames (`Footprint::releasable`): the blur scratch targets of
     /// the GLES renderer and the software renderer's snapshots of each layer. The next frame makes them again. The
     /// Vulkan renderer trims its host buffers after each frame already and has nothing more to give.
     pub fn release_scratch(&mut self) {
         match self {
+            #[cfg(feature = "gles")]
             Self::Gles(gles) => gles.release_scratch(),
             Self::Software(software) => software.release_scratch(),
             #[cfg(feature = "vulkan")]
@@ -454,7 +559,21 @@ mod tests {
     fn a_software_renderer_reports_its_kind_and_has_no_gl_device() {
         let mut renderer = AnyRenderer::new(RendererKind::Software, Size::new(8, 8)).expect("a software renderer");
         assert_eq!(renderer.kind(), RendererKind::Software);
+        #[cfg(feature = "gles")]
         assert!(renderer.gles_mut().is_none(), "only a GLES renderer answers gles_mut");
+        assert!(
+            renderer.dmabuf_support().is_none(),
+            "the software renderer imports no GPU buffer"
+        );
+    }
+
+    #[cfg(not(feature = "gles"))]
+    #[test]
+    fn a_build_without_the_gles_feature_refuses_the_gles_renderer() {
+        assert!(matches!(
+            AnyRenderer::new(RendererKind::Gles, Size::new(8, 8)),
+            Err(RenderError::Unavailable)
+        ));
     }
 
     #[test]

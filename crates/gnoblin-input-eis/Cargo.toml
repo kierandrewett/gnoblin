@@ -14,7 +14,7 @@ gnoblin-types.workspace = true
 gnoblin-authority = { path = "../gnoblin-authority" }
 # The seat's event vocabulary. The server emits the same `InputEvent`s a libinput device
 # does, so injected input takes the seat's own path: the lock gate, grabs and bindings.
-gnoblin-backend = { path = "../gnoblin-backend" }
+gnoblin-backend = { path = "../gnoblin-backend", default-features = false }
 # The EI protocol, server side. It types the wire only; the rules about what a client may
 # send live in `service`, which names no protocol type.
 reis = { version = "0.7.1", default-features = false }
@@ -24,6 +24,9 @@ rustix = { workspace = true, features = ["event"] }
 gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
+# The crate's own tests run on the backend with its default renderers. The normal dependency leaves them off, so a build that
+# switches a renderer feature off (`gnoblin-compositor`, feature `gles`) is not turned back on by this crate.
+gnoblin-backend = { path = "../gnoblin-backend" }
 # The headless compositor the real-client suite drives.
 gnoblin-wayland = { path = "../gnoblin-wayland" }
 # The stock window manager the test session runs.

@@ -86,12 +86,15 @@ cargo xtask stage && cargo build -p gnoblin && target/debug/gnoblin --version
 
 ## Build features of the core library
 
-`gnoblin-core-impl` has one switch for the hardware backend, `drm`, on by default.
+`gnoblin-core-impl` has two build switches, both on by default.
 
-- `cargo build -p gnoblin-core-impl --no-default-features` leaves out `gnoblin-backend-drm` and Smithay's udev, libseat and libinput features. The library then links no `libinput`, `libudev` or `libseat`.
-- The feature is forwarded: `gnoblin-core-impl/drm` turns on `gnoblin-compat-host/drm` and `gnoblin-compositor/drm`.
-- A crate that depends on one of them sets `default-features = false` to keep the switch working. Its default would turn the feature back on.
-- With the feature off, `compositor.backend = drm` is refused with `this build has no DRM backend; rebuild with feature drm`. `auto` does not pick it, and the nested and headless backends are unchanged.
+- `drm` is the hardware backend. Without it the build leaves out `gnoblin-backend-drm` and Smithay's udev, libseat and libinput features, so the library links no `libinput`, `libudev` or `libseat`.
+- `gles` is the GLES renderer. Without it the build leaves out `gnoblin-render-gles`.
+- `drm` implies `gles`, because DRM scan-out draws with GLES only. `--no-default-features` is the smallest build: nested and headless backends with the software renderer, and Vulkan.
+- Each switch is forwarded: `gnoblin-core-impl/drm` turns on `gnoblin-compat-host/drm` and `gnoblin-compositor/drm`, and `gles` goes the same way down to `gnoblin-backend/gles`.
+- A crate that depends on one of these crates sets `default-features = false` to keep the switch working. Its default would turn the feature back on.
+- With `drm` off, `compositor.backend = drm` is refused with `this build has no DRM backend; rebuild with feature drm`, and `auto` does not pick it.
+- With `gles` off, `compositor.renderer = gles` is refused naming the setting, and the log names the feature (`this build has no GLES renderer`). The software renderer is unchanged.
 
 ## Full suite
 

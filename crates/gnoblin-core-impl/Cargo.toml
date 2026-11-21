@@ -17,8 +17,11 @@ crate-type = ["cdylib", "rlib"]
 # The hardware (DRM/KMS) backend, with libinput, udev and libseat behind it. On by default. A core built with
 # `--no-default-features` neither compiles nor links it: `compositor.backend = drm` is refused with a named error and the
 # nested and headless backends run as before.
-default = ["drm"]
-drm = ["gnoblin-compositor/drm", "gnoblin-compat-host/drm"]
+default = ["drm", "gles"]
+drm = ["gles", "gnoblin-compositor/drm", "gnoblin-compat-host/drm"]
+# The GLES renderer, on by default. `--no-default-features` leaves out `gnoblin-render-gles`: `compositor.renderer = gles` is
+# then refused with `RenderError::Unavailable` naming this feature. `drm` implies it, because DRM scan-out draws with GLES.
+gles = ["gnoblin-compositor/gles", "gnoblin-compat-host/gles"]
 # Test only: adds the `gnoblin_test_main` export, the scenario driver the integration tests run through a launcher, and
 # turns the log console on. Never in a build that ships; `cargo xtask dist-check` rejects the export.
 test-driver = ["dep:gnoblin-testkit"]

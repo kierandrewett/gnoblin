@@ -68,6 +68,7 @@ use crate::{
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{OutputFrame, SecureTreatment};
 use gnoblin_render_frame::image::Image;
+#[cfg(feature = "gles")]
 use gnoblin_render_gles::Gles;
 
 /// The number of entries in each gamma table a headless output has.
@@ -239,6 +240,7 @@ impl HeadlessTarget {
     /// A test that wants the draw counter or a shader error reaches the renderer through
     /// this; the other renderers answer [`None`], because a question about a GL device has no
     /// answer without one.
+    #[cfg(feature = "gles")]
     #[must_use]
     pub fn gles(&mut self) -> Option<&mut Gles> {
         self.renderer.gles_mut()
@@ -1497,6 +1499,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "gles")]
     #[test]
     fn a_headless_session_can_draw_with_the_gles_renderer() {
         // The renderer is a configuration choice, and the two paths must be
@@ -1530,6 +1533,7 @@ mod tests {
 
     /// The lock releases every View texture: a readback made one, and giving the views back leaves the renderer
     /// holding none, so a View read afterwards is drawn again from the scene it has then.
+    #[cfg(feature = "gles")]
     #[test]
     fn releasing_the_views_gives_back_every_texture_a_readback_made() {
         use gnoblin_render_frame::view_scene::ViewScene;
@@ -1564,6 +1568,12 @@ mod tests {
             HeadlessConfig::from_setting(RendererChoice::Vulkan),
             HeadlessConfig::vulkan()
         );
+    }
+
+    #[cfg(not(feature = "gles"))]
+    #[test]
+    fn a_build_without_the_gles_feature_cannot_make_a_gles_headless_session() {
+        assert!(Headless::with_config(HeadlessConfig::gles()).is_err());
     }
 
     #[cfg(feature = "vulkan")]
@@ -1876,6 +1886,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "gles")]
     #[test]
     fn a_gles_session_offers_what_its_display_imports() {
         let Ok(mut backend) = Headless::with_config(HeadlessConfig::gles()) else {

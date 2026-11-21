@@ -66,7 +66,7 @@ gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # The backend trait and the headless backend this server drives. It is the only
 # engine crate this crate is allowed to name (design/rust-compositor.md,
 # "Dependency rules").
-gnoblin-backend = { path = "../gnoblin-backend" }
+gnoblin-backend = { path = "../gnoblin-backend", default-features = false }
 # The cursor providers and theme lookup the seat draws the pointer from.
 gnoblin-cursor = { path = "../gnoblin-cursor" }
 # The input policy: the delivery order (grab, binding, client), the idle counter and
@@ -109,6 +109,9 @@ gnoblin-wayland-api = { path = "../protocols/api" }
 gnoblin-wayland-types = { path = "../protocols/types" }
 
 [dev-dependencies]
+# The crate's own tests run on the backend with its default renderers. The normal dependency leaves them off, so a build that
+# switches a renderer feature off (`gnoblin-compositor`, feature `gles`) is not turned back on by this crate.
+gnoblin-backend = { path = "../gnoblin-backend" }
 # The real-client harness the protocol crates' tests share: the session on a socket of its own and the client that binds.
 gnoblin-wayland-testkit = { path = "../protocols/testkit" }
 # The stock window manager the test sessions run. A development edge only: this crate holds and links no stock provider

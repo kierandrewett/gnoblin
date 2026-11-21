@@ -11,9 +11,11 @@ publish.workspace = true
 workspace = true
 
 [features]
-# Forwards the compositor's hardware backend. On by default; the core library turns it off with its own `drm` feature.
-default = ["drm"]
-drm = ["gnoblin-compositor/drm"]
+# Forwards the compositor's hardware backend and GLES renderer. On by default; the core library turns them off with its own
+# features of the same names.
+default = ["drm", "gles"]
+drm = ["gles", "gnoblin-compositor/drm"]
+gles = ["gnoblin-compositor/gles"]
 
 # The host is the only crate that links the compat adapters. The `gnoblin` binary names this
 # crate and no adapter, so the binary stays dispatch and nothing else. See `xtask/src/deps.rs`.

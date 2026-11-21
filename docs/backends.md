@@ -167,16 +167,16 @@ one, so a mode change on a monitor is refused with a message naming the switch u
 **Check it on your hardware.** The hardware backend depends on your GPU driver and your displays. The steps to
 confirm a session on real hardware are in [verify a desktop installation](real-hardware-verification.md).
 
-### A build without the hardware backend
+### A build without the hardware backend or GLES
 
-A package maker can build the core library without the hardware backend: `cargo build -p gnoblin-core-impl --no-default-features`
-switches off the `drm` feature. The library then holds no KMS, libinput, libudev or libseat code.
+A package maker can leave out parts of the core library with two build features, both on in the packages the project ships.
 
-- Choosing `drm` (`GNOBLIN_BACKEND=drm` or `compositor.backend = drm`) stops with `this build has no DRM backend; rebuild with feature drm`.
-- `auto` never picks `drm`.
-- The `nested` and `headless` backends work as before.
+- `drm` is the hardware backend. `cargo build -p gnoblin-core-impl --no-default-features` switches it off, and the library then holds no KMS, libinput, libudev or libseat code.
+- `gles` is the OpenGL ES renderer. The hardware backend needs it, so a build with `drm` on has `gles` on.
 
-The packages the project ships have the feature on.
+Without `drm`, choosing `drm` (`GNOBLIN_BACKEND=drm` or `compositor.backend = drm`) stops with `this build has no DRM backend; rebuild with feature drm`. `auto` never picks it.
+
+Without `gles`, `compositor.renderer = gles` is refused naming the setting, and the log says the build has no GLES renderer. `nested` and `headless` work as before with the software renderer.
 
 ## What each backend does
 
