@@ -67,13 +67,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
-use super::image_copy_session::{Session as ImageCopySession, create_image_copy_global};
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1;
-use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::backend::{ClientId as WaylandClientId, GlobalId};
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
-use smithay::reexports::wayland_server::{Client, DisplayHandle};
 use smithay::utils::user_data::UserDataMap;
 use smithay::wayland::image_capture_source::{
     ImageCaptureSource, OutputCaptureSourceState, ToplevelCaptureSourceState,
@@ -88,17 +85,22 @@ use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm::copy_into;
 use gnoblin_types::{ClientId, NodeId, OutputId, Point, Rect, Size, Tick, WindowId};
 
-use super::zwlr_screencopy_v1::ZwlrScreencopyV1Global;
 use crate::State;
 use gnoblin_pipewire_export::{PipewireExport, PlaneSource, write_region};
-use gnoblin_wayland_api::access::{Access, AccessPolicy, Global};
+use gnoblin_wayland_api::Registrar;
+use gnoblin_wayland_protocols::ext_image_copy_capture_v1::ImageCopySession;
+use gnoblin_wayland_protocols::zwlr_screencopy_v1::ShmCopy;
+use gnoblin_wayland_protocols::{ext_image_capture_source_v1, ext_image_copy_capture_v1, zwlr_screencopy_v1};
 
 use crate::log;
 
 /// Captures into a client's GPU buffer: what is offered, and the copies the loop answers.
 #[path = "capture_dmabuf.rs"]
 mod dmabuf;
-pub(super) use dmabuf::ScreencopyPending;
+
+/// The capture rules behind `ext_image_copy_capture_v1`: sessions, frames and the answers to a client's buffer.
+#[path = "capture_image_copy.rs"]
+mod image_copy;
 
 /// The pictures of the Views a renderer draws on the GPU, read back for the consumers that need bytes.
 #[path = "capture_views.rs"]
@@ -214,7 +216,7 @@ pub(crate) struct CaptureTables {
     /// clock nothing else in this crate reads.
     pub(super) tick: Tick,
     /// The `ext-image-capture-source-v1` objects, mapped to what they capture.
-    pub(super) sources: BTreeMap<usize, Target>,
+    pub(crate) sources: BTreeMap<usize, Target>,
     /// The Views of the scene, at the size each is drawn: refreshed once per loop iteration, and again by each
     /// view-source `create_source`, which is refused for any node not in this set.
     pub(super) views: BTreeMap<NodeId, Size>,
@@ -233,7 +235,7 @@ pub(crate) struct CaptureTables {
     pub(super) sessions: Vec<ImageCopySession>,
     /// The screencopy frame objects that have not been resolved, so the lock can fail
     /// them.
-    pub(super) screencopy_frames: Vec<ZwlrScreencopyFrameV1>,
+    pub(crate) screencopy_frames: Vec<ZwlrScreencopyFrameV1>,
     /// The identity this session gave each connection, so a session's owner is one value
     /// per connection rather than a token nothing else agrees on.
     owners: HashMap<WaylandClientId, ClientId>,
@@ -248,9 +250,9 @@ pub(crate) struct CaptureTables {
     /// What the backend can write a capture into, and the copies of GPU buffers waiting for the loop.
     dmabuf: dmabuf::DmabufCapture,
     /// The output capture sources.
-    pub(super) output_source: OutputCaptureSourceState,
+    pub(crate) output_source: OutputCaptureSourceState,
     /// The toplevel capture sources.
-    pub(super) toplevel_source: ToplevelCaptureSourceState,
+    pub(crate) toplevel_source: ToplevelCaptureSourceState,
     /// The image-copy-capture manager's identity, so a disabled configuration can remove
     /// the global rather than skip it.
     image_copy_global: GlobalId,
@@ -262,28 +264,19 @@ pub(crate) struct CaptureTables {
 }
 
 impl CaptureTables {
-    /// Creates every capture global for a session.
+    /// Creates every capture global for a session, in the order the protocol crates were always created in.
     ///
     /// Every global takes its per-client answer from the session's one roster, which is
     /// the same answer the shell protocols get: capture is one more privileged
     /// capability, not a policy of its own.
-    pub(crate) fn new(display: &DisplayHandle, access: &Arc<Access>) -> Self {
-        let filter = |global: Global| {
-            let access = Arc::clone(access);
-            move |client: &Client| AccessPolicy::allows(&*access, &client.id(), global)
-        };
-        let output_source =
-            OutputCaptureSourceState::new_with_filter::<State, _>(display, filter(Global::ImageCopyCapture));
-        let toplevel_source =
-            ToplevelCaptureSourceState::new_with_filter::<State, _>(display, filter(Global::ImageCopyCapture));
-        let image_copy_global = create_image_copy_global(display, filter(Global::ImageCopyCapture));
-        let screencopy_global = display.create_global::<State, ZwlrScreencopyManagerV1, _>(
-            3,
-            ZwlrScreencopyV1Global {
-                access: Arc::clone(access),
-            },
-        );
-        super::gnoblin_view_source_v1::create_global(display, access);
+    pub(crate) fn new(registrar: &Registrar<'_>) -> Self {
+        let ext_image_capture_source_v1::CaptureSources {
+            output: output_source,
+            toplevel: toplevel_source,
+        } = ext_image_capture_source_v1::register::<State>(registrar);
+        let image_copy_global = ext_image_copy_capture_v1::register::<State>(registrar);
+        let screencopy_global = zwlr_screencopy_v1::register::<State>(registrar);
+        super::gnoblin_view_source_v1::create_global(registrar.display(), registrar.access());
         Self {
             table: Table::new(),
             pixels: BTreeMap::new(),
@@ -336,7 +329,7 @@ impl CaptureTables {
     }
 
     /// The identity this session uses for a connection.
-    pub(super) fn owner(&mut self, client: &WaylandClientId) -> ClientId {
+    pub(crate) fn owner(&mut self, client: &WaylandClientId) -> ClientId {
         if let Some(token) = self.owners.get(client) {
             return *token;
         }
@@ -479,17 +472,6 @@ impl CaptureTables {
 /// The session number stored in a session object's user data.
 pub(super) fn key_of(data: &UserDataMap) -> Option<SessionId> {
     data.get::<SessionKey>().map(|key| key.0)
-}
-
-/// A tick as the `ready` event's `tv_sec_hi`, `tv_sec_lo` and `tv_nsec`.
-pub(super) fn timestamp(tick: Tick) -> (u32, u32, u32) {
-    let seconds = tick.get() / 1000;
-    let nanos = (tick.get() % 1000) * 1_000_000;
-    (
-        u32::try_from(seconds >> 32).unwrap_or(0),
-        u32::try_from(seconds & 0xFFFF_FFFF).unwrap_or(0),
-        u32::try_from(nanos).unwrap_or(0),
-    )
 }
 
 /// The pixels of whatever a session captures.
@@ -911,7 +893,7 @@ impl State {
     }
 
     /// Where a target is now, in its own physical pixels.
-    pub(super) fn capture_bounds(&self, target: Target) -> Option<Rect> {
+    pub(crate) fn capture_bounds(&self, target: Target) -> Option<Rect> {
         self.capture_targets().bounds(target)
     }
 
@@ -996,29 +978,28 @@ impl State {
         }
     }
 
-    /// Copies `region` of an output into `buffer` through the session rules.
+    /// Copies a screencopy frame's region of an output into its buffer through the session rules.
     ///
     /// One screencopy object is one frame, so the session lasts exactly this copy; the
     /// damage it reports is therefore the whole region, which is what this protocol's
-    /// clients expect.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn copy_into_buffer(
-        &mut self,
-        owner: ClientId,
-        output: OutputId,
-        buffer: &WlBuffer,
-        format: Format,
-        offset: Point,
-        with_cursor: bool,
-        capture: Capture,
-        tick: Tick,
-    ) -> Option<(Rect, Tick)> {
+    /// clients expect. The lock's answer and the tick are read here, at the copy.
+    pub(crate) fn copy_into_buffer(&mut self, copy: ShmCopy) -> Option<(Rect, Tick)> {
+        let ShmCopy {
+            owner,
+            output,
+            buffer,
+            format,
+            offset,
+            with_cursor,
+        } = copy;
+        let capture = self.lock_capture(CaptureStream::Requested);
+        let tick = self.capture.tick;
         let (session, claim) = self.open_screencopy(owner, output, format, tick)?;
         let targets = self.capture_targets();
         let mut source = Pixels {
             targets,
             frames: &self.capture.pixels,
-            buffer: buffer.clone(),
+            buffer,
             offset,
             with_cursor,
         };

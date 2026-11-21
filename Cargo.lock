@@ -2560,6 +2560,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-wayland-ext-image-capture-source-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-ext-image-copy-capture-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
 name = "gnoblin-wayland-ext-session-lock-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -2632,6 +2650,8 @@ dependencies = [
  "gnoblin-wayland-ext-data-control-v1",
  "gnoblin-wayland-ext-foreign-toplevel-list-v1",
  "gnoblin-wayland-ext-idle-notify-v1",
+ "gnoblin-wayland-ext-image-capture-source-v1",
+ "gnoblin-wayland-ext-image-copy-capture-v1",
  "gnoblin-wayland-ext-session-lock-v1",
  "gnoblin-wayland-ext-workspace-v1",
  "gnoblin-wayland-foreign-toplevel-shared",
@@ -2665,6 +2685,7 @@ dependencies = [
  "gnoblin-wayland-zwlr-layer-shell-v1",
  "gnoblin-wayland-zwlr-output-management-v1",
  "gnoblin-wayland-zwlr-output-power-management-v1",
+ "gnoblin-wayland-zwlr-screencopy-v1",
  "gnoblin-wayland-zwlr-virtual-pointer-v1",
  "gnoblin-wayland-zwp-idle-inhibit-v1",
  "gnoblin-wayland-zwp-input-method-v2",
@@ -2969,6 +2990,17 @@ dependencies = [
 name = "gnoblin-wayland-zwlr-output-power-management-v1"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-log",
+ "gnoblin-types",
+ "gnoblin-wayland-api",
+ "smithay",
+]
+
+[[package]]
+name = "gnoblin-wayland-zwlr-screencopy-v1"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-capture",
  "gnoblin-log",
  "gnoblin-types",
  "gnoblin-wayland-api",

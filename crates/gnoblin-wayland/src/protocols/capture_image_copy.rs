@@ -1,12 +1,10 @@
-//! XML protocol `ext_image_copy_capture_v1` (`<protocol name="ext_image_copy_capture_v1">`); interfaces served: `ext_image_copy_capture_v1`.
+//! The capture rules behind `ext_image_copy_capture_v1`.
 //!
-//! `ext_image_copy_capture_v1`: sessions that copy a source's pixels into client buffers.
-//!
-//! A session is opened for an [`ImageCaptureSource`](smithay::wayland::image_capture_source)
-//! and each frame is answered from the shared pixel path in
-//! [`capture_shared`](super::capture_shared). Its refusals map onto the protocol's
-//! failure reasons here. The protocol's own objects, and the check that a client's buffer meets the
-//! constraints a session announced, are in [`image_copy_session`](super::image_copy_session).
+//! The protocol's objects live in `gnoblin-wayland-ext-image-copy-capture-v1`, which asks the compositor for each
+//! answer through its `Host` trait; `glue/ext_image_copy_capture_v1.rs` forwards to the methods here. A session is
+//! opened for an [`ImageCaptureSource`](smithay::wayland::image_capture_source) and each frame is answered from the
+//! shared pixel path in [`capture_shared`](super::capture_shared). Its refusals map onto the protocol's failure
+//! reasons here.
 //!
 //! # Shared memory and GPU buffers
 //!
@@ -38,9 +36,11 @@ use gnoblin_capture::{
 use gnoblin_lock::CaptureStream;
 use gnoblin_types::{ClientId, OutputId, Point, Tick};
 
-use super::capture_shared::{Pixels, SessionKey, key_of};
-use super::image_copy_session::{BufferConstraints, FailureReason, Frame, FrameRef, Session, SessionRef};
+use super::{Pixels, SessionKey, key_of};
 use crate::State;
+use gnoblin_wayland_protocols::ext_image_copy_capture_v1::{
+    BufferConstraints, FailureReason, ImageCopyFrame, ImageCopyFrameRef, ImageCopySession, ImageCopySessionRef,
+};
 
 use crate::log;
 
@@ -63,7 +63,7 @@ impl State {
     }
 
     /// Opens the capture session a client made.
-    pub(crate) fn image_copy_new_session(&mut self, session: Session) {
+    pub(crate) fn image_copy_new_session(&mut self, session: ImageCopySession) {
         let Some(target) = self.capture.target_of(&session.source()) else {
             log::warn!(area = "capture", "a session names a source this session does not know");
             return;
@@ -87,7 +87,7 @@ impl State {
 
     /// Answers a client's request for one frame: a frame into shared memory now, a frame into a GPU buffer when
     /// the loop next draws.
-    pub(crate) fn image_copy_frame(&mut self, session: &SessionRef, frame: Frame) {
+    pub(crate) fn image_copy_frame(&mut self, session: &ImageCopySessionRef, frame: ImageCopyFrame) {
         let Some(id) = key_of(session.user_data()) else {
             frame.fail(FailureReason::Stopped);
             return;
@@ -149,7 +149,7 @@ impl State {
     pub(crate) fn complete_image_copy(
         &mut self,
         id: SessionId,
-        frame: Frame,
+        frame: ImageCopyFrame,
         outcome: CaptureOutcome,
         presented: Tick,
     ) {
@@ -173,14 +173,14 @@ impl State {
     }
 
     /// A client destroyed a frame object: a copy still queued for it is dropped.
-    pub(crate) fn image_copy_frame_aborted(&mut self, frame: &FrameRef) {
+    pub(crate) fn image_copy_frame_aborted(&mut self, frame: &ImageCopyFrameRef) {
         if !self.abort_view_copy(frame) {
             self.abort_image_copy(frame);
         }
     }
 
     /// A client destroyed a session object.
-    pub(crate) fn image_copy_session_destroyed(&mut self, session: SessionRef) {
+    pub(crate) fn image_copy_session_destroyed(&mut self, session: ImageCopySessionRef) {
         if let Some(id) = key_of(session.user_data()) {
             self.capture.table.close(id);
             log::debug!(area = "capture", session = %id, "session closed");

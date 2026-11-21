@@ -744,7 +744,7 @@ impl State {
 
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.
-        let capture = CaptureTables::new(&display_handle, &access);
+        let capture = CaptureTables::new(&registrar);
         remove_disabled_globals(
             &display_handle,
             protocols,

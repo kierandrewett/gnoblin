@@ -1402,30 +1402,6 @@ kind = "same-name"
 reason = "a queued GPU-buffer capture copy waiting for the loop, and an unrelated crate's own pending state; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-capture::Session"
-right = "gnoblin-wayland::Session"
-kind = "same-name"
-reason = "the capture table's session record and the protocol's owned ext_image_copy_capture session object (which stops the client's session when dropped) are different things"
-
-[[allow]]
-left = "gnoblin-compositor::Session"
-right = "gnoblin-wayland::Session"
-kind = "same-name"
-reason = "an EIS client session and the protocol's owned ext_image_copy_capture session object are different things"
-
-[[allow]]
-left = "gnoblin-wayland::Session"
-right = "xdg-desktop-portal-gnoblin::Session"
-kind = "same-name"
-reason = "the protocol's owned ext_image_copy_capture session object and a portal session are different things"
-
-[[allow]]
-left = "gnoblin-portal-ui::Frame"
-right = "gnoblin-wayland::Frame"
-kind = "same-name"
-reason = "a painted portal frame and one ext_image_copy_capture frame request the compositor must answer are different things"
-
-[[allow]]
 left = "gnoblin-render-gles::Plan"
 right = "gnoblin-session::Plan"
 kind = "same-name"
@@ -1584,12 +1560,6 @@ reason = "a name private to the core library's implementation (it is not exporte
 [[allow]]
 left = "gnoblin-core-impl::Provider"
 right = "gnoblin-model::Provider"
-kind = "same-name"
-reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
-
-[[allow]]
-left = "gnoblin-core-impl::Session"
-right = "gnoblin-wayland::Session"
 kind = "same-name"
 reason = "a name private to the core library's implementation (it is not exported); the other crate's type belongs to another subsystem and means something else"
 
@@ -2544,12 +2514,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
-right = "gnoblin-wayland::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-ext-background-effect-v1::ExtBackgroundEffectV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2598,12 +2562,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-zwlr-gamma-control-v1::ZwlrGammaControlV1ManagerGlobalData"
-right = "gnoblin-wayland::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-zwlr-gamma-control-v1::ZwlrGammaControlV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2646,12 +2604,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-zwlr-output-power-management-v1::ZwlrOutputPowerManagementV1ManagerGlobalData"
-right = "gnoblin-wayland::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-zwlr-output-power-management-v1::ZwlrOutputPowerManagementV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2688,12 +2640,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland-ext-idle-notify-v1::ExtIdleNotifyV1NotifierUserData"
-right = "gnoblin-wayland::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland-ext-idle-notify-v1::ExtIdleNotifyV1NotifierUserData"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2724,12 +2670,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland::ViewSourceGlobal"
-right = "gnoblin-wayland::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ViewSourceGlobal"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2754,12 +2694,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 
 [[allow]]
 left = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-right = "gnoblin-wayland::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
@@ -2773,36 +2707,6 @@ reason = "a protocol's global data holds the access roster its own `can_view` as
 [[allow]]
 left = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
 right = "gnoblin-wayland-zwp-virtual-keyboard-v1::ZwpVirtualKeyboardV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ZwlrScreencopyV1Global"
-right = "gnoblin-wayland-zwlr-foreign-toplevel-management-v1::ZwlrForeignToplevelManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ZwlrScreencopyV1Global"
-right = "gnoblin-wayland-zwlr-output-management-v1::ZwlrOutputManagementV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ZwlrScreencopyV1Global"
-right = "gnoblin-wayland-zwp-virtual-keyboard-v1::ZwpVirtualKeyboardV1ManagerGlobalData"
-kind = "same-shape"
-reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
-
-[[allow]]
-left = "gnoblin-wayland::ZwlrScreencopyV1Global"
-right = "gnoblin-wayland-zwlr-screencopy-v1::ZwlrScreencopyV1Global"
 kind = "same-shape"
 reason = "a protocol's global data holds the access roster its own `can_view` asks, and nothing else; the structs answer different protocols"
 
@@ -3229,12 +3133,6 @@ reason = "the real-client harness names the client side of a session (its own se
 [[allow]]
 left = "gnoblin-wayland-testkit::Window"
 right = "gnoblin-wm-api::Window"
-kind = "same-name"
-reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
-
-[[allow]]
-left = "gnoblin-wayland::Session"
-right = "gnoblin-wayland-testkit::Session"
 kind = "same-name"
 reason = "the real-client harness names the client side of a session (its own session, handle, window and connection), which is not the type another crate of this name is"
 

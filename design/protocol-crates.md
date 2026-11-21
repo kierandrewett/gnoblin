@@ -12,28 +12,38 @@ Landed in this lane (each is a crate under `crates/protocols/` and its module is
   `cargo xtask protocol-crates [--check]`, and the deps rules `protocol-layering` and `protocol-root`;
 - `access` moved into the api crate, and `Registrar` carries the roster (`Registrar::filter`);
 - the real-client harness is the crate `gnoblin-wayland-testkit` (`crates/protocols/testkit`): the headless session on a socket of its own, the client that binds the globals a test exercises, the stock window manager, and the client halves of the protocols whose events a test reads (tablet, KDE decoration, primary selection, workspaces, frame callbacks). `gnoblin-wayland`'s integration tests and the Xwayland test depend on it as a development dependency;
-- the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 50 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
+- the plain-data crate `gnoblin-wayland-types` (see [The types crate](#the-types-crate)), and 53 protocol crates with the shared crate `foreign-toplevel-shared`: `wp-alpha-modifier-v1`, `wp-single-pixel-buffer-v1`, `zwp-pointer-gestures-v1`,
   `zwp-relative-pointer-v1`, `zwp-idle-inhibit-v1`, `xdg-system-bell-v1`, `xdg-toplevel-icon-v1`,
   `xdg-toplevel-tag-v1`, `xdg-dialog-v1`, `wl-output`, `wl-shm`, `zwp-primary-selection-v1`, `wp-content-type-v1`,
   `wp-fifo-v1`, `wp-fractional-scale-v1`, `wp-tearing-control-v1`, `wp-presentation-time`,
-  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`, `zwlr-layer-shell-v1`, `wl-compositor`, `wl-seat`, `xdg-shell`, `zwp-tablet-v2`, `zwp-linux-dmabuf-v1`, `wl-data-device-manager`, `ext-session-lock-v1`. Their forwarding
+  `zwp-keyboard-shortcuts-inhibit-v1`, `wp-viewporter`, `wp-cursor-shape-v1`, `zxdg-output-v1`, `zwp-pointer-constraints-v1`, `ext-data-control-v1`, `zwlr-data-control-v1`, `zwp-input-method-v2`, `ext-background-effect-v1`, `wp-security-context-v1`, `zwlr-gamma-control-v1`, `zwlr-output-power-management-v1`, `xdg-foreign`, `ext-idle-notify-v1`, `zwp-text-input-v3`, `ext-foreign-toplevel-list-v1`, `zwlr-foreign-toplevel-management-v1`, `zwp-virtual-keyboard-v1`, `zwlr-output-management-v1`, `zxdg-decoration-v1`, `xdg-activation-v1`, `zwlr-layer-shell-v1`, `wl-compositor`, `wl-seat`, `xdg-shell`, `zwp-tablet-v2`, `zwp-linux-dmabuf-v1`, `wl-data-device-manager`, `ext-session-lock-v1`, `ext-image-capture-source-v1`, `ext-image-copy-capture-v1`, `zwlr-screencopy-v1`. Their forwarding
   impls are in `crates/gnoblin-wayland/src/glue/`, one file per crate.
 
 Not yet done:
 
-- The capture family: `capture_shared`, `image_copy_session`, `zwlr_screencopy_v1` and `ext_image_copy_capture_v1`.
-- `ext_image_capture_source_v1` and `capture_dmabuf`, with the family.
+- The capture engine stays in `gnoblin-wayland`: `capture_shared`, `capture_dmabuf` and `capture_views` in `protocols/`, and
+  `capture_image_copy`, the rules behind `ext_image_copy_capture_v1`. See [What blocks the rest](#what-blocks-the-rest).
 - The view-source modules `gnoblin_view_source_v1` and `capture_views`, which wait for the owner's decision.
-- The move of the remaining real-client tests into their crates.
+- The move of the remaining real-client tests into their crates. The capture tests all drive the pixel path, the lock or the Views, so they stay with the engine.
 - Deleting `protocols/mod.rs`, with the last module.
 
 What each needs first is under [What blocks the rest](#what-blocks-the-rest).
 
-Two decisions made while doing the work differ from the text below.
+The three standard capture protocols are crates. Each holds the wire objects, the global and a host trait, and the glue forwards the trait to the capture engine.
+
+| Crate                         | Glue                                  |
+| ----------------------------- | ------------------------------------- |
+| `ext-image-capture-source-v1` | `glue/ext_image_capture_source_v1.rs` |
+| `ext-image-copy-capture-v1`   | `glue/ext_image_copy_capture_v1.rs`   |
+| `zwlr-screencopy-v1`          | `glue/zwlr_screencopy_v1.rs`          |
+
+`ext-image-copy-capture-v1` also holds the session and frame objects that were `image_copy_session`.
+
+Three decisions made while doing the work differ from the text below.
 
 - The table lives in `xtask/protocols.toml`, not in `crates/protocols/`.
 - A row carries no module name or access column, because each crate states its own `PROTOCOL`.
-- Shared crates must end in `-shared`, so `image_copy_session` will be `gnoblin-wayland-image-copy-shared`.
+- There is no capture shared crate and no `image-copy-session` crate. The capture engine stays in `gnoblin-wayland`, so the only users of the session and frame objects are the engine and `ext-image-copy-capture-v1`. The crate that holds the objects is the one that needs them, and the engine names them from it.
 
 ## What blocks the rest
 
@@ -41,7 +51,7 @@ The protocols still in `gnoblin-wayland` name types that live in the compositor,
 
 - `xdg_shell`, `wl_compositor`, `wl_seat` have crates that hold the global, what the protocol advertises and the code that is the protocol's alone (`WlCompositorClientState`, `verify_buffer`, the implicit touch grab). Their handlers stay in `crates/gnoblin-wayland/src/glue/` for good, and that is the decision, not a gap: each answer is the engine's own work (the popup manager and its grabs, interactive move and resize, the commit path, the seat's focus), so a host trait that gave a crate that access would be the whole of `State` behind a trait with one implementor.
 - `wl_data_device_manager` and `ext_session_lock_v1` have crates that hold the global, what it advertises and the table the protocol alone reads (`WlDataDeviceManagerSelections`). Their handlers stay in the engine for good: a paste chooses between a client's source, the X11 window manager and the host's clipboard, and a lock needs the frame path, the lock card and the lock's authentication. The lock's engine module is `session_lock`, outside `protocols/`.
-- the capture family: the frame pixel path, the lock embargo, `DmabufSupport` and `gnoblin_pipewire_export`; every handler is `Dispatch2<_, State>`, so each needs a host trait the size of `foreign_toplevel`'s.
+- the capture engine: `capture_shared`, `capture_dmabuf`, `capture_views` and `capture_image_copy`. It holds the session table, the last frame of each output, the PipeWire streams, the lock embargo, the frames queued for the renderer and the pictures of the Views, and it reads the composer, the window manager, the backend and `gnoblin_pipewire_export`. It stays in `gnoblin-wayland`, as the lock's engine module does. The three standard capture protocols are crates over it: each asks the engine through a host trait, and the glue forwards. `capture_views` and `gnoblin_view_source_v1` are not touched, and the engine cannot leave until the owner decides how a View is captured, because the session table, the pixel path and `CaptureTables::new` all name the View tables.
 
 Each needs its shared types moved down first, into the types crate below. What has moved so far:
 
@@ -122,9 +132,9 @@ The columns of the table mean this.
 
 | Crate                                                 | Module                                | Lines | Served by             | Access                    | State f / m |
 | ----------------------------------------------------- | ------------------------------------- | ----- | --------------------- | ------------------------- | ----------- |
-| `gnoblin-wayland-capture-shared`                      | `capture_dmabuf`                      | 370   | own code              | shared                    | 2 / 10      |
-| `gnoblin-wayland-capture-shared`                      | `capture_shared`                      | 1054  | own code              | shared                    | 6 / 19      |
-| `gnoblin-wayland-capture-shared`                      | `capture_views`                       | 215   | own code              | shared                    | 2 / 7       |
+| `gnoblin-wayland` (the engine)                        | `capture_dmabuf`                      | 370   | own code              | stays                     | 2 / 10      |
+| `gnoblin-wayland` (the engine)                        | `capture_shared`                      | 1054  | own code              | stays                     | 6 / 19      |
+| `gnoblin-wayland` (the engine)                        | `capture_views`                       | 215   | own code              | stays                     | 2 / 7       |
 | `gnoblin-wayland-ext-background-effect-v1`            | `ext_background_effect_v1`            | 123   | Smithay + own objects | BackgroundEffect (open)   | 2 / 1       |
 | `gnoblin-wayland-ext-data-control-v1`                 | `ext_data_control_v1`                 | 35    | Smithay               | DataControl               | 1 / 0       |
 | `gnoblin-wayland-ext-foreign-toplevel-list-v1`        | `ext_foreign_toplevel_list_v1`        | 57    | Smithay               | ForeignToplevelList       | 1 / 0       |
@@ -133,7 +143,7 @@ The columns of the table mean this.
 | `gnoblin-wayland-ext-image-copy-capture-v1`           | `ext_image_copy_capture_v1`           | 199   | Smithay               | ImageCopyCapture          | 1 / 13      |
 | `gnoblin-wayland-ext-session-lock-v1`                 | `ext_session_lock_v1`                 | 805   | Smithay               | core                      | 7 / 31      |
 | `gnoblin-wayland-foreign-toplevel-shared`             | `foreign_toplevel_shared`             | 254   | own code              | shared                    | 5 / 5       |
-| `gnoblin-wayland-image-copy-session`                  | `image_copy_session`                  | 659   | Smithay + own objects | shared                    | 1 / 5       |
+| `gnoblin-wayland-ext-image-copy-capture-v1`           | `image_copy_session`                  | 659   | Smithay + own objects | ImageCopyCapture          | 1 / 5       |
 | `gnoblin-wayland-zwlr-layer-shell-v1`                 | `zwlr_layer_shell_v1`                 | 972   | Smithay               | LayerShell                | 8 / 22      |
 | `gnoblin-wayland-wl-compositor`                       | `wl_compositor`                       | 165   | Smithay               | core                      | 2 / 7       |
 | `gnoblin-wayland-wl-data-device-manager`              | `wl_data_device_manager`              | 356   | Smithay               | core                      | 6 / 6       |
@@ -183,9 +193,11 @@ The columns of the table mean this.
 - It has left `protocols/` and is `src/extension.rs` of `gnoblin-wayland`.
 - `mod.rs` disappears with the last extraction, and `wire.rs` goes with ProtoRetire's deletion.
 
-The inventory yields 52 crates: 49 protocol crates and 3 shared crates. The shared crates are the rows marked `shared`
-in the Access column. `capture_dmabuf.rs` and `capture_views.rs` are parts of the capture engine and fold into
-`gnoblin-wayland-capture-shared`.
+The inventory yielded 52 crates: 49 protocol crates and 3 shared crates. Two of the shared crates were not made.
+
+- The capture engine was to fold into `gnoblin-wayland-capture-shared`. It stays in `gnoblin-wayland`.
+- `image_copy_session.rs` was to be `gnoblin-wayland-image-copy-session`. Its objects are part of `gnoblin-wayland-ext-image-copy-capture-v1`.
+- The one shared crate is `foreign-toplevel-shared`.
 
 ### Naming rule
 
@@ -210,9 +222,7 @@ protocols/
   zwlr-layer-shell-v1/               gnoblin-wayland-zwlr-layer-shell-v1
   ext-foreign-toplevel-list-v1/      gnoblin-wayland-ext-foreign-toplevel-list-v1
   wp-viewporter/                     gnoblin-wayland-wp-viewporter
-  capture-shared/                    gnoblin-wayland-capture-shared (shared crates)
-  foreign-toplevel-shared/
-  image-copy-session/
+  foreign-toplevel-shared/           gnoblin-wayland-foreign-toplevel-shared (shared crates)
   api/                               gnoblin-wayland-api: the seam every protocol crate may use
   all/                               gnoblin-wayland-protocols: the aggregate, owns the globals table
   testkit/                           gnoblin-wayland-testkit: dev-only real-client harness
@@ -420,13 +430,12 @@ The session harness is the crate `gnoblin-wayland-testkit`, so each protocol cra
 | `protocol-lints`     | every protocol crate keeps `[lints] workspace = true`; none needs an `unsafe_code` exception, because the generated wire code leaves with ProtoRetire's deletion     |
 
 `engine-isolation` keeps its meaning. The edge from `gnoblin-wayland` to `gnoblin-wayland-protocols` is the one engine-to-protocol
-edge, and the rule names it as it names the hubs. `pipewire-export-isolation` lists `gnoblin-wayland-capture-shared` next
-to `gnoblin-wayland`, because the capture engine that names the export moves with that crate.
+edge, and the rule names it as it names the hubs. `pipewire-export-isolation` lets only `gnoblin-wayland` name the export,
+because the capture engine that uses it stays in that crate.
 
-`logging` and `layout` need no change for the new crates.
+`logging` needs no change for the new crates.
 
 - `logging` scans `crates/*/src`, and the protocol crates sit under it.
-- `layout` scans `crates` and `xtask` for root `src/` and `patches/` paths, and the new crates name neither.
 
 ## Consequences of many small crates
 
@@ -456,17 +465,18 @@ old module in the same commit, moves that crate's tests and updates the docs it 
 3. **Small protocols with host methods.** Done, including linux-dmabuf and the foreign-toplevel pair with their shared crate.
 4. **Medium protocols.** Done, including activation, output management, the data-device manager, wl-compositor and wl-seat.
 5. **Large protocols.** Done for xdg-shell, layer shell, tablet and session lock. Their handlers that need the engine stay in the glue.
-6. **The capture family in one run,** because its modules form a cycle. It waits for ProtoRetire, which removes the view-source modules.
-    - The order is `image-copy-session`, then `capture-shared` with `capture_dmabuf` folded in, then the three protocols.
-    - Three edges point up today: `capture_shared` creates the screencopy and image-copy globals, and `capture_dmabuf` calls `answer_copy`.
-    - Global creation moves into each protocol's `register`, and `answer_copy` moves down into the shared crate.
+6. **The capture family.** Done for the three protocols; the engine stays.
+    - `ext-image-capture-source-v1`, `ext-image-copy-capture-v1` (with the session and frame objects) and `zwlr-screencopy-v1` are crates. Each `register` creates its globals in the order `CaptureTables::new` always did, so global numbering is the same.
+    - `CaptureTables::new` calls the three `register` functions, then creates the view-source global as before.
+    - `answer_copy` and the queued screencopy frame (`PendingCopy`) are in the screencopy crate, and `capture_dmabuf` names them from it.
+    - The engine (`capture_shared`, `capture_dmabuf`, `capture_views`, `capture_image_copy`) and the view-source modules wait for the owner's decision on how a View is captured.
 7. **ProtoMissing's protocols.** Done: virtual pointer, the KDE server decoration and appmenu, and ext-workspace landed as crates.
 8. **Close-out.** `protocols/` is gone from `gnoblin-wayland`. The docs, the changelog and the crate lists name the final set.
 
 **Gate per step**, on one Agent37 box and the exact pushed SHA:
 
 - `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings`;
-- `cargo xtask gen-sdks --check`, `abi-check`, `dupes --deny`, `layout`, `deps` and `protocol-crates --check`;
+- `cargo xtask gen-sdks --check`, `abi-check`, `dupes --deny`, `deps` and `protocol-crates --check`;
 - `cargo test` for each touched crate and for `gnoblin-wayland`.
 
 The final SHA also runs the full `gnoblin-wayland` tests, the advertised-globals test and `scripts/wlcs.sh --gate`.

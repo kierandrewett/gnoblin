@@ -64,3 +64,6 @@ gnoblin-wayland-zwlr-virtual-pointer-v1 = { path = "../zwlr-virtual-pointer-v1" 
 gnoblin-wayland-org-kde-kwin-server-decoration = { path = "../org-kde-kwin-server-decoration" }
 gnoblin-wayland-org-kde-kwin-appmenu = { path = "../org-kde-kwin-appmenu" }
 gnoblin-wayland-ext-workspace-v1 = { path = "../ext-workspace-v1" }
+gnoblin-wayland-ext-image-capture-source-v1 = { path = "../ext-image-capture-source-v1" }
+gnoblin-wayland-ext-image-copy-capture-v1 = { path = "../ext-image-copy-capture-v1" }
+gnoblin-wayland-zwlr-screencopy-v1 = { path = "../zwlr-screencopy-v1" }

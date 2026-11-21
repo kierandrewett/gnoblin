@@ -45,7 +45,7 @@ use gnoblin_types::{NodeId, OutputId, Point, Rect};
 use super::Pixels;
 use crate::State;
 use crate::log;
-use crate::protocols::image_copy_session::{FailureReason, Frame, FrameRef};
+use gnoblin_wayland_protocols::ext_image_copy_capture_v1::{FailureReason, ImageCopyFrame, ImageCopyFrameRef};
 
 /// A frame of an `ext-image-copy-capture` session of a View that waits for the View's picture to be read back.
 pub(crate) struct PendingViewCopy {
@@ -54,7 +54,7 @@ pub(crate) struct PendingViewCopy {
     /// The claim on the session's next frame, taken when the request arrived.
     claim: FrameClaim,
     /// The protocol object the client waits on.
-    frame: Frame,
+    frame: ImageCopyFrame,
 }
 
 impl State {
@@ -88,13 +88,13 @@ impl State {
     }
 
     /// Queues a frame of a View session until the loop has read the View's picture back.
-    pub(crate) fn queue_view_copy(&mut self, session: SessionId, claim: FrameClaim, frame: Frame) {
+    pub(crate) fn queue_view_copy(&mut self, session: SessionId, claim: FrameClaim, frame: ImageCopyFrame) {
         self.capture.view_copies.push(PendingViewCopy { session, claim, frame });
     }
 
     /// Forgets the queued frame of a View session and releases its claim, because the client destroyed the frame
     /// object. Answers whether there was one.
-    pub(crate) fn abort_view_copy(&mut self, frame: &FrameRef) -> bool {
+    pub(crate) fn abort_view_copy(&mut self, frame: &ImageCopyFrameRef) -> bool {
         let Some(index) = self
             .capture
             .view_copies

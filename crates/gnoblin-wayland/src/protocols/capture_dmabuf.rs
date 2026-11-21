@@ -37,7 +37,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
-use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1;
 use smithay::reexports::wayland_server::Resource;
 
 use gnoblin_backend::{Backend, DmabufCopy, DmabufSource, DmabufSupport};
@@ -50,8 +49,8 @@ use gnoblin_types::{ClientId, OutputId, Point, Rect, Tick};
 use super::{Cached, Targets};
 use crate::State;
 use crate::log;
-use crate::protocols::image_copy_session::{DmabufConstraints, Frame, FrameRef};
-use crate::protocols::zwlr_screencopy_v1::answer_copy;
+use gnoblin_wayland_protocols::ext_image_copy_capture_v1::{DmabufConstraints, ImageCopyFrame, ImageCopyFrameRef};
+use gnoblin_wayland_protocols::zwlr_screencopy_v1::{PendingCopy, answer_copy};
 
 /// What the backend can write a capture into, and the copies waiting for the loop.
 #[derive(Default)]
@@ -73,7 +72,7 @@ enum Pending {
     /// A frame of an `ext_image_copy_capture` session.
     ImageCopy(ImageCopyPending),
     /// A `zwlr_screencopy` frame.
-    Screencopy(ScreencopyPending),
+    Screencopy(PendingCopy),
 }
 
 /// A frame of an `ext-image-copy-capture` session that waits for its copy.
@@ -83,29 +82,9 @@ struct ImageCopyPending {
     /// The claim on the session's next frame, taken when the request arrived.
     claim: FrameClaim,
     /// The protocol object the client waits on.
-    frame: Frame,
+    frame: ImageCopyFrame,
     /// The client's buffer.
     dmabuf: Dmabuf,
-}
-
-/// A `zwlr_screencopy` frame that waits for its copy.
-pub(crate) struct ScreencopyPending {
-    /// The protocol object the client waits on.
-    pub(crate) resource: ZwlrScreencopyFrameV1,
-    /// The connection that made it.
-    pub(crate) owner: ClientId,
-    /// The output it captures.
-    pub(crate) output: OutputId,
-    /// The region, in the output's physical pixels.
-    pub(crate) region: Rect,
-    /// The geometry the client was told to allocate.
-    pub(crate) format: Format,
-    /// Whether the cursor is in the copy.
-    pub(crate) with_cursor: bool,
-    /// Whether the client asked for the damage.
-    pub(crate) with_damage: bool,
-    /// The client's buffer.
-    pub(crate) dmabuf: Dmabuf,
 }
 
 /// The pixels a copy into a GPU buffer reads: the same targets as shared memory, but the backend does the copy.
@@ -225,7 +204,11 @@ impl State {
                 targets.output(target).and_then(|output| known.frames.get(&output))
             }
         };
-        DmabufConstraints::from_support(support?)
+        let support = support?;
+        DmabufConstraints::from_pairs(
+            support.main_device,
+            support.formats.iter().map(|format| (format.code, format.modifier)),
+        )
     }
 
     /// What a capture of `output` may be written into, which is what `zwlr_screencopy` announces as `linux_dmabuf`.
@@ -234,7 +217,13 @@ impl State {
     }
 
     /// Queues the copy of an `ext-image-copy-capture` frame into `dmabuf` for the loop.
-    pub(crate) fn queue_image_copy(&mut self, session: SessionId, claim: FrameClaim, frame: Frame, dmabuf: Dmabuf) {
+    pub(crate) fn queue_image_copy(
+        &mut self,
+        session: SessionId,
+        claim: FrameClaim,
+        frame: ImageCopyFrame,
+        dmabuf: Dmabuf,
+    ) {
         self.capture.dmabuf.pending.push(Pending::ImageCopy(ImageCopyPending {
             session,
             claim,
@@ -244,12 +233,12 @@ impl State {
     }
 
     /// Queues the copy of a `zwlr_screencopy` frame into a GPU buffer for the loop.
-    pub(crate) fn queue_screencopy(&mut self, copy: ScreencopyPending) {
+    pub(crate) fn queue_screencopy(&mut self, copy: PendingCopy) {
         self.capture.dmabuf.pending.push(Pending::Screencopy(copy));
     }
 
     /// Forgets the queued copy of `frame` and releases its claim, because the client destroyed the frame object.
-    pub(crate) fn abort_image_copy(&mut self, frame: &FrameRef) {
+    pub(crate) fn abort_image_copy(&mut self, frame: &ImageCopyFrameRef) {
         let pending = &mut self.capture.dmabuf.pending;
         let Some(index) = pending
             .iter()
@@ -302,8 +291,8 @@ impl State {
     }
 
     /// Makes one `zwlr_screencopy` copy and answers its frame.
-    fn finish_screencopy(&mut self, backend: &mut dyn Backend<State>, copy: ScreencopyPending) {
-        let ScreencopyPending {
+    fn finish_screencopy(&mut self, backend: &mut dyn Backend<State>, copy: PendingCopy) {
+        let PendingCopy {
             resource,
             owner,
             output,

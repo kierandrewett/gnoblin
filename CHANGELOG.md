@@ -4,6 +4,7 @@
 
 ### Changed
 
+- The three standard capture protocols, `ext_image_capture_source_v1`, `ext_image_copy_capture_v1` and `zwlr_screencopy_v1`, are crates of their own under `crates/protocols/` (lane CaptureMove; design/protocol-crates.md). They advertise the same globals at the same versions and in the same order, and the capture engine and the View source stay in `gnoblin-wayland`.
 - Custom shaders are on by default (owner decision 48; lane ShaderStd; design/modular-framework.md, section 37.15; docs/custom-shaders.md). `compositor.user-shaders` defaults to `true`, the seat's `user_shaders` is `true` unless it is switched off, and `gnoblin_wayland::Config::user_shaders` and the tree host start accepting the `shader` effect. There is no new route: the off switch is the document leaf `compositor.user-shaders = false`, which `shell.ts` writes with `gnoblin.compositor.userShaders = false` and the compositor reads at the next login. The refusal (`bad-value`, the log line pointing at `Canvas`) and the library's `not applied: style.filter: a ShaderFilter is not drawn ...` note stay, for a session that switched it off.
 
 ### Added

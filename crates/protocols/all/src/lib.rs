@@ -9,6 +9,8 @@ pub use gnoblin_wayland_ext_background_effect_v1 as ext_background_effect_v1;
 pub use gnoblin_wayland_ext_data_control_v1 as ext_data_control_v1;
 pub use gnoblin_wayland_ext_foreign_toplevel_list_v1 as ext_foreign_toplevel_list_v1;
 pub use gnoblin_wayland_ext_idle_notify_v1 as ext_idle_notify_v1;
+pub use gnoblin_wayland_ext_image_capture_source_v1 as ext_image_capture_source_v1;
+pub use gnoblin_wayland_ext_image_copy_capture_v1 as ext_image_copy_capture_v1;
 pub use gnoblin_wayland_ext_session_lock_v1 as ext_session_lock_v1;
 pub use gnoblin_wayland_ext_workspace_v1 as ext_workspace_v1;
 pub use gnoblin_wayland_foreign_toplevel_shared as foreign_toplevel_shared;
@@ -42,6 +44,7 @@ pub use gnoblin_wayland_zwlr_gamma_control_v1 as zwlr_gamma_control_v1;
 pub use gnoblin_wayland_zwlr_layer_shell_v1 as zwlr_layer_shell_v1;
 pub use gnoblin_wayland_zwlr_output_management_v1 as zwlr_output_management_v1;
 pub use gnoblin_wayland_zwlr_output_power_management_v1 as zwlr_output_power_management_v1;
+pub use gnoblin_wayland_zwlr_screencopy_v1 as zwlr_screencopy_v1;
 pub use gnoblin_wayland_zwlr_virtual_pointer_v1 as zwlr_virtual_pointer_v1;
 pub use gnoblin_wayland_zwp_idle_inhibit_v1 as zwp_idle_inhibit_v1;
 pub use gnoblin_wayland_zwp_input_method_v2 as zwp_input_method_v2;
@@ -108,6 +111,9 @@ pub const ALL: &[&ProtocolInfo] = &[
     &org_kde_kwin_server_decoration::PROTOCOL,
     &org_kde_kwin_appmenu::PROTOCOL,
     &ext_workspace_v1::PROTOCOL,
+    &ext_image_capture_source_v1::PROTOCOL,
+    &ext_image_copy_capture_v1::PROTOCOL,
+    &zwlr_screencopy_v1::PROTOCOL,
 ];
 
 /// What only some sessions advertise. A registry that lists one must list it at no higher version than it declares.

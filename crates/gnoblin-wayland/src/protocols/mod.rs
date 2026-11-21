@@ -1,23 +1,20 @@
-//! The protocol modules that have not yet moved into crates of their own.
+//! What has not yet moved into a crate of its own: the capture engine and the view-source protocol.
 //!
 //! Every Wayland protocol this crate serves becomes a crate under `crates/protocols/`, named
-//! `gnoblin-wayland-<protocol>` (`design/protocol-crates.md`). A module answers one protocol's requests
-//! and translates them into window-manager events; none of them decides placement, focus or stacking.
-//! What is left here is moved one family per commit, and this module is deleted with the last of them.
-//! The crates and what they advertise are the rows of `xtask/protocols.toml`.
+//! `gnoblin-wayland-<protocol>` (`design/protocol-crates.md`). The three standard capture protocols
+//! (`ext_image_capture_source_v1`, `ext_image_copy_capture_v1` and `zwlr_screencopy_v1`) have moved. Their
+//! crates hold the wire objects and ask the compositor for each answer through a host trait, and
+//! `glue/` forwards those asks to the capture engine here.
+//!
+//! This module is deleted with the last of them. What remains waits for the owner's decision on how a View is
+//! captured (the view-source protocol or a standard route): the capture engine names the View tables
+//! and `gnoblin_view_source_v1` creates sources in them. The crates and what they advertise are the rows of
+//! `xtask/protocols.toml`.
 
-/// Pixel path shared by the three capture protocols: frames, sources and sessions.
+/// The pixel path the capture protocols share: frames, sources, sessions and the lock embargo.
 pub mod capture_shared;
-/// `ext_image_capture_source_v1`: the output and toplevel sources a capture names.
-pub mod ext_image_capture_source_v1;
-/// `ext_image_copy_capture_v1`: image-copy sessions that stream frames into client buffers.
-pub mod ext_image_copy_capture_v1;
 /// `gnoblin_view_source_v1`: the owner-only capture source of a View node.
 pub mod gnoblin_view_source_v1;
-/// The session and frame objects of `ext_image_copy_capture_v1`, with the device stated as the wire carries it.
-pub mod image_copy_session;
 /// The generated halves of the Gnoblin-owned protocols; see the module for why the
 /// generated code carries the one `unsafe_code` allow in this crate.
 mod wire;
-/// `zwlr_screencopy_manager_v1`: one-shot screencopy of an output or region.
-pub mod zwlr_screencopy_v1;
