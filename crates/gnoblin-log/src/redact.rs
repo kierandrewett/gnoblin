@@ -156,8 +156,12 @@ fn bare(word: &str) -> &str {
     word.trim_matches(|c: char| !c.is_alphanumeric())
 }
 
-/// Whether a key contains one of the [`SECRET_NAMES`].
+/// Whether a key contains one of the [`SECRET_NAMES`]. A word with a `/` in it is a path or a URL,
+/// not a name, so `/tmp/.tmpKey/a.ts:21:` is never a secret name.
 fn is_secret_name(key: &str) -> bool {
+    if key.contains('/') {
+        return false;
+    }
     let key = key.to_ascii_lowercase();
     SECRET_NAMES.iter().any(|name| key.contains(name))
 }
@@ -221,6 +225,19 @@ mod tests {
             redact("value 0123456789abcdefghijABCDEFGHIJ0123456789ab done"),
             "value [redacted] done"
         );
+    }
+
+    #[test]
+    fn a_path_with_a_secret_word_in_a_directory_is_not_a_name() {
+        assert_eq!(
+            redact("threw: /tmp/.tmpQZkKeY/geometry.ts:21: stops here"),
+            "threw: /tmp/.tmpQZkKeY/geometry.ts:21: stops here"
+        );
+        assert_eq!(
+            redact("in /tmp/.tmpkey/x: generation 1"),
+            "in /tmp/.tmpkey/x: generation 1"
+        );
+        assert_eq!(redact("/tmp/key/x key=abc"), "/tmp/key/x key=[redacted]");
     }
 
     #[test]
